@@ -1,9 +1,21 @@
 // =========================================================
 // FILE: src/lib/ym.ts
-// Вызывать только в client-компонентах
 // =========================================================
 
 const id = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID?.replace(/\D/g, "");
+
+type YmFunction = (
+  id: number,
+  method: string,
+  ...args: unknown[]
+) => void;
+
+declare global {
+  interface Window {
+    ym?: YmFunction;
+    dataLayer?: Record<string, unknown>[];
+  }
+}
 
 export function ymGoal(goal: string, params?: Record<string, unknown>) {
   if (typeof window === "undefined" || !id) return;
@@ -22,3 +34,5 @@ export function ymHit(url?: string) {
     /* ignore */
   }
 }
+
+export {};
