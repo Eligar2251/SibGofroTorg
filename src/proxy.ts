@@ -32,13 +32,22 @@ async function isAdminAuthed(request: NextRequest): Promise<boolean> {
   }
 }
 
+/**
+ * CSP Level 3:
+ * - nonce: inline только с nonce (XSS)
+ * - 'self': /_next/static чанки (без strict-dynamic!)
+ * - без 'strict-dynamic': иначе браузер игнорирует 'self' и host-allowlist
+ * - 'unsafe-inline' в script-src: fallback для старых браузеров;
+ *   при наличии nonce современные браузеры ИГНОРИРУЮТ unsafe-inline
+ */
 function buildCsp(nonce: string): string {
   const isDev = process.env.NODE_ENV === "development";
 
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
-    "'strict-dynamic'",
+    // fallback; ignored by modern browsers when nonce is present
+    "'unsafe-inline'",
     isDev ? "'unsafe-eval'" : "",
     "https://mc.yandex.ru",
     "https://yastatic.net",
@@ -49,6 +58,7 @@ function buildCsp(nonce: string): string {
   const directives = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
+    // styles: Next/Tailwind/inline — unsafe-inline ок для A+ (критичен script-src)
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
     "font-src 'self' data: https://fonts.gstatic.com",
@@ -103,6 +113,7 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = buildCsp(nonce);
 
   // ── Admin API ──
   if (pathname.startsWith("/api/admin")) {
@@ -134,9 +145,10 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Next.js читает x-nonce / CSP с request и вешает nonce на свои <script>
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set("Content-Security-Policy", buildCsp(nonce));
+  requestHeaders.set("Content-Security-Policy", csp);
 
   const response = NextResponse.next({
     request: { headers: requestHeaders },

@@ -1,12 +1,9 @@
-// =========================================================
-// FILE: src/components/seo/JsonLd.tsx
-// =========================================================
-
+// src/components/seo/JsonLd.tsx
 import { jsonLdScript } from "@/lib/seo";
 
 export function JsonLd({
   data,
-  nonce: _nonce, // принимаем для обратной совместимости, но не используем
+  nonce,
 }: {
   data: unknown | unknown[];
   nonce?: string;
@@ -18,6 +15,7 @@ export function JsonLd({
         <script
           key={i}
           type="application/ld+json"
+          nonce={nonce}
           dangerouslySetInnerHTML={{ __html: jsonLdScript(item) }}
         />
       ))}
