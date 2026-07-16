@@ -477,3 +477,8 @@ export async function updateSettings(data: Record<string, string>) {
   const db = getAdminDb();
   await db.collection("settings").doc("main").set(data, { merge: true });
 }
+
+export async function deleteOrder(id: string) {
+  const db = getAdminDb();
+  await db.collection("orders").doc(id).delete();
+}

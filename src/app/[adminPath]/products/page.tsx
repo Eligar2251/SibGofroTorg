@@ -30,9 +30,20 @@ export default async function AdminProductsPage({
           <h1 className="admin-h1">Товары</h1>
           <p className="admin-sub">Всего: {allProducts.length} товаров</p>
         </div>
-        <Link href={`/${ADMIN_PATH}/products/new`} className="admin-btn admin-btn--primary">
-          <Plus size={16} /> Добавить товар
-        </Link>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link
+            href={`/${ADMIN_PATH}/products/bulk`}
+            className="admin-btn admin-btn--ghost"
+          >
+            ✏️ Массовое редактирование
+          </Link>
+          <Link
+            href={`/${ADMIN_PATH}/products/new`}
+            className="admin-btn admin-btn--primary"
+          >
+            <Plus size={16} /> Добавить товар
+          </Link>
+        </div>
       </div>
 
       <div className="admin-card">
@@ -62,12 +73,16 @@ export default async function AdminProductsPage({
                       </div>
                       <div>
                         <div className="admin-product-name">{product.name}</div>
-                        <div className="admin-product-sku">{product.sku || "—"}</div>
+                        <div className="admin-product-sku">
+                          {product.sku || "—"}
+                        </div>
                       </div>
                     </div>
                   </td>
                   <td className="admin-muted">
-                    {product.categoryId ? catMap.get(product.categoryId) || "—" : "—"}
+                    {product.categoryId
+                      ? catMap.get(product.categoryId) || "—"
+                      : "—"}
                   </td>
                   <td>
                     <div className="admin-price">
@@ -84,9 +99,13 @@ export default async function AdminProductsPage({
                   <td>
                     <div className="admin-row">
                       {product.inStock ? (
-                        <span className="admin-badge admin-badge--green">В наличии</span>
+                        <span className="admin-badge admin-badge--green">
+                          В наличии
+                        </span>
                       ) : (
-                        <span className="admin-badge admin-badge--red">Нет</span>
+                        <span className="admin-badge admin-badge--red">
+                          Нет
+                        </span>
                       )}
                       {product.isPromo && (
                         <span className="admin-badge admin-badge--amber">
@@ -110,7 +129,11 @@ export default async function AdminProductsPage({
                         title="Просмотр"
                         target="_blank"
                       >
-                        {product.isVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+                        {product.isVisible ? (
+                          <Eye size={16} />
+                        ) : (
+                          <EyeOff size={16} />
+                        )}
                       </Link>
                     </div>
                   </td>

@@ -1,7 +1,4 @@
-// =========================================================
-// FILE: src/components/admin/AdminShell.tsx
-// =========================================================
-
+// src/components/admin/AdminShell.tsx
 "use client";
 
 import type { ReactNode } from "react";
@@ -15,6 +12,7 @@ import {
   LayoutDashboard,
   ExternalLink,
   LogOut,
+  Users,
 } from "lucide-react";
 
 export function AdminShell({
@@ -27,17 +25,41 @@ export function AdminShell({
   const pathname = usePathname() || "";
   const isLogin = pathname === `/${adminPath}/login`;
 
-  // Login page — без сайдбара
   if (isLogin) {
     return <div data-admin="true">{children}</div>;
   }
 
   const nav = [
-    { href: `/${adminPath}`, label: "Панель", icon: <LayoutDashboard size={18} /> },
-    { href: `/${adminPath}/products`, label: "Товары", icon: <Package size={18} /> },
-    { href: `/${adminPath}/categories`, label: "Категории", icon: <FolderOpen size={18} /> },
-    { href: `/${adminPath}/orders`, label: "Заявки", icon: <ClipboardList size={18} /> },
-    { href: `/${adminPath}/settings`, label: "Настройки", icon: <Settings size={18} /> },
+    {
+      href: `/${adminPath}`,
+      label: "Панель",
+      icon: <LayoutDashboard size={18} />,
+    },
+    {
+      href: `/${adminPath}/products`,
+      label: "Товары",
+      icon: <Package size={18} />,
+    },
+    {
+      href: `/${adminPath}/categories`,
+      label: "Категории",
+      icon: <FolderOpen size={18} />,
+    },
+    {
+      href: `/${adminPath}/orders`,
+      label: "Заявки",
+      icon: <ClipboardList size={18} />,
+    },
+    {
+      href: `/${adminPath}/clients`,
+      label: "Клиенты",
+      icon: <Users size={18} />,
+    },
+    {
+      href: `/${adminPath}/settings`,
+      label: "Настройки",
+      icon: <Settings size={18} />,
+    },
   ];
 
   return (
@@ -71,7 +93,11 @@ export function AdminShell({
         </nav>
 
         <div className="admin-sidebar__footer">
-          <Link href="/" target="_blank" className="admin-sidebar__footer-link">
+          <Link
+            href="/"
+            target="_blank"
+            className="admin-sidebar__footer-link"
+          >
             <ExternalLink size={13} /> Перейти на site
           </Link>
           <form action={`/${adminPath}/api/logout`} method="POST">

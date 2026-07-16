@@ -1,10 +1,8 @@
-// =========================================================
-// FILE: src/app/[adminPath]/orders/page.tsx
-// =========================================================
-
+// src/app/[adminPath]/orders/page.tsx
 import { getOrders } from "@/lib/firestore-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
+import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -61,9 +59,8 @@ function formatDate(raw: any): string {
     }
   }
   if (typeof raw === "number") return new Date(raw).toLocaleString("ru-RU");
-  if (raw?.seconds !== undefined) {
+  if (raw?.seconds !== undefined)
     return new Date(raw.seconds * 1000).toLocaleString("ru-RU");
-  }
   return "—";
 }
 
@@ -82,7 +79,10 @@ export default async function AdminOrdersPage({
         <div>
           <h1 className="admin-h1">Заявки и Заказы</h1>
           <p className="admin-sub">
-            Всего: <strong style={{ color: "var(--adm-navy)" }}>{allOrders.length}</strong>{" "}
+            Всего:{" "}
+            <strong style={{ color: "var(--adm-navy)" }}>
+              {allOrders.length}
+            </strong>{" "}
             обращений
           </p>
         </div>
@@ -110,7 +110,9 @@ export default async function AdminOrdersPage({
                   <div className="admin-order__row">
                     <div className="admin-order__main">
                       <div className="admin-order__top">
-                        <span className="admin-order__id">#{order.id.slice(0, 8)}</span>
+                        <span className="admin-order__id">
+                          #{order.id.slice(0, 8)}
+                        </span>
                         <span
                           className={
                             isOrder
@@ -120,7 +122,9 @@ export default async function AdminOrdersPage({
                         >
                           {isOrder ? "📦 Заказ" : "💬 Заявка"}
                         </span>
-                        <span className={statusBadge[order.status ?? "new"]}>
+                        <span
+                          className={statusBadge[order.status ?? "new"]}
+                        >
                           {statusLabels[order.status ?? "new"]}
                         </span>
                         <span className="admin-order__date">
@@ -130,27 +134,47 @@ export default async function AdminOrdersPage({
 
                       <div className="admin-order__grid">
                         <div className="admin-order__meta">
-                          <span className="admin-order__meta-label">Клиент:</span>
+                          <span className="admin-order__meta-label">
+                            Клиент:
+                          </span>
                           <span className="admin-order__meta-val">
                             {order.customerName}{" "}
                             <span className="admin-badge admin-badge--muted">
-                              {order.customerType === "legal" ? "🏢 Юр." : "👤 Физ."}
+                              {order.customerType === "legal"
+                                ? "🏢 Юр."
+                                : "👤 Физ."}
                             </span>
                           </span>
                         </div>
                         <div className="admin-order__meta">
-                          <span className="admin-order__meta-label">Телефон:</span>
-                          <a href={`tel:${order.customerPhone}`}>{order.customerPhone}</a>
+                          <span className="admin-order__meta-label">
+                            Телефон:
+                          </span>
+                          <a href={`tel:${order.customerPhone}`}>
+                            {order.customerPhone}
+                          </a>
                         </div>
                         {order.customerEmail && (
-                          <div className="admin-order__meta" style={{ gridColumn: "1 / -1" }}>
-                            <span className="admin-order__meta-label">Почта:</span>
-                            <a href={`mailto:${order.customerEmail}`}>{order.customerEmail}</a>
+                          <div
+                            className="admin-order__meta"
+                            style={{ gridColumn: "1 / -1" }}
+                          >
+                            <span className="admin-order__meta-label">
+                              Почта:
+                            </span>
+                            <a href={`mailto:${order.customerEmail}`}>
+                              {order.customerEmail}
+                            </a>
                           </div>
                         )}
                         <div className="admin-order__meta">
-                          <span className="admin-order__meta-label">Связь:</span>
-                          <span className="admin-order__meta-val" style={{ fontWeight: 500, fontSize: 13 }}>
+                          <span className="admin-order__meta-label">
+                            Связь:
+                          </span>
+                          <span
+                            className="admin-order__meta-val"
+                            style={{ fontWeight: 500, fontSize: 13 }}
+                          >
                             {commLabels[order.communicationChannel] ??
                               order.communicationChannel ??
                               "—"}
@@ -158,50 +182,73 @@ export default async function AdminOrdersPage({
                         </div>
                         {order.paymentMethod && (
                           <div className="admin-order__meta">
-                            <span className="admin-order__meta-label">Оплата:</span>
-                            <span className="admin-order__meta-val" style={{ fontWeight: 500, fontSize: 13 }}>
-                              {paymentLabels[order.paymentMethod] ?? order.paymentMethod}
+                            <span className="admin-order__meta-label">
+                              Оплата:
+                            </span>
+                            <span
+                              className="admin-order__meta-val"
+                              style={{ fontWeight: 500, fontSize: 13 }}
+                            >
+                              {paymentLabels[order.paymentMethod] ??
+                                order.paymentMethod}
                             </span>
                           </div>
                         )}
                       </div>
 
-                      {isOrder && order.items && order.items.length > 0 && (
-                        <div className="admin-order__items">
-                          <div className="admin-order__items-title">Позиции</div>
-                          {order.items.map(
-                            (
-                              item: {
-                                name: string;
-                                quantity: number;
-                                price: number;
-                              },
-                              idx: number
-                            ) => (
-                              <div key={idx} className="admin-order__item">
-                                <span>
-                                  {item.name}
-                                  <span className="admin-muted"> × {item.quantity} шт.</span>
-                                </span>
-                                <span className="admin-order__item-sum">
-                                  {(item.price * item.quantity).toLocaleString("ru-RU")} ₽
-                                </span>
-                              </div>
-                            )
-                          )}
-                          <div className="admin-order__total">
-                            <span>Итого:</span>
-                            <span>{order.totalSum?.toLocaleString("ru-RU")} ₽</span>
+                      {isOrder &&
+                        order.items &&
+                        order.items.length > 0 && (
+                          <div className="admin-order__items">
+                            <div className="admin-order__items-title">
+                              Позиции
+                            </div>
+                            {order.items.map(
+                              (
+                                item: {
+                                  name: string;
+                                  quantity: number;
+                                  price: number;
+                                },
+                                idx: number
+                              ) => (
+                                <div key={idx} className="admin-order__item">
+                                  <span>
+                                    {item.name}
+                                    <span className="admin-muted">
+                                      {" "}
+                                      × {item.quantity} шт.
+                                    </span>
+                                  </span>
+                                  <span className="admin-order__item-sum">
+                                    {(
+                                      item.price * item.quantity
+                                    ).toLocaleString("ru-RU")}{" "}
+                                    ₽
+                                  </span>
+                                </div>
+                              )
+                            )}
+                            <div className="admin-order__total">
+                              <span>Итого:</span>
+                              <span>
+                                {order.totalSum?.toLocaleString("ru-RU")} ₽
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
                       {!isOrder && order.productInfo && (
                         <div style={{ fontSize: 14 }}>
                           <span className="admin-muted">Интересует: </span>
-                          <strong style={{ color: "var(--adm-navy)" }}>{order.productInfo}</strong>
+                          <strong style={{ color: "var(--adm-navy)" }}>
+                            {order.productInfo}
+                          </strong>
                           {order.quantity && (
-                            <span className="admin-muted"> ({order.quantity} шт.)</span>
+                            <span className="admin-muted">
+                              {" "}
+                              ({order.quantity} шт.)
+                            </span>
                           )}
                         </div>
                       )}
@@ -209,7 +256,12 @@ export default async function AdminOrdersPage({
                       {order.comment && (
                         <div className="admin-order__comment">
                           <strong>Комментарий:</strong>
-                          <span style={{ fontStyle: "italic", color: "var(--adm-navy)" }}>
+                          <span
+                            style={{
+                              fontStyle: "italic",
+                              color: "var(--adm-navy)",
+                            }}
+                          >
                             «{order.comment}»
                           </span>
                         </div>
@@ -231,6 +283,7 @@ export default async function AdminOrdersPage({
                         currentStatus={order.status ?? "new"}
                         currentCloseReason={order.closeReason ?? null}
                       />
+                      <OrderDeleteButton orderId={order.id} />
                     </div>
                   </div>
                 </div>
