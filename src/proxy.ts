@@ -13,7 +13,6 @@ function getAdminSecret(): Uint8Array {
   if (fromEnv && fromEnv.length >= 32) {
     return new TextEncoder().encode(fromEnv);
   }
-  // Edge proxy: в prod без секрета — все admin-запросы fail closed
   if (process.env.NODE_ENV === "production") {
     return new TextEncoder().encode("__invalid_prod_secret_force_fail__");
   }
@@ -33,46 +32,125 @@ async function isAdminAuthed(request: NextRequest): Promise<boolean> {
   }
 }
 
+function buildCsp(nonce: string): string {
+  const isDev = process.env.NODE_ENV === "development";
+
+  const scriptSrc = [
+    "'self'",
+    `'nonce-${nonce}'`,
+    "'strict-dynamic'",
+    isDev ? "'unsafe-eval'" : "",
+    "https://mc.yandex.ru",
+    "https://yastatic.net",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const directives = [
+    "default-src 'self'",
+    `script-src ${scriptSrc}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
+    "font-src 'self' data:",
+    "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com https://api.telegram.org https://botapi.max.ru https://*.googleapis.com https://*.cloudinary.com https://res.cloudinary.com https://*.yandex.ru https://yandex.ru",
+    "frame-src 'self' https://yandex.ru https://*.yandex.ru https://yandex.com https://*.yandex.com https://mc.yandex.ru",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+    "upgrade-insecure-requests",
+  ];
+
+  if (isDev) {
+    return directives
+      .filter((d) => d !== "upgrade-insecure-requests")
+      .join("; ");
+  }
+  return directives.join("; ");
+}
+
+function applySecurityHeaders(response: NextResponse, nonce: string) {
+  const isProd = process.env.NODE_ENV === "production";
+
+  response.headers.set("Content-Security-Policy", buildCsp(nonce));
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "SAMEORIGIN");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+  );
+  response.headers.set(
+    "Cross-Origin-Opener-Policy",
+    "same-origin-allow-popups"
+  );
+  response.headers.set("Cross-Origin-Resource-Policy", "same-site");
+  response.headers.set("X-DNS-Prefetch-Control", "on");
+  response.headers.set("X-Permitted-Cross-Domain-Policies", "none");
+
+  if (isProd) {
+    response.headers.set(
+      "Strict-Transport-Security",
+      "max-age=63072000; includeSubDomains; preload"
+    );
+  }
+
+  response.headers.delete("Access-Control-Allow-Origin");
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Защита admin API
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+
+  // ── Admin API ──
   if (pathname.startsWith("/api/admin")) {
     const ok = await isAdminAuthed(request);
     if (!ok) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const res = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      applySecurityHeaders(res, nonce);
+      return res;
     }
-    return NextResponse.next();
   }
 
-  // Защита admin UI
+  // ── Admin UI ──
   if (
     pathname === `/${ADMIN_PATH}` ||
     pathname.startsWith(`/${ADMIN_PATH}/`)
   ) {
-    // login-страницу и login API не блокируем
     if (
-      pathname === `/${ADMIN_PATH}/login` ||
-      pathname === `/${ADMIN_PATH}/api/login`
+      pathname !== `/${ADMIN_PATH}/login` &&
+      pathname !== `/${ADMIN_PATH}/api/login`
     ) {
-      return NextResponse.next();
+      const ok = await isAdminAuthed(request);
+      if (!ok) {
+        const res = NextResponse.redirect(
+          new URL(`/${ADMIN_PATH}/login`, request.url)
+        );
+        applySecurityHeaders(res, nonce);
+        return res;
+      }
     }
-
-    const ok = await isAdminAuthed(request);
-    if (!ok) {
-      return NextResponse.redirect(
-        new URL(`/${ADMIN_PATH}/login`, request.url)
-      );
-    }
-    return NextResponse.next();
   }
 
-  return NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", buildCsp(nonce));
+
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+
+  applySecurityHeaders(response, nonce);
+  return response;
 }
 
 export const config = {
   matcher: [
-    "/api/admin/:path*",
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    {
+      source:
+        "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    },
   ],
 };

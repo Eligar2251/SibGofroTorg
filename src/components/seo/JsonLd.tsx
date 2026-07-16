@@ -4,7 +4,13 @@
 
 import { jsonLdScript } from "@/lib/seo";
 
-export function JsonLd({ data }: { data: unknown | unknown[] }) {
+export function JsonLd({
+  data,
+  nonce,
+}: {
+  data: unknown | unknown[];
+  nonce?: string;
+}) {
   const payload = Array.isArray(data) ? data : [data];
   return (
     <>
@@ -12,6 +18,7 @@ export function JsonLd({ data }: { data: unknown | unknown[] }) {
         <script
           key={i}
           type="application/ld+json"
+          nonce={nonce}
           dangerouslySetInnerHTML={{ __html: jsonLdScript(item) }}
         />
       ))}
