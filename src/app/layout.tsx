@@ -6,6 +6,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import "./globals.css";
+import "./mobile.css";
 import { CartProvider } from "@/context/CartContext";
 import { ConditionalChrome } from "@/components/layout/ConditionalChrome";
 import { YandexMetrika } from "@/components/analytics/YandexMetrika";
