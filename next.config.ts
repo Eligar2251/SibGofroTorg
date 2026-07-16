@@ -7,58 +7,85 @@ import type { NextConfig } from "next";
 const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
-  // ── Security / hygiene ──
   poweredByHeader: false,
   compress: true,
 
-  // ── Images ──
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "res.cloudinary.com", pathname: "/**" },
       { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
     ],
     formats: ["image/avif", "image/webp"],
-    // разумный дефолт; подгони под реальные размеры, если нужно
     minimumCacheTTL: isProd ? 60 * 60 * 24 * 30 : 60,
   },
 
-  // ── Bundle ──
   experimental: {
-    // tree-shake lucide-react — ок и для prod
     optimizePackageImports: ["lucide-react"],
   },
 
-  // CSP + security headers — в src/proxy.ts (nonce).
-  // Здесь только кеш публичных ассетов, НЕ /_next/static
-  // (Next сам ставит immutable long-cache на хешированные чанки в prod).
+  // CSP + security — в src/proxy.ts (nonce).
+  // Здесь только кеш публичных ассетов.
+  // НЕ трогаем /_next/static — Next сам ставит immutable long-cache в prod.
   async headers() {
-    if (!isProd) {
-      // в dev не трогаем Cache-Control — иначе warning + ломается HMR
-      return [];
-    }
+    if (!isProd) return [];
+
+    const longCache = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=31536000, immutable",
+      },
+    ];
+
+    const dayCache = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=86400, stale-while-revalidate=604800",
+      },
+    ];
+
+    // path-to-regexp: отдельные source на каждое расширение
+    // (regex вида /:path*\.(?:svg|...) — invalid в Next.js)
+    const staticExt = [
+      "svg",
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      "avif",
+      "ico",
+      "woff",
+      "woff2",
+      "ttf",
+      "otf",
+      "pdf",
+    ];
 
     return [
-      // favicon / robots / sitemap / manifest
       {
-        source: "/:file(favicon.ico|robots.txt|sitemap.xml|manifest.webmanifest|site.webmanifest)",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=86400, stale-while-revalidate=604800",
-          },
-        ],
+        source: "/favicon.ico",
+        headers: dayCache,
       },
-
-      // статичные файлы из /public (картинки, иконки, pdf и т.п.)
       {
-        source: "/:path*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff|woff2|ttf|otf|pdf)",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
-        ],
+        source: "/robots.txt",
+        headers: dayCache,
       },
+      {
+        source: "/sitemap.xml",
+        headers: dayCache,
+      },
+      {
+        source: "/manifest.webmanifest",
+        headers: dayCache,
+      },
+      {
+        source: "/site.webmanifest",
+        headers: dayCache,
+      },
+      ...staticExt.map((ext) => ({
+        source: `/:path*.${ext}`,
+        headers: longCache,
+      })),
     ];
   },
 };
