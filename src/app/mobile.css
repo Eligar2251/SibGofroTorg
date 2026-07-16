@@ -1,0 +1,364 @@
+/* ══════════════════════════════════════
+   RESPONSIVE / MOBILE
+   ══════════════════════════════════════ */
+
+@media (min-width: 769px) {
+  .logo-text {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 1200px) {
+  .deals-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .products-grid-4 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .map-card {
+    grid-template-columns: 280px 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .catalog-layout {
+    grid-template-columns: 200px 1fr;
+    gap: 16px;
+  }
+  .home-catalog-layout {
+    grid-template-columns: 200px 1fr;
+  }
+  .home-catalog-unified {
+    grid-template-columns: 220px 1fr !important;
+  }
+  .shop-layout {
+    grid-template-columns: 200px 1fr;
+  }
+  .wp-main {
+    grid-template-columns: 1fr 340px;
+  }
+  .cab-layout {
+    grid-template-columns: 260px 1fr;
+  }
+  .pdp-layout {
+    grid-template-columns: 360px 1fr;
+    gap: 24px;
+  }
+  .checkout-layout {
+    grid-template-columns: 1fr 300px;
+  }
+}
+
+@media (max-width: 960px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .hero__left::after {
+    display: none;
+  }
+  .hero__left {
+    padding-block: 40px;
+  }
+  .container-half {
+    max-width: 100%;
+    margin-left: 0;
+  }
+  .container-half-right {
+    padding: 32px 20px;
+  }
+  .hero__right {
+    min-height: 280px;
+  }
+  .hero__wp-rates {
+    display: none;
+  }
+  .products-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .consult-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .map-card {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+    min-height: auto;
+  }
+  .map-info {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .map-embed,
+  .map-embed iframe {
+    min-height: 360px;
+  }
+}
+
+@media (max-width: 900px) {
+  .catalog-layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+  }
+  .home-catalog-unified {
+    grid-template-columns: 1fr !important;
+  }
+  .home-catalog-unified__side {
+    position: static !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .mobile-burger {
+    display: flex !important;
+  }
+  .hero__left {
+    padding-block: 32px;
+  }
+  .hero__right {
+    min-height: 220px;
+  }
+  .quick-order-block {
+    grid-template-columns: 1fr;
+  }
+  .quick-order-right {
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .location-grid {
+    grid-template-columns: 1fr;
+  }
+  .home-catalog-layout {
+    grid-template-columns: 1fr;
+  }
+  .home-sidebar {
+    position: static;
+  }
+  .shop-layout {
+    grid-template-columns: 1fr;
+  }
+  .shop-sidebar {
+    position: static;
+  }
+  .wp-main {
+    grid-template-columns: 1fr;
+  }
+  .wp-calc-wrap {
+    position: static;
+  }
+  .wp-accept-grid {
+    grid-template-columns: 1fr;
+  }
+  .wp-hero__stats {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .wp-hero__stat {
+    padding: 10px 16px;
+  }
+  .wp-hero__stat-div {
+    display: none;
+  }
+  .cab-layout {
+    grid-template-columns: 1fr;
+  }
+  .cab-sidebar {
+    position: static;
+  }
+  .cab-order__head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .cab-order__head-right {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cab-order__date {
+    display: none;
+  }
+  .pdp-layout {
+    grid-template-columns: 1fr;
+  }
+  .pdp-gallery {
+    position: static;
+  }
+  .pdp-img-wrap {
+    max-height: 320px;
+  }
+  .perks-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .perk-item {
+    border-right: none !important;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .footer-top {
+    grid-template-columns: 1fr 1fr;
+  }
+  .topbar-item span.hide-mobile {
+    display: none;
+  }
+  .header-inner {
+    flex-wrap: wrap;
+    height: auto;
+    padding-block: 10px;
+    gap: 10px;
+  }
+  .header-search {
+    order: 3;
+    width: 100%;
+  }
+  .logo {
+    order: 1;
+  }
+  .header-actions {
+    order: 2;
+    margin-left: auto;
+  }
+  .catalog-toggle span.catalog-toggle-text {
+    display: none;
+  }
+  .catalog-sort-mobile {
+    display: flex !important;
+  }
+  .catalog-sort-links {
+    display: none;
+  }
+  .catalog-toolbar2 {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .promo-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .deals-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .qof-row {
+    grid-template-columns: 1fr;
+  }
+  .consult-form {
+    padding: 20px;
+  }
+  .checkout-layout {
+    grid-template-columns: 1fr;
+  }
+  .checkout-sidebar {
+    position: static;
+    order: -1;
+  }
+  .checkout-summary__items {
+    max-height: none;
+  }
+  .checkout-fields {
+    grid-template-columns: 1fr;
+  }
+  .success-card {
+    padding: 32px 20px;
+    border-radius: 12px;
+  }
+  .success-steps {
+    flex-direction: column;
+  }
+  .success-step__arrow {
+    transform: rotate(90deg);
+  }
+  .cart-item__sum {
+    min-width: 60px;
+    font-size: 13px;
+  }
+  .cart-item__right {
+    gap: 8px;
+  }
+  .wpcalc__row {
+    flex-direction: column;
+  }
+  .wpcalc__form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .map-section {
+    padding: 40px 0;
+  }
+  .map-embed,
+  .map-embed iframe {
+    min-height: 300px;
+  }
+
+  /* Скрыть второстепенные ссылки топбара на мобилке */
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero__h1 {
+    font-size: 32px;
+  }
+  .hero__ctas {
+    flex-direction: column;
+  }
+  .btn-hero-primary,
+  .btn-hero-ghost {
+    width: 100%;
+    justify-content: center;
+  }
+  .cat-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .product-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .product-grid-compact {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .products-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .deals-grid {
+    grid-template-columns: 1fr;
+  }
+  .deal-card__title {
+    font-size: 16px;
+  }
+  .footer-top {
+    grid-template-columns: 1fr;
+  }
+  .footer-bottom {
+    flex-direction: column;
+    gap: 4px;
+    height: auto;
+    padding-block: 14px;
+  }
+  .comm-options {
+    flex-direction: column;
+  }
+  .comm-option {
+    justify-content: center;
+  }
+  .success-actions {
+    flex-direction: column;
+  }
+  .success-btn-primary,
+  .success-btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+  .pdp-price {
+    font-size: 28px;
+  }
+  .atc-stepper__input {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
