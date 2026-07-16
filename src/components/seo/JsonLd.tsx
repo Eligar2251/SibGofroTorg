@@ -6,7 +6,7 @@ import { jsonLdScript } from "@/lib/seo";
 
 export function JsonLd({
   data,
-  nonce,
+  nonce: _nonce, // принимаем для обратной совместимости, но не используем
 }: {
   data: unknown | unknown[];
   nonce?: string;
@@ -18,7 +18,6 @@ export function JsonLd({
         <script
           key={i}
           type="application/ld+json"
-          nonce={nonce}
           dangerouslySetInnerHTML={{ __html: jsonLdScript(item) }}
         />
       ))}

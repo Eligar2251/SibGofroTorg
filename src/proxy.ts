@@ -49,9 +49,9 @@ function buildCsp(nonce: string): string {
   const directives = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
-    "font-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com https://api.telegram.org https://botapi.max.ru https://*.googleapis.com https://*.cloudinary.com https://res.cloudinary.com https://*.yandex.ru https://yandex.ru",
     "frame-src 'self' https://yandex.ru https://*.yandex.ru https://yandex.com https://*.yandex.com https://mc.yandex.ru",
     "worker-src 'self' blob:",

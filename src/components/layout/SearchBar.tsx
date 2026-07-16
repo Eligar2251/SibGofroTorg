@@ -96,7 +96,7 @@ export function SearchBar({
   return (
     <div ref={wrapRef} className={WRAP_CLASS[variant]}>
       <form action={action} method="GET" className={FORM_CLASS[variant]}>
-        {hiddenFields &&
+        {hiddenFields && typeof hiddenFields === 'object' &&
           Object.entries(hiddenFields).map(([key, value]) =>
             value ? <input key={key} type="hidden" name={key} value={value} /> : null
           )}

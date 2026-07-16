@@ -287,8 +287,7 @@ export default async function HomePage() {
       </section>
 
       {/* Карта — отступ сверху/снизу, чтобы не «прилипала» к футеру */}
-      <section
-        className="map-section">
+      <section className="map-section">
         <div className="container">
           <div className="map-card">
             <div className="map-info">
@@ -317,7 +316,14 @@ export default async function HomePage() {
               </a>
             </div>
             <div className="map-embed">
-              <iframe src={SITE_MAP_EMBED_URL} title="Карта" />
+              <iframe
+                src={SITE_MAP_EMBED_URL}
+                title="Карта — СибГофроТорг"
+                className="contacts-map__iframe"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                allowFullScreen
+              />
             </div>
           </div>
         </div>

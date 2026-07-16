@@ -1,4 +1,7 @@
-// src/app/contacts/page.tsx
+// =========================================================
+// FILE: src/app/contacts/page.tsx
+// =========================================================
+
 import Link from "next/link";
 import { Phone, MapPin, Clock, Mail, ExternalLink } from "lucide-react";
 import {
@@ -12,7 +15,7 @@ import {
   SITE_MAP_LINK,
 } from "@/lib/site-config";
 import type { Metadata } from "next";
-import { SITE_URL, SITE_NAME } from "@/lib/seo";
+import { SITE_URL } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { buildLocalBusinessJsonLd, buildBreadcrumbJsonLd } from "@/lib/seo";
 
@@ -23,9 +26,13 @@ export const metadata: Metadata = {
   alternates: { canonical: `${SITE_URL}/contacts` },
 };
 
+function ContactIcon({ children }: { children: React.ReactNode }) {
+  return <div className="contacts-icon">{children}</div>;
+}
+
 export default function ContactsPage() {
   return (
-    <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: "64px" }}>
+    <div className="contacts-page">
       <JsonLd
         data={[
           buildLocalBusinessJsonLd(),
@@ -37,250 +44,79 @@ export default function ContactsPage() {
       />
 
       {/* Breadcrumb */}
-      <div
-        style={{
-          borderBottom: "1px solid var(--border)",
-          backgroundColor: "#ffffff",
-        }}
-      >
-        <div className="container-wide" style={{ paddingBlock: "14px" }}>
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              fontSize: "13px",
-              color: "var(--ink-muted)",
-            }}
-          >
-            <Link
-              href="/"
-              style={{ color: "var(--ink-muted)", textDecoration: "none" }}
-            >
+      <div className="contacts-page__breadcrumb-bar">
+        <div className="container-wide contacts-page__breadcrumb-inner">
+          <div className="contacts-page__breadcrumb">
+            <Link href="/" className="contacts-page__breadcrumb-link">
               Главная
             </Link>
             <span>/</span>
-            <span style={{ color: "var(--ink)" }}>Контакты</span>
+            <span className="contacts-page__breadcrumb-current">Контакты</span>
           </div>
         </div>
       </div>
 
-      <div className="container-wide" style={{ marginTop: "32px" }}>
-        <h1
-          style={{
-            fontSize: "30px",
-            fontWeight: "800",
-            color: "var(--ink)",
-            marginBottom: "32px",
-          }}
-        >
-          Контактная информация
-        </h1>
+      <div className="container-wide contacts-page__content">
+        <h1 className="contacts-page__title">Контактная информация</h1>
 
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr", gap: "24px" }}
-          className="lg-grid"
-        >
+        <div className="contacts-layout">
           {/* Левая колонка — карточки */}
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-          >
+          <div className="contacts-layout__list">
             {/* Телефон */}
-            <div
-              className="card-base"
-              style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  backgroundColor: "var(--kraft-light)",
-                  borderRadius: "var(--radius)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--kraft)",
-                  flexShrink: 0,
-                }}
-              >
+            <div className="card-base contacts-card">
+              <ContactIcon>
                 <Phone size={20} />
-              </div>
+              </ContactIcon>
               <div>
-                <div
-                  style={{
-                    fontWeight: "bold",
-                    fontSize: "14px",
-                    color: "var(--ink-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    marginBottom: "2px",
-                  }}
-                >
+                <div className="contacts-card__label">
                   Телефон отдела продаж
                 </div>
-                <a
-                  href={SITE_PHONE_HREF}
-                  style={{
-                    fontSize: "20px",
-                    fontWeight: "bold",
-                    color: "var(--ink)",
-                    textDecoration: "none",
-                  }}
-                >
+                <a href={SITE_PHONE_HREF} className="contacts-card__phone">
                   {SITE_PHONE}
                 </a>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--ink-light)",
-                    marginTop: "4px",
-                  }}
-                >
+                <div className="contacts-card__hint">
                   Принимаем звонки в рабочее время
                 </div>
               </div>
             </div>
 
             {/* Адрес */}
-            <div
-              className="card-base"
-              style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  backgroundColor: "var(--kraft-light)",
-                  borderRadius: "var(--radius)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--kraft)",
-                  flexShrink: 0,
-                }}
-              >
+            <div className="card-base contacts-card">
+              <ContactIcon>
                 <MapPin size={20} />
-              </div>
+              </ContactIcon>
               <div>
-                <div
-                  style={{
-                    fontWeight: "bold",
-                    fontSize: "14px",
-                    color: "var(--ink-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    marginBottom: "2px",
-                  }}
-                >
-                  Адрес офиса и склада
-                </div>
-                <div
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: "bold",
-                    color: "var(--ink)",
-                  }}
-                >
-                  {SITE_ADDRESS}
-                </div>
+                <div className="contacts-card__label">Адрес офиса и склада</div>
+                <div className="contacts-card__value">{SITE_ADDRESS}</div>
               </div>
             </div>
 
             {/* Режим работы */}
-            <div
-              className="card-base"
-              style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  backgroundColor: "var(--kraft-light)",
-                  borderRadius: "var(--radius)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--kraft)",
-                  flexShrink: 0,
-                }}
-              >
+            <div className="card-base contacts-card">
+              <ContactIcon>
                 <Clock size={20} />
-              </div>
+              </ContactIcon>
               <div>
-                <div
-                  style={{
-                    fontWeight: "bold",
-                    fontSize: "14px",
-                    color: "var(--ink-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    marginBottom: "2px",
-                  }}
-                >
-                  Режим работы
-                </div>
-                <div
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: "bold",
-                    color: "var(--ink)",
-                  }}
-                >
+                <div className="contacts-card__label">Режим работы</div>
+                <div className="contacts-card__value contacts-card__value--md">
                   Пн–Пт: {SITE_HOURS_WEEKDAY} · Сб: {SITE_HOURS_SATURDAY}
                 </div>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--red)",
-                    marginTop: "4px",
-                    fontWeight: "600",
-                  }}
-                >
+                <div className="contacts-card__closed">
                   Воскресенье: выходной день
                 </div>
               </div>
             </div>
 
             {/* Email */}
-            <div
-              className="card-base"
-              style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  backgroundColor: "var(--kraft-light)",
-                  borderRadius: "var(--radius)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--kraft)",
-                  flexShrink: 0,
-                }}
-              >
+            <div className="card-base contacts-card">
+              <ContactIcon>
                 <Mail size={20} />
-              </div>
+              </ContactIcon>
               <div>
-                <div
-                  style={{
-                    fontWeight: "bold",
-                    fontSize: "14px",
-                    color: "var(--ink-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    marginBottom: "2px",
-                  }}
-                >
-                  Электронная почта
-                </div>
+                <div className="contacts-card__label">Электронная почта</div>
                 <a
                   href={`mailto:${SITE_EMAIL}`}
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: "bold",
-                    color: "var(--kraft)",
-                    textDecoration: "none",
-                  }}
+                  className="contacts-card__email"
                 >
                   {SITE_EMAIL}
                 </a>
@@ -289,70 +125,34 @@ export default function ContactsPage() {
           </div>
 
           {/* Правая колонка — карта */}
-          <div
-            className="card-base"
-            style={{
-              padding: 0,
-              overflow: "hidden",
-              minHeight: "360px",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div
-              style={{
-                padding: "16px 24px",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div style={{ fontWeight: "bold", fontSize: "14px" }}>
+          <div className="card-base contacts-layout__map">
+            <div className="contacts-map__header">
+              <div className="contacts-map__title">
                 📍 Склад-магазин на карте
               </div>
               <a
                 href={SITE_MAP_LINK}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "600",
-                  color: "var(--kraft)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  textDecoration: "none",
-                }}
+                className="contacts-map__link"
               >
                 Яндекс.Карты <ExternalLink size={12} />
               </a>
             </div>
 
-            <div style={{ flex: 1, minHeight: 320, position: "relative" }}>
+            <div className="contacts-map__frame">
               <iframe
                 src={SITE_MAP_EMBED_URL}
                 title="Карта — СибГофроТорг"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  border: 0,
-                }}
+                className="contacts-map__iframe" // или ваш класс
                 loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
                 allowFullScreen
               />
             </div>
           </div>
         </div>
       </div>
-
-      <style>{`
-        @media (min-width: 1024px) {
-          .lg-grid { grid-template-columns: 1fr 1.2fr !important; }
-        }
-      `}</style>
     </div>
   );
 }

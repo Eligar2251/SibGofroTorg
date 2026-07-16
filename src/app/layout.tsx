@@ -4,7 +4,6 @@
 
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { headers } from "next/headers";
 import "./globals.css";
 import "./mobile.css";
 import { CartProvider } from "@/context/CartContext";
@@ -52,27 +51,21 @@ export const viewport: Viewport = {
   themeColor: "#1b2b4b",
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const h = await headers();
-  const nonce = h.get("x-nonce") ?? undefined;
-
   return (
     <html lang="ru">
       <head>
-        <JsonLd
-          nonce={nonce}
-          data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}
-        />
+        <JsonLd data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]} />
       </head>
       <body>
         <CartProvider>
           <ConditionalChrome>{children}</ConditionalChrome>
         </CartProvider>
-        <YandexMetrika nonce={nonce} />
+        <YandexMetrika />
       </body>
     </html>
   );

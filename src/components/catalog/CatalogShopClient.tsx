@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
+import { MobileCategorySelect } from "@/components/catalog/MobileCategorySelect";
 
 interface CategoryItem {
   id: string;
@@ -219,6 +220,16 @@ export function CatalogShopClient({
 
             <div className="filter-block">
               <div className="filter-block__title">Категории</div>
+
+              {/* ↓ новая строка — мобильный select, на десктопе скрыт через CSS */}
+              <MobileCategorySelect
+                categories={categories}
+                activeSlug={activeSlug}
+                onSelect={(slug) =>
+                  handleCategory(slug ? categories.find((c) => c.slug === slug) ?? null : null)
+                }
+              />
+
               <div className="filter-block__body filter-block__body--cats">
                 <button
                   type="button"

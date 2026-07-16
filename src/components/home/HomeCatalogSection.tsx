@@ -1,3 +1,7 @@
+// =========================================================
+// FILE: src/components/home/HomeCatalogSection.tsx
+// =========================================================
+
 "use client";
 
 import { useCallback, useRef, useState } from "react";
@@ -5,6 +9,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
+import { MobileCategorySelect } from "@/components/catalog/MobileCategorySelect";
 
 interface CategoryItem {
   id: string;
@@ -62,7 +67,6 @@ export function HomeCatalogSection({
           params.set("category", opts.categorySlug);
           params.set("limit", "12");
         } else {
-          // как на сервере: популярные
           params.set("featured", "1");
           params.set("limit", "12");
         }
@@ -90,7 +94,6 @@ export function HomeCatalogSection({
   function handleCategory(slug: string | null) {
     const next = activeSlug === slug ? null : slug;
     setActiveSlug(next);
-    // при выборе категории поиск оставляем — или сбрасываем; сбрасываем для ясности
     setQ("");
     loadProducts({ q: "", categorySlug: next });
   }
@@ -104,40 +107,11 @@ export function HomeCatalogSection({
   return (
     <section className="catalog-section">
       <div className="container">
-        <div
-          className="home-catalog-unified"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(220px, 280px) 1fr",
-            gap: 24,
-            alignItems: "start",
-          }}
-        >
+        <div className="home-catalog-unified">
           {/* Левая колонка: поиск + категории */}
-          <aside
-            className="home-catalog-unified__side"
-            style={{
-              background: "var(--white, #fff)",
-              border: "1px solid var(--border, #e8e6e1)",
-              borderRadius: "var(--radius, 12px)",
-              padding: 16,
-              position: "sticky",
-              top: 16,
-            }}
-          >
-            <div style={{ marginBottom: 16 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  color: "var(--ink-muted, #888)",
-                  marginBottom: 8,
-                }}
-              >
-                Поиск
-              </div>
+          <aside className="home-catalog-unified__side">
+            <div className="home-catalog-unified__search-block">
+              <div className="home-catalog-unified__label">Поиск</div>
               <InstantSearchInput
                 value={q}
                 onChange={handleSearch}
@@ -147,14 +121,7 @@ export function HomeCatalogSection({
                 inputClassName="catalog-search-input"
                 buttonClassName="catalog-search-btn"
               />
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 6,
-                  marginTop: 10,
-                }}
-              >
+              <div className="home-catalog-unified__chips">
                 {["400×300×250", "Скотч 48мм", "Стрейч-плёнка", "Т-23"].map(
                   (hint) => (
                     <button
@@ -162,7 +129,6 @@ export function HomeCatalogSection({
                       type="button"
                       className="search-chip"
                       onClick={() => handleSearch(hint)}
-                      style={{ cursor: "pointer", border: "none" }}
                     >
                       {hint}
                     </button>
@@ -171,31 +137,20 @@ export function HomeCatalogSection({
               </div>
             </div>
 
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: "var(--ink-muted, #888)",
-                marginBottom: 8,
-              }}
-            >
-              Категории
-            </div>
+            <div className="home-catalog-unified__label">Категории</div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {/* ↓ новая строка */}
+            <MobileCategorySelect
+              categories={categories}
+              activeSlug={activeSlug}
+              onSelect={handleCategory}
+            />
+
+            <div className="home-catalog-unified__cats">
               <button
                 type="button"
                 onClick={() => handleCategory(null)}
                 className={`fcat-item${!activeSlug ? " fcat-item--active" : ""}`}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  border: "none",
-                  background: "transparent",
-                  cursor: "pointer",
-                }}
               >
                 <span className="fcat-item__icon">⭐</span>
                 <span className="fcat-item__name">Популярные</span>
@@ -207,13 +162,6 @@ export function HomeCatalogSection({
                   type="button"
                   onClick={() => handleCategory(cat.slug)}
                   className={`fcat-item${activeSlug === cat.slug ? " fcat-item--active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                  }}
                 >
                   <span className="fcat-item__icon">{cat.icon || "📦"}</span>
                   <span className="fcat-item__name">{cat.name}</span>
@@ -221,34 +169,14 @@ export function HomeCatalogSection({
               ))}
             </div>
 
-            <Link
-              href="/catalog"
-              className="text-link"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                marginTop: 14,
-                fontSize: 13,
-              }}
-            >
+            <Link href="/catalog" className="text-link home-catalog-unified__all-link">
               Весь каталог <ArrowRight size={13} />
             </Link>
           </aside>
 
           {/* Правая колонка: товары */}
           <div className="home-catalog-unified__main">
-            <div
-              className="catalog-top"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 16,
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
+            <div className="catalog-top home-catalog-unified__top">
               <h2 className="section-title" style={{ margin: 0 }}>
                 {title}
                 <span className="catalog-top__count" style={{ marginLeft: 8 }}>
@@ -268,11 +196,7 @@ export function HomeCatalogSection({
 
             {products.length > 0 ? (
               <div
-                className="products-grid-4"
-                style={{
-                  opacity: loading ? 0.55 : 1,
-                  transition: "opacity 0.15s",
-                }}
+                className={`products-grid-4${loading ? " products-grid-4--loading" : ""}`}
               >
                 {products.map((p) => (
                   <ProductCardCompact key={p.id} product={p} />
@@ -292,18 +216,6 @@ export function HomeCatalogSection({
             )}
           </div>
         </div>
-
-        {/* Адаптив: одна колонка на мобиле */}
-        <style>{`
-          @media (max-width: 900px) {
-            .home-catalog-unified {
-              grid-template-columns: 1fr !important;
-            }
-            .home-catalog-unified__side {
-              position: static !important;
-            }
-          }
-        `}</style>
       </div>
     </section>
   );

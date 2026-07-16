@@ -11,7 +11,7 @@ export default async function AdminSettingsPage() {
   const settings = await getSettings();
 
   const settingsMap: Record<string, string> = {};
-  for (const [key, value] of Object.entries(settings)) {
+  for (const [key, value] of Object.entries(settings || {})) {
     settingsMap[key] = value != null ? String(value) : "";
   }
 
