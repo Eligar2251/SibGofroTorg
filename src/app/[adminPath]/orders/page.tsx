@@ -67,11 +67,26 @@ function formatDate(raw: any): string {
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; type?: string }>;
 }) {
-  const { status: filterStatus } = await searchParams;
+  const { status: filterStatus, q: searchQuery, type: typeQuery } = await searchParams;
   const activeFilter = filterStatus || "all";
+  const activeType = typeQuery || "all";
+  const query = searchQuery ? searchQuery.toLowerCase().trim() : "";
+
   const allOrders = await getOrders({ status: activeFilter });
+
+  const filteredOrders = allOrders.filter((order: any) => {
+    if (activeType !== "all" && order.type !== activeType) return false;
+    if (!query) return true;
+    return (
+      (order.customerName && order.customerName.toLowerCase().includes(query)) ||
+      (order.customerPhone && order.customerPhone.includes(query)) ||
+      (order.customerEmail && order.customerEmail.toLowerCase().includes(query)) ||
+      (order.id && order.id.toLowerCase().includes(query)) ||
+      (order.productInfo && order.productInfo.toLowerCase().includes(query))
+    );
+  });
 
   return (
     <div>
@@ -79,12 +94,52 @@ export default async function AdminOrdersPage({
         <div>
           <h1 className="admin-h1">Заявки и Заказы</h1>
           <p className="admin-sub">
-            Всего:{" "}
+            Всего обращений:{" "}
             <strong style={{ color: "var(--adm-navy)" }}>
-              {allOrders.length}
+              {filteredOrders.length}
             </strong>{" "}
-            обращений
+            {allOrders.length !== filteredOrders.length ? `(из ${allOrders.length})` : ""}
           </p>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <form method="GET" action={`/${ADMIN_PATH}/orders`} style={{ display: "flex", gap: 8 }}>
+            <input type="hidden" name="status" value={activeFilter} />
+            <input type="hidden" name="type" value={activeType} />
+            <input
+              type="text"
+              name="q"
+              defaultValue={searchQuery || ""}
+              placeholder="Поиск по имени, телефону, почте, ID..."
+              className="admin-input"
+            />
+            <button type="submit" className="admin-btn admin-btn--navy">
+              Найти
+            </button>
+            {searchQuery && (
+              <Link href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${activeType}`} className="admin-btn admin-btn--ghost">
+                Сбросить
+              </Link>
+            )}
+          </form>
+        </div>
+
+        <div style={{ display: "flex", gap: 6 }}>
+          {[
+            { value: "all", label: "Все типы" },
+            { value: "order", label: "📦 Заказы" },
+            { value: "inquiry", label: "💬 Заявки" },
+          ].map((t) => (
+            <Link
+              key={t.value}
+              href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${t.value}${searchQuery ? `&q=${searchQuery}` : ""}`}
+              className={`admin-filter${activeType === t.value ? " admin-filter--active" : ""}`}
+            >
+              {t.label}
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -92,7 +147,7 @@ export default async function AdminOrdersPage({
         {filterOptions.map((opt) => (
           <Link
             key={opt.value}
-            href={`/${ADMIN_PATH}/orders?status=${opt.value}`}
+            href={`/${ADMIN_PATH}/orders?status=${opt.value}&type=${activeType}${searchQuery ? `&q=${searchQuery}` : ""}`}
             className={`admin-filter${activeFilter === opt.value ? " admin-filter--active" : ""}`}
           >
             {opt.label}
@@ -101,9 +156,9 @@ export default async function AdminOrdersPage({
       </div>
 
       <div className="admin-card">
-        {allOrders.length > 0 ? (
+        {filteredOrders.length > 0 ? (
           <div>
-            {allOrders.map((order: any) => {
+            {filteredOrders.map((order: any) => {
               const isOrder = order.type === "order";
               return (
                 <div key={order.id} className="admin-order">
@@ -141,8 +196,8 @@ export default async function AdminOrdersPage({
                             {order.customerName}{" "}
                             <span className="admin-badge admin-badge--muted">
                               {order.customerType === "legal"
-                                ? "🏢 Юр."
-                                : "👤 Физ."}
+                                ? "🏢 Юр. лицо"
+                                : "👤 Физ. лицо"}
                             </span>
                           </span>
                         </div>
@@ -201,7 +256,7 @@ export default async function AdminOrdersPage({
                         order.items.length > 0 && (
                           <div className="admin-order__items">
                             <div className="admin-order__items-title">
-                              Позиции
+                              Позиции заказа ({order.items.length})
                             </div>
                             {order.items.map(
                               (
@@ -230,7 +285,7 @@ export default async function AdminOrdersPage({
                               )
                             )}
                             <div className="admin-order__total">
-                              <span>Итого:</span>
+                              <span>Итоговая сумма:</span>
                               <span>
                                 {order.totalSum?.toLocaleString("ru-RU")} ₽
                               </span>
@@ -240,7 +295,7 @@ export default async function AdminOrdersPage({
 
                       {!isOrder && order.productInfo && (
                         <div style={{ fontSize: 14 }}>
-                          <span className="admin-muted">Интересует: </span>
+                          <span className="admin-muted">Интересует товар: </span>
                           <strong style={{ color: "var(--adm-navy)" }}>
                             {order.productInfo}
                           </strong>
@@ -255,7 +310,7 @@ export default async function AdminOrdersPage({
 
                       {order.comment && (
                         <div className="admin-order__comment">
-                          <strong>Комментарий:</strong>
+                          <strong>Комментарий клиента:</strong>
                           <span
                             style={{
                               fontStyle: "italic",
@@ -270,7 +325,7 @@ export default async function AdminOrdersPage({
                       {order.closeReason && (
                         <div className="admin-order__close-reason">
                           <strong style={{ display: "block", marginBottom: 4 }}>
-                            Причина закрытия:
+                            Причина закрытия / отклонения:
                           </strong>
                           {order.closeReason}
                         </div>
@@ -294,9 +349,11 @@ export default async function AdminOrdersPage({
           <div className="admin-empty">
             <div className="admin-empty__icon">📋</div>
             <p>
-              {activeFilter === "all"
-                ? "Заявок пока нет"
-                : `Нет заявок со статусом «${statusLabels[activeFilter]}»`}
+              {searchQuery
+                ? `По запросу «${searchQuery}» ничего не найдено`
+                : activeFilter === "all"
+                ? "Заявок и заказов пока нет"
+                : `Нет обращений со статусом «${statusLabels[activeFilter]}»`}
             </p>
           </div>
         )}
