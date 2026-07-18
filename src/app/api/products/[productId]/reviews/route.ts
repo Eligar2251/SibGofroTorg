@@ -80,3 +80,27 @@ export async function POST(
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ productId: string }> }
+) {
+  try {
+    await params; // productId не нужен для инкремента, но сохраняем сигнатуру
+    const body = await request.json();
+    const { reviewId } = body;
+
+    if (!reviewId || typeof reviewId !== "string") {
+      return NextResponse.json(
+        { error: "reviewId обязателен" },
+        { status: 400 }
+      );
+    }
+
+    const helpfulCount = await incrementReviewHelpful(reviewId);
+    return NextResponse.json({ success: true, helpfulCount });
+  } catch (error) {
+    console.error("Increment review helpful error:", error);
+    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
+  }
+}
