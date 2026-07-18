@@ -582,6 +582,54 @@
   margin-top: 2px;
 }
 
+/* Под заказ */
+.pdp-price-current--mto {
+  color: var(--ink-light);
+}
+
+.pdp-made-to-order {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pdp-made-to-order__text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  color: var(--green-dark);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.pdp-made-to-order__text svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.pdp-made-to-order__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 16px;
+  border-radius: 10px;
+  background: var(--green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background var(--transition);
+}
+
+.pdp-made-to-order__btn:hover {
+  background: var(--green-hover);
+}
+
 /* Доставка */
 .delivery-section {
   border-top: 1px solid #f0f2f1;

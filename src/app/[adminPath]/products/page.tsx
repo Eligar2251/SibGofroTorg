@@ -34,6 +34,7 @@ export default async function AdminProductsPage({
     inStock: p.inStock,
     isPromo: p.isPromo,
     promoLabel: p.promoLabel ?? null,
+    madeToOrder: p.madeToOrder ?? false,
     isVisible: p.isVisible,
     imageUrl: p.imageUrl ?? null,
     viewCount: p.viewCount ?? 0,

@@ -24,6 +24,7 @@ import { SITE_ADDRESS } from "@/lib/site-config";
 import {
   BadgeCheck,
   Barcode,
+  FileText,
   MapPin,
   MessageSquare,
   ShoppingCart,
@@ -289,7 +290,7 @@ export default async function ProductPage({
                 src={product.imageUrl}
                 alt={product.name}
                 fill
-                style={{ objectFit: "contain", padding: "20px" }}
+                style={{ objectFit: "cover", objectPosition: "center" }}
                 sizes="(max-width: 700px) 100vw, (max-width: 1024px) 50vw, 480px"
                 priority
               />
@@ -415,25 +416,33 @@ export default async function ProductPage({
           {/* ── 4. БЛОК ПОКУПКИ ── */}
           <div className="purchase-block">
             <div className="purchase-card">
-              {/* Обычная цена */}
-              {effectivePrice != null && (
+              {/* Цена */}
+              {product.madeToOrder ? (
                 <div className="pdp-price-row">
-                  <span className="pdp-price-current">
-                    {effectivePrice.toLocaleString("ru-RU")} ₽
+                  <span className="pdp-price-current pdp-price-current--mto">
+                    Под заказ
                   </span>
-                  {oldPrice != null && (
-                    <span className="pdp-price-old">
-                      {oldPrice.toLocaleString("ru-RU")} ₽
-                    </span>
-                  )}
-                  {discountPercent > 0 && (
-                    <span className="pdp-price-save">−{discountPercent}%</span>
-                  )}
                 </div>
+              ) : (
+                effectivePrice != null && (
+                  <div className="pdp-price-row">
+                    <span className="pdp-price-current">
+                      {effectivePrice.toLocaleString("ru-RU")} ₽
+                    </span>
+                    {oldPrice != null && (
+                      <span className="pdp-price-old">
+                        {oldPrice.toLocaleString("ru-RU")} ₽
+                      </span>
+                    )}
+                    {discountPercent > 0 && (
+                      <span className="pdp-price-save">−{discountPercent}%</span>
+                    )}
+                  </div>
+                )
               )}
 
               {/* Оптовая цена */}
-              {product.priceWholesale != null && (
+              {!product.madeToOrder && product.priceWholesale != null && (
                 <div className="pdp-wholesale-row">
                   <span className="pdp-wholesale-label">Опт:</span>
                   <strong className="pdp-wholesale-price">
@@ -449,7 +458,18 @@ export default async function ProductPage({
 
               {/* Форма сайта: количество + добавление в корзину */}
               <div className="pdp-cart-block">
-                {product.inStock ? (
+                {product.madeToOrder ? (
+                  <div className="pdp-made-to-order">
+                    <div className="pdp-made-to-order__text">
+                      <FileText size={15} />
+                      Изготавливается под заказ — оставьте заявку, менеджер
+                      рассчитает стоимость и сроки
+                    </div>
+                    <Link href="/order" className="pdp-made-to-order__btn">
+                      Оставить заявку
+                    </Link>
+                  </div>
+                ) : product.inStock ? (
                   <AddToCartButton
                     product={{
                       id: product.id,

@@ -112,6 +112,7 @@ export default async function HomePage() {
     imageUrl: p.imageUrl ?? null,
     inStock: p.inStock,
     promoLabel: p.promoLabel ?? null,
+    madeToOrder: p.madeToOrder ?? false,
     stockQty: p.stockQty ?? null,
     dimensionLength: p.dimensionLength ?? null,
     dimensionWidth: p.dimensionWidth ?? null,

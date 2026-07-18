@@ -42,6 +42,7 @@ interface ProductData {
   inStock?: boolean | null;
   isPromo?: boolean | null;
   promoLabel?: string | null;
+  madeToOrder?: boolean | null;
   discountType?: "percent" | "fixed" | null;
   discountValue?: number | null;
   discountBadge?: string | null;
@@ -110,6 +111,7 @@ export function ProductFormClient({
       inStock: data.get("inStock") === "on",
       isPromo: data.get("isPromo") === "on",
       promoLabel: data.get("promoLabel") || null,
+      madeToOrder: data.get("madeToOrder") === "on",
       discountType: data.get("discountType") || null,
       discountValue: data.get("discountValue")
         ? Number(data.get("discountValue"))
@@ -425,6 +427,11 @@ export function ProductFormClient({
                 name: "isFeatured",
                 label: "Популярный товар",
                 defaultChecked: product?.isFeatured ?? false,
+              },
+              {
+                name: "madeToOrder",
+                label: "Под заказ (без цены на сайте)",
+                defaultChecked: product?.madeToOrder ?? false,
               },
             ].map((flag) => (
               <label key={flag.name} className="admin-check">

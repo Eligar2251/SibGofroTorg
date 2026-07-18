@@ -127,6 +127,7 @@ function mapProduct(id: string, data: FirebaseFirestore.DocumentData): Firestore
         : null,
     isPromo: data.isPromo ?? false,
     promoLabel: data.promoLabel || null,
+    madeToOrder: data.madeToOrder ?? false,
     discountType: data.discountType || null,
     discountValue:
       data.discountValue !== undefined && data.discountValue !== null

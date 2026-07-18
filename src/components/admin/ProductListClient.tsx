@@ -16,6 +16,7 @@ interface ProductItem {
   inStock: boolean;
   isPromo: boolean;
   promoLabel?: string | null;
+  madeToOrder?: boolean | null;
   isVisible: boolean;
   imageUrl?: string | null;
   viewCount?: number;
@@ -231,9 +232,15 @@ export function ProductListClient({
                     </td>
                     <td>
                       <div className="admin-price">
-                        {product.price != null
-                          ? `${product.price.toLocaleString("ru-RU")} ₽`
-                          : "по запросу"}
+                        {product.madeToOrder ? (
+                          <span style={{ color: "var(--green-dark)", fontWeight: 700 }}>
+                            Под заказ
+                          </span>
+                        ) : product.price != null ? (
+                          `${product.price.toLocaleString("ru-RU")} ₽`
+                        ) : (
+                          "по запросу"
+                        )}
                       </div>
                       {product.priceWholesale != null && (
                         <div className="admin-price-opt">

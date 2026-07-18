@@ -18,6 +18,7 @@ interface CompactProduct {
   imageUrl?: string | null;
   inStock?: boolean;
   promoLabel?: string | null;
+  madeToOrder?: boolean | null;
   stockQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;
@@ -88,7 +89,7 @@ export function ProductCardCompact({
 
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
-    if (!product.price) return;
+    if (!product.price || product.madeToOrder) return;
     addToCart(
       {
         productId: product.id,
@@ -189,7 +190,11 @@ export function ProductCardCompact({
 
         {/* Цена — шт + партия */}
         <div className="pcc__prices">
-          {product.price != null ? (
+          {product.madeToOrder ? (
+            <span className="pcc__price-muted pcc__price-muted--mto">
+              Под заказ
+            </span>
+          ) : product.price != null ? (
             <>
               <div className="pcc__price-main">
                 <span className="pcc__price-val">
@@ -214,7 +219,14 @@ export function ProductCardCompact({
         </div>
 
         {/* Управление количеством */}
-        {product.price != null ? (
+        {product.madeToOrder ? (
+          <Link
+            href={`/catalog/product/${product.slug}`}
+            className="pcc__inquiry-btn"
+          >
+            Оставить заявку
+          </Link>
+        ) : product.price != null ? (
           <>
             <div className="pcc__actions">
               <div className="pcc__stepper">
