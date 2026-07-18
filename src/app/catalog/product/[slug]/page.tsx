@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProductBySlug, getRelatedProducts, getAllCategories } from "@/lib/firestore-queries";
@@ -471,7 +472,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               : product.imageUrl
               ? [...Array(4)].map((_, idx) => (
                   <div key={idx} className="pdp-buyer-photo">
-                    <Image src={product.imageUrl} alt="" width={80} height={80} style={{ objectFit: "cover" }} />
+                    <Image src={product.imageUrl!} alt="" width={80} height={80} style={{ objectFit: "cover" }} />
                   </div>
                 ))
               : [...Array(4)].map((_, idx) => (

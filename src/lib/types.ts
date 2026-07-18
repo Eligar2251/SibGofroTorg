@@ -40,6 +40,9 @@ export interface FirestoreProduct {
   isFeatured: boolean;
   imageUrl?: string | null | undefined;
   images?: { url: string; publicId: string }[];
+  viewCount?: number;
+  averageRating?: number;
+  totalReviews?: number;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -154,6 +157,7 @@ export interface ProductQuestion {
   // Admin moderation
   isApproved: boolean;
   moderationStatus: "pending" | "approved" | "rejected";
+  moderationNote?: string | null;
 }
 
 export interface ProductRating {

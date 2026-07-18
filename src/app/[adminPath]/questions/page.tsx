@@ -1,6 +1,5 @@
 // src/app/[adminPath]/questions/page.tsx
 import { notFound } from "next/navigation";
-import { getProducts } from "@/lib/firestore-queries";
 import { QuestionsManager } from "@/components/admin/QuestionsManager";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
@@ -13,8 +12,6 @@ export default async function AdminQuestionsPage({
 }) {
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
-
-  const products = await getProducts({ limitCount: 1000 });
 
   return (
     <div>
@@ -33,7 +30,7 @@ export default async function AdminQuestionsPage({
         </h1>
       </div>
 
-      <QuestionsManager products={products} />
+      <QuestionsManager />
     </div>
   );
 }

@@ -66,8 +66,7 @@ export async function GET(request: NextRequest) {
       const searchLower = search.toLowerCase();
       questions = questions.filter(q => 
         q.question.toLowerCase().includes(searchLower) ||
-        q.userName.toLowerCase().includes(searchLower) ||
-        q.productName?.toLowerCase().includes(searchLower)
+        q.userName.toLowerCase().includes(searchLower)
       );
     }
 

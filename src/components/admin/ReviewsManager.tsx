@@ -40,12 +40,9 @@ interface ReviewStats {
   withProsCons: number;
 }
 
-interface ReviewsManagerProps {
-  products: Product[];
-}
-
-export function ReviewsManager({ products }: ReviewsManagerProps) {
+export function ReviewsManager() {
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [products, setProducts] = useState<{id: string, name: string}[]>([]);
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -61,6 +58,18 @@ export function ReviewsManager({ products }: ReviewsManagerProps) {
     action: "approve" | "reject";
     note: string;
   } | null>(null);
+
+  async function fetchProducts() {
+    try {
+      const res = await fetch("/api/admin/products?limit=1000");
+      const data = await res.json();
+      if (res.ok) {
+        setProducts(data.products);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   async function fetchReviews() {
     if (products.length === 0) return;
@@ -86,10 +95,16 @@ export function ReviewsManager({ products }: ReviewsManagerProps) {
   }
 
   useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  useEffect(() => {
     if (products.length > 0) {
       fetchReviews();
     }
   }, [currentPage, filterStatus, searchQuery, products.length]);
+
+  // ... rest of the component remains the same
 
   async function handleModerate(reviewId: string, action: "approve" | "reject", note?: string) {
     setSaving(true);

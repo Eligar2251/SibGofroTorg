@@ -1,7 +1,7 @@
 // src/app/api/products/[productId]/questions/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getProductQuestions, createProductQuestion, incrementQuestionHelpful } from "@/lib/firestore-queries";
-import { getServerSession } from "@/lib/auth";
+import { verifyUserSession } from "@/lib/user-auth";
 
 export async function GET(
   request: NextRequest,
@@ -35,7 +35,7 @@ export async function POST(
   { params }: { params: Promise<{ productId: string }> }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await verifyUserSession();
     if (!session) {
       return NextResponse.json({ error: "Требуется авторизация" }, { status: 401 });
     }
@@ -50,9 +50,9 @@ export async function POST(
 
     const questionId = await createProductQuestion({
       productId,
-      userId: session.userId,
+      userId: session.uid,
       userName: session.name || "Покупатель",
-      userAvatar: session.avatar || null,
+      userAvatar: null,
       question: question.trim(),
     });
 

@@ -1,6 +1,5 @@
 // src/app/[adminPath]/reviews/page.tsx
 import { notFound } from "next/navigation";
-import { getProducts, getAllPromotions } from "@/lib/firestore-queries";
 import { ReviewsManager } from "@/components/admin/ReviewsManager";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
@@ -13,10 +12,6 @@ export default async function AdminReviewsPage({
 }) {
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
-
-  const [products] = await Promise.all([
-    getProducts({ limitCount: 1000 }),
-  ]);
 
   return (
     <div>
@@ -35,7 +30,7 @@ export default async function AdminReviewsPage({
         </h1>
       </div>
 
-      <ReviewsManager products={products} />
+      <ReviewsManager />
     </div>
   );
 }
