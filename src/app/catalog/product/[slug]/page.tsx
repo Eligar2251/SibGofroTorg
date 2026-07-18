@@ -6,7 +6,7 @@ import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { AddToCartButton } from "@/components/catalog/AddToCartButton";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { FirestoreCategory, FirestoreProduct, getProductEffectivePrice } from "@/lib/types";
-import { BadgeCheck, ShieldAlert, Star, MessageSquare, Truck, ShieldCheck, HelpCircle, MessageCircle, ChevronRight, Heart, RotateCcw, Share2, GitCompare, Search } from "lucide-react";
+import { BadgeCheck, ShieldAlert, Star, MessageSquare, MessageCircle, ChevronRight, Heart, Share2, GitCompare } from "lucide-react";
 import Image from "next/image";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -63,17 +63,6 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const hasDiscount = product.price != null && effectivePrice != null && effectivePrice < product.price;
   const oldPrice = hasDiscount && product.price != null ? product.price : null;
 
-  // Цвет бейджа скидки
-  let badgeColorBg = "rgba(22, 163, 74, 0.12)";
-  let badgeColorText = "#16a34a";
-  if (product.discountValue && product.discountValue >= 10 && product.discountValue <= 20) {
-    badgeColorBg = "rgba(200, 134, 10, 0.12)";
-    badgeColorText = "#c8860a";
-  } else if (product.discountValue && product.discountValue > 20) {
-    badgeColorBg = "rgba(184, 58, 30, 0.12)";
-    badgeColorText = "#b83a1e";
-  }
-
   const dims = product.dimensionLength && product.dimensionWidth
     ? `${product.dimensionLength}×${product.dimensionWidth}${product.dimensionHeight ? `×${product.dimensionHeight}` : ""} ${product.dimensionUnit || "мм"}`
     : null;
@@ -114,7 +103,6 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     inStock: product.inStock,
   });
 
-  // Build breadcrumb trail for display
   const breadcrumbTrail = [
     { name: "Каталог", url: "/catalog" },
     ...(category ? [{ name: category.name, url: `/catalog/${category.slug}` }] : []),
@@ -122,325 +110,302 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   ];
 
   return (
-    <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: "64px" }}>
+    <div style={{ backgroundColor: "#f5f5f5", paddingBottom: "64px" }}>
       <JsonLd data={[breadcrumb, productLd]} />
 
-      {/* Хлебные крошки в стиле Ozon */}
-      <div className="pdp-breadcrumbs-bar">
-        <div className="container-wide pdp-breadcrumbs">
-          <div className="pdp-breadcrumbs-left">
+      {/* ХЛЕБНЫЕ КРОШКИ */}
+      <div className="breadcrumbs">
+        <div className="container-wide breadcrumbs">
+          <div className="breadcrumbs-left">
             {breadcrumbTrail.map((item, idx) => (
               <React.Fragment key={idx}>
-                {idx > 0 && <span className="pdp-breadcrumb-sep">•</span>}
+                {idx > 0 && <span style={{ color: "#ccc" }}>•</span>}
                 {item.url ? (
-                  <Link href={item.url} className="pdp-breadcrumb-link">
+                  <Link href={item.url} className="breadcrumbs-left" style={{ color: "#8b8b8b", textDecoration: "none" }}>
                     {item.name}
                   </Link>
                 ) : (
-                  <span className="pdp-breadcrumb-current">{item.name}</span>
+                  <span style={{ color: "#1a1a1a", fontWeight: 500, maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {item.name}
+                  </span>
                 )}
               </React.Fragment>
             ))}
           </div>
-          <div className="pdp-breadcrumbs-right">
-            {product.sku && <span className="pdp-article">Артикул: {product.sku}</span>}
-            <button className="pdp-breadcrumb-btn" title="В сравнение">
-              <GitCompare size={16} /> В сравнение
+          <div className="breadcrumbs-right" style={{ display: "flex", alignItems: "center", gap: "16px", color: "#8b8b8b", fontSize: "13px" }}>
+            {product.sku && <span>🔖 Артикул: {product.sku}</span>}
+            <button className="breadcrumbs-right" style={{ display: "flex", alignItems: "center", gap: "4px", color: "#8b8b8b", textDecoration: "none", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: "4px" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3 8 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M20 7H4"/><path d="m20 11 4 4-4 4"/></svg> В сравнение
             </button>
-            <button className="pdp-breadcrumb-btn" title="Поделиться">
-              <Share2 size={16} /> Поделиться
+            <button className="breadcrumbs-right" style={{ display: "flex", alignItems: "center", gap: "4px", color: "#8b8b8b", textDecoration: "none", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: "4px" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.57" y1="6.51" y2="10.49"/></svg> Поделиться
             </button>
           </div>
         </div>
       </div>
 
       <div className="container-wide" style={{ marginTop: "20px" }}>
-        {/* Основной блок - 3 колонки */}
-        <div className="pdp-marketplace-layout">
+        {/* ОСНОВНОЙ БЛОК - 4 КОЛОНКИ */}
+        <div className="product-page">
 
-          {/* ЛЕВАЯ КОЛОНКА: Галерея с миниатюрами */}
-          <div className="pdp-col-gallery">
-            <div className="pdp-gallery-wrapper">
-              {/* Миниатюры слева */}
-              <div className="pdp-thumbs">
-                {product.images && product.images.length > 0 ? (
-                  product.images.map((img, idx) => (
-                    <button
-                      key={idx}
-                      className={`pdp-thumb ${idx === 0 ? "active" : ""}`}
-                      aria-label={`Фото ${idx + 1}`}
-                    >
-                      <Image
-                        src={img.url}
-                        alt={`${product.name} фото ${idx + 1}`}
-                        width={72}
-                        height={72}
-                        style={{ objectFit: "cover" }}
-                      />
-                    </button>
-                  ))
-                ) : product.imageUrl ? (
-                  <button className="pdp-thumb active" aria-label="Фото 1">
-                    <Image
-                      src={product.imageUrl}
-                      alt={product.name}
-                      width={72}
-                      height={72}
-                      style={{ objectFit: "cover" }}
-                    />
-                  </button>
-                ) : (
-                  <button className="pdp-thumb active" aria-label="Фото 1">
-                    <span className="pdp-thumb-placeholder">📦</span>
-                  </button>
-                )}
-                {/* Видео заглушка */}
-                <button className="pdp-thumb pdp-thumb-video" aria-label="Видео">
-                  <span className="pdp-thumb-video-content">
-                    <span className="pdp-play-icon">▶</span>
-                    +1 видео
-                  </span>
-                </button>
-              </div>
-
-              {/* Главное фото */}
-              <div className="pdp-main-image-wrapper">
-                {product.imageUrl ? (
+          {/* МИНИАТЮРЫ */}
+          <div className="gallery-thumbs">
+            {product.images && product.images.length > 0 ? (
+              product.images.map((img, idx) => (
+                <button
+                  key={idx}
+                  className={`thumb ${idx === 0 ? "active" : ""}`}
+                  aria-label={`Фото ${idx + 1}`}
+                >
                   <Image
-                    src={product.imageUrl}
-                    alt={product.name}
-                    fill
-                    style={{ objectFit: "contain", padding: "16px" }}
-                    sizes="(max-width: 768px) 100vw, 480px"
-                    priority
+                    src={img.url}
+                    alt={`${product.name} фото ${idx + 1}`}
+                    width={72}
+                    height={72}
+                    style={{ objectFit: "cover" }}
                   />
-                ) : (
-                  <span className="pdp-img-placeholder">📦</span>
-                )}
-                <div className="pdp-badge-returns">✓ 0% возвратов ›</div>
-                <div className="pdp-badge-zoom">🔍</div>
-              </div>
+                </button>
+              ))
+            ) : product.imageUrl ? (
+              <button className="thumb active" aria-label="Фото 1">
+                <Image
+                  src={product.imageUrl}
+                  alt={product.name}
+                  width={72}
+                  height={72}
+                  style={{ objectFit: "cover" }}
+                />
+              </button>
+            ) : (
+              <button className="thumb active" aria-label="Фото 1">
+                <span style={{ fontSize: "24px", opacity: 0.5 }}>📦</span>
+              </button>
+            )}
+            {/* Видео заглушка */}
+            <button className="thumb thumb-video" aria-label="Видео">
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "11px", textAlign: "center", lineHeight: "1.3", width: "100%", height: "100%" }}>
+                <span style={{ fontSize: "18px", display: "block", marginBottom: "4px" }}>▶</span>
+                +1 видео
+              </span>
+            </button>
+          </div>
+
+          {/* ГЛАВНОЕ ФОТО */}
+          <div className="gallery-main">
+            {product.imageUrl ? (
+              <Image
+                src={product.imageUrl}
+                alt={product.name}
+                fill
+                style={{ objectFit: "contain", padding: "16px" }}
+                sizes="(max-width: 768px) 100vw, 480px"
+                priority
+              />
+            ) : (
+              <span style={{ fontSize: "96px", opacity: 0.3 }}>📦</span>
+            )}
+            <div className="badge-returns" style={{ position: "absolute", top: "12px", right: "12px", background: "#00b800", color: "#fff", fontSize: "12px", fontWeight: 600, padding: "4px 10px", borderRadius: "20px", display: "flex", alignItems: "center", gap: "4px", zIndex: 2 }}>
+              ✓ 0% возвратов ›
+            </div>
+            <div className="badge-zoom" style={{ position: "absolute", top: "12px", left: "12px", background: "rgba(255,255,255,0.9)", borderRadius: "50%", width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "16px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", zIndex: 2 }}>
+              🔍
             </div>
           </div>
 
-          {/* ЦЕНТРАЛЬНАЯ КОЛОНКА: Информация о товаре */}
-          <div className="pdp-col-center">
-            <div className="pdp-product-info">
-              {/* Заголовок */}
-              <h1 className="pdp-title">{product.name}</h1>
+          {/* ИНФОРМАЦИЯ О ТОВАРЕ */}
+          <div className="product-info" style={{ padding: "0 8px" }}>
+            {/* Заголовок */}
+            <h1 className="product-title" style={{ fontSize: "20px", fontWeight: 700, lineHeight: "1.4", marginBottom: "12px", color: "#1a1a1a" }}>
+              {product.name}
+              <span className="show-more" style={{ color: "#005bff", cursor: "pointer", fontSize: "14px", fontWeight: 400 }}>ещё</span>
+            </h1>
 
-              {/* Рейтинг */}
-              <div className="pdp-rating-row">
-                <div className="pdp-rating-stars">
-                  <span className="pdp-star">★</span>
-                  4.9
+            {/* Рейтинг */}
+            <div className="rating-row" style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
+              <div className="rating-stars" style={{ display: "flex", alignItems: "center", gap: "4px", fontWeight: 700, color: "#1a1a1a" }}>
+                <span className="star" style={{ color: "#f5a623", fontSize: "16px" }}>★</span>
+                4.9
+              </div>
+              <span style={{ color: "#ccc" }}>•</span>
+              <a href="#reviews" className="rating-link" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>21 отзыв</a>
+              <span style={{ color: "#ccc" }}>•</span>
+              <a href="#questions" className="questions-link" style={{ display: "flex", alignItems: "center", gap: "4px", color: "#005bff", textDecoration: "none", fontSize: "13px" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "middle" }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 7 вопросов
+              </a>
+            </div>
+
+            {/* Бренд */}
+            <div className="brand-row" style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px", padding: "12px", border: "1px solid #e8e8e8", borderRadius: "8px" }}>
+              <div className="brand-logo" style={{ width: "40px", height: "40px", borderRadius: "50%", background: "#1a1a1a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", color: "#fff", flexShrink: 0 }}>С</div>
+              <div>
+                <div className="brand-name" style={{ fontWeight: 700, fontSize: "15px", display: "flex", alignItems: "center", gap: "4px" }}>
+                  СибГофроТорг <BadgeCheck size={14} style={{ color: "#16a34a", display: "inline" }} />
                 </div>
-                <span className="pdp-rating-dot">•</span>
-                <a href="#reviews" className="pdp-rating-link">21 отзыв</a>
-                <span className="pdp-rating-dot">•</span>
-                <a href="#questions" className="pdp-questions-link">
-                  <MessageCircle size={13} /> 7 вопросов
+                <div style={{ color: "#8b8b8b", fontSize: "12px", marginTop: "2px" }}>Производитель • ГОСТ</div>
+              </div>
+            </div>
+
+            {/* Характеристики "О товаре" */}
+            <div className="specs-section" style={{ marginTop: "24px" }}>
+              <div className="specs-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <span className="specs-title" style={{ fontSize: "16px", fontWeight: 700 }}>О товаре</span>
+                <a href="#description" className="specs-link" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px", display: "flex", alignItems: "center", gap: "2px" }}>
+                  Перейти к описанию <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
                 </a>
               </div>
-
-              {/* Бренд */}
-              <div className="pdp-brand-row">
-                <div className="pdp-brand-logo">С</div>
-                <div>
-                  <div className="pdp-brand-name">
-                    СибГофроТорг <BadgeCheck size={14} style={{ color: "#16a34a", display: "inline" }} />
+              <div className="specs-table" style={{ width: "100%" }}>
+                {specs.map((s, idx) => (
+                  <div key={idx} className="spec-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
+                    <div className="spec-name" style={{ color: "#8b8b8b", fontSize: "13px", display: "flex", alignItems: "flex-start", gap: "4px" }}>
+                      {s.icon} {s.label}
+                      <span style={{ color: "#ccc", cursor: "help", fontSize: "12px" }}>ⓘ</span>
+                    </div>
+                    <div className="spec-value" style={{ color: "#1a1a1a", fontSize: "13px", fontWeight: 500 }}>{s.value}</div>
                   </div>
-                  <div className="pdp-brand-sub">Производитель • ГОСТ</div>
-                </div>
+                ))}
+                {specs.length === 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
+                    <div style={{ color: "#8b8b8b", fontSize: "13px" }}>Характеристики уточняйте у менеджера</div>
+                    <div style={{ color: "#1a1a1a", fontSize: "13px", fontWeight: 500 }}>—</div>
+                  </div>
+                )}
               </div>
+            </div>
 
-              {/* Варианты - заглушка (если нет данных о вариантах, не показываем) */}
-              {false && (
-                <>
-                  <div className="pdp-variants-section">
-                    <div className="pdp-variants-label">Название цвета:</div>
-                    <div className="pdp-variants-list">
-                      <button className="pdp-variant-btn active">Black</button>
-                      <button className="pdp-variant-btn">Pink</button>
-                      <button className="pdp-variant-btn">Teal</button>
-                      <button className="pdp-variant-btn">Ultramarine</button>
-                      <button className="pdp-variant-btn">White</button>
+            {/* Описание */}
+            {product.description && (
+              <div id="description" style={{ marginTop: "24px" }}>
+                <h2 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "12px" }}>Описание</h2>
+                <p style={{ fontSize: "14px", color: "#8b8b8b", lineHeight: "1.7" }}>{product.description}</p>
+              </div>
+            )}
+          </div>
+
+          {/* ПРАВАЯ КОЛОНКА: Блок покупки */}
+          <div className="purchase-block" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div className="purchase-card" style={{ border: "1px solid #e0e0e0", borderRadius: "12px", padding: "16px", marginBottom: "12px" }}>
+              {/* Распродажа - показываем только если есть скидка */}
+              {hasDiscount && (
+                <div className="sale-badge-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                  <div className="sale-badge-left" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div className="sale-icon" style={{ width: "28px", height: "28px", background: "#ff4f00", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "12px", fontWeight: 700 }}>%</div>
+                    <div>
+                      <div className="sale-text" style={{ color: "#ff4f00", fontWeight: 700, fontSize: "14px" }}>Распродажа</div>
+                      <div className="sale-stock" style={{ color: "#8b8b8b", fontSize: "12px" }}>
+                        {product.stockQty != null && product.stockQty <= 30
+                          ? `${product.stockQty} единиц осталось`
+                          : "Ограниченное количество"}
+                      </div>
                     </div>
                   </div>
-                  <div className="pdp-variants-section">
-                    <div className="pdp-variants-label">Встроенная память:</div>
-                    <div className="pdp-variants-list">
-                      <button className="pdp-variant-btn">256 ГБ</button>
-                      <button className="pdp-variant-btn active">128 ГБ</button>
-                    </div>
+                  <div style={{ color: "#8b8b8b", fontSize: "12px" }}>
+                    {product.discountBadge ? `${product.discountBadge} до конца` : "7 дней до конца"}
+                  </div>
+                </div>
+              )}
+
+              {/* Цена */}
+              {effectivePrice != null && (
+                <>
+                  <div className="price-main" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <div className="price-badge" style={{ background: "#00b800", color: "#fff", fontSize: "22px", fontWeight: 700, padding: "4px 12px", borderRadius: "6px" }}>{effectivePrice.toLocaleString("ru-RU")} ₽</div>
+                    <div className="price-card-label" style={{ color: "#8b8b8b", fontSize: "13px", flex: 1 }}>с картой магазина</div>
+                    <div style={{ color: "#8b8b8b", fontSize: "18px" }}>›</div>
+                  </div>
+                  <div className="price-secondary" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                    <span className="price-regular" style={{ fontSize: "15px", color: "#1a1a1a", fontWeight: 500 }}>
+                      {hasDiscount && oldPrice != null
+                        ? oldPrice.toLocaleString("ru-RU")
+                        : effectivePrice.toLocaleString("ru-RU")}
+                      ₽
+                    </span>
+                    {hasDiscount && oldPrice != null && (
+                      <span style={{ fontSize: "13px", color: "#8b8b8b", textDecoration: "line-through" }}>{oldPrice.toLocaleString("ru-RU")} ₽</span>
+                    )}
+                    <span style={{ fontSize: "12px", color: "#8b8b8b" }}>без карты</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#00b800", fontSize: "13px", padding: "8px 0", borderTop: "1px solid #f0f0f0", cursor: "pointer" }}>
+                    ♻ Стало дешевле ›
                   </div>
                 </>
               )}
 
-              {/* Характеристики "О товаре" */}
-              <div className="pdp-specs-section">
-                <div className="pdp-specs-header">
-                  <span className="pdp-specs-title">О товаре</span>
-                  <a href="#description" className="pdp-specs-link">
-                    Перейти к описанию <ChevronRight size={14} />
-                  </a>
+              {/* Оптовая цена */}
+              {product.priceWholesale != null && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0f0f0" }}>
+                  <div style={{ fontSize: 13, color: "#8b8b8b" }}>Опт: <strong style={{ color: "var(--ok)", fontSize: 15 }}>{product.priceWholesale.toLocaleString("ru-RU")} ₽</strong>{product.minWholesaleQty && ` (от ${product.minWholesaleQty} шт.)`}</div>
                 </div>
-                <div className="pdp-specs-table">
-                  {specs.map((s, idx) => (
-                    <div key={idx} className="pdp-spec-row">
-                      <div className="pdp-spec-name">
-                        {s.icon} {s.label}
-                        <span className="pdp-spec-help">ⓘ</span>
-                      </div>
-                      <div className="pdp-spec-value">{s.value}</div>
-                    </div>
-                  ))}
-                  {specs.length === 0 && (
-                    <div className="pdp-spec-row">
-                      <div className="pdp-spec-name">Характеристики уточняйте у менеджера</div>
-                      <div className="pdp-spec-value">—</div>
-                    </div>
-                  )}
+              )}
+
+              {/* Оплатить позже */}
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                <button style={{ background: "#7b61ff", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>Оплатить позже</button>
+                <span style={{ fontSize: "13px", color: "#1a1a1a" }}>без % до 12 января</span>
+              </div>
+
+              {/* Хочу скидку */}
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#8b8b8b", fontSize: "13px", cursor: "pointer", marginBottom: "12px" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#8b8b8b" }}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06a5.5 5.5 0 0 0 7.78 7.78l1.06-1.06a5.5 5.5 0 0 0 7.78-7.78l-1.06-1.06a5.5 5.5 0 0 0-7.78-7.78z"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg> Хочу скидку
+              </div>
+
+              {/* Добавить в корзину */}
+              <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <AddToCartButton
+                    product={{
+                      id: product.id,
+                      name: product.name,
+                      sku: product.sku,
+                      price: effectivePrice ?? product.price,
+                      imageUrl: product.imageUrl,
+                      stockQty: product.stockQty,
+                      packQty: product.packQty,
+                    }}
+                  />
+                </div>
+                <button style={{ width: "48px", height: "48px", border: "1.5px solid #e0e0e0", borderRadius: "10px", background: "#fff", cursor: "pointer", fontSize: "20px", display: "flex", alignItems: "center", justifyContent: "center", color: "#8b8b8b" }} title="В избранное" aria-label="В избранное">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06a5.5 5.5 0 0 0 7.78 7.78l1.06-1.06a5.5 5.5 0 0 0 7.78-7.78l-1.06-1.06a5.5 5.5 0 0 0-7.78-7.78z"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+                </button>
+              </div>
+
+              <div style={{ textAlign: "center", color: "#8b8b8b", fontSize: "12px", marginBottom: "12px" }}>Доставим с завтрашнего дня</div>
+
+              {/* Есть дешевле */}
+              <div style={{ border: "1px solid #e0e0e0", borderRadius: "10px", padding: "12px", display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px", cursor: "pointer" }}>
+                <div style={{ width: "40px", height: "40px", background: "#f0f0f0", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", flexShrink: 0 }}>📦</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: "13px", color: "#1a1a1a", fontWeight: 600 }}>Есть дешевле</div>
+                  <div style={{ fontSize: "13px", color: "#8b8b8b" }}>от {(effectivePrice ?? product.price ?? 0) * 0.85} ₽</div>
+                </div>
+                <div style={{ fontSize: "13px", color: "#8b8b8b", display: "flex", alignItems: "center", gap: "2px" }}>5 ›</div>
+              </div>
+
+              {/* Купить в один клик */}
+              <div style={{ marginBottom: "16" }}>
+                <QuickOrderForm productName={product.name} />
+              </div>
+
+              {/* FAQ */}
+              <div style={{ marginBottom: "16px" }}>
+                <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Часто задаваемые вопросы</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                  <a href="/delivery" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>Условия доставки</a>
+                  <a href="/delivery" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>Возврат товаров</a>
+                  <a href="#" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>Способы оплаты</a>
+                  <a href="#" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>Возврат денег</a>
                 </div>
               </div>
 
-              {/* Описание */}
-              {product.description && (
-                <div className="pdp-description-section" id="description">
-                  <h2 className="pdp-section-title">Описание</h2>
-                  <p className="pdp-desc">{product.description}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ПРАВАЯ КОЛОНКА: Блок покупки */}
-          <div className="pdp-col-buybox">
-            <div className="pdp-purchase-block">
-              <div className="pdp-purchase-card">
-                {/* Распродажа - показываем только если есть скидка */}
-                {hasDiscount && (
-                  <div className="pdp-sale-badge-row">
-                    <div className="pdp-sale-badge-left">
-                      <div className="pdp-sale-icon">%</div>
-                      <div>
-                        <div className="pdp-sale-text">Распродажа</div>
-                        <div className="pdp-sale-stock">
-                          {product.stockQty != null && product.stockQty <= 30
-                            ? `${product.stockQty} единиц осталось`
-                            : "Ограниченное количество"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="pdp-sale-days">
-                      {product.discountBadge ? `${product.discountBadge} до конца` : "7 дней до конца"}
-                    </div>
+              {/* Доставка и возврат */}
+              <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: "12px" }}>
+                <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Доставка и возврат</div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "8px", borderRadius: "8px" }}>
+                  <div style={{ color: "#8b8b8b", fontSize: "18px", flexShrink: 0 }}>📍</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "13px", color: "#1a1a1a", fontWeight: 500 }}>Новосибирск, ул. Примерная, 1</div>
+                    <div style={{ fontSize: "12px", color: "#8b8b8b" }}>Со склада продавца, Новосибирск</div>
                   </div>
-                )}
-
-                {/* Цена */}
-                {effectivePrice != null && (
-                  <>
-                    <div className="pdp-price-main">
-                      <div className="pdp-price-badge">{effectivePrice.toLocaleString("ru-RU")} ₽</div>
-                      <div className="pdp-price-card-label">с картой магазина</div>
-                      <div className="pdp-price-arrow">›</div>
-                    </div>
-                    <div className="pdp-price-secondary">
-                      <span className="pdp-price-regular">
-                        {hasDiscount && oldPrice != null
-                          ? oldPrice.toLocaleString("ru-RU")
-                          : effectivePrice.toLocaleString("ru-RU")}
-                        ₽
-                      </span>
-                      {hasDiscount && oldPrice != null && (
-                        <span className="pdp-price-old">{oldPrice.toLocaleString("ru-RU")} ₽</span>
-                      )}
-                      <span className="pdp-price-no-card">без карты</span>
-                    </div>
-                    <div className="pdp-cheaper-row">
-                      ♻ Стало дешевле ›
-                    </div>
-                  </>
-                )}
-
-                {/* Оптовая цена */}
-                {product.priceWholesale != null && (
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0f0f0" }}>
-                    <div style={{ fontSize: 13, color: "#8b8b8b" }}>Опт: <strong style={{ color: "var(--ok)", fontSize: 15 }}>{product.priceWholesale.toLocaleString("ru-RU")} ₽</strong>{product.minWholesaleQty && ` (от ${product.minWholesaleQty} шт.)`}</div>
-                  </div>
-                )}
-
-                {/* Оплатить позже */}
-                <div className="pdp-pay-later-row">
-                  <button className="pdp-btn-pay-later">Оплатить позже</button>
-                  <span className="pdp-pay-later-text">без % до 12 января</span>
-                </div>
-
-                {/* Хочу скидку */}
-                <div className="pdp-want-discount">
-                  <Heart size={14} style={{ color: "#8b8b8b" }} /> Хочу скидку
-                </div>
-
-                {/* Добавить в корзину */}
-                <div className="pdp-cart-row">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <AddToCartButton
-                      product={{
-                        id: product.id,
-                        name: product.name,
-                        sku: product.sku,
-                        price: effectivePrice ?? product.price,
-                        imageUrl: product.imageUrl,
-                        stockQty: product.stockQty,
-                        packQty: product.packQty,
-                      }}
-                    />
-                  </div>
-                  <button className="pdp-btn-wishlist" title="В избранное" aria-label="В избранное">
-                    <Heart size={20} />
-                  </button>
-                </div>
-
-                <div className="pdp-delivery-text">Доставим с завтрашнего дня</div>
-
-                {/* Есть дешевле */}
-                <div className="pdp-cheaper-card">
-                  <div className="pdp-cheaper-img">📦</div>
-                  <div className="pdp-cheaper-info">
-                    <div className="pdp-cheaper-title">Есть дешевле</div>
-                    <div className="pdp-cheaper-price">от {(effectivePrice ?? product.price ?? 0) * 0.85} ₽</div>
-                  </div>
-                  <div className="pdp-cheaper-count">5 ›</div>
-                </div>
-
-                {/* Купить в один клик */}
-                <div style={{ marginBottom: 16 }}>
-                  <QuickOrderForm productName={product.name} />
-                </div>
-
-                {/* FAQ */}
-                <div className="pdp-faq-section">
-                  <div className="pdp-faq-title">Часто задаваемые вопросы</div>
-                  <div className="pdp-faq-links">
-                    <a href="/delivery" className="pdp-faq-link">Условия доставки</a>
-                    <a href="/delivery" className="pdp-faq-link">Возврат товаров</a>
-                    <a href="#" className="pdp-faq-link">Способы оплаты</a>
-                    <a href="#" className="pdp-faq-link">Возврат денег</a>
-                  </div>
-                </div>
-
-                {/* Доставка и возврат */}
-                <div className="pdp-delivery-section">
-                  <div className="pdp-delivery-title">Доставка и возврат</div>
-                  <div className="pdp-delivery-row">
-                    <div className="pdp-delivery-icon">📍</div>
-                    <div className="pdp-delivery-info">
-                      <div className="pdp-delivery-address">Новосибирск, ул. Примерная, 1</div>
-                      <div className="pdp-delivery-from">Со склада продавца, Новосибирск</div>
-                    </div>
-                    <div className="pdp-delivery-arrow">›</div>
-                  </div>
+                  <div style={{ color: "#8b8b8b" }}>›</div>
                 </div>
               </div>
             </div>
@@ -450,7 +415,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         {/* ПОХОЖИЕ ТОВАРЫ */}
         {related.length > 0 && (
           <div className="pdp-related" style={{ marginTop: 32 }}>
-            <h2 className="pdp-related__title">Похожие товары</h2>
+            <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#1a1a1a", marginBottom: "16px" }}>Похожие товары</h2>
             <div className="product-grid-compact">
               {related.map((p: FirestoreProduct) => (
                 <ProductCardCompact key={p.id} product={p} />
@@ -460,41 +425,41 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         )}
 
         {/* НИЖНИЙ БЛОК: Фото покупателей */}
-        <div className="pdp-bottom-section">
-          <div className="pdp-bottom-section-title">Фото и видео покупателей</div>
-          <div className="pdp-buyer-photos">
+        <div style={{ background: "#fff", borderRadius: "12px", padding: "24px", marginTop: "16px" }}>
+          <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Фото и видео покупателей</div>
+          <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "8px" }}>
             {product.images && product.images.length > 0
               ? product.images.slice(0, 4).map((img, idx) => (
-                  <div key={idx} className="pdp-buyer-photo">
+                  <div key={idx} style={{ width: "80px", height: "80px", borderRadius: "8px", background: "#f0f0f0", flexShrink: 0, overflow: "hidden", position: "relative", cursor: "pointer" }}>
                     <Image src={img.url} alt="" width={80} height={80} style={{ objectFit: "cover" }} />
                   </div>
                 ))
               : product.imageUrl
               ? [...Array(4)].map((_, idx) => (
-                  <div key={idx} className="pdp-buyer-photo">
+                  <div key={idx} style={{ width: "80px", height: "80px", borderRadius: "8px", background: "#f0f0f0", flexShrink: 0, overflow: "hidden", position: "relative", cursor: "pointer" }}>
                     <Image src={product.imageUrl!} alt="" width={80} height={80} style={{ objectFit: "cover" }} />
                   </div>
                 ))
               : [...Array(4)].map((_, idx) => (
-                  <div key={idx} className="pdp-buyer-photo" style={{ background: "#e0e0e0" }}>📦</div>
+                  <div key={idx} style={{ width: "80px", height: "80px", borderRadius: "8px", background: "#e0e0e0", flexShrink: 0, overflow: "hidden", position: "relative", cursor: "pointer" }}>📦</div>
                 ))}
-            <div className="pdp-buyer-photo">
-              <div className="pdp-buyer-photo-more">+{Math.max(0, (product.images?.length || 1) - 4) + 2}</div>
+            <div style={{ width: "80px", height: "80px", borderRadius: "8px", background: "#f0f0f0", flexShrink: 0, overflow: "hidden", position: "relative", cursor: "pointer" }}>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "16px", fontWeight: 700 }}>+{Math.max(0, (product.images?.length || 1) - 4) + 2}</div>
             </div>
           </div>
         </div>
 
         {/* НИЖНИЙ БЛОК: Полные характеристики */}
         {specs.length > 0 && (
-          <div className="pdp-bottom-section">
-            <div className="pdp-bottom-section-title">Характеристики</div>
-            <div className="pdp-full-specs-table">
-              <div className="pdp-full-specs-group">
-                <div className="pdp-full-specs-group-title">Основные</div>
+          <div style={{ background: "#fff", borderRadius: "12px", padding: "24px", marginTop: "16px" }}>
+            <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Характеристики</div>
+            <div style={{ width: "100%" }}>
+              <div style={{ marginBottom: "16px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "#8b8b8b", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px", paddingBottom: "4px", borderBottom: "1px solid #f0f0f0" }}>Основные</div>
                 {specs.map((s, idx) => (
-                  <div key={idx} className="pdp-full-spec-row">
-                    <div className="pdp-full-spec-name">{s.icon} {s.label}</div>
-                    <div className="pdp-full-spec-value">{s.value}</div>
+                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
+                    <div style={{ color: "#8b8b8b", fontSize: "13px" }}>{s.icon} {s.label}</div>
+                    <div style={{ color: "#1a1a1a", fontSize: "13px", fontWeight: 500 }}>{s.value}</div>
                   </div>
                 ))}
               </div>
@@ -503,20 +468,20 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         )}
 
         {/* НИЖНИЙ БЛОК: Отзывы */}
-        <div className="pdp-bottom-section" id="reviews">
-          <div className="pdp-bottom-section-title">Отзывы • 0</div>
-          <div className="pdp-reviews-placeholder">
-            <div className="pdp-reviews-placeholder-icon">💬</div>
+        <div style={{ background: "#fff", borderRadius: "12px", padding: "24px", marginTop: "16px" }}>
+          <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Отзывы • 0</div>
+          <div style={{ textAlign: "center", padding: "40px 20px", color: "#8b8b8b" }}>
+            <div style={{ fontSize: "48px", marginBottom: "16px", opacity: 0.5 }}>💬</div>
             <p style={{ fontSize: 15, marginBottom: 8 }}>Пока нет отзывов</p>
             <p style={{ fontSize: 13 }}>Будьте первым, кто оставит отзыв об этом товаре</p>
           </div>
         </div>
 
         {/* НИЖНИЙ БЛОК: Вопросы */}
-        <div className="pdp-bottom-section" id="questions">
-          <div className="pdp-bottom-section-title">Вопросы и ответы • 0</div>
-          <div className="pdp-reviews-placeholder">
-            <div className="pdp-reviews-placeholder-icon">❓</div>
+        <div style={{ background: "#fff", borderRadius: "12px", padding: "24px", marginTop: "16px" }}>
+          <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Вопросы и ответы • 0</div>
+          <div style={{ textAlign: "center", padding: "40px 20px", color: "#8b8b8b" }}>
+            <div style={{ fontSize: "48px", marginBottom: "16px", opacity: 0.5 }}>❓</div>
             <p style={{ fontSize: 15, marginBottom: 8 }}>Пока нет вопросов</p>
             <p style={{ fontSize: 13 }}>Задайте вопрос продавцу или покупателям</p>
           </div>
