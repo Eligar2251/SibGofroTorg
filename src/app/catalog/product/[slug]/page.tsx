@@ -22,6 +22,7 @@ import {
 import { SITE_ADDRESS } from "@/lib/site-config";
 import {
   BadgeCheck,
+  Barcode,
   MapPin,
   MessageSquare,
   ShoppingCart,
@@ -244,7 +245,10 @@ export default async function ProductPage({
 
             {product.sku && (
               <div className="breadcrumbs-right">
-                <span className="bc-sku">Артикул: {product.sku}</span>
+                <span className="bc-sku">
+                  <Barcode size={14} strokeWidth={2} />
+                  Артикул: {product.sku}
+                </span>
               </div>
             )}
           </div>
@@ -293,12 +297,30 @@ export default async function ProductPage({
             {discountPercent > 0 && (
               <span className="badge-discount">−{discountPercent}%</span>
             )}
+            {/* Наличие — бейдж на фото */}
+            {product.inStock ? (
+              <span className="badge-stock badge-stock--in">
+                <span className="pdp-stock-dot pdp-stock-dot--in" />
+                В наличии
+                {product.stockQty != null && product.stockQty <= 30 && (
+                  <span className="badge-stock__qty">
+                    осталось {product.stockQty} шт.
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="badge-stock badge-stock--out">
+                <span className="pdp-stock-dot pdp-stock-dot--out" />
+                Нет в наличии
+              </span>
+            )}
           </div>
 
-          {/* ── 3. ЗАГОЛОВОК И ГЛАВНОЕ ── */}
-          <div className="product-head">
-            {/* Заголовок */}
-            <h1 className="product-title">{product.name}</h1>
+          {/* ── 3. ЦЕНТРАЛЬНАЯ КОЛОНКА: заголовок + характеристики ── */}
+          <div className="product-col">
+            <div className="product-head">
+              {/* Заголовок */}
+              <h1 className="product-title">{product.name}</h1>
 
             {/* Рейтинг */}
             <div className="rating-row">
@@ -336,78 +358,45 @@ export default async function ProductPage({
               </div>
             </div>
 
-            {/* Наличие */}
-            <div className="pdp-stock-row">
-              {product.inStock ? (
-                <span className="pdp-status--in">
-                  <span className="pdp-stock-dot pdp-stock-dot--in" />
-                  В наличии
-                  {product.stockQty != null && product.stockQty <= 30 && (
-                    <span className="pdp-status-qty">
-                      осталось {product.stockQty} шт.
-                    </span>
+            </div>
+            {/* /product-head */}
+
+            {/* ── 4. ХАРАКТЕРИСТИКИ И ОПИСАНИЕ ── */}
+            <div className="product-info">
+              {/* Характеристики — сразу под заголовком */}
+              <div className="specs-section">
+                <div className="specs-header">
+                  <span className="specs-title">Характеристики</span>
+                </div>
+                <div className="specs-table">
+                  {specs.length > 0 ? (
+                    specs.map((s, idx) => (
+                      <div key={idx} className="spec-row">
+                        <div className="spec-name">{s.label}</div>
+                        <div className="spec-value">{s.value}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="spec-row">
+                      <div className="spec-name">Характеристики</div>
+                      <div className="spec-value">уточняйте у менеджера</div>
+                    </div>
                   )}
-                </span>
-              ) : (
-                <span className="pdp-status--out">
-                  <span className="pdp-stock-dot pdp-stock-dot--out" />
-                  Нет в наличии
-                </span>
+                </div>
+              </div>
+
+              {/* Описание (сокращённое) */}
+              {product.description && (
+                <div id="description" className="pdp-desc-block">
+                  <h2 className="pdp-desc-title">Описание</h2>
+                  <p className="pdp-desc-text pdp-desc-text--clamp">
+                    {product.description}
+                  </p>
+                </div>
               )}
             </div>
           </div>
-
-          {/* ── 4. ХАРАКТЕРИСТИКИ И ОПИСАНИЕ ── */}
-          <div className="product-info">
-            {/* Характеристики */}
-            <div className="specs-section">
-              <div className="specs-header">
-                <span className="specs-title">Характеристики</span>
-                {specs.length > 0 && (
-                  <a href="#full-specs" className="specs-link">
-                    Все характеристики
-                    <svg
-                      width="13"
-                      height="13"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M9 18l6-6-6-6" />
-                    </svg>
-                  </a>
-                )}
-              </div>
-              <div className="specs-table">
-                {specs.length > 0 ? (
-                  specs.slice(0, 5).map((s, idx) => (
-                    <div key={idx} className="spec-row">
-                      <div className="spec-name">{s.label}</div>
-                      <div className="spec-value">{s.value}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="spec-row">
-                    <div className="spec-name">Характеристики</div>
-                    <div className="spec-value">уточняйте у менеджера</div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Описание (сокращённое) */}
-            {product.description && (
-              <div id="description" className="pdp-desc-block">
-                <h2 className="pdp-desc-title">Описание</h2>
-                <p className="pdp-desc-text pdp-desc-text--clamp">
-                  {product.description}
-                </p>
-              </div>
-            )}
-          </div>
+          {/* /product-col */}
 
           {/* ── 4. БЛОК ПОКУПКИ ── */}
           <div className="purchase-block">
@@ -488,22 +477,6 @@ export default async function ProductPage({
         </div>
 
         {/* ══ НИЖНИЕ БЛОКИ ══ */}
-
-        {/* Полные характеристики */}
-        {specs.length > 0 && (
-          <div className="bottom-section" id="full-specs">
-            <div className="section-title">Характеристики</div>
-            <div className="pdp-full-specs">
-              <div className="pdp-full-specs__group-title">Основные</div>
-              {specs.map((s, idx) => (
-                <div key={idx} className="spec-row">
-                  <div className="spec-name">{s.label}</div>
-                  <div className="spec-value">{s.value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Похожие товары */}
         {related.length > 0 && (

@@ -5082,7 +5082,6 @@ select.input-light {
 }
 
 .atc-pack-info__stock {
-  margin-left: auto;
   font-size: 12px;
   font-weight: 700;
 }
@@ -5196,19 +5195,6 @@ select.input-light {
 .atc-stepper__input::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
-}
-
-.atc-breakdown {
-  font-size: 13px;
-  color: var(--ink-light);
-  background: var(--bg-main);
-  border-radius: 6px;
-  padding: 7px 12px;
-  text-align: center;
-}
-
-.atc-breakdown strong {
-  color: var(--ink);
 }
 
 .atc-total {

@@ -64,8 +64,16 @@
 }
 
 .bc-sku {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   color: var(--ink-muted);
+}
+
+.bc-sku svg {
+  flex-shrink: 0;
+  color: var(--ink-faint);
 }
 
 /* ── Обёртка основного блока ── */
@@ -102,14 +110,14 @@
   grid-row: 1;
 }
 
-.product-head {
+/* Единая центральная колонка: заголовок и характеристики
+   идут непрерывно, без разрыва под высоту фото */
+.product-col {
   grid-column: 3;
-  grid-row: 1;
-}
-
-.product-info {
-  grid-column: 3;
-  grid-row: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .purchase-block {
@@ -126,14 +134,9 @@
   grid-row: 1;
 }
 
-.product-page--no-thumbs .product-head {
+.product-page--no-thumbs .product-col {
   grid-column: 2;
-  grid-row: 1;
-}
-
-.product-page--no-thumbs .product-info {
-  grid-column: 2;
-  grid-row: 2;
+  grid-row: 1 / span 2;
 }
 
 .product-page--no-thumbs .purchase-block {
@@ -203,6 +206,46 @@
   padding: 4px 10px;
   border-radius: 8px;
   letter-spacing: 0.01em;
+}
+
+/* Бейдж наличия — в левом нижнем углу фото */
+.badge-stock {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: calc(100% - 24px);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.badge-stock--in {
+  color: #15803d;
+}
+
+.badge-stock--out {
+  color: var(--red);
+}
+
+.badge-stock__qty {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fef3c7;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid #fde68a;
 }
 
 /* ── Заголовок и главная информация ── */
@@ -308,15 +351,7 @@
   margin-top: 2px;
 }
 
-/* Наличие */
-.pdp-stock-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
+/* Точки наличия (используются в бейдже на фото) */
 .pdp-stock-dot {
   display: inline-block;
   width: 7px;
@@ -331,43 +366,6 @@
 
 .pdp-stock-dot--out {
   background: var(--red);
-}
-
-.pdp-status--in {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #f0fdf4;
-  color: #15803d;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 5px 12px;
-  border-radius: 20px;
-  border: 1px solid #bbf7d0;
-}
-
-.pdp-status--out {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #fef2f2;
-  color: var(--red);
-  font-size: 12px;
-  font-weight: 700;
-  padding: 5px 12px;
-  border-radius: 20px;
-  border: 1px solid #fecaca;
-}
-
-.pdp-status-qty {
-  font-size: 11px;
-  font-weight: 600;
-  color: #b45309;
-  background: #fef3c7;
-  padding: 1px 7px;
-  border-radius: 10px;
-  border: 1px solid #fde68a;
-  margin-left: 4px;
 }
 
 /* Характеристики */
@@ -387,21 +385,6 @@
   font-size: 15px;
   font-weight: 700;
   color: var(--ink-2);
-}
-
-.specs-link {
-  color: var(--green);
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  transition: opacity var(--transition);
-}
-
-.specs-link:hover {
-  opacity: 0.75;
 }
 
 .specs-table {
@@ -638,23 +621,6 @@
   letter-spacing: 0;
   color: var(--ink-2);
   margin-bottom: 16px;
-}
-
-/* Полные характеристики */
-.pdp-full-specs {
-  width: 100%;
-  max-width: 760px;
-}
-
-.pdp-full-specs__group-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-muted);
-  padding-bottom: 6px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid #f0f2f1;
 }
 
 /* ══════════════════════════════════════
@@ -1202,6 +1168,11 @@
     grid-template-columns: minmax(0, 1fr) 300px;
     grid-template-rows: auto auto auto auto;
     gap: 18px;
+  }
+
+  /* обёртка распадается, её дети снова становятся grid-элементами */
+  .product-col {
+    display: contents;
   }
 
   .product-page--no-thumbs .gallery-main,

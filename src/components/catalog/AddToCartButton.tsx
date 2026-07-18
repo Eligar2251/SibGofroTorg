@@ -45,9 +45,6 @@ export function AddToCartButton({ product }: AddToCartButtonProps) {
     return maxStock !== null ? Math.min(raw, maxStock) : raw;
   })();
 
-  const packsCount = hasPacks ? Math.floor(totalPieces / packSize) : null;
-  const remainder = hasPacks ? totalPieces % packSize : 0;
-
   function switchMode(mode: InputMode) {
     if (mode === inputMode) return;
     if (mode === "packs") {
@@ -213,24 +210,6 @@ export function AddToCartButton({ product }: AddToCartButtonProps) {
           </button>
         </div>
       </div>
-
-      {/* Расшифровка пачек */}
-      {hasPacks && (
-        <div className="atc-breakdown">
-          {inputMode === "packs" ? (
-            <span>
-              Итого к заказу: <strong>{totalPieces} шт.</strong>
-            </span>
-          ) : (
-            <span>
-              {packsCount !== null && packsCount > 0 ? `${packsCount} пач.` : ""}
-              {remainder > 0 ? ` + ${remainder} шт.` : ""}
-              {" = "}
-              <strong>{totalPieces} шт.</strong>
-            </span>
-          )}
-        </div>
-      )}
 
       {/* Итоговая сумма */}
       <div className="atc-total">
