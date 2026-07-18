@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/context/CartContext";
+import { PriceInquiryButton } from "./PriceInquiryButton";
 import { Plus, Minus, ShoppingCart, Check, Package } from "lucide-react";
 
 interface CompactProduct {
@@ -220,12 +221,26 @@ export function ProductCardCompact({
 
         {/* Управление количеством */}
         {product.madeToOrder ? (
-          <Link
-            href={`/catalog/product/${product.slug}`}
+          <PriceInquiryButton
+            productName={product.name}
+            productSku={product.sku}
             className="pcc__inquiry-btn"
-          >
-            Оставить заявку
-          </Link>
+            label="Узнать цену"
+          />
+        ) : product.price == null ? (
+          <PriceInquiryButton
+            productName={product.name}
+            productSku={product.sku}
+            className="pcc__inquiry-btn"
+            label="Узнать цену"
+          />
+        ) : product.inStock === false ? (
+          <PriceInquiryButton
+            productName={product.name}
+            productSku={product.sku}
+            className="pcc__inquiry-btn"
+            label="Узнать цену"
+          />
         ) : product.price != null ? (
           <>
             <div className="pcc__actions">
@@ -282,14 +297,7 @@ export function ProductCardCompact({
               </div>
             )}
           </>
-        ) : (
-          <Link
-            href={`/catalog/product/${product.slug}`}
-            className="pcc__inquiry-btn"
-          >
-            Узнать цену
-          </Link>
-        )}
+        ) : null}
       </div>
     </div>
   );

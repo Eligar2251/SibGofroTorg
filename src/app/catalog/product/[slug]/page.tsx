@@ -11,6 +11,7 @@ import {
 } from "@/lib/firestore-queries";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { AddToCartButton } from "@/components/catalog/AddToCartButton";
+import { PriceInquiryButton } from "@/components/catalog/PriceInquiryButton";
 import { MarkdownText } from "@/components/catalog/MarkdownText";
 import { stripMarkdown } from "@/lib/markdown";
 import { ProductViewTracker } from "@/components/catalog/ProductViewTracker";
@@ -433,6 +434,12 @@ export default async function ProductPage({
                     Под заказ
                   </span>
                 </div>
+              ) : effectivePrice == null ? (
+                <div className="pdp-price-row">
+                  <span className="pdp-price-current pdp-price-current--mto">
+                    Цена по запросу
+                  </span>
+                </div>
               ) : (
                 effectivePrice != null && (
                   <div className="pdp-price-row">
@@ -475,9 +482,26 @@ export default async function ProductPage({
                       Изготавливается под заказ — оставьте заявку, менеджер
                       рассчитает стоимость и сроки
                     </div>
-                    <Link href="/order" className="pdp-made-to-order__btn">
-                      Оставить заявку
-                    </Link>
+                    <PriceInquiryButton
+                      productName={product.name}
+                      productSku={product.sku}
+                      className="pdp-made-to-order__btn"
+                      label="Узнать цену"
+                    />
+                  </div>
+                ) : effectivePrice == null ? (
+                  <div className="pdp-made-to-order">
+                    <div className="pdp-made-to-order__text">
+                      <FileText size={15} />
+                      Цена по запросу — оставьте заявку, менеджер сообщит
+                      актуальную стоимость и сроки
+                    </div>
+                    <PriceInquiryButton
+                      productName={product.name}
+                      productSku={product.sku}
+                      className="pdp-made-to-order__btn"
+                      label="Узнать цену"
+                    />
                   </div>
                 ) : product.inStock ? (
                   <AddToCartButton
@@ -492,9 +516,18 @@ export default async function ProductPage({
                     }}
                   />
                 ) : (
-                  <div className="pdp-out-of-stock">
-                    <ShoppingCart size={15} />
-                    Товара нет в наличии — уточните сроки поставки у менеджера
+                  <div className="pdp-made-to-order">
+                    <div className="pdp-out-of-stock">
+                      <ShoppingCart size={15} />
+                      Товара нет в наличии — оставьте заявку, уточним сроки
+                      поставки и цену
+                    </div>
+                    <PriceInquiryButton
+                      productName={product.name}
+                      productSku={product.sku}
+                      className="pdp-made-to-order__btn"
+                      label="Узнать цену"
+                    />
                   </div>
                 )}
               </div>

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@800;900&display=swap");
 @import "./admin.css";
 @import "./mobile.css";
 @import "./pdp.css";
@@ -323,36 +323,11 @@ select {
   text-decoration: none;
 }
 
-.logo-icon {
-  width: 42px;
-  height: 42px;
-  background: var(--green);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius);
-  font-weight: 800;
-  font-size: 20px;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.logo-text {
-  display: none;
-  flex-direction: column;
-}
-
-.logo-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--ink);
-  line-height: 1.2;
-}
-
-.logo-sub {
-  font-size: 10px;
-  color: var(--ink-muted);
-  line-height: 1.2;
+/* Логотип — инлайн-SVG (знак + название), компонент SiteLogo */
+.site-logo {
+  display: block;
+  height: 44px;
+  width: auto;
 }
 
 .catalog-toggle {
@@ -2429,13 +2404,17 @@ select {
 
 .pcc__inquiry-btn {
   display: block;
+  width: 100%;
   text-align: center;
   padding: 6px;
   font-size: 12px;
   font-weight: 700;
+  font-family: var(--font-body);
   color: var(--green);
   background: var(--green-light);
+  border: none;
   border-radius: 5px;
+  cursor: pointer;
   text-decoration: none;
   margin-top: 4px;
   transition: background-color var(--transition);
@@ -5374,8 +5353,8 @@ select {
 }
 
 @media (min-width: 900px) {
-  .logo-text {
-    display: flex;
+  .site-logo {
+    height: 48px;
   }
 }
 

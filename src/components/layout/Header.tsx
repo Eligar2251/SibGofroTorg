@@ -18,6 +18,7 @@ import {
   LogIn,
 } from "lucide-react";
 import { SearchBar } from "./SearchBar";
+import { SiteLogo } from "./SiteLogo";
 import {
   SITE_ADDRESS,
   SITE_PHONE,
@@ -104,12 +105,8 @@ export function Header() {
 
       <header className="site-header">
         <div className="container-wide header-inner">
-          <Link href="/" className="logo">
-            <div className="logo-icon">С</div>
-            <div className="logo-text">
-              <div className="logo-name">СибГофроТорг</div>
-              <div className="logo-sub">упаковка оптом</div>
-            </div>
+          <Link href="/" className="logo" aria-label="СибГофроТорг — на главную">
+            <SiteLogo />
           </Link>
 
           <div

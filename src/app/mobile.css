@@ -220,23 +220,8 @@ body {
     gap: 2px;
   }
 
-  .logo-text {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .logo-name {
-    font-size: 13px;
-  }
-
-  .logo-sub {
-    font-size: 10px;
-  }
-
-  .logo-icon {
-    width: 34px;
+  .site-logo {
     height: 34px;
-    font-size: 15px;
   }
 
   .catalog-dropdown-wrap,
@@ -1861,8 +1846,8 @@ body {
     min-width: 30px;
   }
 
-  .logo-sub {
-    display: none;
+  .site-logo {
+    height: 30px;
   }
 
   .header-icon-btn span {
