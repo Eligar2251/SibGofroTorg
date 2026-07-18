@@ -19,13 +19,11 @@
   --green-soft: #d8f3dc;
   --green-border: #b7e4c7;
 
-  /* Тёмная часть палитры — фирменный шоколадно-коричневый
-     (как надпись в логотипе), вместо чисто-серого */
-  --ink: #4a3319;
-  --ink-2: #4a3319;
-  --ink-3: #4a3319;
-  --ink-4: #4a3319;
-  --ink-light: #4a3319;
+  --ink: #0a0a0a;
+  --ink-2: #1a1a1a;
+  --ink-3: #333333;
+  --ink-4: #555555;
+  --ink-light: #444444;
   --ink-muted: #777777;
   --ink-faint: #999999;
 
@@ -337,7 +335,7 @@ select {
   align-items: center;
   gap: 8px;
   background: transparent;
-  color: #4a3319;
+  color: var(--ink);
   border: none;
   border-radius: var(--radius);
   padding: 0 20px;
@@ -352,7 +350,7 @@ select {
 
 .catalog-toggle:hover,
 .catalog-toggle.active {
-  background: rgba(74, 51, 25, 0.09);
+  background: rgba(10, 10, 10, 0.07);
 }
 
 .catalog-toggle svg.chevron {
@@ -827,7 +825,7 @@ select {
   display: grid;
   grid-template-columns: 60fr 40fr;
   min-height: 560px;
-  background: var(--ink);
+  background: linear-gradient(155deg, #161616 0%, #0a0a0a 55%, #040404 100%);
   overflow: hidden;
 }
 
@@ -836,7 +834,7 @@ select {
   position: relative;
   display: flex;
   align-items: stretch;
-  background: var(--ink);
+  background: transparent;
 }
 
 .container-half {
