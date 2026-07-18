@@ -1,5 +1,6 @@
 // src/app/api/admin/reviews/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import {
   getProductReviews,
   getProductReviewStats,
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
       isVerifiedPurchase: isVerifiedPurchase ?? false,
     });
 
+    revalidateTag("reviews", { expire: 0 });
     return NextResponse.json({ success: true, reviewId });
   } catch (error) {
     console.error("Admin create review error:", error);

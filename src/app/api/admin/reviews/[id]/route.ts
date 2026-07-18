@@ -1,5 +1,6 @@
 // src/app/api/admin/reviews/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { updateProductReview, deleteProductReview, incrementReviewHelpful } from "@/lib/firestore-queries";
 import { requireAdminApi } from "@/lib/auth";
 
@@ -21,6 +22,7 @@ export async function PATCH(
         moderationStatus: action === "approve" ? "approved" : "rejected",
         moderationNote: moderationNote || null,
       });
+      revalidateTag("reviews", { expire: 0 });
       return NextResponse.json({ success: true });
     }
 
@@ -46,6 +48,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     await deleteProductReview(id);
+    revalidateTag("reviews", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Admin delete review error:", error);

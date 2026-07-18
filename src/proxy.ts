@@ -33,20 +33,18 @@ async function isAdminAuthed(request: NextRequest): Promise<boolean> {
 }
 
 /**
- * CSP Level 3:
- * - nonce: inline только с nonce (XSS)
- * - 'self': /_next/static чанки (без strict-dynamic!)
- * - без 'strict-dynamic': иначе браузер игнорирует 'self' и host-allowlist
- * - 'unsafe-inline' в script-src: fallback для старых браузеров;
- *   при наличии nonce современные браузеры ИГНОРИРУЮТ unsafe-inline
+ * CSP:
+ * - 'self': /_next/static чанки и собственные скрипты
+ * - 'unsafe-inline': необходим для inline-чанков Next.js на статических
+ *   страницах (ISR) и bootstrap Яндекс.Метрики.
+ *   Раньше тут был per-request nonce — он требовал динамического рендера
+ *   всех страниц и убивал кэширование, поэтому заменён на статический CSP.
  */
-function buildCsp(nonce: string): string {
+function buildCsp(): string {
   const isDev = process.env.NODE_ENV === "development";
 
   const scriptSrc = [
     "'self'",
-    `'nonce-${nonce}'`,
-    // fallback; ignored by modern browsers when nonce is present
     "'unsafe-inline'",
     isDev ? "'unsafe-eval'" : "",
     "https://mc.yandex.ru",
@@ -80,10 +78,10 @@ function buildCsp(nonce: string): string {
   return directives.join("; ");
 }
 
-function applySecurityHeaders(response: NextResponse, nonce: string) {
+function applySecurityHeaders(response: NextResponse) {
   const isProd = process.env.NODE_ENV === "production";
 
-  response.headers.set("Content-Security-Policy", buildCsp(nonce));
+  response.headers.set("Content-Security-Policy", buildCsp());
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -112,15 +110,12 @@ function applySecurityHeaders(response: NextResponse, nonce: string) {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const csp = buildCsp(nonce);
-
   // ── Admin API ──
   if (pathname.startsWith("/api/admin")) {
     const ok = await isAdminAuthed(request);
     if (!ok) {
       const res = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      applySecurityHeaders(res, nonce);
+      applySecurityHeaders(res);
       return res;
     }
   }
@@ -139,22 +134,14 @@ export async function proxy(request: NextRequest) {
         const res = NextResponse.redirect(
           new URL(`/${ADMIN_PATH}/login`, request.url)
         );
-        applySecurityHeaders(res, nonce);
+        applySecurityHeaders(res);
         return res;
       }
     }
   }
 
-  // Next.js читает x-nonce / CSP с request и вешает nonce на свои <script>
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set("Content-Security-Policy", csp);
-
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
-
-  applySecurityHeaders(response, nonce);
+  const response = NextResponse.next();
+  applySecurityHeaders(response);
   return response;
 }
 

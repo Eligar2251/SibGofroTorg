@@ -1,5 +1,6 @@
 // src/app/api/admin/promotions/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdminApi } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
       deadline: body.deadline || null,
       createdAt: FieldValue.serverTimestamp(),
     });
+    revalidateTag("promotions", { expire: 0 });
     return NextResponse.json({ success: true, id: docRef.id });
   } catch (error) {
     console.error("Create promotion error:", error);

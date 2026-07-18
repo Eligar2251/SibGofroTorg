@@ -1,5 +1,6 @@
 // src/app/api/products/[productId]/reviews/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getProductReviews, getProductReviewStats, createProductReview, markReviewHelpful, hasUserPurchasedProduct, getUserOrderWithProduct } from "@/lib/firestore-queries";
 import { requireUserApi, verifyUserSession } from "@/lib/user-auth";
 
@@ -74,6 +75,7 @@ export async function POST(
       isVerifiedPurchase: true,
     });
 
+    revalidateTag("reviews", { expire: 0 });
     return NextResponse.json({ success: true, reviewId, message: "Отзыв отправлен на модерацию" });
   } catch (error) {
     console.error("Create product review error:", error);

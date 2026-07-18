@@ -123,7 +123,8 @@ export default async function ProductPage({
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
-  const [allCats, reviews, reviewStats] = await Promise.all([
+  /* Все выборки параллельно — один раундтрип к кэшу данных */
+  const [allCats, reviews, reviewStats, related] = await Promise.all([
     getAllCategories(),
     /* Отзывы и статистика — не критичны для рендера страницы,
        при ошибке (нет индекса и т.п.) показываем пустую секцию */
@@ -133,14 +134,14 @@ export default async function ProductPage({
       sortBy: "newest",
     }).catch(() => []),
     getProductReviewStats(product.id).catch(() => EMPTY_REVIEW_STATS),
+    product.categoryId
+      ? getRelatedProducts(product.categoryId, product.id, 4).catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const category = allCats.find(
     (c: FirestoreCategory) => c.id === product.categoryId
   );
-  const related = product.categoryId
-    ? await getRelatedProducts(product.categoryId, product.id, 4)
-    : [];
 
   const effectivePrice = getProductEffectivePrice(product);
   const hasDiscount =
@@ -383,7 +384,7 @@ export default async function ProductPage({
             </div>
             {/* /product-head */}
 
-            {/* ── 4. ХАРАКТЕРИСТИКИ И ОПИСАНИЕ ── */}
+            {/* ── 4. ХАРАКТЕРИСТИКИ ── */}
             <div className="product-info">
               {/* Характеристики — сразу под заголовком */}
               <div className="specs-section">
@@ -407,19 +408,20 @@ export default async function ProductPage({
                 </div>
               </div>
 
-              {/* Описание (markdown, сокращённое) */}
-              {product.description && (
-                <div id="description" className="pdp-desc-block">
-                  <h2 className="pdp-desc-title">Описание</h2>
-                  <MarkdownText
-                    text={product.description}
-                    className="pdp-desc-text pdp-desc-text--clamp"
-                  />
-                </div>
-              )}
             </div>
           </div>
           {/* /product-col */}
+
+          {/* ── ОПИСАНИЕ — под фото, полностью (markdown) ── */}
+          {product.description && (
+            <div id="description" className="pdp-desc-block">
+              <h2 className="pdp-desc-title">Описание</h2>
+              <MarkdownText
+                text={product.description}
+                className="pdp-desc-text"
+              />
+            </div>
+          )}
 
           {/* ── 4. БЛОК ПОКУПКИ ── */}
           <div className="purchase-block">

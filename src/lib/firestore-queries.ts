@@ -3,6 +3,7 @@
 // =========================================================
 
 import { FieldValue, type Query } from "firebase-admin/firestore";
+import { unstable_cache } from "next/cache";
 import { getAdminDb } from "./firebase-admin";
 import {
   FirestoreCategory,
@@ -213,24 +214,13 @@ function mapView(data: FirebaseFirestore.DocumentData): ProductView {
   };
 }
 
-// ─── Categories ───────────────────────────────────────────
+// ─── Кэш горячих выборок (Data Cache Next.js) ─────────────
+/* Страницы (ISR) и API читают данные из кэша — без похода в Firestore
+   на каждый запрос. Актуальность: TTL 120с (вровень с ISR страниц)
+   + точечный сброс revalidateTag(...) при изменениях в админке. */
+const DATA_REVALIDATE = 120;
 
-export async function getCategories(): Promise<FirestoreCategory[]> {
-  const db = getAdminDb();
-  const snap = await db.collection("categories").orderBy("sortOrder", "asc").get();
-  return snap.docs
-    .map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        ...(data as Omit<FirestoreCategory, "id">),
-        createdAt: serializeTimestamp(data.createdAt),
-      };
-    })
-    .filter((c) => c.isVisible !== false);
-}
-
-export async function getAllCategories(): Promise<FirestoreCategory[]> {
+async function fetchAllCategories(): Promise<FirestoreCategory[]> {
   const db = getAdminDb();
   const snap = await db.collection("categories").orderBy("sortOrder", "asc").get();
   return snap.docs.map((d) => {
@@ -243,16 +233,60 @@ export async function getAllCategories(): Promise<FirestoreCategory[]> {
   });
 }
 
-export async function getCategoryBySlug(slug: string): Promise<FirestoreCategory | null> {
+const getCachedCategories = unstable_cache(
+  fetchAllCategories,
+  ["base-categories"],
+  { revalidate: DATA_REVALIDATE, tags: ["categories"] }
+);
+
+async function fetchAllProducts(): Promise<FirestoreProduct[]> {
   const db = getAdminDb();
-  const snap = await db.collection("categories").where("slug", "==", slug).limit(1).get();
-  if (snap.empty) return null;
-  const data = snap.docs[0].data();
-  return {
-    id: snap.docs[0].id,
-    ...(data as Omit<FirestoreCategory, "id">),
-    createdAt: serializeTimestamp(data.createdAt),
-  };
+  const snap = await db.collection("products").get();
+  return snap.docs.map((d) => mapProduct(d.id, d.data()));
+}
+
+const getCachedProducts = unstable_cache(
+  fetchAllProducts,
+  ["base-products"],
+  { revalidate: DATA_REVALIDATE, tags: ["products"] }
+);
+
+async function fetchProductReviewsRaw(productId: string): Promise<ProductReview[]> {
+  const db = getAdminDb();
+  /* Одиночный фильтр без составного индекса (см. getProductReviews) */
+  const snap = await db
+    .collection("productReviews")
+    .where("productId", "==", productId)
+    .limit(500)
+    .get();
+  return snap.docs.map((d) => mapReview(d.id, d.data()));
+}
+
+/* Фабрика кэша с тегом на конкретный товар — сбрасываем точечно */
+const getCachedProductReviews = (productId: string) =>
+  unstable_cache(
+    async () => fetchProductReviewsRaw(productId),
+    ["product-reviews", productId],
+    {
+      revalidate: DATA_REVALIDATE,
+      tags: ["reviews", `reviews:${productId}`],
+    }
+  )();
+
+// ─── Categories ───────────────────────────────────────────
+
+export async function getCategories(): Promise<FirestoreCategory[]> {
+  const cats = await getCachedCategories();
+  return cats.filter((c) => c.isVisible !== false);
+}
+
+export async function getAllCategories(): Promise<FirestoreCategory[]> {
+  return getCachedCategories();
+}
+
+export async function getCategoryBySlug(slug: string): Promise<FirestoreCategory | null> {
+  const cats = await getCachedCategories();
+  return cats.find((c) => c.slug === slug) || null;
 }
 
 // ─── Products ─────────────────────────────────────────────
@@ -265,23 +299,22 @@ export async function getProducts(opts?: {
   promoOnly?: boolean;
   featuredOnly?: boolean;
 }): Promise<FirestoreProduct[]> {
-  const db = getAdminDb();
-  let q: Query = db.collection("products");
+  /* База — общий кэш товаров (см. getCachedProducts), фильтры в памяти */
+  let filteredResults = (await getCachedProducts()).filter(
+    (p) => p.isVisible !== false
+  );
 
   if (opts?.categoryId) {
-    q = q.where("categoryId", "==", opts.categoryId);
+    filteredResults = filteredResults.filter(
+      (p) => p.categoryId === opts.categoryId
+    );
   }
   if (opts?.promoOnly) {
-    q = q.where("isPromo", "==", true);
+    filteredResults = filteredResults.filter((p) => p.isPromo === true);
   }
   if (opts?.featuredOnly) {
-    q = q.where("isFeatured", "==", true);
+    filteredResults = filteredResults.filter((p) => p.isFeatured === true);
   }
-
-  const snap = await q.get();
-  let filteredResults = snap.docs
-    .map((d) => mapProduct(d.id, d.data()))
-    .filter((p) => p.isVisible !== false);
 
   if (opts?.search) {
     const s = opts.search.toLowerCase();
@@ -325,23 +358,15 @@ export async function getProducts(opts?: {
 }
 
 export async function getProductBySlug(slug: string): Promise<FirestoreProduct | null> {
-  const db = getAdminDb();
-  const snap = await db
-    .collection("products")
-    .where("slug", "==", slug)
-    .limit(1)
-    .get();
-  if (snap.empty) return null;
-  return mapProduct(snap.docs[0].id, snap.docs[0].data());
+  const products = await getCachedProducts();
+  return products.find((p) => p.slug === slug) || null;
 }
 
 export async function getProductById(id: string): Promise<FirestoreProduct | null> {
   if (!id || typeof id !== "string") return null;
   try {
-    const db = getAdminDb();
-    const snap = await db.collection("products").doc(id).get();
-    if (!snap.exists) return null;
-    return mapProduct(snap.id, snap.data()!);
+    const products = await getCachedProducts();
+    return products.find((p) => p.id === id) || null;
   } catch (error) {
     console.error("❌ Error fetching product:", error);
     return null;
@@ -349,13 +374,13 @@ export async function getProductById(id: string): Promise<FirestoreProduct | nul
 }
 
 export async function getProductCount(categoryId?: string): Promise<number> {
-  const db = getAdminDb();
-  let q: Query = db.collection("products").where("isVisible", "==", true);
+  let products = (await getCachedProducts()).filter(
+    (p) => p.isVisible !== false
+  );
   if (categoryId) {
-    q = q.where("categoryId", "==", categoryId);
+    products = products.filter((p) => p.categoryId === categoryId);
   }
-  const snap = await q.get();
-  return snap.size;
+  return products.length;
 }
 
 export async function getRelatedProducts(
@@ -364,38 +389,15 @@ export async function getRelatedProducts(
   limitCount = 4
 ): Promise<FirestoreProduct[]> {
   if (!categoryId) return [];
-  const db = getAdminDb();
-  const snap = await db
-    .collection("products")
-    .where("categoryId", "==", categoryId)
-    .where("isVisible", "==", true)
-    .limit(limitCount + 1)
-    .get();
-
-  return snap.docs
-    .filter((d) => d.id !== excludeId)
-    .slice(0, limitCount)
-    .map((d) => mapProduct(d.id, d.data()));
+  const products = (await getCachedProducts()).filter(
+    (p) => p.isVisible !== false && p.categoryId === categoryId
+  );
+  return products.filter((p) => p.id !== excludeId).slice(0, limitCount);
 }
 
 // ─── Promotions / Special Offers ──────────────────────────
 
-export async function getPromotions(): Promise<Promotion[]> {
-  const db = getAdminDb();
-  const snap = await db.collection("promotions").orderBy("sortOrder", "asc").get();
-  return snap.docs
-    .map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        ...(data as Omit<Promotion, "id">),
-        createdAt: serializeTimestamp(data.createdAt),
-      };
-    })
-    .filter((p) => p.isVisible !== false);
-}
-
-export async function getAllPromotions(): Promise<Promotion[]> {
+async function fetchAllPromotions(): Promise<Promotion[]> {
   const db = getAdminDb();
   const snap = await db.collection("promotions").orderBy("sortOrder", "asc").get();
   return snap.docs.map((d) => {
@@ -406,6 +408,20 @@ export async function getAllPromotions(): Promise<Promotion[]> {
       createdAt: serializeTimestamp(data.createdAt),
     };
   });
+}
+
+const getCachedPromotions = unstable_cache(
+  fetchAllPromotions,
+  ["base-promotions"],
+  { revalidate: DATA_REVALIDATE, tags: ["promotions"] }
+);
+
+export async function getPromotions(): Promise<Promotion[]> {
+  return (await getCachedPromotions()).filter((p) => p.isVisible !== false);
+}
+
+export async function getAllPromotions(): Promise<Promotion[]> {
+  return getCachedPromotions();
 }
 
 // ─── Orders ───────────────────────────────────────────────
@@ -570,11 +586,16 @@ export async function deleteProduct(id: string) {
 
 // ─── Settings ─────────────────────────────────────────────
 
-export async function getSettings() {
+async function fetchSettings() {
   const db = getAdminDb();
   const snap = await db.collection("settings").doc("main").get();
   return snap.exists ? snap.data() || {} : {};
 }
+
+export const getSettings = unstable_cache(fetchSettings, ["base-settings"], {
+  revalidate: DATA_REVALIDATE,
+  tags: ["settings"],
+});
 
 export async function updateSettings(data: Record<string, string>) {
   const db = getAdminDb();
@@ -678,22 +699,12 @@ export async function getProductReviews(
     sortBy?: "newest" | "helpful" | "rating_high" | "rating_low";
   } = {}
 ): Promise<ProductReview[]> {
-  const db = getAdminDb();
   const { limitCount = 10, offset = 0, onlyApproved = true, sortBy = "newest" } = options;
 
-  /* Намеренно НЕ используем составные запросы (несколько where + orderBy):
-     они требуют составного индекса Firestore и без него падают
-     с FAILED_PRECONDITION — отзывы тогда «молча» не выводятся.
-     Берём отзывы товара одним условием, а фильтрацию, сортировку
-     и пагинацию выполняем в памяти: отзывов на товар немного,
-     лимита 500 достаточно. */
-  const snap = await db
-    .collection("productReviews")
-    .where("productId", "==", productId)
-    .limit(500)
-    .get();
-
-  let reviews = snap.docs.map((d) => mapReview(d.id, d.data()));
+  /* Данные — из общего кэша отзывов товара (см. getCachedProductReviews);
+     фильтрацию, сортировку и пагинацию выполняем в памяти:
+     составные запросы Firestore требовали бы индекса и без него падали. */
+  let reviews = await getCachedProductReviews(productId);
 
   if (onlyApproved) {
     reviews = reviews.filter(
@@ -729,16 +740,10 @@ export async function getProductReviews(
 }
 
 export async function getProductReviewCount(productId: string, onlyApproved = true): Promise<number> {
-  const db = getAdminDb();
-  /* Одиночный фильтр — без составного индекса (см. getProductReviews) */
-  const snap = await db
-    .collection("productReviews")
-    .where("productId", "==", productId)
-    .limit(500)
-    .get();
-  if (!onlyApproved) return snap.size;
-  return snap.docs.filter(
-    (d) => d.data().isApproved === true && d.data().moderationStatus === "approved"
+  const reviews = await getCachedProductReviews(productId);
+  if (!onlyApproved) return reviews.length;
+  return reviews.filter(
+    (r) => r.isApproved === true && r.moderationStatus === "approved"
   ).length;
 }
 
@@ -1036,20 +1041,11 @@ export async function getUserOrderWithProduct(userId: string, productId: string)
 }
 
 export async function getProductReviewStats(productId: string) {
-  const db = getAdminDb();
-
-  /* Одиночный фильтр по productId, одобрение фильтруем в памяти —
-     составной запрос требовал бы индекса Firestore и без него падал
-     (см. getProductReviews) */
-  const reviewsSnap = await db
-    .collection("productReviews")
-    .where("productId", "==", productId)
-    .limit(500)
-    .get();
-
-  const reviews = reviewsSnap.docs
-    .map((d) => d.data())
-    .filter((r) => r.isApproved === true && r.moderationStatus === "approved");
+  /* Данные — из общего кэша отзывов товара, одобрение фильтруем в памяти
+     (см. getCachedProductReviews) */
+  const reviews = (await getCachedProductReviews(productId)).filter(
+    (r) => r.isApproved === true && r.moderationStatus === "approved"
+  );
   const totalReviews = reviews.length;
   
   if (totalReviews === 0) {
@@ -1090,9 +1086,7 @@ export async function getProductReviewStats(productId: string) {
 /**
  * Все отзывы по всем товарам (для админки), сортировка по дате убыванию.
  */
-export async function getAllProductReviews(
-  limitCount = 500
-): Promise<ProductReview[]> {
+async function fetchAllProductReviews(limitCount: number): Promise<ProductReview[]> {
   const db = getAdminDb();
   const snap = await db
     .collection("productReviews")
@@ -1100,6 +1094,16 @@ export async function getAllProductReviews(
     .limit(limitCount)
     .get();
   return snap.docs.map((d) => mapReview(d.id, d.data()));
+}
+
+export async function getAllProductReviews(
+  limitCount = 500
+): Promise<ProductReview[]> {
+  return unstable_cache(
+    async () => fetchAllProductReviews(limitCount),
+    ["all-product-reviews", String(limitCount)],
+    { revalidate: DATA_REVALIDATE, tags: ["reviews"] }
+  )();
 }
 
 /**

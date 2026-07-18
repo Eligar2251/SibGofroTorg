@@ -2,7 +2,6 @@
 
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { headers } from "next/headers";
 import "./globals.css";
 
 import { CartProvider } from "@/context/CartContext";
@@ -55,9 +54,8 @@ export default async function RootLayout({
 }: {
   children: ReactNode;
 }) {
-  const requestHeaders = await headers();
-  const nonce = requestHeaders.get("x-nonce") ?? undefined;
-
+  /* Никаких headers()/cookies() здесь — иначе весь сайт становится
+     динамическим и теряет ISR-кэширование страниц */
   return (
     <html lang="ru">
       <head>
@@ -69,7 +67,7 @@ export default async function RootLayout({
         <CartProvider>
           <ConditionalChrome>{children}</ConditionalChrome>
         </CartProvider>
-        <YandexMetrika nonce={nonce} />
+        <YandexMetrika />
       </body>
     </html>
   );

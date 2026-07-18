@@ -1,5 +1,6 @@
 // src/app/api/admin/products/bulk/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdminApi } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -55,6 +56,7 @@ export async function PUT(request: NextRequest) {
     }
 
     await batch.commit();
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true, updated: products.length });
   } catch (error) {
     console.error("Bulk update error:", error);
@@ -84,6 +86,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     await batch.commit();
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true, deleted: ids.length });
   } catch (error) {
     console.error("Bulk delete error:", error);

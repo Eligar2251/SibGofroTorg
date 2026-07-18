@@ -1,5 +1,6 @@
 // src/app/api/admin/promotions/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdminApi } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -18,6 +19,7 @@ export async function PUT(
       ...body,
       updatedAt: FieldValue.serverTimestamp(),
     });
+    revalidateTag("promotions", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Update promotion error:", error);
@@ -35,6 +37,7 @@ export async function DELETE(
     const { id } = await params;
     const db = getAdminDb();
     await db.collection("promotions").doc(id).delete();
+    revalidateTag("promotions", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete promotion error:", error);
