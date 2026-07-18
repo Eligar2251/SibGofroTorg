@@ -285,7 +285,7 @@ export function PromotionsManager({
         });
         const data = await res.json();
         if (res.ok && data.id) {
-          setPromotions((prev) => [...prev, { id: data.id, ...promo }]);
+          setPromotions((prev) => [...prev, { id: data.id, ...promo } as Promotion]);
         }
       }
       router.refresh();
