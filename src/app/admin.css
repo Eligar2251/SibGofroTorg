@@ -10,6 +10,9 @@
   --adm-ink:        #1a1a18;
   --adm-ink-soft:   #2e2e2a;
   --adm-ink-muted:  #6b6b60;
+  /* Алиас: раньше var(--adm-muted) нигде не был определён —
+     тексты «подсказок» рендерились тёмным вместо приглушённого */
+  --adm-muted:      var(--adm-ink-muted);
 
   --adm-kraft:      #c8860a;
   --adm-kraft-mid:  #e09b12;
@@ -550,6 +553,25 @@
   margin-bottom: 0;
 }
 
+/* Кнопки в шапке страницы (например, «+ Добавить товар»):
+   переносятся на новую строку и не обрезаются на мобильных */
+.admin-page-head__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .admin-page-head__actions {
+    width: 100%;
+  }
+
+  .admin-page-head__actions .admin-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
 /* ══════════════════════════════════════
    КАРТОЧКИ
    ══════════════════════════════════════ */
@@ -975,6 +997,14 @@
   font-size: 13px;
 }
 
+/* На широких экранах названию товара даём больше места —
+   таблица всё равно простирается на всю ширину колонки */
+@media (min-width: 1200px) {
+  .admin-product-name {
+    max-width: 300px;
+  }
+}
+
 .admin-product-sku {
   font-size: 11px;
   color: var(--adm-sand);
@@ -1112,7 +1142,8 @@
 
 @media (min-width: 1024px) {
   .admin-stat-grid {
-    grid-template-columns: repeat(4, 1fr);
+    /* auto-fit: без «сироты» на второй строке, когда карточек 5+ */
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   }
 }
 
@@ -1264,7 +1295,7 @@
 .admin-order__meta-label {
   font-size: 10px;
   color: var(--adm-sand);
-  width: 56px;
+  width: 68px; /* хватает под «Телефон:» — раньше значение налезало на лейбл */
   flex-shrink: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;

@@ -52,7 +52,7 @@ export default async function AdminProductsPage({
           <h1 className="admin-h1">Товары</h1>
           <p className="admin-sub">Всего: {allProducts.length} товаров</p>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div className="admin-page-head__actions">
           <Link
             href={`/${ADMIN_PATH}/products/bulk`}
             className="admin-btn admin-btn--ghost"

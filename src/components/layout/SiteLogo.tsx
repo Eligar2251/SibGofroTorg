@@ -61,7 +61,7 @@ export function SiteLogo() {
         fontFamily="'Montserrat', 'Oswald', 'Arial Black', sans-serif"
         fontSize="86"
         fontWeight="900"
-        fill="#4A3319"
+        fill="#0a0a0a"
         letterSpacing="3"
       >
         СИБГОФРОТОРГ

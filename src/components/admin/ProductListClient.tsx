@@ -105,7 +105,7 @@ export function ProductListClient({
               left: 10,
               top: "50%",
               transform: "translateY(-50%)",
-              color: "var(--adm-muted)",
+              color: "var(--adm-ink-muted)",
             }}
           />
           <input

@@ -825,7 +825,7 @@ select {
   display: grid;
   grid-template-columns: 60fr 40fr;
   min-height: 560px;
-  background: linear-gradient(155deg, #161616 0%, #0a0a0a 55%, #040404 100%);
+  background: linear-gradient(150deg, #0c0c0c 0%, #050505 55%, #000000 100%);
   overflow: hidden;
 }
 
