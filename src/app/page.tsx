@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCategories, getProducts, getPromotions } from "@/lib/firestore-queries";
+import { getCategories, getProducts, getPromotions, getProductById } from "@/lib/firestore-queries";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
@@ -50,16 +50,48 @@ export default async function HomePage() {
     getPromotions(),
   ]);
 
+  // Для акций со ссылкой на товар резолвим slug товара,
+  // чтобы «Подробнее» вело прямо на страницу товара
+  const promoProductIds = [
+    ...new Set(
+      promotions
+        .filter((p: Promotion) => p.linkType === "product" && p.productId)
+        .map((p: Promotion) => p.productId as string)
+    ),
+  ];
+  const promoProducts = await Promise.all(
+    promoProductIds.map((id) => getProductById(id).catch(() => null))
+  );
+  const slugByProductId = new Map<string, string>();
+  promoProductIds.forEach((id, i) => {
+    const slug = promoProducts[i]?.slug;
+    if (slug) slugByProductId.set(id, slug);
+  });
+
   // Transform promotions to deal cards format
-  const deals = promotions.map((p: Promotion) => ({
-    tag: p.badge || "Акция",
-    title: p.title,
-    desc: p.subtitle || "",
-    color: p.color || "var(--kraft)",
-    light: p.light || "var(--kraft-light)",
-    icon: p.icon || "📦",
-    deadline: p.deadline || null,
-  }));
+  const deals = promotions.map((p: Promotion) => {
+    // Куда ведёт кнопка в карточке акции
+    let href = "/catalog";
+    let external = false;
+    if (p.linkType === "url" && p.linkUrl) {
+      href = p.linkUrl;
+      external = /^https?:\/\//i.test(href);
+    } else if (p.linkType === "product" && p.productId) {
+      const slug = slugByProductId.get(p.productId);
+      if (slug) href = `/catalog/product/${slug}`;
+    }
+    return {
+      tag: p.badge || "Акция",
+      title: p.title,
+      desc: p.subtitle || "",
+      color: p.color || "var(--kraft)",
+      light: p.light || "var(--kraft-light)",
+      icon: p.icon || "📦",
+      deadline: p.deadline || null,
+      href,
+      external,
+    };
+  });
 
   const serializedCategories = categories.map((cat: FirestoreCategory) => ({
     id: cat.id,
@@ -219,9 +251,20 @@ export default async function HomePage() {
                   ))}
                 </div>
                 <p className="deal-card__desc">{d.desc}</p>
-                <Link href="/catalog" className="deal-card__cta">
-                  Подробнее <ArrowRight size={12} />
-                </Link>
+                {d.external ? (
+                  <a
+                    href={d.href}
+                    className="deal-card__cta"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Подробнее <ArrowRight size={12} />
+                  </a>
+                ) : (
+                  <Link href={d.href} className="deal-card__cta">
+                    Подробнее <ArrowRight size={12} />
+                  </Link>
+                )}
               </div>
             ))}
           </div>

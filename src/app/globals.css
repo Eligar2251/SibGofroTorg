@@ -1860,6 +1860,15 @@ select {
   opacity: 0.75;
 }
 
+/* Кликабельна вся карточка акции (stretched link),
+   не только текст кнопки «Подробнее» */
+.deal-card__cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
 /* ══════════════════════════════════════
    CATALOG SECTION
    ══════════════════════════════════════ */
@@ -5066,15 +5075,22 @@ select.input-light {
 
 .atc-pack-info {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   font-size: 13px;
   color: var(--ink-light);
   background: var(--bg-main);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 9px 13px;
-  flex-wrap: wrap;
+}
+
+.atc-pack-info__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .atc-pack-info strong {

@@ -296,14 +296,24 @@ export default async function ProductPage({
             ) : (
               <span className="pdp-img-placeholder">📦</span>
             )}
-            {discountPercent > 0 && (
-              <span className="badge-discount">−{discountPercent}%</span>
+            {/* Бейджи акций/скидок — левый верхний угол фото */}
+            {(product.promoLabel || discountPercent > 0) && (
+              <div className="gallery-badges">
+                {product.promoLabel && (
+                  <span className="badge-promo">{product.promoLabel}</span>
+                )}
+                {discountPercent > 0 && (
+                  <span className="badge-discount">−{discountPercent}%</span>
+                )}
+              </div>
             )}
-            {/* Наличие — бейдж на фото */}
+            {/* Наличие — бейдж на фото (правый верхний угол) */}
             {product.inStock ? (
               <span className="badge-stock badge-stock--in">
-                <span className="pdp-stock-dot pdp-stock-dot--in" />
-                В наличии
+                <span className="badge-stock__label">
+                  <span className="pdp-stock-dot pdp-stock-dot--in" />
+                  В наличии
+                </span>
                 {product.stockQty != null && product.stockQty <= 30 && (
                   <span className="badge-stock__qty">
                     осталось {product.stockQty} шт.
@@ -312,8 +322,10 @@ export default async function ProductPage({
               </span>
             ) : (
               <span className="badge-stock badge-stock--out">
-                <span className="pdp-stock-dot pdp-stock-dot--out" />
-                Нет в наличии
+                <span className="badge-stock__label">
+                  <span className="pdp-stock-dot pdp-stock-dot--out" />
+                  Нет в наличии
+                </span>
               </span>
             )}
           </div>

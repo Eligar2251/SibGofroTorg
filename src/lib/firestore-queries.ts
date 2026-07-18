@@ -680,45 +680,65 @@ export async function getProductReviews(
   const db = getAdminDb();
   const { limitCount = 10, offset = 0, onlyApproved = true, sortBy = "newest" } = options;
 
-  let q: Query = db
+  /* Намеренно НЕ используем составные запросы (несколько where + orderBy):
+     они требуют составного индекса Firestore и без него падают
+     с FAILED_PRECONDITION — отзывы тогда «молча» не выводятся.
+     Берём отзывы товара одним условием, а фильтрацию, сортировку
+     и пагинацию выполняем в памяти: отзывов на товар немного,
+     лимита 500 достаточно. */
+  const snap = await db
     .collection("productReviews")
-    .where("productId", "==", productId);
+    .where("productId", "==", productId)
+    .limit(500)
+    .get();
+
+  let reviews = snap.docs.map((d) => mapReview(d.id, d.data()));
 
   if (onlyApproved) {
-    q = q.where("isApproved", "==", true).where("moderationStatus", "==", "approved");
+    reviews = reviews.filter(
+      (r) => r.isApproved === true && r.moderationStatus === "approved"
+    );
   }
+
+  const createdMs = (r: ProductReview): number => {
+    const v = r.createdAt;
+    if (!v) return 0;
+    if (typeof v === "string") return Date.parse(v) || 0;
+    if (typeof v === "number") return v;
+    if (v instanceof Date) return v.getTime();
+    if (typeof v?.toDate === "function") return v.toDate().getTime();
+    return 0;
+  };
 
   switch (sortBy) {
     case "helpful":
-      q = q.orderBy("helpfulCount", "desc").orderBy("createdAt", "desc");
+      reviews.sort((a, b) => b.helpfulCount - a.helpfulCount || createdMs(b) - createdMs(a));
       break;
     case "rating_high":
-      q = q.orderBy("rating", "desc").orderBy("createdAt", "desc");
+      reviews.sort((a, b) => b.rating - a.rating || createdMs(b) - createdMs(a));
       break;
     case "rating_low":
-      q = q.orderBy("rating", "asc").orderBy("createdAt", "desc");
+      reviews.sort((a, b) => a.rating - b.rating || createdMs(b) - createdMs(a));
       break;
     default:
-      q = q.orderBy("createdAt", "desc");
+      reviews.sort((a, b) => createdMs(b) - createdMs(a));
   }
 
-  if (offset > 0) {
-    q = q.offset(offset);
-  }
-  q = q.limit(limitCount);
-
-  const snap = await q.get();
-  return snap.docs.map((d) => mapReview(d.id, d.data()));
+  return reviews.slice(offset, offset + limitCount);
 }
 
 export async function getProductReviewCount(productId: string, onlyApproved = true): Promise<number> {
   const db = getAdminDb();
-  let q: Query = db.collection("productReviews").where("productId", "==", productId);
-  if (onlyApproved) {
-    q = q.where("isApproved", "==", true).where("moderationStatus", "==", "approved");
-  }
-  const snap = await q.get();
-  return snap.size;
+  /* Одиночный фильтр — без составного индекса (см. getProductReviews) */
+  const snap = await db
+    .collection("productReviews")
+    .where("productId", "==", productId)
+    .limit(500)
+    .get();
+  if (!onlyApproved) return snap.size;
+  return snap.docs.filter(
+    (d) => d.data().isApproved === true && d.data().moderationStatus === "approved"
+  ).length;
 }
 
 export async function createProductReview(data: Omit<ProductReview, "id" | "createdAt" | "updatedAt" | "helpfulCount" | "isApproved" | "moderationStatus">): Promise<string> {
@@ -971,15 +991,19 @@ export async function getUserOrderWithProduct(userId: string, productId: string)
 
 export async function getProductReviewStats(productId: string) {
   const db = getAdminDb();
-  
+
+  /* Одиночный фильтр по productId, одобрение фильтруем в памяти —
+     составной запрос требовал бы индекса Firestore и без него падал
+     (см. getProductReviews) */
   const reviewsSnap = await db
     .collection("productReviews")
     .where("productId", "==", productId)
-    .where("isApproved", "==", true)
-    .where("moderationStatus", "==", "approved")
+    .limit(500)
     .get();
 
-  const reviews = reviewsSnap.docs.map(d => d.data());
+  const reviews = reviewsSnap.docs
+    .map((d) => d.data())
+    .filter((r) => r.isApproved === true && r.moderationStatus === "approved");
   const totalReviews = reviews.length;
   
   if (totalReviews === 0) {

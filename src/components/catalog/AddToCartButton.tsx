@@ -129,17 +129,21 @@ export function AddToCartButton({ product }: AddToCartButtonProps) {
       {/* Инфо о пачке */}
       {hasPacks && (
         <div className="atc-pack-info">
-          <Package size={14} style={{ color: "var(--kraft)", flexShrink: 0 }} />
-          <span>
-            В заводской упаковке: <strong>{packSize} шт.</strong>
-          </span>
-          {maxStock !== null && (
-            <span
-              className="atc-pack-info__stock"
-              style={{ color: maxStock <= 15 ? "var(--red)" : "var(--green)" }}
-            >
-              На складе: {maxStock} шт.
+          <div className="atc-pack-info__row">
+            <Package size={14} style={{ color: "var(--kraft)", flexShrink: 0 }} />
+            <span>
+              В заводской упаковке: <strong>{packSize} шт.</strong>
             </span>
+          </div>
+          {maxStock !== null && (
+            <div className="atc-pack-info__row">
+              <span
+                className="atc-pack-info__stock"
+                style={{ color: maxStock <= 15 ? "var(--red)" : "var(--green)" }}
+              >
+                На складе: {maxStock} шт.
+              </span>
+            </div>
           )}
         </div>
       )}
