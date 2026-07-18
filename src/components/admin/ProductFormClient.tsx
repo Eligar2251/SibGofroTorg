@@ -42,6 +42,9 @@ interface ProductData {
   inStock?: boolean | null;
   isPromo?: boolean | null;
   promoLabel?: string | null;
+  discountType?: "percent" | "fixed" | null;
+  discountValue?: number | null;
+  discountBadge?: string | null;
   isVisible?: boolean | null;
   isFeatured?: boolean | null;
   images?: ProductImage[];
@@ -107,6 +110,11 @@ export function ProductFormClient({
       inStock: data.get("inStock") === "on",
       isPromo: data.get("isPromo") === "on",
       promoLabel: data.get("promoLabel") || null,
+      discountType: data.get("discountType") || null,
+      discountValue: data.get("discountValue")
+        ? Number(data.get("discountValue"))
+        : null,
+      discountBadge: data.get("discountBadge") || null,
       isVisible: data.get("isVisible") === "on",
       isFeatured: data.get("isFeatured") === "on",
       images,
@@ -231,7 +239,7 @@ export function ProductFormClient({
 
       <div className="admin-card">
         <div className="admin-card__pad admin-stack">
-          <h2 className="admin-h2">Цены</h2>
+          <h2 className="admin-h2">Цены и Скидки</h2>
           <div className="admin-grid-3">
             <div className="admin-field">
               <label className="admin-label">Розничная цена, ₽</label>
@@ -260,6 +268,42 @@ export function ProductFormClient({
                 name="minWholesaleQty"
                 type="number"
                 defaultValue={product?.minWholesaleQty ?? ""}
+                className="admin-input"
+              />
+            </div>
+          </div>
+
+          <div className="admin-grid-3" style={{ marginTop: 12 }}>
+            <div className="admin-field">
+              <label className="admin-label">Тип скидки</label>
+              <select
+                name="discountType"
+                defaultValue={product?.discountType || ""}
+                className="admin-select"
+              >
+                <option value="">Без скидки</option>
+                <option value="percent">Процент (%)</option>
+                <option value="fixed">Сумма в рублях (₽)</option>
+              </select>
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Величина скидки</label>
+              <input
+                name="discountValue"
+                type="number"
+                step="0.01"
+                defaultValue={product?.discountValue ?? ""}
+                placeholder="Напр. 15 или 500"
+                className="admin-input"
+              />
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Бейдж скидки (текст)</label>
+              <input
+                name="discountBadge"
+                type="text"
+                defaultValue={product?.discountBadge || ""}
+                placeholder="Напр. -15% или Скидка"
                 className="admin-input"
               />
             </div>

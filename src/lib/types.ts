@@ -30,9 +30,12 @@ export interface FirestoreProduct {
   volume?: number | null | undefined;
   note?: string | null | undefined;
   inStock: boolean;
-  stockQty?: number | null | undefined; // Остаток на складе (баланс)
+  stockQty?: number | null | undefined;
   isPromo: boolean;
   promoLabel?: string | null | undefined;
+  discountType?: "percent" | "fixed" | null | undefined;
+  discountValue?: number | null | undefined;
+  discountBadge?: string | null | undefined;
   isVisible: boolean;
   isFeatured: boolean;
   imageUrl?: string | null | undefined;
@@ -41,37 +44,34 @@ export interface FirestoreProduct {
   updatedAt?: any;
 }
 
-export interface OrderItem {
-  productId: string;
-  name: string;
-  sku?: string | null;
-  quantity: number;
-  price: number;
+export interface Promotion {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  badge?: string | null;
+  imageUrl?: string | null;
+  linkType: "product" | "url" | "none";
+  productId?: string | null;
+  linkUrl?: string | null;
+  sortOrder: number;
+  isVisible: boolean;
+  createdAt?: any;
 }
 
-export interface FirestoreOrder {
-  id: string;
-  type: "order" | "inquiry"; // Заказ (с точными позициями) или Заявка (общий запрос)
-  customerType: "individual" | "legal"; // Физ. лицо или Юр. лицо
-  customerName: string;
-  customerPhone: string;
-  customerEmail?: string | null; // Почта (обязательна для Юр. лиц)
-  communicationChannel: "telegram" | "whatsapp" | "max" | "call" | "email"; // Способ связи
-  paymentMethod?: "transfer" | "cash" | "invoice"; // Способ оплаты
-  
-  // Для Заказа (type: "order")
-  items?: OrderItem[];
-  totalSum?: number;
-
-  // Для Заявки (type: "inquiry")
-  productInfo?: string | null;
-  quantity?: number | null;
-  
-  comment?: string | null;
-  channel?: string | null; // Источник (сайт/бот)
-  status: "new" | "in_progress" | "completed" | "rejected";
-  createdAt?: any;
-  updatedAt?: any;
+export function getProductEffectivePrice(product: {
+  price: number | null;
+  discountType?: "percent" | "fixed" | null;
+  discountValue?: number | null;
+}): number | null {
+  if (product.price == null) return null;
+  if (!product.discountType || product.discountValue == null) return product.price;
+  if (product.discountType === "percent") {
+    return Math.max(0, Math.round(product.price * (1 - product.discountValue / 100)));
+  }
+  if (product.discountType === "fixed") {
+    return Math.max(0, product.price - product.discountValue);
+  }
+  return product.price;
 }
 
 export interface OrderItem {

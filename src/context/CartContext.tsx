@@ -18,6 +18,9 @@ interface CartContextType {
   removeFromCart: (productId: string) => void;
   updateQty: (productId: string, qty: number) => void;
   clearCart: () => void;
+  rawSubtotal: number;
+  discountPercent: number;
+  discountAmount: number;
   totalSum: number;
   totalItems: number;
 }
@@ -28,7 +31,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Загрузка корзины при монтировании
   useEffect(() => {
     const saved = localStorage.getItem("sib_cart");
     if (saved) {
@@ -41,7 +43,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setIsLoaded(true);
   }, []);
 
-  // Сохранение при изменениях
   useEffect(() => {
     if (isLoaded) {
       localStorage.setItem("sib_cart", JSON.stringify(cart));
@@ -81,8 +82,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clearCart = () => setCart([]);
 
-  const totalSum = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const rawSubtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
+
+  // Автоматическая скидка за объем заказа:
+  // От 25,000 ₽ -> 10%
+  // От 20,000 ₽ до 24,999 ₽ -> 5%
+  let discountPercent = 0;
+  if (rawSubtotal >= 25000) {
+    discountPercent = 10;
+  } else if (rawSubtotal >= 20000) {
+    discountPercent = 5;
+  }
+
+  const discountAmount = Math.round((rawSubtotal * discountPercent) / 100);
+  const totalSum = Math.max(0, rawSubtotal - discountAmount);
 
   return (
     <CartContext.Provider
@@ -92,6 +106,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         removeFromCart,
         updateQty,
         clearCart,
+        rawSubtotal,
+        discountPercent,
+        discountAmount,
         totalSum,
         totalItems,
       }}

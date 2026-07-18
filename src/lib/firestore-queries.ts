@@ -4,7 +4,7 @@
 
 import { FieldValue, type Query } from "firebase-admin/firestore";
 import { getAdminDb } from "./firebase-admin";
-import { FirestoreCategory, FirestoreProduct, FirestoreOrder } from "./types";
+import { FirestoreCategory, FirestoreProduct, FirestoreOrder, Promotion } from "./types";
 
 function slugify(text: string): string {
   const map: Record<string, string> = {
@@ -118,6 +118,12 @@ function mapProduct(id: string, data: FirebaseFirestore.DocumentData): Firestore
         : null,
     isPromo: data.isPromo ?? false,
     promoLabel: data.promoLabel || null,
+    discountType: data.discountType || null,
+    discountValue:
+      data.discountValue !== undefined && data.discountValue !== null
+        ? Number(data.discountValue)
+        : null,
+    discountBadge: data.discountBadge || null,
     isVisible: data.isVisible ?? true,
     isFeatured: data.isFeatured ?? false,
     imageUrl: data.imageUrl || null,
@@ -302,6 +308,36 @@ export async function getRelatedProducts(
     .map((d) => mapProduct(d.id, d.data()));
 }
 
+// ─── Promotions / Special Offers ──────────────────────────
+
+export async function getPromotions(): Promise<Promotion[]> {
+  const db = getAdminDb();
+  const snap = await db.collection("promotions").orderBy("sortOrder", "asc").get();
+  return snap.docs
+    .map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...(data as Omit<Promotion, "id">),
+        createdAt: serializeTimestamp(data.createdAt),
+      };
+    })
+    .filter((p) => p.isVisible !== false);
+}
+
+export async function getAllPromotions(): Promise<Promotion[]> {
+  const db = getAdminDb();
+  const snap = await db.collection("promotions").orderBy("sortOrder", "asc").get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...(data as Omit<Promotion, "id">),
+      createdAt: serializeTimestamp(data.createdAt),
+    };
+  });
+}
+
 // ─── Orders ───────────────────────────────────────────────
 
 export async function createOrder(
@@ -313,7 +349,6 @@ export async function createOrder(
   const db = getAdminDb();
 
   return db.runTransaction(async (transaction) => {
-    // 1) Все чтения
     const stockUpdates: {
       ref: FirebaseFirestore.DocumentReference;
       newStock: number;
@@ -339,7 +374,6 @@ export async function createOrder(
       }
     }
 
-    // 2) Записи
     for (const update of stockUpdates) {
       transaction.update(update.ref, {
         stockQty: update.newStock,
@@ -360,7 +394,6 @@ export async function createOrder(
 
     transaction.set(newOrderRef, finalOrderData);
 
-    // Возвращаем полные данные для уведомлений (не только id)
     return {
       id: newOrderRef.id,
       ...data,
