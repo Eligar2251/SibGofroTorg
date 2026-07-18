@@ -111,3 +111,78 @@ export interface FirestoreOrder {
   createdAt?: any;
   updatedAt?: any;
 }
+
+// ===== NEW TYPES FOR PRODUCT INTERACTIONS =====
+
+export interface ProductReview {
+  id: string;
+  productId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string | null;
+  orderId: string; // Reference to order to verify purchase
+  rating: number; // 1-5 stars
+  title?: string | null;
+  text: string;
+  pros?: string | null;
+  cons?: string | null;
+  images?: { url: string; publicId: string }[];
+  isVerifiedPurchase: boolean;
+  helpfulCount: number;
+  createdAt: any;
+  updatedAt?: any;
+  // Admin moderation
+  isApproved: boolean;
+  moderationStatus: "pending" | "approved" | "rejected";
+  moderationNote?: string | null;
+}
+
+export interface ProductQuestion {
+  id: string;
+  productId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string | null;
+  question: string;
+  answer?: string | null;
+  answerAuthor?: string | null; // "seller" | "user" | "admin"
+  answeredAt?: any;
+  isAnswered: boolean;
+  helpfulCount: number;
+  createdAt: any;
+  updatedAt?: any;
+  // Admin moderation
+  isApproved: boolean;
+  moderationStatus: "pending" | "approved" | "rejected";
+}
+
+export interface ProductRating {
+  productId: string;
+  averageRating: number; // 0-5
+  totalReviews: number;
+  ratingDistribution: {
+    5: number;
+    4: number;
+    3: number;
+    2: number;
+    1: number;
+  };
+  updatedAt: any;
+}
+
+export interface ProductView {
+  id: string;
+  productId: string;
+  userId?: string | null; // null for anonymous
+  sessionId: string; // For tracking unique views
+  ipHash?: string | null; // Hashed IP for anonymous deduplication
+  userAgent?: string | null;
+  referrer?: string | null;
+  viewedAt: any;
+}
+
+export interface UserProductView {
+  productId: string;
+  viewCount: number;
+  lastViewedAt: any;
+}

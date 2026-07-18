@@ -3,6 +3,7 @@ import {
   getAllCategories,
   getProducts,
   getOrders,
+  getPromotions,
 } from "@/lib/firestore-queries";
 import {
   Package,
@@ -14,6 +15,9 @@ import {
   Clock,
   XCircle,
   BarChart3,
+  Megaphone,
+  Star,
+  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminDb } from "@/lib/firebase-admin";
@@ -52,11 +56,12 @@ function formatDate(raw: any): string {
 export default async function AdminDashboard() {
   const db = getAdminDb();
 
-  const [allProducts, allOrders, allCats, usersSnap] = await Promise.all([
+  const [allProducts, allOrders, allCats, usersSnap, promotions] = await Promise.all([
     getProducts({}),
     getOrders(),
     getAllCategories(),
     db.collection("users").get(),
+    getPromotions(),
   ]);
 
   const newOrders = allOrders.filter((o) => (o as any).status === "new");
@@ -176,6 +181,33 @@ export default async function AdminDashboard() {
             iconBg: "rgba(16,185,129,0.1)",
             iconColor: "#10b981",
             sub: "выполненные заказы",
+          },
+          {
+            label: "Акции",
+            value: promotions.length,
+            icon: <Megaphone size={20} />,
+            href: `/${ADMIN_PATH}/promotions`,
+            iconBg: "rgba(234,179,8,0.12)",
+            iconColor: "#eaaf08",
+            sub: `${promotions.filter((p) => p.isVisible !== false).length} активных`,
+          },
+          {
+            label: "Отзывы",
+            value: 0,
+            icon: <Star size={20} />,
+            href: `/${ADMIN_PATH}/reviews`,
+            iconBg: "rgba(245,166,35,0.12)",
+            iconColor: "#f5a623",
+            sub: "управление отзывами",
+          },
+          {
+            label: "Вопросы",
+            value: 0,
+            icon: <MessageSquare size={20} />,
+            href: `/${ADMIN_PATH}/questions`,
+            iconBg: "rgba(59,130,246,0.12)",
+            iconColor: "#3b82f6",
+            sub: "управление вопросами",
           },
         ].map((stat) => (
           <Link key={stat.label} href={stat.href} className="admin-stat">
@@ -584,6 +616,18 @@ export default async function AdminDashboard() {
                   label: "📂 Управление категориями",
                 },
                 {
+                  href: `/${ADMIN_PATH}/promotions`,
+                  label: `📢 Акции и спецпредложения (${promotions.length})`,
+                },
+                {
+                  href: `/${ADMIN_PATH}/reviews`,
+                  label: "⭐ Отзывы покупателей",
+                },
+                {
+                  href: `/${ADMIN_PATH}/questions`,
+                  label: "❓ Вопросы к товарам",
+                },
+                {
                   href: `/${ADMIN_PATH}/settings`,
                   label: "⚙️ Настройки сайта",
                 },
@@ -612,13 +656,7 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      <style>{`
-        @media (max-width: 768px) {
-          .admin-dash-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
+      <style>{`\n        @media (max-width: 768px) {\n          .admin-dash-grid {\n            grid-template-columns: 1fr !important;\n          }\n        }\n      `}</style>
     </div>
   );
 }

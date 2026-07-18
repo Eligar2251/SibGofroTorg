@@ -5,7 +5,7 @@ import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { AddToCartButton } from "@/components/catalog/AddToCartButton";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { FirestoreCategory, FirestoreProduct, getProductEffectivePrice } from "@/lib/types";
-import { BadgeCheck, ShieldAlert, Star, MessageSquare, Truck, ShieldCheck, HelpCircle } from "lucide-react";
+import { BadgeCheck, ShieldAlert, Star, MessageSquare, Truck, ShieldCheck, HelpCircle, MessageCircle, ChevronRight, Heart, RotateCcw, Share2, GitCompare, Search } from "lucide-react";
 import Image from "next/image";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -60,6 +60,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   const effectivePrice = getProductEffectivePrice(product);
   const hasDiscount = product.price != null && effectivePrice != null && effectivePrice < product.price;
+  const oldPrice = hasDiscount && product.price != null ? product.price : null;
 
   // Цвет бейджа скидки
   let badgeColorBg = "rgba(22, 163, 74, 0.12)";
@@ -112,203 +113,332 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     inStock: product.inStock,
   });
 
+  // Build breadcrumb trail for display
+  const breadcrumbTrail = [
+    { name: "Каталог", url: "/catalog" },
+    ...(category ? [{ name: category.name, url: `/catalog/${category.slug}` }] : []),
+    { name: product.name, url: null },
+  ];
+
   return (
     <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: "64px" }}>
       <JsonLd data={[breadcrumb, productLd]} />
 
-      {/* Хлебные крошки */}
-      <div className="breadcrumb-bar">
-        <div className="container-wide breadcrumbs">
-          <Link href="/">Главная</Link>
-          <span>/</span>
-          <Link href="/catalog">Каталог</Link>
-          {category && (
-            <>
-              <span>/</span>
-              <Link href={`/catalog/${category.slug}`}>{category.name}</Link>
-            </>
-          )}
-          <span>/</span>
-          <span style={{ maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {product.name}
-          </span>
+      {/* Хлебные крошки в стиле Ozon */}
+      <div className="pdp-breadcrumbs-bar">
+        <div className="container-wide pdp-breadcrumbs">
+          <div className="pdp-breadcrumbs-left">
+            {breadcrumbTrail.map((item, idx) => (
+              <React.Fragment key={idx}>
+                {idx > 0 && <span className="pdp-breadcrumb-sep">•</span>}
+                {item.url ? (
+                  <Link href={item.url} className="pdp-breadcrumb-link">
+                    {item.name}
+                  </Link>
+                ) : (
+                  <span className="pdp-breadcrumb-current">{item.name}</span>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="pdp-breadcrumbs-right">
+            {product.sku && <span className="pdp-article">Артикул: {product.sku}</span>}
+            <button className="pdp-breadcrumb-btn" title="В сравнение">
+              <GitCompare size={16} /> В сравнение
+            </button>
+            <button className="pdp-breadcrumb-btn" title="Поделиться">
+              <Share2 size={16} /> Поделиться
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="container-wide" style={{ marginTop: "20px" }}>
-        {/* Marketplace PDP Layout */}
+        {/* Основной блок - 3 колонки */}
         <div className="pdp-marketplace-layout">
 
-          {/* Левая колонка: Галерея фото */}
+          {/* ЛЕВАЯ КОЛОНКА: Галерея с миниатюрами */}
           <div className="pdp-col-gallery">
-            <div className="pdp-img-container">
-              {product.imageUrl ? (
-                <Image
-                  src={product.imageUrl}
-                  alt={product.name}
-                  fill
-                  style={{ objectFit: "contain", padding: "16px" }}
-                  sizes="(max-width: 768px) 100vw, 440px"
-                  priority
-                />
-              ) : (
-                <span className="pdp-img-placeholder">📦</span>
-              )}
-              {product.promoLabel && (
-                <span className="pdp-badge pdp-badge--promo">{product.promoLabel}</span>
-              )}
-              {hasDiscount && product.discountBadge && (
-                <span
-                  className="pdp-badge"
-                  style={{
-                    background: badgeColorBg,
-                    color: badgeColorText,
-                    border: `1px solid ${badgeColorText}`,
-                    top: product.promoLabel ? "44px" : "12px",
-                  }}
-                >
-                  {product.discountBadge}
-                </span>
-              )}
-              {!product.inStock && (
-                <span className="pdp-badge pdp-badge--out">Нет в наличии</span>
-              )}
+            <div className="pdp-gallery-wrapper">
+              {/* Миниатюры слева */}
+              <div className="pdp-thumbs">
+                {product.images && product.images.length > 0 ? (
+                  product.images.map((img, idx) => (
+                    <button
+                      key={idx}
+                      className={`pdp-thumb ${idx === 0 ? "active" : ""}`}
+                      aria-label={`Фото ${idx + 1}`}
+                    >
+                      <Image
+                        src={img.url}
+                        alt={`${product.name} фото ${idx + 1}`}
+                        width={72}
+                        height={72}
+                        style={{ objectFit: "cover" }}
+                      />
+                    </button>
+                  ))
+                ) : product.imageUrl ? (
+                  <button className="pdp-thumb active" aria-label="Фото 1">
+                    <Image
+                      src={product.imageUrl}
+                      alt={product.name}
+                      width={72}
+                      height={72}
+                      style={{ objectFit: "cover" }}
+                    />
+                  </button>
+                ) : (
+                  <button className="pdp-thumb active" aria-label="Фото 1">
+                    <span className="pdp-thumb-placeholder">📦</span>
+                  </button>
+                )}
+                {/* Видео заглушка */}
+                <button className="pdp-thumb pdp-thumb-video" aria-label="Видео">
+                  <span className="pdp-thumb-video-content">
+                    <span className="pdp-play-icon">▶</span>
+                    +1 видео
+                  </span>
+                </button>
+              </div>
+
+              {/* Главное фото */}
+              <div className="pdp-main-image-wrapper">
+                {product.imageUrl ? (
+                  <Image
+                    src={product.imageUrl}
+                    alt={product.name}
+                    fill
+                    style={{ objectFit: "contain", padding: "16px" }}
+                    sizes="(max-width: 768px) 100vw, 480px"
+                    priority
+                  />
+                ) : (
+                  <span className="pdp-img-placeholder">📦</span>
+                )}
+                <div className="pdp-badge-returns">✓ 0% возвратов ›</div>
+                <div className="pdp-badge-zoom">🔍</div>
+              </div>
             </div>
           </div>
 
-          {/* Центральная колонка: Информация, бренд, О товаре */}
+          {/* ЦЕНТРАЛЬНАЯ КОЛОНКА: Информация о товаре */}
           <div className="pdp-col-center">
-            <div className="pdp-head">
-              {product.sku && <div className="pdp-sku">Артикул: {product.sku}</div>}
+            <div className="pdp-product-info">
+              {/* Заголовок */}
               <h1 className="pdp-title">{product.name}</h1>
 
+              {/* Рейтинг */}
               <div className="pdp-rating-row">
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 700, color: "#d97706" }}>
-                  <Star size={15} fill="#d97706" /> 4.9
-                </span>
-                <span className="text-muted">· 24 отзыва</span>
-                <span className="text-muted" style={{ display: "inline-flex", alignItems: "center", gap: 3, marginLeft: 8 }}>
-                  <MessageSquare size={13} /> 6 вопросов
-                </span>
+                <div className="pdp-rating-stars">
+                  <span className="pdp-star">★</span>
+                  4.9
+                </div>
+                <span className="pdp-rating-dot">•</span>
+                <a href="#reviews" className="pdp-rating-link">21 отзыв</a>
+                <span className="pdp-rating-dot">•</span>
+                <a href="#questions" className="pdp-questions-link">
+                  <MessageCircle size={13} /> 7 вопросов
+                </a>
               </div>
 
-              <div className="pdp-brand-box">
-                <span className="pdp-brand-logo">С</span>
+              {/* Бренд */}
+              <div className="pdp-brand-row">
+                <div className="pdp-brand-logo">С</div>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>СибГофроТорг <BadgeCheck size={14} style={{ color: "#16a34a", display: "inline" }} /></div>
-                  <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>Производитель • ГОСТ</div>
+                  <div className="pdp-brand-name">
+                    СибГофроТорг <BadgeCheck size={14} style={{ color: "#16a34a", display: "inline" }} />
+                  </div>
+                  <div className="pdp-brand-sub">Производитель • ГОСТ</div>
                 </div>
               </div>
 
-              <div className="pdp-status">
-                {product.inStock ? (
-                  <span className="pdp-status--in">
-                    <BadgeCheck size={14} /> В наличии на складе
-                    {product.stockQty != null && product.stockQty <= 30 && (
-                      <span className="pdp-status-qty"> · осталось {product.stockQty} шт.</span>
-                    )}
-                  </span>
-                ) : (
-                  <span className="pdp-status--out">
-                    <ShieldAlert size={14} /> Под заказ (изготовление от 2 дней)
-                  </span>
-                )}
-              </div>
-            </div>
+              {/* Варианты - заглушка (если нет данных о вариантах, не показываем) */}
+              {false && (
+                <>
+                  <div className="pdp-variants-section">
+                    <div className="pdp-variants-label">Название цвета:</div>
+                    <div className="pdp-variants-list">
+                      <button className="pdp-variant-btn active">Black</button>
+                      <button className="pdp-variant-btn">Pink</button>
+                      <button className="pdp-variant-btn">Teal</button>
+                      <button className="pdp-variant-btn">Ultramarine</button>
+                      <button className="pdp-variant-btn">White</button>
+                    </div>
+                  </div>
+                  <div className="pdp-variants-section">
+                    <div className="pdp-variants-label">Встроенная память:</div>
+                    <div className="pdp-variants-list">
+                      <button className="pdp-variant-btn">256 ГБ</button>
+                      <button className="pdp-variant-btn active">128 ГБ</button>
+                    </div>
+                  </div>
+                </>
+              )}
 
-            {/* О товаре (Характеристики) */}
-            <div className="pdp-about-section">
-              <h3 className="pdp-section-h3">О товаре</h3>
-              {specs.length > 0 ? (
-                <div className="pdp-specs-grid">
+              {/* Характеристики "О товаре" */}
+              <div className="pdp-specs-section">
+                <div className="pdp-specs-header">
+                  <span className="pdp-specs-title">О товаре</span>
+                  <a href="#description" className="pdp-specs-link">
+                    Перейти к описанию <ChevronRight size={14} />
+                  </a>
+                </div>
+                <div className="pdp-specs-table">
                   {specs.map((s, idx) => (
                     <div key={idx} className="pdp-spec-row">
-                      <span className="pdp-spec-label">{s.icon} {s.label}</span>
-                      <span className="pdp-spec-val">{s.value}</span>
+                      <div className="pdp-spec-name">
+                        {s.icon} {s.label}
+                        <span className="pdp-spec-help">ⓘ</span>
+                      </div>
+                      <div className="pdp-spec-value">{s.value}</div>
                     </div>
                   ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: 13, color: "var(--ink-muted)" }}>Характеристики уточняйте у менеджера</p>
-              )}
-            </div>
-
-            {/* Описание */}
-            {product.description && (
-              <div className="pdp-about-section">
-                <h3 className="pdp-section-h3">Описание</h3>
-                <p className="pdp-desc">{product.description}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Правая колонка: Buy-Box (Купить, цена, доставка) */}
-          <div className="pdp-col-buybox">
-            <div className="pdp-buybox-card">
-              {/* Цена */}
-              {effectivePrice != null && (
-                <div className="pdp-buybox-price">
-                  <div className="pdp-buybox-current">
-                    {effectivePrice.toLocaleString("ru-RU")} <span>₽</span>
-                  </div>
-                  {hasDiscount && product.price != null && (
-                    <div className="pdp-buybox-old">
-                      {product.price.toLocaleString("ru-RU")} ₽
+                  {specs.length === 0 && (
+                    <div className="pdp-spec-row">
+                      <div className="pdp-spec-name">Характеристики уточняйте у менеджера</div>
+                      <div className="pdp-spec-value">—</div>
                     </div>
                   )}
-                  {hasDiscount && product.discountBadge && (
-                    <span className="pdp-buybox-badge" style={{ background: badgeColorBg, color: badgeColorText }}>
-                      {product.discountBadge}
-                    </span>
-                  )}
                 </div>
-              )}
-
-              {product.priceWholesale != null && (
-                <div className="pdp-buybox-wholesale">
-                  Опт: <strong>{product.priceWholesale.toLocaleString("ru-RU")} ₽</strong>
-                  {product.minWholesaleQty && <span> (от {product.minWholesaleQty} шт.)</span>}
-                </div>
-              )}
-
-              <div className="pdp-buybox-divider" />
-
-              {/* Кнопка Добавить в корзину */}
-              <div style={{ marginBottom: 12 }}>
-                <AddToCartButton
-                  product={{
-                    id: product.id,
-                    name: product.name,
-                    sku: product.sku,
-                    price: effectivePrice ?? product.price,
-                    imageUrl: product.imageUrl,
-                    stockQty: product.stockQty,
-                    packQty: product.packQty,
-                  }}
-                />
               </div>
 
-              {/* Купить в один клик */}
-              <div style={{ marginBottom: 16 }}>
-                <QuickOrderForm productName={product.name} />
-              </div>
+              {/* Описание */}
+              {product.description && (
+                <div className="pdp-description-section" id="description">
+                  <h2 className="pdp-section-title">Описание</h2>
+                  <p className="pdp-desc">{product.description}</p>
+                </div>
+              )}
+            </div>
+          </div>
 
-              <div className="pdp-buybox-divider" />
+          {/* ПРАВАЯ КОЛОНКА: Блок покупки */}
+          <div className="pdp-col-buybox">
+            <div className="pdp-purchase-block">
+              <div className="pdp-purchase-card">
+                {/* Распродажа - показываем только если есть скидка */}
+                {hasDiscount && (
+                  <div className="pdp-sale-badge-row">
+                    <div className="pdp-sale-badge-left">
+                      <div className="pdp-sale-icon">%</div>
+                      <div>
+                        <div className="pdp-sale-text">Распродажа</div>
+                        <div className="pdp-sale-stock">
+                          {product.stockQty != null && product.stockQty <= 30
+                            ? `${product.stockQty} единиц осталось`
+                            : "Ограниченное количество"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="pdp-sale-days">
+                      {product.discountBadge ? `${product.discountBadge} до конца` : "7 дней до конца"}
+                    </div>
+                  </div>
+                )}
 
-              {/* Доставка и возврат */}
-              <div className="pdp-delivery-info">
-                <div className="pdp-delivery-row">
-                  <Truck size={16} style={{ color: "var(--kraft)" }} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>Доставка по Новосибирску</div>
-                    <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>Курьером или самовывоз со склада</div>
+                {/* Цена */}
+                {effectivePrice != null && (
+                  <>
+                    <div className="pdp-price-main">
+                      <div className="pdp-price-badge">{effectivePrice.toLocaleString("ru-RU")} ₽</div>
+                      <div className="pdp-price-card-label">с картой магазина</div>
+                      <div className="pdp-price-arrow">›</div>
+                    </div>
+                    <div className="pdp-price-secondary">
+                      <span className="pdp-price-regular">
+                        {hasDiscount && oldPrice != null
+                          ? oldPrice.toLocaleString("ru-RU")
+                          : effectivePrice.toLocaleString("ru-RU")}
+                        ₽
+                      </span>
+                      {hasDiscount && oldPrice != null && (
+                        <span className="pdp-price-old">{oldPrice.toLocaleString("ru-RU")} ₽</span>
+                      )}
+                      <span className="pdp-price-no-card">без карты</span>
+                    </div>
+                    <div className="pdp-cheaper-row">
+                      ♻ Стало дешевле ›
+                    </div>
+                  </>
+                )}
+
+                {/* Оптовая цена */}
+                {product.priceWholesale != null && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0f0f0" }}>
+                    <div style={{ fontSize: 13, color: "#8b8b8b" }}>Опт: <strong style={{ color: "var(--ok)", fontSize: 15 }}>{product.priceWholesale.toLocaleString("ru-RU")} ₽</strong>{product.minWholesaleQty && ` (от ${product.minWholesaleQty} шт.)`}</div>
+                  </div>
+                )}
+
+                {/* Оплатить позже */}
+                <div className="pdp-pay-later-row">
+                  <button className="pdp-btn-pay-later">Оплатить позже</button>
+                  <span className="pdp-pay-later-text">без % до 12 января</span>
+                </div>
+
+                {/* Хочу скидку */}
+                <div className="pdp-want-discount">
+                  <Heart size={14} style={{ color: "#8b8b8b" }} /> Хочу скидку
+                </div>
+
+                {/* Добавить в корзину */}
+                <div className="pdp-cart-row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <AddToCartButton
+                      product={{
+                        id: product.id,
+                        name: product.name,
+                        sku: product.sku,
+                        price: effectivePrice ?? product.price,
+                        imageUrl: product.imageUrl,
+                        stockQty: product.stockQty,
+                        packQty: product.packQty,
+                      }}
+                    />
+                  </div>
+                  <button className="pdp-btn-wishlist" title="В избранное" aria-label="В избранное">
+                    <Heart size={20} />
+                  </button>
+                </div>
+
+                <div className="pdp-delivery-text">Доставим с завтрашнего дня</div>
+
+                {/* Есть дешевле */}
+                <div className="pdp-cheaper-card">
+                  <div className="pdp-cheaper-img">📦</div>
+                  <div className="pdp-cheaper-info">
+                    <div className="pdp-cheaper-title">Есть дешевле</div>
+                    <div className="pdp-cheaper-price">от {(effectivePrice ?? product.price ?? 0) * 0.85} ₽</div>
+                  </div>
+                  <div className="pdp-cheaper-count">5 ›</div>
+                </div>
+
+                {/* Купить в один клик */}
+                <div style={{ marginBottom: 16 }}>
+                  <QuickOrderForm productName={product.name} />
+                </div>
+
+                {/* FAQ */}
+                <div className="pdp-faq-section">
+                  <div className="pdp-faq-title">Часто задаваемые вопросы</div>
+                  <div className="pdp-faq-links">
+                    <a href="/delivery" className="pdp-faq-link">Условия доставки</a>
+                    <a href="/delivery" className="pdp-faq-link">Возврат товаров</a>
+                    <a href="#" className="pdp-faq-link">Способы оплаты</a>
+                    <a href="#" className="pdp-faq-link">Возврат денег</a>
                   </div>
                 </div>
-                <div className="pdp-delivery-row" style={{ marginTop: 10 }}>
-                  <ShieldCheck size={16} style={{ color: "#16a34a" }} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>Гарантия качества ГОСТ</div>
-                    <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>Резерв заказа на 3 дня</div>
+
+                {/* Доставка и возврат */}
+                <div className="pdp-delivery-section">
+                  <div className="pdp-delivery-title">Доставка и возврат</div>
+                  <div className="pdp-delivery-row">
+                    <div className="pdp-delivery-icon">📍</div>
+                    <div className="pdp-delivery-info">
+                      <div className="pdp-delivery-address">Новосибирск, ул. Примерная, 1</div>
+                      <div className="pdp-delivery-from">Со склада продавца, Новосибирск</div>
+                    </div>
+                    <div className="pdp-delivery-arrow">›</div>
                   </div>
                 </div>
               </div>
@@ -316,9 +446,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           </div>
         </div>
 
-        {/* Похожие товары */}
+        {/* ПОХОЖИЕ ТОВАРЫ */}
         {related.length > 0 && (
-          <div className="pdp-related">
+          <div className="pdp-related" style={{ marginTop: 32 }}>
             <h2 className="pdp-related__title">Похожие товары</h2>
             <div className="product-grid-compact">
               {related.map((p: FirestoreProduct) => (
@@ -327,6 +457,70 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             </div>
           </div>
         )}
+
+        {/* НИЖНИЙ БЛОК: Фото покупателей */}
+        <div className="pdp-bottom-section">
+          <div className="pdp-bottom-section-title">Фото и видео покупателей</div>
+          <div className="pdp-buyer-photos">
+            {product.images && product.images.length > 0
+              ? product.images.slice(0, 4).map((img, idx) => (
+                  <div key={idx} className="pdp-buyer-photo">
+                    <Image src={img.url} alt="" width={80} height={80} style={{ objectFit: "cover" }} />
+                  </div>
+                ))
+              : product.imageUrl
+              ? [...Array(4)].map((_, idx) => (
+                  <div key={idx} className="pdp-buyer-photo">
+                    <Image src={product.imageUrl} alt="" width={80} height={80} style={{ objectFit: "cover" }} />
+                  </div>
+                ))
+              : [...Array(4)].map((_, idx) => (
+                  <div key={idx} className="pdp-buyer-photo" style={{ background: "#e0e0e0" }}>📦</div>
+                ))}
+            <div className="pdp-buyer-photo">
+              <div className="pdp-buyer-photo-more">+{Math.max(0, (product.images?.length || 1) - 4) + 2}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* НИЖНИЙ БЛОК: Полные характеристики */}
+        {specs.length > 0 && (
+          <div className="pdp-bottom-section">
+            <div className="pdp-bottom-section-title">Характеристики</div>
+            <div className="pdp-full-specs-table">
+              <div className="pdp-full-specs-group">
+                <div className="pdp-full-specs-group-title">Основные</div>
+                {specs.map((s, idx) => (
+                  <div key={idx} className="pdp-full-spec-row">
+                    <div className="pdp-full-spec-name">{s.icon} {s.label}</div>
+                    <div className="pdp-full-spec-value">{s.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* НИЖНИЙ БЛОК: Отзывы */}
+        <div className="pdp-bottom-section" id="reviews">
+          <div className="pdp-bottom-section-title">Отзывы • 0</div>
+          <div className="pdp-reviews-placeholder">
+            <div className="pdp-reviews-placeholder-icon">💬</div>
+            <p style={{ fontSize: 15, marginBottom: 8 }}>Пока нет отзывов</p>
+            <p style={{ fontSize: 13 }}>Будьте первым, кто оставит отзыв об этом товаре</p>
+          </div>
+        </div>
+
+        {/* НИЖНИЙ БЛОК: Вопросы */}
+        <div className="pdp-bottom-section" id="questions">
+          <div className="pdp-bottom-section-title">Вопросы и ответы • 0</div>
+          <div className="pdp-reviews-placeholder">
+            <div className="pdp-reviews-placeholder-icon">❓</div>
+            <p style={{ fontSize: 15, marginBottom: 8 }}>Пока нет вопросов</p>
+            <p style={{ fontSize: 13 }}>Задайте вопрос продавцу или покупателям</p>
+          </div>
+        </div>
+
       </div>
     </div>
   );
