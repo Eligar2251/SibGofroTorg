@@ -1,7 +1,7 @@
 // src/app/api/products/[productId]/reviews/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getProductReviews, getProductReviewStats, createProductReview, incrementReviewHelpful, hasUserPurchasedProduct, getUserOrderWithProduct } from "@/lib/firestore-queries";
-import { requireUserApi } from "@/lib/user-auth";
+import { getProductReviews, getProductReviewStats, createProductReview, markReviewHelpful, hasUserPurchasedProduct, getUserOrderWithProduct } from "@/lib/firestore-queries";
+import { requireUserApi, verifyUserSession } from "@/lib/user-auth";
 
 export async function GET(
   request: NextRequest,
@@ -88,7 +88,7 @@ export async function PATCH(
   try {
     await params; // productId не нужен для инкремента, но сохраняем сигнатуру
     const body = await request.json();
-    const { reviewId } = body;
+    const { reviewId, vid } = body;
 
     if (!reviewId || typeof reviewId !== "string") {
       return NextResponse.json(
@@ -97,8 +97,25 @@ export async function PATCH(
       );
     }
 
-    const helpfulCount = await incrementReviewHelpful(reviewId);
-    return NextResponse.json({ success: true, helpfulCount });
+    /* Один голос от уникального посетителя: uid авторизованного
+       пользователя, иначе ID анонимного из localStorage клиента */
+    const session = await verifyUserSession();
+    let voterKey: string | null = null;
+    if (session?.uid) {
+      voterKey = `u_${session.uid}`;
+    } else if (typeof vid === "string" && vid.length >= 8 && vid.length <= 120) {
+      voterKey = `v_${vid}`;
+    }
+
+    if (!voterKey) {
+      return NextResponse.json(
+        { error: "Не удалось определить посетителя" },
+        { status: 400 }
+      );
+    }
+
+    const { helpfulCount, already } = await markReviewHelpful(reviewId, voterKey);
+    return NextResponse.json({ success: true, helpfulCount, already });
   } catch (error) {
     console.error("Increment review helpful error:", error);
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });

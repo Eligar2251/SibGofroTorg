@@ -1732,3 +1732,95 @@ body:has(.admin-login) > main {
 .admin-shell ::-webkit-scrollbar-thumb:hover {
   background: var(--adm-sand);
 }
+/* ══════════════════════════════════════
+   MARKDOWN-РЕДАКТОР ОПИСАНИЯ ТОВАРА
+   ══════════════════════════════════════ */
+.md-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.md-editor__head .admin-label {
+  margin-bottom: 0;
+}
+
+.md-tabs {
+  display: inline-flex;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  overflow: hidden;
+}
+
+.md-tab {
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--adm-card);
+  color: var(--adm-ink-muted);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.md-tab + .md-tab {
+  border-left: 1px solid var(--adm-border-mid);
+}
+
+.md-tab--active {
+  background: var(--adm-green);
+  color: #fff;
+}
+
+.md-toolbar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.md-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card);
+  color: var(--adm-ink-soft);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.md-tool-btn:hover {
+  background: var(--adm-green-bg);
+  border-color: var(--adm-green);
+  color: var(--adm-green);
+}
+
+.md-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--adm-ink-muted);
+  line-height: 1.5;
+}
+
+.md-preview {
+  min-height: 120px;
+  padding: 10px 12px;
+  background: var(--adm-bg, #fafaf7);
+  border: 1px dashed var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--adm-ink);
+}
+
+.md-preview__empty {
+  color: var(--adm-ink-muted);
+  font-size: 12px;
+}

@@ -11,6 +11,8 @@ import {
 } from "@/lib/firestore-queries";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { AddToCartButton } from "@/components/catalog/AddToCartButton";
+import { MarkdownText } from "@/components/catalog/MarkdownText";
+import { stripMarkdown } from "@/lib/markdown";
 import { ProductViewTracker } from "@/components/catalog/ProductViewTracker";
 import { Stars } from "@/components/catalog/Stars";
 import { ReviewForm } from "@/components/catalog/ReviewForm";
@@ -88,9 +90,9 @@ export async function generateMetadata({
 
   const effectivePrice = getProductEffectivePrice(product);
   const title = `${product.name} купить в Новосибирске`;
-  const description =
-    product.description?.slice(0, 160) ||
-    `${product.name}${
+  const description = product.description
+    ? stripMarkdown(product.description).slice(0, 160)
+    : `${product.name}${
       effectivePrice != null
         ? ` — ${effectivePrice.toLocaleString("ru-RU")} ₽`
         : ""
@@ -203,7 +205,9 @@ export default async function ProductPage({
   const productLd = buildProductJsonLd({
     name: product.name,
     slug: product.slug,
-    description: product.description,
+    description: product.description
+      ? stripMarkdown(product.description)
+      : product.description,
     sku: product.sku,
     price: effectivePrice ?? product.price,
     imageUrl: product.imageUrl,
@@ -286,13 +290,16 @@ export default async function ProductPage({
           {/* ── 2. ГЛАВНОЕ ФОТО ── */}
           <div className="gallery-main">
             {product.imageUrl ? (
-              <Image
+              /* Фото в фактических пропорциях: контейнер повторяет
+                 соотношение сторон изображения, ничего не обрезается */
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
                 src={product.imageUrl}
                 alt={product.name}
-                fill
-                style={{ objectFit: "cover", objectPosition: "center" }}
-                sizes="(max-width: 700px) 100vw, (max-width: 1024px) 50vw, 480px"
-                priority
+                className="gallery-main__img"
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
               />
             ) : (
               <span className="pdp-img-placeholder">📦</span>
@@ -400,13 +407,14 @@ export default async function ProductPage({
                 </div>
               </div>
 
-              {/* Описание (сокращённое) */}
+              {/* Описание (markdown, сокращённое) */}
               {product.description && (
                 <div id="description" className="pdp-desc-block">
                   <h2 className="pdp-desc-title">Описание</h2>
-                  <p className="pdp-desc-text pdp-desc-text--clamp">
-                    {product.description}
-                  </p>
+                  <MarkdownText
+                    text={product.description}
+                    className="pdp-desc-text pdp-desc-text--clamp"
+                  />
                 </div>
               )}
             </div>

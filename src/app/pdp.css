@@ -174,8 +174,8 @@
 }
 
 /* ── Главное фото ──
-   aspect-ratio вместо min-height: фото не растягивается
-   по высоте соседних колонок */
+   Натуральные пропорции: контейнер подстраивается
+   под соотношение сторон изображения, без обрезки */
 .gallery-main {
   position: relative;
   display: flex;
@@ -185,8 +185,18 @@
   overflow: hidden;
   background: #f7f8f8;
   border: 1px solid var(--border);
-  aspect-ratio: 1 / 1;
   width: 100%;
+}
+
+.gallery-main__img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Квадрат оставляем только для заглушки без фото */
+.gallery-main:has(.pdp-img-placeholder) {
+  aspect-ratio: 1 / 1;
 }
 
 .pdp-img-placeholder {
@@ -494,7 +504,7 @@
 /* Цена — обычная, без «карты магазина» */
 .pdp-price-row {
   display: flex;
-  align-items: baseline;
+  align-items: center; /* бейдж −N% по центру строки, не прижат вниз */
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 14px;

@@ -4,10 +4,22 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Loader2, Trash2 } from "lucide-react";
+import {
+  Save,
+  Loader2,
+  Trash2,
+  Bold,
+  Italic,
+  Heading3,
+  List,
+  ListOrdered,
+  Link2,
+  Quote,
+} from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
+import { MarkdownText } from "@/components/catalog/MarkdownText";
 
 interface Category {
   id: string;
@@ -66,6 +78,40 @@ export function ProductFormClient({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [images, setImages] = useState<ProductImage[]>(product?.images || []);
+
+  // Markdown-редактор описания
+  const [descValue, setDescValue] = useState(product?.description || "");
+  const [descPreview, setDescPreview] = useState(false);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+
+  /* Оборачивает выделенный текст маркерами (**текст**, [текст](url)) */
+  function descWrap(before: string, after: string, placeholder = "текст") {
+    const ta = descRef.current;
+    if (!ta) return;
+    const { selectionStart: s, selectionEnd: e, value } = ta;
+    const selected = value.slice(s, e) || placeholder;
+    setDescValue(value.slice(0, s) + before + selected + after + value.slice(e));
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(
+        s + before.length,
+        s + before.length + selected.length
+      );
+    });
+  }
+
+  /* Добавляет префикс в начало текущей строки (списки, заголовок, цитата) */
+  function descPrefix(prefix: string) {
+    const ta = descRef.current;
+    if (!ta) return;
+    const { selectionStart: s, value } = ta;
+    const lineStart = value.lastIndexOf("\n", Math.max(0, s - 1)) + 1;
+    setDescValue(value.slice(0, lineStart) + prefix + value.slice(lineStart));
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(s + prefix.length, s + prefix.length);
+    });
+  }
 
   const isEdit = !!product?.id;
   const adminPath =
@@ -217,13 +263,116 @@ export function ProductFormClient({
           </div>
 
           <div className="admin-field">
-            <label className="admin-label">Описание</label>
-            <textarea
-              name="description"
-              rows={3}
-              defaultValue={product?.description || ""}
-              className="admin-textarea"
-            />
+            <div className="md-editor__head">
+              <label className="admin-label" htmlFor="pf-description">
+                Описание
+              </label>
+              <div className="md-tabs">
+                <button
+                  type="button"
+                  className={`md-tab${!descPreview ? " md-tab--active" : ""}`}
+                  onClick={() => setDescPreview(false)}
+                >
+                  Текст
+                </button>
+                <button
+                  type="button"
+                  className={`md-tab${descPreview ? " md-tab--active" : ""}`}
+                  onClick={() => setDescPreview(true)}
+                >
+                  Предпросмотр
+                </button>
+              </div>
+            </div>
+
+            {descPreview ? (
+              <div className="md-preview">
+                {descValue.trim() ? (
+                  <MarkdownText text={descValue} />
+                ) : (
+                  <span className="md-preview__empty">
+                    Пусто — переключитесь на «Текст» и напишите описание
+                  </span>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="md-toolbar">
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Жирный"
+                    onClick={() => descWrap("**", "**")}
+                  >
+                    <Bold size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Курсив"
+                    onClick={() => descWrap("*", "*")}
+                  >
+                    <Italic size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Заголовок"
+                    onClick={() => descPrefix("### ")}
+                  >
+                    <Heading3 size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Список"
+                    onClick={() => descPrefix("- ")}
+                  >
+                    <List size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Нумерованный список"
+                    onClick={() => descPrefix("1. ")}
+                  >
+                    <ListOrdered size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Ссылка"
+                    onClick={() => descWrap("[", "](https://)", "текст ссылки")}
+                  >
+                    <Link2 size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Цитата"
+                    onClick={() => descPrefix("> ")}
+                  >
+                    <Quote size={13} />
+                  </button>
+                </div>
+                <textarea
+                  id="pf-description"
+                  ref={descRef}
+                  name="description"
+                  rows={6}
+                  value={descValue}
+                  onChange={(e) => setDescValue(e.target.value)}
+                  className="admin-textarea"
+                  placeholder={
+                    "Короб для переезда и хранения.\n\n- выдерживает до 20 кг\n- **5-слойный** картон\n- размер в сборе: 400×300×300 мм"
+                  }
+                />
+                <div className="md-hint">
+                  Поддерживается Markdown: **жирный**, *курсив*, ### заголовок,
+                  - список, 1. нумерованный, [текст ссылки](https://)
+                </div>
+              </>
+            )}
           </div>
 
           <div className="admin-field">

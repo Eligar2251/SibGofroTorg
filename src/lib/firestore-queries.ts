@@ -774,6 +774,51 @@ export async function incrementReviewHelpful(reviewId: string): Promise<number> 
   return snap.data()?.helpfulCount || 0;
 }
 
+/**
+ * Отметка «полезно» у отзыва — один голос от одного уникального
+ * посетителя (uid авторизованного пользователя или ID анонимного
+ * из localStorage). Дедупликация детерминированным документом
+ * + транзакцией: повторный клик/гонка запросов не меняет счётчик.
+ */
+export async function markReviewHelpful(
+  reviewId: string,
+  voterKey: string
+): Promise<{ helpfulCount: number; already: boolean }> {
+  const db = getAdminDb();
+  const safeVoter = voterKey.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 120);
+  if (!safeVoter) throw new Error("voterKey обязателен");
+
+  const reviewRef = db.collection("productReviews").doc(reviewId);
+  const voteRef = db
+    .collection("reviewHelpfulVotes")
+    .doc(`${reviewId}__${safeVoter}`.slice(0, 1400));
+
+  return db.runTransaction(async (tx) => {
+    const [voteSnap, reviewSnap] = await Promise.all([
+      tx.get(voteRef),
+      tx.get(reviewRef),
+    ]);
+    if (!reviewSnap.exists) throw new Error("Отзыв не найден");
+    const current: number = reviewSnap.data()?.helpfulCount || 0;
+
+    if (voteSnap.exists) {
+      /* Этот посетитель уже голосовал — счётчик не трогаем */
+      return { helpfulCount: current, already: true };
+    }
+
+    tx.set(voteRef, {
+      reviewId,
+      voterKey: safeVoter,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(reviewRef, {
+      helpfulCount: current + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { helpfulCount: current + 1, already: false };
+  });
+}
+
 // ─── Product Questions ────────────────────────────────────
 
 export async function getProductQuestions(
