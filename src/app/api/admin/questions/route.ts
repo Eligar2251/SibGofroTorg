@@ -1,6 +1,13 @@
 // src/app/api/admin/questions/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getProductQuestions, getProductQuestionCount, answerProductQuestion, updateProductQuestion, deleteProductQuestion } from "@/lib/firestore-queries";
+import {
+  getProductQuestions,
+  getAllProductQuestions,
+  getProducts,
+  answerProductQuestion,
+  updateProductQuestion,
+  deleteProductQuestion,
+} from "@/lib/firestore-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -12,67 +19,63 @@ export async function GET(request: NextRequest) {
     const productId = searchParams.get("productId");
     const limitCount = parseInt(searchParams.get("limit") || "20");
     const offset = parseInt(searchParams.get("offset") || "0");
-    const status = searchParams.get("status") as "all" | "pending" | "approved" | "rejected" || "all";
+    const status =
+      (searchParams.get("status") as
+        | "all"
+        | "pending"
+        | "approved"
+        | "rejected") || "all";
     const search = searchParams.get("search") || "";
-    const answered = searchParams.get("answered") as "all" | "answered" | "unanswered" || "all";
+    const answered =
+      (searchParams.get("answered") as "all" | "answered" | "unanswered") ||
+      "all";
 
-    if (!productId) {
-      return NextResponse.json({ error: "Product ID required" }, { status: 400 });
+    /* Карта productId → название товара */
+    const products = await getProducts({});
+    const productNameMap = new Map(products.map((p) => [p.id, p.name]));
+
+    let questions = productId
+      ? await getProductQuestions(productId, {
+          limitCount: 500,
+          offset: 0,
+          onlyApproved: false,
+        })
+      : await getAllProductQuestions(500);
+
+    /* Фильтр по статусу модерации */
+    if (status !== "all") {
+      questions = questions.filter((q) => q.moderationStatus === status);
     }
 
-    const onlyApproved = status === "approved";
-    const onlyRejected = status === "rejected";
-    const onlyPending = status === "pending";
-
-    let questions;
-    if (onlyApproved) {
-      questions = await getProductQuestions(productId, { 
-        limitCount, 
-        offset, 
-        onlyApproved: true,
-        onlyAnswered: answered === "answered" ? true : answered === "unanswered" ? false : undefined,
-      });
-    } else if (onlyPending) {
-      questions = await getProductQuestions(productId, { 
-        limitCount, 
-        offset, 
-        onlyApproved: false,
-        onlyAnswered: answered === "answered" ? true : answered === "unanswered" ? false : undefined,
-      });
-    } else if (onlyRejected) {
-      // For rejected, we need to get all and filter
-      questions = await getProductQuestions(productId, { 
-        limitCount: 1000, 
-        offset: 0, 
-        onlyApproved: false,
-        onlyAnswered: answered === "answered" ? true : answered === "unanswered" ? false : undefined,
-      });
-      questions = questions.filter(q => q.moderationStatus === "rejected");
-    } else {
-      // all statuses
-      questions = await getProductQuestions(productId, { 
-        limitCount, 
-        offset, 
-        onlyApproved: false,
-        onlyAnswered: answered === "answered" ? true : answered === "unanswered" ? false : undefined,
-      });
-      if (status !== "all") {
-        questions = questions.filter(q => q.moderationStatus === status);
-      }
+    /* Фильтр по наличию ответа */
+    if (answered === "answered") {
+      questions = questions.filter((q) => q.isAnswered);
+    } else if (answered === "unanswered") {
+      questions = questions.filter((q) => !q.isAnswered);
     }
 
-    // Apply search filter
+    /* Поиск по тексту, автору, товару */
     if (search) {
       const searchLower = search.toLowerCase();
-      questions = questions.filter(q => 
-        q.question.toLowerCase().includes(searchLower) ||
-        q.userName.toLowerCase().includes(searchLower)
+      questions = questions.filter(
+        (q) =>
+          q.question.toLowerCase().includes(searchLower) ||
+          (q.answer && q.answer.toLowerCase().includes(searchLower)) ||
+          q.userName.toLowerCase().includes(searchLower) ||
+          (productNameMap.get(q.productId) || "")
+            .toLowerCase()
+            .includes(searchLower)
       );
     }
 
-    // Apply pagination after search
+    // Пагинация после всех фильтров
     const totalCount = questions.length;
-    const paginatedQuestions = questions.slice(offset, offset + limitCount);
+    const paginatedQuestions = questions
+      .slice(offset, offset + limitCount)
+      .map((q) => ({
+        ...q,
+        productName: productNameMap.get(q.productId) || null,
+      }));
     const totalPages = Math.ceil(totalCount / limitCount);
 
     return NextResponse.json({ 

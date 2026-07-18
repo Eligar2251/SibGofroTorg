@@ -36,6 +36,7 @@ export default async function AdminProductsPage({
     promoLabel: p.promoLabel ?? null,
     isVisible: p.isVisible,
     imageUrl: p.imageUrl ?? null,
+    viewCount: p.viewCount ?? 0,
   }));
 
   const serializedCats = cats.map((c) => ({

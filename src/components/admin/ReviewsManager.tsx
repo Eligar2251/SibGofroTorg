@@ -27,11 +27,6 @@ interface Review {
   updatedAt?: any;
 }
 
-interface Product {
-  id: string;
-  name: string;
-}
-
 interface ReviewStats {
   averageRating: number;
   totalReviews: number;
@@ -42,7 +37,6 @@ interface ReviewStats {
 
 export function ReviewsManager() {
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [products, setProducts] = useState<{id: string, name: string}[]>([]);
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -59,20 +53,7 @@ export function ReviewsManager() {
     note: string;
   } | null>(null);
 
-  async function fetchProducts() {
-    try {
-      const res = await fetch("/api/admin/products?limit=1000");
-      const data = await res.json();
-      if (res.ok) {
-        setProducts(data.products);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
   async function fetchReviews() {
-    if (products.length === 0) return;
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -81,12 +62,12 @@ export function ReviewsManager() {
         status: filterStatus,
         search: searchQuery,
       });
-      const res = await fetch(`/api/admin/reviews?productId=${products[0]?.id || ""}&${params}`);
+      const res = await fetch(`/api/admin/reviews?${params}`);
       const data = await res.json();
       if (res.ok) {
         setReviews(data.reviews);
         setStats(data.stats);
-        setTotalPages(data.totalPages);
+        setTotalPages(data.totalPages || 1);
       }
     } catch (e) {
       console.error(e);
@@ -95,14 +76,8 @@ export function ReviewsManager() {
   }
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  useEffect(() => {
-    if (products.length > 0) {
-      fetchReviews();
-    }
-  }, [currentPage, filterStatus, searchQuery, products.length]);
+    fetchReviews();
+  }, [currentPage, filterStatus, searchQuery]);
 
   // ... rest of the component remains the same
 

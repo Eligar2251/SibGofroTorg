@@ -11,6 +11,7 @@ import {
 } from "@/lib/firestore-queries";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { AddToCartButton } from "@/components/catalog/AddToCartButton";
+import { ProductViewTracker } from "@/components/catalog/ProductViewTracker";
 import { Stars } from "@/components/catalog/Stars";
 import { ReviewForm } from "@/components/catalog/ReviewForm";
 import { ReviewHelpfulButton } from "@/components/catalog/ReviewHelpfulButton";
@@ -223,6 +224,7 @@ export default async function ProductPage({
   return (
     <div className="pdp-page">
       <JsonLd data={[breadcrumb, productLd]} />
+      <ProductViewTracker productId={product.id} />
 
       {/* ══ ХЛЕБНЫЕ КРОШКИ ══ */}
       <div className="pdp-breadcrumb-bar">

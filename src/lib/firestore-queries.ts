@@ -597,6 +597,16 @@ export async function deleteProductReview(reviewId: string) {
 
 // ─── Product Views ────────────────────────────────────────
 
+/**
+ * Записывает просмотр товара.
+ * Уникальный зритель = +1 навсегда: ни обновление страницы, ни повторные
+ * переходы не накручивают счётчик.
+ *
+ * Дедупликация — по детерминированному ID документа {productId}__{viewerKey}:
+ * viewerKey = userId (для авторизованных) либо долгоживущий sessionId из
+ * localStorage (для анонимов). Транзакция устраняет гонки (двойной клик,
+ * React StrictMode, два запроса параллельно).
+ */
 export async function recordProductView(
   productId: string,
   options: {
@@ -610,40 +620,41 @@ export async function recordProductView(
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 
-  // Check if this session already viewed this product recently (within 30 min)
-  const recentViewSnap = await db
-    .collection("productViews")
-    .where("productId", "==", productId)
-    .where("sessionId", "==", options.sessionId)
-    .where("viewedAt", ">", new Date(Date.now() - 30 * 60 * 1000).toISOString())
-    .limit(1)
-    .get();
+  const viewerKey = options.userId
+    ? `u_${options.userId}`
+    : `s_${options.sessionId}`;
+  const docId = `${productId}__${viewerKey}`
+    .replace(/\//g, "_")
+    .slice(0, 300);
 
-  const isUnique = recentViewSnap.empty;
+  const viewRef = db.collection("productViews").doc(docId);
+  const productRef = db.collection("products").doc(productId);
 
-  if (isUnique) {
-    // Record the view
-    const viewRef = db.collection("productViews").doc();
-    await viewRef.set({
-      productId,
-      userId: options.userId ?? null,
-      sessionId: options.sessionId,
-      ipHash: options.ipHash ?? null,
-      userAgent: options.userAgent ?? null,
-      referrer: options.referrer ?? null,
-      viewedAt: now,
-    });
+  let isUnique = false;
 
-    // Increment product view count atomically
-    const productRef = db.collection("products").doc(productId);
-    await productRef.update({
-      viewCount: FieldValue.increment(1),
-      updatedAt: now,
-    });
-  }
+  await db.runTransaction(async (tx) => {
+    const viewSnap = await tx.get(viewRef);
+    if (!viewSnap.exists) {
+      tx.set(viewRef, {
+        productId,
+        userId: options.userId ?? null,
+        sessionId: options.sessionId,
+        ipHash: options.ipHash ?? null,
+        userAgent: options.userAgent ?? null,
+        referrer: options.referrer ?? null,
+        viewedAt: now,
+      });
+      // merge — у старых товаров поля viewCount может не быть
+      tx.set(
+        productRef,
+        { viewCount: FieldValue.increment(1), updatedAt: now },
+        { merge: true }
+      );
+      isUnique = true;
+    }
+  });
 
-  // Get current view count
-  const productSnap = await db.collection("products").doc(productId).get();
+  const productSnap = await productRef.get();
   const viewCount = productSnap.data()?.viewCount || 0;
 
   return { isUnique, viewCount };
@@ -786,6 +797,21 @@ export async function getProductQuestionCount(productId: string, onlyApproved = 
   }
   const snap = await q.get();
   return snap.size;
+}
+
+/**
+ * Все вопросы по всем товарам (для админки), сортировка по дате убыванию.
+ */
+export async function getAllProductQuestions(
+  limitCount = 500
+): Promise<ProductQuestion[]> {
+  const db = getAdminDb();
+  const snap = await db
+    .collection("productQuestions")
+    .orderBy("createdAt", "desc")
+    .limit(limitCount)
+    .get();
+  return snap.docs.map((d) => mapQuestion(d.id, d.data()));
 }
 
 export async function createProductQuestion(data: Omit<ProductQuestion, "id" | "createdAt" | "updatedAt" | "helpfulCount" | "isAnswered" | "isApproved" | "moderationStatus" | "answer" | "answerAuthor" | "answeredAt">): Promise<string> {
@@ -988,5 +1014,61 @@ export async function getProductReviewStats(productId: string) {
     distribution,
     withPhotos,
     withProsCons,
+  };
+}
+
+/**
+ * Все отзывы по всем товарам (для админки), сортировка по дате убыванию.
+ */
+export async function getAllProductReviews(
+  limitCount = 500
+): Promise<ProductReview[]> {
+  const db = getAdminDb();
+  const snap = await db
+    .collection("productReviews")
+    .orderBy("createdAt", "desc")
+    .limit(limitCount)
+    .get();
+  return snap.docs.map((d) => mapReview(d.id, d.data()));
+}
+
+/**
+ * Сводная статистика по всем отзывам (для админки).
+ * Считаем по коллекции целиком — объём отзывов небольшой.
+ */
+export async function getGlobalReviewStats() {
+  const db = getAdminDb();
+  const snap = await db.collection("productReviews").get();
+  const reviews = snap.docs.map((d) => d.data());
+
+  const totalReviews = reviews.length;
+  let withPhotos = 0;
+  let withProsCons = 0;
+  let sumRating = 0;
+  const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+  let pendingCount = 0;
+  let approvedCount = 0;
+
+  reviews.forEach((r) => {
+    const rating = r.rating || 0;
+    sumRating += rating;
+    if (rating >= 1 && rating <= 5) {
+      distribution[rating as keyof typeof distribution]++;
+    }
+    if (r.images && r.images.length > 0) withPhotos++;
+    if ((r.pros && r.pros.trim()) || (r.cons && r.cons.trim())) withProsCons++;
+    if (r.moderationStatus === "pending") pendingCount++;
+    if (r.moderationStatus === "approved") approvedCount++;
+  });
+
+  return {
+    averageRating:
+      totalReviews > 0 ? Math.round((sumRating / totalReviews) * 10) / 10 : 0,
+    totalReviews,
+    distribution,
+    withPhotos,
+    withProsCons,
+    pendingCount,
+    approvedCount,
   };
 }

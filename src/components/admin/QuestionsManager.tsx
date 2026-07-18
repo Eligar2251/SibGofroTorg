@@ -23,14 +23,8 @@ interface Question {
   updatedAt?: any;
 }
 
-interface Product {
-  id: string;
-  name: string;
-}
-
 export function QuestionsManager() {
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
@@ -57,18 +51,11 @@ export function QuestionsManager() {
         answered: filterAnswered,
         search: searchQuery,
       });
-      // Use first product for now - in real app you'd have a product selector
-      const productId = products[0]?.id || "";
-      if (!productId) {
-        setQuestions([]);
-        setTotalPages(1);
-        return;
-      }
-      const res = await fetch(`/api/admin/questions?productId=${productId}&${params}`);
+      const res = await fetch(`/api/admin/questions?${params}`);
       const data = await res.json();
       if (res.ok) {
         setQuestions(data.questions);
-        setTotalPages(data.totalPages);
+        setTotalPages(data.totalPages || 1);
       }
     } catch (e) {
       console.error(e);
@@ -76,30 +63,9 @@ export function QuestionsManager() {
     setLoading(false);
   }
 
-  async function fetchProducts() {
-    try {
-      const res = await fetch("/api/admin/products?limit=1000");
-      const data = await res.json();
-      if (res.ok) {
-        setProducts(data.products);
-        if (data.products.length > 0) {
-          fetchQuestions();
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
   useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  useEffect(() => {
-    if (products.length > 0) {
-      fetchQuestions();
-    }
-  }, [currentPage, filterStatus, filterAnswered, searchQuery, products.length]);
+    fetchQuestions();
+  }, [currentPage, filterStatus, filterAnswered, searchQuery]);
 
   async function handleAnswer(questionId: string, answer: string, answerAuthor: "seller" | "admin") {
     setSaving(true);

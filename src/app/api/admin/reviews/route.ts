@@ -1,6 +1,13 @@
 // src/app/api/admin/reviews/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getProductReviews, getProductReviewStats, createProductReview, incrementReviewHelpful, updateProductReview, deleteProductReview, getProductRating } from "@/lib/firestore-queries";
+import {
+  getProductReviews,
+  getProductReviewStats,
+  getAllProductReviews,
+  getGlobalReviewStats,
+  getProducts,
+  createProductReview,
+} from "@/lib/firestore-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -12,46 +19,71 @@ export async function GET(request: NextRequest) {
     const productId = searchParams.get("productId");
     const limitCount = parseInt(searchParams.get("limit") || "20");
     const page = parseInt(searchParams.get("page") || "1");
+    const status = (searchParams.get("status") || "all") as
+      | "all"
+      | "pending"
+      | "approved"
+      | "rejected";
+    const search = (searchParams.get("search") || "").trim().toLowerCase();
+
+    /* Карта productId → название товара для обогащения отзывов */
+    const products = await getProducts({});
+    const productNameMap = new Map(products.map((p) => [p.id, p.name]));
+
+    let allReviews;
+    let stats;
+
+    if (productId) {
+      /* Режим одного товара */
+      [allReviews, stats] = await Promise.all([
+        getProductReviews(productId, {
+          limitCount: 500,
+          sortBy: "newest",
+          onlyApproved: false,
+        }),
+        getProductReviewStats(productId),
+      ]);
+    } else {
+      /* Режим всех товаров */
+      [allReviews, stats] = await Promise.all([
+        getAllProductReviews(500),
+        getGlobalReviewStats(),
+      ]);
+    }
+
+    /* Фильтр по статусу */
+    let filtered = allReviews;
+    if (status !== "all") {
+      filtered = filtered.filter((r) => r.moderationStatus === status);
+    }
+
+    /* Поиск по тексту, автору, товару */
+    if (search) {
+      filtered = filtered.filter((r) => {
+        const productName = (productNameMap.get(r.productId) || "").toLowerCase();
+        return (
+          r.text?.toLowerCase().includes(search) ||
+          (r.title && r.title.toLowerCase().includes(search)) ||
+          r.userName?.toLowerCase().includes(search) ||
+          productName.includes(search)
+        );
+      });
+    }
+
+    const totalAfterFilter = filtered.length;
     const offset = (page - 1) * limitCount;
-    const sortBy = searchParams.get("sortBy") as "newest" | "helpful" | "rating_high" | "rating_low" || "newest";
-    const status = searchParams.get("status") as "all" | "pending" | "approved" | "rejected" || "all";
-    const search = searchParams.get("search") || "";
+    const paged = filtered.slice(offset, offset + limitCount);
 
-    if (!productId) {
-      return NextResponse.json({ error: "Product ID required" }, { status: 400 });
-    }
+    const enriched = paged.map((r) => ({
+      ...r,
+      productName: productNameMap.get(r.productId) || null,
+    }));
 
-    const onlyApproved = status === "approved";
-    const filterStatus = status !== "all" ? status : undefined;
-
-    let q = {
-      limitCount,
-      offset,
-      sortBy,
-      onlyApproved,
-    };
-
-    if (filterStatus) {
-      // We'll filter in the query function
-    }
-
-    const [reviews, stats] = await Promise.all([
-      getProductReviews(productId, { limitCount, offset, sortBy, onlyApproved }),
-      getProductReviewStats(productId),
-    ]);
-
-    // Filter by status if needed
-    let filteredReviews = reviews;
-    if (status === "pending") {
-      filteredReviews = reviews.filter(r => r.moderationStatus === "pending");
-    } else if (status === "rejected") {
-      filteredReviews = reviews.filter(r => r.moderationStatus === "rejected");
-    }
-
-    return NextResponse.json({ 
-      reviews: filteredReviews, 
+    return NextResponse.json({
+      reviews: enriched,
       stats,
-      totalPages: Math.ceil(stats.totalReviews / limitCount)
+      total: totalAfterFilter,
+      totalPages: Math.max(1, Math.ceil(totalAfterFilter / limitCount)),
     });
   } catch (error) {
     console.error("Admin get reviews error:", error);

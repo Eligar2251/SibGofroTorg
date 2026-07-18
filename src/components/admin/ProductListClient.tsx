@@ -18,6 +18,7 @@ interface ProductItem {
   promoLabel?: string | null;
   isVisible: boolean;
   imageUrl?: string | null;
+  viewCount?: number;
 }
 
 export function ProductListClient({
@@ -178,6 +179,9 @@ export function ProductListClient({
                 <th>Товар</th>
                 <th>Категория</th>
                 <th>Цена</th>
+                <th style={{ width: 110 }} title="Уникальные посетители страницы товара">
+                  Просмотры
+                </th>
                 <th>Статус</th>
                 <th>Действия</th>
               </tr>
@@ -236,6 +240,22 @@ export function ProductListClient({
                           опт: {product.priceWholesale.toLocaleString("ru-RU")} ₽
                         </div>
                       )}
+                    </td>
+                    <td>
+                      <span
+                        className="admin-views-cell"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontWeight: 600,
+                          color: (product.viewCount ?? 0) > 0 ? "var(--ink)" : "var(--ink-faint)",
+                        }}
+                        title="Уникальные посетители страницы товара"
+                      >
+                        <Eye size={14} style={{ opacity: 0.55, flexShrink: 0 }} />
+                        {(product.viewCount ?? 0).toLocaleString("ru-RU")}
+                      </span>
                     </td>
                     <td>
                       <div className="admin-row">
