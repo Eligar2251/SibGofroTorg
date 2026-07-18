@@ -36,22 +36,7 @@ export function OrderDeleteButton({ orderId }: { orderId: string }) {
       onClick={handleDelete}
       disabled={loading}
       title="Удалить заявку"
-      style={{
-        marginTop: 8,
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 12px",
-        borderRadius: 8,
-        border: "1px solid #fecaca",
-        background: "#fff5f5",
-        color: "#dc2626",
-        fontSize: 12,
-        fontWeight: 600,
-        cursor: "pointer",
-        width: "100%",
-        justifyContent: "center",
-      }}
+      className="admin-status__btn admin-status__btn--delete"
     >
       {loading ? (
         <Loader2 size={13} className="animate-spin" />

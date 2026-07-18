@@ -1089,6 +1089,15 @@ select {
   margin-top: auto;
 }
 
+/* На десктопе приподнимаем ссылку «Рассчитать выплату» так, чтобы её
+   вертикальный центр совпадал с центром строки CTA слева
+   (кнопка каталога 50px + нижний паддинг 48px ⇒ центр на 73px от низа) */
+@media (min-width: 900px) {
+  .btn-hero-secondary {
+    margin-bottom: 18px;
+  }
+}
+
 /* ══════════════════════════════════════
    ПОИСК-ПАНЕЛЬ
    ══════════════════════════════════════ */
@@ -1278,10 +1287,71 @@ select {
   color: var(--green-dark);
 }
 
-.deals-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+/* Акции всегда в одну строку: при переполнении — плавная
+   прокрутка стрелками, без переноса карточек на новый ряд */
+.deals-row {
+  position: relative;
+}
+
+.deals-track {
+  display: flex;
   gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+.deals-track::-webkit-scrollbar {
+  display: none; /* Chrome/Safari — скроллбар скрыт, листаем стрелками */
+}
+
+.deals-track > * {
+  /* Ровно 4 карточки в ряд, как раньше в grid */
+  flex: 0 0 calc(25% - 10.5px);
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+.deals-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink);
+  z-index: 5;
+  padding: 0;
+  transition:
+    opacity var(--transition),
+    box-shadow var(--transition),
+    color var(--transition);
+}
+
+.deals-arrow:hover:not(:disabled) {
+  box-shadow: var(--shadow-lg);
+  color: var(--green);
+}
+
+.deals-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.deals-arrow--prev {
+  left: -14px;
+}
+
+.deals-arrow--next {
+  right: -14px;
 }
 
 .deal-card {
@@ -1509,8 +1579,8 @@ select {
   box-shadow: var(--shadow-sm);
   background: #ffffff;
   min-height: 480px;
-  max-width: 920px;
-  margin-inline: auto;
+  /* Ширина = общему контейнеру, края совпадают с остальными секциями */
+  width: 100%;
 }
 
 .map-info {
@@ -5366,8 +5436,16 @@ select {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .deals-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .deals-track > * {
+    flex: 0 0 calc(50% - 7px);
+  }
+
+  .deals-arrow--prev {
+    left: -6px;
+  }
+
+  .deals-arrow--next {
+    right: -6px;
   }
 
   .home-catalog-unified {
@@ -5503,12 +5581,15 @@ select {
 }
 
 @media (max-width: 768px) {
-  
+  .deals-track > * {
+    /* Одна карточка + «подглядывающая» следующая, листается свайпом.
+       min() — чтобы на широком телефоне карточка не расползалась */
+    flex: 0 0 min(74%, 260px);
+  }
 
-  
-
-  .deals-grid {
-    grid-template-columns: 1fr;
+  /* На тач-устройствах стрелки не нужны — нативный свайп */
+  .deals-arrow {
+    display: none;
   }
 
   .products-grid-4 {

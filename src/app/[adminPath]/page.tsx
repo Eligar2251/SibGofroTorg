@@ -17,7 +17,6 @@ import {
   BarChart3,
   Megaphone,
   Star,
-  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminDb } from "@/lib/firebase-admin";
@@ -29,7 +28,7 @@ const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
-  completed: "Выполнена",
+  completed: "Проведена",
   rejected: "Отклонена",
 };
 
@@ -199,15 +198,6 @@ export default async function AdminDashboard() {
             iconBg: "rgba(245,166,35,0.12)",
             iconColor: "#f5a623",
             sub: "управление отзывами",
-          },
-          {
-            label: "Вопросы",
-            value: 0,
-            icon: <MessageSquare size={20} />,
-            href: `/${ADMIN_PATH}/questions`,
-            iconBg: "rgba(59,130,246,0.12)",
-            iconColor: "#3b82f6",
-            sub: "управление вопросами",
           },
         ].map((stat) => (
           <Link key={stat.label} href={stat.href} className="admin-stat">
@@ -622,10 +612,6 @@ export default async function AdminDashboard() {
                 {
                   href: `/${ADMIN_PATH}/reviews`,
                   label: "⭐ Отзывы покупателей",
-                },
-                {
-                  href: `/${ADMIN_PATH}/questions`,
-                  label: "❓ Вопросы к товарам",
                 },
                 {
                   href: `/${ADMIN_PATH}/settings`,

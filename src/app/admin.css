@@ -1394,6 +1394,10 @@
 .admin-order__side {
   width: 100%;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 }
 
 @media (min-width: 1024px) {
@@ -1426,15 +1430,81 @@
 .admin-status {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  align-items: flex-end;
+  gap: 10px;
+  align-items: stretch;
+  width: 100%;
+}
+
+/* Бейдж текущего статуса — на всю ширину колонки, по центру */
+.admin-status > .admin-badge {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 10px;
+  font-size: 12px;
 }
 
 .admin-status__btns {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Кнопки действий по заявке — аккуратная колонка,
+   все одной ширины и высоты */
+.admin-status__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: var(--adm-r-sm);
+  border: 1.5px solid transparent;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.admin-status__btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.admin-status__btn--primary {
+  background: var(--adm-pine);
+  color: #fff;
+}
+
+.admin-status__btn--primary:hover:not(:disabled) {
+  background: #163a22;
+}
+
+.admin-status__btn--outline-red {
+  background: #fff;
+  color: var(--adm-rust);
+  border-color: var(--adm-rust-line);
+}
+
+.admin-status__btn--outline-red:hover:not(:disabled) {
+  background: var(--adm-rust-pale);
+  border-color: var(--adm-rust);
+}
+
+.admin-status__btn--delete {
+  background: var(--adm-rust-pale);
+  color: var(--adm-rust);
+  border-color: var(--adm-rust-line);
+}
+
+.admin-status__btn--delete:hover:not(:disabled) {
+  background: #fbe3de;
+  border-color: var(--adm-rust);
 }
 
 .admin-status__reason {

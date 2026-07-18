@@ -3,6 +3,7 @@ import { getCategories, getProducts, getPromotions, getProductById } from "@/lib
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
+import { DealsRow } from "@/components/home/DealsRow";
 import {
   ArrowRight,
   Phone,
@@ -226,7 +227,7 @@ export default async function HomePage() {
               Все предложения <ArrowRight size={13} />
             </Link>
           </div>
-          <div className="deals-grid">
+          <DealsRow>
             {deals.map((d, i) => (
               <div
                 key={i}
@@ -268,7 +269,7 @@ export default async function HomePage() {
                 )}
               </div>
             ))}
-          </div>
+          </DealsRow>
         </div>
       </section>
 

@@ -11,7 +11,7 @@ const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
-  completed: "Выполнена",
+  completed: "Проведена",
   rejected: "Отклонена",
 };
 
@@ -40,7 +40,7 @@ const filterOptions = [
   { value: "all", label: "Все" },
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
-  { value: "completed", label: "Выполненные" },
+  { value: "completed", label: "Проведённые" },
   { value: "rejected", label: "Отклонённые" },
 ];
 

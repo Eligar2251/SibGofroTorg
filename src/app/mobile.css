@@ -59,10 +59,6 @@ body {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .deals-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   /* Чекаут */
   .checkout-layout {
     grid-template-columns: 1fr 300px;
@@ -496,24 +492,9 @@ body {
     gap: 8px;
   }
 
-  .deals-grid {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    gap: 10px;
-    padding-bottom: 6px;
-    grid-template-columns: none;
-  }
-
-  .deals-grid::-webkit-scrollbar {
-    display: none;
-  }
-
+  /* Прокрутка ряда акций задаётся в globals.css (.deals-track).
+     Здесь — только компактный вид самих карточек на телефоне */
   .deal-card {
-    flex: 0 0 70vw;
-    max-width: 260px;
-    scroll-snap-align: start;
     border-radius: 12px;
     padding: 14px;
   }

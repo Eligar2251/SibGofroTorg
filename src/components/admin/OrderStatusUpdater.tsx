@@ -29,7 +29,7 @@ const STATUSES = [
   },
   {
     value: "completed",
-    label: "Выполнена",
+    label: "Проведена",
     badge: "admin-badge admin-badge--green",
     icon: <CheckCircle size={13} />,
   },
@@ -101,48 +101,33 @@ export function OrderStatusUpdater({
         {currentStatusObj.label}
       </span>
 
-      <div className="admin-status__btns">
-        {STATUSES.filter((s) => s.value !== currentStatus).map((s) => {
-          if (s.value === "rejected") return null;
-          return (
-            <button
-              key={s.value}
-              type="button"
-              onClick={() => updateStatus(s.value)}
-              disabled={saving}
-              className={`${s.badge} admin-btn--sm`}
-              style={{
-                cursor: "pointer",
-                border: "1px solid transparent",
-                fontFamily: "inherit",
-              }}
-            >
-              {saving ? (
-                <Loader2 size={10} className="animate-spin" />
-              ) : (
-                `→ ${s.label}`
-              )}
-            </button>
-          );
-        })}
+      {(currentStatus === "new" || currentStatus === "in_progress") && (
+        <div className="admin-status__btns">
+          <button
+            type="button"
+            onClick={() => updateStatus("completed")}
+            disabled={saving}
+            className="admin-status__btn admin-status__btn--primary"
+          >
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <CheckCircle size={14} />
+            )}
+            Провести
+          </button>
 
-        {currentStatus !== "rejected" && currentStatus !== "completed" && (
           <button
             type="button"
             onClick={() => setShowCloseModal(true)}
             disabled={saving}
-            className="admin-badge admin-badge--red"
-            style={{
-              cursor: "pointer",
-              border: "1px solid #fecaca",
-              fontFamily: "inherit",
-            }}
+            className="admin-status__btn admin-status__btn--outline-red"
           >
-            <XCircle size={10} />
-            Закрыть заявку
+            <XCircle size={14} />
+            Отменить
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {currentCloseReason && (
         <div className="admin-status__reason">Причина: {currentCloseReason}</div>
@@ -152,7 +137,7 @@ export function OrderStatusUpdater({
         <div className="admin-modal-overlay">
           <div className="admin-modal">
             <div className="admin-modal__head">
-              <h3 className="admin-modal__title">Закрыть заявку</h3>
+              <h3 className="admin-modal__title">Отменить заявку</h3>
               <button
                 type="button"
                 onClick={() => setShowCloseModal(false)}
@@ -163,7 +148,7 @@ export function OrderStatusUpdater({
             </div>
 
             <p className="admin-modal__desc">
-              Выберите причину закрытия или введите вручную:
+              Выберите причину отмены или введите вручную:
             </p>
 
             <div className="admin-radio-list">
@@ -209,7 +194,7 @@ export function OrderStatusUpdater({
                 ) : (
                   <XCircle size={14} />
                 )}
-                Подтвердить закрытие
+                Подтвердить отмену
               </button>
               <button
                 type="button"

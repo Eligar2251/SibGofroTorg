@@ -14,6 +14,7 @@ import {
   LogOut,
   Users,
   Megaphone,
+  Star,
 } from "lucide-react";
 
 export function AdminShell({
@@ -50,6 +51,11 @@ export function AdminShell({
       href: `/${adminPath}/promotions`,
       label: "Акции",
       icon: <Megaphone size={18} />,
+    },
+    {
+      href: `/${adminPath}/reviews`,
+      label: "Отзывы",
+      icon: <Star size={18} />,
     },
     {
       href: `/${adminPath}/orders`,
