@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { getCategories, getProducts } from "@/lib/firestore-queries";
-import { FirestoreCategory, FirestoreProduct } from "@/lib/types";
+import { getCategories, getProducts, getPromotions } from "@/lib/firestore-queries";
+import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
 import {
@@ -41,50 +41,25 @@ export const metadata: Metadata = {
 export const revalidate = 120;
 
 export default async function HomePage() {
-  const categories = await getCategories();
-  const featuredProducts = await getProducts({
-    featuredOnly: true,
-    limitCount: 12,
-  });
+  const [categories, featuredProducts, promotions] = await Promise.all([
+    getCategories(),
+    getProducts({
+      featuredOnly: true,
+      limitCount: 12,
+    }),
+    getPromotions(),
+  ]);
 
-  const deals = [
-    {
-      tag: "Оптовая скидка",
-      title: "−15% при заказе\nот 500 коробов",
-      desc: "На все стандартные размеры Т-23",
-      color: "var(--kraft)",
-      light: "var(--kraft-light)",
-      icon: "📦",
-      deadline: null as string | null,
-    },
-    {
-      tag: "Доставка",
-      title: "Бесплатная доставка\nот 30 000 ₽",
-      desc: "По Новосибирску и области",
-      color: "var(--eco)",
-      light: "var(--eco-light)",
-      icon: "🚚",
-      deadline: null,
-    },
-    {
-      tag: "Макулатура → Скидка",
-      title: "Сдай картон —\nполучи −7% на тару",
-      desc: "Принимаем от 50 кг, оплата сразу",
-      color: "#2D6A4F",
-      light: "#D8EFE3",
-      icon: "♻️",
-      deadline: null,
-    },
-    {
-      tag: "Новинки",
-      title: "Самосборные\nкоробки со скидкой",
-      desc: "Быстрая сборка без скотча",
-      color: "#7C3AED",
-      light: "#EDE9FE",
-      icon: "⚡",
-      deadline: "31 июля",
-    },
-  ];
+  // Transform promotions to deal cards format
+  const deals = promotions.map((p: Promotion) => ({
+    tag: p.badge || "Акция",
+    title: p.title,
+    desc: p.subtitle || "",
+    color: p.color || "var(--kraft)",
+    light: p.light || "var(--kraft-light)",
+    icon: p.icon || "📦",
+    deadline: p.deadline || null,
+  }));
 
   const serializedCategories = categories.map((cat: FirestoreCategory) => ({
     id: cat.id,
@@ -223,12 +198,10 @@ export default async function HomePage() {
               <div
                 key={i}
                 className="deal-card"
-                style={
-                  {
-                    "--deal-color": d.color,
-                    "--deal-light": d.light,
-                  } as React.CSSProperties
-                }
+                style={{
+                  "--deal-color": d.color,
+                  "--deal-light": d.light,
+                } as React.CSSProperties}
               >
                 <div className="deal-card__top">
                   <span className="deal-card__icon">{d.icon}</span>

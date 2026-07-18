@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Edit2, Save, X, Loader2, Megaphone } from "lucide-react";
+import { Plus, Trash2, Edit2, Save, X, Loader2, Megaphone, Copy } from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
 
 interface Promotion {
@@ -17,6 +17,11 @@ interface Promotion {
   linkUrl?: string | null;
   sortOrder: number;
   isVisible: boolean;
+  // New fields for deal card display on main page
+  icon?: string | null;
+  color?: string | null;
+  light?: string | null;
+  deadline?: string | null;
 }
 
 interface Product {
@@ -48,6 +53,11 @@ export function PromotionsManager({
   const [linkUrl, setLinkUrl] = useState("");
   const [sortOrder, setSortOrder] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
+  // New fields for deal card display
+  const [icon, setIcon] = useState("📦");
+  const [color, setColor] = useState("var(--kraft)");
+  const [light, setLight] = useState("var(--kraft-light)");
+  const [deadline, setDeadline] = useState("");
 
   function startCreate() {
     setTitle("");
@@ -59,6 +69,10 @@ export function PromotionsManager({
     setLinkUrl("");
     setSortOrder(promotions.length);
     setIsVisible(true);
+    setIcon("📦");
+    setColor("var(--kraft)");
+    setLight("var(--kraft-light)");
+    setDeadline("");
     setEditingId(null);
     setIsCreating(true);
   }
@@ -73,8 +87,52 @@ export function PromotionsManager({
     setLinkUrl(p.linkUrl || "");
     setSortOrder(p.sortOrder);
     setIsVisible(p.isVisible);
+    setIcon(p.icon || "📦");
+    setColor(p.color || "var(--kraft)");
+    setLight(p.light || "var(--kraft-light)");
+    setDeadline(p.deadline || "");
     setIsCreating(false);
     setEditingId(p.id);
+  }
+
+  async function startCopy(p: Promotion) {
+    if (!confirm("Создать копию этой акции?")) return;
+    setSaving(true);
+    try {
+      const payload = {
+        title: p.title + " (копия)",
+        subtitle: p.subtitle || null,
+        badge: p.badge || null,
+        imageUrl: p.imageUrl || null,
+        linkType: p.linkType,
+        productId: p.linkType === "product" ? p.productId || null : null,
+        linkUrl: p.linkType === "url" ? p.linkUrl || null : null,
+        sortOrder: promotions.length,
+        isVisible: false, // Copy is hidden by default
+        // New fields
+        icon: p.icon || null,
+        color: p.color || null,
+        light: p.light || null,
+        deadline: p.deadline || null,
+      };
+
+      const res = await fetch("/api/admin/promotions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.id) {
+        setPromotions((prev) => [
+          ...prev,
+          { id: data.id, ...payload },
+        ]);
+        router.refresh();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setSaving(false);
   }
 
   function cancelForm() {
@@ -96,6 +154,11 @@ export function PromotionsManager({
         linkUrl: linkType === "url" ? linkUrl || null : null,
         sortOrder: Number(sortOrder),
         isVisible,
+        // New fields
+        icon: icon || null,
+        color: color || null,
+        light: light || null,
+        deadline: deadline || null,
       };
 
       if (id) {
@@ -147,17 +210,114 @@ export function PromotionsManager({
     }
   }
 
+  async function handleSeedDefaults() {
+    if (!confirm("Добавить 4 демо-акции? Они будут добавлены в базу данных.")) return;
+    setSaving(true);
+    try {
+      const defaultPromos = [
+        {
+          title: "−15% при заказе\nот 500 коробов",
+          subtitle: "На все стандартные размеры Т-23",
+          badge: "Оптовая скидка",
+          imageUrl: null,
+          linkType: "none",
+          productId: null,
+          linkUrl: null,
+          sortOrder: promotions.length,
+          isVisible: true,
+          icon: "📦",
+          color: "var(--kraft)",
+          light: "var(--kraft-light)",
+          deadline: null,
+        },
+        {
+          title: "Бесплатная доставка\nот 30 000 ₽",
+          subtitle: "По Новосибирску и области",
+          badge: "Доставка",
+          imageUrl: null,
+          linkType: "none",
+          productId: null,
+          linkUrl: null,
+          sortOrder: promotions.length + 1,
+          isVisible: true,
+          icon: "🚚",
+          color: "var(--eco)",
+          light: "var(--eco-light)",
+          deadline: null,
+        },
+        {
+          title: "Сдай картон —\nполучи −7% на тару",
+          subtitle: "Принимаем от 50 кг, оплата сразу",
+          badge: "Макулатура → Скидка",
+          imageUrl: null,
+          linkType: "url",
+          productId: null,
+          linkUrl: "/wastepaper",
+          sortOrder: promotions.length + 2,
+          isVisible: true,
+          icon: "♻️",
+          color: "#2D6A4F",
+          light: "#D8EFE3",
+          deadline: null,
+        },
+        {
+          title: "Самосборные\nкоробки со скидкой",
+          subtitle: "Быстрая сборка без скотча",
+          badge: "Новинки",
+          imageUrl: null,
+          linkType: "none",
+          productId: null,
+          linkUrl: null,
+          sortOrder: promotions.length + 3,
+          isVisible: true,
+          icon: "⚡",
+          color: "#7C3AED",
+          light: "#EDE9FE",
+          deadline: "31 июля",
+        },
+      ];
+
+      for (const promo of defaultPromos) {
+        const res = await fetch("/api/admin/promotions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(promo),
+        });
+        const data = await res.json();
+        if (res.ok && data.id) {
+          setPromotions((prev) => [...prev, { id: data.id, ...promo }]);
+        }
+      }
+      router.refresh();
+    } catch (e) {
+      console.error(e);
+    }
+    setSaving(false);
+  }
+
   return (
     <div className="admin-stack">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <p className="admin-sub">
           Управление акциями, баннерами и спецпредложениями на сайте с возможностью перехода на товары или страницы.
         </p>
-        {!isCreating && !editingId && (
-          <button type="button" onClick={startCreate} className="admin-btn admin-btn--primary">
-            <Plus size={16} /> Добавить акцию / баннер
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {!isCreating && !editingId && promotions.length === 0 && (
+            <button
+              type="button"
+              onClick={handleSeedDefaults}
+              className="admin-btn admin-btn--secondary"
+              style={{ background: "var(--green-bg)", border: "1px solid var(--green-border)", color: "var(--green)" }}
+            >
+              <Plus size={16} /> Заполнить демо-акциями (4 шт.)
+            </button>
+          )}
+          {!isCreating && !editingId && (
+            <button type="button" onClick={startCreate} className="admin-btn admin-btn--primary">
+              <Plus size={16} /> Добавить акцию / баннер
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Форма создания / редактирования */}
@@ -235,6 +395,53 @@ export function PromotionsManager({
                 images={imageUrl ? [{ url: imageUrl, publicId: "" }] : []}
                 onChange={(imgs) => setImageUrl(imgs[0]?.url || "")}
               />
+            </div>
+
+            {/* Поля для отображения на главной странице (deal card) */}
+            <div className="admin-field">
+              <label className="admin-label">Иконка (эмодзи)</label>
+              <input
+                type="text"
+                className="admin-input"
+                value={icon}
+                onChange={(e) => setIcon(e.target.value)}
+                placeholder="📦 🚚 ♻️ ⚡ 🎁"
+                maxLength={4}
+                style={{ fontSize: "18px" }}
+              />
+            </div>
+
+            <div className="admin-grid-3">
+              <div className="admin-field">
+                <label className="admin-label">Цвет акцента (CSS переменная или HEX)</label>
+                <input
+                  type="text"
+                  className="admin-input"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  placeholder="var(--kraft) или #2D6A4F"
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Светлый фон (CSS переменная или HEX)</label>
+                <input
+                  type="text"
+                  className="admin-input"
+                  value={light}
+                  onChange={(e) => setLight(e.target.value)}
+                  placeholder="var(--kraft-light) или #D8EFE3"
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Дедлайн (до какой даты)</label>
+                <input
+                  type="text"
+                  className="admin-input"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  placeholder="31 июля / 31.07.2024"
+                />
+              </div>
             </div>
 
             {/* Тип перехода / ссылки */}
@@ -359,7 +566,15 @@ export function PromotionsManager({
                     )}
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <div className="admin-actions" style={{ justifyContent: "flex-end" }}>
+                    <div className="admin-actions" style={{ justifyContent: "flex-end", gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => startCopy(p)}
+                        className="admin-btn admin-btn--icon"
+                        title="Копировать"
+                      >
+                        <Copy size={14} style={{ color: "var(--adm-kraft)" }} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => startEdit(p)}

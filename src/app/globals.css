@@ -7348,6 +7348,262 @@ select.input-light {
   gap: 10px;
 }
 
+/* PDP Center Column Styles */
+.pdp-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pdp-sku {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-family: var(--f-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pdp-title {
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+.pdp-rating-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.pdp-brand-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-top: 8px;
+}
+
+.pdp-brand-logo {
+  width: 32px;
+  height: 32px;
+  background: var(--green);
+  color: #fff;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.pdp-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pdp-status--in {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0fdf4;
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid #bbf7d0;
+}
+
+.pdp-status--out {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid #fecaca;
+}
+
+.pdp-status-qty {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fef3c7;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid #fde68a;
+  margin-left: 4px;
+}
+
+/* PDP Badges */
+.pdp-badge {
+  position: absolute;
+  top: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  z-index: 2;
+}
+
+.pdp-badge--promo {
+  left: 14px;
+  background: var(--red);
+  color: #fff;
+}
+
+.pdp-badge--out {
+  right: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+
+.pdp-img-placeholder {
+  font-size: 96px;
+  opacity: 0.3;
+}
+
+/* PDP Specs */
+.pdp-specs-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pdp-spec-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  gap: 12px;
+}
+
+.pdp-spec-label {
+  font-size: 13px;
+  color: var(--ink-light);
+  flex: 1;
+}
+
+.pdp-spec-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+}
+
+/* PDP Description */
+.pdp-desc {
+  font-size: 14px;
+  color: var(--ink-light);
+  line-height: 1.65;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+/* PDP Related Products */
+.pdp-related {
+  margin-top: 8px;
+}
+
+.pdp-related__title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 16px;
+}
+
+/* PDP Buybox additional styles */
+.pdp-buybox-card {
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pdp-buybox-price {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pdp-buybox-current {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.pdp-buybox-current span {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.pdp-buybox-old {
+  font-size: 15px;
+  color: var(--ink-muted);
+  text-decoration: line-through;
+}
+
+.pdp-buybox-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.pdp-buybox-wholesale {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.pdp-buybox-wholesale strong {
+  color: var(--ok);
+  font-size: 13px;
+}
+
+.pdp-buybox-divider {
+  height: 1px;
+  background: var(--border);
+}
+
+.pdp-delivery-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-main);
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+}
+
+.pdp-delivery-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
 @media (max-width: 480px) {
   .products-grid-4,
   .product-grid,

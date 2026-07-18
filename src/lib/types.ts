@@ -56,6 +56,11 @@ export interface Promotion {
   sortOrder: number;
   isVisible: boolean;
   createdAt?: any;
+  // Additional fields for deal card display on main page
+  icon?: string | null;
+  color?: string | null;
+  light?: string | null;
+  deadline?: string | null;
 }
 
 export function getProductEffectivePrice(product: {

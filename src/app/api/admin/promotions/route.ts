@@ -37,6 +37,11 @@ export async function POST(request: NextRequest) {
       linkUrl: body.linkUrl || null,
       sortOrder: Number(body.sortOrder || 0),
       isVisible: body.isVisible ?? true,
+      // New fields for deal card display
+      icon: body.icon || null,
+      color: body.color || null,
+      light: body.light || null,
+      deadline: body.deadline || null,
       createdAt: FieldValue.serverTimestamp(),
     });
     return NextResponse.json({ success: true, id: docRef.id });
