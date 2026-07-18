@@ -1,8 +1,7 @@
-// Единая точка правды для контактных данных сайта.
-// Меняется в .env.local — подхватывается везде: шапка, подвал, карта на главной.
-
+// src/lib/site-config.ts — ПОЛНАЯ ЗАМЕНА
 export const SITE_ADDRESS =
-  process.env.NEXT_PUBLIC_COMPANY_ADDRESS || "г. Новосибирск, ул. Ватутина, 42а к1";
+  process.env.NEXT_PUBLIC_COMPANY_ADDRESS ||
+  "г. Новосибирск, ул. Ватутина, 42а к1";
 
 export const SITE_PHONE =
   process.env.NEXT_PUBLIC_COMPANY_PHONE || "+7 (383) 291-81-46";
@@ -10,7 +9,7 @@ export const SITE_PHONE =
 export const SITE_PHONE_HREF = `tel:${SITE_PHONE.replace(/[^\d+]/g, "")}`;
 
 export const SITE_HOURS_WEEKDAY =
-  process.env.NEXT_PUBLIC_COMPANY_HOURS_WEEKDAY || "9:00–17:00";
+  process.env.NEXT_PUBLIC_COMPANY_HOURS_WEEKDAY || "9:00–18:00";
 
 export const SITE_HOURS_SATURDAY =
   process.env.NEXT_PUBLIC_COMPANY_HOURS_SATURDAY || "10:00–15:00";
@@ -18,11 +17,25 @@ export const SITE_HOURS_SATURDAY =
 export const SITE_EMAIL =
   process.env.NEXT_PUBLIC_COMPANY_EMAIL || "info@gofrotara.online";
 
-export const SITE_MAP_LL = "82.8964,54.9833"; // lng,lat для Яндекса
+// Точные координаты ул. Ватутина 42а к1, Новосибирск
+// (можно уточнить через yandex.ru/maps — правая кнопка → «Что здесь?»)
+const LAT = "54.965649";
+const LNG = "82.926598";
+const ADDRESS_ENCODED = encodeURIComponent("Новосибирск, ул. Ватутина, 42а к1");
 
+// Виджет с меткой, балуном и нужным зумом
 export const SITE_MAP_EMBED_URL =
-  `https://yandex.ru/map-widget/v1/?ll=${SITE_MAP_LL}&z=16&pt=${SITE_MAP_LL},pm2rdm&l=map`;
+  `https://yandex.ru/map-widget/v1/` +
+  `?ll=${LNG}%2C${LAT}` +
+  `&z=16` +
+  `&pt=${LNG}%2C${LAT}%2Cpm2rdm` +
+  `&text=${ADDRESS_ENCODED}` +
+  `&l=map` +
+  `&from=mapframe` +
+  `&lang=ru_RU`;
 
-export const SITE_MAP_LINK = `https://yandex.ru/maps/?ll=${SITE_MAP_LL}&z=16&pt=${SITE_MAP_LL},pm2rdm&text=${encodeURIComponent(
-  SITE_ADDRESS
-)}`;
+export const SITE_MAP_LINK =
+  `https://yandex.ru/maps/?ll=${LNG}%2C${LAT}` +
+  `&z=16` +
+  `&pt=${LNG}%2C${LAT}%2Cpm2rdm` +
+  `&text=${ADDRESS_ENCODED}`;

@@ -1,12 +1,10 @@
-// =========================================================
-// FILE: src/app/layout.tsx
-// =========================================================
+// src/app/layout.tsx
 
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import "./globals.css";
-import "./mobile.css";
+
 import { CartProvider } from "@/context/CartContext";
 import { ConditionalChrome } from "@/components/layout/ConditionalChrome";
 import { YandexMetrika } from "@/components/analytics/YandexMetrika";
@@ -57,14 +55,13 @@ export default async function RootLayout({
 }: {
   children: ReactNode;
 }) {
-  // КРИТИЧНО: чтение nonce → Next.js вешает его на свои script
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get("x-nonce") ?? undefined;
 
   return (
     <html lang="ru">
       <head>
         <JsonLd
-          nonce={nonce}
           data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}
         />
       </head>
