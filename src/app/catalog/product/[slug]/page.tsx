@@ -1,12 +1,20 @@
 import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProductBySlug, getRelatedProducts, getAllCategories } from "@/lib/firestore-queries";
+import {
+  getProductBySlug,
+  getRelatedProducts,
+  getAllCategories,
+} from "@/lib/firestore-queries";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { AddToCartButton } from "@/components/catalog/AddToCartButton";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
-import { FirestoreCategory, FirestoreProduct, getProductEffectivePrice } from "@/lib/types";
-import { BadgeCheck, ShieldAlert, Star, MessageSquare, MessageCircle, ChevronRight, Heart, Share2, GitCompare } from "lucide-react";
+import {
+  FirestoreCategory,
+  FirestoreProduct,
+  getProductEffectivePrice,
+} from "@/lib/types";
+import { BadgeCheck } from "lucide-react";
 import Image from "next/image";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -32,7 +40,11 @@ export async function generateMetadata({
   const title = `${product.name} купить в Новосибирске`;
   const description =
     product.description?.slice(0, 160) ||
-    `${product.name}${effectivePrice != null ? ` — ${effectivePrice.toLocaleString("ru-RU")} ₽` : ""}. Доставка и самовывоз в Новосибирске. ${SITE_NAME}.`;
+    `${product.name}${
+      effectivePrice != null
+        ? ` — ${effectivePrice.toLocaleString("ru-RU")} ₽`
+        : ""
+    }. Доставка и самовывоз в Новосибирске. ${SITE_NAME}.`;
 
   return {
     title,
@@ -50,41 +62,70 @@ export async function generateMetadata({
   };
 }
 
-export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ProductPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
   const allCats = await getAllCategories();
-  const category = allCats.find((c: FirestoreCategory) => c.id === product.categoryId);
-  const related = product.categoryId ? await getRelatedProducts(product.categoryId, product.id, 4) : [];
+  const category = allCats.find(
+    (c: FirestoreCategory) => c.id === product.categoryId
+  );
+  const related = product.categoryId
+    ? await getRelatedProducts(product.categoryId, product.id, 4)
+    : [];
 
   const effectivePrice = getProductEffectivePrice(product);
-  const hasDiscount = product.price != null && effectivePrice != null && effectivePrice < product.price;
-  const oldPrice = hasDiscount && product.price != null ? product.price : null;
+  const hasDiscount =
+    product.price != null &&
+    effectivePrice != null &&
+    effectivePrice < product.price;
+  const oldPrice =
+    hasDiscount && product.price != null ? product.price : null;
 
-  const dims = product.dimensionLength && product.dimensionWidth
-    ? `${product.dimensionLength}×${product.dimensionWidth}${product.dimensionHeight ? `×${product.dimensionHeight}` : ""} ${product.dimensionUnit || "мм"}`
-    : null;
+  const dims =
+    product.dimensionLength && product.dimensionWidth
+      ? `${product.dimensionLength}×${product.dimensionWidth}${
+          product.dimensionHeight ? `×${product.dimensionHeight}` : ""
+        } ${product.dimensionUnit || "мм"}`
+      : null;
 
   const specs = [
-    dims && { icon: "📏", label: "Размеры (ДхШхВ)", value: dims },
-    product.material && { icon: "🪵", label: "Материал", value: product.material },
-    product.packQty && { icon: "📦", label: "В упаковке", value: `${product.packQty} шт.` },
-    product.weight && { icon: "⚖️", label: "Вес единицы", value: `${product.weight} кг` },
-    product.volume && { icon: "🧊", label: "Объём", value: `${product.volume} л` },
-    product.note && { icon: "📝", label: "Примечание", value: product.note },
-  ].filter(Boolean) as { icon: string; label: string; value: string }[];
+    dims && { label: "Размеры (ДхШхВ)", value: dims },
+    product.material && { label: "Материал", value: product.material },
+    product.packQty && {
+      label: "В упаковке",
+      value: `${product.packQty} шт.`,
+    },
+    product.weight && {
+      label: "Вес единицы",
+      value: `${product.weight} кг`,
+    },
+    product.volume && { label: "Объём", value: `${product.volume} л` },
+    product.note && { label: "Примечание", value: product.note },
+  ].filter(Boolean) as { label: string; value: string }[];
 
+  /* ── Галерея: собираем список изображений ── */
+  const galleryImages: { url: string; alt: string }[] = [];
+  if (product.images && product.images.length > 0) {
+    product.images.forEach((img, i) =>
+      galleryImages.push({ url: img.url, alt: `${product.name} фото ${i + 1}` })
+    );
+  } else if (product.imageUrl) {
+    galleryImages.push({ url: product.imageUrl, alt: product.name });
+  }
+
+  /* ── JSON-LD ── */
   const breadcrumb = buildBreadcrumbJsonLd(
     [
       { name: "Главная", url: SITE_URL },
       { name: "Каталог", url: `${SITE_URL}/catalog` },
       category
-        ? {
-            name: category.name,
-            url: `${SITE_URL}/catalog/${category.slug}`,
-          }
+        ? { name: category.name, url: `${SITE_URL}/catalog/${category.slug}` }
         : null,
       {
         name: product.name,
@@ -103,94 +144,120 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     inStock: product.inStock,
   });
 
+  /* ── Хлебные крошки ── */
   const breadcrumbTrail = [
     { name: "Каталог", url: "/catalog" },
-    ...(category ? [{ name: category.name, url: `/catalog/${category.slug}` }] : []),
+    ...(category
+      ? [{ name: category.name, url: `/catalog/${category.slug}` }]
+      : []),
     { name: product.name, url: null },
   ];
 
   return (
-    <div style={{ backgroundColor: "#f5f5f5", paddingBottom: "64px" }}>
+    <div className="pdp-page">
       <JsonLd data={[breadcrumb, productLd]} />
 
-      {/* ХЛЕБНЫЕ КРОШКИ */}
-      <div className="breadcrumbs">
-        <div className="container-wide breadcrumbs">
-          <div className="breadcrumbs-left">
-            {breadcrumbTrail.map((item, idx) => (
-              <React.Fragment key={idx}>
-                {idx > 0 && <span style={{ color: "#ccc" }}>•</span>}
-                {item.url ? (
-                  <Link href={item.url} className="breadcrumbs-left" style={{ color: "#8b8b8b", textDecoration: "none" }}>
-                    {item.name}
-                  </Link>
-                ) : (
-                  <span style={{ color: "#1a1a1a", fontWeight: 500, maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {item.name}
-                  </span>
-                )}
-              </React.Fragment>
-            ))}
-          </div>
-          <div className="breadcrumbs-right" style={{ display: "flex", alignItems: "center", gap: "16px", color: "#8b8b8b", fontSize: "13px" }}>
-            {product.sku && <span>🔖 Артикул: {product.sku}</span>}
-            <button className="breadcrumbs-right" style={{ display: "flex", alignItems: "center", gap: "4px", color: "#8b8b8b", textDecoration: "none", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: "4px" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3 8 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M20 7H4"/><path d="m20 11 4 4-4 4"/></svg> В сравнение
-            </button>
-            <button className="breadcrumbs-right" style={{ display: "flex", alignItems: "center", gap: "4px", color: "#8b8b8b", textDecoration: "none", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: "4px" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.57" y1="6.51" y2="10.49"/></svg> Поделиться
-            </button>
+      {/* ══ ХЛЕБНЫЕ КРОШКИ ══ */}
+      <div className="pdp-breadcrumb-bar">
+        <div className="container-wide">
+          <div className="breadcrumbs pdp-breadcrumbs">
+            {/* Левая часть */}
+            <div className="breadcrumbs-left">
+              {breadcrumbTrail.map((item, idx) => (
+                <React.Fragment key={idx}>
+                  {idx > 0 && <span className="bc-sep">•</span>}
+                  {item.url ? (
+                    <Link href={item.url} className="bc-link">
+                      {item.name}
+                    </Link>
+                  ) : (
+                    <span className="bc-current">{item.name}</span>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* Правая часть */}
+            <div className="breadcrumbs-right">
+              {product.sku && (
+                <span className="bc-sku">🔖 Артикул: {product.sku}</span>
+              )}
+              <button className="bc-action-btn" type="button">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                  <polyline points="15 18 21 12 15 6" />
+                </svg>
+                В сравнение
+              </button>
+              <button className="bc-action-btn" type="button">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
+                  <line x1="15.41" x2="8.57" y1="6.51" y2="10.49" />
+                </svg>
+                Поделиться
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="container-wide" style={{ marginTop: "20px" }}>
-        {/* ОСНОВНОЙ БЛОК - 4 КОЛОНКИ */}
+      {/* ══ ОСНОВНОЙ БЛОК ══ */}
+      <div className="container-wide pdp-main-wrap">
         <div className="product-page">
 
-          {/* МИНИАТЮРЫ */}
+          {/* ── 1. МИНИАТЮРЫ ── */}
           <div className="gallery-thumbs">
-            {product.images && product.images.length > 0 ? (
-              product.images.map((img, idx) => (
+            {galleryImages.length > 0 ? (
+              galleryImages.map((img, idx) => (
                 <button
                   key={idx}
-                  className={`thumb ${idx === 0 ? "active" : ""}`}
+                  className={`thumb${idx === 0 ? " active" : ""}`}
                   aria-label={`Фото ${idx + 1}`}
+                  type="button"
                 >
                   <Image
                     src={img.url}
-                    alt={`${product.name} фото ${idx + 1}`}
+                    alt={img.alt}
                     width={72}
                     height={72}
-                    style={{ objectFit: "cover" }}
+                    style={{ objectFit: "cover", width: "100%", height: "100%" }}
                   />
                 </button>
               ))
-            ) : product.imageUrl ? (
-              <button className="thumb active" aria-label="Фото 1">
-                <Image
-                  src={product.imageUrl}
-                  alt={product.name}
-                  width={72}
-                  height={72}
-                  style={{ objectFit: "cover" }}
-                />
-              </button>
             ) : (
-              <button className="thumb active" aria-label="Фото 1">
-                <span style={{ fontSize: "24px", opacity: 0.5 }}>📦</span>
+              <button className="thumb active" aria-label="Фото 1" type="button">
+                <span className="thumb-placeholder">📦</span>
               </button>
             )}
-            {/* Видео заглушка */}
-            <button className="thumb thumb-video" aria-label="Видео">
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "11px", textAlign: "center", lineHeight: "1.3", width: "100%", height: "100%" }}>
-                <span style={{ fontSize: "18px", display: "block", marginBottom: "4px" }}>▶</span>
-                +1 видео
-              </span>
+            {/* Видео-заглушка */}
+            <button className="thumb thumb-video" aria-label="Видео" type="button">
+              <span className="play-icon">▶</span>
+              <span className="thumb-video-label">+1 видео</span>
             </button>
           </div>
 
-          {/* ГЛАВНОЕ ФОТО */}
+          {/* ── 2. ГЛАВНОЕ ФОТО ── */}
           <div className="gallery-main">
             {product.imageUrl ? (
               <Image
@@ -202,71 +269,123 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 priority
               />
             ) : (
-              <span style={{ fontSize: "96px", opacity: 0.3 }}>📦</span>
+              <span className="pdp-img-placeholder">📦</span>
             )}
-            <div className="badge-returns" style={{ position: "absolute", top: "12px", right: "12px", background: "#00b800", color: "#fff", fontSize: "12px", fontWeight: 600, padding: "4px 10px", borderRadius: "20px", display: "flex", alignItems: "center", gap: "4px", zIndex: 2 }}>
-              ✓ 0% возвратов ›
-            </div>
-            <div className="badge-zoom" style={{ position: "absolute", top: "12px", left: "12px", background: "rgba(255,255,255,0.9)", borderRadius: "50%", width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "16px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", zIndex: 2 }}>
-              🔍
-            </div>
+            <div className="badge-returns">✓ 0% возвратов ›</div>
+            <div className="badge-zoom">🔍</div>
           </div>
 
-          {/* ИНФОРМАЦИЯ О ТОВАРЕ */}
-          <div className="product-info" style={{ padding: "0 8px" }}>
+          {/* ── 3. ИНФОРМАЦИЯ О ТОВАРЕ ── */}
+          <div className="product-info">
+
             {/* Заголовок */}
-            <h1 className="product-title" style={{ fontSize: "20px", fontWeight: 700, lineHeight: "1.4", marginBottom: "12px", color: "#1a1a1a" }}>
+            <h1 className="product-title">
               {product.name}
-              <span className="show-more" style={{ color: "#005bff", cursor: "pointer", fontSize: "14px", fontWeight: 400 }}>ещё</span>
+              <span className="show-more">ещё</span>
             </h1>
 
             {/* Рейтинг */}
-            <div className="rating-row" style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
-              <div className="rating-stars" style={{ display: "flex", alignItems: "center", gap: "4px", fontWeight: 700, color: "#1a1a1a" }}>
-                <span className="star" style={{ color: "#f5a623", fontSize: "16px" }}>★</span>
-                4.9
+            <div className="rating-row">
+              <div className="rating-stars">
+                <span className="star">★</span>
+                {product.averageRating && product.averageRating > 0
+                  ? product.averageRating.toFixed(1)
+                  : "4.9"}
               </div>
-              <span style={{ color: "#ccc" }}>•</span>
-              <a href="#reviews" className="rating-link" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>21 отзыв</a>
-              <span style={{ color: "#ccc" }}>•</span>
-              <a href="#questions" className="questions-link" style={{ display: "flex", alignItems: "center", gap: "4px", color: "#005bff", textDecoration: "none", fontSize: "13px" }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "middle" }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 7 вопросов
+              <span className="rating-dot">•</span>
+              <a href="#reviews" className="rating-link">
+                {product.totalReviews && product.totalReviews > 0
+                  ? `${product.totalReviews} отзывов`
+                  : "0 отзывов"}
+              </a>
+              <span className="rating-dot">•</span>
+              <a href="#questions" className="questions-link">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                Вопросы
               </a>
             </div>
 
             {/* Бренд */}
-            <div className="brand-row" style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px", padding: "12px", border: "1px solid #e8e8e8", borderRadius: "8px" }}>
-              <div className="brand-logo" style={{ width: "40px", height: "40px", borderRadius: "50%", background: "#1a1a1a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", color: "#fff", flexShrink: 0 }}>С</div>
+            <div className="brand-row">
+              <div className="brand-logo">С</div>
               <div>
-                <div className="brand-name" style={{ fontWeight: 700, fontSize: "15px", display: "flex", alignItems: "center", gap: "4px" }}>
-                  СибГофроТорг <BadgeCheck size={14} style={{ color: "#16a34a", display: "inline" }} />
+                <div className="brand-name">
+                  СибГофроТорг{" "}
+                  <BadgeCheck
+                    size={14}
+                    style={{ color: "#16a34a", display: "inline" }}
+                  />
                 </div>
-                <div style={{ color: "#8b8b8b", fontSize: "12px", marginTop: "2px" }}>Производитель • ГОСТ</div>
+                <div className="brand-sub">Производитель • ГОСТ</div>
               </div>
             </div>
 
-            {/* Характеристики "О товаре" */}
-            <div className="specs-section" style={{ marginTop: "24px" }}>
-              <div className="specs-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                <span className="specs-title" style={{ fontSize: "16px", fontWeight: 700 }}>О товаре</span>
-                <a href="#description" className="specs-link" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px", display: "flex", alignItems: "center", gap: "2px" }}>
-                  Перейти к описанию <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            {/* Наличие */}
+            <div className="pdp-stock-row">
+              {product.inStock ? (
+                <span className="pdp-status--in">
+                  <span className="pdp-stock-dot pdp-stock-dot--in" />
+                  В наличии
+                  {product.stockQty != null && product.stockQty <= 30 && (
+                    <span className="pdp-status-qty">
+                      осталось {product.stockQty} шт.
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="pdp-status--out">
+                  <span className="pdp-stock-dot pdp-stock-dot--out" />
+                  Нет в наличии
+                </span>
+              )}
+            </div>
+
+            {/* Характеристики */}
+            <div className="specs-section">
+              <div className="specs-header">
+                <span className="specs-title">О товаре</span>
+                <a href="#full-specs" className="specs-link">
+                  Перейти к описанию
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
                 </a>
               </div>
-              <div className="specs-table" style={{ width: "100%" }}>
-                {specs.map((s, idx) => (
-                  <div key={idx} className="spec-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
-                    <div className="spec-name" style={{ color: "#8b8b8b", fontSize: "13px", display: "flex", alignItems: "flex-start", gap: "4px" }}>
-                      {s.icon} {s.label}
-                      <span style={{ color: "#ccc", cursor: "help", fontSize: "12px" }}>ⓘ</span>
+              <div className="specs-table">
+                {specs.length > 0 ? (
+                  specs.map((s, idx) => (
+                    <div key={idx} className="spec-row">
+                      <div className="spec-name">
+                        {s.label}
+                        <span className="spec-help">ⓘ</span>
+                      </div>
+                      <div className="spec-value">{s.value}</div>
                     </div>
-                    <div className="spec-value" style={{ color: "#1a1a1a", fontSize: "13px", fontWeight: 500 }}>{s.value}</div>
-                  </div>
-                ))}
-                {specs.length === 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
-                    <div style={{ color: "#8b8b8b", fontSize: "13px" }}>Характеристики уточняйте у менеджера</div>
-                    <div style={{ color: "#1a1a1a", fontSize: "13px", fontWeight: 500 }}>—</div>
+                  ))
+                ) : (
+                  <div className="spec-row">
+                    <div className="spec-name">Характеристики</div>
+                    <div className="spec-value">уточняйте у менеджера</div>
                   </div>
                 )}
               </div>
@@ -274,32 +393,35 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
             {/* Описание */}
             {product.description && (
-              <div id="description" style={{ marginTop: "24px" }}>
-                <h2 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "12px" }}>Описание</h2>
-                <p style={{ fontSize: "14px", color: "#8b8b8b", lineHeight: "1.7" }}>{product.description}</p>
+              <div id="description" className="pdp-desc-block">
+                <h2 className="pdp-desc-title">Описание</h2>
+                <p className="pdp-desc-text">{product.description}</p>
               </div>
             )}
           </div>
 
-          {/* ПРАВАЯ КОЛОНКА: Блок покупки */}
-          <div className="purchase-block" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <div className="purchase-card" style={{ border: "1px solid #e0e0e0", borderRadius: "12px", padding: "16px", marginBottom: "12px" }}>
-              {/* Распродажа - показываем только если есть скидка */}
+          {/* ── 4. БЛОК ПОКУПКИ ── */}
+          <div className="purchase-block">
+            <div className="purchase-card">
+
+              {/* Распродажа */}
               {hasDiscount && (
-                <div className="sale-badge-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                  <div className="sale-badge-left" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <div className="sale-icon" style={{ width: "28px", height: "28px", background: "#ff4f00", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "12px", fontWeight: 700 }}>%</div>
+                <div className="sale-badge-row">
+                  <div className="sale-badge-left">
+                    <div className="sale-icon">%</div>
                     <div>
-                      <div className="sale-text" style={{ color: "#ff4f00", fontWeight: 700, fontSize: "14px" }}>Распродажа</div>
-                      <div className="sale-stock" style={{ color: "#8b8b8b", fontSize: "12px" }}>
+                      <div className="sale-text">Распродажа</div>
+                      <div className="sale-stock">
                         {product.stockQty != null && product.stockQty <= 30
                           ? `${product.stockQty} единиц осталось`
                           : "Ограниченное количество"}
                       </div>
                     </div>
                   </div>
-                  <div style={{ color: "#8b8b8b", fontSize: "12px" }}>
-                    {product.discountBadge ? `${product.discountBadge} до конца` : "7 дней до конца"}
+                  <div className="sale-days">
+                    {product.discountBadge
+                      ? `${product.discountBadge} до конца`
+                      : "7 дней до конца"}
                   </div>
                 </div>
               )}
@@ -307,50 +429,76 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               {/* Цена */}
               {effectivePrice != null && (
                 <>
-                  <div className="price-main" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                    <div className="price-badge" style={{ background: "#00b800", color: "#fff", fontSize: "22px", fontWeight: 700, padding: "4px 12px", borderRadius: "6px" }}>{effectivePrice.toLocaleString("ru-RU")} ₽</div>
-                    <div className="price-card-label" style={{ color: "#8b8b8b", fontSize: "13px", flex: 1 }}>с картой магазина</div>
-                    <div style={{ color: "#8b8b8b", fontSize: "18px" }}>›</div>
+                  <div className="price-main">
+                    <div className="price-badge">
+                      {effectivePrice.toLocaleString("ru-RU")} ₽
+                    </div>
+                    <div className="price-card-label">с картой магазина</div>
+                    <div className="price-arrow">›</div>
                   </div>
-                  <div className="price-secondary" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-                    <span className="price-regular" style={{ fontSize: "15px", color: "#1a1a1a", fontWeight: 500 }}>
+
+                  <div className="price-secondary">
+                    <span className="price-regular">
                       {hasDiscount && oldPrice != null
                         ? oldPrice.toLocaleString("ru-RU")
-                        : effectivePrice.toLocaleString("ru-RU")}
+                        : effectivePrice.toLocaleString("ru-RU")}{" "}
                       ₽
                     </span>
                     {hasDiscount && oldPrice != null && (
-                      <span style={{ fontSize: "13px", color: "#8b8b8b", textDecoration: "line-through" }}>{oldPrice.toLocaleString("ru-RU")} ₽</span>
+                      <span className="price-old">
+                        {oldPrice.toLocaleString("ru-RU")} ₽
+                      </span>
                     )}
-                    <span style={{ fontSize: "12px", color: "#8b8b8b" }}>без карты</span>
+                    <span className="price-no-card">без карты</span>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#00b800", fontSize: "13px", padding: "8px 0", borderTop: "1px solid #f0f0f0", cursor: "pointer" }}>
-                    ♻ Стало дешевле ›
-                  </div>
+
+                  <div className="cheaper-row">♻ Стало дешевле ›</div>
                 </>
               )}
 
               {/* Оптовая цена */}
               {product.priceWholesale != null && (
-                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0f0f0" }}>
-                  <div style={{ fontSize: 13, color: "#8b8b8b" }}>Опт: <strong style={{ color: "var(--ok)", fontSize: 15 }}>{product.priceWholesale.toLocaleString("ru-RU")} ₽</strong>{product.minWholesaleQty && ` (от ${product.minWholesaleQty} шт.)`}</div>
+                <div className="pdp-wholesale-row">
+                  <span className="pdp-wholesale-label">Опт:</span>
+                  <strong className="pdp-wholesale-price">
+                    {product.priceWholesale.toLocaleString("ru-RU")} ₽
+                  </strong>
+                  {product.minWholesaleQty && (
+                    <span className="pdp-wholesale-min">
+                      от {product.minWholesaleQty} шт.
+                    </span>
+                  )}
                 </div>
               )}
 
               {/* Оплатить позже */}
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                <button style={{ background: "#7b61ff", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>Оплатить позже</button>
-                <span style={{ fontSize: "13px", color: "#1a1a1a" }}>без % до 12 января</span>
+              <div className="pay-later-row">
+                <button className="btn-pay-later" type="button">
+                  Оплатить позже
+                </button>
+                <span className="pay-later-text">без % до 12 января</span>
               </div>
 
               {/* Хочу скидку */}
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#8b8b8b", fontSize: "13px", cursor: "pointer", marginBottom: "12px" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#8b8b8b" }}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06a5.5 5.5 0 0 0 7.78 7.78l1.06-1.06a5.5 5.5 0 0 0 7.78-7.78l-1.06-1.06a5.5 5.5 0 0 0-7.78-7.78z"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg> Хочу скидку
-              </div>
+              <button className="want-discount" type="button">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l8.77-8.77 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                </svg>
+                Хочу скидку
+              </button>
 
               {/* Добавить в корзину */}
-              <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="cart-row">
+                <div className="cart-row__btn">
                   <AddToCartButton
                     product={{
                       id: product.id,
@@ -363,59 +511,140 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                     }}
                   />
                 </div>
-                <button style={{ width: "48px", height: "48px", border: "1.5px solid #e0e0e0", borderRadius: "10px", background: "#fff", cursor: "pointer", fontSize: "20px", display: "flex", alignItems: "center", justifyContent: "center", color: "#8b8b8b" }} title="В избранное" aria-label="В избранное">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06a5.5 5.5 0 0 0 7.78 7.78l1.06-1.06a5.5 5.5 0 0 0 7.78-7.78l-1.06-1.06a5.5 5.5 0 0 0-7.78-7.78z"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+                <button
+                  className="btn-wishlist"
+                  type="button"
+                  title="В избранное"
+                  aria-label="В избранное"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l8.77-8.77 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                  </svg>
                 </button>
               </div>
 
-              <div style={{ textAlign: "center", color: "#8b8b8b", fontSize: "12px", marginBottom: "12px" }}>Доставим с завтрашнего дня</div>
+              <div className="delivery-text">Доставим с завтрашнего дня</div>
 
               {/* Есть дешевле */}
-              <div style={{ border: "1px solid #e0e0e0", borderRadius: "10px", padding: "12px", display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px", cursor: "pointer" }}>
-                <div style={{ width: "40px", height: "40px", background: "#f0f0f0", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", flexShrink: 0 }}>📦</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "13px", color: "#1a1a1a", fontWeight: 600 }}>Есть дешевле</div>
-                  <div style={{ fontSize: "13px", color: "#8b8b8b" }}>от {(effectivePrice ?? product.price ?? 0) * 0.85} ₽</div>
+              <div className="cheaper-card">
+                <div className="cheaper-img">📦</div>
+                <div className="cheaper-info">
+                  <div className="cheaper-title">Есть дешевле</div>
+                  <div className="cheaper-price">
+                    от{" "}
+                    {Math.round(
+                      (effectivePrice ?? product.price ?? 0) * 0.85
+                    ).toLocaleString("ru-RU")}{" "}
+                    ₽
+                  </div>
                 </div>
-                <div style={{ fontSize: "13px", color: "#8b8b8b", display: "flex", alignItems: "center", gap: "2px" }}>5 ›</div>
+                <div className="cheaper-count">5 ›</div>
               </div>
 
               {/* Купить в один клик */}
-              <div style={{ marginBottom: "16" }}>
-                <QuickOrderForm productName={product.name} />
+              <div className="pdp-quick-order">
+                <QuickOrderForm productName={product.name} variant="light" />
               </div>
 
               {/* FAQ */}
-              <div style={{ marginBottom: "16px" }}>
-                <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Часто задаваемые вопросы</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-                  <a href="/delivery" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>Условия доставки</a>
-                  <a href="/delivery" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>Возврат товаров</a>
-                  <a href="#" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>Способы оплаты</a>
-                  <a href="#" style={{ color: "#005bff", textDecoration: "none", fontSize: "13px" }}>Возврат денег</a>
+              <div className="faq-section">
+                <div className="faq-title">Часто задаваемые вопросы</div>
+                <div className="faq-links">
+                  <Link href="/delivery" className="faq-link">
+                    Условия доставки
+                  </Link>
+                  <Link href="/delivery" className="faq-link">
+                    Возврат товаров
+                  </Link>
+                  <a href="#" className="faq-link">
+                    Способы оплаты
+                  </a>
+                  <a href="#" className="faq-link">
+                    Возврат денег
+                  </a>
                 </div>
               </div>
 
               {/* Доставка и возврат */}
-              <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: "12px" }}>
-                <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Доставка и возврат</div>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "8px", borderRadius: "8px" }}>
-                  <div style={{ color: "#8b8b8b", fontSize: "18px", flexShrink: 0 }}>📍</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "13px", color: "#1a1a1a", fontWeight: 500 }}>Новосибирск, ул. Примерная, 1</div>
-                    <div style={{ fontSize: "12px", color: "#8b8b8b" }}>Со склада продавца, Новосибирск</div>
+              <div className="delivery-section">
+                <div className="delivery-title">Доставка и возврат</div>
+                <div className="delivery-row">
+                  <div className="delivery-icon">📍</div>
+                  <div className="delivery-info">
+                    <div className="delivery-address">
+                      Новосибирск, ул. Примерная, 1
+                    </div>
+                    <div className="delivery-from">
+                      Со склада продавца, Новосибирск
+                    </div>
                   </div>
-                  <div style={{ color: "#8b8b8b" }}>›</div>
+                  <div className="delivery-arrow">›</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ПОХОЖИЕ ТОВАРЫ */}
+        {/* ══ НИЖНИЕ БЛОКИ ══ */}
+
+        {/* Фото покупателей */}
+        <div className="bottom-section pdp-buyer-photos-section">
+          <div className="section-title">Фото и видео покупателей</div>
+          <div className="buyer-photos">
+            {galleryImages.length > 0
+              ? galleryImages.slice(0, 4).map((img, idx) => (
+                  <div key={idx} className="buyer-photo">
+                    <Image
+                      src={img.url}
+                      alt=""
+                      width={80}
+                      height={80}
+                      style={{ objectFit: "cover", width: "100%", height: "100%" }}
+                    />
+                  </div>
+                ))
+              : [1, 2, 3, 4].map((n) => (
+                  <div key={n} className="buyer-photo buyer-photo--empty">
+                    📦
+                  </div>
+                ))}
+            <div className="buyer-photo">
+              <div className="buyer-photo-more">
+                +{Math.max(2, (product.images?.length ?? 1) - 3)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Полные характеристики */}
+        {specs.length > 0 && (
+          <div className="bottom-section" id="full-specs">
+            <div className="section-title">Характеристики</div>
+            <div className="pdp-full-specs">
+              <div className="pdp-full-specs__group-title">Основные</div>
+              {specs.map((s, idx) => (
+                <div key={idx} className="spec-row">
+                  <div className="spec-name">{s.label}</div>
+                  <div className="spec-value">{s.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Похожие товары */}
         {related.length > 0 && (
-          <div className="pdp-related" style={{ marginTop: 32 }}>
-            <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#1a1a1a", marginBottom: "16px" }}>Похожие товары</h2>
+          <div className="pdp-related bottom-section">
+            <div className="section-title">Похожие товары</div>
             <div className="product-grid-compact">
               {related.map((p: FirestoreProduct) => (
                 <ProductCardCompact key={p.id} product={p} />
@@ -424,69 +653,29 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           </div>
         )}
 
-        {/* НИЖНИЙ БЛОК: Фото покупателей */}
-        <div style={{ background: "#fff", borderRadius: "12px", padding: "24px", marginTop: "16px" }}>
-          <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Фото и видео покупателей</div>
-          <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "8px" }}>
-            {product.images && product.images.length > 0
-              ? product.images.slice(0, 4).map((img, idx) => (
-                  <div key={idx} style={{ width: "80px", height: "80px", borderRadius: "8px", background: "#f0f0f0", flexShrink: 0, overflow: "hidden", position: "relative", cursor: "pointer" }}>
-                    <Image src={img.url} alt="" width={80} height={80} style={{ objectFit: "cover" }} />
-                  </div>
-                ))
-              : product.imageUrl
-              ? [...Array(4)].map((_, idx) => (
-                  <div key={idx} style={{ width: "80px", height: "80px", borderRadius: "8px", background: "#f0f0f0", flexShrink: 0, overflow: "hidden", position: "relative", cursor: "pointer" }}>
-                    <Image src={product.imageUrl!} alt="" width={80} height={80} style={{ objectFit: "cover" }} />
-                  </div>
-                ))
-              : [...Array(4)].map((_, idx) => (
-                  <div key={idx} style={{ width: "80px", height: "80px", borderRadius: "8px", background: "#e0e0e0", flexShrink: 0, overflow: "hidden", position: "relative", cursor: "pointer" }}>📦</div>
-                ))}
-            <div style={{ width: "80px", height: "80px", borderRadius: "8px", background: "#f0f0f0", flexShrink: 0, overflow: "hidden", position: "relative", cursor: "pointer" }}>
-              <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "16px", fontWeight: 700 }}>+{Math.max(0, (product.images?.length || 1) - 4) + 2}</div>
-            </div>
+        {/* Отзывы */}
+        <div className="bottom-section" id="reviews">
+          <div className="section-title">Отзывы • 0</div>
+          <div className="pdp-empty-block">
+            <div className="pdp-empty-block__icon">💬</div>
+            <p className="pdp-empty-block__title">Пока нет отзывов</p>
+            <p className="pdp-empty-block__sub">
+              Будьте первым, кто оставит отзыв об этом товаре
+            </p>
           </div>
         </div>
 
-        {/* НИЖНИЙ БЛОК: Полные характеристики */}
-        {specs.length > 0 && (
-          <div style={{ background: "#fff", borderRadius: "12px", padding: "24px", marginTop: "16px" }}>
-            <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Характеристики</div>
-            <div style={{ width: "100%" }}>
-              <div style={{ marginBottom: "16px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "#8b8b8b", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px", paddingBottom: "4px", borderBottom: "1px solid #f0f0f0" }}>Основные</div>
-                {specs.map((s, idx) => (
-                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
-                    <div style={{ color: "#8b8b8b", fontSize: "13px" }}>{s.icon} {s.label}</div>
-                    <div style={{ color: "#1a1a1a", fontSize: "13px", fontWeight: 500 }}>{s.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* НИЖНИЙ БЛОК: Отзывы */}
-        <div style={{ background: "#fff", borderRadius: "12px", padding: "24px", marginTop: "16px" }}>
-          <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Отзывы • 0</div>
-          <div style={{ textAlign: "center", padding: "40px 20px", color: "#8b8b8b" }}>
-            <div style={{ fontSize: "48px", marginBottom: "16px", opacity: 0.5 }}>💬</div>
-            <p style={{ fontSize: 15, marginBottom: 8 }}>Пока нет отзывов</p>
-            <p style={{ fontSize: 13 }}>Будьте первым, кто оставит отзыв об этом товаре</p>
+        {/* Вопросы */}
+        <div className="bottom-section" id="questions">
+          <div className="section-title">Вопросы и ответы • 0</div>
+          <div className="pdp-empty-block">
+            <div className="pdp-empty-block__icon">❓</div>
+            <p className="pdp-empty-block__title">Пока нет вопросов</p>
+            <p className="pdp-empty-block__sub">
+              Задайте вопрос продавцу или покупателям
+            </p>
           </div>
         </div>
-
-        {/* НИЖНИЙ БЛОК: Вопросы */}
-        <div style={{ background: "#fff", borderRadius: "12px", padding: "24px", marginTop: "16px" }}>
-          <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Вопросы и ответы • 0</div>
-          <div style={{ textAlign: "center", padding: "40px 20px", color: "#8b8b8b" }}>
-            <div style={{ fontSize: "48px", marginBottom: "16px", opacity: 0.5 }}>❓</div>
-            <p style={{ fontSize: 15, marginBottom: 8 }}>Пока нет вопросов</p>
-            <p style={{ fontSize: 13 }}>Задайте вопрос продавцу или покупателям</p>
-          </div>
-        </div>
-
       </div>
     </div>
   );

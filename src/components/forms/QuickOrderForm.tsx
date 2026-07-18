@@ -1,13 +1,25 @@
-// src/components/forms/QuickOrderForm.tsx
 "use client";
 
 import { useState } from "react";
 import { Send, CheckCircle, Loader2 } from "lucide-react";
 import { ymGoal } from "@/lib/ym";
 
-export function QuickOrderForm({ productName }: { productName?: string }) {
-  const [formState, setFormState] = useState<"idle" | "loading" | "success" | "error">("idle");
+interface QuickOrderFormProps {
+  productName?: string;
+  /** "dark" — для тёмного фона (секция consult), "light" — для карточки товара */
+  variant?: "dark" | "light";
+}
+
+export function QuickOrderForm({
+  productName,
+  variant = "dark",
+}: QuickOrderFormProps) {
+  const [formState, setFormState] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
   const [errorMsg, setErrorMsg] = useState("");
+
+  const isLight = variant === "light";
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,7 +46,9 @@ export function QuickOrderForm({ productName }: { productName?: string }) {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as Record<string, string>).error || "Ошибка отправки");
+        throw new Error(
+          (body as Record<string, string>).error || "Ошибка отправки"
+        );
       }
 
       setFormState("success");
@@ -48,8 +62,8 @@ export function QuickOrderForm({ productName }: { productName?: string }) {
 
   if (formState === "success") {
     return (
-      <div className="qof-success">
-        <CheckCircle size={32} style={{ color: "#5DCB61" }} />
+      <div className={isLight ? "qof-success qof-success--light" : "qof-success"}>
+        <CheckCircle size={28} style={{ color: isLight ? "#16a34a" : "#5DCB61" }} />
         <div className="qof-success__title">Заявка отправлена!</div>
         <p className="qof-success__desc">Перезвоним в течение 15 минут</p>
         <button
@@ -64,54 +78,55 @@ export function QuickOrderForm({ productName }: { productName?: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="qof-form">
-      <div className="qof-row">
+    <form
+      onSubmit={handleSubmit}
+      className={isLight ? "qof-form qof-form--light" : "qof-form"}
+    >
+      <div className={isLight ? "qof-row" : "qof-row"}>
         <div className="qof-field">
-          <label className="qof-label">Ваше имя *</label>
+          <label className={isLight ? "qof-label qof-label--light" : "qof-label"}>
+            Ваше имя *
+          </label>
           <input
             name="name"
             type="text"
             required
             placeholder="Иван Иванов"
-            className="qof-input"
+            className={isLight ? "qof-input qof-input--light" : "qof-input"}
           />
         </div>
         <div className="qof-field">
-          <label className="qof-label">Телефон *</label>
+          <label className={isLight ? "qof-label qof-label--light" : "qof-label"}>
+            Телефон *
+          </label>
           <input
             name="phone"
             type="tel"
             required
             placeholder="+7 (913) 000-00-00"
-            className="qof-input"
+            className={isLight ? "qof-input qof-input--light" : "qof-input"}
           />
         </div>
       </div>
 
       {!productName && (
         <div className="qof-field">
-          <label className="qof-label">Какой товар интересует?</label>
+          <label className={isLight ? "qof-label qof-label--light" : "qof-label"}>
+            Какой товар интересует?
+          </label>
           <input
             name="product"
             type="text"
             placeholder="Например: коробки 600×400×400"
-            className="qof-input"
+            className={isLight ? "qof-input qof-input--light" : "qof-input"}
           />
         </div>
       )}
 
-      <div className="qof-field">
-        <label className="qof-label">Комментарий</label>
-        <textarea
-          name="comment"
-          rows={3}
-          placeholder="Нужное количество, размеры, особые пожелания..."
-          className="qof-input qof-textarea"
-        />
-      </div>
-
       {formState === "error" && (
-        <div className="qof-error">{errorMsg}</div>
+        <div className={isLight ? "qof-error qof-error--light" : "qof-error"}>
+          {errorMsg}
+        </div>
       )}
 
       <button
@@ -120,9 +135,13 @@ export function QuickOrderForm({ productName }: { productName?: string }) {
         className="qof-submit"
       >
         {formState === "loading" ? (
-          <><Loader2 size={15} className="animate-spin" /> Отправляем...</>
+          <>
+            <Loader2 size={15} className="animate-spin" /> Отправляем...
+          </>
         ) : (
-          <><Send size={14} /> Отправить заявку</>
+          <>
+            <Send size={14} /> Купить в один клик
+          </>
         )}
       </button>
     </form>
