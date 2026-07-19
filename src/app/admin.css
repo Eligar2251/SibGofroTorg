@@ -3097,3 +3097,75 @@ body:has(.admin-login) > main {
     height: 34px;
   }
 }
+
+/* ── Нехватка товара в карточке заказа ── */
+.deal-stock {
+  border-radius: var(--adm-r-sm);
+  padding: 9px 12px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.deal-stock--ok {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  background: var(--adm-pine-pale);
+  border: 1px solid var(--adm-pine-line);
+  color: var(--adm-pine);
+  font-weight: 600;
+}
+
+.deal-stock--miss {
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+  color: var(--adm-rust);
+}
+
+.deal-stock__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.deal-stock__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deal-stock__name {
+  font-weight: 600;
+  color: var(--adm-ink);
+  min-width: 0;
+}
+
+.deal-stock__nums {
+  color: var(--adm-rust);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.deal-stock__nums b {
+  font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  .deal-stock__row {
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .deal-stock__nums {
+    white-space: normal;
+  }
+}

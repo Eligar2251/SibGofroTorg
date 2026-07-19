@@ -14,6 +14,8 @@ import {
   ArrowUpRight,
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
+  AlertTriangle,
+  PackageCheck,
 } from "lucide-react";
 import {
   getWarehouseStock,
@@ -118,6 +120,7 @@ export default async function AdminWarehousePage({
   const bsort = sp.bsort === "asc" ? "asc" : "desc";
 
   const stock = await getWarehouseStock();
+  const stockById = new Map(stock.map((p) => [p.id, p.stockQty]));
   const pickerProducts: PickerProduct[] = stock.map((p) => ({
     id: p.id,
     name: p.name,
@@ -482,7 +485,8 @@ export default async function AdminWarehousePage({
                   <p>Поступлений пока нет</p>
                   <p className="admin-empty__hint">
                     Оформите приходный ордер — укажите количество и сумму за
-                    всю партию (с НДС), товары добавятся на склад.
+                    всю партию (с НДС). Товары добавятся на склад, а в банке
+                    автоматически появится платёж поставщику «в ожидании».
                   </p>
                 </div>
               )}
@@ -498,6 +502,22 @@ export default async function AdminWarehousePage({
             deals.map((d) => {
               const paid = dealPaidMap.get(d.id) || 0;
               const isFullyPaid = d.total > 0 && paid >= d.total;
+              // Нехватка товара — актуальна для непроведённых заказов
+              // (по проведённым остаток уже списан)
+              const shortage =
+                d.status === "new"
+                  ? d.items
+                      .map((it) => {
+                        const available = stockById.get(it.productId) ?? 0;
+                        return {
+                          it,
+                          available,
+                          missing: Math.max(0, it.quantity - available),
+                        };
+                      })
+                      .filter((r) => r.missing > 0)
+                  : [];
+              const hasShortage = shortage.length > 0;
               return (
                 <div key={d.id} className="admin-order">
                   <div className="admin-order__row">
@@ -541,6 +561,23 @@ export default async function AdminWarehousePage({
                             </a>
                           </div>
                         )}
+                        <div className="admin-order__meta">
+                          <span className="admin-order__meta-label wh-meta-label">
+                            Оплата:
+                          </span>
+                          <span className="admin-order__meta-val">
+                            {isFullyPaid ? (
+                              "Клиент оплатил полностью"
+                            ) : paid > 0 ? (
+                              <>
+                                Оплачено частично: {fmt(paid)} из{" "}
+                                {fmt(d.total)} ₽
+                              </>
+                            ) : (
+                              "Не оплачен"
+                            )}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="admin-order__items">
@@ -561,6 +598,36 @@ export default async function AdminWarehousePage({
                         </div>
                       </div>
 
+                      {d.status === "new" &&
+                        (hasShortage ? (
+                          <div className="deal-stock deal-stock--miss">
+                            <div className="deal-stock__title">
+                              <AlertTriangle size={12} />
+                              Не хватает на складе
+                            </div>
+                            {shortage.map((r) => (
+                              <div
+                                key={r.it.productId}
+                                className="deal-stock__row"
+                              >
+                                <span className="deal-stock__name">
+                                  {r.it.name}
+                                </span>
+                                <span className="deal-stock__nums">
+                                  нужно {r.it.quantity} · на складе{" "}
+                                  {r.available} ·{" "}
+                                  <b>не хватает {r.missing}</b>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="deal-stock deal-stock--ok">
+                            <PackageCheck size={13} />
+                            Все позиции есть на складе
+                          </div>
+                        ))}
+
                       {d.comment && (
                         <div className="admin-order__comment">
                           <strong>Комментарий</strong>
@@ -575,7 +642,11 @@ export default async function AdminWarehousePage({
                     </div>
 
                     <div className="admin-order__side">
-                      <DealActions dealId={d.id} status={d.status} />
+                      <DealActions
+                        dealId={d.id}
+                        status={d.status}
+                        hasShortage={hasShortage}
+                      />
                     </div>
                   </div>
                 </div>

@@ -321,9 +321,11 @@ const CANCEL_REASONS = [
 export function DealActions({
   dealId,
   status,
+  hasShortage = false,
 }: {
   dealId: string;
   status: "new" | "completed" | "cancelled";
+  hasShortage?: boolean;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -374,7 +376,17 @@ export function DealActions({
         <div className="admin-status__btns">
           <button
             type="button"
-            onClick={() => callApi({ action: "post" })}
+            onClick={() => {
+              if (
+                hasShortage &&
+                !confirm(
+                  "Товара на складе не хватает — остаток уйдёт в минус. Провести всё равно?"
+                )
+              ) {
+                return;
+              }
+              callApi({ action: "post" });
+            }}
             disabled={saving}
             className="admin-status__btn admin-status__btn--primary"
           >

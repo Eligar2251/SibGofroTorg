@@ -239,17 +239,39 @@ export async function createReceipt(data: {
   }
   const db = getAdminDb();
   const number = await nextNumber("receipt");
+  const date = data.date || new Date().toISOString().slice(0, 10);
+  const supplier = String(data.supplier || "").slice(0, 200);
+  const total = itemsTotal(items);
   const docRef = await db.collection("warehouseReceipts").add({
     number,
-    date: data.date || new Date().toISOString().slice(0, 10),
-    supplier: String(data.supplier || "").slice(0, 200),
+    date,
+    supplier,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items,
-    total: itemsTotal(items),
+    total,
     createdAt: FieldValue.serverTimestamp(),
   });
   // Проведение: товар приходит на склад
   await applyStockDelta(items, 1);
+  // Автоматически создаём платёж поставщику в банке «в ожидании» —
+  // сумму вводить не нужно, в платеже уже финальная стоимость партии (с НДС)
+  const payNumber = await nextNumber("payment");
+  await db.collection("bankPayments").add({
+    number: payNumber,
+    date,
+    direction: "outgoing",
+    counterparty: supplier || "Поставщик",
+    dealIds: [],
+    dealNumbers: [],
+    receiptIds: [docRef.id],
+    receiptNumbers: [number],
+    amount: total,
+    isPaid: false,
+    paidAt: null,
+    comment: `Оплата поставщику по приходному ордеру ПО-${number}`,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
   return { id: docRef.id, number };
 }
 
@@ -261,6 +283,36 @@ export async function deleteReceipt(id: string): Promise<void> {
   const receipt = mapReceipt(id, snap.data());
   await applyStockDelta(receipt.items, -1);
   await ref.delete();
+  // Чистим привязанные платежи: «в ожидании» только с этим поступлением —
+  // удаляем; с несколькими ордерами — просто отвязываем это поступление.
+  // Проведённые платежи (история денег) не трогаем.
+  const paySnap = await db
+    .collection("bankPayments")
+    .where("receiptIds", "array-contains", id)
+    .get();
+  for (const doc of paySnap.docs) {
+    const p = doc.data() as any;
+    if (p.isPaid === true) continue;
+    const ids: string[] = Array.isArray(p.receiptIds) ? [...p.receiptIds] : [];
+    const nums: number[] = Array.isArray(p.receiptNumbers)
+      ? [...p.receiptNumbers]
+      : [];
+    const idx = ids.indexOf(id);
+    if (idx >= 0) {
+      ids.splice(idx, 1);
+      nums.splice(idx, 1);
+    }
+    const hasLinks = ids.length > 0 || (p.dealIds || []).length > 0;
+    if (!hasLinks) {
+      await doc.ref.delete();
+    } else if (idx >= 0) {
+      await doc.ref.update({
+        receiptIds: ids,
+        receiptNumbers: nums,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
 }
 
 // ─── Заказы покупателей ─────────────────────────────────
