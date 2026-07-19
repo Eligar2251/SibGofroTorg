@@ -1396,7 +1396,13 @@
   }
 
   .product-title {
-    font-size: 19px;
+    /* Крупный заголовок на мобильном — раньше 19px сливался
+       с артикулом (13px) и терял иерархию */
+    font-size: 25px;
+    font-weight: 700;
+    line-height: 1.28;
+    letter-spacing: -0.01em;
+    margin-bottom: 14px;
   }
 
   .pdp-price-current {

@@ -1,0 +1,28 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createPayment } from "@/lib/warehouse";
+import { requireAdminApi } from "@/lib/auth";
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+
+  try {
+    const body = await request.json();
+    const result = await createPayment({
+      date: String(body.date || ""),
+      direction: body.direction === "outgoing" ? "outgoing" : "incoming",
+      counterparty: String(body.counterparty || ""),
+      dealIds: Array.isArray(body.dealIds) ? body.dealIds : [],
+      amount: Number(body.amount) || 0,
+      isPaid: body.isPaid === true,
+      comment: body.comment ?? null,
+    });
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.error("Create payment error:", error);
+    return NextResponse.json(
+      { error: error?.message || "Ошибка сервера" },
+      { status: 400 }
+    );
+  }
+}

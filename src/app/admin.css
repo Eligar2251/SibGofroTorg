@@ -1957,3 +1957,539 @@ body:has(.admin-login) > main {
   color: var(--adm-ink-muted);
   font-size: 12px;
 }
+
+/* ══════════════════════════════════════
+   УЧЁТ: склад, заказы, банк (warehouse)
+   ══════════════════════════════════════ */
+
+/* Широкая модалка для форм с позициями */
+.wh-modal {
+  max-width: 44rem;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.wh-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+
+.wh-form-grid .admin-field {
+  margin-bottom: 0;
+}
+
+@media (max-width: 560px) {
+  .wh-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wh-label-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--adm-sand);
+}
+
+/* ── Выбор товара (комбобокс) ── */
+.wh-picker {
+  position: relative;
+}
+
+.wh-picker__input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.wh-picker__icon {
+  position: absolute;
+  left: 10px;
+  color: var(--adm-sand);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.wh-picker__input {
+  padding-left: 30px;
+  width: 100%;
+}
+
+.wh-picker__clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--adm-sand);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 0;
+  border-radius: 4px;
+}
+
+.wh-picker__clear:hover {
+  color: var(--adm-ink);
+  background: var(--adm-paper-warm);
+}
+
+.wh-picker__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  box-shadow: var(--adm-sh-md);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.wh-picker__opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(219, 216, 208, 0.4);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--adm-ink);
+  font-family: inherit;
+  transition: background 0.1s ease;
+}
+
+.wh-picker__opt:last-child {
+  border-bottom: none;
+}
+
+.wh-picker__opt:hover {
+  background: var(--adm-paper);
+}
+
+.wh-picker__opt-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wh-picker__opt-sku {
+  color: var(--adm-sand);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.wh-picker__opt-meta {
+  flex-shrink: 0;
+  color: var(--adm-sand);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.wh-picker__empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--adm-sand);
+  text-align: center;
+}
+
+/* ── Позиции документа ── */
+.wh-items {
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  padding: 10px;
+  margin: 10px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--adm-paper);
+}
+
+.wh-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px 110px 104px 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+.wh-item-row--head {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--adm-sand);
+  padding-bottom: 2px;
+}
+
+.wh-item-row__name {
+  font-size: 13px;
+  color: var(--adm-ink);
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.wh-item-row__sku {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.wh-item-row__warn {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-rust);
+  white-space: nowrap;
+}
+
+.wh-item-row__sum {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.wh-item-row__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card);
+  color: var(--adm-rust);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.wh-item-row__del:hover {
+  background: var(--adm-rust-pale);
+  border-color: var(--adm-rust-line);
+}
+
+/* Мобильный: позиция в две строки — название, затем поля */
+@media (max-width: 640px) {
+  .wh-item-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "sum del";
+    row-gap: 6px;
+    padding: 8px;
+    background: var(--adm-card);
+    border: 1px solid var(--adm-border);
+    border-radius: var(--adm-r-sm);
+  }
+
+  .wh-item-row--head {
+    display: none;
+  }
+
+  .wh-item-row__name { grid-area: name; }
+  .wh-item-row .admin-input:nth-of-type(1) { grid-area: qty; }
+  .wh-item-row .admin-input:nth-of-type(2) { grid-area: price; }
+  .wh-item-row__sum { grid-area: sum; text-align: left; }
+  .wh-item-row__del { grid-area: del; justify-self: end; }
+}
+
+/* ── Футер формы ── */
+.wh-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.wh-form-total {
+  font-size: 14px;
+  color: var(--adm-ink-soft);
+}
+
+.wh-form-total strong {
+  font-family: var(--adm-font-head);
+  font-size: 18px;
+  color: var(--adm-kraft);
+}
+
+.wh-form-hint {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--adm-sand);
+  line-height: 1.5;
+}
+
+.wh-form-error {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+  border-radius: var(--adm-r-sm);
+  color: var(--adm-rust);
+  font-size: 13px;
+}
+
+/* ── Направление платежа ── */
+.wh-direction {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.wh-direction__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  color: var(--adm-ink-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.13s ease;
+  white-space: nowrap;
+}
+
+.wh-direction__btn--in.wh-direction__btn--active {
+  background: var(--adm-pine);
+  border-color: var(--adm-pine);
+  color: #fff;
+}
+
+.wh-direction__btn--out.wh-direction__btn--active {
+  background: var(--adm-rust);
+  border-color: var(--adm-rust);
+  color: #fff;
+}
+
+@media (max-width: 560px) {
+  .wh-direction {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Выбор заказов в платеже ── */
+.wh-deal-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.wh-deal-pick__empty {
+  font-size: 12px;
+  color: var(--adm-sand);
+  padding: 8px 0;
+}
+
+.wh-deal-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-card);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: all 0.12s ease;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wh-deal-chip:hover {
+  border-color: var(--adm-ink-muted);
+}
+
+.wh-deal-chip--active {
+  background: var(--adm-ink);
+  border-color: var(--adm-ink);
+  color: #fff;
+}
+
+.wh-deal-chip__title {
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wh-deal-chip__meta {
+  font-size: 10px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* ── Пометка оплаты ── */
+.wh-paid-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-paper);
+  font-size: 13px;
+  color: var(--adm-ink);
+  cursor: pointer;
+}
+
+.wh-paid-toggle input {
+  accent-color: var(--adm-pine);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* ── Сводка банка ── */
+.wh-stat-grid {
+  margin-bottom: 18px;
+}
+
+.wh-bank-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 760px) {
+  .wh-bank-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wh-bank-stat--balance .admin-stat__value {
+  color: var(--adm-pine);
+}
+
+.wh-bank-stat--in .admin-stat__value {
+  color: var(--adm-steel);
+}
+
+.wh-bank-stat--out .admin-stat__value {
+  color: var(--adm-rust);
+}
+
+/* ── Сумма платежа в списке ── */
+.wh-pay-amount {
+  display: flex;
+  align-items: center;
+}
+
+.wh-pay-amount__val {
+  font-family: var(--adm-font-head);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.wh-pay-amount__val--in {
+  color: var(--adm-pine);
+}
+
+.wh-pay-amount__val--out {
+  color: var(--adm-rust);
+}
+
+.wh-pay-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+/* Кнопка-иконка опасного действия (удаление поступления) */
+.admin-btn--danger-ghost {
+  color: var(--adm-rust);
+  border-color: var(--adm-rust-line);
+}
+
+.admin-btn--danger-ghost:hover {
+  background: var(--adm-rust-pale);
+  border-color: var(--adm-rust);
+  color: var(--adm-rust);
+}
+
+/* Подсказка в пустых списках */
+.admin-empty__hint {
+  font-weight: 400 !important;
+  color: var(--adm-sand);
+  font-size: 12px !important;
+  margin-top: 6px !important;
+  max-width: 340px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.5;
+}
+
+/* ── Доп. правки учёта ── */
+
+/* Длинные лейблы («Поставщик:», «Плательщик:») — 68px не хватает,
+   текст налезал на значение */
+.wh-meta-label {
+  width: 92px;
+}
+
+/* Числа в карточках сводки не переносим (₽ оставался на новой строке),
+   шрифт чуть ужимается на узких экранах */
+.wh-stat-grid .admin-stat__value {
+  white-space: nowrap;
+  font-size: clamp(1.1rem, 4.2vw, 1.6rem);
+}
+
+/* Таблица остатков: без жёсткой min-width — на мобильном влезает
+   без горизонтального скролла за счёт переноса названия */
+.wh-stock-table {
+  min-width: 0;
+}
+
+.wh-stock-table td:first-child,
+.wh-stock-table th:first-child {
+  max-width: 260px;
+}
+
+@media (max-width: 640px) {
+  .wh-stock-table th,
+  .wh-stock-table td {
+    padding: 9px 8px;
+    font-size: 12px;
+  }
+
+  .wh-stock-table td:first-child,
+  .wh-stock-table th:first-child {
+    max-width: 170px;
+  }
+
+  /* На телефоне все 5 колонок не влезают и уходят за экран —
+     оставляем главное: товар, остаток, цену. «Артикул» и «Сумма»
+     (вычисляемая: остаток × цена) скрываем */
+  .wh-stock-table th:nth-child(2),
+  .wh-stock-table td:nth-child(2),
+  .wh-stock-table th:nth-child(5),
+  .wh-stock-table td:nth-child(5) {
+    display: none;
+  }
+}

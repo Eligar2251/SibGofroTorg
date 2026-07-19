@@ -1,0 +1,312 @@
+// =========================================================
+// FILE: src/components/admin/WarehouseReceipts.tsx
+// Форма приходного ордера (поступление товаров) + удаление
+// =========================================================
+
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Trash2, X, Loader2 } from "lucide-react";
+import {
+  ProductPicker,
+  type PickerProduct,
+} from "@/components/admin/ProductPicker";
+
+interface ReceiptItemDraft {
+  productId: string;
+  name: string;
+  sku: string | null;
+  quantity: number;
+  price: number;
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+const fmt = (n: number) => n.toLocaleString("ru-RU");
+
+export function ReceiptForm({ products }: { products: PickerProduct[] }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [date, setDate] = useState(todayIso());
+  const [supplier, setSupplier] = useState("");
+  const [comment, setComment] = useState("");
+  const [items, setItems] = useState<ReceiptItemDraft[]>([]);
+
+  const total = items.reduce((s, it) => s + it.quantity * it.price, 0);
+
+  function resetForm() {
+    setDate(todayIso());
+    setSupplier("");
+    setComment("");
+    setItems([]);
+    setError("");
+  }
+
+  function addItem(p: PickerProduct) {
+    setItems((prev) => {
+      const existing = prev.find((it) => it.productId === p.id);
+      if (existing) {
+        return prev.map((it) =>
+          it.productId === p.id ? { ...it, quantity: it.quantity + 1 } : it
+        );
+      }
+      // Закупочная цена — по умолчанию оптовая (или продажная), редактируется
+      const price = p.priceWholesale ?? p.price ?? 0;
+      return [
+        ...prev,
+        { productId: p.id, name: p.name, sku: p.sku, quantity: 1, price },
+      ];
+    });
+  }
+
+  function setItem(productId: string, patch: Partial<ReceiptItemDraft>) {
+    setItems((prev) =>
+      prev.map((it) => (it.productId === productId ? { ...it, ...patch } : it))
+    );
+  }
+
+  function removeItem(productId: string) {
+    setItems((prev) => prev.filter((it) => it.productId !== productId));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (items.length === 0) {
+      setError("Добавьте хотя бы одну позицию");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/warehouse/receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date,
+          supplier: supplier.trim(),
+          comment: comment.trim() || null,
+          items: items.map((it) => ({
+            productId: it.productId,
+            name: it.name,
+            sku: it.sku,
+            quantity: Number(it.quantity) || 0,
+            price: Number(it.price) || 0,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Не удалось сохранить поступление");
+        setSaving(false);
+        return;
+      }
+      setOpen(false);
+      resetForm();
+      router.refresh();
+    } catch {
+      setError("Ошибка сети");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="admin-btn admin-btn--primary"
+        onClick={() => setOpen(true)}
+      >
+        <Plus size={15} /> Оформить поступление
+      </button>
+
+      {open && (
+        <div className="admin-modal-overlay" onClick={() => setOpen(false)}>
+          <div
+            className="admin-modal wh-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="admin-modal__head">
+              <h3 className="admin-modal__title">Приходный ордер</h3>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="admin-modal__close"
+                aria-label="Закрыть"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div className="wh-form-grid">
+                <div className="admin-field">
+                  <label className="admin-label">Дата</label>
+                  <input
+                    type="date"
+                    className="admin-input"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Поставщик</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={supplier}
+                    onChange={(e) => setSupplier(e.target.value)}
+                    placeholder="ООО «Гофрокомбинат»"
+                  />
+                </div>
+              </div>
+
+              <div className="admin-field">
+                <label className="admin-label">Товары</label>
+                <ProductPicker products={products} onPick={addItem} />
+              </div>
+
+              {items.length > 0 && (
+                <div className="wh-items">
+                  <div className="wh-item-row wh-item-row--head">
+                    <span>Товар</span>
+                    <span>Кол-во</span>
+                    <span>Цена, ₽</span>
+                    <span>Сумма</span>
+                    <span />
+                  </div>
+                  {items.map((it) => (
+                    <div key={it.productId} className="wh-item-row">
+                      <span className="wh-item-row__name">
+                        {it.name}
+                        {it.sku && <span className="wh-item-row__sku">{it.sku}</span>}
+                      </span>
+                      <input
+                        type="number"
+                        className="admin-input"
+                        min={1}
+                        step={1}
+                        value={it.quantity}
+                        onChange={(e) =>
+                          setItem(it.productId, {
+                            quantity: Number(e.target.value),
+                          })
+                        }
+                      />
+                      <input
+                        type="number"
+                        className="admin-input"
+                        min={0}
+                        step={0.01}
+                        value={it.price}
+                        onChange={(e) =>
+                          setItem(it.productId, { price: Number(e.target.value) })
+                        }
+                      />
+                      <span className="wh-item-row__sum">
+                        {fmt(it.quantity * it.price)} ₽
+                      </span>
+                      <button
+                        type="button"
+                        className="wh-item-row__del"
+                        onClick={() => removeItem(it.productId)}
+                        aria-label="Убрать позицию"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="admin-field">
+                <label className="admin-label">Комментарий</label>
+                <input
+                  type="text"
+                  className="admin-input"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Необязательно"
+                />
+              </div>
+
+              {error && <div className="wh-form-error">{error}</div>}
+
+              <div className="wh-form-footer">
+                <div className="wh-form-total">
+                  Итого: <strong>{fmt(total)} ₽</strong>
+                </div>
+                <div className="admin-form-actions">
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost"
+                    onClick={() => setOpen(false)}
+                    disabled={saving}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="admin-btn admin-btn--primary"
+                    disabled={saving || items.length === 0}
+                  >
+                    {saving && <Loader2 size={14} className="animate-spin" />}
+                    Провести поступление
+                  </button>
+                </div>
+              </div>
+              <p className="wh-form-hint">
+                После проведения товары автоматически добавятся на остатки склада.
+              </p>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function ReceiptDeleteButton({ receiptId }: { receiptId: string }) {
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (
+      !confirm(
+        "Удалить поступление? Остатки товаров будут уменьшены обратно (сторно)."
+      )
+    )
+      return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/warehouse/receipts/${receiptId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) router.refresh();
+    } catch (err) {
+      console.error(err);
+    }
+    setDeleting(false);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleDelete}
+      disabled={deleting}
+      className="admin-btn admin-btn--icon admin-btn--danger-ghost"
+      title="Удалить (сторно складу)"
+    >
+      {deleting ? (
+        <Loader2 size={15} className="animate-spin" />
+      ) : (
+        <Trash2 size={15} />
+      )}
+    </button>
+  );
+}
