@@ -124,14 +124,24 @@
 }
 
 .admin-sidebar__brand {
-  padding: 0 20px;
-  height: 64px;
+  padding: 14px 20px 12px;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
   border-bottom: 1px solid rgba(255,255,255,0.07);
   position: relative;
   flex-shrink: 0;
+}
+
+/* Полный логотип (знак + название) вместо буквы.
+   Специфичность выше, чем у .site-logo из globals — иначе
+   глобальная высота шапки сайта побеждает */
+.admin-shell .admin-sidebar__logo-svg {
+  height: 34px;
+  width: auto;
+  display: block;
 }
 
 .admin-sidebar__logo {
@@ -305,14 +315,21 @@
 .admin-mobile-bar__title {
   font-family: var(--adm-font-head);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
-.admin-mobile-bar__title span {
-  color: var(--adm-kraft-mid);
+/* Мини-логотип в мобильной панели */
+.admin-shell .admin-mobile-bar__logo {
+  height: 22px;
+  width: auto;
+  display: block;
 }
 
 .admin-mobile-bar__nav {

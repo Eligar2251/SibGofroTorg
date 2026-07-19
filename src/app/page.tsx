@@ -207,7 +207,7 @@ export default async function HomePage() {
             </div>
 
             <div className="hero__wp-features">
-              <span>Вывоз от 150 кг бесплатно</span>
+              <span>Вывоз от 150 кг — 0 ₽</span>
               <span>Оплата на месте</span>
               <span>Работаем с юрлицами</span>
             </div>

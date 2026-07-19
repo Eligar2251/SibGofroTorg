@@ -784,25 +784,47 @@ select {
   gap: 12px;
 }
 
+/* Кнопка «Рассчитать выплату» — полноценный CTA в тон панели,
+   по высоте совпадает с «Перейти в каталог» слева */
 .btn-hero-secondary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  height: auto;
-  padding: 0;
-  background: none;
+  height: 50px;
+  padding: 0 22px;
+  background: linear-gradient(180deg, #6ee07e 0%, #4cc35c 100%);
   border: none;
-  color: var(--green-lime);
+  border-radius: 10px;
+  color: #07160b;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 800;
+  letter-spacing: 0.01em;
   text-decoration: none;
   white-space: nowrap;
-  transition: gap var(--transition);
   cursor: pointer;
+  box-shadow:
+    0 10px 24px rgba(93, 203, 97, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    filter var(--transition);
+  width: 100%;
 }
 
-.hero__right:hover .btn-hero-secondary {
-  gap: 12px;
+.hero__right:hover .btn-hero-secondary,
+.hero__right:focus-visible .btn-hero-secondary {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow:
+    0 14px 30px rgba(93, 203, 97, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.hero__right:active .btn-hero-secondary {
+  transform: translateY(0);
+  filter: brightness(0.97);
 }
 
 /* Иконки внутри кнопок */
@@ -960,7 +982,7 @@ select {
 
 .container-half-right {
   width: 100%;
-  padding: 56px 40px 48px 64px;
+  padding: 56px 32px 48px 48px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1052,19 +1074,24 @@ select {
 
 .hero__wp-features {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   margin-bottom: 0;
+  max-width: 100%;
 }
 
 .hero__wp-features span {
   position: relative;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
-  padding-left: 14px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  padding-left: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero__wp-features span + span {
-  margin-left: 14px;
+  margin-left: 10px;
 }
 
 .hero__wp-features span::before {
@@ -1083,21 +1110,25 @@ select {
   padding-left: 0;
 }
 
+/* 901–1100px: правая панель hero узкая — разрешаем перенос,
+   чтобы текст плашек не обрезался */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .hero__wp-features {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .hero__wp-features span {
+    white-space: normal;
+  }
+}
+
 .hero__wp-features span:first-child::before {
   display: none;
 }
 
 .btn-hero-secondary {
   margin-top: auto;
-}
-
-/* На десктопе приподнимаем ссылку «Рассчитать выплату» так, чтобы её
-   вертикальный центр совпадал с центром строки CTA слева
-   (кнопка каталога 50px + нижний паддинг 48px ⇒ центр на 73px от низа) */
-@media (min-width: 900px) {
-  .btn-hero-secondary {
-    margin-bottom: 18px;
-  }
 }
 
 /* ══════════════════════════════════════
@@ -3478,6 +3509,9 @@ select {
   font-weight: 600;
   color: var(--ink-light);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .cab-order__head-right {
@@ -5163,6 +5197,8 @@ select {
 
 .about-badge {
   display: inline-flex;
+  align-items: center;
+  gap: 5px;
   align-self: flex-start;
   font-size: 12px;
   font-weight: 700;

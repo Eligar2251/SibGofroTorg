@@ -16,6 +16,7 @@ import {
   Megaphone,
   Star,
 } from "lucide-react";
+import { SiteLogo } from "@/components/layout/SiteLogo";
 
 export function AdminShell({
   children,
@@ -78,11 +79,8 @@ export function AdminShell({
     <div className="admin-shell" data-admin="true">
       <aside className="admin-sidebar">
         <div className="admin-sidebar__brand">
-          <div className="admin-sidebar__logo">С</div>
-          <div>
-            <div className="admin-sidebar__name">СибГофроТорг</div>
-            <div className="admin-sidebar__sub">Управление</div>
-          </div>
+          <SiteLogo variant="light" className="admin-sidebar__logo-svg" />
+          <div className="admin-sidebar__sub">Управление</div>
         </div>
 
         <nav className="admin-sidebar__nav">
@@ -110,7 +108,7 @@ export function AdminShell({
             target="_blank"
             className="admin-sidebar__footer-link"
           >
-            <ExternalLink size={13} /> Перейти на site
+            <ExternalLink size={13} /> Перейти на сайт
           </Link>
           <form action={`/${adminPath}/api/logout`} method="POST">
             <button type="submit" className="admin-sidebar__logout">
@@ -122,7 +120,8 @@ export function AdminShell({
 
       <div className="admin-mobile-bar">
         <span className="admin-mobile-bar__title">
-          <span>С</span> Управление
+          <SiteLogo variant="light" className="admin-mobile-bar__logo" />
+          Управление
         </span>
         <div className="admin-mobile-bar__nav">
           {nav.map((link) => (

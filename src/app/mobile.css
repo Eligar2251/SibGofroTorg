@@ -416,36 +416,11 @@ body {
     margin-left: 0;
   }
 
-  /* «Рассчитать выплату» — кнопка, не текст */
+  /* «Рассчитать выплату» — на всю ширину панели */
   .btn-hero-secondary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
     width: 100%;
-    min-height: 46px;
-    height: 46px;
-    margin-top: 0;
-    padding: 0 16px;
-    background: rgba(93, 203, 97, 0.14);
-    border: 1.5px solid rgba(93, 203, 97, 0.55);
-    border-radius: 8px;
-    color: var(--green-lime);
-    font-size: 14px;
-    font-weight: 700;
-    text-decoration: none;
     align-self: stretch;
     white-space: nowrap;
-    transition:
-      background-color var(--transition),
-      border-color var(--transition);
-  }
-
-  .hero__right:hover .btn-hero-secondary,
-  .btn-hero-secondary:active {
-    gap: 8px;
-    background: rgba(93, 203, 97, 0.22);
-    border-color: var(--green-lime);
   }
 
   /* ═══════════════════════════

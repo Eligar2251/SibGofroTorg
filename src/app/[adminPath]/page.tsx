@@ -480,9 +480,13 @@ export default async function AdminDashboard() {
                   fontWeight: 700,
                   color: "#1b2b4b",
                   fontSize: 16,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  whiteSpace: "nowrap",
                 }}
               >
-                <AlertTriangle size={15} style={{ marginRight: 6, verticalAlign: "-2px" }} />
+                <AlertTriangle size={15} />
                 Мало на складе
               </h2>
               <Link
@@ -562,8 +566,17 @@ export default async function AdminDashboard() {
                   fontSize: 13,
                 }}
               >
-                <CheckCircle2 size={15} style={{ marginRight: 6, verticalAlign: "-2px" }} />
-                Склад в норме
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <CheckCircle2 size={15} />
+                  Склад в норме
+                </span>
               </div>
             )}
           </div>
