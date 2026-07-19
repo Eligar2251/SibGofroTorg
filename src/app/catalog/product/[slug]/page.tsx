@@ -32,6 +32,7 @@ import {
   MessageSquare,
   ShoppingCart,
 } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
 import {
@@ -304,7 +305,7 @@ export default async function ProductPage({
                 decoding="async"
               />
             ) : (
-              <span className="pdp-img-placeholder">📦</span>
+              <span className="pdp-img-placeholder"><GlyphIcon value="box" size={64} /></span>
             )}
             {/* Бейджи акций/скидок — левый верхний угол фото */}
             {(product.promoLabel || discountPercent > 0) && (
@@ -605,7 +606,7 @@ export default async function ProductPage({
                         : 0;
                     return (
                       <div key={s} className="reviews-bar-row">
-                        <span className="reviews-bar-star">{s} ★</span>
+                        <span className="reviews-bar-star">{s} <GlyphIcon value="star" size={11} /></span>
                         <span className="reviews-bar">
                           <span style={{ width: `${pct}%` }} />
                         </span>

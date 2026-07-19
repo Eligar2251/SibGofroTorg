@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { Check, ShieldCheck, HeartHandshake, History } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import type { Metadata } from "next";
 import { SITE_URL, SITE_NAME } from "@/lib/seo";
 
@@ -38,7 +39,7 @@ export default function AboutPage() {
         <div className="card-base about-card">
           <div className="about-grid">
             <div className="about-grid__text">
-              <span className="about-badge">🤝 Более 8 лет на рынке</span>
+              <span className="about-badge"><GlyphIcon value="handshake" size={13} /> Более 8 лет на рынке</span>
 
               <h1 className="about-title">
                 ООО «СибГофроТорг» — упаковка от производителя
@@ -77,7 +78,7 @@ export default function AboutPage() {
             </div>
 
             <div className="about-grid__visual" aria-hidden>
-              📦
+              <GlyphIcon value="box" size={120} />
             </div>
           </div>
 

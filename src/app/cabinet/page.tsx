@@ -16,6 +16,7 @@ import {
   LogOut,
   LogIn,
 } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -123,7 +124,7 @@ function OrderCard({ order }: { order: Order }) {
       <button className="cab-order__head" onClick={() => setOpen(!open)}>
         <div className="cab-order__head-left">
           <span className="cab-order__num">#{order.id.slice(0, 8).toUpperCase()}</span>
-          <span className="cab-order__type">{isOrder ? "📦 Заказ" : "💬 Заявка"}</span>
+          <span className="cab-order__type"><GlyphIcon value={isOrder ? "box" : "chat"} size={12} /> {isOrder ? "Заказ" : "Заявка"}</span>
         </div>
         <div className="cab-order__head-right">
           <span className="cab-order__status" style={{ background: st.bg, color: st.color }}>
@@ -192,7 +193,7 @@ function OrderCard({ order }: { order: Order }) {
             )}
             {order.paymentMethod && (
               <div className="cab-order__meta-row">
-                <span className="cab-order__meta-label">💳 Оплата:</span>
+                <span className="cab-order__meta-label"><GlyphIcon value="card" size={13} /> Оплата:</span>
                 <span className="cab-order__meta-val">
                   {payLabels[order.paymentMethod] ?? order.paymentMethod}
                 </span>
@@ -298,7 +299,7 @@ export default function CabinetPage() {
 
         <div className="container-wide" style={{ marginTop: 48, maxWidth: 520 }}>
           <div className="card-base" style={{ textAlign: "center", padding: 40 }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+            <div style={{ marginBottom: 12, color: "var(--ink-muted)" }}><GlyphIcon value="lock" size={40} /></div>
             <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>Нужен вход</h1>
             <p style={{ fontSize: 14, color: "var(--ink-light)", marginBottom: 24, lineHeight: 1.6 }}>
               Заказы видит только владелец аккаунта. Войдите по телефону и паролю —
@@ -348,7 +349,7 @@ export default function CabinetPage() {
         <div className="cab-layout">
           <aside className="cab-sidebar">
             <div className="cab-sidebar__card">
-              <div className="cab-sidebar__icon">👤</div>
+              <div className="cab-sidebar__icon"><GlyphIcon value="user" size={22} /></div>
               <h2 className="cab-sidebar__title">Мои заказы</h2>
               {user && (
                 <div style={{ fontSize: 13, color: "var(--ink-light)", lineHeight: 1.5 }}>
@@ -367,7 +368,7 @@ export default function CabinetPage() {
                 <LogOut size={15} /> Выйти
               </button>
               <div className="cab-sidebar__hint">
-                <div className="cab-sidebar__hint-icon">💡</div>
+                <div className="cab-sidebar__hint-icon"><GlyphIcon value="bulb" size={18} /></div>
                 <p>
                   Оформляйте заказ будучи в аккаунте — он сразу появится здесь. Старые заказы с
                   тем же телефоном тоже подтянутся.

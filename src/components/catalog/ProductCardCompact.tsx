@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/context/CartContext";
 import { PriceInquiryButton } from "./PriceInquiryButton";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import { Plus, Minus, ShoppingCart, Check, Package } from "lucide-react";
 
 interface CompactProduct {
@@ -140,7 +141,7 @@ export function ProductCardCompact({
               style={{ objectFit: "cover" }}
             />
           ) : (
-            <span className="pcc__img-placeholder">📦</span>
+            <span className="pcc__img-placeholder"><GlyphIcon value="box" size={40} /></span>
           )}
 
           {/* Hover-оверлей с характеристиками */}
@@ -215,7 +216,7 @@ export function ProductCardCompact({
             <span className="pcc__price-muted">Цена по запросу</span>
           )}
           {inCart && (
-            <span className="pcc__in-cart">✓ в корзине: {inCart.quantity}</span>
+            <span className="pcc__in-cart"><GlyphIcon value="check" size={12} /> в корзине: {inCart.quantity}</span>
           )}
         </div>
 

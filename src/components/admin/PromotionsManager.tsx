@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Edit2, Save, X, Loader2, Megaphone, Copy } from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
+import { GlyphIcon, GLYPH_CHOICES } from "@/components/ui/Glyph";
 
 interface Promotion {
   id: string;
@@ -54,7 +55,7 @@ export function PromotionsManager({
   const [sortOrder, setSortOrder] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
   // New fields for deal card display
-  const [icon, setIcon] = useState("📦");
+  const [icon, setIcon] = useState("box");
   const [color, setColor] = useState("var(--kraft)");
   const [light, setLight] = useState("var(--kraft-light)");
   const [deadline, setDeadline] = useState("");
@@ -69,7 +70,7 @@ export function PromotionsManager({
     setLinkUrl("");
     setSortOrder(promotions.length);
     setIsVisible(true);
-    setIcon("📦");
+    setIcon("box");
     setColor("var(--kraft)");
     setLight("var(--kraft-light)");
     setDeadline("");
@@ -87,7 +88,7 @@ export function PromotionsManager({
     setLinkUrl(p.linkUrl || "");
     setSortOrder(p.sortOrder);
     setIsVisible(p.isVisible);
-    setIcon(p.icon || "📦");
+    setIcon(p.icon || "box");
     setColor(p.color || "var(--kraft)");
     setLight(p.light || "var(--kraft-light)");
     setDeadline(p.deadline || "");
@@ -225,7 +226,7 @@ export function PromotionsManager({
           linkUrl: null,
           sortOrder: promotions.length,
           isVisible: true,
-          icon: "📦",
+          icon: "box",
           color: "var(--kraft)",
           light: "var(--kraft-light)",
           deadline: null,
@@ -240,7 +241,7 @@ export function PromotionsManager({
           linkUrl: null,
           sortOrder: promotions.length + 1,
           isVisible: true,
-          icon: "🚚",
+          icon: "truck",
           color: "var(--eco)",
           light: "var(--eco-light)",
           deadline: null,
@@ -255,7 +256,7 @@ export function PromotionsManager({
           linkUrl: "/wastepaper",
           sortOrder: promotions.length + 2,
           isVisible: true,
-          icon: "♻️",
+          icon: "recycle",
           color: "#2D6A4F",
           light: "#D8EFE3",
           deadline: null,
@@ -270,7 +271,7 @@ export function PromotionsManager({
           linkUrl: null,
           sortOrder: promotions.length + 3,
           isVisible: true,
-          icon: "⚡",
+          icon: "zap",
           color: "#7C3AED",
           light: "#EDE9FE",
           deadline: "31 июля",
@@ -399,16 +400,37 @@ export function PromotionsManager({
 
             {/* Поля для отображения на главной странице (deal card) */}
             <div className="admin-field">
-              <label className="admin-label">Иконка (эмодзи)</label>
-              <input
-                type="text"
-                className="admin-input"
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-                placeholder="📦 🚚 ♻️ ⚡ 🎁"
-                maxLength={4}
-                style={{ fontSize: "18px" }}
-              />
+              <label className="admin-label">Иконка карточки</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <select
+                  className="admin-input"
+                  value={
+                    GLYPH_CHOICES.some((g) => g.token === icon) ? icon : "box"
+                  }
+                  onChange={(e) => setIcon(e.target.value)}
+                  style={{ flex: 1 }}
+                >
+                  {GLYPH_CHOICES.map((g) => (
+                    <option key={g.token} value={g.token}>
+                      {g.label}
+                    </option>
+                  ))}
+                </select>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 34,
+                    height: 34,
+                    borderRadius: 8,
+                    border: "1px solid var(--adm-border-mid)",
+                    background: "var(--adm-bg, #f8f7f4)",
+                  }}
+                >
+                  <GlyphIcon value={icon} size={17} />
+                </span>
+              </div>
             </div>
 
             <div className="admin-grid-3">
@@ -550,11 +572,19 @@ export function PromotionsManager({
                   </td>
                   <td>
                     <span className="admin-badge admin-badge--muted">
-                      {p.linkType === "product"
-                        ? "📦 На товар"
-                        : p.linkType === "url"
-                        ? `🔗 ${p.linkUrl}`
-                        : "📄 Без ссылки"}
+                      {p.linkType === "product" ? (
+                        <>
+                          <GlyphIcon value="box" size={11} /> На товар
+                        </>
+                      ) : p.linkType === "url" ? (
+                        <>
+                          <GlyphIcon value="link" size={11} /> {p.linkUrl}
+                        </>
+                      ) : (
+                        <>
+                          <GlyphIcon value="file" size={11} /> Без ссылки
+                        </>
+                      )}
                     </span>
                   </td>
                   <td style={{ textAlign: "center", fontWeight: 600 }}>{p.sortOrder}</td>

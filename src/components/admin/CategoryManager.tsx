@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { Plus, Loader2, Save, Eye, EyeOff } from "lucide-react";
+import { GlyphIcon, GLYPH_CHOICES } from "@/components/ui/Glyph";
 
 interface Category {
   id: string;
@@ -30,7 +31,7 @@ export function CategoryManager({
   const [saving, setSaving] = useState(false);
   const [newCat, setNewCat] = useState({
     name: "",
-    icon: "📦",
+    icon: "box",
     description: "",
   });
 
@@ -60,7 +61,7 @@ export function CategoryManager({
             productCount: 0,
           },
         ]);
-        setNewCat({ name: "", icon: "📦", description: "" });
+        setNewCat({ name: "", icon: "box", description: "" });
         setShowAdd(false);
       }
     } catch (err) {
@@ -97,14 +98,18 @@ export function CategoryManager({
                 />
               </div>
               <div className="admin-field">
-                <label className="admin-label">Иконка (эмодзи)</label>
-                <input
-                  type="text"
+                <label className="admin-label">Иконка</label>
+                <select
                   value={newCat.icon}
                   onChange={(e) => setNewCat({ ...newCat, icon: e.target.value })}
                   className="admin-input"
-                  placeholder="📦"
-                />
+                >
+                  {GLYPH_CHOICES.map((g) => (
+                    <option key={g.token} value={g.token}>
+                      {g.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="admin-field">
                 <label className="admin-label">Описание</label>
@@ -162,7 +167,7 @@ export function CategoryManager({
                 <tr key={cat.id}>
                   <td>
                     <div className="admin-cat-cell">
-                      <span className="admin-cat-icon">{cat.icon ?? "📦"}</span>
+                      <span className="admin-cat-icon"><GlyphIcon value={cat.icon} size={20} /></span>
                       <div>
                         <div className="admin-cat-name">{cat.name}</div>
                         {cat.description && (

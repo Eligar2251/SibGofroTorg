@@ -4,7 +4,7 @@
 
 import { getProducts, getAllCategories } from "@/lib/firestore-queries";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ProductListClient } from "@/components/admin/ProductListClient";
 
@@ -57,7 +57,7 @@ export default async function AdminProductsPage({
             href={`/${ADMIN_PATH}/products/bulk`}
             className="admin-btn admin-btn--ghost"
           >
-            ✏️ Массовое редактирование
+            <Pencil size={15} /> Массовое редактирование
           </Link>
           <Link
             href={`/${ADMIN_PATH}/products/new`}

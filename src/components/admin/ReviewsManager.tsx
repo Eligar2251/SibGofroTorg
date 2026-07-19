@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { Eye, Edit2, Trash2, Check, X, Filter, Star, ShieldCheck, AlertTriangle, Loader2, MessageSquare, Image, Download, ChevronRight, ChevronLeft } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 
 interface Review {
   id: string;
@@ -303,7 +304,13 @@ export function ReviewsManager() {
                     </div>
                     <div>
                       <p style={{ fontWeight: 600, marginBottom: 4 }}>Верифицированная покупка:</p>
-                      <p>{r.isVerifiedPurchase ? "✅ Да" : "❌ Нет"}</p>
+                      <p>
+                        {r.isVerifiedPurchase ? (
+                          <><GlyphIcon value="ok" size={14} /> Да</>
+                        ) : (
+                          <><GlyphIcon value="cancel" size={14} /> Нет</>
+                        )}
+                      </p>
                     </div>
                   </div>
                   {r.title && (
@@ -318,13 +325,13 @@ export function ReviewsManager() {
                   </div>
                   {r.pros && (
                     <div style={{ marginBottom: 8, padding: 12, background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
-                      <p style={{ fontWeight: 600, color: "#15803d", marginBottom: 4 }}>✅ Достоинства:</p>
+                      <p style={{ fontWeight: 600, color: "#15803d", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><GlyphIcon value="ok" size={14} /> Достоинства:</p>
                       <p style={{ color: "#15803d" }}>{r.pros}</p>
                     </div>
                   )}
                   {r.cons && (
                     <div style={{ marginBottom: 8, padding: 12, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
-                      <p style={{ fontWeight: 600, color: "#dc2626", marginBottom: 4 }}>❌ Недостатки:</p>
+                      <p style={{ fontWeight: 600, color: "#dc2626", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><GlyphIcon value="cancel" size={14} /> Недостатки:</p>
                       <p style={{ color: "#dc2626" }}>{r.cons}</p>
                     </div>
                   )}
@@ -399,9 +406,9 @@ export function ReviewsManager() {
                     </td>
                     <td>
                       {r.isVerifiedPurchase ? (
-                        <span className="admin-badge admin-badge--green" style={{ fontSize: 11 }}>✅ Верифицировано</span>
+                        <span className="admin-badge admin-badge--green" style={{ fontSize: 11 }}><GlyphIcon value="ok" size={11} /> Верифицировано</span>
                       ) : (
-                        <span className="admin-badge admin-badge--amber" style={{ fontSize: 11 }}>⚠ Не верифицировано</span>
+                        <span className="admin-badge admin-badge--amber" style={{ fontSize: 11 }}><GlyphIcon value="warning" size={11} /> Не верифицировано</span>
                       )}
                     </td>
                     <td style={{ textAlign: "right" }}>

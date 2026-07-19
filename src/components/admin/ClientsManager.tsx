@@ -13,6 +13,7 @@ import {
   Package,
   MessageSquare,
 } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 
 interface ClientOrder {
   id: string;
@@ -512,9 +513,9 @@ export function ClientsManager({ clients }: { clients: Client[] }) {
         <div style={{ display: "flex", gap: 8 }}>
           {(
             [
-              { v: "all", label: "Все" },
-              { v: "individual", label: "👤 Физлица" },
-              { v: "legal", label: "🏢 Юрлица" },
+              { v: "all", label: "Все", token: "" },
+              { v: "individual", label: "Физлица", token: "user" },
+              { v: "legal", label: "Юрлица", token: "building" },
             ] as const
           ).map((f) => (
             <button
@@ -523,6 +524,9 @@ export function ClientsManager({ clients }: { clients: Client[] }) {
               onClick={() => setFilter(f.v)}
               className={`admin-filter${filter === f.v ? " admin-filter--active" : ""}`}
             >
+              {"token" in f && f.token ? (
+                <GlyphIcon value={f.token} size={13} />
+              ) : null}
               {f.label}
             </button>
           ))}
@@ -551,7 +555,7 @@ export function ClientsManager({ clients }: { clients: Client[] }) {
             className="admin-card"
             style={{ textAlign: "center", padding: 40 }}
           >
-            <div style={{ fontSize: 32, marginBottom: 8 }}>👥</div>
+            <div style={{ marginBottom: 8, color: "var(--adm-muted)" }}><GlyphIcon value="users" size={32} /></div>
             <p style={{ color: "var(--adm-muted)" }}>
               {search ? `По запросу «${search}» ничего не найдено` : "Клиентов нет"}
             </p>

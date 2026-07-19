@@ -6,7 +6,8 @@
 
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { MobileCategorySelect } from "@/components/catalog/MobileCategorySelect";
@@ -153,7 +154,7 @@ export function HomeCatalogSection({
                 onClick={() => handleCategory(null)}
                 className={`fcat-item${!activeSlug ? " fcat-item--active" : ""}`}
               >
-                <span className="fcat-item__icon">⭐</span>
+                <span className="fcat-item__icon"><GlyphIcon value="star" size={16} /></span>
                 <span className="fcat-item__name">Популярные</span>
               </button>
 
@@ -164,7 +165,7 @@ export function HomeCatalogSection({
                   onClick={() => handleCategory(cat.slug)}
                   className={`fcat-item${activeSlug === cat.slug ? " fcat-item--active" : ""}`}
                 >
-                  <span className="fcat-item__icon">{cat.icon || "📦"}</span>
+                  <span className="fcat-item__icon"><GlyphIcon value={cat.icon} size={16} /></span>
                   <span className="fcat-item__name">{cat.name}</span>
                 </button>
               ))}
@@ -205,7 +206,9 @@ export function HomeCatalogSection({
               </div>
             ) : (
               <div className="empty-state">
-                <span>{loading ? "⏳" : "📦"}</span>
+                <span>{loading
+                  ? <Loader2 size={32} className="animate-spin" />
+                  : <GlyphIcon value="box" size={32} />}</span>
                 <p>
                   {loading
                     ? "Загружаем товары..."

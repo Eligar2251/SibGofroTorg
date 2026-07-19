@@ -731,12 +731,13 @@
   position: relative;
   display: inline-block;
   line-height: 1;
-  letter-spacing: 2px;
-  white-space: nowrap;
   flex-shrink: 0;
 }
 
-.stars__base {
+.stars__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   color: #dde2df;
 }
 

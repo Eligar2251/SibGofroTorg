@@ -54,9 +54,9 @@ export function SiteLogo() {
         />
       </g>
 
-      {/* Название компании */}
+      {/* Название компании (отступ от знака +2.4px) */}
       <text
-        x="308"
+        x="324"
         y="196"
         fontFamily="'Montserrat', 'Oswald', 'Arial Black', sans-serif"
         fontSize="86"
@@ -69,7 +69,7 @@ export function SiteLogo() {
 
       {/* Декоративная линия */}
       <line
-        x1="310"
+        x1="326"
         y1="222"
         x2="1120"
         y2="222"

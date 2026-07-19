@@ -3,6 +3,7 @@ import { getOrders } from "@/lib/firestore-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
+import { GlyphIcon } from "@/components/ui/Glyph";
 
 export const dynamic = "force-dynamic";
 
@@ -22,18 +23,18 @@ const statusBadge: Record<string, string> = {
   rejected: "admin-badge admin-badge--red",
 };
 
-const commLabels: Record<string, string> = {
-  call: "📞 Звонок",
-  whatsapp: "💬 WhatsApp",
-  telegram: "💬 Telegram",
-  max: "💬 Макс",
-  email: "✉️ Почта",
+const commLabels: Record<string, { token: string; text: string }> = {
+  call: { token: "phone", text: "Звонок" },
+  whatsapp: { token: "chat", text: "WhatsApp" },
+  telegram: { token: "send", text: "Telegram" },
+  max: { token: "chats", text: "Макс" },
+  email: { token: "mail", text: "Почта" },
 };
 
-const paymentLabels: Record<string, string> = {
-  transfer: "💳 Перевод",
-  cash: "💵 Наличные",
-  invoice: "🧾 Счет",
+const paymentLabels: Record<string, { token: string; text: string }> = {
+  transfer: { token: "card", text: "Перевод" },
+  cash: { token: "cash", text: "Наличные" },
+  invoice: { token: "receipt", text: "Счет" },
 };
 
 const filterOptions = [
@@ -128,15 +129,18 @@ export default async function AdminOrdersPage({
 
         <div style={{ display: "flex", gap: 6 }}>
           {[
-            { value: "all", label: "Все типы" },
-            { value: "order", label: "📦 Заказы" },
-            { value: "inquiry", label: "💬 Заявки" },
+            { value: "all", label: "Все типы", token: "" },
+            { value: "order", label: "Заказы", token: "box" },
+            { value: "inquiry", label: "Заявки", token: "chat" },
           ].map((t) => (
             <Link
               key={t.value}
               href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${t.value}${searchQuery ? `&q=${searchQuery}` : ""}`}
               className={`admin-filter${activeType === t.value ? " admin-filter--active" : ""}`}
             >
+              {t.token && (
+                <GlyphIcon value={t.token} size={13} />
+              )}
               {t.label}
             </Link>
           ))}
@@ -175,7 +179,8 @@ export default async function AdminOrdersPage({
                               : "admin-badge admin-badge--teal"
                           }
                         >
-                          {isOrder ? "📦 Заказ" : "💬 Заявка"}
+                          <GlyphIcon value={isOrder ? "box" : "chat"} size={11} />
+                          {isOrder ? "Заказ" : "Заявка"}
                         </span>
                         <span
                           className={statusBadge[order.status ?? "new"]}
@@ -195,9 +200,13 @@ export default async function AdminOrdersPage({
                           <span className="admin-order__meta-val">
                             {order.customerName}{" "}
                             <span className="admin-badge admin-badge--muted">
+                              <GlyphIcon
+                                value={order.customerType === "legal" ? "building" : "user"}
+                                size={11}
+                              />
                               {order.customerType === "legal"
-                                ? "🏢 Юр. лицо"
-                                : "👤 Физ. лицо"}
+                                ? "Юр. лицо"
+                                : "Физ. лицо"}
                             </span>
                           </span>
                         </div>
@@ -230,9 +239,18 @@ export default async function AdminOrdersPage({
                             className="admin-order__meta-val"
                             style={{ fontWeight: 500, fontSize: 13 }}
                           >
-                            {commLabels[order.communicationChannel] ??
-                              order.communicationChannel ??
-                              "—"}
+                            {(() => {
+                              const c =
+                                commLabels[order.communicationChannel];
+                              return c ? (
+                                <>
+                                  <GlyphIcon value={c.token} size={13} />{" "}
+                                  {c.text}
+                                </>
+                              ) : (
+                                order.communicationChannel ?? "—"
+                              );
+                            })()}
                           </span>
                         </div>
                         {order.paymentMethod && (
@@ -244,8 +262,18 @@ export default async function AdminOrdersPage({
                               className="admin-order__meta-val"
                               style={{ fontWeight: 500, fontSize: 13 }}
                             >
-                              {paymentLabels[order.paymentMethod] ??
-                                order.paymentMethod}
+                              {(() => {
+                                const pm =
+                                  paymentLabels[order.paymentMethod];
+                                return pm ? (
+                                  <>
+                                    <GlyphIcon value={pm.token} size={13} />{" "}
+                                    {pm.text}
+                                  </>
+                                ) : (
+                                  order.paymentMethod
+                                );
+                              })()}
                             </span>
                           </div>
                         )}
@@ -347,7 +375,7 @@ export default async function AdminOrdersPage({
           </div>
         ) : (
           <div className="admin-empty">
-            <div className="admin-empty__icon">📋</div>
+            <div className="admin-empty__icon"><GlyphIcon value="clipboard" size={40} /></div>
             <p>
               {searchQuery
                 ? `По запросу «${searchQuery}» ничего не найдено`

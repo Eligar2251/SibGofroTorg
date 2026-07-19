@@ -12,11 +12,16 @@ import {
   TrendingUp,
   Users,
   CheckCircle,
+  CheckCircle2,
   Clock,
   XCircle,
   BarChart3,
   Megaphone,
   Star,
+  Plus,
+  Pencil,
+  Settings,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminDb } from "@/lib/firebase-admin";
@@ -477,7 +482,8 @@ export default async function AdminDashboard() {
                   fontSize: 16,
                 }}
               >
-                ⚠️ Мало на складе
+                <AlertTriangle size={15} style={{ marginRight: 6, verticalAlign: "-2px" }} />
+                Мало на складе
               </h2>
               <Link
                 href={`/${ADMIN_PATH}/products/bulk`}
@@ -556,7 +562,8 @@ export default async function AdminDashboard() {
                   fontSize: 13,
                 }}
               >
-                ✅ Склад в норме
+                <CheckCircle2 size={15} style={{ marginRight: 6, verticalAlign: "-2px" }} />
+                Склад в норме
               </div>
             )}
           </div>
@@ -587,42 +594,52 @@ export default async function AdminDashboard() {
               {[
                 {
                   href: `/${ADMIN_PATH}/products/new`,
-                  label: "➕ Добавить товар",
+                  label: "Добавить товар",
+                  icon: <Plus size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/products/bulk`,
-                  label: "✏️ Массовое редактирование",
+                  label: "Массовое редактирование",
+                  icon: <Pencil size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/orders?status=new`,
-                  label: `📋 Новые заявки (${newOrders.length})`,
+                  label: `Новые заявки (${newOrders.length})`,
+                  icon: <ClipboardList size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/clients`,
-                  label: `👥 Клиенты (${usersSnap.size})`,
+                  label: `Клиенты (${usersSnap.size})`,
+                  icon: <Users size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/categories`,
-                  label: "📂 Управление категориями",
+                  label: "Управление категориями",
+                  icon: <FolderOpen size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/promotions`,
-                  label: `📢 Акции и спецпредложения (${promotions.length})`,
+                  label: `Акции и спецпредложения (${promotions.length})`,
+                  icon: <Megaphone size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/reviews`,
-                  label: "⭐ Отзывы покупателей",
+                  label: "Отзывы покупателей",
+                  icon: <Star size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/settings`,
-                  label: "⚙️ Настройки сайта",
+                  label: "Настройки сайта",
+                  icon: <Settings size={14} />,
                 },
               ].map((action) => (
                 <Link
                   key={action.href}
                   href={action.href}
                   style={{
-                    display: "block",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
                     padding: "8px 12px",
                     borderRadius: 8,
                     background: "var(--adm-bg, #f8f7f4)",
@@ -634,6 +651,7 @@ export default async function AdminDashboard() {
                     transition: "border-color 0.15s",
                   }}
                 >
+                  {action.icon}
                   {action.label}
                 </Link>
               ))}

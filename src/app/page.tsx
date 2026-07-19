@@ -4,6 +4,7 @@ import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
 import { DealsRow } from "@/components/home/DealsRow";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import {
   ArrowRight,
   Phone,
@@ -87,7 +88,7 @@ export default async function HomePage() {
       desc: p.subtitle || "",
       color: p.color || "var(--kraft)",
       light: p.light || "var(--kraft-light)",
-      icon: p.icon || "📦",
+      icon: p.icon || "box",
       deadline: p.deadline || null,
       href,
       external,
@@ -98,7 +99,7 @@ export default async function HomePage() {
     id: cat.id,
     name: cat.name,
     slug: cat.slug,
-    icon: cat.icon ?? "📦",
+    icon: cat.icon ?? "box",
   }));
 
   const serializedProducts = featuredProducts.map((p: FirestoreProduct) => ({
@@ -206,9 +207,9 @@ export default async function HomePage() {
             </div>
 
             <div className="hero__wp-features">
-              <span>✓ Вывоз от 150 кг бесплатно</span>
-              <span>✓ Оплата на месте</span>
-              <span>✓ Работаем с юрлицами</span>
+              <span>Вывоз от 150 кг бесплатно</span>
+              <span>Оплата на месте</span>
+              <span>Работаем с юрлицами</span>
             </div>
 
             <div className="btn-hero-secondary">
@@ -238,7 +239,7 @@ export default async function HomePage() {
                 } as React.CSSProperties}
               >
                 <div className="deal-card__top">
-                  <span className="deal-card__icon">{d.icon}</span>
+                  <span className="deal-card__icon"><GlyphIcon value={d.icon} size={20} /></span>
                   <span className="deal-card__tag">{d.tag}</span>
                   {d.deadline && (
                     <span className="deal-card__deadline">до {d.deadline}</span>

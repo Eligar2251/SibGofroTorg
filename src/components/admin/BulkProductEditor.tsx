@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Save, Loader2, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Save, Loader2, RotateCcw, Search, Trash2, Check } from "lucide-react";
 
 interface BulkProduct {
   id: string;
@@ -223,7 +223,8 @@ export function BulkProductEditor({
           <span
             style={{ color: "var(--adm-green)", fontSize: 13, fontWeight: 600 }}
           >
-            ✓ Сохранено!
+            <Check size={14} style={{ marginRight: 4, verticalAlign: "-2px" }} />
+            Сохранено!
           </span>
         )}
       </div>

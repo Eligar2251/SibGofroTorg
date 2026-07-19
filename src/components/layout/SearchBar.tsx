@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Search, Loader2 } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 
 interface Suggestion {
   id: string;
@@ -130,7 +131,7 @@ export function SearchBar({
                 {s.imageUrl ? (
                   <Image src={s.imageUrl} alt={s.name} fill sizes="40px" style={{ objectFit: "cover" }} />
                 ) : (
-                  "📦"
+                  <GlyphIcon value="box" size={18} />
                 )}
               </div>
               <div className="search-suggestion-info">

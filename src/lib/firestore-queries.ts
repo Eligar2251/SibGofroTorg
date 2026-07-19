@@ -368,7 +368,7 @@ export async function getProductById(id: string): Promise<FirestoreProduct | nul
     const products = await getCachedProducts();
     return products.find((p) => p.id === id) || null;
   } catch (error) {
-    console.error("❌ Error fetching product:", error);
+    console.error("Error fetching product:", error);
     return null;
   }
 }
@@ -546,7 +546,7 @@ export async function createCategory(data: {
   const docRef = await db.collection("categories").add({
     name: data.name,
     slug: slugify(data.name),
-    icon: data.icon || "📦",
+    icon: data.icon || "box",
     description: data.description || null,
     sortOrder: 0,
     isVisible: true,

@@ -35,11 +35,11 @@ interface MeUser {
 }
 
 const CHANNELS: { value: string; label: string }[] = [
-  { value: "call", label: "📞 Телефонный звонок" },
-  { value: "whatsapp", label: "💬 WhatsApp" },
-  { value: "telegram", label: "💬 Telegram" },
-  { value: "max", label: "💬 MAX" },
-  { value: "email", label: "✉️ Электронная почта" },
+  { value: "call", label: "Телефонный звонок" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "telegram", label: "Telegram" },
+  { value: "max", label: "MAX" },
+  { value: "email", label: "Электронная почта" },
 ];
 
 export function PriceInquiryButton({

@@ -560,7 +560,9 @@ select {
   color: var(--ink-light);
   font-size: 15px;
   text-decoration: none;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ══════════════════════════════════════
@@ -2386,6 +2388,9 @@ select {
   background: var(--ok-light);
   padding: 1px 5px;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .pcc__actions {
@@ -2824,6 +2829,9 @@ select {
   font-weight: 700;
   color: var(--ink);
   margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .wp-accept-grid {
@@ -2998,6 +3006,9 @@ select {
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .wpcalc__type-rate {
@@ -3085,6 +3096,9 @@ select {
   border-radius: 8px;
   padding: 9px 13px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .wpcalc__result {
@@ -4406,6 +4420,11 @@ select {
   color: var(--green);
 }
 
+.checkout-tip svg {
+  vertical-align: -2px;
+  margin-right: 2px;
+}
+
 .checkout-label {
   display: block;
   font-size: 12px;
@@ -4444,6 +4463,10 @@ select {
   color: var(--ink-light);
   cursor: pointer;
   transition: background-color var(--transition), color var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .customer-type-btn + .customer-type-btn {

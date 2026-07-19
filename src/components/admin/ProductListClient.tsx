@@ -4,6 +4,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Search, Eye, EyeOff, Trash2, Loader2, Edit2 } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 
 interface ProductItem {
   id: string;
@@ -214,7 +215,7 @@ export function ProductListClient({
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={product.imageUrl} alt="" />
                           ) : (
-                            "📦"
+                            <GlyphIcon value="box" size={16} />
                           )}
                         </div>
                         <div>

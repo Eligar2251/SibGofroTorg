@@ -30,7 +30,7 @@ export default async function CatalogPage() {
     id: c.id,
     name: c.name,
     slug: c.slug,
-    icon: c.icon ?? "📦",
+    icon: c.icon ?? "box",
   }));
 
   const serializedProducts = products.map((p) => ({

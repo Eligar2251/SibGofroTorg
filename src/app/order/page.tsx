@@ -23,6 +23,7 @@ import {
   Shield,
   UserPlus,
 } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 
 type DeliveryMethod = "courier" | "pickup" | "transport";
 type PaymentMethod = "card" | "cash" | "invoice";
@@ -308,7 +309,7 @@ export default function OrderPage() {
     return (
       <div className="checkout-empty">
         <div className="checkout-empty__inner">
-          <div className="checkout-empty__icon">🛒</div>
+          <div className="checkout-empty__icon"><GlyphIcon value="cart" size={44} /></div>
           <h1 className="checkout-empty__title">Корзина пуста</h1>
           <p className="checkout-empty__desc">
             Добавьте коробки или упаковочные материалы из каталога
@@ -389,7 +390,7 @@ export default function OrderPage() {
                   color: step >= s.n ? "#fff" : "#666",
                 }}
               >
-                {step > s.n ? "✓" : s.n}
+                {step > s.n ? <GlyphIcon value="check" size={13} /> : s.n}
               </span>
               {s.label}
             </button>
@@ -424,7 +425,7 @@ export default function OrderPage() {
                               sizes="56px"
                             />
                           ) : (
-                            <span>📦</span>
+                            <span><GlyphIcon value="box" size={22} /></span>
                           )}
                         </div>
                         <div className="cart-item__info">
@@ -626,8 +627,9 @@ export default function OrderPage() {
                 <div className="checkout-block__body">
                   {sessionUser && (
                     <div className="checkout-tip" style={{ marginBottom: 16 }}>
-                      ✅ Данные подставлены из кабинета (
-                      {sessionUser.phone}). Можно изменить перед отправкой.
+                      <GlyphIcon value="ok" size={14} /> Данные подставлены
+                      из кабинета ({sessionUser.phone}). Можно изменить перед
+                      отправкой.
                     </div>
                   )}
 
@@ -641,7 +643,7 @@ export default function OrderPage() {
                           : ""
                       }`}
                     >
-                      👤 Физическое лицо
+                      <GlyphIcon value="user" size={14} /> Физическое лицо
                     </button>
                     <button
                       type="button"
@@ -652,7 +654,7 @@ export default function OrderPage() {
                           : ""
                       }`}
                     >
-                      🏢 Юридическое лицо
+                      <GlyphIcon value="building" size={14} /> Юридическое лицо
                     </button>
                   </div>
 
@@ -777,8 +779,16 @@ export default function OrderPage() {
                                 <Phone size={13} /> Звонок
                               </>
                             )}
-                            {ch === "whatsapp" && <>💬 WhatsApp</>}
-                            {ch === "telegram" && <>✈️ Telegram</>}
+                            {ch === "whatsapp" && (
+                              <>
+                                <GlyphIcon value="chat" size={13} /> WhatsApp
+                              </>
+                            )}
+                            {ch === "telegram" && (
+                              <>
+                                <GlyphIcon value="send" size={13} /> Telegram
+                              </>
+                            )}
                           </button>
                         )
                       )}

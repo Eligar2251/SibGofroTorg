@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, orderId: createdOrder.id });
   } catch (error: unknown) {
-    console.error("❌ Ошибка в API создания заказа:", error);
+    console.error("Ошибка в API создания заказа:", error);
     return NextResponse.json({ error: publicError(error) }, { status: 500 });
   }
 }
@@ -255,33 +255,33 @@ async function sendNotifications(order: {
 }) {
   const isOrder = order.type === "order";
   const isLegal = order.customerType === "legal";
-  const customerTypeLabel = isLegal ? "🏢 Юр. лицо" : "👤 Физ. лицо";
+  const customerTypeLabel = isLegal ? "Юр. лицо" : "Физ. лицо";
 
   const channels: Record<string, string> = {
-    call: "📞 Телефонный звонок",
-    whatsapp: "💬 WhatsApp",
-    telegram: "💬 Telegram",
-    max: "💬 Макс",
-    email: "✉️ Электронная почта",
+    call: "Телефонный звонок",
+    whatsapp: "WhatsApp",
+    telegram: "Telegram",
+    max: "Макс",
+    email: "Электронная почта",
   };
   const payments: Record<string, string> = {
-    transfer: "💳 Перевод на карту",
-    cash: "💵 Наличные",
-    invoice: "🧾 Счёт",
+    transfer: "Перевод на карту",
+    cash: "Наличные",
+    invoice: "Счёт",
   };
 
-  let message = `🔔 <b>${isOrder ? "📦 НОВЫЙ ЗАКАЗ" : "💬 НОВАЯ ЗАЯВКА"} #${order.id.slice(0, 6)}</b>\n\n`;
-  message += `👤 <b>Клиент:</b> ${escapeHtml(order.customerName)} (${customerTypeLabel})\n`;
-  message += `📞 <b>Телефон:</b> ${escapeHtml(order.customerPhone)}\n`;
+  let message = `<b>${isOrder ? "НОВЫЙ ЗАКАЗ" : "НОВАЯ ЗАЯВКА"} #${order.id.slice(0, 6)}</b>\n\n`;
+  message += `<b>Клиент:</b> ${escapeHtml(order.customerName)} (${customerTypeLabel})\n`;
+  message += `<b>Телефон:</b> ${escapeHtml(order.customerPhone)}\n`;
   if (order.customerEmail) {
-    message += `✉️ <b>Email:</b> ${escapeHtml(order.customerEmail)}\n`;
+    message += `<b>Email:</b> ${escapeHtml(order.customerEmail)}\n`;
   }
-  message += `📡 <b>Связь:</b> ${channels[order.communicationChannel] || "—"}\n`;
+  message += `<b>Связь:</b> ${channels[order.communicationChannel] || "—"}\n`;
   if (order.paymentMethod) {
-    message += `💳 <b>Оплата:</b> ${payments[order.paymentMethod] || order.paymentMethod}\n`;
+    message += `<b>Оплата:</b> ${payments[order.paymentMethod] || order.paymentMethod}\n`;
   }
   if (isLegal) {
-    message += `\n🏢 <b>Реквизиты</b>\n`;
+    message += `\n<b>Реквизиты</b>\n`;
     if (order.companyName) message += `• ${escapeHtml(order.companyName)}\n`;
     if (order.inn) message += `• ИНН: ${escapeHtml(order.inn)}\n`;
     if (order.kpp) message += `• КПП: ${escapeHtml(order.kpp)}\n`;
@@ -294,17 +294,17 @@ async function sendNotifications(order: {
   message += `\n`;
 
   if (isOrder && order.items?.length) {
-    message += `📦 <b>Позиции:</b>\n`;
+    message += `<b>Позиции:</b>\n`;
     order.items.forEach((item, i) => {
       message += `${i + 1}. ${escapeHtml(item.name)} (${item.quantity} шт.) — ${(item.price * item.quantity).toLocaleString("ru-RU")} ₽\n`;
     });
-    message += `\n💰 <b>Итого: ${order.totalSum?.toLocaleString("ru-RU")} ₽</b>\n\n`;
+    message += `\n<b>Итого: ${order.totalSum?.toLocaleString("ru-RU")} ₽</b>\n\n`;
   } else {
-    message += `📝 <b>Товар:</b> ${escapeHtml(order.productInfo || "Не указан")}\n`;
-    message += `🔢 <b>Кол-во:</b> ${order.quantity ?? "—"}\n\n`;
+    message += `<b>Товар:</b> ${escapeHtml(order.productInfo || "Не указан")}\n`;
+    message += `<b>Кол-во:</b> ${order.quantity ?? "—"}\n\n`;
   }
   if (order.comment) {
-    message += `💬 <b>Комментарий:</b> ${escapeHtml(order.comment)}\n`;
+    message += `<b>Комментарий:</b> ${escapeHtml(order.comment)}\n`;
   }
 
   const settings = await getSettings();
