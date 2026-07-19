@@ -494,6 +494,7 @@ export async function createOrder(
 
 export async function getOrders(opts?: {
   status?: string;
+  limit?: number;
 }): Promise<FirestoreOrder[]> {
   const db = getAdminDb();
   let q: Query = db.collection("orders").orderBy("createdAt", "desc");
@@ -503,6 +504,10 @@ export async function getOrders(opts?: {
       .collection("orders")
       .where("status", "==", opts.status)
       .orderBy("createdAt", "desc");
+  }
+
+  if (opts?.limit) {
+    q = q.limit(opts.limit);
   }
 
   const snap = await q.get();

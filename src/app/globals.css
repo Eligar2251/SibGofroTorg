@@ -2193,6 +2193,7 @@ select {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  will-change: transform, box-shadow;
   transition:
     box-shadow 0.16s ease,
     border-color 0.16s ease,

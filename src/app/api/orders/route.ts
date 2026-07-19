@@ -316,7 +316,11 @@ async function sendNotifications(order: {
   const maxChatId = settings.max_admin_chat_id || process.env.MAX_ADMIN_CHAT_ID;
 
   const promises: Promise<unknown>[] = [];
+  const timeoutMs = 5000;
+
   if (telegramToken && telegramChatId) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     promises.push(
       fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
         method: "POST",
@@ -326,10 +330,30 @@ async function sendNotifications(order: {
           text: message,
           parse_mode: "HTML",
         }),
+        signal: controller.signal,
       })
+        .then(async (res) => {
+          clearTimeout(timer);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            console.error("Telegram bot error:", data?.description || res.status);
+          } else {
+            console.log("Telegram sent OK");
+          }
+        })
+        .catch((err) => {
+          clearTimeout(timer);
+          if (err.name === "AbortError") {
+            console.error("Telegram notify timeout (>5s)");
+          } else {
+            console.error("Telegram notify error:", err);
+          }
+        })
     );
   }
   if (maxToken && maxChatId) {
+    const controller2 = new AbortController();
+    const timer2 = setTimeout(() => controller2.abort(), timeoutMs);
     promises.push(
       fetch(`https://botapi.max.ru/messages?access_token=${maxToken}`, {
         method: "POST",
@@ -338,7 +362,24 @@ async function sendNotifications(order: {
           chat_id: maxChatId,
           text: message.replace(/<[^>]*>/g, ""),
         }),
+        signal: controller2.signal,
       })
+        .then(async (res) => {
+          clearTimeout(timer2);
+          if (!res.ok) {
+            console.error("Max notify error:", res.status);
+          } else {
+            console.log("Max sent OK");
+          }
+        })
+        .catch((err) => {
+          clearTimeout(timer2);
+          if (err.name === "AbortError") {
+            console.error("Max notify timeout (>5s)");
+          } else {
+            console.error("Max notify error:", err);
+          }
+        })
     );
   }
   if (promises.length) await Promise.allSettled(promises);

@@ -138,6 +138,8 @@ export function ProductCardCompact({
               alt={product.name}
               fill
               sizes="220px"
+              priority={!!highlight}
+              loading={highlight ? "eager" : "lazy"}
               style={{ objectFit: "cover" }}
             />
           ) : (

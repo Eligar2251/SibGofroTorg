@@ -4,6 +4,7 @@ import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { OrdersAutoRefresh } from "@/components/admin/OrdersAutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +76,7 @@ export default async function AdminOrdersPage({
   const activeType = typeQuery || "all";
   const query = searchQuery ? searchQuery.toLowerCase().trim() : "";
 
-  const allOrders = await getOrders({ status: activeFilter });
+  const allOrders = await getOrders({ status: activeFilter, limit: 50 });
 
   const filteredOrders = allOrders.filter((order: any) => {
     if (activeType !== "all" && order.type !== activeType) return false;
@@ -91,6 +92,7 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
+      <OrdersAutoRefresh intervalMs={10000} />
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Заявки и Заказы</h1>
