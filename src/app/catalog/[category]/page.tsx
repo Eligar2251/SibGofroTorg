@@ -69,7 +69,7 @@ export default async function CategoryPage({
           id: c.id,
           name: c.name,
           slug: c.slug,
-          icon: c.icon ?? "📦",
+          icon: c.icon ?? "box",
         }))}
         initialProducts={products.map((p) => ({
           id: p.id,
@@ -83,6 +83,7 @@ export default async function CategoryPage({
           imageUrl: p.imageUrl ?? null,
           inStock: p.inStock,
           promoLabel: p.promoLabel ?? null,
+          madeToOrder: p.madeToOrder ?? false,
           stockQty: p.stockQty ?? null,
           dimensionLength: p.dimensionLength ?? null,
           dimensionWidth: p.dimensionWidth ?? null,

@@ -1,0 +1,1745 @@
+/* ══════════════════════════════════════
+   PDP — страница товара
+   Чистая разметка: галерея | информация | покупка
+   ══════════════════════════════════════ */
+
+/* Фон страницы */
+.pdp-page {
+  background: var(--bg-main);
+  min-height: 100vh;
+  padding-bottom: 64px;
+}
+
+/* ── Хлебные крошки ── */
+.pdp-breadcrumb-bar {
+  background: var(--bg-main);
+  border-bottom: 1px solid var(--border);
+}
+
+.pdp-breadcrumbs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.breadcrumbs-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.breadcrumbs-right {
+  flex-shrink: 0;
+}
+
+.bc-sep {
+  color: var(--border-2);
+  flex-shrink: 0;
+}
+
+.bc-link {
+  color: var(--ink-muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: color var(--transition);
+}
+
+.bc-link:hover {
+  color: var(--green);
+}
+
+.bc-current {
+  color: var(--ink-2);
+  font-weight: 500;
+  font-size: 13px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bc-sku {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.bc-sku svg {
+  flex-shrink: 0;
+  color: var(--ink-faint);
+}
+
+/* ── Обёртка основного блока ── */
+.pdp-main-wrap {
+  margin-top: 16px;
+}
+
+/* ── Основная сетка ──
+   Фото чуть шире колонки информации (1.12fr) — так нижняя
+   граница фото примерно совпадает с низом колонки названия/
+   характеристик, и описание под ними начинается ровно */
+.product-page {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1.12fr) minmax(0, 1fr) 340px;
+  gap: 24px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+
+/* Без миниатюр — 3 колонки */
+.product-page--no-thumbs {
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr) 340px;
+}
+
+/* Координаты сетки (с миниатюрами) */
+.gallery-thumbs {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.gallery-main {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* Единая центральная колонка: заголовок и характеристики
+   идут непрерывно, без разрыва под высоту фото */
+.product-col {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.purchase-block {
+  grid-column: 4;
+  grid-row: 1 / span 2;
+  position: sticky;
+  top: 16px;
+  align-self: start;
+}
+
+/* Координаты без миниатюр */
+.product-page--no-thumbs .gallery-main {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.product-page--no-thumbs .product-col {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.product-page--no-thumbs .purchase-block {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+
+/* ── Миниатюры ── */
+.gallery-thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  overflow: hidden;
+  background: #f5f7f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color var(--transition);
+}
+
+.thumb:hover {
+  border-color: var(--border-2);
+}
+
+.thumb.active {
+  border-color: var(--green);
+}
+
+/* ── Главное фото ──
+   Натуральные пропорции: контейнер подстраивается
+   под соотношение сторон изображения, без обрезки */
+.gallery-main {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f7f8f8;
+  border: 1px solid var(--border);
+  width: 100%;
+}
+
+.gallery-main__img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Квадрат оставляем только для заглушки без фото */
+.gallery-main:has(.pdp-img-placeholder) {
+  aspect-ratio: 1 / 1;
+}
+
+.pdp-img-placeholder {
+  font-size: 96px;
+  opacity: 0.25;
+}
+
+/* Стопка бейджей в левом верхнем углу фото (акция, скидка).
+   Ширина ограничена ~62%, чтобы не пересекаться с бейджем
+   наличия в правом верхнем углу */
+.gallery-badges {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 62%;
+}
+
+.badge-discount {
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  letter-spacing: 0.01em;
+}
+
+.badge-promo {
+  background: #ea580c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  max-width: 100%;
+}
+
+/* Бейдж наличия — в правом верхнем углу фото.
+   Вертикальная раскладка: «В наличии», ниже чип «осталось N шт.» —
+   так бейдж уже и не мешает блоку акций слева */
+.badge-stock {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  max-width: 34%;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  border-radius: 14px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.badge-stock__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.badge-stock--in {
+  color: #15803d;
+}
+
+.badge-stock--out {
+  color: var(--red);
+}
+
+.badge-stock__qty {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fef3c7;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid #fde68a;
+  white-space: nowrap;
+}
+
+/* ── Заголовок и главная информация ── */
+.product-head {
+  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ── Характеристики и описание ── */
+.product-info {
+  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.product-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-bottom: 12px;
+  color: var(--ink-2);
+  font-family: var(--font-body);
+}
+
+/* Рейтинг */
+.rating-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.rating-value {
+  font-weight: 700;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.rating-dot {
+  color: var(--border-2);
+  font-size: 12px;
+}
+
+.rating-link {
+  color: var(--green);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  transition: color var(--transition);
+}
+
+.rating-link:hover {
+  color: var(--green-dark);
+  text-decoration: underline;
+}
+
+.rating-link--muted {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+/* Бренд */
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-2);
+}
+
+.brand-sub {
+  color: var(--ink-muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* Точки наличия (используются в бейдже на фото) */
+.pdp-stock-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pdp-stock-dot--in {
+  background: var(--ok);
+}
+
+.pdp-stock-dot--out {
+  background: var(--red);
+}
+
+/* Характеристики */
+.specs-section {
+  margin-top: 4px;
+}
+
+.specs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.specs-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.specs-table {
+  width: 100%;
+}
+
+.spec-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid #f0f2f1;
+}
+
+.spec-row:last-child {
+  border-bottom: none;
+}
+
+.spec-name {
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.spec-value {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Описание — отдельный блок ПОД фото и колонкой информации
+   (первая+вторая колонки, до блока покупки). Текст показывается
+   полностью, markdown оформлен в .markdown-body */
+.pdp-desc-block {
+  grid-column: 1 / 4; /* миниатюры + фото + инфо, до блока цены */
+  grid-row: 2;
+  align-self: start;
+  padding-top: 16px;
+  border-top: 1px solid #f0f2f1;
+  min-width: 0;
+}
+
+.product-page--no-thumbs .pdp-desc-block {
+  grid-column: 1 / 3; /* фото + инфо, до блока цены */
+}
+
+.pdp-desc-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+  font-family: var(--font-body);
+}
+
+.pdp-desc-text {
+  font-size: 13px;
+  color: var(--ink-4);
+  line-height: 1.7;
+}
+
+/* ── Блок покупки ── */
+.purchase-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.purchase-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  background: #fff;
+}
+
+/* Цена — обычная, без «карты магазина» */
+.pdp-price-row {
+  display: flex;
+  align-items: center; /* бейдж −N% по центру строки, не прижат вниз */
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.pdp-price-current {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.pdp-price-old {
+  font-size: 16px;
+  color: var(--ink-faint);
+  text-decoration: line-through;
+  font-weight: 500;
+}
+
+.pdp-price-save {
+  background: var(--red-light);
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+/* Оптовая цена */
+.pdp-wholesale-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--green-bg);
+  border: 1px solid var(--green-border);
+  border-radius: 10px;
+  padding: 9px 13px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.pdp-wholesale-label {
+  color: var(--ink-muted);
+}
+
+.pdp-wholesale-price {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--green-dark);
+}
+
+.pdp-wholesale-min {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+/* Форма добавления в корзину — без двойной рамки внутри карточки */
+.pdp-cart-block .atc-wrap {
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Нет в наличии */
+.pdp-out-of-stock {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.pdp-out-of-stock svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Под заказ */
+.pdp-price-current--mto {
+  color: var(--ink-light);
+}
+
+.pdp-made-to-order {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pdp-made-to-order__text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  color: var(--green-dark);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.pdp-made-to-order__text svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.pdp-made-to-order__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  background: var(--green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-body);
+  text-decoration: none;
+  transition: background var(--transition);
+}
+
+.pdp-made-to-order__btn:hover {
+  background: var(--green-hover);
+}
+
+/* Доставка */
+.delivery-section {
+  border-top: 1px solid #f0f2f1;
+  padding-top: 14px;
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.delivery-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.delivery-ic {
+  color: var(--green);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.delivery-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.delivery-address {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.delivery-from {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+
+.delivery-link {
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.delivery-link:hover {
+  color: var(--green-dark);
+  text-decoration: underline;
+}
+
+/* ── Нижние блоки ── */
+.bottom-section {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 24px;
+  margin-bottom: 12px;
+}
+
+/* Переопределяем section-title для PDP
+   (в globals он font-head + uppercase — здесь Inter) */
+.pdp-page .section-title {
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  margin-bottom: 16px;
+}
+
+/* ══════════════════════════════════════
+   ЗВЁЗДНЫЙ РЕЙТИНГ
+   ══════════════════════════════════════ */
+
+.stars {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.stars__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #dde2df;
+}
+
+.stars__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  color: #f5a623;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════
+   ОТЗЫВЫ
+   ══════════════════════════════════════ */
+
+.reviews-title-count {
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.reviews-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+/* Сводка рейтинга */
+.reviews-summary {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-main);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reviews-score-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.reviews-score {
+  font-size: 46px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+.reviews-total {
+  font-size: 13px;
+  color: var(--ink-muted);
+  margin-top: 5px;
+}
+
+.reviews-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reviews-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.reviews-bar-star {
+  width: 28px;
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--ink-light);
+}
+
+.reviews-bar {
+  flex: 1;
+  height: 6px;
+  background: #e6eae8;
+  border-radius: 4px;
+  overflow: hidden;
+  display: block;
+}
+
+.reviews-bar > span {
+  display: block;
+  height: 100%;
+  background: #f5a623;
+  border-radius: 4px;
+}
+
+.reviews-bar-count {
+  width: 18px;
+  text-align: right;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+/* Список отзывов */
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.review-card {
+  padding: 20px 0;
+  border-bottom: 1px solid #f0f2f1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-card:first-child {
+  padding-top: 0;
+}
+
+.review-card:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.review-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.review-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.review-author {
+  flex: 1;
+  min-width: 0;
+}
+
+.review-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.review-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+
+.review-date {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.review-verified {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ok);
+  background: var(--ok-light);
+  padding: 3px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.review-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.review-text {
+  font-size: 14px;
+  color: var(--ink-light);
+  line-height: 1.65;
+}
+
+.review-pros-cons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.review-pc {
+  font-size: 13px;
+  color: var(--ink-light);
+  line-height: 1.55;
+}
+
+.review-pc p {
+  margin: 0;
+}
+
+.review-pc__label {
+  display: block;
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.review-pc__label--plus {
+  color: var(--ok);
+}
+
+.review-pc__label--minus {
+  color: var(--red);
+}
+
+.review-photos {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.review-photo {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Кнопка «Полезно» */
+.review-helpful {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  cursor: pointer;
+  width: fit-content;
+  transition: border-color var(--transition), color var(--transition),
+    background-color var(--transition);
+  font-family: var(--font-body);
+}
+
+.review-helpful:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.review-helpful--done,
+.review-helpful--done:hover {
+  background: var(--green-light);
+  border-color: var(--green-border);
+  color: var(--green-dark);
+  cursor: default;
+}
+
+/* ── Форма отзыва ── */
+.review-form-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  border: none;
+  background: var(--green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color var(--transition);
+  font-family: var(--font-body);
+}
+
+.review-form-toggle:hover {
+  background: var(--green-dark);
+}
+
+.review-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: #fff;
+}
+
+.review-form__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.review-form__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.review-form__close {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.review-form__close:hover {
+  color: var(--ink-2);
+  background: var(--bg-main);
+}
+
+.review-form__rating {
+  display: flex;
+  gap: 2px;
+}
+
+.review-form__star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: #dde2df;
+  transition: color var(--transition), transform var(--transition);
+  display: flex;
+  align-items: center;
+}
+
+.review-form__star:hover {
+  transform: scale(1.1);
+}
+
+.review-form__star--active {
+  color: #f5a623;
+}
+
+.review-form__input {
+  background: var(--bg-main);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  padding: 10px 12px;
+  width: 100%;
+  outline: none;
+  transition: border-color var(--transition);
+  font-family: var(--font-body);
+}
+
+.review-form__input::placeholder {
+  color: var(--ink-faint);
+}
+
+.review-form__input:focus {
+  border-color: var(--green);
+  background: #fff;
+}
+
+.review-form__textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.review-form__error {
+  font-size: 12px;
+  color: #b91c1c;
+  font-weight: 600;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 9px 12px;
+  line-height: 1.5;
+}
+
+.review-form__error-link {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.review-form__submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: none;
+  background: var(--green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color var(--transition);
+  font-family: var(--font-body);
+}
+
+.review-form__submit:hover {
+  background: var(--green-dark);
+}
+
+.review-form__submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.review-form__note {
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.review-form-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  padding: 24px 16px;
+  color: var(--ok);
+}
+
+.review-form-success__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #15803d;
+}
+
+.review-form-success p {
+  font-size: 13px;
+  color: #166534;
+  line-height: 1.5;
+}
+
+.review-form-success .review-form-toggle {
+  margin-top: 6px;
+}
+
+/* Пустое состояние отзывов */
+.reviews-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 18px 16px 10px;
+}
+
+.reviews-empty__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--green-light);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reviews-empty__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.reviews-empty__sub {
+  font-size: 13px;
+  color: var(--ink-muted);
+  max-width: 420px;
+  line-height: 1.6;
+}
+
+.reviews-empty__form {
+  width: min(440px, 100%);
+  margin-top: 8px;
+  text-align: left;
+}
+
+/* ══════════════════════════════════════
+   PDP ADAPTIVE
+   ══════════════════════════════════════ */
+
+/* ── 1200px — колонка покупки сжимается ── */
+@media (max-width: 1200px) {
+  .product-page {
+    grid-template-columns: 72px minmax(0, 1.12fr) minmax(0, 1fr) 300px;
+    gap: 18px;
+  }
+
+  .product-page--no-thumbs {
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr) 300px;
+  }
+}
+
+/* ── 1024px — две колонки: галерея+контент | липкая покупка ── */
+@media (max-width: 1024px) {
+  .product-page,
+  .product-page--no-thumbs {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-rows: auto auto auto auto auto;
+    gap: 18px;
+  }
+
+  /* обёртка распадается, её дети снова становятся grid-элементами */
+  .product-col {
+    display: contents;
+  }
+
+  .product-page--no-thumbs .gallery-main,
+  .gallery-main {
+    grid-column: 1 / 2;
+    grid-row: 1;
+  }
+
+  /* миниатюры — горизонтально под фото */
+  .gallery-thumbs {
+    grid-column: 1 / 2;
+    grid-row: 2;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .gallery-thumbs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* описание — сразу под фото/миниатюрами */
+  .product-page--no-thumbs .pdp-desc-block,
+  .pdp-desc-block {
+    grid-column: 1 / 2;
+    grid-row: 3;
+  }
+
+  .product-page--no-thumbs .product-head,
+  .product-head {
+    grid-column: 1 / 2;
+    grid-row: 4;
+  }
+
+  .product-page--no-thumbs .product-info,
+  .product-info {
+    grid-column: 1 / 2;
+    grid-row: 5;
+  }
+
+  .product-page--no-thumbs .purchase-block,
+  .purchase-block {
+    grid-column: 2 / 3;
+    grid-row: 1 / 6;
+    position: sticky;
+    top: 16px;
+    align-self: start;
+  }
+
+  .reviews-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+
+/* ── 900px — ужимаем колонку покупки ── */
+@media (max-width: 900px) {
+  .product-page,
+  .product-page--no-thumbs {
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .reviews-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+/* ── 700px — одна колонка: фото → заголовок → покупка → характеристики ── */
+@media (max-width: 700px) {
+  .product-page,
+  .product-page--no-thumbs {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    padding: 14px;
+    gap: 16px;
+  }
+
+  .product-page--no-thumbs .gallery-main,
+  .gallery-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .gallery-thumbs {
+    grid-column: 1;
+    grid-row: 2;
+    flex-direction: row;
+  }
+
+  /* описание — сразу под фото/миниатюрами */
+  .product-page--no-thumbs .pdp-desc-block,
+  .pdp-desc-block {
+    grid-column: 1;
+    grid-row: 3;
+    padding: 16px 0 0;
+  }
+
+  .product-page--no-thumbs .product-head,
+  .product-head {
+    grid-column: 1;
+    grid-row: 4;
+    padding: 0;
+  }
+
+  .product-page--no-thumbs .purchase-block,
+  .purchase-block {
+    grid-column: 1;
+    grid-row: 5;
+    position: static;
+  }
+
+  .product-page--no-thumbs .product-info,
+  .product-info {
+    grid-column: 1;
+    grid-row: 6;
+    padding: 0;
+  }
+
+  .product-title {
+    /* Крупный заголовок на мобильном — раньше 19px сливался
+       с артикулом (13px) и терял иерархию */
+    font-size: 25px;
+    font-weight: 700;
+    line-height: 1.28;
+    letter-spacing: -0.01em;
+    margin-bottom: 14px;
+  }
+
+  .pdp-price-current {
+    font-size: 26px;
+  }
+
+  /* Двойной класс: иначе глобальный .breadcrumbs{align-items:center}
+     из globals.css (загружается позже) центрирует артикул на мобильном */
+  .breadcrumbs.pdp-breadcrumbs {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .bc-current {
+    max-width: 100%;
+  }
+
+  .bottom-section {
+    padding: 18px 16px;
+  }
+
+  .reviews-score {
+    font-size: 38px;
+  }
+
+  .review-head {
+    gap: 10px;
+  }
+
+  .review-verified {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* ══════════════════════════════════════
+   «УЗНАТЬ ЦЕНУ» — модальное окно заявки
+   ══════════════════════════════════════ */
+
+.pi-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(10, 18, 14, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.pi-modal {
+  position: relative;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+  width: min(440px, 100%);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: var(--font-body);
+  animation: pi-pop 0.18s ease-out;
+}
+
+@keyframes pi-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pi-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.pi-close:hover {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.pi-product {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--green-bg);
+  border: 1px solid var(--green-border);
+  color: var(--green-dark);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  border-radius: 10px;
+  padding: 10px 12px;
+  padding-right: 32px;
+}
+
+.pi-product svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.pi-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.pi-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink-2);
+}
+
+.pi-text {
+  font-size: 13px;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.pi-auth {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 6px 0 2px;
+}
+
+.pi-auth__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--green-light);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pi-auth__actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.pi-auth__actions .pi-btn {
+  flex: 1;
+}
+
+.pi-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pi-me {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.pi-me__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.pi-me__label {
+  color: var(--ink-faint);
+  width: 66px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.pi-me__val {
+  color: var(--ink-2);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pi-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pi-field__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-light);
+}
+
+.pi-select,
+.pi-textarea {
+  width: 100%;
+  background: var(--bg-main);
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  color: var(--ink-2);
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color var(--transition), background-color var(--transition);
+  font-family: var(--font-body);
+}
+
+.pi-select:focus,
+.pi-textarea:focus {
+  border-color: var(--green);
+  background: #fff;
+}
+
+.pi-textarea {
+  resize: vertical;
+  min-height: 68px;
+}
+
+.pi-hint {
+  font-size: 12px;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 11px;
+  line-height: 1.5;
+}
+
+.pi-error {
+  font-size: 12px;
+  color: #b91c1c;
+  font-weight: 600;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 9px 12px;
+  line-height: 1.5;
+}
+
+.pi-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  border: none;
+  font-family: var(--font-body);
+  transition: background-color var(--transition),
+    border-color var(--transition);
+}
+
+.pi-btn--primary {
+  background: var(--green);
+  color: #fff;
+}
+
+.pi-btn--primary:hover {
+  background: var(--green-dark);
+}
+
+.pi-btn--primary:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.pi-btn--ghost {
+  background: #fff;
+  color: var(--green);
+  border: 1.5px solid var(--green-border);
+}
+
+.pi-btn--ghost:hover {
+  background: var(--green-light);
+}
+
+.pi-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 12px 0 4px;
+  color: var(--ok);
+}
+
+.pi-success .pi-title {
+  color: #15803d;
+}
+
+.pi-success .pi-text {
+  max-width: 320px;
+}
+
+@media (max-width: 480px) {
+  .pi-modal {
+    padding: 18px 14px;
+  }
+
+  .pi-auth__actions {
+    flex-direction: column;
+  }
+}

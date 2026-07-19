@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/context/CartContext";
+import { PriceInquiryButton } from "./PriceInquiryButton";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import { Plus, Minus, ShoppingCart, Check, Package } from "lucide-react";
 
 interface CompactProduct {
@@ -18,6 +20,7 @@ interface CompactProduct {
   imageUrl?: string | null;
   inStock?: boolean;
   promoLabel?: string | null;
+  madeToOrder?: boolean | null;
   stockQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;
@@ -88,7 +91,7 @@ export function ProductCardCompact({
 
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
-    if (!product.price) return;
+    if (!product.price || product.madeToOrder) return;
     addToCart(
       {
         productId: product.id,
@@ -138,7 +141,7 @@ export function ProductCardCompact({
               style={{ objectFit: "cover" }}
             />
           ) : (
-            <span className="pcc__img-placeholder">📦</span>
+            <span className="pcc__img-placeholder"><GlyphIcon value="box" size={40} /></span>
           )}
 
           {/* Hover-оверлей с характеристиками */}
@@ -189,7 +192,11 @@ export function ProductCardCompact({
 
         {/* Цена — шт + партия */}
         <div className="pcc__prices">
-          {product.price != null ? (
+          {product.madeToOrder ? (
+            <span className="pcc__price-muted pcc__price-muted--mto">
+              Под заказ
+            </span>
+          ) : product.price != null ? (
             <>
               <div className="pcc__price-main">
                 <span className="pcc__price-val">
@@ -209,12 +216,33 @@ export function ProductCardCompact({
             <span className="pcc__price-muted">Цена по запросу</span>
           )}
           {inCart && (
-            <span className="pcc__in-cart">✓ в корзине: {inCart.quantity}</span>
+            <span className="pcc__in-cart"><GlyphIcon value="check" size={12} /> в корзине: {inCart.quantity}</span>
           )}
         </div>
 
         {/* Управление количеством */}
-        {product.price != null ? (
+        {product.madeToOrder ? (
+          <PriceInquiryButton
+            productName={product.name}
+            productSku={product.sku}
+            className="pcc__inquiry-btn"
+            label="Узнать цену"
+          />
+        ) : product.price == null ? (
+          <PriceInquiryButton
+            productName={product.name}
+            productSku={product.sku}
+            className="pcc__inquiry-btn"
+            label="Узнать цену"
+          />
+        ) : product.inStock === false ? (
+          <PriceInquiryButton
+            productName={product.name}
+            productSku={product.sku}
+            className="pcc__inquiry-btn"
+            label="Узнать цену"
+          />
+        ) : product.price != null ? (
           <>
             <div className="pcc__actions">
               <div className="pcc__stepper">
@@ -270,14 +298,7 @@ export function ProductCardCompact({
               </div>
             )}
           </>
-        ) : (
-          <Link
-            href={`/catalog/product/${product.slug}`}
-            className="pcc__inquiry-btn"
-          >
-            Узнать цену
-          </Link>
-        )}
+        ) : null}
       </div>
     </div>
   );

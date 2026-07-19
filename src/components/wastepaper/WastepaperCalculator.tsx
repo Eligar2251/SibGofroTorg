@@ -3,13 +3,14 @@
 
 import { useState } from "react";
 import { Recycle, Loader2, CheckCircle } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import { ymGoal } from "@/lib/ym";
 
 const RATES = [
-  { id: "cardboard",    label: "📦 Гофрокартон",      rate: 8.0 },
-  { id: "office_paper", label: "📄 Белая бумага А4",  rate: 11.5 },
-  { id: "books",        label: "📚 Книги и журналы",  rate: 9.0 },
-  { id: "mix",          label: "🗑️ Смешанная",        rate: 6.0 },
+  { id: "cardboard",    label: "Гофрокартон",     token: "box",   rate: 8.0 },
+  { id: "office_paper", label: "Белая бумага А4", token: "file",  rate: 11.5 },
+  { id: "books",        label: "Книги и журналы", token: "books", rate: 9.0 },
+  { id: "mix",          label: "Смешанная",       token: "trash", rate: 6.0 },
 ];
 
 export function WastepaperCalculator() {
@@ -104,7 +105,7 @@ export function WastepaperCalculator() {
               onClick={() => setType(r.id)}
               className={`wpcalc__type-btn${type === r.id ? " wpcalc__type-btn--active" : ""}`}
             >
-              <span className="wpcalc__type-name">{r.label}</span>
+              <span className="wpcalc__type-name"><GlyphIcon value={r.token} size={14} /> {r.label}</span>
               <span className="wpcalc__type-rate">{r.rate} ₽/кг</span>
             </button>
           ))}
@@ -132,7 +133,7 @@ export function WastepaperCalculator() {
               onClick={() => setDelivery("self")}
               className={`wpcalc__del-btn${delivery === "self" ? " wpcalc__del-btn--active" : ""}`}
             >
-              <span>🏭</span>
+              <span><GlyphIcon value="factory" size={20} /></span>
               <div>
                 <div className="wpcalc__del-name">Привезу сам</div>
                 <div className="wpcalc__del-sub">+0.5 ₽/кг бонус</div>
@@ -143,7 +144,7 @@ export function WastepaperCalculator() {
               onClick={() => setDelivery("pickup")}
               className={`wpcalc__del-btn${delivery === "pickup" ? " wpcalc__del-btn--active" : ""}`}
             >
-              <span>🚚</span>
+              <span><GlyphIcon value="truck" size={20} /></span>
               <div>
                 <div className="wpcalc__del-name">Вывоз</div>
                 <div className="wpcalc__del-sub">от 150 кг</div>
@@ -156,7 +157,8 @@ export function WastepaperCalculator() {
       {/* Предупреждение вывоза */}
       {delivery === "pickup" && weight < 150 && (
         <div className="wpcalc__warn">
-          ⚠️ Бесплатный вывоз — от 150 кг. Сейчас: {weight} кг
+          <GlyphIcon value="warning" size={14} /> Бесплатный вывоз — от 150
+          кг. Сейчас: {weight} кг
         </div>
       )}
 

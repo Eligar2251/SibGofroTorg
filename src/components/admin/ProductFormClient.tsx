@@ -4,10 +4,22 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Loader2, Trash2 } from "lucide-react";
+import {
+  Save,
+  Loader2,
+  Trash2,
+  Bold,
+  Italic,
+  Heading3,
+  List,
+  ListOrdered,
+  Link2,
+  Quote,
+} from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
+import { MarkdownText } from "@/components/catalog/MarkdownText";
 
 interface Category {
   id: string;
@@ -42,6 +54,10 @@ interface ProductData {
   inStock?: boolean | null;
   isPromo?: boolean | null;
   promoLabel?: string | null;
+  madeToOrder?: boolean | null;
+  discountType?: "percent" | "fixed" | null;
+  discountValue?: number | null;
+  discountBadge?: string | null;
   isVisible?: boolean | null;
   isFeatured?: boolean | null;
   images?: ProductImage[];
@@ -62,6 +78,40 @@ export function ProductFormClient({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [images, setImages] = useState<ProductImage[]>(product?.images || []);
+
+  // Markdown-редактор описания
+  const [descValue, setDescValue] = useState(product?.description || "");
+  const [descPreview, setDescPreview] = useState(false);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+
+  /* Оборачивает выделенный текст маркерами (**текст**, [текст](url)) */
+  function descWrap(before: string, after: string, placeholder = "текст") {
+    const ta = descRef.current;
+    if (!ta) return;
+    const { selectionStart: s, selectionEnd: e, value } = ta;
+    const selected = value.slice(s, e) || placeholder;
+    setDescValue(value.slice(0, s) + before + selected + after + value.slice(e));
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(
+        s + before.length,
+        s + before.length + selected.length
+      );
+    });
+  }
+
+  /* Добавляет префикс в начало текущей строки (списки, заголовок, цитата) */
+  function descPrefix(prefix: string) {
+    const ta = descRef.current;
+    if (!ta) return;
+    const { selectionStart: s, value } = ta;
+    const lineStart = value.lastIndexOf("\n", Math.max(0, s - 1)) + 1;
+    setDescValue(value.slice(0, lineStart) + prefix + value.slice(lineStart));
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(s + prefix.length, s + prefix.length);
+    });
+  }
 
   const isEdit = !!product?.id;
   const adminPath =
@@ -107,6 +157,12 @@ export function ProductFormClient({
       inStock: data.get("inStock") === "on",
       isPromo: data.get("isPromo") === "on",
       promoLabel: data.get("promoLabel") || null,
+      madeToOrder: data.get("madeToOrder") === "on",
+      discountType: data.get("discountType") || null,
+      discountValue: data.get("discountValue")
+        ? Number(data.get("discountValue"))
+        : null,
+      discountBadge: data.get("discountBadge") || null,
       isVisible: data.get("isVisible") === "on",
       isFeatured: data.get("isFeatured") === "on",
       images,
@@ -207,13 +263,116 @@ export function ProductFormClient({
           </div>
 
           <div className="admin-field">
-            <label className="admin-label">Описание</label>
-            <textarea
-              name="description"
-              rows={3}
-              defaultValue={product?.description || ""}
-              className="admin-textarea"
-            />
+            <div className="md-editor__head">
+              <label className="admin-label" htmlFor="pf-description">
+                Описание
+              </label>
+              <div className="md-tabs">
+                <button
+                  type="button"
+                  className={`md-tab${!descPreview ? " md-tab--active" : ""}`}
+                  onClick={() => setDescPreview(false)}
+                >
+                  Текст
+                </button>
+                <button
+                  type="button"
+                  className={`md-tab${descPreview ? " md-tab--active" : ""}`}
+                  onClick={() => setDescPreview(true)}
+                >
+                  Предпросмотр
+                </button>
+              </div>
+            </div>
+
+            {descPreview ? (
+              <div className="md-preview">
+                {descValue.trim() ? (
+                  <MarkdownText text={descValue} />
+                ) : (
+                  <span className="md-preview__empty">
+                    Пусто — переключитесь на «Текст» и напишите описание
+                  </span>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="md-toolbar">
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Жирный"
+                    onClick={() => descWrap("**", "**")}
+                  >
+                    <Bold size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Курсив"
+                    onClick={() => descWrap("*", "*")}
+                  >
+                    <Italic size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Заголовок"
+                    onClick={() => descPrefix("### ")}
+                  >
+                    <Heading3 size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Список"
+                    onClick={() => descPrefix("- ")}
+                  >
+                    <List size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Нумерованный список"
+                    onClick={() => descPrefix("1. ")}
+                  >
+                    <ListOrdered size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Ссылка"
+                    onClick={() => descWrap("[", "](https://)", "текст ссылки")}
+                  >
+                    <Link2 size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="md-tool-btn"
+                    title="Цитата"
+                    onClick={() => descPrefix("> ")}
+                  >
+                    <Quote size={13} />
+                  </button>
+                </div>
+                <textarea
+                  id="pf-description"
+                  ref={descRef}
+                  name="description"
+                  rows={6}
+                  value={descValue}
+                  onChange={(e) => setDescValue(e.target.value)}
+                  className="admin-textarea"
+                  placeholder={
+                    "Короб для переезда и хранения.\n\n- выдерживает до 20 кг\n- **5-слойный** картон\n- размер в сборе: 400×300×300 мм"
+                  }
+                />
+                <div className="md-hint">
+                  Поддерживается Markdown: **жирный**, *курсив*, ### заголовок,
+                  - список, 1. нумерованный, [текст ссылки](https://)
+                </div>
+              </>
+            )}
           </div>
 
           <div className="admin-field">
@@ -231,7 +390,7 @@ export function ProductFormClient({
 
       <div className="admin-card">
         <div className="admin-card__pad admin-stack">
-          <h2 className="admin-h2">Цены</h2>
+          <h2 className="admin-h2">Цены и Скидки</h2>
           <div className="admin-grid-3">
             <div className="admin-field">
               <label className="admin-label">Розничная цена, ₽</label>
@@ -260,6 +419,42 @@ export function ProductFormClient({
                 name="minWholesaleQty"
                 type="number"
                 defaultValue={product?.minWholesaleQty ?? ""}
+                className="admin-input"
+              />
+            </div>
+          </div>
+
+          <div className="admin-grid-3" style={{ marginTop: 12 }}>
+            <div className="admin-field">
+              <label className="admin-label">Тип скидки</label>
+              <select
+                name="discountType"
+                defaultValue={product?.discountType || ""}
+                className="admin-select"
+              >
+                <option value="">Без скидки</option>
+                <option value="percent">Процент (%)</option>
+                <option value="fixed">Сумма в рублях (₽)</option>
+              </select>
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Величина скидки</label>
+              <input
+                name="discountValue"
+                type="number"
+                step="0.01"
+                defaultValue={product?.discountValue ?? ""}
+                placeholder="Напр. 15 или 500"
+                className="admin-input"
+              />
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Бейдж скидки (текст)</label>
+              <input
+                name="discountBadge"
+                type="text"
+                defaultValue={product?.discountBadge || ""}
+                placeholder="Напр. -15% или Скидка"
                 className="admin-input"
               />
             </div>
@@ -381,6 +576,11 @@ export function ProductFormClient({
                 name: "isFeatured",
                 label: "Популярный товар",
                 defaultChecked: product?.isFeatured ?? false,
+              },
+              {
+                name: "madeToOrder",
+                label: "Под заказ (без цены на сайте)",
+                defaultChecked: product?.madeToOrder ?? false,
               },
             ].map((flag) => (
               <label key={flag.name} className="admin-check">

@@ -11,7 +11,7 @@ export async function GET() {
       id: cat.id,
       name: cat.name,
       slug: cat.slug,
-      icon: cat.icon ?? "📦",
+      icon: cat.icon ?? "box",
     }));
     return NextResponse.json(serialized);
   } catch (error) {

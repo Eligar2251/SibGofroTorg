@@ -2,6 +2,8 @@
 
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
+import { X } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { MobileCategorySelect } from "@/components/catalog/MobileCategorySelect";
@@ -25,6 +27,7 @@ interface CatalogProduct {
   imageUrl?: string | null;
   inStock?: boolean;
   promoLabel?: string | null;
+  madeToOrder?: boolean | null;
   stockQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;
@@ -243,7 +246,7 @@ export function CatalogShopClient({
                     cursor: "pointer",
                   }}
                 >
-                  <span className="fcat-item__icon">📦</span>
+                  <span className="fcat-item__icon"><GlyphIcon value="box" size={16} /></span>
                   <span className="fcat-item__name">Все товары</span>
                 </button>
                 {categories.map((c) => (
@@ -263,7 +266,7 @@ export function CatalogShopClient({
                     }}
                   >
                     <span className="fcat-item__icon">
-                      {c.icon || "📦"}
+                      <GlyphIcon value={c.icon} size={16} />
                     </span>
                     <span className="fcat-item__name">{c.name}</span>
                   </button>
@@ -289,7 +292,7 @@ export function CatalogShopClient({
                   }}
                 >
                   <span className="fcheck__box">
-                    {stock === "yes" ? "✓" : ""}
+                    {stock === "yes" ? <GlyphIcon value="check" size={12} /> : null}
                   </span>
                   Только в наличии
                 </button>
@@ -336,7 +339,7 @@ export function CatalogShopClient({
                   width: "100%",
                 }}
               >
-                ✕ Сбросить фильтры
+                <X size={13} style={{ marginRight: 4 }} />Сбросить фильтры
               </button>
             )}
           </aside>
@@ -389,7 +392,7 @@ export function CatalogShopClient({
                 className="card-base"
                 style={{ textAlign: "center", padding: "64px 24px" }}
               >
-                <div style={{ fontSize: 48, marginBottom: 12 }}>📦</div>
+                <div style={{ marginBottom: 12, color: "var(--ink-muted)" }}><GlyphIcon value="box" size={44} /></div>
                 <h3
                   style={{
                     fontSize: 18,

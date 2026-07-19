@@ -16,8 +16,11 @@ import {
   MapPin,
   Clock,
   LogIn,
+  Recycle,
 } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import { SearchBar } from "./SearchBar";
+import { SiteLogo } from "./SiteLogo";
 import {
   SITE_ADDRESS,
   SITE_PHONE,
@@ -104,12 +107,8 @@ export function Header() {
 
       <header className="site-header">
         <div className="container-wide header-inner">
-          <Link href="/" className="logo">
-            <div className="logo-icon">С</div>
-            <div className="logo-text">
-              <div className="logo-name">СибГофроТорг</div>
-              <div className="logo-sub">упаковка оптом</div>
-            </div>
+          <Link href="/" className="logo" aria-label="СибГофроТорг — на главную">
+            <SiteLogo />
           </Link>
 
           <div
@@ -118,7 +117,7 @@ export function Header() {
             onMouseLeave={closeCatalogDelayed}
           >
             <button className={`catalog-toggle${isCatalogOpen ? " active" : ""}`}>
-              <span>☰</span>
+              <Menu size={17} />
               <span className="catalog-toggle-text">Каталог товаров</span>
               <ChevronDown size={14} className="chevron" />
             </button>
@@ -133,7 +132,9 @@ export function Header() {
                       className="catalog-dropdown-link"
                       onClick={() => setIsCatalogOpen(false)}
                     >
-                      <span className="catalog-dropdown-icon">{cat.icon || "📦"}</span>
+                      <span className="catalog-dropdown-icon">
+                        <GlyphIcon value={cat.icon} size={18} />
+                      </span>
                       {cat.name}
                     </Link>
                   ))
@@ -211,7 +212,7 @@ export function Header() {
               className="mobile-cat-link"
               onClick={() => setIsMobileMenuOpen(false)}
             >
-              <span style={{ fontSize: 20 }}>{cat.icon || "📦"}</span>
+              <GlyphIcon value={cat.icon} size={20} />
               {cat.name}
             </Link>
           ))}
@@ -223,7 +224,7 @@ export function Header() {
                 className="mobile-simple-link"
                 onClick={() => setIsMobileMenuOpen(false)}
               >
-                👤 Мои заказы
+                <User size={15} /> Мои заказы
               </Link>
             ) : (
               <Link
@@ -231,7 +232,7 @@ export function Header() {
                 className="mobile-simple-link"
                 onClick={() => setIsMobileMenuOpen(false)}
               >
-                🔐 Войти / Регистрация
+                <LogIn size={15} /> Войти / Регистрация
               </Link>
             )}
             <Link
@@ -240,7 +241,7 @@ export function Header() {
               style={{ color: "var(--green)", fontWeight: 600 }}
               onClick={() => setIsMobileMenuOpen(false)}
             >
-              ♻️ Приём макулатуры
+              <Recycle size={15} /> Приём макулатуры
             </Link>
             <Link
               href="/delivery"

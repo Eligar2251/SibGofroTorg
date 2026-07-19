@@ -1,21 +1,20 @@
 // src/components/seo/JsonLd.tsx
 import { jsonLdScript } from "@/lib/seo";
 
-export function JsonLd({
-  data,
-  nonce,
-}: {
+type JsonLdProps = {
   data: unknown | unknown[];
-  nonce?: string;
-}) {
+};
+
+export function JsonLd({ data }: JsonLdProps) {
   const payload = Array.isArray(data) ? data : [data];
+
   return (
     <>
-      {payload.map((item, i) => (
+      {payload.map((item, index) => (
         <script
-          key={i}
+          key={`jsonld-${index}`}
           type="application/ld+json"
-          nonce={nonce}
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: jsonLdScript(item) }}
         />
       ))}

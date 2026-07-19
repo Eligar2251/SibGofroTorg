@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getSettings } from "@/lib/firestore-queries";
-import { rateLimit, clientIp } from "@/lib/rate-limit"; // 👈 импорт
+import { rateLimit, clientIp } from "@/lib/rate-limit"; 
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,20 +61,20 @@ export async function POST(request: NextRequest) {
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    const message = `♻️ <b>НОВАЯ ЗАЯВКА НА МАКУЛАТУРУ</b>
-👤 <b>Клиент:</b> ${customerName}
-📞 <b>Телефон:</b> ${customerPhone}
+    const message = `<b>НОВАЯ ЗАЯВКА НА МАКУЛАТУРУ</b>
+<b>Клиент:</b> ${customerName}
+<b>Телефон:</b> ${customerPhone}
 
-📦 <b>Сырьё:</b> ${wastepaperType}
-🔢 <b>Вес:</b> ${weight} кг
-🚚 <b>Доставка:</b> ${
+<b>Сырьё:</b> ${wastepaperType}
+<b>Вес:</b> ${weight} кг
+<b>Доставка:</b> ${
       deliveryMethod === "self"
         ? "Привезут сами на склад"
         : "Нужен наш вывоз"
     }
-💰 <b>Сумма выплаты:</b> ~${Number(estimatedPayout || 0).toLocaleString("ru-RU")} ₽
+<b>Сумма выплаты:</b> ~${Number(estimatedPayout || 0).toLocaleString("ru-RU")} ₽
 
-💬 <b>Комментарий:</b> ${comment || "—"}`;
+<b>Комментарий:</b> ${comment || "—"}`;
 
     const settings = await getSettings();
     const telegramToken =

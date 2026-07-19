@@ -23,6 +23,11 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ["lucide-react"],
   },
 
+  // Fix turbopack root directory issue
+  turbopack: {
+    root: __dirname,
+  },
+
   // CSP + security — в src/proxy.ts (nonce).
   // Здесь только кеш публичных ассетов.
   // НЕ трогаем /_next/static — Next сам ставит immutable long-cache в prod.

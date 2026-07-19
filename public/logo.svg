@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <!-- Основной градиент для гофрокартона (надежность, эко, теплота) -->
+    <linearGradient id="kraftGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D2A275" />
+      <stop offset="100%" stop-color="#9E6F43" />
+    </linearGradient>
+
+    <!-- Вспомогательный градиент для динамики и акцента -->
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#B57C4A" />
+      <stop offset="100%" stop-color="#704723" />
+    </linearGradient>
+
+    <!-- Тень для придания объема коробке -->
+    <filter id="dropShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="2" dy="5" stdDeviation="4" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Задний фон -->
+  <rect width="100%" height="100%" fill="#FFFFFF"/>
+
+  <!-- ЦЕНТРАЛЬНЫЙ ЭЛЕМЕНТ: Стилизованная коробка со стрелкой/волной -->
+  <g transform="translate(0, 5)">
+    <!-- Левая грань коробки -->
+    <polygon points="250,110 130,170 130,300 250,240" fill="url(#accentGrad)" filter="url(#dropShadow)" />
+    <!-- Правая грань коробки -->
+    <polygon points="250,240 370,300 370,170 250,110" fill="url(#kraftGrad)" filter="url(#dropShadow)" />
+    <!-- Внутренняя волна (символ логистики, гофрокартона и Сибири) -->
+    <path d="M 160,200
+             C 200,160 220,260 250,210
+             C 280,160 310,200 340,170
+             L 340,195
+             C 310,225 280,185 250,235
+             C 220,285 190,185 160,225 Z"
+          fill="#FFFFFF" opacity="0.9" />
+    <!-- Верхний открытый клапан коробки -->
+    <polygon points="250,110 370,170 310,140 190,80" fill="#E6BA94" opacity="0.7"/>
+  </g>
+
+  <!-- ТЕКСТОВАЯ ЧАСТЬ -->
+  <!-- Основное название компании -->
+  <text x="250" y="395"
+        font-family="'Montserrat', 'Segoe UI', 'Arial Black', sans-serif"
+        font-size="36"
+        font-weight="900"
+        fill="#4A3319"
+        letter-spacing="3"
+        text-anchor="middle">
+    СИБГОФРОТОРГ
+  </text>
+
+  <!-- Декоративная линия, подчеркивающая основательность бренда -->
+  <line x1="150" y1="415" x2="350" y2="415" stroke="#D2A275" stroke-width="2" stroke-dasharray="6 4"/>
+</svg>

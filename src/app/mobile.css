@@ -59,10 +59,6 @@ body {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .deals-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   /* Чекаут */
   .checkout-layout {
     grid-template-columns: 1fr 300px;
@@ -220,23 +216,8 @@ body {
     gap: 2px;
   }
 
-  .logo-text {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .logo-name {
-    font-size: 13px;
-  }
-
-  .logo-sub {
-    font-size: 10px;
-  }
-
-  .logo-icon {
-    width: 34px;
+  .site-logo {
     height: 34px;
-    font-size: 15px;
   }
 
   .catalog-dropdown-wrap,
@@ -435,36 +416,11 @@ body {
     margin-left: 0;
   }
 
-  /* «Рассчитать выплату» — кнопка, не текст */
+  /* «Рассчитать выплату» — на всю ширину панели */
   .btn-hero-secondary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
     width: 100%;
-    min-height: 46px;
-    height: 46px;
-    margin-top: 0;
-    padding: 0 16px;
-    background: rgba(93, 203, 97, 0.14);
-    border: 1.5px solid rgba(93, 203, 97, 0.55);
-    border-radius: 8px;
-    color: var(--green-lime);
-    font-size: 14px;
-    font-weight: 700;
-    text-decoration: none;
     align-self: stretch;
     white-space: nowrap;
-    transition:
-      background-color var(--transition),
-      border-color var(--transition);
-  }
-
-  .hero__right:hover .btn-hero-secondary,
-  .btn-hero-secondary:active {
-    gap: 8px;
-    background: rgba(93, 203, 97, 0.22);
-    border-color: var(--green-lime);
   }
 
   /* ═══════════════════════════
@@ -511,24 +467,9 @@ body {
     gap: 8px;
   }
 
-  .deals-grid {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    gap: 10px;
-    padding-bottom: 6px;
-    grid-template-columns: none;
-  }
-
-  .deals-grid::-webkit-scrollbar {
-    display: none;
-  }
-
+  /* Прокрутка ряда акций задаётся в globals.css (.deals-track).
+     Здесь — только компактный вид самих карточек на телефоне */
   .deal-card {
-    flex: 0 0 70vw;
-    max-width: 260px;
-    scroll-snap-align: start;
     border-radius: 12px;
     padding: 14px;
   }
@@ -1861,8 +1802,8 @@ body {
     min-width: 30px;
   }
 
-  .logo-sub {
-    display: none;
+  .site-logo {
+    height: 30px;
   }
 
   .header-icon-btn span {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getProducts } from "@/lib/firestore-queries";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { SearchBar } from "@/components/layout/SearchBar";
+import { GlyphIcon } from "@/components/ui/Glyph";
 
 export const metadata = { title: "Поиск упаковочных материалов — СибГофроТорг" };
 
@@ -41,7 +42,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           </div>
         ) : queryStr ? (
           <div className="card-base" style={{ textAlign: "center", padding: "48px 16px" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
+            <div style={{ marginBottom: 12, color: "var(--ink-muted)" }}><GlyphIcon value="search" size={36} /></div>
             <h3 style={{ fontSize: 18, fontWeight: 700 }}>Ничего не найдено</h3>
             <p style={{ fontSize: 14, color: "var(--ink-light)", marginTop: 4 }}>
               Попробуйте проверить опечатки или используйте более общие фразы, например: «скотч» или «коробка».
@@ -49,7 +50,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           </div>
         ) : (
           <div className="card-base" style={{ textAlign: "center", padding: "48px 16px" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>✍️</div>
+            <div style={{ marginBottom: 12, color: "var(--ink-muted)" }}><GlyphIcon value="penline" size={36} /></div>
             <h3 style={{ fontSize: 18, fontWeight: 700 }}>Введите ваш поисковый запрос</h3>
             <p style={{ fontSize: 14, color: "var(--ink-light)", marginTop: 4 }}>
               Начните вводить название товара или размеры коробки в поисковой строке выше.

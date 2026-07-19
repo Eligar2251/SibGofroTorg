@@ -4,8 +4,9 @@
 
 import { getProducts, getAllCategories } from "@/lib/firestore-queries";
 import Link from "next/link";
-import { Plus, Eye, EyeOff } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
+import { ProductListClient } from "@/components/admin/ProductListClient";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
@@ -21,7 +22,28 @@ export default async function AdminProductsPage({
 
   const allProducts = await getProducts({});
   const cats = await getAllCategories();
-  const catMap = new Map(cats.map((c) => [c.id, c.name]));
+
+  const serializedProducts = allProducts.map((p) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    sku: p.sku ?? null,
+    categoryId: p.categoryId ?? null,
+    price: p.price ?? null,
+    priceWholesale: p.priceWholesale ?? null,
+    inStock: p.inStock,
+    isPromo: p.isPromo,
+    promoLabel: p.promoLabel ?? null,
+    madeToOrder: p.madeToOrder ?? false,
+    isVisible: p.isVisible,
+    imageUrl: p.imageUrl ?? null,
+    viewCount: p.viewCount ?? 0,
+  }));
+
+  const serializedCats = cats.map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
 
   return (
     <div>
@@ -30,12 +52,12 @@ export default async function AdminProductsPage({
           <h1 className="admin-h1">Товары</h1>
           <p className="admin-sub">Всего: {allProducts.length} товаров</p>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div className="admin-page-head__actions">
           <Link
             href={`/${ADMIN_PATH}/products/bulk`}
             className="admin-btn admin-btn--ghost"
           >
-            ✏️ Массовое редактирование
+            <Pencil size={15} /> Массовое редактирование
           </Link>
           <Link
             href={`/${ADMIN_PATH}/products/new`}
@@ -46,106 +68,11 @@ export default async function AdminProductsPage({
         </div>
       </div>
 
-      <div className="admin-card">
-        <div className="admin-table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Товар</th>
-                <th>Категория</th>
-                <th>Цена</th>
-                <th>Статус</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allProducts.map((product) => (
-                <tr key={product.id}>
-                  <td>
-                    <div className="admin-product-cell">
-                      <div className="admin-product-thumb">
-                        {product.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={product.imageUrl} alt="" />
-                        ) : (
-                          "📦"
-                        )}
-                      </div>
-                      <div>
-                        <div className="admin-product-name">{product.name}</div>
-                        <div className="admin-product-sku">
-                          {product.sku || "—"}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="admin-muted">
-                    {product.categoryId
-                      ? catMap.get(product.categoryId) || "—"
-                      : "—"}
-                  </td>
-                  <td>
-                    <div className="admin-price">
-                      {product.price
-                        ? `${product.price.toLocaleString("ru-RU")} ₽`
-                        : "по запросу"}
-                    </div>
-                    {product.priceWholesale != null && (
-                      <div className="admin-price-opt">
-                        опт: {product.priceWholesale.toLocaleString("ru-RU")} ₽
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    <div className="admin-row">
-                      {product.inStock ? (
-                        <span className="admin-badge admin-badge--green">
-                          В наличии
-                        </span>
-                      ) : (
-                        <span className="admin-badge admin-badge--red">
-                          Нет
-                        </span>
-                      )}
-                      {product.isPromo && (
-                        <span className="admin-badge admin-badge--amber">
-                          {product.promoLabel || "Акция"}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="admin-actions">
-                      <Link
-                        href={`/${ADMIN_PATH}/products/${product.id}`}
-                        className="admin-btn admin-btn--icon"
-                        title="Редактировать"
-                      >
-                        ✏️
-                      </Link>
-                      <Link
-                        href={`/catalog/product/${product.slug}`}
-                        className="admin-btn admin-btn--icon"
-                        title="Просмотр"
-                        target="_blank"
-                      >
-                        {product.isVisible ? (
-                          <Eye size={16} />
-                        ) : (
-                          <EyeOff size={16} />
-                        )}
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {allProducts.length === 0 && (
-            <div className="admin-table__empty">Товаров пока нет</div>
-          )}
-        </div>
-      </div>
+      <ProductListClient
+        products={serializedProducts}
+        categories={serializedCats}
+        adminPath={ADMIN_PATH}
+      />
     </div>
   );
 }

@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { getCategories, getProducts } from "@/lib/firestore-queries";
-import { FirestoreCategory, FirestoreProduct } from "@/lib/types";
+import { getCategories, getProducts, getPromotions, getProductById } from "@/lib/firestore-queries";
+import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
+import { DealsRow } from "@/components/home/DealsRow";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import {
   ArrowRight,
   Phone,
@@ -41,56 +43,63 @@ export const metadata: Metadata = {
 export const revalidate = 120;
 
 export default async function HomePage() {
-  const categories = await getCategories();
-  const featuredProducts = await getProducts({
-    featuredOnly: true,
-    limitCount: 12,
+  const [categories, featuredProducts, promotions] = await Promise.all([
+    getCategories(),
+    getProducts({
+      featuredOnly: true,
+      limitCount: 12,
+    }),
+    getPromotions(),
+  ]);
+
+  // Для акций со ссылкой на товар резолвим slug товара,
+  // чтобы «Подробнее» вело прямо на страницу товара
+  const promoProductIds = [
+    ...new Set(
+      promotions
+        .filter((p: Promotion) => p.linkType === "product" && p.productId)
+        .map((p: Promotion) => p.productId as string)
+    ),
+  ];
+  const promoProducts = await Promise.all(
+    promoProductIds.map((id) => getProductById(id).catch(() => null))
+  );
+  const slugByProductId = new Map<string, string>();
+  promoProductIds.forEach((id, i) => {
+    const slug = promoProducts[i]?.slug;
+    if (slug) slugByProductId.set(id, slug);
   });
 
-  const deals = [
-    {
-      tag: "Оптовая скидка",
-      title: "−15% при заказе\nот 500 коробов",
-      desc: "На все стандартные размеры Т-23",
-      color: "var(--kraft)",
-      light: "var(--kraft-light)",
-      icon: "📦",
-      deadline: null as string | null,
-    },
-    {
-      tag: "Доставка",
-      title: "Бесплатная доставка\nот 30 000 ₽",
-      desc: "По Новосибирску и области",
-      color: "var(--eco)",
-      light: "var(--eco-light)",
-      icon: "🚚",
-      deadline: null,
-    },
-    {
-      tag: "Макулатура → Скидка",
-      title: "Сдай картон —\nполучи −7% на тару",
-      desc: "Принимаем от 50 кг, оплата сразу",
-      color: "#2D6A4F",
-      light: "#D8EFE3",
-      icon: "♻️",
-      deadline: null,
-    },
-    {
-      tag: "Новинки",
-      title: "Самосборные\nкоробки со скидкой",
-      desc: "Быстрая сборка без скотча",
-      color: "#7C3AED",
-      light: "#EDE9FE",
-      icon: "⚡",
-      deadline: "31 июля",
-    },
-  ];
+  // Transform promotions to deal cards format
+  const deals = promotions.map((p: Promotion) => {
+    // Куда ведёт кнопка в карточке акции
+    let href = "/catalog";
+    let external = false;
+    if (p.linkType === "url" && p.linkUrl) {
+      href = p.linkUrl;
+      external = /^https?:\/\//i.test(href);
+    } else if (p.linkType === "product" && p.productId) {
+      const slug = slugByProductId.get(p.productId);
+      if (slug) href = `/catalog/product/${slug}`;
+    }
+    return {
+      tag: p.badge || "Акция",
+      title: p.title,
+      desc: p.subtitle || "",
+      color: p.color || "var(--kraft)",
+      light: p.light || "var(--kraft-light)",
+      icon: p.icon || "box",
+      deadline: p.deadline || null,
+      href,
+      external,
+    };
+  });
 
   const serializedCategories = categories.map((cat: FirestoreCategory) => ({
     id: cat.id,
     name: cat.name,
     slug: cat.slug,
-    icon: cat.icon ?? "📦",
+    icon: cat.icon ?? "box",
   }));
 
   const serializedProducts = featuredProducts.map((p: FirestoreProduct) => ({
@@ -105,6 +114,7 @@ export default async function HomePage() {
     imageUrl: p.imageUrl ?? null,
     inStock: p.inStock,
     promoLabel: p.promoLabel ?? null,
+    madeToOrder: p.madeToOrder ?? false,
     stockQty: p.stockQty ?? null,
     dimensionLength: p.dimensionLength ?? null,
     dimensionWidth: p.dimensionWidth ?? null,
@@ -197,9 +207,9 @@ export default async function HomePage() {
             </div>
 
             <div className="hero__wp-features">
-              <span>✓ Вывоз от 150 кг бесплатно</span>
-              <span>✓ Оплата на месте</span>
-              <span>✓ Работаем с юрлицами</span>
+              <span>Вывоз от 150 кг — 0 ₽</span>
+              <span>Оплата на месте</span>
+              <span>Работаем с юрлицами</span>
             </div>
 
             <div className="btn-hero-secondary">
@@ -218,20 +228,18 @@ export default async function HomePage() {
               Все предложения <ArrowRight size={13} />
             </Link>
           </div>
-          <div className="deals-grid">
+          <DealsRow>
             {deals.map((d, i) => (
               <div
                 key={i}
                 className="deal-card"
-                style={
-                  {
-                    "--deal-color": d.color,
-                    "--deal-light": d.light,
-                  } as React.CSSProperties
-                }
+                style={{
+                  "--deal-color": d.color,
+                  "--deal-light": d.light,
+                } as React.CSSProperties}
               >
                 <div className="deal-card__top">
-                  <span className="deal-card__icon">{d.icon}</span>
+                  <span className="deal-card__icon"><GlyphIcon value={d.icon} size={20} /></span>
                   <span className="deal-card__tag">{d.tag}</span>
                   {d.deadline && (
                     <span className="deal-card__deadline">до {d.deadline}</span>
@@ -246,12 +254,23 @@ export default async function HomePage() {
                   ))}
                 </div>
                 <p className="deal-card__desc">{d.desc}</p>
-                <Link href="/catalog" className="deal-card__cta">
-                  Подробнее <ArrowRight size={12} />
-                </Link>
+                {d.external ? (
+                  <a
+                    href={d.href}
+                    className="deal-card__cta"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Подробнее <ArrowRight size={12} />
+                  </a>
+                ) : (
+                  <Link href={d.href} className="deal-card__cta">
+                    Подробнее <ArrowRight size={12} />
+                  </Link>
+                )}
               </div>
             ))}
-          </div>
+          </DealsRow>
         </div>
       </section>
 

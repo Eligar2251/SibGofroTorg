@@ -10,6 +10,9 @@
   --adm-ink:        #1a1a18;
   --adm-ink-soft:   #2e2e2a;
   --adm-ink-muted:  #6b6b60;
+  /* Алиас: раньше var(--adm-muted) нигде не был определён —
+     тексты «подсказок» рендерились тёмным вместо приглушённого */
+  --adm-muted:      var(--adm-ink-muted);
 
   --adm-kraft:      #c8860a;
   --adm-kraft-mid:  #e09b12;
@@ -121,14 +124,24 @@
 }
 
 .admin-sidebar__brand {
-  padding: 0 20px;
-  height: 64px;
+  padding: 14px 20px 12px;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
   border-bottom: 1px solid rgba(255,255,255,0.07);
   position: relative;
   flex-shrink: 0;
+}
+
+/* Полный логотип (знак + название) вместо буквы.
+   Специфичность выше, чем у .site-logo из globals — иначе
+   глобальная высота шапки сайта побеждает */
+.admin-shell .admin-sidebar__logo-svg {
+  height: 34px;
+  width: auto;
+  display: block;
 }
 
 .admin-sidebar__logo {
@@ -291,7 +304,8 @@
   padding: 0 16px;
   height: 56px;
   align-items: center;
-  justify-content: space-between;
+  /* Бренд убран по запросу — только иконки навигации, по центру */
+  justify-content: center;
   box-shadow: var(--adm-sh-sm);
 }
 
@@ -302,20 +316,40 @@
 .admin-mobile-bar__title {
   font-family: var(--adm-font-head);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
-.admin-mobile-bar__title span {
-  color: var(--adm-kraft-mid);
+/* Мини-логотип в мобильной панели */
+.admin-shell .admin-mobile-bar__logo {
+  height: 22px;
+  width: auto;
+  display: block;
 }
 
 .admin-mobile-bar__nav {
   display: flex;
   align-items: center;
   gap: 2px;
+  /* На очень узких экранах — прокрутка вместо обрезания иконок */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-mobile-bar__nav::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-mobile-bar__link {
+  flex-shrink: 0;
 }
 
 .admin-mobile-bar__link {
@@ -548,6 +582,25 @@
 
 .admin-page-head .admin-h1 {
   margin-bottom: 0;
+}
+
+/* Кнопки в шапке страницы (например, «+ Добавить товар»):
+   переносятся на новую строку и не обрезаются на мобильных */
+.admin-page-head__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .admin-page-head__actions {
+    width: 100%;
+  }
+
+  .admin-page-head__actions .admin-btn {
+    flex: 1;
+    justify-content: center;
+  }
 }
 
 /* ══════════════════════════════════════
@@ -975,6 +1028,14 @@
   font-size: 13px;
 }
 
+/* На широких экранах названию товара даём больше места —
+   таблица всё равно простирается на всю ширину колонки */
+@media (min-width: 1200px) {
+  .admin-product-name {
+    max-width: 300px;
+  }
+}
+
 .admin-product-sku {
   font-size: 11px;
   color: var(--adm-sand);
@@ -1071,6 +1132,7 @@
 .admin-filter {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   padding: 6px 13px;
   border-radius: var(--adm-r-sm);
   font-size: 12px;
@@ -1112,7 +1174,8 @@
 
 @media (min-width: 1024px) {
   .admin-stat-grid {
-    grid-template-columns: repeat(4, 1fr);
+    /* auto-fit: без «сироты» на второй строке, когда карточек 5+ */
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   }
 }
 
@@ -1264,7 +1327,7 @@
 .admin-order__meta-label {
   font-size: 10px;
   color: var(--adm-sand);
-  width: 56px;
+  width: 68px; /* хватает под «Телефон:» — раньше значение налезало на лейбл */
   flex-shrink: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1363,6 +1426,10 @@
 .admin-order__side {
   width: 100%;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 }
 
 @media (min-width: 1024px) {
@@ -1395,15 +1462,81 @@
 .admin-status {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  align-items: flex-end;
+  gap: 10px;
+  align-items: stretch;
+  width: 100%;
+}
+
+/* Бейдж текущего статуса — на всю ширину колонки, по центру */
+.admin-status > .admin-badge {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 10px;
+  font-size: 12px;
 }
 
 .admin-status__btns {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Кнопки действий по заявке — аккуратная колонка,
+   все одной ширины и высоты */
+.admin-status__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: var(--adm-r-sm);
+  border: 1.5px solid transparent;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.admin-status__btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.admin-status__btn--primary {
+  background: var(--adm-pine);
+  color: #fff;
+}
+
+.admin-status__btn--primary:hover:not(:disabled) {
+  background: #163a22;
+}
+
+.admin-status__btn--outline-red {
+  background: #fff;
+  color: var(--adm-rust);
+  border-color: var(--adm-rust-line);
+}
+
+.admin-status__btn--outline-red:hover:not(:disabled) {
+  background: var(--adm-rust-pale);
+  border-color: var(--adm-rust);
+}
+
+.admin-status__btn--delete {
+  background: var(--adm-rust-pale);
+  color: var(--adm-rust);
+  border-color: var(--adm-rust-line);
+}
+
+.admin-status__btn--delete:hover:not(:disabled) {
+  background: #fbe3de;
+  border-color: var(--adm-rust);
 }
 
 .admin-status__reason {
@@ -1731,4 +1864,1308 @@ body:has(.admin-login) > main {
 
 .admin-shell ::-webkit-scrollbar-thumb:hover {
   background: var(--adm-sand);
+}
+/* ══════════════════════════════════════
+   MARKDOWN-РЕДАКТОР ОПИСАНИЯ ТОВАРА
+   ══════════════════════════════════════ */
+.md-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.md-editor__head .admin-label {
+  margin-bottom: 0;
+}
+
+.md-tabs {
+  display: inline-flex;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  overflow: hidden;
+}
+
+.md-tab {
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--adm-card);
+  color: var(--adm-ink-muted);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.md-tab + .md-tab {
+  border-left: 1px solid var(--adm-border-mid);
+}
+
+.md-tab--active {
+  background: var(--adm-green);
+  color: #fff;
+}
+
+.md-toolbar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.md-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card);
+  color: var(--adm-ink-soft);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.md-tool-btn:hover {
+  background: var(--adm-green-bg);
+  border-color: var(--adm-green);
+  color: var(--adm-green);
+}
+
+.md-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--adm-ink-muted);
+  line-height: 1.5;
+}
+
+.md-preview {
+  min-height: 120px;
+  padding: 10px 12px;
+  background: var(--adm-bg, #fafaf7);
+  border: 1px dashed var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--adm-ink);
+}
+
+.md-preview__empty {
+  color: var(--adm-ink-muted);
+  font-size: 12px;
+}
+
+/* ══════════════════════════════════════
+   УЧЁТ: склад, заказы, банк (warehouse)
+   ══════════════════════════════════════ */
+
+/* Широкая модалка для форм с позициями */
+.wh-modal {
+  max-width: 44rem;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.wh-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+
+.wh-form-grid .admin-field {
+  margin-bottom: 0;
+}
+
+@media (max-width: 560px) {
+  .wh-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wh-label-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--adm-sand);
+}
+
+/* ── Выбор товара (комбобокс) ── */
+.wh-picker {
+  position: relative;
+}
+
+.wh-picker__input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.wh-picker__icon {
+  position: absolute;
+  left: 10px;
+  color: var(--adm-sand);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.wh-picker__input {
+  padding-left: 30px;
+  width: 100%;
+}
+
+.wh-picker__clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--adm-sand);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 0;
+  border-radius: 4px;
+}
+
+.wh-picker__clear:hover {
+  color: var(--adm-ink);
+  background: var(--adm-paper-warm);
+}
+
+.wh-picker__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  box-shadow: var(--adm-sh-md);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.wh-picker__opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(219, 216, 208, 0.4);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--adm-ink);
+  font-family: inherit;
+  transition: background 0.1s ease;
+}
+
+.wh-picker__opt:last-child {
+  border-bottom: none;
+}
+
+.wh-picker__opt:hover {
+  background: var(--adm-paper);
+}
+
+.wh-picker__opt-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wh-picker__opt-sku {
+  color: var(--adm-sand);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.wh-picker__opt-meta {
+  flex-shrink: 0;
+  color: var(--adm-sand);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.wh-picker__empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--adm-sand);
+  text-align: center;
+}
+
+/* ── Позиции документа ── */
+.wh-items {
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  padding: 10px;
+  margin: 10px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--adm-paper);
+}
+
+/* Поступление: товар | кол-во | сумма партии | удалить */
+.wh-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px 150px 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Заказ: товар | кол-во | цена | сумма | удалить */
+.wh-items--deal .wh-item-row {
+  grid-template-columns: minmax(0, 1fr) 76px 110px 104px 32px;
+}
+
+.wh-item-row--head {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--adm-sand);
+  padding-bottom: 2px;
+}
+
+.wh-item-row__name {
+  font-size: 13px;
+  color: var(--adm-ink);
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.wh-item-row__sku {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.wh-item-row__warn {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-rust);
+  white-space: nowrap;
+}
+
+.wh-item-row__sum {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.wh-item-row__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card);
+  color: var(--adm-rust);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.wh-item-row__del:hover {
+  background: var(--adm-rust-pale);
+  border-color: var(--adm-rust-line);
+}
+
+/* Мобильный: позиция в две строки — название, затем поля */
+@media (max-width: 640px) {
+  .wh-item-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "sum del";
+    row-gap: 6px;
+    padding: 8px;
+    background: var(--adm-card);
+    border: 1px solid var(--adm-border);
+    border-radius: var(--adm-r-sm);
+  }
+
+  .wh-item-row--head {
+    display: none;
+  }
+
+  .wh-item-row__name { grid-area: name; }
+  .wh-item-row .admin-input:nth-of-type(1) { grid-area: qty; }
+  .wh-item-row .admin-input:nth-of-type(2) { grid-area: price; }
+  .wh-item-row__sum { grid-area: sum; text-align: left; }
+  .wh-item-row__del { grid-area: del; justify-self: end; }
+}
+
+/* ── Футер формы ── */
+.wh-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.wh-form-total {
+  font-size: 14px;
+  color: var(--adm-ink-soft);
+}
+
+.wh-form-total strong {
+  font-family: var(--adm-font-head);
+  font-size: 18px;
+  color: var(--adm-kraft);
+}
+
+.wh-form-hint {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--adm-sand);
+  line-height: 1.5;
+}
+
+.wh-form-error {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+  border-radius: var(--adm-r-sm);
+  color: var(--adm-rust);
+  font-size: 13px;
+}
+
+/* ── Направление платежа ── */
+.wh-direction {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.wh-direction__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  color: var(--adm-ink-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.13s ease;
+  white-space: nowrap;
+}
+
+.wh-direction__btn--in.wh-direction__btn--active {
+  background: var(--adm-pine);
+  border-color: var(--adm-pine);
+  color: #fff;
+}
+
+.wh-direction__btn--out.wh-direction__btn--active {
+  background: var(--adm-rust);
+  border-color: var(--adm-rust);
+  color: #fff;
+}
+
+@media (max-width: 560px) {
+  .wh-direction {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Выбор заказов в платеже ── */
+.wh-deal-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.wh-deal-pick__empty {
+  font-size: 12px;
+  color: var(--adm-sand);
+  padding: 8px 0;
+}
+
+.wh-deal-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-card);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: all 0.12s ease;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wh-deal-chip:hover {
+  border-color: var(--adm-ink-muted);
+}
+
+.wh-deal-chip--active {
+  background: var(--adm-ink);
+  border-color: var(--adm-ink);
+  color: #fff;
+}
+
+.wh-deal-chip__title {
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wh-deal-chip__meta {
+  font-size: 10px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* ── Пометка оплаты ── */
+.wh-paid-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-paper);
+  font-size: 13px;
+  color: var(--adm-ink);
+  cursor: pointer;
+}
+
+.wh-paid-toggle input {
+  accent-color: var(--adm-pine);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* ── Сводка банка ── */
+.wh-stat-grid {
+  margin-bottom: 18px;
+}
+
+.wh-bank-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 760px) {
+  .wh-bank-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wh-bank-stat--balance .admin-stat__value {
+  color: var(--adm-pine);
+}
+
+.wh-bank-stat--in .admin-stat__value {
+  color: var(--adm-steel);
+}
+
+.wh-bank-stat--out .admin-stat__value {
+  color: var(--adm-rust);
+}
+
+/* ── Сумма платежа в списке ── */
+.wh-pay-amount {
+  display: flex;
+  align-items: center;
+}
+
+.wh-pay-amount__val {
+  font-family: var(--adm-font-head);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.wh-pay-amount__val--in {
+  color: var(--adm-pine);
+}
+
+.wh-pay-amount__val--out {
+  color: var(--adm-rust);
+}
+
+.wh-pay-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+/* Кнопка-иконка опасного действия (удаление поступления) */
+.admin-btn--danger-ghost {
+  color: var(--adm-rust);
+  border-color: var(--adm-rust-line);
+}
+
+.admin-btn--danger-ghost:hover {
+  background: var(--adm-rust-pale);
+  border-color: var(--adm-rust);
+  color: var(--adm-rust);
+}
+
+/* Подсказка в пустых списках */
+.admin-empty__hint {
+  font-weight: 400 !important;
+  color: var(--adm-sand);
+  font-size: 12px !important;
+  margin-top: 6px !important;
+  max-width: 340px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.5;
+}
+
+/* ── Доп. правки учёта ── */
+
+/* Длинные лейблы («Поставщик:», «Плательщик:») — 68px не хватает,
+   текст налезал на значение */
+.wh-meta-label {
+  width: 92px;
+}
+
+/* Числа в карточках сводки не переносим (₽ оставался на новой строке),
+   шрифт чуть ужимается на узких экранах */
+.wh-stat-grid .admin-stat__value {
+  white-space: nowrap;
+  font-size: clamp(1.1rem, 4.2vw, 1.6rem);
+}
+
+/* Таблица остатков: без жёсткой min-width — на мобильном влезает
+   без горизонтального скролла за счёт переноса названия */
+.wh-stock-table {
+  min-width: 0;
+}
+
+.wh-stock-table td:first-child,
+.wh-stock-table th:first-child {
+  max-width: 260px;
+}
+
+@media (max-width: 640px) {
+  .wh-stock-table th,
+  .wh-stock-table td {
+    padding: 9px 8px;
+    font-size: 12px;
+  }
+
+  .wh-stock-table td:first-child,
+  .wh-stock-table th:first-child {
+    max-width: 170px;
+  }
+
+  /* На телефоне все 5 колонок не влезают и уходят за экран —
+     оставляем главное: товар, остаток, цену. «Артикул» и «Сумма»
+     (вычисляемая: остаток × цена) скрываем */
+  .wh-stock-table th:nth-child(2),
+  .wh-stock-table td:nth-child(2),
+  .wh-stock-table th:nth-child(5),
+  .wh-stock-table td:nth-child(5) {
+    display: none;
+  }
+}
+
+/* Мобильный поступление: 4 блока — название, кол-во, сумма, удалить */
+@media (max-width: 640px) {
+  .wh-items--receipt .wh-item-row {
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "del del";
+  }
+}
+
+/* Подсказка «= 134,54 ₽/шт» под названием в приходном ордере */
+.wh-item-row__hint {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-pine);
+  margin-top: 2px;
+}
+
+/* ₽/шт в списке поступления */
+.wh-item-unit {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+/* ── Переключатель привязки платежа ── */
+.wh-linkmode {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.wh-linkmode__btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  color: var(--adm-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.13s ease;
+  white-space: nowrap;
+}
+
+.wh-linkmode__btn:hover {
+  border-color: var(--adm-ink-muted);
+  color: var(--adm-ink);
+}
+
+.wh-linkmode__btn--active {
+  background: var(--adm-ink);
+  border-color: var(--adm-ink);
+  color: #fff;
+}
+
+/* Нейтральная кнопка «Изменить» в действиях платежа */
+.admin-status__btn--edit {
+  background: var(--adm-card);
+  color: var(--adm-steel);
+  border: 1px solid var(--adm-steel-line);
+}
+
+.admin-status__btn--edit:hover:not(:disabled) {
+  background: var(--adm-steel-pale);
+  border-color: var(--adm-steel);
+}
+
+/* Подчинённые табы (Склад → Остатки/Поступления) */
+.admin-filters--sub {
+  margin-top: -8px;
+  margin-bottom: 16px;
+}
+
+.admin-filters--sub .admin-filter {
+  font-size: 11px;
+  padding: 5px 11px;
+}
+
+/* ══════════════════════════════════════
+   БАНК — отдельный инструмент
+   ══════════════════════════════════════ */
+.bank {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Тёмная панель баланса */
+.bank-hero {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 22px;
+  background: linear-gradient(135deg, #191914 0%, #232318 52%, #1b2a1e 100%);
+  border-radius: 16px;
+  padding: 26px 28px;
+  color: #f5f2ea;
+  border: 1px solid rgba(200, 134, 10, 0.25);
+  box-shadow: 0 10px 34px rgba(20, 20, 14, 0.28);
+}
+
+.bank-hero__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bank-hero__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(245, 242, 234, 0.55);
+  font-family: var(--adm-font-head);
+}
+
+.bank-hero__value {
+  font-family: var(--adm-font-head);
+  font-size: clamp(2rem, 4.5vw, 3rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: #7dd181;
+  white-space: nowrap;
+}
+
+.bank-hero__value--neg {
+  color: #ef8f76;
+}
+
+.bank-hero__note {
+  font-size: 11px;
+  color: rgba(245, 242, 234, 0.45);
+  margin-top: 6px;
+}
+
+.bank-hero__stats {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  border-left: 1px solid rgba(245, 242, 234, 0.12);
+  padding-left: 22px;
+}
+
+.bank-hero__stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.bank-hero__stat svg {
+  flex-shrink: 0;
+}
+
+.bank-hero__stat span {
+  display: block;
+  color: rgba(245, 242, 234, 0.55);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.bank-hero__stat strong {
+  display: block;
+  font-family: var(--adm-font-head);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.bank-hero__stat--in svg,
+.bank-hero__stat--in strong {
+  color: #7dd181;
+}
+
+.bank-hero__stat--out svg,
+.bank-hero__stat--out strong {
+  color: #ef8f76;
+}
+
+.bank-hero__stat--plan svg {
+  color: #e09b12;
+}
+
+.bank-hero__stat--plan strong {
+  color: #f5f2ea;
+}
+
+@media (max-width: 760px) {
+  .bank-hero {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .bank-hero__stats {
+    border-left: none;
+    border-top: 1px solid rgba(245, 242, 234, 0.12);
+    padding-left: 0;
+    padding-top: 14px;
+  }
+}
+
+/* Баланс по контрагентам */
+.bank-due {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 760px) {
+  .bank-due {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bank-due__group {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 14px 16px;
+}
+
+.bank-due__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--adm-font-head);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--adm-ink);
+  margin-bottom: 10px;
+}
+
+.bank-due__title span {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--adm-sand);
+  letter-spacing: 0.08em;
+}
+
+.bank-due__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(219, 216, 208, 0.45);
+}
+
+.bank-due__name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink);
+}
+
+.bank-due__meta {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--adm-sand);
+  margin-top: 1px;
+}
+
+.bank-due__sum {
+  flex-shrink: 0;
+  font-family: var(--adm-font-head);
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bank-due__sum--debt {
+  color: var(--adm-rust);
+}
+
+.bank-due__sum--clear {
+  color: var(--adm-pine);
+}
+
+.bank-due__empty {
+  font-size: 12px;
+  color: var(--adm-sand);
+  padding: 6px 0;
+  border-top: 1px solid rgba(219, 216, 208, 0.45);
+}
+
+/* Панель работы: поиск + фильтры + сортировка */
+.bank-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 10px 12px;
+  box-shadow: var(--adm-sh-xs);
+}
+
+.bank-toolbar__search {
+  flex: 1 1 260px;
+}
+
+.bank-toolbar__select {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.bank-toolbar__sort {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .bank-toolbar__search {
+    flex: 1 1 100%;
+  }
+
+  .bank-toolbar__select {
+    flex: 1 1 45%;
+  }
+
+  .bank-toolbar__sort,
+  .bank-toolbar .admin-btn--navy {
+    flex: 1 1 45%;
+    justify-content: center;
+  }
+}
+
+/* Итоги по отфильтрованным */
+.bank-totalbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--adm-ink-soft);
+  padding: 4px 6px;
+}
+
+.bank-totalbar__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--adm-border-mid);
+}
+
+.bank-totalbar__in {
+  color: var(--adm-pine);
+}
+
+.bank-totalbar__out {
+  color: var(--adm-rust);
+}
+
+/* Месячные группы журнала */
+.bank-month__label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--adm-font-head);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--adm-sand);
+  padding: 4px 6px 10px;
+}
+
+.bank-month__label .bank-month__line {
+  flex: 1;
+  height: 1px;
+  background: var(--adm-border);
+}
+
+/* Платёж в журнале */
+.bank-month__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.bank-pay {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 14px 16px;
+  transition: box-shadow 0.14s ease, border-color 0.14s ease;
+}
+
+.bank-pay:hover {
+  box-shadow: var(--adm-sh-sm);
+  border-color: var(--adm-border-mid);
+}
+
+.bank-pay--pending {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--adm-card),
+    var(--adm-card) 14px,
+    #fdfaf2 14px,
+    #fdfaf2 28px
+  );
+  border-style: dashed;
+  border-color: var(--adm-kraft-line);
+}
+
+.bank-pay__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bank-pay__icon--in {
+  background: var(--adm-pine-pale);
+  color: var(--adm-pine);
+  border: 1px solid var(--adm-pine-line);
+}
+
+.bank-pay__icon--out {
+  background: var(--adm-rust-pale);
+  color: var(--adm-rust);
+  border: 1px solid var(--adm-rust-line);
+}
+
+.bank-pay--pending .bank-pay__icon {
+  opacity: 0.55;
+}
+
+.bank-pay__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bank-pay__row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bank-pay__counterparty {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--adm-ink);
+}
+
+.bank-pay__num {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--adm-sand);
+  background: var(--adm-paper-warm);
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--adm-border);
+  white-space: nowrap;
+}
+
+.bank-pay__wait {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+  border: 1px solid var(--adm-kraft-line);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.bank-pay__row2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bank-pay__links {
+  display: inline-flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.bank-pay__doc {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--adm-steel);
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.bank-pay__date {
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.bank-pay__comment {
+  font-size: 12px;
+  color: var(--adm-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bank-pay__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bank-pay__amount {
+  font-family: var(--adm-font-head);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.bank-pay--pending .bank-pay__amount {
+  opacity: 0.55;
+}
+
+.bank-pay__amount--in {
+  color: var(--adm-pine);
+}
+
+.bank-pay__amount--out {
+  color: var(--adm-rust);
+}
+
+/* Компактные действия платежа в журнале */
+.bank-pay__side .wh-pay-controls {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.bank-pay__side .wh-pay-controls .admin-status__btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+  width: auto;
+}
+
+@media (max-width: 640px) {
+  .bank-pay {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .bank-pay__icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .bank-pay__side {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px dashed var(--adm-border);
+    padding-top: 10px;
+  }
+
+  .bank-pay__side .wh-pay-controls .admin-status__btn {
+    flex: 1;
+    justify-content: center;
+    height: 34px;
+  }
+}
+
+/* ── Нехватка товара в карточке заказа ── */
+.deal-stock {
+  border-radius: var(--adm-r-sm);
+  padding: 9px 12px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.deal-stock--ok {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  background: var(--adm-pine-pale);
+  border: 1px solid var(--adm-pine-line);
+  color: var(--adm-pine);
+  font-weight: 600;
+}
+
+.deal-stock--miss {
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+  color: var(--adm-rust);
+}
+
+.deal-stock__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.deal-stock__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deal-stock__name {
+  font-weight: 600;
+  color: var(--adm-ink);
+  min-width: 0;
+}
+
+.deal-stock__nums {
+  color: var(--adm-rust);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.deal-stock__nums b {
+  font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  .deal-stock__row {
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .deal-stock__nums {
+    white-space: normal;
+  }
 }

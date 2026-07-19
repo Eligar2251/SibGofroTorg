@@ -3,6 +3,7 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { updateProduct, deleteProduct } from "@/lib/firestore-queries";
 import { requireAdminApi } from "@/lib/auth";
 
@@ -25,6 +26,7 @@ export async function PUT(
     }
 
     await updateProduct(id, body);
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Update product error:", error);
@@ -45,6 +47,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     await deleteProduct(id);
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete product error:", error);

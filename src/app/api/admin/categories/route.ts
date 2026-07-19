@@ -3,6 +3,7 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { createCategory } from "@/lib/firestore-queries";
 import { requireAdminApi } from "@/lib/auth";
 
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const result = await createCategory(body);
+    revalidateTag("categories", { expire: 0 });
     return NextResponse.json(result);
   } catch (error) {
     console.error("Create category error:", error);

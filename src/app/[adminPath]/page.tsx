@@ -3,6 +3,7 @@ import {
   getAllCategories,
   getProducts,
   getOrders,
+  getPromotions,
 } from "@/lib/firestore-queries";
 import {
   Package,
@@ -11,9 +12,16 @@ import {
   TrendingUp,
   Users,
   CheckCircle,
+  CheckCircle2,
   Clock,
   XCircle,
   BarChart3,
+  Megaphone,
+  Star,
+  Plus,
+  Pencil,
+  Settings,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminDb } from "@/lib/firebase-admin";
@@ -25,7 +33,7 @@ const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
-  completed: "Выполнена",
+  completed: "Проведена",
   rejected: "Отклонена",
 };
 
@@ -52,11 +60,12 @@ function formatDate(raw: any): string {
 export default async function AdminDashboard() {
   const db = getAdminDb();
 
-  const [allProducts, allOrders, allCats, usersSnap] = await Promise.all([
+  const [allProducts, allOrders, allCats, usersSnap, promotions] = await Promise.all([
     getProducts({}),
     getOrders(),
     getAllCategories(),
     db.collection("users").get(),
+    getPromotions(),
   ]);
 
   const newOrders = allOrders.filter((o) => (o as any).status === "new");
@@ -176,6 +185,24 @@ export default async function AdminDashboard() {
             iconBg: "rgba(16,185,129,0.1)",
             iconColor: "#10b981",
             sub: "выполненные заказы",
+          },
+          {
+            label: "Акции",
+            value: promotions.length,
+            icon: <Megaphone size={20} />,
+            href: `/${ADMIN_PATH}/promotions`,
+            iconBg: "rgba(234,179,8,0.12)",
+            iconColor: "#eaaf08",
+            sub: `${promotions.filter((p) => p.isVisible !== false).length} активных`,
+          },
+          {
+            label: "Отзывы",
+            value: 0,
+            icon: <Star size={20} />,
+            href: `/${ADMIN_PATH}/reviews`,
+            iconBg: "rgba(245,166,35,0.12)",
+            iconColor: "#f5a623",
+            sub: "управление отзывами",
           },
         ].map((stat) => (
           <Link key={stat.label} href={stat.href} className="admin-stat">
@@ -453,9 +480,14 @@ export default async function AdminDashboard() {
                   fontWeight: 700,
                   color: "#1b2b4b",
                   fontSize: 16,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  whiteSpace: "nowrap",
                 }}
               >
-                ⚠️ Мало на складе
+                <AlertTriangle size={15} />
+                Мало на складе
               </h2>
               <Link
                 href={`/${ADMIN_PATH}/products/bulk`}
@@ -534,7 +566,17 @@ export default async function AdminDashboard() {
                   fontSize: 13,
                 }}
               >
-                ✅ Склад в норме
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <CheckCircle2 size={15} />
+                  Склад в норме
+                </span>
               </div>
             )}
           </div>
@@ -565,34 +607,52 @@ export default async function AdminDashboard() {
               {[
                 {
                   href: `/${ADMIN_PATH}/products/new`,
-                  label: "➕ Добавить товар",
+                  label: "Добавить товар",
+                  icon: <Plus size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/products/bulk`,
-                  label: "✏️ Массовое редактирование",
+                  label: "Массовое редактирование",
+                  icon: <Pencil size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/orders?status=new`,
-                  label: `📋 Новые заявки (${newOrders.length})`,
+                  label: `Новые заявки (${newOrders.length})`,
+                  icon: <ClipboardList size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/clients`,
-                  label: `👥 Клиенты (${usersSnap.size})`,
+                  label: `Клиенты (${usersSnap.size})`,
+                  icon: <Users size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/categories`,
-                  label: "📂 Управление категориями",
+                  label: "Управление категориями",
+                  icon: <FolderOpen size={14} />,
+                },
+                {
+                  href: `/${ADMIN_PATH}/promotions`,
+                  label: `Акции и спецпредложения (${promotions.length})`,
+                  icon: <Megaphone size={14} />,
+                },
+                {
+                  href: `/${ADMIN_PATH}/reviews`,
+                  label: "Отзывы покупателей",
+                  icon: <Star size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/settings`,
-                  label: "⚙️ Настройки сайта",
+                  label: "Настройки сайта",
+                  icon: <Settings size={14} />,
                 },
               ].map((action) => (
                 <Link
                   key={action.href}
                   href={action.href}
                   style={{
-                    display: "block",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
                     padding: "8px 12px",
                     borderRadius: 8,
                     background: "var(--adm-bg, #f8f7f4)",
@@ -604,6 +664,7 @@ export default async function AdminDashboard() {
                     transition: "border-color 0.15s",
                   }}
                 >
+                  {action.icon}
                   {action.label}
                 </Link>
               ))}
@@ -612,13 +673,7 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      <style>{`
-        @media (max-width: 768px) {
-          .admin-dash-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
+      <style>{`\n        @media (max-width: 768px) {\n          .admin-dash-grid {\n            grid-template-columns: 1fr !important;\n          }\n        }\n      `}</style>
     </div>
   );
 }

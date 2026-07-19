@@ -13,7 +13,11 @@ import {
   ExternalLink,
   LogOut,
   Users,
+  Megaphone,
+  Star,
+  Boxes,
 } from "lucide-react";
+import { SiteLogo } from "@/components/layout/SiteLogo";
 
 export function AdminShell({
   children,
@@ -46,9 +50,24 @@ export function AdminShell({
       icon: <FolderOpen size={18} />,
     },
     {
+      href: `/${adminPath}/promotions`,
+      label: "Акции",
+      icon: <Megaphone size={18} />,
+    },
+    {
+      href: `/${adminPath}/reviews`,
+      label: "Отзывы",
+      icon: <Star size={18} />,
+    },
+    {
       href: `/${adminPath}/orders`,
       label: "Заявки",
       icon: <ClipboardList size={18} />,
+    },
+    {
+      href: `/${adminPath}/warehouse`,
+      label: "Учёт",
+      icon: <Boxes size={18} />,
     },
     {
       href: `/${adminPath}/clients`,
@@ -66,11 +85,8 @@ export function AdminShell({
     <div className="admin-shell" data-admin="true">
       <aside className="admin-sidebar">
         <div className="admin-sidebar__brand">
-          <div className="admin-sidebar__logo">С</div>
-          <div>
-            <div className="admin-sidebar__name">СибГофроТорг</div>
-            <div className="admin-sidebar__sub">Управление</div>
-          </div>
+          <SiteLogo variant="light" className="admin-sidebar__logo-svg" />
+          <div className="admin-sidebar__sub">Управление</div>
         </div>
 
         <nav className="admin-sidebar__nav">
@@ -98,7 +114,7 @@ export function AdminShell({
             target="_blank"
             className="admin-sidebar__footer-link"
           >
-            <ExternalLink size={13} /> Перейти на site
+            <ExternalLink size={13} /> Перейти на сайт
           </Link>
           <form action={`/${adminPath}/api/logout`} method="POST">
             <button type="submit" className="admin-sidebar__logout">
@@ -109,9 +125,6 @@ export function AdminShell({
       </aside>
 
       <div className="admin-mobile-bar">
-        <span className="admin-mobile-bar__title">
-          <span>С</span> Управление
-        </span>
         <div className="admin-mobile-bar__nav">
           {nav.map((link) => (
             <Link

@@ -32,10 +32,10 @@ export function MobileCategorySelect({
           onChange={(e) => onSelect(e.target.value || null)}
           aria-label="Выбор категории"
         >
-          <option value="">⭐ {allLabel}</option>
+          <option value="">{allLabel}</option>
           {categories.map((c) => (
             <option key={c.id} value={c.slug}>
-              {c.icon || "📦"} {c.name}
+              {c.name}
             </option>
           ))}
         </select>

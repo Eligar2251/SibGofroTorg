@@ -45,9 +45,6 @@ export function AddToCartButton({ product }: AddToCartButtonProps) {
     return maxStock !== null ? Math.min(raw, maxStock) : raw;
   })();
 
-  const packsCount = hasPacks ? Math.floor(totalPieces / packSize) : null;
-  const remainder = hasPacks ? totalPieces % packSize : 0;
-
   function switchMode(mode: InputMode) {
     if (mode === inputMode) return;
     if (mode === "packs") {
@@ -132,17 +129,21 @@ export function AddToCartButton({ product }: AddToCartButtonProps) {
       {/* Инфо о пачке */}
       {hasPacks && (
         <div className="atc-pack-info">
-          <Package size={14} style={{ color: "var(--kraft)", flexShrink: 0 }} />
-          <span>
-            В заводской упаковке: <strong>{packSize} шт.</strong>
-          </span>
-          {maxStock !== null && (
-            <span
-              className="atc-pack-info__stock"
-              style={{ color: maxStock <= 15 ? "var(--red)" : "var(--green)" }}
-            >
-              На складе: {maxStock} шт.
+          <div className="atc-pack-info__row">
+            <Package size={14} style={{ color: "var(--kraft)", flexShrink: 0 }} />
+            <span>
+              В заводской упаковке: <strong>{packSize} шт.</strong>
             </span>
+          </div>
+          {maxStock !== null && (
+            <div className="atc-pack-info__row">
+              <span
+                className="atc-pack-info__stock"
+                style={{ color: maxStock <= 15 ? "var(--red)" : "var(--green)" }}
+              >
+                На складе: {maxStock} шт.
+              </span>
+            </div>
           )}
         </div>
       )}
@@ -213,24 +214,6 @@ export function AddToCartButton({ product }: AddToCartButtonProps) {
           </button>
         </div>
       </div>
-
-      {/* Расшифровка пачек */}
-      {hasPacks && (
-        <div className="atc-breakdown">
-          {inputMode === "packs" ? (
-            <span>
-              Итого к заказу: <strong>{totalPieces} шт.</strong>
-            </span>
-          ) : (
-            <span>
-              {packsCount !== null && packsCount > 0 ? `${packsCount} пач.` : ""}
-              {remainder > 0 ? ` + ${remainder} шт.` : ""}
-              {" = "}
-              <strong>{totalPieces} шт.</strong>
-            </span>
-          )}
-        </div>
-      )}
 
       {/* Итоговая сумма */}
       <div className="atc-total">

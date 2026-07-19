@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { WastepaperCalculator } from "@/components/wastepaper/WastepaperCalculator";
 import { CheckCircle, Truck, Coins, ShieldCheck, ArrowRight } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
 
@@ -37,7 +38,7 @@ export default function WastepaperPage() {
         />
         <div className="container-wide wp-hero__inner">
           <div className="wp-hero__content">
-            <div className="wp-hero__badge">♻️ Вторая жизнь сырья</div>
+            <div className="wp-hero__badge"><GlyphIcon value="recycle" size={13} /> Вторая жизнь сырья</div>
             <h1 className="wp-hero__title">Приём макулатуры<br /><span>дорого в Новосибирске</span></h1>
             <p className="wp-hero__desc">
               Принимаем гофрокартон, белую архивную бумагу, книги и журналы. Работаем с физлицами и организациями. Оплата на месте наличными или картой.
@@ -118,14 +119,14 @@ export default function WastepaperPage() {
               </div>
               <div className="wp-rates-list">
                 {[
-                  { icon: "📦", name: "Гофрокартон (коробки в разобранном виде)", rate: 8.0, bonus: "+ 0.5 ₽/кг самовывоз" },
-                  { icon: "📄", name: "Белая архивная бумага А4", rate: 11.5, bonus: "+ 0.5 ₽/кг самовывоз" },
-                  { icon: "📚", name: "Книги, журналы, газеты, каталоги", rate: 9.0, bonus: "+ 0.5 ₽/кг самовывоз" },
-                  { icon: "🗑️", name: "Смешанная макулатура", rate: 6.0, bonus: "+ 0.5 ₽/кг самовывоз" },
+                  { icon: "box", name: "Гофрокартон (коробки в разобранном виде)", rate: 8.0, bonus: "+ 0.5 ₽/кг самовывоз" },
+                  { icon: "file", name: "Белая архивная бумага А4", rate: 11.5, bonus: "+ 0.5 ₽/кг самовывоз" },
+                  { icon: "books", name: "Книги, журналы, газеты, каталоги", rate: 9.0, bonus: "+ 0.5 ₽/кг самовывоз" },
+                  { icon: "trash", name: "Смешанная макулатура", rate: 6.0, bonus: "+ 0.5 ₽/кг самовывоз" },
                 ].map((row, i) => (
                   <div key={i} className="wp-rate-row">
                     <div className="wp-rate-row__left">
-                      <span className="wp-rate-row__icon">{row.icon}</span>
+                      <span className="wp-rate-row__icon"><GlyphIcon value={row.icon} size={22} /></span>
                       <div>
                         <div className="wp-rate-row__name">{row.name}</div>
                         <div className="wp-rate-row__bonus">{row.bonus}</div>
@@ -139,7 +140,7 @@ export default function WastepaperPage() {
 
             {/* Что принимаем */}
             <div className="wp-accept-card">
-              <h3 className="wp-accept-card__title">✅ Что мы принимаем</h3>
+              <h3 className="wp-accept-card__title"><GlyphIcon value="ok" size={18} /> Что мы принимаем</h3>
               <div className="wp-accept-grid">
                 {[
                   "Гофрокартон — коробки, листы, обрезки",
@@ -150,7 +151,7 @@ export default function WastepaperPage() {
                   "Смешанная макулатура в связках",
                 ].map((item, i) => (
                   <div key={i} className="wp-accept-item">
-                    <span className="wp-accept-check">✓</span>
+                    <span className="wp-accept-check"><GlyphIcon value="check" size={14} fallback={null} /></span>
                     {item}
                   </div>
                 ))}
@@ -181,7 +182,7 @@ export default function WastepaperPage() {
           <div className="wp-calc-wrap">
             <div className="wp-calc-card">
               <div className="wp-calc-card__header">
-                <div className="wp-calc-card__icon">💰</div>
+                <div className="wp-calc-card__icon"><GlyphIcon value="coins" size={30} /></div>
                 <div>
                   <div className="wp-calc-card__title">Калькулятор выплаты</div>
                   <div className="wp-calc-card__sub">Узнайте сколько получите за партию</div>

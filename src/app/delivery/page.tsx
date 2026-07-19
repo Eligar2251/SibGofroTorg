@@ -1,6 +1,7 @@
 // src/app/delivery/page.tsx
 import Link from "next/link";
 import { Truck, MapPin, CreditCard, BadgePercent, Check } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
 
@@ -88,7 +89,7 @@ export default function DeliveryPage() {
           
           <div className="card-base" style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: "10px", padding: "20px" }}>
             <div style={{ width: "40px", height: "40px", backgroundColor: "var(--bg-main)", borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto", color: "var(--ink)" }}>
-              💵
+              <GlyphIcon value="cash" size={20} />
             </div>
             <div style={{ fontWeight: "bold", fontSize: "15px" }}>Наличные</div>
             <p style={{ fontSize: "13px", color: "var(--ink-light)", lineHeight: 1.4 }}>Оплата на кассе склада-магазина при получении</p>
@@ -96,7 +97,7 @@ export default function DeliveryPage() {
 
           <div className="card-base" style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: "10px", padding: "20px" }}>
             <div style={{ width: "40px", height: "40px", backgroundColor: "var(--bg-main)", borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto", color: "var(--ink)" }}>
-              💳
+              <GlyphIcon value="card" size={20} />
             </div>
             <div style={{ fontWeight: "bold", fontSize: "15px" }}>Перевод на карту</div>
             <p style={{ fontSize: "13px", color: "var(--ink-light)", lineHeight: 1.4 }}>Перевод на карту Сбербанк / СБП перед отгрузкой</p>
@@ -104,7 +105,7 @@ export default function DeliveryPage() {
 
           <div className="card-base" style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: "10px", padding: "20px" }}>
             <div style={{ width: "40px", height: "40px", backgroundColor: "var(--bg-main)", borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto", color: "var(--ink)" }}>
-              🧾
+              <GlyphIcon value="receipt" size={20} />
             </div>
             <div style={{ fontWeight: "bold", fontSize: "15px" }}>Безналичный расчёт</div>
             <p style={{ fontSize: "13px", color: "var(--ink-light)", lineHeight: 1.4 }}>Для юридических лиц (НДС / без НДС) по выставленному счёту</p>

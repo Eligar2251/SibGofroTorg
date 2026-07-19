@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { Phone, MapPin, Clock, Mail, ExternalLink } from "lucide-react";
+import { GlyphIcon } from "@/components/ui/Glyph";
 import {
   SITE_ADDRESS,
   SITE_PHONE,
@@ -128,7 +129,7 @@ export default function ContactsPage() {
           <div className="card-base contacts-layout__map">
             <div className="contacts-map__header">
               <div className="contacts-map__title">
-                📍 Склад-магазин на карте
+                <GlyphIcon value="pin" size={16} /> Склад-магазин на карте
               </div>
               <a
                 href={SITE_MAP_LINK}
