@@ -786,45 +786,28 @@ select {
 
 /* Кнопка «Рассчитать выплату» — полноценный CTA в тон панели,
    по высоте совпадает с «Перейти в каталог» слева */
-.btn-hero-secondary {
+.hero__wp-label {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  height: 50px;
-  padding: 0 22px;
-  background: linear-gradient(180deg, #6ee07e 0%, #4cc35c 100%);
-  border: none;
-  border-radius: 10px;
-  color: #07160b;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
+  color: var(--green-lime);
+  font-size: 16px;
+  font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
+  margin-top: auto;
+  letter-spacing: 0.01em;
+  transition: filter var(--transition);
   cursor: pointer;
-  box-shadow:
-    0 10px 24px rgba(93, 203, 97, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  transition:
-    transform var(--transition),
-    box-shadow var(--transition),
-    filter var(--transition);
-  width: 100%;
 }
 
-.hero__right:hover .btn-hero-secondary,
-.hero__right:focus-visible .btn-hero-secondary {
-  transform: translateY(-2px);
-  filter: brightness(1.06);
-  box-shadow:
-    0 14px 30px rgba(93, 203, 97, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+.hero__wp-label:hover {
+  filter: brightness(1.15);
 }
 
-.hero__right:active .btn-hero-secondary {
-  transform: translateY(0);
-  filter: brightness(0.97);
+.hero__wp-label svg {
+  flex-shrink: 0;
+  display: block;
 }
 
 /* Иконки внутри кнопок */
@@ -833,7 +816,7 @@ select {
 .btn-outline svg,
 .btn-hero-primary svg,
 .btn-hero-ghost svg,
-.btn-hero-secondary svg,
+.hero__wp-label svg,
 .cab-sidebar__btn svg,
 .atc-btn svg,
 .wpcalc__submit svg,
@@ -972,7 +955,7 @@ select {
   background: linear-gradient(185deg, #1a3a2a 0%, #0e2216 100%);
   text-decoration: none;
   transition: background var(--transition);
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 9% 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 4% 100%);
   overflow: hidden;
 }
 
@@ -1127,7 +1110,7 @@ select {
   display: none;
 }
 
-.btn-hero-secondary {
+.hero__wp-label {
   margin-top: auto;
 }
 
@@ -5539,7 +5522,7 @@ select {
     margin-top: 8px;
   }
 
-  .btn-hero-secondary {
+  .hero__wp-label {
     margin-top: 20px;
   }
 
