@@ -1,6 +1,7 @@
 // =========================================================
 // FILE: src/components/admin/WarehouseReceipts.tsx
-// Форма приходного ордера (поступление товаров) + удаление
+// Приходный ордер: количество + ОБЩАЯ сумма партии (с НДС),
+// цена за единицу вычисляется автоматически
 // =========================================================
 
 "use client";
@@ -18,7 +19,8 @@ interface ReceiptItemDraft {
   name: string;
   sku: string | null;
   quantity: number;
-  price: number;
+  /** Сумма за всю партию по этой позиции (как в счёте поставщика, с НДС) */
+  lineTotal: number;
 }
 
 function todayIso(): string {
@@ -37,7 +39,7 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
   const [comment, setComment] = useState("");
   const [items, setItems] = useState<ReceiptItemDraft[]>([]);
 
-  const total = items.reduce((s, it) => s + it.quantity * it.price, 0);
+  const total = items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0);
 
   function resetForm() {
     setDate(todayIso());
@@ -50,16 +52,18 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
   function addItem(p: PickerProduct) {
     setItems((prev) => {
       const existing = prev.find((it) => it.productId === p.id);
-      if (existing) {
-        return prev.map((it) =>
-          it.productId === p.id ? { ...it, quantity: it.quantity + 1 } : it
-        );
-      }
-      // Закупочная цена — по умолчанию оптовая (или продажная), редактируется
-      const price = p.priceWholesale ?? p.price ?? 0;
+      if (existing) return prev;
+      // Подсказываем сумму за 1 шт по оптовой цене — дальше вручную
+      const suggested = p.priceWholesale ?? p.price ?? 0;
       return [
         ...prev,
-        { productId: p.id, name: p.name, sku: p.sku, quantity: 1, price },
+        {
+          productId: p.id,
+          name: p.name,
+          sku: p.sku,
+          quantity: 1,
+          lineTotal: suggested,
+        },
       ];
     });
   }
@@ -95,7 +99,7 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
             name: it.name,
             sku: it.sku,
             quantity: Number(it.quantity) || 0,
-            price: Number(it.price) || 0,
+            lineTotal: Number(it.lineTotal) || 0,
           })),
         }),
       });
@@ -172,55 +176,69 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
               </div>
 
               {items.length > 0 && (
-                <div className="wh-items">
+                <div className="wh-items wh-items--receipt">
                   <div className="wh-item-row wh-item-row--head">
                     <span>Товар</span>
                     <span>Кол-во</span>
-                    <span>Цена, ₽</span>
-                    <span>Сумма</span>
+                    <span>Сумма партии, ₽</span>
                     <span />
                   </div>
-                  {items.map((it) => (
-                    <div key={it.productId} className="wh-item-row">
-                      <span className="wh-item-row__name">
-                        {it.name}
-                        {it.sku && <span className="wh-item-row__sku">{it.sku}</span>}
-                      </span>
-                      <input
-                        type="number"
-                        className="admin-input"
-                        min={1}
-                        step={1}
-                        value={it.quantity}
-                        onChange={(e) =>
-                          setItem(it.productId, {
-                            quantity: Number(e.target.value),
-                          })
-                        }
-                      />
-                      <input
-                        type="number"
-                        className="admin-input"
-                        min={0}
-                        step={0.01}
-                        value={it.price}
-                        onChange={(e) =>
-                          setItem(it.productId, { price: Number(e.target.value) })
-                        }
-                      />
-                      <span className="wh-item-row__sum">
-                        {fmt(it.quantity * it.price)} ₽
-                      </span>
-                      <button
-                        type="button"
-                        className="wh-item-row__del"
-                        onClick={() => removeItem(it.productId)}
-                        aria-label="Убрать позицию"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                  {items.map((it) => {
+                    const qty = Number(it.quantity) || 0;
+                    const sum = Number(it.lineTotal) || 0;
+                    const unit = qty > 0 ? sum / qty : 0;
+                    return (
+                      <div key={it.productId} className="wh-item-row">
+                        <span className="wh-item-row__name">
+                          {it.name}
+                          {it.sku && (
+                            <span className="wh-item-row__sku">{it.sku}</span>
+                          )}
+                          {qty > 0 && sum > 0 && (
+                            <span className="wh-item-row__hint">
+                              = {unit.toLocaleString("ru-RU", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              ₽/шт
+                            </span>
+                          )}
+                        </span>
+                        <input
+                          type="number"
+                          className="admin-input"
+                          min={1}
+                          step={1}
+                          value={it.quantity}
+                          onChange={(e) =>
+                            setItem(it.productId, {
+                              quantity: Number(e.target.value),
+                            })
+                          }
+                        />
+                        <input
+                          type="number"
+                          className="admin-input"
+                          min={0}
+                          step={0.01}
+                          value={it.lineTotal}
+                          onChange={(e) =>
+                            setItem(it.productId, {
+                              lineTotal: Number(e.target.value),
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="wh-item-row__del"
+                          onClick={() => removeItem(it.productId)}
+                          aria-label="Убрать позицию"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -239,7 +257,7 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
 
               <div className="wh-form-footer">
                 <div className="wh-form-total">
-                  Итого: <strong>{fmt(total)} ₽</strong>
+                  Итого (с НДС): <strong>{fmt(total)} ₽</strong>
                 </div>
                 <div className="admin-form-actions">
                   <button
@@ -261,7 +279,9 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
                 </div>
               </div>
               <p className="wh-form-hint">
-                После проведения товары автоматически добавятся на остатки склада.
+                Вводите сумму за всю партию позиции, как в счёте поставщика
+                (с НДС) — цена за штуку посчитается сама. После проведения
+                товары добавятся на остатки склада.
               </p>
             </form>
           </div>

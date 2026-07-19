@@ -2112,11 +2112,17 @@ body:has(.admin-login) > main {
   background: var(--adm-paper);
 }
 
+/* Поступление: товар | кол-во | сумма партии | удалить */
 .wh-item-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px 110px 104px 32px;
+  grid-template-columns: minmax(0, 1fr) 90px 150px 32px;
   gap: 8px;
   align-items: center;
+}
+
+/* Заказ: товар | кол-во | цена | сумма | удалить */
+.wh-items--deal .wh-item-row {
+  grid-template-columns: minmax(0, 1fr) 76px 110px 104px 32px;
 }
 
 .wh-item-row--head {
@@ -2491,5 +2497,603 @@ body:has(.admin-login) > main {
   .wh-stock-table th:nth-child(5),
   .wh-stock-table td:nth-child(5) {
     display: none;
+  }
+}
+
+/* Мобильный поступление: 4 блока — название, кол-во, сумма, удалить */
+@media (max-width: 640px) {
+  .wh-items--receipt .wh-item-row {
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "del del";
+  }
+}
+
+/* Подсказка «= 134,54 ₽/шт» под названием в приходном ордере */
+.wh-item-row__hint {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-pine);
+  margin-top: 2px;
+}
+
+/* ₽/шт в списке поступления */
+.wh-item-unit {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+/* ── Переключатель привязки платежа ── */
+.wh-linkmode {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.wh-linkmode__btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  color: var(--adm-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.13s ease;
+  white-space: nowrap;
+}
+
+.wh-linkmode__btn:hover {
+  border-color: var(--adm-ink-muted);
+  color: var(--adm-ink);
+}
+
+.wh-linkmode__btn--active {
+  background: var(--adm-ink);
+  border-color: var(--adm-ink);
+  color: #fff;
+}
+
+/* Нейтральная кнопка «Изменить» в действиях платежа */
+.admin-status__btn--edit {
+  background: var(--adm-card);
+  color: var(--adm-steel);
+  border: 1px solid var(--adm-steel-line);
+}
+
+.admin-status__btn--edit:hover:not(:disabled) {
+  background: var(--adm-steel-pale);
+  border-color: var(--adm-steel);
+}
+
+/* Подчинённые табы (Склад → Остатки/Поступления) */
+.admin-filters--sub {
+  margin-top: -8px;
+  margin-bottom: 16px;
+}
+
+.admin-filters--sub .admin-filter {
+  font-size: 11px;
+  padding: 5px 11px;
+}
+
+/* ══════════════════════════════════════
+   БАНК — отдельный инструмент
+   ══════════════════════════════════════ */
+.bank {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Тёмная панель баланса */
+.bank-hero {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 22px;
+  background: linear-gradient(135deg, #191914 0%, #232318 52%, #1b2a1e 100%);
+  border-radius: 16px;
+  padding: 26px 28px;
+  color: #f5f2ea;
+  border: 1px solid rgba(200, 134, 10, 0.25);
+  box-shadow: 0 10px 34px rgba(20, 20, 14, 0.28);
+}
+
+.bank-hero__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bank-hero__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(245, 242, 234, 0.55);
+  font-family: var(--adm-font-head);
+}
+
+.bank-hero__value {
+  font-family: var(--adm-font-head);
+  font-size: clamp(2rem, 4.5vw, 3rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: #7dd181;
+  white-space: nowrap;
+}
+
+.bank-hero__value--neg {
+  color: #ef8f76;
+}
+
+.bank-hero__note {
+  font-size: 11px;
+  color: rgba(245, 242, 234, 0.45);
+  margin-top: 6px;
+}
+
+.bank-hero__stats {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  border-left: 1px solid rgba(245, 242, 234, 0.12);
+  padding-left: 22px;
+}
+
+.bank-hero__stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.bank-hero__stat svg {
+  flex-shrink: 0;
+}
+
+.bank-hero__stat span {
+  display: block;
+  color: rgba(245, 242, 234, 0.55);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.bank-hero__stat strong {
+  display: block;
+  font-family: var(--adm-font-head);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.bank-hero__stat--in svg,
+.bank-hero__stat--in strong {
+  color: #7dd181;
+}
+
+.bank-hero__stat--out svg,
+.bank-hero__stat--out strong {
+  color: #ef8f76;
+}
+
+.bank-hero__stat--plan svg {
+  color: #e09b12;
+}
+
+.bank-hero__stat--plan strong {
+  color: #f5f2ea;
+}
+
+@media (max-width: 760px) {
+  .bank-hero {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .bank-hero__stats {
+    border-left: none;
+    border-top: 1px solid rgba(245, 242, 234, 0.12);
+    padding-left: 0;
+    padding-top: 14px;
+  }
+}
+
+/* Баланс по контрагентам */
+.bank-due {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 760px) {
+  .bank-due {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bank-due__group {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 14px 16px;
+}
+
+.bank-due__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--adm-font-head);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--adm-ink);
+  margin-bottom: 10px;
+}
+
+.bank-due__title span {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--adm-sand);
+  letter-spacing: 0.08em;
+}
+
+.bank-due__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(219, 216, 208, 0.45);
+}
+
+.bank-due__name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink);
+}
+
+.bank-due__meta {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--adm-sand);
+  margin-top: 1px;
+}
+
+.bank-due__sum {
+  flex-shrink: 0;
+  font-family: var(--adm-font-head);
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bank-due__sum--debt {
+  color: var(--adm-rust);
+}
+
+.bank-due__sum--clear {
+  color: var(--adm-pine);
+}
+
+.bank-due__empty {
+  font-size: 12px;
+  color: var(--adm-sand);
+  padding: 6px 0;
+  border-top: 1px solid rgba(219, 216, 208, 0.45);
+}
+
+/* Панель работы: поиск + фильтры + сортировка */
+.bank-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 10px 12px;
+  box-shadow: var(--adm-sh-xs);
+}
+
+.bank-toolbar__search {
+  flex: 1 1 260px;
+}
+
+.bank-toolbar__select {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.bank-toolbar__sort {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .bank-toolbar__search {
+    flex: 1 1 100%;
+  }
+
+  .bank-toolbar__select {
+    flex: 1 1 45%;
+  }
+
+  .bank-toolbar__sort,
+  .bank-toolbar .admin-btn--navy {
+    flex: 1 1 45%;
+    justify-content: center;
+  }
+}
+
+/* Итоги по отфильтрованным */
+.bank-totalbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--adm-ink-soft);
+  padding: 4px 6px;
+}
+
+.bank-totalbar__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--adm-border-mid);
+}
+
+.bank-totalbar__in {
+  color: var(--adm-pine);
+}
+
+.bank-totalbar__out {
+  color: var(--adm-rust);
+}
+
+/* Месячные группы журнала */
+.bank-month__label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--adm-font-head);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--adm-sand);
+  padding: 4px 6px 10px;
+}
+
+.bank-month__label .bank-month__line {
+  flex: 1;
+  height: 1px;
+  background: var(--adm-border);
+}
+
+/* Платёж в журнале */
+.bank-month__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.bank-pay {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 14px 16px;
+  transition: box-shadow 0.14s ease, border-color 0.14s ease;
+}
+
+.bank-pay:hover {
+  box-shadow: var(--adm-sh-sm);
+  border-color: var(--adm-border-mid);
+}
+
+.bank-pay--pending {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--adm-card),
+    var(--adm-card) 14px,
+    #fdfaf2 14px,
+    #fdfaf2 28px
+  );
+  border-style: dashed;
+  border-color: var(--adm-kraft-line);
+}
+
+.bank-pay__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bank-pay__icon--in {
+  background: var(--adm-pine-pale);
+  color: var(--adm-pine);
+  border: 1px solid var(--adm-pine-line);
+}
+
+.bank-pay__icon--out {
+  background: var(--adm-rust-pale);
+  color: var(--adm-rust);
+  border: 1px solid var(--adm-rust-line);
+}
+
+.bank-pay--pending .bank-pay__icon {
+  opacity: 0.55;
+}
+
+.bank-pay__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bank-pay__row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bank-pay__counterparty {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--adm-ink);
+}
+
+.bank-pay__num {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--adm-sand);
+  background: var(--adm-paper-warm);
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--adm-border);
+  white-space: nowrap;
+}
+
+.bank-pay__wait {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+  border: 1px solid var(--adm-kraft-line);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.bank-pay__row2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bank-pay__links {
+  display: inline-flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.bank-pay__doc {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--adm-steel);
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.bank-pay__date {
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.bank-pay__comment {
+  font-size: 12px;
+  color: var(--adm-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bank-pay__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bank-pay__amount {
+  font-family: var(--adm-font-head);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.bank-pay--pending .bank-pay__amount {
+  opacity: 0.55;
+}
+
+.bank-pay__amount--in {
+  color: var(--adm-pine);
+}
+
+.bank-pay__amount--out {
+  color: var(--adm-rust);
+}
+
+/* Компактные действия платежа в журнале */
+.bank-pay__side .wh-pay-controls {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.bank-pay__side .wh-pay-controls .admin-status__btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+  width: auto;
+}
+
+@media (max-width: 640px) {
+  .bank-pay {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .bank-pay__icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .bank-pay__side {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px dashed var(--adm-border);
+    padding-top: 10px;
+  }
+
+  .bank-pay__side .wh-pay-controls .admin-status__btn {
+    flex: 1;
+    justify-content: center;
+    height: 34px;
   }
 }

@@ -4,13 +4,13 @@
 // Коллекции Firestore:
 //   warehouseReceipts — поступления товаров (+остаток)
 //   customerDeals    — заказы покупателей (−остаток при проведении)
-//   bankPayments     — входящие/исходящие платежи
+//   bankPayments     — входящие/исходящие платежи (создаются «в ожидании»,
+//                      проводятся кнопкой — тогда меняют баланс банка)
 //   counters/warehouse — сквозная нумерация документов
 // =========================================================
 
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "./firebase-admin";
-import type { FirestoreProduct } from "./types";
 import { getProductEffectivePrice } from "./types";
 
 // ─── Типы ────────────────────────────────────────────────
@@ -20,7 +20,10 @@ export interface StockDocItem {
   name: string;
   sku?: string | null;
   quantity: number;
+  /** Цена за единицу (вычисляется из суммы строки для поступлений) */
   price: number;
+  /** Сумма строки за всю партию (для поступлений — как ввели, с НДС) */
+  lineTotal: number;
 }
 
 export interface WarehouseReceipt {
@@ -56,12 +59,16 @@ export interface BankPayment {
   date: string;
   direction: "incoming" | "outgoing";
   counterparty: string;
-  /** Привязанные заказы покупателей (может быть несколько —
-   *  например фура с товаром под несколько заказов) */
+  /** Привязка к заказам покупателей (может несколько) */
   dealIds: string[];
   dealNumbers: number[];
+  /** Привязка к поступлениям — для расходов поставщику */
+  receiptIds: string[];
+  receiptNumbers: number[];
   amount: number;
   isPaid: boolean;
+  /** Дата фактического проведения платежа (YYYY-MM-DD) */
+  paidAt?: string | null;
   comment?: string | null;
   createdAt?: string | null;
 }
@@ -79,20 +86,36 @@ function serializeTimestamp(ts: any): string | null {
   return null;
 }
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 function cleanItems(items: any[]): StockDocItem[] {
   return (Array.isArray(items) ? items : [])
-    .map((it: any) => ({
-      productId: String(it.productId || ""),
-      name: String(it.name || "").slice(0, 300),
-      sku: it.sku ? String(it.sku).slice(0, 60) : null,
-      quantity: Math.max(0, Number(it.quantity) || 0),
-      price: Math.max(0, Number(it.price) || 0),
-    }))
+    .map((it: any) => {
+      const quantity = Math.max(0, Number(it.quantity) || 0);
+      let lineTotal = Math.max(0, Number(it.lineTotal) || 0);
+      let price = Math.max(0, Number(it.price) || 0);
+      if (lineTotal > 0 && quantity > 0) {
+        // Введена общая сумма партии — цена за единицу вычисляется
+        price = round2(lineTotal / quantity);
+      } else {
+        lineTotal = round2(price * quantity);
+      }
+      return {
+        productId: String(it.productId || ""),
+        name: String(it.name || "").slice(0, 300),
+        sku: it.sku ? String(it.sku).slice(0, 60) : null,
+        quantity,
+        price,
+        lineTotal: round2(lineTotal),
+      };
+    })
     .filter((it) => it.productId && it.quantity > 0);
 }
 
 function itemsTotal(items: StockDocItem[]): number {
-  return items.reduce((s, it) => s + it.quantity * it.price, 0);
+  return round2(items.reduce((s, it) => s + it.lineTotal, 0));
 }
 
 /** Сквозной номер документа через счётчик в транзакции */
@@ -116,7 +139,6 @@ async function applyStockDelta(
   sign: 1 | -1
 ): Promise<void> {
   const db = getAdminDb();
-  // Агрегируем, если один товар встречается в нескольких строках
   const byProduct = new Map<string, number>();
   for (const it of items) {
     byProduct.set(
@@ -140,12 +162,11 @@ export interface WarehouseStockRow {
   sku: string | null;
   stockQty: number;
   inStock: boolean;
-  price: number | null; // эффективная цена продажи
+  price: number | null;
   priceWholesale: number | null;
   isVisible: boolean;
 }
 
-/** Все товары (включая скрытые) — для учёта склада */
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   const db = getAdminDb();
   const snap = await db.collection("products").get();
@@ -238,7 +259,6 @@ export async function deleteReceipt(id: string): Promise<void> {
   const snap = await ref.get();
   if (!snap.exists) return;
   const receipt = mapReceipt(id, snap.data());
-  // Откат остатков — сторно поступления
   await applyStockDelta(receipt.items, -1);
   await ref.delete();
 }
@@ -322,7 +342,10 @@ export async function postDeal(id: string): Promise<void> {
 }
 
 /** Отменить заказ — вернуть товар на склад, если был проведён */
-export async function cancelDeal(id: string, reason?: string | null): Promise<void> {
+export async function cancelDeal(
+  id: string,
+  reason?: string | null
+): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection("customerDeals").doc(id);
   const snap = await ref.get();
@@ -345,7 +368,6 @@ export async function deleteDeal(id: string): Promise<void> {
   if (!snap.exists) return;
   const deal = mapDeal(id, snap.data());
   if (deal.status === "completed") {
-    // Сторно списания
     await applyStockDelta(deal.items, 1);
   }
   await ref.delete();
@@ -364,8 +386,15 @@ function mapPayment(id: string, data: any): BankPayment {
     dealNumbers: Array.isArray(data.dealNumbers)
       ? data.dealNumbers.map((n: any) => Number(n) || 0)
       : [],
+    receiptIds: Array.isArray(data.receiptIds)
+      ? data.receiptIds.map(String)
+      : [],
+    receiptNumbers: Array.isArray(data.receiptNumbers)
+      ? data.receiptNumbers.map((n: any) => Number(n) || 0)
+      : [],
     amount: Math.max(0, Number(data.amount) || 0),
     isPaid: data.isPaid === true,
+    paidAt: data.paidAt ? String(data.paidAt) : null,
     comment: data.comment ?? null,
     createdAt: serializeTimestamp(data.createdAt),
   };
@@ -376,7 +405,7 @@ export async function getPayments(): Promise<BankPayment[]> {
   const snap = await db
     .collection("bankPayments")
     .orderBy("number", "desc")
-    .limit(300)
+    .limit(500)
     .get();
   return snap.docs.map((d) => mapPayment(d.id, d.data()));
 }
@@ -385,9 +414,10 @@ export async function createPayment(data: {
   date: string;
   direction: "incoming" | "outgoing";
   counterparty: string;
-  dealIds: string[];
+  dealIds?: string[];
+  receiptIds?: string[];
   amount: number;
-  isPaid: boolean;
+  isPaid?: boolean;
   comment?: string | null;
 }): Promise<{ id: string; number: number }> {
   const amount = Math.max(0, Number(data.amount) || 0);
@@ -395,7 +425,7 @@ export async function createPayment(data: {
   if (!data.counterparty?.trim()) throw new Error("Укажите контрагента");
   const db = getAdminDb();
 
-  // Номера привязанных заказов — для отображения
+  // Номера привязанных документов — для отображения
   const dealIds = Array.isArray(data.dealIds) ? data.dealIds.map(String) : [];
   const dealNumbers: number[] = [];
   for (const dealId of dealIds) {
@@ -403,16 +433,33 @@ export async function createPayment(data: {
     if (snap.exists) dealNumbers.push(Number((snap.data() as any)?.number) || 0);
   }
 
+  const receiptIds = Array.isArray(data.receiptIds)
+    ? data.receiptIds.map(String)
+    : [];
+  const receiptNumbers: number[] = [];
+  for (const receiptId of receiptIds) {
+    const snap = await db.collection("warehouseReceipts").doc(receiptId).get();
+    if (snap.exists)
+      receiptNumbers.push(Number((snap.data() as any)?.number) || 0);
+  }
+
+  const isPaid = data.isPaid === true;
+  const date = data.date || new Date().toISOString().slice(0, 10);
   const number = await nextNumber("payment");
   const docRef = await db.collection("bankPayments").add({
     number,
-    date: data.date || new Date().toISOString().slice(0, 10),
+    date,
     direction: data.direction === "outgoing" ? "outgoing" : "incoming",
     counterparty: String(data.counterparty).slice(0, 200),
     dealIds,
     dealNumbers,
+    receiptIds,
+    receiptNumbers,
     amount,
-    isPaid: data.isPaid === true,
+    // По умолчанию платёж создаётся «в ожидании» — баланс не меняется,
+    // проводится позже отдельной кнопкой
+    isPaid,
+    paidAt: isPaid ? date : null,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -431,10 +478,17 @@ export async function updatePayment(
   }
 ): Promise<void> {
   const db = getAdminDb();
+  const ref = db.collection("bankPayments").doc(id);
   const patch: Record<string, any> = {
     updatedAt: FieldValue.serverTimestamp(),
   };
-  if (data.isPaid !== undefined) patch.isPaid = data.isPaid === true;
+  if (data.isPaid !== undefined) {
+    patch.isPaid = data.isPaid === true;
+    // Проведение фиксирует дату факта; возврат в ожидание её снимает
+    patch.paidAt = data.isPaid
+      ? new Date().toISOString().slice(0, 10)
+      : null;
+  }
   if (data.amount !== undefined)
     patch.amount = Math.max(0, Number(data.amount) || 0);
   if (data.comment !== undefined)
@@ -442,7 +496,7 @@ export async function updatePayment(
   if (data.date !== undefined) patch.date = String(data.date);
   if (data.counterparty !== undefined)
     patch.counterparty = String(data.counterparty).slice(0, 200);
-  await db.collection("bankPayments").doc(id).update(patch);
+  await ref.update(patch);
 }
 
 export async function deletePayment(id: string): Promise<void> {
@@ -467,18 +521,146 @@ export function getBankSummary(payments: BankPayment[]) {
   return { balance, expectedIn, expectedOut };
 }
 
-/** Сколько оплачено по каждому заказу (id → сумма оплаченных входящих платежей) */
+/** Оплачено по каждому заказу (id → сумма оплаченных входящих платежей) */
 export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const p of payments) {
     if (!p.isPaid || p.direction !== "incoming") continue;
-    const ids = p.dealIds.length > 0 ? p.dealIds : [];
-    // Если платёж привязан к нескольким заказам — распределяем поровну,
-    // чтобы итог по всем заказам сходился с суммой платежа
-    const share = ids.length > 0 ? p.amount / ids.length : 0;
-    for (const dealId of ids) {
+    const share = p.dealIds.length > 0 ? p.amount / p.dealIds.length : 0;
+    for (const dealId of p.dealIds) {
       map.set(dealId, (map.get(dealId) || 0) + share);
     }
   }
   return map;
+}
+
+/** Оплачено по каждому поступлению (id → сумма оплаченных исходящих) */
+export function getReceiptPaidMap(payments: BankPayment[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const p of payments) {
+    if (!p.isPaid || p.direction !== "outgoing") continue;
+    const share =
+      p.receiptIds.length > 0 ? p.amount / p.receiptIds.length : 0;
+    for (const receiptId of p.receiptIds) {
+      map.set(receiptId, (map.get(receiptId) || 0) + share);
+    }
+  }
+  return map;
+}
+
+// ─── Баланс по контрагентам ─────────────────────────────
+
+export interface CounterpartyBalance {
+  name: string;
+  type: "customer" | "supplier";
+  /** Сумма документов (заказов/поступлений) */
+  docsTotal: number;
+  /** Оплачено проведёнными платежами */
+  paidTotal: number;
+  /** Долг: положительный — нам должны (покупатель), мы должны (поставщик) */
+  balance: number;
+  /** Дата последнего проведённого платежа */
+  lastPaymentDate: string | null;
+  docsCount: number;
+}
+
+export function getCounterpartyBalances(
+  deals: CustomerDeal[],
+  receipts: WarehouseReceipt[],
+  payments: BankPayment[]
+): CounterpartyBalance[] {
+  const result = new Map<string, CounterpartyBalance>();
+
+  // Покупатели — из неотменённых заказов
+  const dealCustomer = new Map<string, string>();
+  for (const d of deals) {
+    if (d.status === "cancelled") continue;
+    dealCustomer.set(d.id, d.customerName);
+    const key = `customer:${d.customerName}`;
+    const row =
+      result.get(key) ??
+      ({
+        name: d.customerName,
+        type: "customer",
+        docsTotal: 0,
+        paidTotal: 0,
+        balance: 0,
+        lastPaymentDate: null,
+        docsCount: 0,
+      } satisfies CounterpartyBalance);
+    row.docsTotal += d.total;
+    row.docsCount += 1;
+    result.set(key, row);
+  }
+
+  // Поставщики — из поступлений
+  const receiptSupplier = new Map<string, string>();
+  for (const r of receipts) {
+    if (!r.supplier) continue;
+    receiptSupplier.set(r.id, r.supplier);
+    const key = `supplier:${r.supplier}`;
+    const row =
+      result.get(key) ??
+      ({
+        name: r.supplier,
+        type: "supplier",
+        docsTotal: 0,
+        paidTotal: 0,
+        balance: 0,
+        lastPaymentDate: null,
+        docsCount: 0,
+      } satisfies CounterpartyBalance);
+    row.docsTotal += r.total;
+    row.docsCount += 1;
+    result.set(key, row);
+  }
+
+  // Проведённые платежи распределяем по привязанным документам
+  for (const p of payments) {
+    if (!p.isPaid) continue;
+    const payDate = p.paidAt || p.date;
+
+    if (p.direction === "incoming" && p.dealIds.length > 0) {
+      const share = p.amount / p.dealIds.length;
+      for (const dealId of p.dealIds) {
+        const name = dealCustomer.get(dealId);
+        if (!name) continue;
+        const row = result.get(`customer:${name}`);
+        if (!row) continue;
+        row.paidTotal += share;
+        if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
+          row.lastPaymentDate = payDate;
+        }
+      }
+    }
+
+    if (p.direction === "outgoing" && p.receiptIds.length > 0) {
+      const share = p.amount / p.receiptIds.length;
+      for (const receiptId of p.receiptIds) {
+        const name = receiptSupplier.get(receiptId);
+        if (!name) continue;
+        const row = result.get(`supplier:${name}`);
+        if (!row) continue;
+        row.paidTotal += share;
+        if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
+          row.lastPaymentDate = payDate;
+        }
+      }
+    }
+  }
+
+  const list = [...result.values()].map((row) => ({
+    ...row,
+    docsTotal: round2(row.docsTotal),
+    paidTotal: round2(row.paidTotal),
+    balance: round2(row.docsTotal - row.paidTotal),
+  }));
+  // Сначала с открытым долгом, потом по имени
+  list.sort((a, b) => {
+    const aOpen = Math.abs(a.balance) > 0.009 ? 1 : 0;
+    const bOpen = Math.abs(b.balance) > 0.009 ? 1 : 0;
+    if (aOpen !== bOpen) return bOpen - aOpen;
+    return a.name.localeCompare(b.name, "ru");
+  });
+  return list;
 }

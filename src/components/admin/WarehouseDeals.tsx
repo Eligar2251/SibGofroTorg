@@ -215,7 +215,7 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
               </div>
 
               {items.length > 0 && (
-                <div className="wh-items">
+                <div className="wh-items wh-items--deal">
                   <div className="wh-item-row wh-item-row--head">
                     <span>Товар</span>
                     <span>Кол-во</span>

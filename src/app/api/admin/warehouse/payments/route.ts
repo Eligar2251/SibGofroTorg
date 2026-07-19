@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
       direction: body.direction === "outgoing" ? "outgoing" : "incoming",
       counterparty: String(body.counterparty || ""),
       dealIds: Array.isArray(body.dealIds) ? body.dealIds : [],
+      receiptIds: Array.isArray(body.receiptIds) ? body.receiptIds : [],
       amount: Number(body.amount) || 0,
       isPaid: body.isPaid === true,
       comment: body.comment ?? null,
