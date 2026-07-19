@@ -1403,9 +1403,12 @@
     font-size: 26px;
   }
 
-  .pdp-breadcrumbs {
+  /* Двойной класс: иначе глобальный .breadcrumbs{align-items:center}
+     из globals.css (загружается позже) центрирует артикул на мобильном */
+  .breadcrumbs.pdp-breadcrumbs {
     flex-direction: column;
     align-items: flex-start;
+    justify-content: flex-start;
     gap: 8px;
   }
 

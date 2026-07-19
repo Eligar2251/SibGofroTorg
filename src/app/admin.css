@@ -304,7 +304,8 @@
   padding: 0 16px;
   height: 56px;
   align-items: center;
-  justify-content: space-between;
+  /* Бренд убран по запросу — только иконки навигации, по центру */
+  justify-content: center;
   box-shadow: var(--adm-sh-sm);
 }
 
@@ -336,6 +337,19 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  /* На очень узких экранах — прокрутка вместо обрезания иконок */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-mobile-bar__nav::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-mobile-bar__link {
+  flex-shrink: 0;
 }
 
 .admin-mobile-bar__link {

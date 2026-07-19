@@ -5640,6 +5640,13 @@ select {
 }
 
 @media (max-width: 768px) {
+  /* Похожие товары на PDP: ровно 2 колонки (auto-fill давал одну
+     широкую карточку из-за паддингов секции) */
+  .pdp-related .product-grid-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
   .deals-track > * {
     /* Одна карточка + «подглядывающая» следующая, листается свайпом.
        min() — чтобы на широком телефоне карточка не расползалась */

@@ -243,10 +243,17 @@ export default async function AdminOrdersPage({
                               const c =
                                 commLabels[order.communicationChannel];
                               return c ? (
-                                <>
-                                  <GlyphIcon value={c.token} size={13} />{" "}
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  <GlyphIcon value={c.token} size={13} />
                                   {c.text}
-                                </>
+                                </span>
                               ) : (
                                 order.communicationChannel ?? "—"
                               );
@@ -266,10 +273,17 @@ export default async function AdminOrdersPage({
                                 const pm =
                                   paymentLabels[order.paymentMethod];
                                 return pm ? (
-                                  <>
-                                    <GlyphIcon value={pm.token} size={13} />{" "}
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 5,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    <GlyphIcon value={pm.token} size={13} />
                                     {pm.text}
-                                  </>
+                                  </span>
                                 ) : (
                                   order.paymentMethod
                                 );

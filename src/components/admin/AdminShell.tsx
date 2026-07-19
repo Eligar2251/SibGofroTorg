@@ -119,10 +119,6 @@ export function AdminShell({
       </aside>
 
       <div className="admin-mobile-bar">
-        <span className="admin-mobile-bar__title">
-          <SiteLogo variant="light" className="admin-mobile-bar__logo" />
-          Управление
-        </span>
         <div className="admin-mobile-bar__nav">
           {nav.map((link) => (
             <Link
