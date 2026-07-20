@@ -138,7 +138,8 @@ export function PromotionPopups() {
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
-  const external = current.buttonUrl?.startsWith("https://") === true;
+  const external =
+    !!current.buttonUrl && !current.buttonUrl.startsWith("/");
   const button = current.buttonUrl ? (
     external ? (
       <a

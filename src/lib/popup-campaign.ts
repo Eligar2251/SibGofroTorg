@@ -51,6 +51,7 @@ export function safePopupUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const value = raw.trim();
   if (value.startsWith("/") && !value.startsWith("//")) return value;
-  if (/^https:\/\//i.test(value)) return value;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^(mailto:|tel:|tg:)/i.test(value)) return value;
   return null;
 }

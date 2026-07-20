@@ -551,7 +551,12 @@ export function PaymentControls({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPaid: !isPaid }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        router.refresh();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || "Не удалось изменить статус платежа");
+      }
     } catch (err) {
       console.error(err);
     }
@@ -603,7 +608,12 @@ export function PaymentControls({
       const res = await fetch(`/api/admin/warehouse/payments/${paymentId}`, {
         method: "DELETE",
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        router.refresh();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || "Не удалось удалить платёж");
+      }
     } catch (err) {
       console.error(err);
     }

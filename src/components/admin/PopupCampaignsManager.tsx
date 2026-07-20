@@ -37,6 +37,17 @@ function toIso(value: string): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
+const SITE_PAGES = [
+  { value: "/", label: "Главная" },
+  { value: "/catalog", label: "Каталог" },
+  { value: "/order", label: "Корзина / оформление заказа" },
+  { value: "/delivery", label: "Доставка и оплата" },
+  { value: "/contacts", label: "Контакты" },
+  { value: "/about", label: "О компании" },
+  { value: "/wastepaper", label: "Приём макулатуры" },
+  { value: "/cabinet", label: "Личный кабинет" },
+];
+
 const EMPTY = {
   title: "",
   kicker: "Важная информация",
@@ -246,9 +257,40 @@ export function PopupCampaignsManager({
                   <input className="admin-input" value={form.buttonText} onChange={(e) => update("buttonText", e.target.value)} placeholder="Подробнее" />
                 </div>
                 <div className="admin-field">
-                  <label className="admin-label">Ссылка кнопки</label>
-                  <input className="admin-input" value={form.buttonUrl} onChange={(e) => update("buttonUrl", e.target.value)} placeholder="/catalog или https://..." />
+                  <label className="admin-label">Выбрать страницу сайта</label>
+                  <select
+                    className="admin-select"
+                    value={
+                      SITE_PAGES.some((page) => page.value === form.buttonUrl)
+                        ? form.buttonUrl
+                        : ""
+                    }
+                    onChange={(e) => {
+                      if (e.target.value) update("buttonUrl", e.target.value);
+                    }}
+                  >
+                    <option value="">— Быстрый выбор страницы —</option>
+                    {SITE_PAGES.map((page) => (
+                      <option key={page.value} value={page.value}>
+                        {page.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">
+                  Ссылка вручную (можно указать внешний сайт)
+                </label>
+                <input
+                  className="admin-input"
+                  value={form.buttonUrl}
+                  onChange={(e) => update("buttonUrl", e.target.value)}
+                  placeholder="/catalog или https://другой-сайт.ru/..."
+                />
+                <span className="admin-hint">
+                  Ручной ввод не ограничен страницами сайта и имеет приоритет.
+                </span>
               </div>
 
               <div className="admin-field">

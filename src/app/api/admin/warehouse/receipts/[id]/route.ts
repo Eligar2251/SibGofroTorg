@@ -1,6 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteReceipt } from "@/lib/warehouse";
+import { deleteReceipt, postReceipt, updateReceipt } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    await updateReceipt(id, {
+      date: String(body.date || ""),
+      supplier: String(body.supplier || ""),
+      phone: body.phone ?? null,
+      email: body.email ?? null,
+      inn: body.inn ?? null,
+      kpp: body.kpp ?? null,
+      address: body.address ?? null,
+      contactName: body.contactName ?? null,
+      comment: body.comment ?? null,
+      items: Array.isArray(body.items) ? body.items : [],
+    });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ошибка сервера" },
+      { status: 400 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    if (body.action !== "post") {
+      return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
+    }
+    await postReceipt(id);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ошибка сервера" },
+      { status: 400 }
+    );
+  }
+}
 
 export async function DELETE(
   _request: NextRequest,

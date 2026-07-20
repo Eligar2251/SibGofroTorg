@@ -46,20 +46,27 @@ export interface Counterparty extends CounterpartyDetails {
   name: string;
   normalizedName: string;
   roles: CounterpartyRole[];
+  /** Последняя закупочная цена по каждому товару для этого поставщика. */
+  supplierPrices?: Record<string, number>;
   comment?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
+
+export type ReceiptStatus = "draft" | "posted";
 
 export interface WarehouseReceipt extends CounterpartyDetails {
   id: string;
   number: number;
   date: string; // YYYY-MM-DD
   supplier: string;
+  status: ReceiptStatus;
   counterpartyId?: string | null;
   comment?: string | null;
   items: StockDocItem[];
   total: number;
+  /** Разница между суммой строк и фактическим банковским платежом. */
+  bankAdjustment: number;
   vatRate: number;
   vatAmount: number;
   createdAt?: string | null;
@@ -77,6 +84,7 @@ export interface CustomerDeal extends CounterpartyDetails {
   comment?: string | null;
   items: StockDocItem[];
   total: number;
+  bankAdjustment: number;
   vatRate: number;
   vatAmount: number;
   status: DealStatus;
@@ -149,7 +157,10 @@ function counterpartyIdForName(name: string): string {
 function counterpartyPayload(
   name: string,
   role: CounterpartyRole,
-  details: CounterpartyDetails & { comment?: string | null }
+  details: CounterpartyDetails & {
+    comment?: string | null;
+    supplierPrices?: Record<string, number>;
+  }
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     name: name.trim().slice(0, 200),
@@ -171,6 +182,9 @@ function counterpartyPayload(
   }
   const comment = cleanText(details.comment, 1000);
   if (comment) payload.comment = comment;
+  if (details.supplierPrices) {
+    payload.supplierPrices = details.supplierPrices;
+  }
   return payload;
 }
 
@@ -178,7 +192,10 @@ function addCounterpartyToBatch(
   batch: FirebaseFirestore.WriteBatch,
   role: CounterpartyRole,
   name: string,
-  details: CounterpartyDetails & { comment?: string | null }
+  details: CounterpartyDetails & {
+    comment?: string | null;
+    supplierPrices?: Record<string, number>;
+  }
 ): string {
   const db = getAdminDb();
   const id = counterpartyIdForName(name);
@@ -202,6 +219,15 @@ function mapCounterparty(id: string, data: any): Counterparty {
             role === "supplier" || role === "customer"
         )
       : [],
+    supplierPrices:
+      data.supplierPrices && typeof data.supplierPrices === "object"
+        ? Object.fromEntries(
+            Object.entries(data.supplierPrices).map(([id, price]) => [
+              id,
+              Math.max(0, Number(price) || 0),
+            ])
+          )
+        : {},
     phone: data.phone ?? null,
     email: data.email ?? null,
     inn: data.inn ?? null,
@@ -254,6 +280,7 @@ export async function getCounterparties(): Promise<Counterparty[]> {
       name,
       normalizedName: normalizeCounterpartyName(name),
       roles: [role],
+      supplierPrices: {},
       phone: data.phone || data.customerPhone || null,
       email: data.email || null,
       inn: data.inn || null,
@@ -484,6 +511,7 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
     number: Number(data.number) || 0,
     date: String(data.date || ""),
     supplier: String(data.supplier || ""),
+    status: data.status === "draft" ? "draft" : "posted",
     counterpartyId: data.counterpartyId ?? null,
     phone: data.phone ?? null,
     email: data.email ?? null,
@@ -494,6 +522,7 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
     comment: data.comment ?? null,
     items: cleanItems(data.items),
     total: Number(data.total) || 0,
+    bankAdjustment: Number(data.bankAdjustment) || 0,
     vatRate: Number(data.vatRate) || VAT_RATE,
     vatAmount:
       data.vatAmount !== undefined
@@ -557,43 +586,33 @@ export async function createReceipt(data: {
     batch,
     "supplier",
     supplier,
-    { ...details, comment: data.comment }
+    {
+      ...details,
+      comment: data.comment,
+      supplierPrices: Object.fromEntries(
+        items.map((item) => [item.productId, item.price])
+      ),
+    }
   );
 
   batch.set(docRef, {
     number,
     date,
     supplier,
+    status: "draft",
     counterpartyId,
     ...details,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items,
     total,
+    bankAdjustment: 0,
     vatRate: VAT_RATE,
     vatAmount,
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  // Поступление, изменение остатков и банковский счёт фиксируются одной
-  // атомарной операцией — в базе не останется частично оформленный документ.
-  const stockByProduct = new Map<string, number>();
-  for (const item of items) {
-    stockByProduct.set(
-      item.productId,
-      (stockByProduct.get(item.productId) || 0) + item.quantity
-    );
-  }
-  for (const [productId, quantity] of stockByProduct) {
-    batch.set(
-      db.collection("products").doc(productId),
-      {
-        stockQty: FieldValue.increment(quantity),
-        inStock: true,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-  }
+  // Новый документ остаётся черновиком: товар попадёт на склад только
+  // после оплаты связанного счёта и отдельного ручного проведения.
 
   batch.set(paymentRef, {
     number: payNumber,
@@ -620,13 +639,213 @@ export async function createReceipt(data: {
   return { id: docRef.id, number };
 }
 
+export async function updateReceipt(
+  id: string,
+  data: {
+    date: string;
+    supplier: string;
+    phone?: string | null;
+    email?: string | null;
+    inn?: string | null;
+    kpp?: string | null;
+    address?: string | null;
+    contactName?: string | null;
+    comment?: string | null;
+    items: StockDocItem[];
+  }
+): Promise<void> {
+  const db = getAdminDb();
+  const ref = db.collection("warehouseReceipts").doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Поступление не найдено");
+  const previous = mapReceipt(id, snap.data());
+  const items = cleanItems(data.items);
+  if (!data.supplier?.trim()) throw new Error("Укажите поставщика");
+  if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
+  const linesTotal = itemsTotal(items);
+  if (linesTotal <= 0) throw new Error("Укажите сумму поступления больше нуля");
+
+  const paymentSnap = await db
+    .collection("bankPayments")
+    .where("receiptIds", "array-contains", id)
+    .get();
+  const paidTotal = paymentSnap.docs.reduce((sum, doc) => {
+    const payment = doc.data();
+    return payment.isPaid === true && payment.direction === "outgoing"
+      ? sum + (Number(payment.amount) || 0)
+      : sum;
+  }, 0);
+  const total = paidTotal > 0 ? paidTotal : linesTotal;
+  const bankAdjustment = round2(total - linesTotal);
+  const details: CounterpartyDetails = {
+    phone: cleanText(data.phone, 60),
+    email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20),
+    kpp: cleanText(data.kpp, 20),
+    address: cleanText(data.address, 400),
+    contactName: cleanText(data.contactName, 160),
+  };
+  const supplier = data.supplier.trim().slice(0, 200);
+
+  if (previous.status === "posted") {
+    const delta = new Map<string, number>();
+    for (const item of previous.items) {
+      delta.set(item.productId, (delta.get(item.productId) || 0) - item.quantity);
+    }
+    for (const item of items) {
+      delta.set(item.productId, (delta.get(item.productId) || 0) + item.quantity);
+    }
+    await db.runTransaction(async (transaction) => {
+      const stocks: {
+        ref: FirebaseFirestore.DocumentReference;
+        next: number;
+      }[] = [];
+      for (const [productId, change] of delta) {
+        if (change === 0) continue;
+        const productRef = db.collection("products").doc(productId);
+        const productSnap = await transaction.get(productRef);
+        const current = productSnap.exists
+          ? Number(productSnap.data()?.stockQty) || 0
+          : 0;
+        stocks.push({ ref: productRef, next: current + change });
+      }
+      for (const stock of stocks) {
+        transaction.set(
+          stock.ref,
+          {
+            stockQty: stock.next,
+            inStock: stock.next > 0,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      transaction.update(ref, {
+        date: data.date,
+        supplier,
+        ...details,
+        comment: cleanText(data.comment, 500),
+        items,
+        total,
+        bankAdjustment,
+        vatRate: VAT_RATE,
+        vatAmount: includedVat(total),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } else {
+    await ref.update({
+      date: data.date,
+      supplier,
+      ...details,
+      comment: cleanText(data.comment, 500),
+      items,
+      total,
+      bankAdjustment,
+      vatRate: VAT_RATE,
+      vatAmount: includedVat(total),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  const batch = db.batch();
+  const counterpartyId = addCounterpartyToBatch(batch, "supplier", supplier, {
+    ...details,
+    comment: data.comment,
+    supplierPrices: Object.fromEntries(
+      items.map((item) => [item.productId, item.price])
+    ),
+  });
+  batch.update(ref, { counterpartyId });
+  for (const payment of paymentSnap.docs) {
+    if (payment.data().isPaid === true) continue;
+    batch.update(payment.ref, {
+      counterparty: supplier,
+      counterpartyId,
+      amount: linesTotal,
+      vatRate: VAT_RATE,
+      vatAmount: includedVat(linesTotal),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+  await batch.commit();
+}
+
+export async function postReceipt(id: string): Promise<void> {
+  const db = getAdminDb();
+  const receiptRef = db.collection("warehouseReceipts").doc(id);
+  const paymentQuery = await db
+    .collection("bankPayments")
+    .where("receiptIds", "array-contains", id)
+    .get();
+
+  await db.runTransaction(async (transaction) => {
+    const receiptSnap = await transaction.get(receiptRef);
+    if (!receiptSnap.exists) throw new Error("Поступление не найдено");
+    const receipt = mapReceipt(id, receiptSnap.data());
+    if (receipt.status === "posted") return;
+
+    let paid = 0;
+    for (const paymentDoc of paymentQuery.docs) {
+      const paymentSnap = await transaction.get(paymentDoc.ref);
+      const payment = paymentSnap.data();
+      if (payment?.isPaid === true && payment.direction === "outgoing") {
+        paid += Number(payment.amount) || 0;
+      }
+    }
+    if (paid + 0.009 < receipt.total) {
+      throw new Error(
+        `Сначала проведите оплату счёта в банке. Оплачено ${paid.toLocaleString("ru-RU")} из ${receipt.total.toLocaleString("ru-RU")} ₽`
+      );
+    }
+
+    const quantities = new Map<string, number>();
+    for (const item of receipt.items) {
+      quantities.set(
+        item.productId,
+        (quantities.get(item.productId) || 0) + item.quantity
+      );
+    }
+    const stockRows: {
+      ref: FirebaseFirestore.DocumentReference;
+      next: number;
+    }[] = [];
+    for (const [productId, quantity] of quantities) {
+      const productRef = db.collection("products").doc(productId);
+      const productSnap = await transaction.get(productRef);
+      const current = productSnap.exists
+        ? Number(productSnap.data()?.stockQty) || 0
+        : 0;
+      stockRows.push({ ref: productRef, next: current + quantity });
+    }
+    for (const stock of stockRows) {
+      transaction.set(
+        stock.ref,
+        {
+          stockQty: stock.next,
+          inStock: stock.next > 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+    transaction.update(receiptRef, {
+      status: "posted",
+      postedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+}
+
 export async function deleteReceipt(id: string): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection("warehouseReceipts").doc(id);
   const snap = await ref.get();
   if (!snap.exists) return;
   const receipt = mapReceipt(id, snap.data());
-  await applyStockDelta(receipt.items, -1);
+  if (receipt.status === "posted") {
+    await applyStockDelta(receipt.items, -1);
+  }
   await ref.delete();
   // Чистим привязанные платежи: «в ожидании» только с этим поступлением —
   // удаляем; с несколькими ордерами — просто отвязываем это поступление.
@@ -679,6 +898,7 @@ function mapDeal(id: string, data: any): CustomerDeal {
     comment: data.comment ?? null,
     items: cleanItems(data.items),
     total: Number(data.total) || 0,
+    bankAdjustment: Number(data.bankAdjustment) || 0,
     vatRate: Number(data.vatRate) || VAT_RATE,
     vatAmount:
       data.vatAmount !== undefined
@@ -757,6 +977,7 @@ export async function createDeal(data: {
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items,
     total,
+    bankAdjustment: 0,
     vatRate: VAT_RATE,
     vatAmount,
     status: "new",
@@ -1028,6 +1249,44 @@ export async function createPayment(data: {
   return { id: docRef.id, number };
 }
 
+async function syncPaymentAmountToDocuments(
+  payment: BankPayment,
+  amount: number
+): Promise<void> {
+  const db = getAdminDb();
+  const links = [
+    ...payment.dealIds.map((id) => ({ id, collection: "customerDeals" })),
+    ...payment.receiptIds.map((id) => ({ id, collection: "warehouseReceipts" })),
+  ];
+  if (links.length === 0) return;
+  const documents = await Promise.all(
+    links.map((link) => db.collection(link.collection).doc(link.id).get())
+  );
+  const currentTotals = documents.map((doc) =>
+    doc.exists ? Math.max(0, Number(doc.data()?.total) || 0) : 0
+  );
+  const sum = currentTotals.reduce((total, value) => total + value, 0);
+  const batch = db.batch();
+  documents.forEach((doc, index) => {
+    if (!doc.exists) return;
+    const share =
+      documents.length === 1
+        ? amount
+        : sum > 0
+          ? round2((amount * currentTotals[index]) / sum)
+          : round2(amount / documents.length);
+    const lines = itemsTotal(cleanItems(doc.data()?.items || []));
+    batch.update(doc.ref, {
+      total: share,
+      bankAdjustment: round2(share - lines),
+      vatRate: VAT_RATE,
+      vatAmount: includedVat(share),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  await batch.commit();
+}
+
 export async function updatePayment(
   id: string,
   data: {
@@ -1041,6 +1300,25 @@ export async function updatePayment(
 ): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection("bankPayments").doc(id);
+  const existingSnap = await ref.get();
+  if (!existingSnap.exists) throw new Error("Платёж не найден");
+  const existing = mapPayment(id, existingSnap.data());
+
+  if (data.isPaid === false && existing.receiptIds.length > 0) {
+    const receipts = await Promise.all(
+      existing.receiptIds.map((receiptId) =>
+        db.collection("warehouseReceipts").doc(receiptId).get()
+      )
+    );
+    if (receipts.some(
+      (receipt) => receipt.exists && receipt.data()?.status !== "draft"
+    )) {
+      throw new Error(
+        "Нельзя отменить оплату: связанное поступление уже проведено на склад"
+      );
+    }
+  }
+
   const patch: Record<string, any> = {
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -1064,11 +1342,32 @@ export async function updatePayment(
   if (data.invoiceNumber !== undefined)
     patch.invoiceNumber = cleanText(data.invoiceNumber, 100);
   await ref.update(patch);
+  if (data.amount !== undefined) {
+    await syncPaymentAmountToDocuments(existing, patch.amount);
+  }
 }
 
 export async function deletePayment(id: string): Promise<void> {
   const db = getAdminDb();
-  await db.collection("bankPayments").doc(id).delete();
+  const ref = db.collection("bankPayments").doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const payment = mapPayment(id, snap.data());
+  if (payment.receiptIds.length > 0) {
+    const receipts = await Promise.all(
+      payment.receiptIds.map((receiptId) =>
+        db.collection("warehouseReceipts").doc(receiptId).get()
+      )
+    );
+    if (receipts.some(
+      (receipt) => receipt.exists && receipt.data()?.status !== "draft"
+    )) {
+      throw new Error(
+        "Нельзя удалить оплату: связанное поступление уже проведено на склад"
+      );
+    }
+  }
+  await ref.delete();
 }
 
 /** Сводка по банку */

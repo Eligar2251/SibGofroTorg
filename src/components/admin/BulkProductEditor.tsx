@@ -9,6 +9,7 @@ import {
   PackageCheck,
   RotateCcw,
   Search,
+  Trash2,
   WalletCards,
 } from "lucide-react";
 
@@ -67,6 +68,7 @@ export function BulkProductEditor({
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [finished, setFinished] = useState(false);
 
@@ -125,6 +127,41 @@ export function BulkProductEditor({
       }
       return next;
     });
+  }
+
+  async function deleteSelected() {
+    if (workingIds.size === 0) return;
+    if (
+      !confirm(
+        `Удалить выбранные товары (${workingIds.size})? Это действие необратимо.`
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/products/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...workingIds] }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error || "Не удалось удалить товары");
+      }
+      setProducts((items) =>
+        items.filter((product) => !workingIds.has(product.id))
+      );
+      setWorkingIds(new Set());
+      setDirtyIds(new Set());
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? deleteError.message : "Ошибка сети"
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function saveAndContinue() {
@@ -203,6 +240,20 @@ export function BulkProductEditor({
             <Search size={14} />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Название или артикул..." />
           </div>
+        )}
+        {step === 1 && workingIds.size > 0 && (
+          <button
+            className="admin-btn admin-btn--danger"
+            onClick={deleteSelected}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            Удалить ({workingIds.size})
+          </button>
         )}
         <button className="admin-btn admin-btn--ghost" onClick={reset}><RotateCcw size={14} /> Сбросить</button>
       </div>

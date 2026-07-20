@@ -32,6 +32,7 @@ import {
 } from "@/lib/warehouse";
 import {
   ReceiptForm,
+  ReceiptPostButton,
   ReceiptDeleteButton,
 } from "@/components/admin/WarehouseReceipts";
 import { DealForm, DealActions } from "@/components/admin/WarehouseDeals";
@@ -153,7 +154,10 @@ export default async function AdminWarehousePage({
     activeTab === "deals" ||
     activeTab === "bank" ||
     activeTab === "counterparties";
-  const needPayments = activeTab === "deals" || activeTab === "bank";
+  const needPayments =
+    activeTab === "deals" ||
+    activeTab === "bank" ||
+    (activeTab === "stock" && stockSub === "receipts");
 
   const [receipts, deals, payments, counterpartyRows] = await Promise.all([
     needReceipts ? getReceipts() : Promise.resolve([]),
@@ -175,6 +179,7 @@ export default async function AdminWarehousePage({
       id: item.id,
       name: item.name,
       roles: item.roles,
+      supplierPrices: item.supplierPrices ?? {},
       phone: item.phone ?? null,
       email: item.email ?? null,
       inn: item.inn ?? null,
@@ -488,6 +493,17 @@ export default async function AdminWarehousePage({
                               <Truck size={11} />
                               Поступление
                             </span>
+                            <span
+                              className={`admin-badge ${
+                                r.status === "posted"
+                                  ? "admin-badge--green"
+                                  : "admin-badge--amber"
+                              }`}
+                            >
+                              {r.status === "posted"
+                                ? "На складе"
+                                : "Не проведено"}
+                            </span>
                             {isFullyPaid ? (
                               <span className="admin-badge admin-badge--green">
                                 Оплачен
@@ -542,6 +558,15 @@ export default async function AdminWarehousePage({
                                 </span>
                               </div>
                             ))}
+                            {Math.abs(r.bankAdjustment) > 0.009 && (
+                              <div className="admin-order__item admin-order__item--adjustment">
+                                <span>Корректировка по фактической оплате</span>
+                                <span className="admin-order__item-sum">
+                                  {r.bankAdjustment > 0 ? "+" : ""}
+                                  {fmt(r.bankAdjustment)} ₽
+                                </span>
+                              </div>
+                            )}
                             <div className="admin-order__total">
                               <span>
                                 Итого (с НДС)
@@ -562,6 +587,35 @@ export default async function AdminWarehousePage({
                         </div>
 
                         <div className="admin-order__side">
+                          <ReceiptForm
+                            products={pickerProducts}
+                            counterparties={counterpartyOptions}
+                            initialReceipt={{
+                              id: r.id,
+                              date: r.date,
+                              supplier: r.supplier,
+                              phone: r.phone ?? null,
+                              email: r.email ?? null,
+                              inn: r.inn ?? null,
+                              kpp: r.kpp ?? null,
+                              address: r.address ?? null,
+                              contactName: r.contactName ?? null,
+                              comment: r.comment ?? null,
+                              items: r.items.map((item) => ({
+                                productId: item.productId,
+                                name: item.name,
+                                sku: item.sku ?? null,
+                                quantity: item.quantity,
+                                lineTotal: item.lineTotal,
+                              })),
+                            }}
+                          />
+                          {r.status === "draft" && (
+                            <ReceiptPostButton
+                              receiptId={r.id}
+                              paidEnough={isFullyPaid}
+                            />
+                          )}
                           <ReceiptDeleteButton receiptId={r.id} />
                         </div>
                       </div>
@@ -575,9 +629,9 @@ export default async function AdminWarehousePage({
                   </div>
                   <p>Поступлений пока нет</p>
                   <p className="admin-empty__hint">
-                    Оформите приходный ордер — укажите количество и сумму за
-                    всю партию (с НДС). Товары добавятся на склад, а в банке
-                    автоматически появится платёж поставщику «в ожидании».
+                    Оформите поступление — связанный счёт появится в банке.
+                    Товар добавится на склад только после оплаты счёта и
+                    ручного проведения поступления.
                   </p>
                 </div>
               )}
@@ -683,6 +737,15 @@ export default async function AdminWarehousePage({
                             </span>
                           </div>
                         ))}
+                        {Math.abs(d.bankAdjustment) > 0.009 && (
+                          <div className="admin-order__item admin-order__item--adjustment">
+                            <span>Корректировка по банковскому платежу</span>
+                            <span className="admin-order__item-sum">
+                              {d.bankAdjustment > 0 ? "+" : ""}
+                              {fmt(d.bankAdjustment)} ₽
+                            </span>
+                          </div>
+                        )}
                         <div className="admin-order__total">
                           <span>
                             Итого (с НДС)

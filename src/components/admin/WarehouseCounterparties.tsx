@@ -1,17 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
+  ChevronDown,
+  ChevronUp,
   Edit2,
   Loader2,
-  Mail,
-  MapPin,
-  Phone,
   Plus,
   Search,
-  UserRound,
   X,
 } from "lucide-react";
 import type { CounterpartyRole } from "@/lib/warehouse";
@@ -20,6 +18,7 @@ export interface CounterpartyOption {
   id: string;
   name: string;
   roles: CounterpartyRole[];
+  supplierPrices?: Record<string, number>;
   phone?: string | null;
   email?: string | null;
   inn?: string | null;
@@ -78,6 +77,9 @@ export function CounterpartiesManager({
   const [items, setItems] = useState(initialCounterparties);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState<"all" | CounterpartyRole>("all");
+  const [sort, setSort] = useState<"name" | "documents" | "turnover">("name");
+  const [descending, setDescending] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -85,14 +87,28 @@ export function CounterpartiesManager({
 
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("ru-RU");
-    return items.filter((item) => {
+    const rows = items.filter((item) => {
       if (role !== "all" && !item.roles.includes(role)) return false;
       if (!query) return true;
       return [item.name, item.inn, item.phone, item.email, item.contactName]
         .filter(Boolean)
-        .some((value) => String(value).toLocaleLowerCase("ru-RU").includes(query));
+        .some((value) =>
+          String(value).toLocaleLowerCase("ru-RU").includes(query)
+        );
     });
-  }, [items, role, search]);
+    rows.sort((a, b) => {
+      let result = a.name.localeCompare(b.name, "ru");
+      if (sort === "documents") {
+        result = (documents[a.id]?.length || 0) - (documents[b.id]?.length || 0);
+      } else if (sort === "turnover") {
+        const total = (item: CounterpartyOption) =>
+          (documents[item.id] || []).reduce((sum, doc) => sum + doc.total, 0);
+        result = total(a) - total(b);
+      }
+      return descending ? -result : result;
+    });
+    return rows;
+  }, [descending, documents, items, role, search, sort]);
 
   function beginCreate() {
     setEditingId("new");
@@ -150,6 +166,8 @@ export function CounterpartiesManager({
         id: isNew ? body.id : editingId!,
         name: payload.name,
         roles,
+        supplierPrices:
+          items.find((item) => item.id === editingId)?.supplierPrices || {},
         phone: form.phone || null,
         email: form.email || null,
         inn: form.inn || null,
@@ -199,60 +217,119 @@ export function CounterpartiesManager({
         </button>
       </div>
 
-      <div className="cp-grid">
-        {filtered.map((item) => {
-          const docs = documents[item.id] || [];
-          const total = docs.reduce((sum, doc) => sum + doc.total, 0);
-          return (
-            <article key={item.id} className="cp-card">
-              <header className="cp-card__head">
-                <div className="cp-card__icon"><Building2 size={20} /></div>
-                <div className="cp-card__heading">
-                  <h3>{item.name}</h3>
-                  <div className="cp-card__roles">
-                    {item.roles.includes("supplier") && <span>Поставщик</span>}
-                    {item.roles.includes("customer") && <span>Покупатель</span>}
-                  </div>
-                </div>
-                <div className="admin-actions">
-                  <button className="admin-btn admin-btn--icon" onClick={() => beginEdit(item)} title="Редактировать"><Edit2 size={14} /></button>
-                </div>
-              </header>
-
-              <div className="cp-card__info">
-                {item.contactName && <div><UserRound size={13} /><span><small>Контакт</small>{item.contactName}</span></div>}
-                {item.phone && <div><Phone size={13} /><span><small>Телефон</small><a href={`tel:${item.phone}`}>{item.phone}</a></span></div>}
-                {item.email && <div><Mail size={13} /><span><small>Email</small><a href={`mailto:${item.email}`}>{item.email}</a></span></div>}
-                {item.address && <div><MapPin size={13} /><span><small>Адрес</small>{item.address}</span></div>}
-                {(item.inn || item.kpp) && <div><Building2 size={13} /><span><small>Реквизиты</small>ИНН {item.inn || "—"}{item.kpp ? ` · КПП ${item.kpp}` : ""}</span></div>}
-                {!item.phone && !item.email && !item.inn && !item.address && (
-                  <p className="cp-card__missing">Реквизиты пока не заполнены</p>
-                )}
-              </div>
-
-              <details className="cp-docs">
-                <summary>
-                  Документы: {docs.length}
-                  <strong>{fmt(total)} ₽</strong>
-                </summary>
-                <div className="cp-docs__list">
-                  {docs.length === 0 ? (
-                    <span className="cp-docs__empty">Связанных документов нет</span>
-                  ) : (
-                    docs.map((doc) => (
-                      <div key={`${doc.kind}-${doc.id}`} className="cp-doc">
-                        <span>{doc.kind === "deal" ? `ЗК-${doc.number}` : `ПО-${doc.number}`}</span>
-                        <small>{doc.date} · позиций: {doc.itemCount}{doc.status ? ` · ${doc.status}` : ""}</small>
-                        <strong>{fmt(doc.total)} ₽</strong>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </details>
-              {item.comment && <div className="cp-card__comment">{item.comment}</div>}
-            </article>
-          );
-        })}
+      <div className="admin-card cp-table-wrap">
+        <div className="admin-table-wrap">
+          <table className="admin-table cp-table">
+            <thead>
+              <tr>
+                <th>
+                  <button type="button" onClick={() => {
+                    if (sort === "name") setDescending((value) => !value);
+                    else { setSort("name"); setDescending(false); }
+                  }}>Контрагент {sort === "name" && (descending ? "↓" : "↑")}</button>
+                </th>
+                <th>Тип</th>
+                <th>Контакты</th>
+                <th>ИНН / КПП</th>
+                <th>
+                  <button type="button" onClick={() => {
+                    if (sort === "documents") setDescending((value) => !value);
+                    else { setSort("documents"); setDescending(true); }
+                  }}>Документы {sort === "documents" && (descending ? "↓" : "↑")}</button>
+                </th>
+                <th>
+                  <button type="button" onClick={() => {
+                    if (sort === "turnover") setDescending((value) => !value);
+                    else { setSort("turnover"); setDescending(true); }
+                  }}>Оборот {sort === "turnover" && (descending ? "↓" : "↑")}</button>
+                </th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((item) => {
+                const docs = documents[item.id] || [];
+                const total = docs.reduce((sum, doc) => sum + doc.total, 0);
+                const expanded = expandedId === item.id;
+                return (
+                  <Fragment key={item.id}>
+                    <tr className={expanded ? "cp-table__row--expanded" : ""}>
+                      <td>
+                        <button
+                          type="button"
+                          className="cp-table__name"
+                          onClick={() => setExpandedId(expanded ? null : item.id)}
+                        >
+                          <span><Building2 size={16} /></span>
+                          <strong>{item.name}</strong>
+                          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      </td>
+                      <td>
+                        <div className="cp-table__roles">
+                          {item.roles.includes("supplier") && <span>Поставщик</span>}
+                          {item.roles.includes("customer") && <span>Покупатель</span>}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="cp-table__contacts">
+                          {item.contactName && <span>{item.contactName}</span>}
+                          {item.phone && <a href={`tel:${item.phone}`}>{item.phone}</a>}
+                          {item.email && <a href={`mailto:${item.email}`}>{item.email}</a>}
+                          {!item.contactName && !item.phone && !item.email && "—"}
+                        </div>
+                      </td>
+                      <td className="admin-mono">
+                        {item.inn || "—"}{item.kpp ? ` / ${item.kpp}` : ""}
+                      </td>
+                      <td><strong>{docs.length}</strong></td>
+                      <td><strong className="cp-table__turnover">{fmt(total)} ₽</strong></td>
+                      <td>
+                        <div className="admin-actions">
+                          <button className="admin-btn admin-btn--icon" onClick={() => beginEdit(item)} title="Редактировать"><Edit2 size={14} /></button>
+                          <button className="admin-btn admin-btn--icon" onClick={() => setExpandedId(expanded ? null : item.id)} title="Подробности">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded && (
+                      <tr className="cp-table__details-row">
+                        <td colSpan={7}>
+                          <div className="cp-table__details">
+                            <div className="cp-table__profile">
+                              <h4>Полная информация</h4>
+                              <dl>
+                                <div><dt>Контакт</dt><dd>{item.contactName || "—"}</dd></div>
+                                <div><dt>Телефон</dt><dd>{item.phone || "—"}</dd></div>
+                                <div><dt>Email</dt><dd>{item.email || "—"}</dd></div>
+                                <div><dt>ИНН</dt><dd>{item.inn || "—"}</dd></div>
+                                <div><dt>КПП</dt><dd>{item.kpp || "—"}</dd></div>
+                                <div><dt>Адрес</dt><dd>{item.address || "—"}</dd></div>
+                                <div><dt>Цен поставщика</dt><dd>{Object.keys(item.supplierPrices || {}).length}</dd></div>
+                              </dl>
+                              {item.comment && <p>{item.comment}</p>}
+                            </div>
+                            <div className="cp-table__documents">
+                              <h4>Заказы и поступления</h4>
+                              {docs.length === 0 ? (
+                                <span>Связанных документов нет</span>
+                              ) : docs.map((doc) => (
+                                <div key={`${doc.kind}-${doc.id}`} className="cp-doc">
+                                  <span>{doc.kind === "deal" ? `ЗК-${doc.number}` : `ПО-${doc.number}`}</span>
+                                  <small>{doc.date} · позиций: {doc.itemCount}{doc.status ? ` · ${doc.status}` : ""}</small>
+                                  <strong>{fmt(doc.total)} ₽</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {filtered.length === 0 && (
