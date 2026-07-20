@@ -90,7 +90,7 @@ const paymentTypeLabels: Record<string, string> = {
   deposit: "Внесение",
 };
 
-export default async function AdminWarehousePage({
+type TabKey = "stock" | "deals" | "bank" | "counterparties";
 type StockSub = "stock" | "receipts";
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
@@ -103,6 +103,24 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     icon: <UsersRound size={13} />,
   },
 ];
+
+export default async function AdminWarehousePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ adminPath: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    sub?: string;
+    q?: string;
+    bq?: string;
+    bdir?: string;
+    bstat?: string;
+    bsort?: string;
+    product?: string;
+    receipt?: string;
+  }>;
+}) {
 
 export default async function AdminWarehousePage({
   params,
