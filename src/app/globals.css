@@ -3957,6 +3957,8 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
+  gap: 10px;
   padding: 12px 16px;
   background: var(--bg-main);
   border-radius: 10px;
@@ -3964,14 +3966,20 @@ select {
 }
 
 .atc-total__label {
+  min-width: 0;
   font-size: 13px;
+  line-height: 1.25;
   color: var(--ink-light);
 }
 
 .atc-total__sum {
-  font-size: 24px;
+  flex: 0 0 auto;
+  font-size: clamp(18px, 5.8vw, 24px);
+  line-height: 1;
   font-weight: 800;
   color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .atc-btn {
@@ -5802,4 +5810,185 @@ select {
 .markdown-body img {
   max-width: 100%;
   border-radius: 8px;
+}
+
+/* ══════════════════════════════════════
+   ВСПЛЫВАЮЩИЕ АКЦИИ
+   ══════════════════════════════════════ */
+.promo-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(8, 16, 12, 0.62);
+  backdrop-filter: blur(4px);
+}
+
+.promo-popup {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  width: min(520px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--green-border);
+  border-radius: 18px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
+  animation: promo-popup-in 0.22s ease-out;
+}
+
+.promo-popup--with-image {
+  grid-template-columns: minmax(150px, 42%) minmax(0, 1fr);
+  width: min(680px, 100%);
+}
+
+@keyframes promo-popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.promo-popup__close {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--ink-light);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-sm);
+}
+
+.promo-popup__media {
+  min-height: 280px;
+  background: var(--green-light);
+  overflow: hidden;
+}
+
+.promo-popup__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.promo-popup__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  padding: 44px 34px 34px;
+}
+
+.promo-popup__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 5px 10px;
+  color: var(--green-dark);
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.promo-popup__title {
+  max-width: 100%;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: clamp(24px, 5vw, 36px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.promo-popup__subtitle {
+  margin-top: 12px;
+  color: var(--ink-light);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.promo-popup__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  margin-top: 22px;
+  padding: 10px 18px;
+  color: #fff;
+  background: var(--green);
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.promo-popup__cta:hover {
+  background: var(--green-dark);
+}
+
+@media (max-width: 560px) {
+  .promo-popup-overlay {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .promo-popup,
+  .promo-popup--with-image {
+    grid-template-columns: 1fr;
+    width: 100%;
+    border-radius: 16px;
+  }
+
+  .promo-popup__media {
+    min-height: 0;
+    height: min(42vw, 180px);
+  }
+
+  .promo-popup__body {
+    padding: 25px 20px 22px;
+  }
+
+  .promo-popup--with-image .promo-popup__body {
+    padding-top: 20px;
+  }
+
+  .promo-popup__title {
+    padding-right: 24px;
+    font-size: 24px;
+  }
+
+  .promo-popup__cta {
+    width: 100%;
+    margin-top: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-popup {
+    animation: none;
+  }
 }

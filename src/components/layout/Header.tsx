@@ -5,6 +5,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useCart } from "@/context/CartContext";
 import {
@@ -37,6 +38,7 @@ interface Category {
 }
 
 export function Header() {
+  const pathname = usePathname();
   const [categories, setCategories] = useState<Category[]>([]);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -52,19 +54,34 @@ export function Header() {
         if (Array.isArray(data)) setCategories(data);
       })
       .catch(console.error);
+  }, []);
 
-    fetch("/api/auth/me")
+  // Header живёт между клиентскими переходами. Перепроверяем cookie сессии
+  // на каждом маршруте, чтобы после регистрации второго номера на том же ПК
+  // не оставались данные предыдущего аккаунта.
+  useEffect(() => {
+    let cancelled = false;
+    setUserLoaded(false);
+    fetch("/api/auth/me", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
+        if (cancelled) return;
         if (data?.user) {
           setUserName(data.user.name || data.user.phone || "Кабинет");
         } else {
           setUserName(null);
         }
       })
-      .catch(() => setUserName(null))
-      .finally(() => setUserLoaded(true));
-  }, []);
+      .catch(() => {
+        if (!cancelled) setUserName(null);
+      })
+      .finally(() => {
+        if (!cancelled) setUserLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   function openCatalog() {
     if (hoverTimeout.current) clearTimeout(hoverTimeout.current);

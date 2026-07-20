@@ -76,7 +76,7 @@ export default function OrderPage() {
   const [createAccount, setCreateAccount] = useState(true); // по умолчанию создаём
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
         if (!data?.user) {
@@ -161,8 +161,8 @@ export default function OrderPage() {
     if (sessionUser) return true;
     if (!createAccount) return true; // гостевой заказ без аккаунта
 
-    if (guestPassword.length < 6) {
-      setError("Для создания кабинета пароль минимум 6 символов");
+    if (guestPassword.length < 8) {
+      setError("Для создания кабинета пароль минимум 8 символов");
       return false;
     }
     if (guestPassword !== guestPassword2) {
@@ -628,8 +628,8 @@ export default function OrderPage() {
                   {sessionUser && (
                     <div className="checkout-tip" style={{ marginBottom: 16 }}>
                       <GlyphIcon value="ok" size={14} /> Данные подставлены
-                      из кабинета ({sessionUser.phone}). Можно изменить перед
-                      отправкой.
+                      из кабинета ({sessionUser.phone}). Номер привязан к
+                      аккаунту; имя и реквизиты заказа можно изменить.
                     </div>
                   )}
 
@@ -978,7 +978,7 @@ export default function OrderPage() {
                               onChange={(e) =>
                                 setGuestPassword(e.target.value)
                               }
-                              placeholder="минимум 6 символов"
+                              placeholder="минимум 8 символов"
                               autoComplete="new-password"
                             />
                           </div>

@@ -13,6 +13,7 @@ import {
   ProductPicker,
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
+import { includedVat, VAT_RATE } from "@/lib/vat";
 
 interface ReceiptItemDraft {
   productId: string;
@@ -258,6 +259,9 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
               <div className="wh-form-footer">
                 <div className="wh-form-total">
                   Итого (с НДС): <strong>{fmt(total)} ₽</strong>
+                  <span className="wh-form-vat">
+                    в т.ч. НДС {VAT_RATE}% — {fmt(includedVat(total))} ₽
+                  </span>
                 </div>
                 <div className="admin-form-actions">
                   <button

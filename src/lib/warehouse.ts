@@ -12,6 +12,9 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "./firebase-admin";
 import { getProductEffectivePrice } from "./types";
+import { includedVat, VAT_RATE } from "./vat";
+
+export { includedVat, VAT_RATE } from "./vat";
 
 // ─── Типы ────────────────────────────────────────────────
 
@@ -34,6 +37,8 @@ export interface WarehouseReceipt {
   comment?: string | null;
   items: StockDocItem[];
   total: number;
+  vatRate: number;
+  vatAmount: number;
   createdAt?: string | null;
 }
 
@@ -48,6 +53,8 @@ export interface CustomerDeal {
   comment?: string | null;
   items: StockDocItem[];
   total: number;
+  vatRate: number;
+  vatAmount: number;
   status: DealStatus;
   cancelReason?: string | null;
   createdAt?: string | null;
@@ -66,6 +73,8 @@ export interface BankPayment {
   receiptIds: string[];
   receiptNumbers: number[];
   amount: number;
+  vatRate: number;
+  vatAmount: number;
   isPaid: boolean;
   /** Дата фактического проведения платежа (YYYY-MM-DD) */
   paidAt?: string | null;
@@ -213,6 +222,11 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
     comment: data.comment ?? null,
     items: cleanItems(data.items),
     total: Number(data.total) || 0,
+    vatRate: Number(data.vatRate) || VAT_RATE,
+    vatAmount:
+      data.vatAmount !== undefined
+        ? Number(data.vatAmount) || 0
+        : includedVat(Number(data.total) || 0),
     createdAt: serializeTimestamp(data.createdAt),
   };
 }
@@ -242,21 +256,42 @@ export async function createReceipt(data: {
   const date = data.date || new Date().toISOString().slice(0, 10);
   const supplier = String(data.supplier || "").slice(0, 200);
   const total = itemsTotal(items);
-  const docRef = await db.collection("warehouseReceipts").add({
+  const vatAmount = includedVat(total);
+  const payNumber = await nextNumber("payment");
+  const docRef = db.collection("warehouseReceipts").doc();
+  const paymentRef = db.collection("bankPayments").doc();
+  const batch = db.batch();
+
+  batch.set(docRef, {
     number,
     date,
     supplier,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items,
     total,
+    vatRate: VAT_RATE,
+    vatAmount,
     createdAt: FieldValue.serverTimestamp(),
   });
-  // Проведение: товар приходит на склад
-  await applyStockDelta(items, 1);
-  // Автоматически создаём платёж поставщику в банке «в ожидании» —
-  // сумму вводить не нужно, в платеже уже финальная стоимость партии (с НДС)
-  const payNumber = await nextNumber("payment");
-  await db.collection("bankPayments").add({
+
+  // Поступление, изменение остатков и банковский счёт фиксируются одной
+  // атомарной операцией — в базе не останется частично оформленный документ.
+  const stockByProduct = new Map<string, number>();
+  for (const item of items) {
+    stockByProduct.set(
+      item.productId,
+      (stockByProduct.get(item.productId) || 0) + item.quantity
+    );
+  }
+  for (const [productId, quantity] of stockByProduct) {
+    batch.set(
+      db.collection("products").doc(productId),
+      { stockQty: FieldValue.increment(quantity) },
+      { merge: true }
+    );
+  }
+
+  batch.set(paymentRef, {
     number: payNumber,
     date,
     direction: "outgoing",
@@ -266,12 +301,16 @@ export async function createReceipt(data: {
     receiptIds: [docRef.id],
     receiptNumbers: [number],
     amount: total,
+    vatRate: VAT_RATE,
+    vatAmount,
     isPaid: false,
     paidAt: null,
     comment: `Оплата поставщику по приходному ордеру ПО-${number}`,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
+
+  await batch.commit();
   return { id: docRef.id, number };
 }
 
@@ -327,6 +366,11 @@ function mapDeal(id: string, data: any): CustomerDeal {
     comment: data.comment ?? null,
     items: cleanItems(data.items),
     total: Number(data.total) || 0,
+    vatRate: Number(data.vatRate) || VAT_RATE,
+    vatAmount:
+      data.vatAmount !== undefined
+        ? Number(data.vatAmount) || 0
+        : includedVat(Number(data.total) || 0),
     status: (data.status as DealStatus) || "new",
     cancelReason: data.cancelReason ?? null,
     createdAt: serializeTimestamp(data.createdAt),
@@ -359,20 +403,54 @@ export async function createDeal(data: {
   }
   const db = getAdminDb();
   const number = await nextNumber("deal");
-  const docRef = await db.collection("customerDeals").add({
+  const paymentNumber = await nextNumber("payment");
+  const date = data.date || new Date().toISOString().slice(0, 10);
+  const customerName = String(data.customerName).slice(0, 200);
+  const total = itemsTotal(items);
+  const vatAmount = includedVat(total);
+  const docRef = db.collection("customerDeals").doc();
+  const paymentRef = db.collection("bankPayments").doc();
+  const batch = db.batch();
+
+  batch.set(docRef, {
     number,
-    date: data.date || new Date().toISOString().slice(0, 10),
-    customerName: String(data.customerName).slice(0, 200),
+    date,
+    customerName,
     customerPhone: data.customerPhone
       ? String(data.customerPhone).slice(0, 40)
       : null,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items,
-    total: itemsTotal(items),
+    total,
+    vatRate: VAT_RATE,
+    vatAmount,
     status: "new",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
+
+  // Счёт покупателю появляется в банке одновременно с заказом. Он ещё не
+  // проведён и начнёт влиять на баланс только после фактической оплаты.
+  batch.set(paymentRef, {
+    number: paymentNumber,
+    date,
+    direction: "incoming",
+    counterparty: customerName,
+    dealIds: [docRef.id],
+    dealNumbers: [number],
+    receiptIds: [],
+    receiptNumbers: [],
+    amount: total,
+    vatRate: VAT_RATE,
+    vatAmount,
+    isPaid: false,
+    paidAt: null,
+    comment: `Счёт покупателю по заказу ЗК-${number}`,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await batch.commit();
   return { id: docRef.id, number };
 }
 
@@ -393,6 +471,41 @@ export async function postDeal(id: string): Promise<void> {
   });
 }
 
+/** Удалить/отвязать неоплаченные счета, связанные с отменённым заказом. */
+async function cleanupPendingDealPayments(
+  dealId: string,
+  db = getAdminDb()
+): Promise<void> {
+  const paySnap = await db
+    .collection("bankPayments")
+    .where("dealIds", "array-contains", dealId)
+    .get();
+  for (const doc of paySnap.docs) {
+    const payment = doc.data() as any;
+    if (payment.isPaid === true) continue;
+    const ids: string[] = Array.isArray(payment.dealIds)
+      ? [...payment.dealIds]
+      : [];
+    const numbers: number[] = Array.isArray(payment.dealNumbers)
+      ? [...payment.dealNumbers]
+      : [];
+    const index = ids.indexOf(dealId);
+    if (index < 0) continue;
+    ids.splice(index, 1);
+    numbers.splice(index, 1);
+    const hasLinks = ids.length > 0 || (payment.receiptIds || []).length > 0;
+    if (!hasLinks) {
+      await doc.ref.delete();
+    } else {
+      await doc.ref.update({
+        dealIds: ids,
+        dealNumbers: numbers,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+}
+
 /** Отменить заказ — вернуть товар на склад, если был проведён */
 export async function cancelDeal(
   id: string,
@@ -411,6 +524,7 @@ export async function cancelDeal(
     cancelReason: reason ? String(reason).slice(0, 300) : null,
     updatedAt: FieldValue.serverTimestamp(),
   });
+  await cleanupPendingDealPayments(id, db);
 }
 
 export async function deleteDeal(id: string): Promise<void> {
@@ -423,6 +537,7 @@ export async function deleteDeal(id: string): Promise<void> {
     await applyStockDelta(deal.items, 1);
   }
   await ref.delete();
+  await cleanupPendingDealPayments(id, db);
 }
 
 // ─── Банк (платежи) ─────────────────────────────────────
@@ -445,6 +560,11 @@ function mapPayment(id: string, data: any): BankPayment {
       ? data.receiptNumbers.map((n: any) => Number(n) || 0)
       : [],
     amount: Math.max(0, Number(data.amount) || 0),
+    vatRate: Number(data.vatRate) || VAT_RATE,
+    vatAmount:
+      data.vatAmount !== undefined
+        ? Math.max(0, Number(data.vatAmount) || 0)
+        : includedVat(Number(data.amount) || 0),
     isPaid: data.isPaid === true,
     paidAt: data.paidAt ? String(data.paidAt) : null,
     comment: data.comment ?? null,
@@ -508,6 +628,8 @@ export async function createPayment(data: {
     receiptIds,
     receiptNumbers,
     amount,
+    vatRate: VAT_RATE,
+    vatAmount: includedVat(amount),
     // По умолчанию платёж создаётся «в ожидании» — баланс не меняется,
     // проводится позже отдельной кнопкой
     isPaid,
@@ -541,8 +663,11 @@ export async function updatePayment(
       ? new Date().toISOString().slice(0, 10)
       : null;
   }
-  if (data.amount !== undefined)
+  if (data.amount !== undefined) {
     patch.amount = Math.max(0, Number(data.amount) || 0);
+    patch.vatRate = VAT_RATE;
+    patch.vatAmount = includedVat(patch.amount);
+  }
   if (data.comment !== undefined)
     patch.comment = data.comment ? String(data.comment).slice(0, 500) : null;
   if (data.date !== undefined) patch.date = String(data.date);

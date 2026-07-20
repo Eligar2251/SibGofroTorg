@@ -445,7 +445,7 @@ export default async function ProductPage({
                 effectivePrice != null && (
                   <div className="pdp-price-row">
                     <span className="pdp-price-current">
-                      {effectivePrice.toLocaleString("ru-RU")} ₽
+                      {effectivePrice.toLocaleString("ru-RU")}{"\u00a0₽"}
                     </span>
                     {oldPrice != null && (
                       <span className="pdp-price-old">

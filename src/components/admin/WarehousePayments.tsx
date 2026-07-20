@@ -21,6 +21,7 @@ import {
   Undo2,
   Pencil,
 } from "lucide-react";
+import { includedVat, VAT_RATE } from "@/lib/vat";
 
 export interface DealLinkOption {
   id: string;
@@ -446,7 +447,11 @@ export function PaymentForm({
 
               <div className="wh-form-footer">
                 <div className="wh-form-total">
-                  Сумма: <strong>{fmt(Number(amount) || 0)} ₽</strong>
+                  Сумма (с НДС): <strong>{fmt(Number(amount) || 0)} ₽</strong>
+                  <span className="wh-form-vat">
+                    в т.ч. НДС {VAT_RATE}% —{" "}
+                    {fmt(includedVat(Number(amount) || 0))} ₽
+                  </span>
                 </div>
                 <div className="admin-form-actions">
                   <button

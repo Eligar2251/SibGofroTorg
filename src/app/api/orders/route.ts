@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createOrder, getSettings } from "@/lib/firestore-queries";
 import {
   formatPhoneDisplay,
+  getUserById,
   normalizePhone,
   updateUserProfile,
   verifyUserSession,
@@ -45,19 +46,36 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const typeRaw = body.type === "inquiry" ? "inquiry" : "order";
+    const session = await verifyUserSession();
+    const account = session?.uid ? await getUserById(session.uid) : null;
     const customerType = body.customerType === "legal" ? "legal" : "individual";
     const isLegal = customerType === "legal";
 
-    const customerName = clip(body.customerName, MAX_NAME);
-    const customerPhoneRaw = clip(body.customerPhone, 40);
+    // У заявки «Узнать цену» контакты авторизованного клиента берутся только
+    // из его аккаунта. Так номер/имя другого человека из формы не смогут
+    // перезаписать профиль текущей сессии на общем компьютере.
+    let customerName = clip(body.customerName, MAX_NAME);
+    let customerPhoneRaw = clip(body.customerPhone, 40);
+    if (typeRaw === "inquiry" && account) {
+      customerName = clip(account.name, MAX_NAME) || "Клиент";
+      customerPhoneRaw = account.phoneDigits;
+    } else if (typeRaw === "inquiry" && !customerName) {
+      customerName = "Клиент";
+    }
+
     const customerEmail = body.customerEmail
       ? clip(body.customerEmail, 120)
-      : null;
+      : account?.email || null;
     const comment = body.comment ? clip(body.comment, MAX_COMMENT) : "";
 
-    if (!customerName || !customerPhoneRaw) {
+    if (!customerPhoneRaw || (typeRaw === "order" && !customerName)) {
       return NextResponse.json(
-        { error: "Имя и телефон обязательны" },
+        {
+          error:
+            typeRaw === "order"
+              ? "Имя и телефон обязательны"
+              : "Телефон обязателен",
+        },
         { status: 400 }
       );
     }
@@ -112,9 +130,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Сессия — единственный источник userId (не из body!)
-    const session = await verifyUserSession();
-    const finalPhoneDigits = session?.phone || phoneDigits;
+    // Сессия — единственный источник userId и номера аккаунта (не из body!).
+    const sessionPhoneDigits = session ? normalizePhone(session.phone) : null;
+    if (
+      typeRaw === "order" &&
+      sessionPhoneDigits &&
+      phoneDigits !== sessionPhoneDigits
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Номер заказа не совпадает с номером текущего аккаунта. Выйдите из кабинета, чтобы использовать другой номер.",
+        },
+        { status: 409 }
+      );
+    }
+    const finalPhoneDigits = sessionPhoneDigits || phoneDigits;
     const finalPhoneDisplay = formatPhoneDisplay(finalPhoneDigits);
 
     const commWhitelist = ["call", "whatsapp", "telegram", "max", "email"] as const;
@@ -188,9 +219,10 @@ export async function POST(request: NextRequest) {
 
     const createdOrder = await createOrder(orderData as any);
 
-    if (session?.uid) {
+    // Контактное лицо в конкретном заказе может отличаться от владельца
+    // аккаунта, поэтому имя профиля здесь принципиально не обновляем.
+    if (session?.uid && typeRaw === "order") {
       updateUserProfile(session.uid, {
-        name: customerName,
         email: customerEmail,
         customerType,
         companyName,

@@ -19,6 +19,7 @@ import {
   ProductPicker,
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
+import { includedVat, VAT_RATE } from "@/lib/vat";
 
 interface DealItemDraft {
   productId: string;
@@ -276,7 +277,10 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
 
               <div className="wh-form-footer">
                 <div className="wh-form-total">
-                  Итого: <strong>{fmt(total)} ₽</strong>
+                  Итого (с НДС): <strong>{fmt(total)} ₽</strong>
+                  <span className="wh-form-vat">
+                    в т.ч. НДС {VAT_RATE}% — {fmt(includedVat(total))} ₽
+                  </span>
                 </div>
                 <div className="admin-form-actions">
                   <button
@@ -298,8 +302,9 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                 </div>
               </div>
               <p className="wh-form-hint">
-                Заказ создаётся без списания. Кнопка «Провести» в списке
-                зарезервирует товар — спишет его с остатков склада.
+                Заказ создаётся без списания, а в банке автоматически появится
+                входящий счёт «в ожидании». Кнопка «Провести» в списке спишет
+                товар с остатков склада.
               </p>
             </form>
           </div>

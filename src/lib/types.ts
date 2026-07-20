@@ -65,6 +65,14 @@ export interface Promotion {
   color?: string | null;
   light?: string | null;
   deadline?: string | null;
+  /** Показывать эту акцию поверх публичных страниц. */
+  isPopup?: boolean | null;
+  /** Локальные дата и время, начиная с которых окно можно показать. */
+  popupStartAt?: string | null;
+  /** Задержка после открытия страницы, в секундах. */
+  popupDelaySeconds?: number | null;
+  /** Сколько секунд окно остаётся на экране до автозакрытия. */
+  popupDurationSeconds?: number | null;
 }
 
 export function getProductEffectivePrice(product: {

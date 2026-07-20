@@ -457,7 +457,12 @@ export default async function AdminWarehousePage({
                               </div>
                             ))}
                             <div className="admin-order__total">
-                              <span>Итого (с НДС)</span>
+                              <span>
+                                Итого (с НДС)
+                                <small className="wh-vat-note">
+                                  НДС {r.vatRate}%: {fmt(r.vatAmount)} ₽
+                                </small>
+                              </span>
                               <span>{fmt(r.total)} ₽</span>
                             </div>
                           </div>
@@ -593,7 +598,12 @@ export default async function AdminWarehousePage({
                           </div>
                         ))}
                         <div className="admin-order__total">
-                          <span>Итого</span>
+                          <span>
+                            Итого (с НДС)
+                            <small className="wh-vat-note">
+                              НДС {d.vatRate}%: {fmt(d.vatAmount)} ₽
+                            </small>
+                          </span>
                           <span>{fmt(d.total)} ₽</span>
                         </div>
                       </div>
@@ -923,6 +933,9 @@ export default async function AdminWarehousePage({
                               <> · проведён {fmtDate(p.paidAt)}</>
                             )}
                           </span>
+                        </div>
+                        <div className="bank-pay__vat">
+                          В том числе НДС {p.vatRate}%: {fmt(p.vatAmount)} ₽
                         </div>
                         {p.comment && (
                           <div className="bank-pay__comment">{p.comment}</div>

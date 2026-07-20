@@ -9,7 +9,6 @@ const isProd = process.env.NODE_ENV === "production";
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
-  swcMinify: true,
   reactStrictMode: true,
 
   images: {

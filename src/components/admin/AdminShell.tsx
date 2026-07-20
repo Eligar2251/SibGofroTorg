@@ -126,16 +126,26 @@ export function AdminShell({
 
       <div className="admin-mobile-bar">
         <div className="admin-mobile-bar__nav">
-          {nav.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="admin-mobile-bar__link"
-              title={link.label}
-            >
-              {link.icon}
-            </Link>
-          ))}
+          {nav.map((link) => {
+            const active =
+              link.href === `/${adminPath}`
+                ? pathname === link.href
+                : pathname.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`admin-mobile-bar__link${
+                  active ? " admin-mobile-bar__link--active" : ""
+                }`}
+                title={link.label}
+                aria-label={link.label}
+                aria-current={active ? "page" : undefined}
+              >
+                {link.icon}
+              </Link>
+            );
+          })}
         </div>
       </div>
 

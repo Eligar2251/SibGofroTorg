@@ -28,10 +28,10 @@ export async function POST(request: NextRequest) {
     }
 
     const ip = clientIp(request);
-    const rl = rateLimit(`user-register:${clientIp(request)}`, 10, 60 * 60 * 1000);
+    const rl = rateLimit(`user-login:${ip}`, 20, 15 * 60 * 1000);
     if (!rl.ok) {
       return NextResponse.json(
-        { error: "Слишком много регистраций с этого IP." },
+        { error: "Слишком много попыток входа. Попробуйте позже." },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
       );
     }
@@ -62,14 +62,17 @@ export async function POST(request: NextRequest) {
       name: user.name || undefined,
     });
 
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        phone: formatPhoneDisplay(user.phoneDigits),
-        name: user.name || null,
+    return NextResponse.json(
+      {
+        success: true,
+        user: {
+          id: user.id,
+          phone: formatPhoneDisplay(user.phoneDigits),
+          name: user.name || null,
+        },
       },
-    });
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error: unknown) {
     console.error("Login error:", error);
     const message =
