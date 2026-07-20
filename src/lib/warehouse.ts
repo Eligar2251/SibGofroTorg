@@ -10,6 +10,7 @@
 // =========================================================
 
 import { createHash } from "crypto";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "./firebase-admin";
 import { getProductEffectivePrice } from "./types";
@@ -256,84 +257,68 @@ function mapCounterparty(id: string, data: any): Counterparty {
   };
 }
 
-export async function getCounterparties(): Promise<Counterparty[]> {
-  const db = getAdminDb();
-  const [counterpartySnap, receiptSnap, dealSnap, supplierPriceSnap] =
-    await Promise.all([
-      db.collection("counterparties").get(),
-      db.collection("warehouseReceipts").get(),
-      db.collection("customerDeals").get(),
-      db.collectionGroup("supplierPrices").get(),
-    ]);
-  const map = new Map<string, Counterparty>();
-  for (const doc of counterpartySnap.docs) {
-    map.set(doc.id, mapCounterparty(doc.id, doc.data()));
+async function fetchCounterpartyRows(): Promise<Counterparty[]> {
+  const snap = await getAdminDb().collection("counterparties").get();
+  return snap.docs.map((doc) => mapCounterparty(doc.id, doc.data()));
+}
+
+async function fetchSupplierPriceRows(): Promise<
+  { counterpartyId: string; productId: string; price: number }[]
+> {
+  const snap = await getAdminDb().collectionGroup("supplierPrices").get();
+  return snap.docs
+    .map((doc) => ({
+      counterpartyId: doc.ref.parent.parent?.id || "",
+      productId: String(doc.data().productId || doc.id),
+      price: Math.max(0, Number(doc.data().price) || 0),
+    }))
+    .filter((row) => row.counterpartyId && row.productId && row.price > 0);
+}
+
+const getCachedCounterpartyRows = unstable_cache(
+  fetchCounterpartyRows,
+  ["warehouse-counterparties"],
+  { revalidate: 60, tags: ["warehouse-counterparties"] }
+);
+
+const getCachedSupplierPriceRows = unstable_cache(
+  fetchSupplierPriceRows,
+  ["warehouse-supplier-prices"],
+  { revalidate: 60, tags: ["warehouse-supplier-prices"] }
+);
+
+function invalidateCounterpartyCache(includeSupplierPrices = false) {
+  revalidateTag("warehouse-counterparties", { expire: 0 });
+  if (includeSupplierPrices) {
+    revalidateTag("warehouse-supplier-prices", { expire: 0 });
   }
-  for (const priceDoc of supplierPriceSnap.docs) {
-    const counterpartyId = priceDoc.ref.parent.parent?.id;
-    const counterparty = counterpartyId ? map.get(counterpartyId) : null;
+}
+
+export async function getCounterparties(options?: {
+  includeSupplierPrices?: boolean;
+}): Promise<Counterparty[]> {
+  const [baseRows, priceRows] = await Promise.all([
+    getCachedCounterpartyRows(),
+    options?.includeSupplierPrices
+      ? getCachedSupplierPriceRows()
+      : Promise.resolve([]),
+  ]);
+  // Кэшированный массив не мутируем: один запрос с ценами не должен менять
+  // результат другого запроса без цен.
+  const rows = baseRows.map((row) => ({
+    ...row,
+    roles: [...row.roles],
+    supplierPrices: { ...(row.supplierPrices || {}) },
+  }));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const priceRow of priceRows) {
+    const counterparty = byId.get(priceRow.counterpartyId);
     if (!counterparty) continue;
-    const data = priceDoc.data();
-    const productId = String(data.productId || priceDoc.id);
-    const price = Math.max(0, Number(data.price) || 0);
-    if (!productId || price <= 0) continue;
     counterparty.supplierPrices = {
       ...(counterparty.supplierPrices || {}),
-      [productId]: price,
+      [priceRow.productId]: priceRow.price,
     };
   }
-
-  function mergeLegacy(
-    role: CounterpartyRole,
-    nameValue: unknown,
-    data: any
-  ) {
-    const name = String(nameValue || "").trim();
-    if (!name) return;
-    const id = String(data.counterpartyId || counterpartyIdForName(name));
-    const existing = map.get(id);
-    if (existing) {
-      if (!existing.roles.includes(role)) existing.roles.push(role);
-      for (const field of [
-        "phone",
-        "email",
-        "inn",
-        "kpp",
-        "address",
-        "contactName",
-      ] as (keyof CounterpartyDetails)[]) {
-        if (!existing[field] && data[field]) existing[field] = String(data[field]);
-      }
-      return;
-    }
-    map.set(id, {
-      id,
-      name,
-      normalizedName: normalizeCounterpartyName(name),
-      roles: [role],
-      supplierPrices: {},
-      phone: data.phone || data.customerPhone || null,
-      email: data.email || null,
-      inn: data.inn || null,
-      kpp: data.kpp || null,
-      address: data.address || null,
-      contactName: data.contactName || null,
-      comment: null,
-      createdAt: null,
-      updatedAt: null,
-    });
-  }
-
-  for (const doc of receiptSnap.docs) {
-    const data = doc.data();
-    mergeLegacy("supplier", data.supplier, data);
-  }
-  for (const doc of dealSnap.docs) {
-    const data = doc.data();
-    mergeLegacy("customer", data.customerName, data);
-  }
-
-  const rows = [...map.values()];
   rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
   return rows;
 }
@@ -378,11 +363,13 @@ export async function saveCounterparty(data: {
       },
       { merge: true }
     );
+  invalidateCounterpartyCache();
   return { id };
 }
 
 export async function deleteCounterparty(id: string): Promise<void> {
   await getAdminDb().collection("counterparties").doc(id).delete();
+  invalidateCounterpartyCache(true);
 }
 
 function cleanItems(items: any[]): StockDocItem[] {
@@ -484,6 +471,59 @@ export interface WarehouseStockRow {
   isVisible: boolean;
 }
 
+export interface StockOrigin {
+  id: string;
+  productId: string;
+  receiptId: string;
+  receiptNumber: number;
+  date: string;
+  supplier: string;
+  counterpartyId?: string | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+function stockOriginId(receiptId: string, productId: string): string {
+  return `${receiptId}_${productId}`;
+}
+
+function stockOriginData(
+  receipt: Pick<
+    WarehouseReceipt,
+    "id" | "number" | "date" | "supplier" | "counterpartyId"
+  >,
+  item: StockDocItem
+) {
+  return {
+    productId: item.productId,
+    receiptId: receipt.id,
+    receiptNumber: receipt.number,
+    date: receipt.date,
+    supplier: receipt.supplier,
+    counterpartyId: receipt.counterpartyId ?? null,
+    quantity: item.quantity,
+    unitPrice: item.price,
+    lineTotal: item.lineTotal,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+function mapStockOrigin(id: string, data: any): StockOrigin {
+  return {
+    id,
+    productId: String(data.productId || ""),
+    receiptId: String(data.receiptId || ""),
+    receiptNumber: Number(data.receiptNumber) || 0,
+    date: String(data.date || ""),
+    supplier: String(data.supplier || ""),
+    counterpartyId: data.counterpartyId ?? null,
+    quantity: Number(data.quantity) || 0,
+    unitPrice: Number(data.unitPrice) || 0,
+    lineTotal: Number(data.lineTotal) || 0,
+  };
+}
+
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   const db = getAdminDb();
   const snap = await db.collection("products").get();
@@ -517,6 +557,62 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   });
   rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
   return rows;
+}
+
+export async function getProductStockOrigins(
+  productId: string
+): Promise<StockOrigin[]> {
+  if (!productId) return [];
+  const db = getAdminDb();
+  const markerRef = db.collection("stockOriginLookups").doc(productId);
+  const [originSnap, markerSnap] = await Promise.all([
+    db.collection("stockOrigins").where("productId", "==", productId).get(),
+    markerRef.get(),
+  ]);
+  if (!originSnap.empty) {
+    return originSnap.docs
+      .map((doc) => mapStockOrigin(doc.id, doc.data()))
+      .sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) || b.receiptNumber - a.receiptNumber
+      );
+  }
+  if (markerSnap.exists) return [];
+
+  // Одноразовый ленивый перенос старых проведённых поступлений. Дорогой
+  // просмотр выполняется только при первом открытии истории конкретного
+  // товара; дальше читается компактная индексная коллекция stockOrigins.
+  const receiptSnap = await db
+    .collection("warehouseReceipts")
+    .orderBy("number", "desc")
+    .limit(500)
+    .get();
+  const origins: StockOrigin[] = [];
+  const batch = db.batch();
+  for (const doc of receiptSnap.docs) {
+    const receipt = mapReceipt(doc.id, doc.data());
+    if (receipt.status !== "posted") continue;
+    for (const item of receipt.items) {
+      if (item.productId !== productId) continue;
+      const id = stockOriginId(receipt.id, productId);
+      origins.push(
+        mapStockOrigin(id, stockOriginData(receipt, item))
+      );
+      batch.set(
+        db.collection("stockOrigins").doc(id),
+        stockOriginData(receipt, item),
+        { merge: true }
+      );
+    }
+  }
+  batch.set(markerRef, {
+    migratedAt: FieldValue.serverTimestamp(),
+    originsCount: origins.length,
+  });
+  await batch.commit();
+  return origins.sort(
+    (a, b) => b.date.localeCompare(a.date) || b.receiptNumber - a.receiptNumber
+  );
 }
 
 export async function setWarehouseStock(
@@ -571,6 +667,14 @@ export async function getReceipts(): Promise<WarehouseReceipt[]> {
     .limit(200)
     .get();
   return snap.docs.map((d) => mapReceipt(d.id, d.data()));
+}
+
+export async function getReceiptById(
+  id: string
+): Promise<WarehouseReceipt | null> {
+  if (!id) return null;
+  const snap = await getAdminDb().collection("warehouseReceipts").doc(id).get();
+  return snap.exists ? mapReceipt(snap.id, snap.data()) : null;
 }
 
 export async function createReceipt(data: {
@@ -667,6 +771,7 @@ export async function createReceipt(data: {
   });
 
   await batch.commit();
+  invalidateCounterpartyCache(true);
   return { id: docRef.id, number };
 }
 
@@ -754,6 +859,29 @@ export async function updateReceipt(
           { merge: true }
         );
       }
+      const currentProductIds = new Set(items.map((item) => item.productId));
+      for (const oldItem of previous.items) {
+        if (currentProductIds.has(oldItem.productId)) continue;
+        transaction.delete(
+          db
+            .collection("stockOrigins")
+            .doc(stockOriginId(id, oldItem.productId))
+        );
+      }
+      const originReceipt = {
+        id,
+        number: previous.number,
+        date: data.date,
+        supplier,
+        counterpartyId: counterpartyIdForName(supplier),
+      };
+      for (const item of items) {
+        transaction.set(
+          db.collection("stockOrigins").doc(stockOriginId(id, item.productId)),
+          stockOriginData(originReceipt, item),
+          { merge: true }
+        );
+      }
       transaction.update(ref, {
         date: data.date,
         supplier,
@@ -803,6 +931,7 @@ export async function updateReceipt(
     });
   }
   await batch.commit();
+  invalidateCounterpartyCache(true);
 }
 
 export async function postReceipt(id: string): Promise<void> {
@@ -866,6 +995,14 @@ export async function postReceipt(id: string): Promise<void> {
         { merge: true }
       );
     }
+    for (const item of receipt.items) {
+      const originRef = db
+        .collection("stockOrigins")
+        .doc(stockOriginId(receipt.id, item.productId));
+      transaction.set(originRef, stockOriginData(receipt, item), {
+        merge: true,
+      });
+    }
     transaction.update(receiptRef, {
       status: "posted",
       postedAt: FieldValue.serverTimestamp(),
@@ -884,6 +1021,15 @@ export async function deleteReceipt(id: string): Promise<void> {
     await applyStockDelta(receipt.items, -1);
   }
   await ref.delete();
+  const originSnap = await db
+    .collection("stockOrigins")
+    .where("receiptId", "==", id)
+    .get();
+  if (!originSnap.empty) {
+    const originBatch = db.batch();
+    originSnap.docs.forEach((doc) => originBatch.delete(doc.ref));
+    await originBatch.commit();
+  }
   // Чистим привязанные платежи: «в ожидании» только с этим поступлением —
   // удаляем; с несколькими ордерами — просто отвязываем это поступление.
   // Проведённые платежи (история денег) не трогаем.
@@ -1046,6 +1192,7 @@ export async function createDeal(data: {
   });
 
   await batch.commit();
+  invalidateCounterpartyCache();
   return { id: docRef.id, number };
 }
 
@@ -1179,6 +1326,7 @@ export async function updateDeal(
     });
   }
   await batch.commit();
+  invalidateCounterpartyCache();
 }
 
 /** Отпустить заказ — списать товар со склада после оплаты */
@@ -1436,6 +1584,7 @@ export async function createPayment(data: {
     updatedAt: FieldValue.serverTimestamp(),
   });
   await batch.commit();
+  invalidateCounterpartyCache();
   return { id: docRef.id, number };
 }
 

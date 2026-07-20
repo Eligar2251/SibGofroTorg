@@ -21,6 +21,7 @@ import {
 import {
   getWarehouseStock,
   getReceipts,
+  getReceiptById,
   getDeals,
   getPayments,
   getBankSummary,
@@ -28,6 +29,7 @@ import {
   getReceiptPaidMap,
   getCounterpartyBalances,
   getCounterparties,
+  getProductStockOrigins,
   type BankPayment,
 } from "@/lib/warehouse";
 import {
@@ -113,6 +115,8 @@ export default async function AdminWarehousePage({
     bdir?: string;
     bstat?: string;
     bsort?: string;
+    product?: string;
+    receipt?: string;
   }>;
 }) {
   const { adminPath } = await params;
@@ -135,19 +139,18 @@ export default async function AdminWarehousePage({
   const bstat = sp.bstat === "paid" || sp.bstat === "pending" ? sp.bstat : "all";
   const bsort = sp.bsort === "asc" ? "asc" : "desc";
 
-  const stock = await getWarehouseStock();
-  const stockById = new Map(stock.map((p) => [p.id, p.stockQty]));
-  const pickerProducts: PickerProduct[] = stock.map((p) => ({
-    id: p.id,
-    name: p.name,
-    sku: p.sku,
-    price: p.price,
-    priceWholesale: p.priceWholesale,
-    stockQty: p.stockQty,
-  }));
+  const selectedProductId =
+    activeTab === "stock" && stockSub === "stock"
+      ? String(sp.product || "").trim()
+      : "";
+  const selectedReceiptId = String(sp.receipt || "").trim();
 
+  // Каждая вкладка читает только собственные коллекции. Раньше любой переход
+  // в «Учёт» одновременно загружал товары, все поступления, заказы, платежи
+  // и повторно те же документы через контрагентов.
+  const needStock = activeTab === "stock" || activeTab === "deals";
   const needReceipts =
-    activeTab === "stock" ||
+    (activeTab === "stock" && stockSub === "receipts") ||
     activeTab === "bank" ||
     activeTab === "counterparties";
   const needDeals =
@@ -158,13 +161,53 @@ export default async function AdminWarehousePage({
     activeTab === "deals" ||
     activeTab === "bank" ||
     (activeTab === "stock" && stockSub === "receipts");
+  const needCounterparties =
+    activeTab === "deals" ||
+    activeTab === "bank" ||
+    activeTab === "counterparties" ||
+    (activeTab === "stock" && stockSub === "receipts");
 
-  const [receipts, deals, payments, counterpartyRows] = await Promise.all([
+  const [
+    stock,
+    loadedReceipts,
+    deals,
+    payments,
+    counterpartyRows,
+    stockOrigins,
+    focusedReceipt,
+  ] = await Promise.all([
+    needStock ? getWarehouseStock() : Promise.resolve([]),
     needReceipts ? getReceipts() : Promise.resolve([]),
     needDeals ? getDeals() : Promise.resolve([]),
     needPayments ? getPayments() : Promise.resolve([]),
-    getCounterparties(),
+    needCounterparties
+      ? getCounterparties({
+          includeSupplierPrices:
+            activeTab === "stock" && stockSub === "receipts",
+        })
+      : Promise.resolve([]),
+    selectedProductId
+      ? getProductStockOrigins(selectedProductId)
+      : Promise.resolve([]),
+    activeTab === "stock" && stockSub === "receipts" && selectedReceiptId
+      ? getReceiptById(selectedReceiptId)
+      : Promise.resolve(null),
   ]);
+  const receipts =
+    focusedReceipt &&
+    !loadedReceipts.some((receipt) => receipt.id === focusedReceipt.id)
+      ? [focusedReceipt, ...loadedReceipts]
+      : loadedReceipts;
+
+  const stockById = new Map(stock.map((p) => [p.id, p.stockQty]));
+  const pickerProducts: PickerProduct[] = stock.map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    price: p.price,
+    priceWholesale: p.priceWholesale,
+    stockQty: p.stockQty,
+  }));
 
   const bankSummary = activeTab === "bank" ? getBankSummary(payments) : null;
   const dealPaidMap = getDealPaidMap(payments);
@@ -257,6 +300,17 @@ export default async function AdminWarehousePage({
   const totalUnits = stock.reduce((s, p) => s + p.stockQty, 0);
   const stockValue = stock.reduce((s, p) => s + p.stockQty * (p.price ?? 0), 0);
   const zeroStock = stock.filter((p) => p.stockQty <= 0).length;
+  const selectedStockProduct = selectedProductId
+    ? stock.find((product) => product.id === selectedProductId) || null
+    : null;
+  const originsTotalQty = stockOrigins.reduce(
+    (sum, origin) => sum + origin.quantity,
+    0
+  );
+  const originsTotalSum = stockOrigins.reduce(
+    (sum, origin) => sum + origin.lineTotal,
+    0
+  );
 
   // ── Банк: фильтрация, сортировка, группировка по месяцам ──
   let bankList: BankPayment[] = [];
@@ -345,7 +399,7 @@ export default async function AdminWarehousePage({
             key={t.key}
             href={`/${ADMIN_PATH}/warehouse?tab=${t.key}`}
             className={`admin-filter${activeTab === t.key ? " admin-filter--active" : ""}`}
-          >
+           prefetch={false}>
             {t.icon}
             {t.label}
           </Link>
@@ -359,14 +413,14 @@ export default async function AdminWarehousePage({
             <Link
               href={`/${ADMIN_PATH}/warehouse?tab=stock`}
               className={`admin-filter${stockSub === "stock" ? " admin-filter--active" : ""}`}
-            >
+             prefetch={false}>
               <Boxes size={12} />
               Остатки
             </Link>
             <Link
               href={`/${ADMIN_PATH}/warehouse?tab=stock&sub=receipts`}
               className={`admin-filter${stockSub === "receipts" ? " admin-filter--active" : ""}`}
-            >
+             prefetch={false}>
               <Truck size={12} />
               Поступления
             </Link>
@@ -395,6 +449,87 @@ export default async function AdminWarehousePage({
                 </div>
               </div>
 
+              {selectedStockProduct && (
+                <section className="stock-origins" id="stock-origins">
+                  <div className="stock-origins__head">
+                    <div>
+                      <span className="stock-origins__eyebrow">
+                        История поступлений товара
+                      </span>
+                      <h2>{selectedStockProduct.name}</h2>
+                      <p>
+                        Артикул: {selectedStockProduct.sku || "—"} · текущий
+                        остаток: <strong>{fmt(selectedStockProduct.stockQty)} шт.</strong>
+                      </p>
+                    </div>
+                    <Link
+                      href={`/${ADMIN_PATH}/warehouse?tab=stock`}
+                      prefetch={false}
+                      className="admin-btn admin-btn--ghost"
+                    >
+                      Закрыть
+                    </Link>
+                  </div>
+                  <div className="stock-origins__summary">
+                    <span>
+                      Поставок: <strong>{stockOrigins.length}</strong>
+                    </span>
+                    <span>
+                      Поступило: <strong>{fmt(originsTotalQty)} шт.</strong>
+                    </span>
+                    <span>
+                      На сумму: <strong>{fmt(originsTotalSum)} ₽</strong>
+                    </span>
+                  </div>
+                  {stockOrigins.length > 0 ? (
+                    <div className="admin-table-wrap">
+                      <table className="admin-table stock-origins__table">
+                        <thead>
+                          <tr>
+                            <th>Поступление</th>
+                            <th>Дата</th>
+                            <th>Поставщик</th>
+                            <th style={{ textAlign: "right" }}>Количество</th>
+                            <th style={{ textAlign: "right" }}>Цена</th>
+                            <th style={{ textAlign: "right" }}>Сумма</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stockOrigins.map((origin) => (
+                            <tr key={origin.id}>
+                              <td>
+                                <Link
+                                  href={`/${ADMIN_PATH}/warehouse?tab=stock&sub=receipts&receipt=${origin.receiptId}#receipt-${origin.receiptId}`}
+                                  prefetch={false}
+                                  className="stock-origin-link"
+                                >
+                                  ПО-{origin.receiptNumber} →
+                                </Link>
+                              </td>
+                              <td>{fmtDate(origin.date)}</td>
+                              <td>{origin.supplier || "—"}</td>
+                              <td style={{ textAlign: "right" }}>
+                                {fmt(origin.quantity)} шт.
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                {fmt(origin.unitPrice)} ₽
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                <strong>{fmt(origin.lineTotal)} ₽</strong>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="stock-origins__empty">
+                      Проведённых поступлений этого товара пока нет.
+                    </div>
+                  )}
+                </section>
+              )}
+
               <form
                 method="GET"
                 action={`/${ADMIN_PATH}/warehouse`}
@@ -415,7 +550,7 @@ export default async function AdminWarehousePage({
                   <Link
                     href={`/${ADMIN_PATH}/warehouse?tab=stock`}
                     className="admin-btn admin-btn--ghost"
-                  >
+                   prefetch={false}>
                     Сбросить
                   </Link>
                 )}
@@ -438,7 +573,14 @@ export default async function AdminWarehousePage({
                         {filteredStock.map((p) => (
                           <tr key={p.id}>
                             <td>
-                              {p.name}
+                              <span className="wh-stock-product-name">{p.name}</span>
+                              <Link
+                                href={`/${ADMIN_PATH}/warehouse?tab=stock&product=${p.id}#stock-origins`}
+                                prefetch={false}
+                                className="wh-stock-origin-link"
+                              >
+                                Откуда поступил →
+                              </Link>
                               {!p.isVisible && (
                                 <span
                                   className="admin-badge admin-badge--muted"
@@ -484,7 +626,15 @@ export default async function AdminWarehousePage({
                   const paid = receiptPaidMap.get(r.id) || 0;
                   const isFullyPaid = r.total > 0 && paid >= r.total;
                   return (
-                    <div key={r.id} className="admin-order">
+                    <div
+                      key={r.id}
+                      id={`receipt-${r.id}`}
+                      className={`admin-order${
+                        selectedReceiptId === r.id
+                          ? " admin-order--highlighted"
+                          : ""
+                      }`}
+                    >
                       <div className="admin-order__row">
                         <div className="admin-order__main">
                           <div className="admin-order__top">
@@ -539,6 +689,44 @@ export default async function AdminWarehousePage({
                                 {r.items.length}
                               </span>
                             </div>
+                            {r.contactName && (
+                              <div className="admin-order__meta">
+                                <span className="admin-order__meta-label wh-meta-label">
+                                  Контакт:
+                                </span>
+                                <span className="admin-order__meta-val">
+                                  {r.contactName}
+                                </span>
+                              </div>
+                            )}
+                            {r.phone && (
+                              <div className="admin-order__meta">
+                                <span className="admin-order__meta-label wh-meta-label">
+                                  Телефон:
+                                </span>
+                                <a href={`tel:${r.phone}`}>{r.phone}</a>
+                              </div>
+                            )}
+                            {r.inn && (
+                              <div className="admin-order__meta">
+                                <span className="admin-order__meta-label wh-meta-label">
+                                  ИНН:
+                                </span>
+                                <span className="admin-order__meta-val">
+                                  {r.inn}{r.kpp ? ` · КПП ${r.kpp}` : ""}
+                                </span>
+                              </div>
+                            )}
+                            {r.address && (
+                              <div className="admin-order__meta">
+                                <span className="admin-order__meta-label wh-meta-label">
+                                  Адрес:
+                                </span>
+                                <span className="admin-order__meta-val">
+                                  {r.address}
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="admin-order__items">
@@ -1040,7 +1228,7 @@ export default async function AdminWarehousePage({
               <Link
                 href={`/${ADMIN_PATH}/warehouse?tab=bank`}
                 className="admin-btn admin-btn--ghost"
-              >
+               prefetch={false}>
                 Сбросить
               </Link>
             )}

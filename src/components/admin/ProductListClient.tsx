@@ -252,13 +252,21 @@ export function ProductListClient({
                       )}
                     </td>
                     <td>
-                      <span
-                        className={`admin-stock-count${
-                          product.stockQty <= 0 ? " admin-stock-count--zero" : ""
-                        }`}
+                      <Link
+                        href={`/${adminPath}/warehouse?tab=stock&product=${product.id}#stock-origins`}
+                        prefetch={false}
+                        title="Открыть историю поступлений товара"
                       >
-                        {product.stockQty.toLocaleString("ru-RU")} шт.
-                      </span>
+                        <span
+                          className={`admin-stock-count${
+                            product.stockQty <= 0
+                              ? " admin-stock-count--zero"
+                              : ""
+                          }`}
+                        >
+                          {product.stockQty.toLocaleString("ru-RU")} шт.
+                        </span>
+                      </Link>
                     </td>
                     <td>
                       <span
@@ -298,6 +306,7 @@ export function ProductListClient({
                       <div className="admin-actions">
                         <Link
                           href={`/${adminPath}/products/${product.id}`}
+                          prefetch={false}
                           className="admin-btn admin-btn--icon"
                           title="Редактировать"
                         >
@@ -305,6 +314,7 @@ export function ProductListClient({
                         </Link>
                         <Link
                           href={`/catalog/product/${product.slug}`}
+                          prefetch={false}
                           className="admin-btn admin-btn--icon"
                           title="Просмотр"
                           target="_blank"

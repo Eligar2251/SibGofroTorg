@@ -19,8 +19,8 @@ export async function GET() {
   try {
     const db = getAdminDb();
     const [usersSnap, ordersSnap] = await Promise.all([
-      db.collection("users").orderBy("createdAt", "desc").get(),
-      db.collection("orders").orderBy("createdAt", "desc").get(),
+      db.collection("users").orderBy("createdAt", "desc").limit(200).get(),
+      db.collection("orders").orderBy("createdAt", "desc").limit(500).get(),
     ]);
 
     const orders = ordersSnap.docs.map((d) => {

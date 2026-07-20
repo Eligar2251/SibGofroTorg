@@ -57,13 +57,13 @@ export default async function AdminProductsPage({
           <Link
             href={`/${ADMIN_PATH}/products/bulk`}
             className="admin-btn admin-btn--ghost"
-          >
+           prefetch={false}>
             <Pencil size={15} /> Массовое редактирование
           </Link>
           <Link
             href={`/${ADMIN_PATH}/products/new`}
             className="admin-btn admin-btn--primary"
-          >
+           prefetch={false}>
             <Plus size={16} /> Добавить товар
           </Link>
         </div>

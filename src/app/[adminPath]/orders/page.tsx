@@ -122,7 +122,7 @@ export default async function AdminOrdersPage({
               Найти
             </button>
             {searchQuery && (
-              <Link href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${activeType}`} className="admin-btn admin-btn--ghost">
+              <Link href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${activeType}`} className="admin-btn admin-btn--ghost" prefetch={false}>
                 Сбросить
               </Link>
             )}
@@ -139,7 +139,7 @@ export default async function AdminOrdersPage({
               key={t.value}
               href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${t.value}${searchQuery ? `&q=${searchQuery}` : ""}`}
               className={`admin-filter${activeType === t.value ? " admin-filter--active" : ""}`}
-            >
+             prefetch={false}>
               {t.token && (
                 <GlyphIcon value={t.token} size={13} />
               )}
@@ -155,7 +155,7 @@ export default async function AdminOrdersPage({
             key={opt.value}
             href={`/${ADMIN_PATH}/orders?status=${opt.value}&type=${activeType}${searchQuery ? `&q=${searchQuery}` : ""}`}
             className={`admin-filter${activeFilter === opt.value ? " admin-filter--active" : ""}`}
-          >
+           prefetch={false}>
             {opt.label}
           </Link>
         ))}

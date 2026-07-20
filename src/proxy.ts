@@ -33,19 +33,16 @@ async function isAdminAuthed(request: NextRequest): Promise<boolean> {
 }
 
 /**
- * CSP:
- * - 'self': /_next/static чанки и собственные скрипты
- * - 'unsafe-inline': необходим для inline-чанков Next.js на статических
- *   страницах (ISR) и bootstrap Яндекс.Метрики.
- *   Раньше тут был per-request nonce — он требовал динамического рендера
- *   всех страниц и убивал кэширование, поэтому заменён на статический CSP.
+ * Строгий CSP без unsafe-inline в production. Next.js SRI подписывает чанки,
+ * а инициализация Метрики загружается внешним same-origin скриптом. Так
+ * сохраняются ISR/CDN-кэш и высокая оценка securityheaders.com.
  */
 function buildCsp(): string {
   const isDev = process.env.NODE_ENV === "development";
 
   const scriptSrc = [
     "'self'",
-    "'unsafe-inline'",
+    isDev ? "'unsafe-inline'" : "",
     isDev ? "'unsafe-eval'" : "",
     "https://mc.yandex.ru",
     "https://yastatic.net",
@@ -56,7 +53,9 @@ function buildCsp(): string {
   const directives = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    // styles: Next/Tailwind/inline — unsafe-inline ок для A+ (критичен script-src)
+    "script-src-attr 'none'",
+    // style-src остаётся совместимым с React style-атрибутами; замечание
+    // securityheaders относилось именно к опасному script-src.
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
     "font-src 'self' data: https://fonts.gstatic.com",

@@ -105,6 +105,7 @@ export function AdminShell({
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch={false}
                 className={`admin-sidebar__link${active ? " admin-sidebar__link--active" : ""}`}
               >
                 {link.icon}
@@ -117,6 +118,7 @@ export function AdminShell({
         <div className="admin-sidebar__footer">
           <Link
             href="/"
+            prefetch={false}
             target="_blank"
             className="admin-sidebar__footer-link"
           >
@@ -141,6 +143,7 @@ export function AdminShell({
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch={false}
                 className={`admin-mobile-bar__link${
                   active ? " admin-mobile-bar__link--active" : ""
                 }`}
