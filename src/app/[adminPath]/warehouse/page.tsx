@@ -121,24 +121,6 @@ export default async function AdminWarehousePage({
     receipt?: string;
   }>;
 }) {
-
-export default async function AdminWarehousePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ adminPath: string }>;
-  searchParams: Promise<{
-    tab?: string;
-    sub?: string;
-    q?: string;
-    bq?: string;
-    bdir?: string;
-    bstat?: string;
-    bsort?: string;
-    product?: string;
-    receipt?: string;
-  }>;
-}) {
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
