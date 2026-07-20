@@ -459,24 +459,29 @@ export function ReceiptPostButton({
     setSaving(false);
   }
 
+  if (!paidEnough) {
+    return (
+      <div className="admin-status__label-hint">
+        <Loader2 size={14} className="animate-pulse" />
+        Ожидает оплаты в банке
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
       className="admin-status__btn admin-status__btn--primary"
       onClick={post}
-      disabled={saving || !paidEnough}
-      title={
-        paidEnough
-          ? "Добавить товары на склад"
-          : "Сначала подтвердите оплату счёта в банке"
-      }
+      disabled={saving}
+      title="Добавить товары на склад"
     >
       {saving ? (
         <Loader2 size={14} className="animate-spin" />
       ) : (
         <CheckCircle size={14} />
       )}
-      {paidEnough ? "Провести на склад" : "Сначала оплатите счёт"}
+      Провести на склад
     </button>
   );
 }
