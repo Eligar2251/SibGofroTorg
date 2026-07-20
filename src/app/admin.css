@@ -220,6 +220,7 @@
   transition: color 0.15s, background 0.15s;
   position: relative;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .admin-sidebar__link svg {
@@ -352,7 +353,7 @@
 .admin-mobile-bar__link {
   min-width: 0;
   height: 40px;
-  padding: 0;
+  padding: 0 4px;
   color: rgba(255,255,255,0.48);
   border-radius: var(--adm-r-sm);
   transition: color 0.15s, background-color 0.15s;
@@ -360,6 +361,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  white-space: nowrap;
 }
 
 .admin-mobile-bar__link svg {
@@ -1344,6 +1346,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .admin-order__meta-label {

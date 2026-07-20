@@ -22,6 +22,14 @@ interface PopupCampaign {
   delaySeconds: number;
   durationSeconds: number;
   frequency: CampaignFrequency;
+  // New fields
+  isProductType?: boolean;
+  discountPercent?: number | null;
+  stockLevel?: number | null;
+  tags?: string | null;
+  oldPrice?: number | null;
+  newPrice?: number | null;
+  timerSeconds?: number | null;
 }
 
 const STORAGE_PREFIX = "sib-info-window:";

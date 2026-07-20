@@ -294,6 +294,7 @@ select {
   display: flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
 }
 
 /* ══════════════════════════════════════
@@ -553,6 +554,7 @@ select {
   text-decoration: none;
   color: var(--ink-light);
   font-size: 15px;
+  white-space: nowrap;
 }
 
 .mobile-simple-link {
@@ -563,6 +565,7 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 
 /* ══════════════════════════════════════
@@ -704,6 +707,7 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
 }
 
 .btn-primary:hover {
@@ -726,6 +730,7 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
 }
 
 .btn-outline:hover {
@@ -1456,6 +1461,7 @@ select {
   color: var(--deal-color, var(--green));
   text-decoration: none;
   margin-top: auto;
+  white-space: nowrap;
 }
 
 .deal-card__cta:hover {
@@ -1651,6 +1657,7 @@ select {
   text-decoration: none;
   transition: background-color var(--transition);
   width: fit-content;
+  white-space: nowrap;
 }
 
 .map-cta:hover {
@@ -1767,6 +1774,7 @@ select {
   cursor: pointer;
   transition: background-color var(--transition);
   font-family: var(--font-body);
+  white-space: nowrap;
 }
 
 .qof-submit:hover {
@@ -2406,6 +2414,7 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
 }
 
 .pcc__actions {
@@ -4807,6 +4816,7 @@ select {
   color: var(--ink);
   text-decoration: none;
   transition: color var(--transition);
+  white-space: nowrap;
 }
 
 .checkout-summary__contact-phone:hover {
@@ -4992,6 +5002,7 @@ select {
   border-radius: 8px;
   text-decoration: none;
   transition: background-color var(--transition);
+  white-space: nowrap;
 }
 
 .success-btn-primary:hover {
@@ -5012,6 +5023,7 @@ select {
   border-radius: 8px;
   text-decoration: none;
   transition: border-color var(--transition), background-color var(--transition);
+  white-space: nowrap;
 }
 
 .success-btn-secondary:hover {
@@ -5199,6 +5211,7 @@ select {
   border: 1px solid var(--green-border);
   padding: 5px 12px;
   border-radius: 20px;
+  white-space: nowrap;
 }
 
 .about-title {
@@ -5961,6 +5974,7 @@ select {
   font-weight: 800;
   letter-spacing: .07em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .promo-popup__title {
@@ -6031,6 +6045,7 @@ select {
   font-size: 14px;
   font-weight: 750;
   box-shadow: 0 5px 16px color-mix(in srgb, var(--popup-accent) 24%, transparent);
+  white-space: nowrap;
 }
 
 @media (max-width: 600px) {
@@ -6118,6 +6133,7 @@ select {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .product-popup__badge--stock {
@@ -6143,6 +6159,9 @@ select {
   font-weight: 800;
   line-height: 1.2;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .product-popup__subtitle {
@@ -6150,6 +6169,9 @@ select {
   color: var(--ink-muted);
   line-height: 1.4;
   margin: -4px 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .product-popup__tags {
@@ -6166,6 +6188,7 @@ select {
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-light);
+  white-space: nowrap;
 }
 
 .product-popup__stock {
@@ -6181,6 +6204,7 @@ select {
   letter-spacing: 0.04em;
   margin-bottom: 6px;
   color: var(--ink-muted);
+  white-space: nowrap;
 }
 
 .product-popup__stock-warn {
@@ -6271,6 +6295,7 @@ select {
   box-shadow: 0 4px 14px rgba(45, 106, 79, 0.25);
   transition: transform 0.2s, box-shadow 0.2s;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .product-popup__cta:hover {
