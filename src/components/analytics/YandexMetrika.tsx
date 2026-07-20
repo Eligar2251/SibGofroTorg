@@ -9,8 +9,7 @@ export function YandexMetrika() {
 
   return (
     <>
-      {/* Инициализация вынесена во внешний same-origin script, поэтому строгий
-          script-src больше не требует unsafe-inline. */}
+      {/* Инициализация Метрики через same-origin endpoint */}
       <Script
         id="yandex-metrika"
         src={`/api/analytics/yandex?id=${id}`}
