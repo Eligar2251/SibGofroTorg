@@ -22,11 +22,6 @@ const nextConfig: NextConfig = {
 
   experimental: {
     optimizePackageImports: ["lucide-react"],
-    // Hash/integrity для чанков позволяет убрать unsafe-inline из script-src,
-    // не переводя весь публичный сайт с ISR на дорогой динамический SSR.
-    sri: {
-      algorithm: "sha256",
-    },
   },
 
   // Fix turbopack root directory issue
@@ -34,7 +29,7 @@ const nextConfig: NextConfig = {
     root: __dirname,
   },
 
-  // CSP + security — в src/proxy.ts; SRI включён выше.
+  // CSP + security — в src/proxy.ts.
   // Здесь только кеш публичных ассетов.
   // НЕ трогаем /_next/static — Next сам ставит immutable long-cache в prod.
   async headers() {
