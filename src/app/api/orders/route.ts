@@ -3,6 +3,7 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { createOrder, getSettings } from "@/lib/firestore-queries";
 import {
   formatPhoneDisplay,
@@ -218,6 +219,9 @@ export async function POST(request: NextRequest) {
     }
 
     const createdOrder = await createOrder(orderData as any);
+    if (typeRaw === "order") {
+      revalidateTag("products", { expire: 0 });
+    }
 
     // Контактное лицо в конкретном заказе может отличаться от владельца
     // аккаунта, поэтому имя профиля здесь принципиально не обновляем.

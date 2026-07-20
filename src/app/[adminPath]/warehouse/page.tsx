@@ -82,7 +82,7 @@ const dealStatusBadge: Record<string, string> = {
 
 const dealStatusLabel: Record<string, string> = {
   new: "Новый",
-  completed: "Проведён",
+  completed: "Отпущен",
   cancelled: "Отменён",
 };
 
@@ -647,8 +647,8 @@ export default async function AdminWarehousePage({
             deals.map((d) => {
               const paid = dealPaidMap.get(d.id) || 0;
               const isFullyPaid = d.total > 0 && paid >= d.total;
-              // Нехватка товара — актуальна для непроведённых заказов
-              // (по проведённым остаток уже списан)
+              // Нехватка товара — актуальна для неотпущенных заказов
+              // (по отпущенным остаток уже списан)
               const shortage =
                 d.status === "new"
                   ? d.items
@@ -831,6 +831,7 @@ export default async function AdminWarehousePage({
                         dealId={d.id}
                         status={d.status}
                         hasShortage={hasShortage}
+                        paidEnough={isFullyPaid}
                       />
                     </div>
                   </div>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import {
   postDeal,
   cancelDeal,
@@ -28,6 +29,7 @@ export async function PUT(
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
     });
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(
@@ -53,6 +55,7 @@ export async function PATCH(
     } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Update deal error:", error);
@@ -72,6 +75,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     await deleteDeal(id);
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete deal error:", error);

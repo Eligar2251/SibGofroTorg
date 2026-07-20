@@ -343,7 +343,7 @@ export function PaymentForm({
                               ЗК-{d.number} · {d.customerName}
                             </span>
                             <span className="wh-deal-chip__meta">
-                              {d.status === "completed" ? "проведён" : "новый"}
+                              {d.status === "completed" ? "отпущен" : "новый"}
                               {" · "}
                               {direction === "incoming"
                                 ? `осталось ${fmt(rest)} ₽`

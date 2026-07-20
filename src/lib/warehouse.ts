@@ -199,11 +199,27 @@ function addCounterpartyToBatch(
 ): string {
   const db = getAdminDb();
   const id = counterpartyIdForName(name);
-  batch.set(
-    db.collection("counterparties").doc(id),
-    counterpartyPayload(name, role, details),
-    { merge: true }
-  );
+  const counterpartyRef = db.collection("counterparties").doc(id);
+  batch.set(counterpartyRef, counterpartyPayload(name, role, details), {
+    merge: true,
+  });
+  // Отдельные документы гарантируют, что новая поставка обновит цены только
+  // своих позиций и не затрёт ранее сохранённый прайс этого поставщика.
+  for (const [productId, value] of Object.entries(
+    details.supplierPrices || {}
+  )) {
+    const price = Math.max(0, Number(value) || 0);
+    if (!productId || price <= 0) continue;
+    batch.set(
+      counterpartyRef.collection("supplierPrices").doc(productId),
+      {
+        productId,
+        price,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
   return id;
 }
 
@@ -242,14 +258,29 @@ function mapCounterparty(id: string, data: any): Counterparty {
 
 export async function getCounterparties(): Promise<Counterparty[]> {
   const db = getAdminDb();
-  const [counterpartySnap, receiptSnap, dealSnap] = await Promise.all([
-    db.collection("counterparties").get(),
-    db.collection("warehouseReceipts").get(),
-    db.collection("customerDeals").get(),
-  ]);
+  const [counterpartySnap, receiptSnap, dealSnap, supplierPriceSnap] =
+    await Promise.all([
+      db.collection("counterparties").get(),
+      db.collection("warehouseReceipts").get(),
+      db.collection("customerDeals").get(),
+      db.collectionGroup("supplierPrices").get(),
+    ]);
   const map = new Map<string, Counterparty>();
   for (const doc of counterpartySnap.docs) {
     map.set(doc.id, mapCounterparty(doc.id, doc.data()));
+  }
+  for (const priceDoc of supplierPriceSnap.docs) {
+    const counterpartyId = priceDoc.ref.parent.parent?.id;
+    const counterparty = counterpartyId ? map.get(counterpartyId) : null;
+    if (!counterparty) continue;
+    const data = priceDoc.data();
+    const productId = String(data.productId || priceDoc.id);
+    const price = Math.max(0, Number(data.price) || 0);
+    if (!productId || price <= 0) continue;
+    counterparty.supplierPrices = {
+      ...(counterparty.supplierPrices || {}),
+      [productId]: price,
+    };
   }
 
   function mergeLegacy(
@@ -671,8 +702,11 @@ export async function updateReceipt(
     .get();
   const paidTotal = paymentSnap.docs.reduce((sum, doc) => {
     const payment = doc.data();
+    const links = Array.isArray(payment.receiptIds)
+      ? Math.max(1, payment.receiptIds.length)
+      : 1;
     return payment.isPaid === true && payment.direction === "outgoing"
-      ? sum + (Number(payment.amount) || 0)
+      ? sum + (Number(payment.amount) || 0) / links
       : sum;
   }, 0);
   const total = paidTotal > 0 ? paidTotal : linesTotal;
@@ -790,7 +824,10 @@ export async function postReceipt(id: string): Promise<void> {
       const paymentSnap = await transaction.get(paymentDoc.ref);
       const payment = paymentSnap.data();
       if (payment?.isPaid === true && payment.direction === "outgoing") {
-        paid += Number(payment.amount) || 0;
+        const links = Array.isArray(payment.receiptIds)
+          ? Math.max(1, payment.receiptIds.length)
+          : 1;
+        paid += (Number(payment.amount) || 0) / links;
       }
     }
     if (paid + 0.009 < receipt.total) {
@@ -1051,8 +1088,11 @@ export async function updateDeal(
     .get();
   const paidTotal = paymentSnap.docs.reduce((sum, doc) => {
     const payment = doc.data();
+    const links = Array.isArray(payment.dealIds)
+      ? Math.max(1, payment.dealIds.length)
+      : 1;
     return payment.isPaid === true && payment.direction === "incoming"
-      ? sum + (Number(payment.amount) || 0)
+      ? sum + (Number(payment.amount) || 0) / links
       : sum;
   }, 0);
   const total = paidTotal > 0 ? paidTotal : linesTotal;
@@ -1141,16 +1181,37 @@ export async function updateDeal(
   await batch.commit();
 }
 
-/** Провести заказ — списать товар со склада */
+/** Отпустить заказ — списать товар со склада после оплаты */
 export async function postDeal(id: string): Promise<void> {
   const db = getAdminDb();
   const dealRef = db.collection("customerDeals").doc(id);
+  const paymentQuery = await db
+    .collection("bankPayments")
+    .where("dealIds", "array-contains", id)
+    .get();
   await db.runTransaction(async (transaction) => {
     const dealSnap = await transaction.get(dealRef);
     if (!dealSnap.exists) throw new Error("Заказ не найден");
     const deal = mapDeal(id, dealSnap.data());
     if (deal.status === "completed") return;
     if (deal.status === "cancelled") throw new Error("Заказ отменён");
+
+    let paid = 0;
+    for (const paymentDoc of paymentQuery.docs) {
+      const paymentSnap = await transaction.get(paymentDoc.ref);
+      const payment = paymentSnap.data();
+      if (payment?.isPaid === true && payment.direction === "incoming") {
+        const links = Array.isArray(payment.dealIds)
+          ? Math.max(1, payment.dealIds.length)
+          : 1;
+        paid += (Number(payment.amount) || 0) / links;
+      }
+    }
+    if (paid + 0.009 < deal.total) {
+      throw new Error(
+        `Сначала подтвердите оплату счёта в банке. Оплачено ${paid.toLocaleString("ru-RU")} из ${deal.total.toLocaleString("ru-RU")} ₽`
+      );
+    }
 
     const quantities = new Map<string, number>();
     for (const item of deal.items) {
@@ -1163,7 +1224,7 @@ export async function postDeal(id: string): Promise<void> {
       ref: FirebaseFirestore.DocumentReference;
       next: number;
     }[] = [];
-    // Все чтения выполняются до записей. Повторное нажатие «Провести» не
+    // Все чтения выполняются до записей. Повторное нажатие «Отпустить» не
     // спишет товар дважды: статус заказа проверяется в той же транзакции.
     for (const [productId, quantity] of quantities) {
       const productRef = db.collection("products").doc(productId);
@@ -1228,7 +1289,7 @@ async function cleanupPendingDealPayments(
   }
 }
 
-/** Отменить заказ — вернуть товар на склад, если был проведён */
+/** Отменить заказ — вернуть товар на склад, если он был отпущен */
 export async function cancelDeal(
   id: string,
   reason?: string | null

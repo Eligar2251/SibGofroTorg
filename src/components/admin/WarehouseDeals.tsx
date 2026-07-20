@@ -408,8 +408,8 @@ export function DealForm({
               </div>
               <p className="wh-form-hint">
                 {initialDeal
-                  ? "При изменении проведённого заказа остатки склада будут автоматически скорректированы."
-                  : "Заказ создаётся без списания, а в банке автоматически появится входящий счёт. Кнопка «Провести» спишет товар со склада."}
+                  ? "При изменении отпущенного заказа остатки склада будут автоматически скорректированы."
+                  : "Заказ создаётся без списания, а в банке автоматически появится входящий счёт. После оплаты кнопка «Отпустить товар» спишет позиции со склада."}
               </p>
             </form>
           </div>
@@ -432,10 +432,12 @@ export function DealActions({
   dealId,
   status,
   hasShortage = false,
+  paidEnough = false,
 }: {
   dealId: string;
   status: "new" | "completed" | "cancelled";
   hasShortage?: boolean;
+  paidEnough?: boolean;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -473,7 +475,7 @@ export function DealActions({
   function handleDelete() {
     if (
       !confirm(
-        "Удалить заказ? Если он был проведён, товар вернётся на склад (сторно)."
+        "Удалить заказ? Если товар уже отпущен, он вернётся на склад (сторно)."
       )
     )
       return;
@@ -490,22 +492,27 @@ export function DealActions({
               if (
                 hasShortage &&
                 !confirm(
-                  "Товара на складе не хватает — остаток уйдёт в минус. Провести всё равно?"
+                  "Товара на складе не хватает — остаток уйдёт в минус. Отпустить всё равно?"
                 )
               ) {
                 return;
               }
               callApi({ action: "post" });
             }}
-            disabled={saving}
+            disabled={saving || !paidEnough}
             className="admin-status__btn admin-status__btn--primary"
+            title={
+              paidEnough
+                ? "Списать товар со склада и отметить заказ отпущенным"
+                : "Сначала подтвердите оплату счёта в банке"
+            }
           >
             {saving ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
               <CheckCircle size={14} />
             )}
-            Провести
+            {paidEnough ? "Отпустить товар" : "Сначала оплатите счёт"}
           </button>
           <button
             type="button"
@@ -584,7 +591,7 @@ export function DealActions({
             </div>
             <p className="admin-modal__desc">
               {status === "completed"
-                ? "Заказ был проведён: товар вернётся на остатки склада (сторно)."
+                ? "Заказ был отпущен: товар вернётся на остатки склада (сторно)."
                 : "Заказ не проводился, остатки не изменятся."}
             </p>
             <div className="admin-radio-list">

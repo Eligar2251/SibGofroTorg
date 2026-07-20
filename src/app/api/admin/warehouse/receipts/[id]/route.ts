@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { deleteReceipt, postReceipt, updateReceipt } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
 
@@ -23,6 +24,7 @@ export async function PUT(
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
     });
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(
@@ -45,6 +47,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }
     await postReceipt(id);
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(
@@ -63,6 +66,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     await deleteReceipt(id);
+    revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete receipt error:", error);
