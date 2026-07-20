@@ -786,45 +786,28 @@ select {
 
 /* Кнопка «Рассчитать выплату» — полноценный CTA в тон панели,
    по высоте совпадает с «Перейти в каталог» слева */
-.btn-hero-secondary {
+.hero__wp-label {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  height: 50px;
-  padding: 0 22px;
-  background: linear-gradient(180deg, #6ee07e 0%, #4cc35c 100%);
-  border: none;
-  border-radius: 10px;
-  color: #07160b;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
+  color: var(--green-lime);
+  font-size: 16px;
+  font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
+  margin-top: auto;
+  letter-spacing: 0.01em;
+  transition: filter var(--transition);
   cursor: pointer;
-  box-shadow:
-    0 10px 24px rgba(93, 203, 97, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  transition:
-    transform var(--transition),
-    box-shadow var(--transition),
-    filter var(--transition);
-  width: 100%;
 }
 
-.hero__right:hover .btn-hero-secondary,
-.hero__right:focus-visible .btn-hero-secondary {
-  transform: translateY(-2px);
-  filter: brightness(1.06);
-  box-shadow:
-    0 14px 30px rgba(93, 203, 97, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+.hero__wp-label:hover {
+  filter: brightness(1.15);
 }
 
-.hero__right:active .btn-hero-secondary {
-  transform: translateY(0);
-  filter: brightness(0.97);
+.hero__wp-label svg {
+  flex-shrink: 0;
+  display: block;
 }
 
 /* Иконки внутри кнопок */
@@ -833,7 +816,7 @@ select {
 .btn-outline svg,
 .btn-hero-primary svg,
 .btn-hero-ghost svg,
-.btn-hero-secondary svg,
+.hero__wp-label svg,
 .cab-sidebar__btn svg,
 .atc-btn svg,
 .wpcalc__submit svg,
@@ -972,7 +955,7 @@ select {
   background: linear-gradient(185deg, #1a3a2a 0%, #0e2216 100%);
   text-decoration: none;
   transition: background var(--transition);
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 9% 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 4% 100%);
   overflow: hidden;
 }
 
@@ -1127,7 +1110,7 @@ select {
   display: none;
 }
 
-.btn-hero-secondary {
+.hero__wp-label {
   margin-top: auto;
 }
 
@@ -2210,6 +2193,7 @@ select {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  will-change: transform, box-shadow;
   transition:
     box-shadow 0.16s ease,
     border-color 0.16s ease,
@@ -3973,6 +3957,8 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
+  gap: 10px;
   padding: 12px 16px;
   background: var(--bg-main);
   border-radius: 10px;
@@ -3980,14 +3966,20 @@ select {
 }
 
 .atc-total__label {
+  min-width: 0;
   font-size: 13px;
+  line-height: 1.25;
   color: var(--ink-light);
 }
 
 .atc-total__sum {
-  font-size: 24px;
+  flex: 0 0 auto;
+  font-size: clamp(18px, 5.8vw, 24px);
+  line-height: 1;
   font-weight: 800;
   color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .atc-btn {
@@ -5539,7 +5531,7 @@ select {
     margin-top: 8px;
   }
 
-  .btn-hero-secondary {
+  .hero__wp-label {
     margin-top: 20px;
   }
 
@@ -5818,4 +5810,233 @@ select {
 .markdown-body img {
   max-width: 100%;
   border-radius: 8px;
+}
+
+/* ══════════════════════════════════════
+   ИНФОРМАЦИОННЫЕ ОКНА
+   ══════════════════════════════════════ */
+.promo-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(9, 15, 12, 0.66);
+  backdrop-filter: blur(5px);
+}
+
+.promo-popup {
+  --popup-accent: var(--green);
+  --popup-soft: var(--green-light);
+  width: min(720px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: hidden;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 15px;
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255,255,255,.7);
+  animation: promo-popup-in 0.2s ease-out;
+}
+
+.promo-popup--promo {
+  --popup-accent: #b86b06;
+  --popup-soft: #fff5df;
+}
+
+.promo-popup--important {
+  --popup-accent: #b42318;
+  --popup-soft: #fff0ee;
+}
+
+@keyframes promo-popup-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+.promo-popup__windowbar {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 10px 8px 14px;
+  color: #fff;
+  background: linear-gradient(105deg, #18251f, #253c31);
+  border-bottom: 3px solid var(--popup-accent);
+}
+
+.promo-popup__window-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  margin-right: 9px;
+  color: #fff;
+  background: var(--popup-accent);
+  border-radius: 7px;
+}
+
+.promo-popup__window-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255,255,255,.88);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.promo-popup__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: rgba(255,255,255,.72);
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 7px;
+}
+
+.promo-popup__close:hover {
+  color: #fff;
+  background: rgba(255,255,255,.16);
+}
+
+.promo-popup__content {
+  display: grid;
+  grid-template-columns: 1fr;
+  max-height: calc(100dvh - 87px);
+  overflow-y: auto;
+}
+
+.promo-popup--with-image .promo-popup__content {
+  grid-template-columns: minmax(220px, 38%) minmax(0, 1fr);
+}
+
+.promo-popup__media {
+  min-height: 360px;
+  background: var(--popup-soft);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.promo-popup__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.promo-popup__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  padding: 34px 36px 32px;
+}
+
+.promo-popup__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  padding: 5px 10px;
+  color: var(--popup-accent);
+  background: var(--popup-soft);
+  border: 1px solid color-mix(in srgb, var(--popup-accent) 25%, transparent);
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.promo-popup__title {
+  max-width: 100%;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: clamp(25px, 4vw, 36px);
+  font-weight: 850;
+  letter-spacing: -.025em;
+  line-height: 1.13;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.promo-popup__subtitle {
+  margin-top: 13px;
+  color: var(--ink-light);
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
+.promo-popup__details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 17px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.promo-popup__details li {
+  position: relative;
+  padding-left: 19px;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.promo-popup__details li::before {
+  content: "";
+  position: absolute;
+  top: .55em;
+  left: 2px;
+  width: 7px;
+  height: 7px;
+  background: var(--popup-accent);
+  border-radius: 50%;
+}
+
+.promo-popup__actions {
+  width: 100%;
+  margin-top: 23px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.promo-popup__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 20px;
+  color: #fff;
+  background: var(--popup-accent);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 750;
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--popup-accent) 24%, transparent);
+}
+
+@media (max-width: 600px) {
+  .promo-popup-overlay { align-items: flex-end; padding: 8px; }
+  .promo-popup { width: 100%; border-radius: 14px; }
+  .promo-popup--with-image .promo-popup__content { grid-template-columns: 1fr; }
+  .promo-popup__media { min-height: 0; height: min(43vw, 180px); border-right: 0; border-bottom: 1px solid var(--border); }
+  .promo-popup__body { padding: 24px 20px 22px; }
+  .promo-popup__title { font-size: 24px; }
+  .promo-popup__actions, .promo-popup__cta { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-popup { animation: none; }
 }

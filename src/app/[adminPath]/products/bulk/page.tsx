@@ -19,8 +19,6 @@ export default async function BulkProductsPage({
     getAllCategories(),
   ]);
 
-  const catMap = Object.fromEntries(categories.map((c) => [c.id, c.name]));
-
   const serialized = products.map((p) => ({
     id: p.id,
     name: p.name,
@@ -52,7 +50,6 @@ export default async function BulkProductsPage({
       <BulkProductEditor
         products={serialized}
         categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-        catMap={catMap}
       />
     </div>
   );

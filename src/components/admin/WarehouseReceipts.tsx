@@ -8,19 +8,42 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X, Loader2 } from "lucide-react";
+import {
+  CheckCircle,
+  Edit2,
+  Plus,
+  Trash2,
+  X,
+  Loader2,
+} from "lucide-react";
 import {
   ProductPicker,
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
+import { includedVat, VAT_RATE } from "@/lib/vat";
+import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 
 interface ReceiptItemDraft {
   productId: string;
   name: string;
   sku: string | null;
-  quantity: number;
-  /** Сумма за всю партию по этой позиции (как в счёте поставщика, с НДС) */
-  lineTotal: number;
+  quantity: number | "";
+  /** Пустая строка нужна, чтобы ноль можно было стереть и ввести своё число. */
+  lineTotal: number | "";
+}
+
+export interface EditableReceipt {
+  id: string;
+  date: string;
+  supplier: string;
+  phone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  address?: string | null;
+  contactName?: string | null;
+  comment?: string | null;
+  items: ReceiptItemDraft[];
 }
 
 function todayIso(): string {
@@ -29,32 +52,95 @@ function todayIso(): string {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-export function ReceiptForm({ products }: { products: PickerProduct[] }) {
+export function ReceiptForm({
+  products,
+  counterparties = [],
+  initialReceipt,
+}: {
+  products: PickerProduct[];
+  counterparties?: CounterpartyOption[];
+  initialReceipt?: EditableReceipt;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [date, setDate] = useState(todayIso());
-  const [supplier, setSupplier] = useState("");
-  const [comment, setComment] = useState("");
-  const [items, setItems] = useState<ReceiptItemDraft[]>([]);
+  const [date, setDate] = useState(initialReceipt?.date || todayIso());
+  const [supplier, setSupplier] = useState(initialReceipt?.supplier || "");
+  const [phone, setPhone] = useState(initialReceipt?.phone || "");
+  const [email, setEmail] = useState(initialReceipt?.email || "");
+  const [inn, setInn] = useState(initialReceipt?.inn || "");
+  const [kpp, setKpp] = useState(initialReceipt?.kpp || "");
+  const [address, setAddress] = useState(initialReceipt?.address || "");
+  const [contactName, setContactName] = useState(
+    initialReceipt?.contactName || ""
+  );
+  const [comment, setComment] = useState(initialReceipt?.comment || "");
+  const [items, setItems] = useState<ReceiptItemDraft[]>(
+    initialReceipt?.items || []
+  );
 
   const total = items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0);
 
   function resetForm() {
-    setDate(todayIso());
-    setSupplier("");
-    setComment("");
-    setItems([]);
+    setDate(initialReceipt?.date || todayIso());
+    setSupplier(initialReceipt?.supplier || "");
+    setPhone(initialReceipt?.phone || "");
+    setEmail(initialReceipt?.email || "");
+    setInn(initialReceipt?.inn || "");
+    setKpp(initialReceipt?.kpp || "");
+    setAddress(initialReceipt?.address || "");
+    setContactName(initialReceipt?.contactName || "");
+    setComment(initialReceipt?.comment || "");
+    setItems(initialReceipt?.items || []);
     setError("");
+  }
+
+  function selectSupplier(value: string) {
+    setSupplier(value);
+    const found = counterparties.find(
+      (item) =>
+        item.roles.includes("supplier") &&
+        item.name.toLocaleLowerCase("ru-RU") ===
+          value.trim().toLocaleLowerCase("ru-RU")
+    );
+    if (!found) return;
+    setPhone(found.phone || "");
+    setEmail(found.email || "");
+    setInn(found.inn || "");
+    setKpp(found.kpp || "");
+    setAddress(found.address || "");
+    setContactName(found.contactName || "");
+    if (found.supplierPrices) {
+      setItems((current) =>
+        current.map((item) => {
+          const price = found.supplierPrices?.[item.productId];
+          return price != null && price > 0
+            ? {
+                ...item,
+                lineTotal: price * (Number(item.quantity) || 1),
+              }
+            : item;
+        })
+      );
+    }
   }
 
   function addItem(p: PickerProduct) {
     setItems((prev) => {
       const existing = prev.find((it) => it.productId === p.id);
       if (existing) return prev;
-      // Подсказываем сумму за 1 шт по оптовой цене — дальше вручную
-      const suggested = p.priceWholesale ?? p.price ?? 0;
+      // Сначала берём последнюю закупочную цену именно этого поставщика.
+      const selectedSupplier = counterparties.find(
+        (item) =>
+          item.name.toLocaleLowerCase("ru-RU") ===
+          supplier.trim().toLocaleLowerCase("ru-RU")
+      );
+      const suggested =
+        selectedSupplier?.supplierPrices?.[p.id] ??
+        p.priceWholesale ??
+        p.price ??
+        0;
       return [
         ...prev,
         {
@@ -62,7 +148,7 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
           name: p.name,
           sku: p.sku,
           quantity: 1,
-          lineTotal: suggested,
+          lineTotal: suggested > 0 ? suggested : "",
         },
       ];
     });
@@ -81,18 +167,32 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!supplier.trim()) {
+      setError("Укажите поставщика");
+      return;
+    }
     if (items.length === 0) {
       setError("Добавьте хотя бы одну позицию");
       return;
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/admin/warehouse/receipts", {
-        method: "POST",
+      const res = await fetch(
+        initialReceipt
+          ? `/api/admin/warehouse/receipts/${initialReceipt.id}`
+          : "/api/admin/warehouse/receipts",
+        {
+        method: initialReceipt ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date,
           supplier: supplier.trim(),
+          phone: phone.trim() || null,
+          email: email.trim() || null,
+          inn: inn.trim() || null,
+          kpp: kpp.trim() || null,
+          address: address.trim() || null,
+          contactName: contactName.trim() || null,
           comment: comment.trim() || null,
           items: items.map((it) => ({
             productId: it.productId,
@@ -122,10 +222,15 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
     <>
       <button
         type="button"
-        className="admin-btn admin-btn--primary"
+        className={
+          initialReceipt
+            ? "admin-btn admin-btn--ghost admin-btn--sm"
+            : "admin-btn admin-btn--primary"
+        }
         onClick={() => setOpen(true)}
       >
-        <Plus size={15} /> Оформить поступление
+        {initialReceipt ? <Edit2 size={14} /> : <Plus size={15} />}
+        {initialReceipt ? "Изменить" : "Оформить поступление"}
       </button>
 
       {open && (
@@ -135,7 +240,9 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="admin-modal__head">
-              <h3 className="admin-modal__title">Приходный ордер</h3>
+              <h3 className="admin-modal__title">
+                {initialReceipt ? "Редактирование поступления" : "Новое поступление"}
+              </h3>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -159,16 +266,37 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
                   />
                 </div>
                 <div className="admin-field">
-                  <label className="admin-label">Поставщик</label>
+                  <label className="admin-label">Поставщик *</label>
                   <input
                     type="text"
                     className="admin-input"
+                    list="receipt-supplier-options"
                     value={supplier}
-                    onChange={(e) => setSupplier(e.target.value)}
-                    placeholder="ООО «Гофрокомбинат»"
+                    onChange={(e) => selectSupplier(e.target.value)}
+                    placeholder="Начните вводить название..."
+                    required
                   />
+                  <datalist id="receipt-supplier-options">
+                    {counterparties
+                      .filter((item) => item.roles.includes("supplier"))
+                      .map((item) => (
+                        <option key={item.id} value={item.name} />
+                      ))}
+                  </datalist>
                 </div>
               </div>
+
+              <details className="wh-counterparty-details">
+                <summary>Реквизиты поставщика</summary>
+                <div className="wh-form-grid">
+                  <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Телефон</label><input className="admin-input" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={inn} onChange={(e) => setInn(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={kpp} onChange={(e) => setKpp(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Адрес</label><input className="admin-input" value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+                </div>
+              </details>
 
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
@@ -210,11 +338,21 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
                           min={1}
                           step={1}
                           value={it.quantity}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const nextQty =
+                              e.target.value === ""
+                                ? ""
+                                : Number(e.target.value);
+                            const oldQty = Number(it.quantity) || 0;
+                            const oldTotal = Number(it.lineTotal) || 0;
+                            const unitPrice = oldQty > 0 ? oldTotal / oldQty : 0;
                             setItem(it.productId, {
-                              quantity: Number(e.target.value),
-                            })
-                          }
+                              quantity: nextQty,
+                              ...(nextQty !== "" && unitPrice > 0
+                                ? { lineTotal: unitPrice * nextQty }
+                                : {}),
+                            });
+                          }}
                         />
                         <input
                           type="number"
@@ -224,7 +362,10 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
                           value={it.lineTotal}
                           onChange={(e) =>
                             setItem(it.productId, {
-                              lineTotal: Number(e.target.value),
+                              lineTotal:
+                                e.target.value === ""
+                                  ? ""
+                                  : Number(e.target.value),
                             })
                           }
                         />
@@ -258,6 +399,9 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
               <div className="wh-form-footer">
                 <div className="wh-form-total">
                   Итого (с НДС): <strong>{fmt(total)} ₽</strong>
+                  <span className="wh-form-vat">
+                    в т.ч. НДС {VAT_RATE}% — {fmt(includedVat(total))} ₽
+                  </span>
                 </div>
                 <div className="admin-form-actions">
                   <button
@@ -274,22 +418,66 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
                     disabled={saving || items.length === 0}
                   >
                     {saving && <Loader2 size={14} className="animate-spin" />}
-                    Провести поступление
+                    {initialReceipt ? "Сохранить изменения" : "Сохранить поступление"}
                   </button>
                 </div>
               </div>
               <p className="wh-form-hint">
                 Вводите сумму за всю партию позиции, как в счёте поставщика
-                (с НДС) — цена за штуку посчитается сама. После проведения
-                товары добавятся на склад, а в банке автоматически появится
-                платёж этому поставщику «в ожидании» — проведите его, когда
-                оплатите.
+                (с НДС). Поступление сначала сохранится без изменения склада.
+                Оплатите связанный счёт в банке, затем вручную проведите
+                поступление в списке.
               </p>
             </form>
           </div>
         </div>
       )}
     </>
+  );
+}
+
+export function ReceiptPostButton({
+  receiptId,
+  paidEnough,
+}: {
+  receiptId: string;
+  paidEnough: boolean;
+}) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+
+  async function post() {
+    setSaving(true);
+    const response = await fetch(`/api/admin/warehouse/receipts/${receiptId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "post" }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok) router.refresh();
+    else alert(body.error || "Не удалось провести поступление");
+    setSaving(false);
+  }
+
+  return (
+    <button
+      type="button"
+      className="admin-status__btn admin-status__btn--primary"
+      onClick={post}
+      disabled={saving || !paidEnough}
+      title={
+        paidEnough
+          ? "Добавить товары на склад"
+          : "Сначала подтвердите оплату счёта в банке"
+      }
+    >
+      {saving ? (
+        <Loader2 size={14} className="animate-spin" />
+      ) : (
+        <CheckCircle size={14} />
+      )}
+      {paidEnough ? "Провести на склад" : "Сначала оплатите счёт"}
+    </button>
   );
 }
 
@@ -300,7 +488,7 @@ export function ReceiptDeleteButton({ receiptId }: { receiptId: string }) {
   async function handleDelete() {
     if (
       !confirm(
-        "Удалить поступление? Остатки товаров уменьшатся обратно (сторно), связанный непроведённый платёж поставщику в банке тоже удалится."
+        "Удалить поступление? Если оно уже проведено, склад будет сторнирован. Связанный неоплаченный счёт тоже удалится."
       )
     )
       return;

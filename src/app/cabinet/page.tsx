@@ -236,7 +236,7 @@ export default function CabinetPage() {
     async function load() {
       setLoading(true);
       try {
-        const meRes = await fetch("/api/auth/me");
+        const meRes = await fetch("/api/auth/me", { cache: "no-store" });
         const meData = await meRes.json();
         if (cancelled) return;
 

@@ -11,6 +11,12 @@ export async function POST(request: NextRequest) {
     const result = await createReceipt({
       date: String(body.date || ""),
       supplier: String(body.supplier || ""),
+      phone: body.phone ?? null,
+      email: body.email ?? null,
+      inn: body.inn ?? null,
+      kpp: body.kpp ?? null,
+      address: body.address ?? null,
+      contactName: body.contactName ?? null,
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
     });

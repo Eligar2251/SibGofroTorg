@@ -27,8 +27,8 @@ export function RegisterClient() {
     e.preventDefault();
     setError("");
 
-    if (password.length < 6) {
-      setError("Пароль минимум 6 символов");
+    if (password.length < 8) {
+      setError("Пароль минимум 8 символов");
       return;
     }
     if (password !== password2) {
@@ -131,9 +131,9 @@ export function RegisterClient() {
                 className="form-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Минимум 6 символов"
+                placeholder="Минимум 8 символов"
                 required
-                minLength={6}
+                minLength={8}
                 autoComplete="new-password"
               />
             </div>
@@ -146,7 +146,7 @@ export function RegisterClient() {
                 onChange={(e) => setPassword2(e.target.value)}
                 placeholder="••••••••"
                 required
-                minLength={6}
+                minLength={8}
                 autoComplete="new-password"
               />
             </div>

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { Timestamp } from "firebase-admin/firestore";
 
 export const dynamic = "force-dynamic";
 
@@ -59,46 +60,59 @@ function formatDate(raw: any): string {
 
 export default async function AdminDashboard() {
   const db = getAdminDb();
+  const weekStart = Timestamp.fromMillis(Date.now() - 7 * 86_400_000);
 
-  const [allProducts, allOrders, allCats, usersSnap, promotions] = await Promise.all([
+  // Для дашборда читаем только 50 последних заявок. Общие показатели
+  // получаем агрегатами Firestore: это значительно дешевле, чем загружать
+  // целиком коллекции users и orders при каждом открытии панели.
+  const [
+    allProducts,
+    recentOrderPool,
+    allCats,
+    promotions,
+    totalOrdersAgg,
+    newOrdersAgg,
+    inProgressAgg,
+    completedAgg,
+    rejectedAgg,
+    usersAgg,
+    weekAgg,
+  ] = await Promise.all([
     getProducts({}),
-    getOrders(),
+    getOrders({ limit: 50 }),
     getAllCategories(),
-    db.collection("users").get(),
     getPromotions(),
+    db.collection("orders").count().get(),
+    db.collection("orders").where("status", "==", "new").count().get(),
+    db
+      .collection("orders")
+      .where("status", "==", "in_progress")
+      .count()
+      .get(),
+    db.collection("orders").where("status", "==", "completed").count().get(),
+    db.collection("orders").where("status", "==", "rejected").count().get(),
+    db.collection("users").count().get(),
+    db.collection("orders").where("createdAt", ">=", weekStart).count().get(),
   ]);
 
-  const newOrders = allOrders.filter((o) => (o as any).status === "new");
-  const inProgressOrders = allOrders.filter(
-    (o) => (o as any).status === "in_progress"
-  );
-  const completedOrders = allOrders.filter(
-    (o) => (o as any).status === "completed"
-  );
-  const rejectedOrders = allOrders.filter(
-    (o) => (o as any).status === "rejected"
-  );
-
-  const totalRevenue = completedOrders.reduce(
-    (s, o) => s + ((o as any).totalSum || 0),
-    0
-  );
+  const totalOrdersCount = totalOrdersAgg.data().count;
+  const newOrdersCount = newOrdersAgg.data().count;
+  const inProgressOrdersCount = inProgressAgg.data().count;
+  const completedOrdersCount = completedAgg.data().count;
+  const rejectedOrdersCount = rejectedAgg.data().count;
+  const usersCount = usersAgg.data().count;
+  const weekOrders = weekAgg.data().count;
+  const totalRevenue = recentOrderPool
+    .filter((order) => order.status === "completed")
+    .reduce((sum, order) => sum + (Number(order.totalSum) || 0), 0);
+  const recentOrders = recentOrderPool.slice(0, 8);
 
   const lowStockProducts = allProducts.filter(
-    (p) => p.stockQty !== null && p.stockQty !== undefined && p.stockQty <= 10
+    (product) =>
+      product.stockQty !== null &&
+      product.stockQty !== undefined &&
+      product.stockQty <= 10
   );
-
-  const recentOrders = allOrders.slice(0, 8);
-
-  // Статистика по дням (последние 7 дней)
-  const now = Date.now();
-  const day = 86400000;
-  const weekOrders = allOrders.filter((o) => {
-    const raw = (o as any).createdAt;
-    if (!raw) return false;
-    const t = typeof raw === "string" ? new Date(raw).getTime() : 0;
-    return now - t < 7 * day;
-  }).length;
 
   return (
     <div>
@@ -149,7 +163,7 @@ export default async function AdminDashboard() {
           },
           {
             label: "Всего заявок",
-            value: allOrders.length,
+            value: totalOrdersCount,
             icon: <ClipboardList size={20} />,
             href: `/${ADMIN_PATH}/orders`,
             iconBg: "#f0fdf4",
@@ -158,7 +172,7 @@ export default async function AdminDashboard() {
           },
           {
             label: "Новых заявок",
-            value: newOrders.length,
+            value: newOrdersCount,
             icon: <TrendingUp size={20} />,
             href: `/${ADMIN_PATH}/orders?status=new`,
             iconBg: "#fef2f2",
@@ -167,7 +181,7 @@ export default async function AdminDashboard() {
           },
           {
             label: "Клиентов",
-            value: usersSnap.size,
+            value: usersCount,
             icon: <Users size={20} />,
             href: `/${ADMIN_PATH}/clients`,
             iconBg: "rgba(37,99,235,0.08)",
@@ -184,7 +198,7 @@ export default async function AdminDashboard() {
             href: `/${ADMIN_PATH}/orders?status=completed`,
             iconBg: "rgba(16,185,129,0.1)",
             iconColor: "#10b981",
-            sub: "выполненные заказы",
+            sub: "по 50 последним заявкам",
           },
           {
             label: "Акции",
@@ -205,7 +219,7 @@ export default async function AdminDashboard() {
             sub: "управление отзывами",
           },
         ].map((stat) => (
-          <Link key={stat.label} href={stat.href} className="admin-stat">
+          <Link key={stat.label} href={stat.href} className="admin-stat" prefetch={false}>
             <div
               className="admin-stat__icon"
               style={{
@@ -258,7 +272,7 @@ export default async function AdminDashboard() {
           {[
             {
               label: "Новые",
-              count: newOrders.length,
+              count: newOrdersCount,
               icon: <Clock size={16} />,
               color: "#f59e0b",
               bg: "#fffbeb",
@@ -266,7 +280,7 @@ export default async function AdminDashboard() {
             },
             {
               label: "В работе",
-              count: inProgressOrders.length,
+              count: inProgressOrdersCount,
               icon: <TrendingUp size={16} />,
               color: "#3b82f6",
               bg: "#eff6ff",
@@ -274,7 +288,7 @@ export default async function AdminDashboard() {
             },
             {
               label: "Выполнены",
-              count: completedOrders.length,
+              count: completedOrdersCount,
               icon: <CheckCircle size={16} />,
               color: "#16a34a",
               bg: "#f0fdf4",
@@ -282,7 +296,7 @@ export default async function AdminDashboard() {
             },
             {
               label: "Отклонены",
-              count: rejectedOrders.length,
+              count: rejectedOrdersCount,
               icon: <XCircle size={16} />,
               color: "#ef4444",
               bg: "#fef2f2",
@@ -303,7 +317,7 @@ export default async function AdminDashboard() {
                 textDecoration: "none",
                 gap: 6,
               }}
-            >
+             prefetch={false}>
               <div style={{ color: s.color }}>{s.icon}</div>
               <div
                 style={{
@@ -324,14 +338,14 @@ export default async function AdminDashboard() {
               >
                 {s.label}
               </div>
-              {allOrders.length > 0 && (
+              {totalOrdersCount > 0 && (
                 <div
                   style={{
                     fontSize: 11,
                     color: `${s.color}99`,
                   }}
                 >
-                  {Math.round((s.count / allOrders.length) * 100)}%
+                  {Math.round((s.count / totalOrdersCount) * 100)}%
                 </div>
               )}
             </Link>
@@ -376,7 +390,7 @@ export default async function AdminDashboard() {
                 color: "#d97706",
                 fontWeight: 600,
               }}
-            >
+             prefetch={false}>
               Все →
             </Link>
           </div>
@@ -496,7 +510,7 @@ export default async function AdminDashboard() {
                   color: "#d97706",
                   fontWeight: 600,
                 }}
-              >
+               prefetch={false}>
                 Редактировать →
               </Link>
             </div>
@@ -617,12 +631,12 @@ export default async function AdminDashboard() {
                 },
                 {
                   href: `/${ADMIN_PATH}/orders?status=new`,
-                  label: `Новые заявки (${newOrders.length})`,
+                  label: `Новые заявки (${newOrdersCount})`,
                   icon: <ClipboardList size={14} />,
                 },
                 {
                   href: `/${ADMIN_PATH}/clients`,
-                  label: `Клиенты (${usersSnap.size})`,
+                  label: `Клиенты (${usersCount})`,
                   icon: <Users size={14} />,
                 },
                 {
@@ -663,7 +677,7 @@ export default async function AdminDashboard() {
                     border: "1px solid transparent",
                     transition: "border-color 0.15s",
                   }}
-                >
+                 prefetch={false}>
                   {action.icon}
                   {action.label}
                 </Link>

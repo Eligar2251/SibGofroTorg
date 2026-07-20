@@ -4,6 +4,7 @@ import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { OrdersAutoRefresh } from "@/components/admin/OrdersAutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +76,7 @@ export default async function AdminOrdersPage({
   const activeType = typeQuery || "all";
   const query = searchQuery ? searchQuery.toLowerCase().trim() : "";
 
-  const allOrders = await getOrders({ status: activeFilter });
+  const allOrders = await getOrders({ status: activeFilter, limit: 50 });
 
   const filteredOrders = allOrders.filter((order: any) => {
     if (activeType !== "all" && order.type !== activeType) return false;
@@ -91,6 +92,7 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
+      <OrdersAutoRefresh intervalMs={10000} />
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Заявки и Заказы</h1>
@@ -120,7 +122,7 @@ export default async function AdminOrdersPage({
               Найти
             </button>
             {searchQuery && (
-              <Link href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${activeType}`} className="admin-btn admin-btn--ghost">
+              <Link href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${activeType}`} className="admin-btn admin-btn--ghost" prefetch={false}>
                 Сбросить
               </Link>
             )}
@@ -137,7 +139,7 @@ export default async function AdminOrdersPage({
               key={t.value}
               href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${t.value}${searchQuery ? `&q=${searchQuery}` : ""}`}
               className={`admin-filter${activeType === t.value ? " admin-filter--active" : ""}`}
-            >
+             prefetch={false}>
               {t.token && (
                 <GlyphIcon value={t.token} size={13} />
               )}
@@ -153,7 +155,7 @@ export default async function AdminOrdersPage({
             key={opt.value}
             href={`/${ADMIN_PATH}/orders?status=${opt.value}&type=${activeType}${searchQuery ? `&q=${searchQuery}` : ""}`}
             className={`admin-filter${activeFilter === opt.value ? " admin-filter--active" : ""}`}
-          >
+           prefetch={false}>
             {opt.label}
           </Link>
         ))}

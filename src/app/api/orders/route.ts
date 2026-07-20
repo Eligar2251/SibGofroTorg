@@ -3,9 +3,11 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { createOrder, getSettings } from "@/lib/firestore-queries";
 import {
   formatPhoneDisplay,
+  getUserById,
   normalizePhone,
   updateUserProfile,
   verifyUserSession,
@@ -45,19 +47,36 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const typeRaw = body.type === "inquiry" ? "inquiry" : "order";
+    const session = await verifyUserSession();
+    const account = session?.uid ? await getUserById(session.uid) : null;
     const customerType = body.customerType === "legal" ? "legal" : "individual";
     const isLegal = customerType === "legal";
 
-    const customerName = clip(body.customerName, MAX_NAME);
-    const customerPhoneRaw = clip(body.customerPhone, 40);
+    // У заявки «Узнать цену» контакты авторизованного клиента берутся только
+    // из его аккаунта. Так номер/имя другого человека из формы не смогут
+    // перезаписать профиль текущей сессии на общем компьютере.
+    let customerName = clip(body.customerName, MAX_NAME);
+    let customerPhoneRaw = clip(body.customerPhone, 40);
+    if (typeRaw === "inquiry" && account) {
+      customerName = clip(account.name, MAX_NAME) || "Клиент";
+      customerPhoneRaw = account.phoneDigits;
+    } else if (typeRaw === "inquiry" && !customerName) {
+      customerName = "Клиент";
+    }
+
     const customerEmail = body.customerEmail
       ? clip(body.customerEmail, 120)
-      : null;
+      : account?.email || null;
     const comment = body.comment ? clip(body.comment, MAX_COMMENT) : "";
 
-    if (!customerName || !customerPhoneRaw) {
+    if (!customerPhoneRaw || (typeRaw === "order" && !customerName)) {
       return NextResponse.json(
-        { error: "Имя и телефон обязательны" },
+        {
+          error:
+            typeRaw === "order"
+              ? "Имя и телефон обязательны"
+              : "Телефон обязателен",
+        },
         { status: 400 }
       );
     }
@@ -112,9 +131,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Сессия — единственный источник userId (не из body!)
-    const session = await verifyUserSession();
-    const finalPhoneDigits = session?.phone || phoneDigits;
+    // Сессия — единственный источник userId и номера аккаунта (не из body!).
+    const sessionPhoneDigits = session ? normalizePhone(session.phone) : null;
+    if (
+      typeRaw === "order" &&
+      sessionPhoneDigits &&
+      phoneDigits !== sessionPhoneDigits
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Номер заказа не совпадает с номером текущего аккаунта. Выйдите из кабинета, чтобы использовать другой номер.",
+        },
+        { status: 409 }
+      );
+    }
+    const finalPhoneDigits = sessionPhoneDigits || phoneDigits;
     const finalPhoneDisplay = formatPhoneDisplay(finalPhoneDigits);
 
     const commWhitelist = ["call", "whatsapp", "telegram", "max", "email"] as const;
@@ -187,10 +219,14 @@ export async function POST(request: NextRequest) {
     }
 
     const createdOrder = await createOrder(orderData as any);
+    if (typeRaw === "order") {
+      revalidateTag("products", { expire: 0 });
+    }
 
-    if (session?.uid) {
+    // Контактное лицо в конкретном заказе может отличаться от владельца
+    // аккаунта, поэтому имя профиля здесь принципиально не обновляем.
+    if (session?.uid && typeRaw === "order") {
       updateUserProfile(session.uid, {
-        name: customerName,
         email: customerEmail,
         customerType,
         companyName,
@@ -316,7 +352,11 @@ async function sendNotifications(order: {
   const maxChatId = settings.max_admin_chat_id || process.env.MAX_ADMIN_CHAT_ID;
 
   const promises: Promise<unknown>[] = [];
+  const timeoutMs = 5000;
+
   if (telegramToken && telegramChatId) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     promises.push(
       fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
         method: "POST",
@@ -326,10 +366,30 @@ async function sendNotifications(order: {
           text: message,
           parse_mode: "HTML",
         }),
+        signal: controller.signal,
       })
+        .then(async (res) => {
+          clearTimeout(timer);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            console.error("Telegram bot error:", data?.description || res.status);
+          } else {
+            console.log("Telegram sent OK");
+          }
+        })
+        .catch((err) => {
+          clearTimeout(timer);
+          if (err.name === "AbortError") {
+            console.error("Telegram notify timeout (>5s)");
+          } else {
+            console.error("Telegram notify error:", err);
+          }
+        })
     );
   }
   if (maxToken && maxChatId) {
+    const controller2 = new AbortController();
+    const timer2 = setTimeout(() => controller2.abort(), timeoutMs);
     promises.push(
       fetch(`https://botapi.max.ru/messages?access_token=${maxToken}`, {
         method: "POST",
@@ -338,7 +398,24 @@ async function sendNotifications(order: {
           chat_id: maxChatId,
           text: message.replace(/<[^>]*>/g, ""),
         }),
+        signal: controller2.signal,
       })
+        .then(async (res) => {
+          clearTimeout(timer2);
+          if (!res.ok) {
+            console.error("Max notify error:", res.status);
+          } else {
+            console.log("Max sent OK");
+          }
+        })
+        .catch((err) => {
+          clearTimeout(timer2);
+          if (err.name === "AbortError") {
+            console.error("Max notify timeout (>5s)");
+          } else {
+            console.error("Max notify error:", err);
+          }
+        })
     );
   }
   if (promises.length) await Promise.allSettled(promises);

@@ -111,7 +111,7 @@ export function LoginClient() {
                 placeholder="••••••••"
                 required
                 autoComplete="current-password"
-                minLength={6}
+                minLength={8}
               />
             </div>
 

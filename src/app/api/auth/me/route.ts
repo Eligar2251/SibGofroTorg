@@ -16,32 +16,44 @@ export async function GET() {
   try {
     const session = await verifyUserSession();
     if (!session) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json(
+        { user: null },
+        { headers: { "Cache-Control": "no-store" } }
+      );
     }
 
     const user = await getUserById(session.uid);
     if (!user) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json(
+        { user: null },
+        { headers: { "Cache-Control": "no-store" } }
+      );
     }
 
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        phone: formatPhoneDisplay(user.phoneDigits),
-        name: user.name || null,
-        email: user.email || null,
-        customerType: user.customerType || "individual",
-        companyName: user.companyName || null,
-        inn: user.inn || null,
-        kpp: user.kpp || null,
-        ogrn: user.ogrn || null,
-        legalAddress: user.legalAddress || null,
-        actualAddress: user.actualAddress || null,
-        deliveryAddress: user.deliveryAddress || null,
+    return NextResponse.json(
+      {
+        user: {
+          id: user.id,
+          phone: formatPhoneDisplay(user.phoneDigits),
+          name: user.name || null,
+          email: user.email || null,
+          customerType: user.customerType || "individual",
+          companyName: user.companyName || null,
+          inn: user.inn || null,
+          kpp: user.kpp || null,
+          ogrn: user.ogrn || null,
+          legalAddress: user.legalAddress || null,
+          actualAddress: user.actualAddress || null,
+          deliveryAddress: user.deliveryAddress || null,
+        },
       },
-    });
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Me error:", error);
-    return NextResponse.json({ user: null });
+    return NextResponse.json(
+      { user: null },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   }
 }

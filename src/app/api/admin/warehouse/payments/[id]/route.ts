@@ -17,6 +17,7 @@ export async function PATCH(
       comment: body.comment,
       date: body.date,
       counterparty: body.counterparty,
+      invoiceNumber: body.invoiceNumber,
     });
     return NextResponse.json({ success: true });
   } catch (error: any) {
@@ -40,6 +41,9 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete payment error:", error);
-    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ошибка сервера" },
+      { status: 400 }
+    );
   }
 }

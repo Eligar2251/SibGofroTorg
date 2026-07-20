@@ -14,6 +14,7 @@ import {
   LogOut,
   Users,
   Megaphone,
+  BellRing,
   Star,
   Boxes,
 } from "lucide-react";
@@ -53,6 +54,11 @@ export function AdminShell({
       href: `/${adminPath}/promotions`,
       label: "Акции",
       icon: <Megaphone size={18} />,
+    },
+    {
+      href: `/${adminPath}/popups`,
+      label: "Инфо-окна",
+      icon: <BellRing size={18} />,
     },
     {
       href: `/${adminPath}/reviews`,
@@ -99,6 +105,7 @@ export function AdminShell({
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch={false}
                 className={`admin-sidebar__link${active ? " admin-sidebar__link--active" : ""}`}
               >
                 {link.icon}
@@ -111,6 +118,7 @@ export function AdminShell({
         <div className="admin-sidebar__footer">
           <Link
             href="/"
+            prefetch={false}
             target="_blank"
             className="admin-sidebar__footer-link"
           >
@@ -126,16 +134,27 @@ export function AdminShell({
 
       <div className="admin-mobile-bar">
         <div className="admin-mobile-bar__nav">
-          {nav.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="admin-mobile-bar__link"
-              title={link.label}
-            >
-              {link.icon}
-            </Link>
-          ))}
+          {nav.map((link) => {
+            const active =
+              link.href === `/${adminPath}`
+                ? pathname === link.href
+                : pathname.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                prefetch={false}
+                className={`admin-mobile-bar__link${
+                  active ? " admin-mobile-bar__link--active" : ""
+                }`}
+                title={link.label}
+                aria-label={link.label}
+                aria-current={active ? "page" : undefined}
+              >
+                {link.icon}
+              </Link>
+            );
+          })}
         </div>
       </div>
 

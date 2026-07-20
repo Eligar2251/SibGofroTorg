@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Edit2,
   Plus,
   Trash2,
   X,
@@ -19,14 +20,30 @@ import {
   ProductPicker,
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
+import { includedVat, VAT_RATE } from "@/lib/vat";
+import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 
 interface DealItemDraft {
   productId: string;
   name: string;
   sku: string | null;
-  quantity: number;
-  price: number;
+  quantity: number | "";
+  price: number | "";
   stockQty: number;
+}
+
+export interface EditableDeal {
+  id: string;
+  date: string;
+  customerName: string;
+  customerPhone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  address?: string | null;
+  contactName?: string | null;
+  comment?: string | null;
+  items: DealItemDraft[];
 }
 
 function todayIso(): string {
@@ -35,26 +52,70 @@ function todayIso(): string {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-export function DealForm({ products }: { products: PickerProduct[] }) {
+export function DealForm({
+  products,
+  counterparties = [],
+  initialDeal,
+}: {
+  products: PickerProduct[];
+  counterparties?: CounterpartyOption[];
+  initialDeal?: EditableDeal;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [date, setDate] = useState(todayIso());
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [comment, setComment] = useState("");
-  const [items, setItems] = useState<DealItemDraft[]>([]);
+  const [date, setDate] = useState(initialDeal?.date || todayIso());
+  const [customerName, setCustomerName] = useState(
+    initialDeal?.customerName || ""
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    initialDeal?.customerPhone || ""
+  );
+  const [email, setEmail] = useState(initialDeal?.email || "");
+  const [inn, setInn] = useState(initialDeal?.inn || "");
+  const [kpp, setKpp] = useState(initialDeal?.kpp || "");
+  const [address, setAddress] = useState(initialDeal?.address || "");
+  const [contactName, setContactName] = useState(
+    initialDeal?.contactName || ""
+  );
+  const [comment, setComment] = useState(initialDeal?.comment || "");
+  const [items, setItems] = useState<DealItemDraft[]>(initialDeal?.items || []);
 
-  const total = items.reduce((s, it) => s + it.quantity * it.price, 0);
+  const total = items.reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
+    0
+  );
 
   function resetForm() {
-    setDate(todayIso());
-    setCustomerName("");
-    setCustomerPhone("");
-    setComment("");
-    setItems([]);
+    setDate(initialDeal?.date || todayIso());
+    setCustomerName(initialDeal?.customerName || "");
+    setCustomerPhone(initialDeal?.customerPhone || "");
+    setEmail(initialDeal?.email || "");
+    setInn(initialDeal?.inn || "");
+    setKpp(initialDeal?.kpp || "");
+    setAddress(initialDeal?.address || "");
+    setContactName(initialDeal?.contactName || "");
+    setComment(initialDeal?.comment || "");
+    setItems(initialDeal?.items || []);
     setError("");
+  }
+
+  function selectCustomer(value: string) {
+    setCustomerName(value);
+    const found = counterparties.find(
+      (item) =>
+        item.roles.includes("customer") &&
+        item.name.toLocaleLowerCase("ru-RU") ===
+          value.trim().toLocaleLowerCase("ru-RU")
+    );
+    if (!found) return;
+    setCustomerPhone(found.phone || "");
+    setEmail(found.email || "");
+    setInn(found.inn || "");
+    setKpp(found.kpp || "");
+    setAddress(found.address || "");
+    setContactName(found.contactName || "");
   }
 
   function addItem(p: PickerProduct) {
@@ -62,7 +123,9 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
       const existing = prev.find((it) => it.productId === p.id);
       if (existing) {
         return prev.map((it) =>
-          it.productId === p.id ? { ...it, quantity: it.quantity + 1 } : it
+          it.productId === p.id
+            ? { ...it, quantity: (Number(it.quantity) || 0) + 1 }
+            : it
         );
       }
       // Цена продажи подставляется автоматически (со скидкой),
@@ -74,7 +137,7 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
           name: p.name,
           sku: p.sku,
           quantity: 1,
-          price: p.price ?? 0,
+          price: p.price != null && p.price > 0 ? p.price : "",
           stockQty: p.stockQty,
         },
       ];
@@ -104,13 +167,22 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/admin/warehouse/deals", {
-        method: "POST",
+      const res = await fetch(
+        initialDeal
+          ? `/api/admin/warehouse/deals/${initialDeal.id}`
+          : "/api/admin/warehouse/deals",
+        {
+        method: initialDeal ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date,
           customerName: customerName.trim(),
           customerPhone: customerPhone.trim() || null,
+          email: email.trim() || null,
+          inn: inn.trim() || null,
+          kpp: kpp.trim() || null,
+          address: address.trim() || null,
+          contactName: contactName.trim() || null,
           comment: comment.trim() || null,
           items: items.map((it) => ({
             productId: it.productId,
@@ -140,10 +212,15 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
     <>
       <button
         type="button"
-        className="admin-btn admin-btn--primary"
+        className={
+          initialDeal
+            ? "admin-btn admin-btn--ghost admin-btn--sm"
+            : "admin-btn admin-btn--primary"
+        }
         onClick={() => setOpen(true)}
       >
-        <Plus size={15} /> Новый заказ
+        {initialDeal ? <Edit2 size={14} /> : <Plus size={15} />}
+        {initialDeal ? "Изменить" : "Новый заказ"}
       </button>
 
       {open && (
@@ -153,7 +230,9 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="admin-modal__head">
-              <h3 className="admin-modal__title">Заказ покупателя</h3>
+              <h3 className="admin-modal__title">
+                {initialDeal ? "Редактирование заказа" : "Заказ покупателя"}
+              </h3>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -181,11 +260,19 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                   <input
                     type="text"
                     className="admin-input"
+                    list="deal-customer-options"
                     value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Компания или ФИО"
+                    onChange={(e) => selectCustomer(e.target.value)}
+                    placeholder="Начните вводить название..."
                     required
                   />
+                  <datalist id="deal-customer-options">
+                    {counterparties
+                      .filter((item) => item.roles.includes("customer"))
+                      .map((item) => (
+                        <option key={item.id} value={item.name} />
+                      ))}
+                  </datalist>
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Телефон</label>
@@ -208,6 +295,17 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                   />
                 </div>
               </div>
+
+              <details className="wh-counterparty-details">
+                <summary>Полная информация о покупателе</summary>
+                <div className="wh-form-grid">
+                  <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={inn} onChange={(e) => setInn(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={kpp} onChange={(e) => setKpp(e.target.value)} /></div>
+                  <div className="admin-field" style={{ gridColumn: "1 / -1" }}><label className="admin-label">Адрес</label><input className="admin-input" value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+                </div>
+              </details>
 
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
@@ -242,7 +340,10 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                         value={it.quantity}
                         onChange={(e) =>
                           setItem(it.productId, {
-                            quantity: Number(e.target.value),
+                            quantity:
+                              e.target.value === ""
+                                ? ""
+                                : Number(e.target.value),
                           })
                         }
                       />
@@ -253,11 +354,16 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                         step={0.01}
                         value={it.price}
                         onChange={(e) =>
-                          setItem(it.productId, { price: Number(e.target.value) })
+                          setItem(it.productId, {
+                            price:
+                              e.target.value === ""
+                                ? ""
+                                : Number(e.target.value),
+                          })
                         }
                       />
                       <span className="wh-item-row__sum">
-                        {fmt(it.quantity * it.price)} ₽
+                        {fmt((Number(it.quantity) || 0) * (Number(it.price) || 0))} ₽
                       </span>
                       <button
                         type="button"
@@ -276,7 +382,10 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
 
               <div className="wh-form-footer">
                 <div className="wh-form-total">
-                  Итого: <strong>{fmt(total)} ₽</strong>
+                  Итого (с НДС): <strong>{fmt(total)} ₽</strong>
+                  <span className="wh-form-vat">
+                    в т.ч. НДС {VAT_RATE}% — {fmt(includedVat(total))} ₽
+                  </span>
                 </div>
                 <div className="admin-form-actions">
                   <button
@@ -293,13 +402,14 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                     disabled={saving || items.length === 0}
                   >
                     {saving && <Loader2 size={14} className="animate-spin" />}
-                    Сохранить заказ
+                    {initialDeal ? "Сохранить изменения" : "Сохранить заказ"}
                   </button>
                 </div>
               </div>
               <p className="wh-form-hint">
-                Заказ создаётся без списания. Кнопка «Провести» в списке
-                зарезервирует товар — спишет его с остатков склада.
+                {initialDeal
+                  ? "При изменении отпущенного заказа остатки склада будут автоматически скорректированы."
+                  : "Заказ создаётся без списания, а в банке автоматически появится входящий счёт. После оплаты кнопка «Отпустить товар» спишет позиции со склада."}
               </p>
             </form>
           </div>
@@ -322,10 +432,12 @@ export function DealActions({
   dealId,
   status,
   hasShortage = false,
+  paidEnough = false,
 }: {
   dealId: string;
   status: "new" | "completed" | "cancelled";
   hasShortage?: boolean;
+  paidEnough?: boolean;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -363,7 +475,7 @@ export function DealActions({
   function handleDelete() {
     if (
       !confirm(
-        "Удалить заказ? Если он был проведён, товар вернётся на склад (сторно)."
+        "Удалить заказ? Если товар уже отпущен, он вернётся на склад (сторно)."
       )
     )
       return;
@@ -380,22 +492,27 @@ export function DealActions({
               if (
                 hasShortage &&
                 !confirm(
-                  "Товара на складе не хватает — остаток уйдёт в минус. Провести всё равно?"
+                  "Товара на складе не хватает — остаток уйдёт в минус. Отпустить всё равно?"
                 )
               ) {
                 return;
               }
               callApi({ action: "post" });
             }}
-            disabled={saving}
+            disabled={saving || !paidEnough}
             className="admin-status__btn admin-status__btn--primary"
+            title={
+              paidEnough
+                ? "Списать товар со склада и отметить заказ отпущенным"
+                : "Сначала подтвердите оплату счёта в банке"
+            }
           >
             {saving ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
               <CheckCircle size={14} />
             )}
-            Провести
+            {paidEnough ? "Отпустить товар" : "Сначала оплатите счёт"}
           </button>
           <button
             type="button"
@@ -474,7 +591,7 @@ export function DealActions({
             </div>
             <p className="admin-modal__desc">
               {status === "completed"
-                ? "Заказ был проведён: товар вернётся на остатки склада (сторно)."
+                ? "Заказ был отпущен: товар вернётся на остатки склада (сторно)."
                 : "Заказ не проводился, остатки не изменятся."}
             </p>
             <div className="admin-radio-list">

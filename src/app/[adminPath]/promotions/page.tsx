@@ -30,6 +30,10 @@ export default async function AdminPromotionsPage({
     linkUrl: p.linkUrl ?? null,
     sortOrder: p.sortOrder ?? 0,
     isVisible: p.isVisible ?? true,
+    icon: p.icon ?? null,
+    color: p.color ?? null,
+    light: p.light ?? null,
+    deadline: p.deadline ?? null,
   }));
 
   const serializedProducts = products.map((pr) => ({

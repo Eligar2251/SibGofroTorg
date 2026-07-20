@@ -212,9 +212,9 @@ export default async function HomePage() {
               <span>Работаем с юрлицами</span>
             </div>
 
-            <div className="btn-hero-secondary">
+            <span className="hero__wp-label">
               Рассчитать выплату <ChevronRight size={15} />
-            </div>
+            </span>
           </div>
         </Link>
       </section>

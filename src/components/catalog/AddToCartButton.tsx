@@ -219,7 +219,7 @@ export function AddToCartButton({ product }: AddToCartButtonProps) {
       <div className="atc-total">
         <span className="atc-total__label">Сумма бронирования:</span>
         <span className="atc-total__sum">
-          {(priceValue * totalPieces).toLocaleString("ru-RU")} ₽
+          {(priceValue * totalPieces).toLocaleString("ru-RU")}{"\u00a0₽"}
         </span>
       </div>
 

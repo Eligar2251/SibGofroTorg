@@ -65,6 +65,39 @@ export interface Promotion {
   color?: string | null;
   light?: string | null;
   deadline?: string | null;
+  /** Показывать эту акцию поверх публичных страниц. */
+  isPopup?: boolean | null;
+  /** Локальные дата и время, начиная с которых окно можно показать. */
+  popupStartAt?: string | null;
+  /** Задержка после открытия страницы, в секундах. */
+  popupDelaySeconds?: number | null;
+  /** Сколько секунд окно остаётся на экране до автозакрытия. */
+  popupDurationSeconds?: number | null;
+}
+
+export type PopupCampaignStyle = "info" | "promo" | "important";
+export type PopupCampaignFrequency = "session" | "day" | "always";
+
+export interface PopupCampaign {
+  id: string;
+  title: string;
+  kicker?: string | null;
+  description?: string | null;
+  /** Дополнительные пункты, по одному на строку. */
+  details?: string | null;
+  imageUrl?: string | null;
+  buttonText?: string | null;
+  buttonUrl?: string | null;
+  style: PopupCampaignStyle;
+  isActive: boolean;
+  startAt?: string | null;
+  endAt?: string | null;
+  delaySeconds: number;
+  durationSeconds: number;
+  frequency: PopupCampaignFrequency;
+  sortOrder: number;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export function getProductEffectivePrice(product: {

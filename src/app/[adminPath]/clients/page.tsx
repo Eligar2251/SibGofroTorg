@@ -24,9 +24,12 @@ export default async function AdminClientsPage({
   if (adminPath !== ADMIN_PATH) notFound();
 
   const db = getAdminDb();
-  const [usersSnap, ordersSnap] = await Promise.all([
-    db.collection("users").orderBy("createdAt", "desc").get(),
-    db.collection("orders").orderBy("createdAt", "desc").get(),
+  // Ограничиваем рабочий набор: раньше страница при каждом переходе читала
+  // целиком обе коллекции. Точные общее количество получаем агрегатом.
+  const [usersSnap, ordersSnap, usersCountAgg] = await Promise.all([
+    db.collection("users").orderBy("createdAt", "desc").limit(200).get(),
+    db.collection("orders").orderBy("createdAt", "desc").limit(500).get(),
+    db.collection("users").count().get(),
   ]);
 
   const orders = ordersSnap.docs.map((d) => {
@@ -83,9 +86,9 @@ export default async function AdminClientsPage({
           <p className="admin-sub">
             Всего:{" "}
             <strong style={{ color: "var(--adm-navy)" }}>
-              {clients.length}
+              {usersCountAgg.data().count}
             </strong>{" "}
-            пользователей
+            пользователей · показаны последние {clients.length}
           </p>
         </div>
       </div>

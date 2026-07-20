@@ -9,9 +9,14 @@
 //   counters/warehouse — сквозная нумерация документов
 // =========================================================
 
+import { createHash } from "crypto";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "./firebase-admin";
 import { getProductEffectivePrice } from "./types";
+import { includedVat, VAT_RATE } from "./vat";
+
+export { includedVat, VAT_RATE } from "./vat";
 
 // ─── Типы ────────────────────────────────────────────────
 
@@ -26,28 +31,63 @@ export interface StockDocItem {
   lineTotal: number;
 }
 
-export interface WarehouseReceipt {
+export type CounterpartyRole = "supplier" | "customer";
+
+export interface CounterpartyDetails {
+  phone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  address?: string | null;
+  contactName?: string | null;
+}
+
+export interface Counterparty extends CounterpartyDetails {
+  id: string;
+  name: string;
+  normalizedName: string;
+  roles: CounterpartyRole[];
+  /** Последняя закупочная цена по каждому товару для этого поставщика. */
+  supplierPrices?: Record<string, number>;
+  comment?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export type ReceiptStatus = "draft" | "posted";
+
+export interface WarehouseReceipt extends CounterpartyDetails {
   id: string;
   number: number;
   date: string; // YYYY-MM-DD
   supplier: string;
+  status: ReceiptStatus;
+  counterpartyId?: string | null;
   comment?: string | null;
   items: StockDocItem[];
   total: number;
+  /** Разница между суммой строк и фактическим банковским платежом. */
+  bankAdjustment: number;
+  vatRate: number;
+  vatAmount: number;
   createdAt?: string | null;
 }
 
 export type DealStatus = "new" | "completed" | "cancelled";
 
-export interface CustomerDeal {
+export interface CustomerDeal extends CounterpartyDetails {
   id: string;
   number: number;
   date: string;
   customerName: string;
+  counterpartyId?: string | null;
   customerPhone?: string | null;
   comment?: string | null;
   items: StockDocItem[];
   total: number;
+  bankAdjustment: number;
+  vatRate: number;
+  vatAmount: number;
   status: DealStatus;
   cancelReason?: string | null;
   createdAt?: string | null;
@@ -59,6 +99,7 @@ export interface BankPayment {
   date: string;
   direction: "incoming" | "outgoing";
   counterparty: string;
+  counterpartyId?: string | null;
   /** Привязка к заказам покупателей (может несколько) */
   dealIds: string[];
   dealNumbers: number[];
@@ -66,6 +107,10 @@ export interface BankPayment {
   receiptIds: string[];
   receiptNumbers: number[];
   amount: number;
+  /** Пользовательский номер счёта из внешней учётной программы. */
+  invoiceNumber?: string | null;
+  vatRate: number;
+  vatAmount: number;
   isPaid: boolean;
   /** Дата фактического проведения платежа (YYYY-MM-DD) */
   paidAt?: string | null;
@@ -88,6 +133,243 @@ function serializeTimestamp(ts: any): string | null {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function cleanText(value: unknown, max: number): string | null {
+  const result = String(value ?? "").trim().slice(0, max);
+  return result || null;
+}
+
+function normalizeCounterpartyName(name: string): string {
+  return String(name || "")
+    .trim()
+    .toLocaleLowerCase("ru-RU")
+    .replace(/[«»"']/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function counterpartyIdForName(name: string): string {
+  return `cp_${createHash("sha256")
+    .update(normalizeCounterpartyName(name))
+    .digest("hex")
+    .slice(0, 32)}`;
+}
+
+function counterpartyPayload(
+  name: string,
+  role: CounterpartyRole,
+  details: CounterpartyDetails & {
+    comment?: string | null;
+    supplierPrices?: Record<string, number>;
+  }
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    name: name.trim().slice(0, 200),
+    normalizedName: normalizeCounterpartyName(name),
+    roles: FieldValue.arrayUnion(role),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  const fields: (keyof CounterpartyDetails)[] = [
+    "phone",
+    "email",
+    "inn",
+    "kpp",
+    "address",
+    "contactName",
+  ];
+  for (const field of fields) {
+    const value = cleanText(details[field], field === "address" ? 400 : 160);
+    if (value) payload[field] = value;
+  }
+  const comment = cleanText(details.comment, 1000);
+  if (comment) payload.comment = comment;
+  if (details.supplierPrices) {
+    payload.supplierPrices = details.supplierPrices;
+  }
+  return payload;
+}
+
+function addCounterpartyToBatch(
+  batch: FirebaseFirestore.WriteBatch,
+  role: CounterpartyRole,
+  name: string,
+  details: CounterpartyDetails & {
+    comment?: string | null;
+    supplierPrices?: Record<string, number>;
+  }
+): string {
+  const db = getAdminDb();
+  const id = counterpartyIdForName(name);
+  const counterpartyRef = db.collection("counterparties").doc(id);
+  batch.set(counterpartyRef, counterpartyPayload(name, role, details), {
+    merge: true,
+  });
+  // Отдельные документы гарантируют, что новая поставка обновит цены только
+  // своих позиций и не затрёт ранее сохранённый прайс этого поставщика.
+  for (const [productId, value] of Object.entries(
+    details.supplierPrices || {}
+  )) {
+    const price = Math.max(0, Number(value) || 0);
+    if (!productId || price <= 0) continue;
+    batch.set(
+      counterpartyRef.collection("supplierPrices").doc(productId),
+      {
+        productId,
+        price,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
+  return id;
+}
+
+function mapCounterparty(id: string, data: any): Counterparty {
+  return {
+    id,
+    name: String(data.name || ""),
+    normalizedName:
+      String(data.normalizedName || "") || normalizeCounterpartyName(data.name),
+    roles: Array.isArray(data.roles)
+      ? data.roles.filter(
+          (role: unknown): role is CounterpartyRole =>
+            role === "supplier" || role === "customer"
+        )
+      : [],
+    supplierPrices:
+      data.supplierPrices && typeof data.supplierPrices === "object"
+        ? Object.fromEntries(
+            Object.entries(data.supplierPrices).map(([id, price]) => [
+              id,
+              Math.max(0, Number(price) || 0),
+            ])
+          )
+        : {},
+    phone: data.phone ?? null,
+    email: data.email ?? null,
+    inn: data.inn ?? null,
+    kpp: data.kpp ?? null,
+    address: data.address ?? null,
+    contactName: data.contactName ?? null,
+    comment: data.comment ?? null,
+    createdAt: serializeTimestamp(data.createdAt),
+    updatedAt: serializeTimestamp(data.updatedAt),
+  };
+}
+
+async function fetchCounterpartyRows(): Promise<Counterparty[]> {
+  const snap = await getAdminDb().collection("counterparties").get();
+  return snap.docs.map((doc) => mapCounterparty(doc.id, doc.data()));
+}
+
+async function fetchSupplierPriceRows(): Promise<
+  { counterpartyId: string; productId: string; price: number }[]
+> {
+  const snap = await getAdminDb().collectionGroup("supplierPrices").get();
+  return snap.docs
+    .map((doc) => ({
+      counterpartyId: doc.ref.parent.parent?.id || "",
+      productId: String(doc.data().productId || doc.id),
+      price: Math.max(0, Number(doc.data().price) || 0),
+    }))
+    .filter((row) => row.counterpartyId && row.productId && row.price > 0);
+}
+
+const getCachedCounterpartyRows = unstable_cache(
+  fetchCounterpartyRows,
+  ["warehouse-counterparties"],
+  { revalidate: 60, tags: ["warehouse-counterparties"] }
+);
+
+const getCachedSupplierPriceRows = unstable_cache(
+  fetchSupplierPriceRows,
+  ["warehouse-supplier-prices"],
+  { revalidate: 60, tags: ["warehouse-supplier-prices"] }
+);
+
+function invalidateCounterpartyCache(includeSupplierPrices = false) {
+  revalidateTag("warehouse-counterparties", { expire: 0 });
+  if (includeSupplierPrices) {
+    revalidateTag("warehouse-supplier-prices", { expire: 0 });
+  }
+}
+
+export async function getCounterparties(options?: {
+  includeSupplierPrices?: boolean;
+}): Promise<Counterparty[]> {
+  const [baseRows, priceRows] = await Promise.all([
+    getCachedCounterpartyRows(),
+    options?.includeSupplierPrices
+      ? getCachedSupplierPriceRows()
+      : Promise.resolve([]),
+  ]);
+  // Кэшированный массив не мутируем: один запрос с ценами не должен менять
+  // результат другого запроса без цен.
+  const rows = baseRows.map((row) => ({
+    ...row,
+    roles: [...row.roles],
+    supplierPrices: { ...(row.supplierPrices || {}) },
+  }));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const priceRow of priceRows) {
+    const counterparty = byId.get(priceRow.counterpartyId);
+    if (!counterparty) continue;
+    counterparty.supplierPrices = {
+      ...(counterparty.supplierPrices || {}),
+      [priceRow.productId]: priceRow.price,
+    };
+  }
+  rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  return rows;
+}
+
+export async function saveCounterparty(data: {
+  id?: string;
+  name: string;
+  roles: CounterpartyRole[];
+  phone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  address?: string | null;
+  contactName?: string | null;
+  comment?: string | null;
+}): Promise<{ id: string }> {
+  const name = String(data.name || "").trim();
+  if (!name) throw new Error("Укажите название контрагента");
+  const roles = data.roles.filter(
+    (role): role is CounterpartyRole =>
+      role === "supplier" || role === "customer"
+  );
+  if (roles.length === 0) throw new Error("Выберите тип контрагента");
+  const db = getAdminDb();
+  const id = data.id || counterpartyIdForName(name);
+  await db
+    .collection("counterparties")
+    .doc(id)
+    .set(
+      {
+        name: name.slice(0, 200),
+        normalizedName: normalizeCounterpartyName(name),
+        roles,
+        phone: cleanText(data.phone, 60),
+        email: cleanText(data.email, 160),
+        inn: cleanText(data.inn, 20),
+        kpp: cleanText(data.kpp, 20),
+        address: cleanText(data.address, 400),
+        contactName: cleanText(data.contactName, 160),
+        comment: cleanText(data.comment, 1000),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  invalidateCounterpartyCache();
+  return { id };
+}
+
+export async function deleteCounterparty(id: string): Promise<void> {
+  await getAdminDb().collection("counterparties").doc(id).delete();
+  invalidateCounterpartyCache(true);
 }
 
 function cleanItems(items: any[]): StockDocItem[] {
@@ -146,12 +428,34 @@ async function applyStockDelta(
       (byProduct.get(it.productId) || 0) + it.quantity * sign
     );
   }
-  const batch = db.batch();
-  for (const [productId, delta] of byProduct) {
-    const ref = db.collection("products").doc(productId);
-    batch.set(ref, { stockQty: FieldValue.increment(delta) }, { merge: true });
-  }
-  await batch.commit();
+  await db.runTransaction(async (transaction) => {
+    const rows: {
+      ref: FirebaseFirestore.DocumentReference;
+      current: number;
+      delta: number;
+    }[] = [];
+    for (const [productId, delta] of byProduct) {
+      const ref = db.collection("products").doc(productId);
+      const snap = await transaction.get(ref);
+      rows.push({
+        ref,
+        current: snap.exists ? Number(snap.data()?.stockQty) || 0 : 0,
+        delta,
+      });
+    }
+    for (const row of rows) {
+      const next = row.current + row.delta;
+      transaction.set(
+        row.ref,
+        {
+          stockQty: next,
+          inStock: next > 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  });
 }
 
 // ─── Остатки ─────────────────────────────────────────────
@@ -165,6 +469,59 @@ export interface WarehouseStockRow {
   price: number | null;
   priceWholesale: number | null;
   isVisible: boolean;
+}
+
+export interface StockOrigin {
+  id: string;
+  productId: string;
+  receiptId: string;
+  receiptNumber: number;
+  date: string;
+  supplier: string;
+  counterpartyId?: string | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+function stockOriginId(receiptId: string, productId: string): string {
+  return `${receiptId}_${productId}`;
+}
+
+function stockOriginData(
+  receipt: Pick<
+    WarehouseReceipt,
+    "id" | "number" | "date" | "supplier" | "counterpartyId"
+  >,
+  item: StockDocItem
+) {
+  return {
+    productId: item.productId,
+    receiptId: receipt.id,
+    receiptNumber: receipt.number,
+    date: receipt.date,
+    supplier: receipt.supplier,
+    counterpartyId: receipt.counterpartyId ?? null,
+    quantity: item.quantity,
+    unitPrice: item.price,
+    lineTotal: item.lineTotal,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+function mapStockOrigin(id: string, data: any): StockOrigin {
+  return {
+    id,
+    productId: String(data.productId || ""),
+    receiptId: String(data.receiptId || ""),
+    receiptNumber: Number(data.receiptNumber) || 0,
+    date: String(data.date || ""),
+    supplier: String(data.supplier || ""),
+    counterpartyId: data.counterpartyId ?? null,
+    quantity: Number(data.quantity) || 0,
+    unitPrice: Number(data.unitPrice) || 0,
+    lineTotal: Number(data.lineTotal) || 0,
+  };
 }
 
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
@@ -202,6 +559,77 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   return rows;
 }
 
+export async function getProductStockOrigins(
+  productId: string
+): Promise<StockOrigin[]> {
+  if (!productId) return [];
+  const db = getAdminDb();
+  const markerRef = db.collection("stockOriginLookups").doc(productId);
+  const [originSnap, markerSnap] = await Promise.all([
+    db.collection("stockOrigins").where("productId", "==", productId).get(),
+    markerRef.get(),
+  ]);
+  if (!originSnap.empty) {
+    return originSnap.docs
+      .map((doc) => mapStockOrigin(doc.id, doc.data()))
+      .sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) || b.receiptNumber - a.receiptNumber
+      );
+  }
+  if (markerSnap.exists) return [];
+
+  // Одноразовый ленивый перенос старых проведённых поступлений. Дорогой
+  // просмотр выполняется только при первом открытии истории конкретного
+  // товара; дальше читается компактная индексная коллекция stockOrigins.
+  const receiptSnap = await db
+    .collection("warehouseReceipts")
+    .orderBy("number", "desc")
+    .limit(500)
+    .get();
+  const origins: StockOrigin[] = [];
+  const batch = db.batch();
+  for (const doc of receiptSnap.docs) {
+    const receipt = mapReceipt(doc.id, doc.data());
+    if (receipt.status !== "posted") continue;
+    for (const item of receipt.items) {
+      if (item.productId !== productId) continue;
+      const id = stockOriginId(receipt.id, productId);
+      origins.push(
+        mapStockOrigin(id, stockOriginData(receipt, item))
+      );
+      batch.set(
+        db.collection("stockOrigins").doc(id),
+        stockOriginData(receipt, item),
+        { merge: true }
+      );
+    }
+  }
+  batch.set(markerRef, {
+    migratedAt: FieldValue.serverTimestamp(),
+    originsCount: origins.length,
+  });
+  await batch.commit();
+  return origins.sort(
+    (a, b) => b.date.localeCompare(a.date) || b.receiptNumber - a.receiptNumber
+  );
+}
+
+export async function setWarehouseStock(
+  productId: string,
+  quantity: number
+): Promise<void> {
+  const stockQty = Math.max(0, Math.floor(Number(quantity) || 0));
+  await getAdminDb()
+    .collection("products")
+    .doc(productId)
+    .update({
+      stockQty,
+      inStock: stockQty > 0,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+}
+
 // ─── Поступления (приходные ордера) ─────────────────────
 
 function mapReceipt(id: string, data: any): WarehouseReceipt {
@@ -210,9 +638,23 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
     number: Number(data.number) || 0,
     date: String(data.date || ""),
     supplier: String(data.supplier || ""),
+    status: data.status === "draft" ? "draft" : "posted",
+    counterpartyId: data.counterpartyId ?? null,
+    phone: data.phone ?? null,
+    email: data.email ?? null,
+    inn: data.inn ?? null,
+    kpp: data.kpp ?? null,
+    address: data.address ?? null,
+    contactName: data.contactName ?? null,
     comment: data.comment ?? null,
     items: cleanItems(data.items),
     total: Number(data.total) || 0,
+    bankAdjustment: Number(data.bankAdjustment) || 0,
+    vatRate: Number(data.vatRate) || VAT_RATE,
+    vatAmount:
+      data.vatAmount !== undefined
+        ? Number(data.vatAmount) || 0
+        : includedVat(Number(data.total) || 0),
     createdAt: serializeTimestamp(data.createdAt),
   };
 }
@@ -227,52 +669,346 @@ export async function getReceipts(): Promise<WarehouseReceipt[]> {
   return snap.docs.map((d) => mapReceipt(d.id, d.data()));
 }
 
+export async function getReceiptById(
+  id: string
+): Promise<WarehouseReceipt | null> {
+  if (!id) return null;
+  const snap = await getAdminDb().collection("warehouseReceipts").doc(id).get();
+  return snap.exists ? mapReceipt(snap.id, snap.data()) : null;
+}
+
 export async function createReceipt(data: {
   date: string;
   supplier: string;
+  phone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  address?: string | null;
+  contactName?: string | null;
   comment?: string | null;
   items: StockDocItem[];
 }): Promise<{ id: string; number: number }> {
   const items = cleanItems(data.items);
+  if (!data.supplier?.trim()) {
+    throw new Error("Укажите поставщика");
+  }
   if (items.length === 0) {
     throw new Error("Добавьте хотя бы одну позицию");
+  }
+  const total = itemsTotal(items);
+  if (total <= 0) {
+    throw new Error("Укажите сумму поступления больше нуля");
   }
   const db = getAdminDb();
   const number = await nextNumber("receipt");
   const date = data.date || new Date().toISOString().slice(0, 10);
   const supplier = String(data.supplier || "").slice(0, 200);
-  const total = itemsTotal(items);
-  const docRef = await db.collection("warehouseReceipts").add({
+  const vatAmount = includedVat(total);
+  const payNumber = await nextNumber("payment");
+  const docRef = db.collection("warehouseReceipts").doc();
+  const paymentRef = db.collection("bankPayments").doc();
+  const batch = db.batch();
+  const details: CounterpartyDetails = {
+    phone: cleanText(data.phone, 60),
+    email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20),
+    kpp: cleanText(data.kpp, 20),
+    address: cleanText(data.address, 400),
+    contactName: cleanText(data.contactName, 160),
+  };
+  const counterpartyId = addCounterpartyToBatch(
+    batch,
+    "supplier",
+    supplier,
+    {
+      ...details,
+      comment: data.comment,
+      supplierPrices: Object.fromEntries(
+        items.map((item) => [item.productId, item.price])
+      ),
+    }
+  );
+
+  batch.set(docRef, {
     number,
     date,
     supplier,
+    status: "draft",
+    counterpartyId,
+    ...details,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items,
     total,
+    bankAdjustment: 0,
+    vatRate: VAT_RATE,
+    vatAmount,
     createdAt: FieldValue.serverTimestamp(),
   });
-  // Проведение: товар приходит на склад
-  await applyStockDelta(items, 1);
-  // Автоматически создаём платёж поставщику в банке «в ожидании» —
-  // сумму вводить не нужно, в платеже уже финальная стоимость партии (с НДС)
-  const payNumber = await nextNumber("payment");
-  await db.collection("bankPayments").add({
+
+  // Новый документ остаётся черновиком: товар попадёт на склад только
+  // после оплаты связанного счёта и отдельного ручного проведения.
+
+  batch.set(paymentRef, {
     number: payNumber,
     date,
     direction: "outgoing",
     counterparty: supplier || "Поставщик",
+    counterpartyId,
     dealIds: [],
     dealNumbers: [],
     receiptIds: [docRef.id],
     receiptNumbers: [number],
     amount: total,
+    invoiceNumber: null,
+    vatRate: VAT_RATE,
+    vatAmount,
     isPaid: false,
     paidAt: null,
     comment: `Оплата поставщику по приходному ордеру ПО-${number}`,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
+
+  await batch.commit();
+  invalidateCounterpartyCache(true);
   return { id: docRef.id, number };
+}
+
+export async function updateReceipt(
+  id: string,
+  data: {
+    date: string;
+    supplier: string;
+    phone?: string | null;
+    email?: string | null;
+    inn?: string | null;
+    kpp?: string | null;
+    address?: string | null;
+    contactName?: string | null;
+    comment?: string | null;
+    items: StockDocItem[];
+  }
+): Promise<void> {
+  const db = getAdminDb();
+  const ref = db.collection("warehouseReceipts").doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Поступление не найдено");
+  const previous = mapReceipt(id, snap.data());
+  const items = cleanItems(data.items);
+  if (!data.supplier?.trim()) throw new Error("Укажите поставщика");
+  if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
+  const linesTotal = itemsTotal(items);
+  if (linesTotal <= 0) throw new Error("Укажите сумму поступления больше нуля");
+
+  const paymentSnap = await db
+    .collection("bankPayments")
+    .where("receiptIds", "array-contains", id)
+    .get();
+  const paidTotal = paymentSnap.docs.reduce((sum, doc) => {
+    const payment = doc.data();
+    const links = Array.isArray(payment.receiptIds)
+      ? Math.max(1, payment.receiptIds.length)
+      : 1;
+    return payment.isPaid === true && payment.direction === "outgoing"
+      ? sum + (Number(payment.amount) || 0) / links
+      : sum;
+  }, 0);
+  const total = paidTotal > 0 ? paidTotal : linesTotal;
+  const bankAdjustment = round2(total - linesTotal);
+  const details: CounterpartyDetails = {
+    phone: cleanText(data.phone, 60),
+    email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20),
+    kpp: cleanText(data.kpp, 20),
+    address: cleanText(data.address, 400),
+    contactName: cleanText(data.contactName, 160),
+  };
+  const supplier = data.supplier.trim().slice(0, 200);
+
+  if (previous.status === "posted") {
+    const delta = new Map<string, number>();
+    for (const item of previous.items) {
+      delta.set(item.productId, (delta.get(item.productId) || 0) - item.quantity);
+    }
+    for (const item of items) {
+      delta.set(item.productId, (delta.get(item.productId) || 0) + item.quantity);
+    }
+    await db.runTransaction(async (transaction) => {
+      const stocks: {
+        ref: FirebaseFirestore.DocumentReference;
+        next: number;
+      }[] = [];
+      for (const [productId, change] of delta) {
+        if (change === 0) continue;
+        const productRef = db.collection("products").doc(productId);
+        const productSnap = await transaction.get(productRef);
+        const current = productSnap.exists
+          ? Number(productSnap.data()?.stockQty) || 0
+          : 0;
+        stocks.push({ ref: productRef, next: current + change });
+      }
+      for (const stock of stocks) {
+        transaction.set(
+          stock.ref,
+          {
+            stockQty: stock.next,
+            inStock: stock.next > 0,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      const currentProductIds = new Set(items.map((item) => item.productId));
+      for (const oldItem of previous.items) {
+        if (currentProductIds.has(oldItem.productId)) continue;
+        transaction.delete(
+          db
+            .collection("stockOrigins")
+            .doc(stockOriginId(id, oldItem.productId))
+        );
+      }
+      const originReceipt = {
+        id,
+        number: previous.number,
+        date: data.date,
+        supplier,
+        counterpartyId: counterpartyIdForName(supplier),
+      };
+      for (const item of items) {
+        transaction.set(
+          db.collection("stockOrigins").doc(stockOriginId(id, item.productId)),
+          stockOriginData(originReceipt, item),
+          { merge: true }
+        );
+      }
+      transaction.update(ref, {
+        date: data.date,
+        supplier,
+        ...details,
+        comment: cleanText(data.comment, 500),
+        items,
+        total,
+        bankAdjustment,
+        vatRate: VAT_RATE,
+        vatAmount: includedVat(total),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } else {
+    await ref.update({
+      date: data.date,
+      supplier,
+      ...details,
+      comment: cleanText(data.comment, 500),
+      items,
+      total,
+      bankAdjustment,
+      vatRate: VAT_RATE,
+      vatAmount: includedVat(total),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  const batch = db.batch();
+  const counterpartyId = addCounterpartyToBatch(batch, "supplier", supplier, {
+    ...details,
+    comment: data.comment,
+    supplierPrices: Object.fromEntries(
+      items.map((item) => [item.productId, item.price])
+    ),
+  });
+  batch.update(ref, { counterpartyId });
+  for (const payment of paymentSnap.docs) {
+    if (payment.data().isPaid === true) continue;
+    batch.update(payment.ref, {
+      counterparty: supplier,
+      counterpartyId,
+      amount: linesTotal,
+      vatRate: VAT_RATE,
+      vatAmount: includedVat(linesTotal),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+  await batch.commit();
+  invalidateCounterpartyCache(true);
+}
+
+export async function postReceipt(id: string): Promise<void> {
+  const db = getAdminDb();
+  const receiptRef = db.collection("warehouseReceipts").doc(id);
+  const paymentQuery = await db
+    .collection("bankPayments")
+    .where("receiptIds", "array-contains", id)
+    .get();
+
+  await db.runTransaction(async (transaction) => {
+    const receiptSnap = await transaction.get(receiptRef);
+    if (!receiptSnap.exists) throw new Error("Поступление не найдено");
+    const receipt = mapReceipt(id, receiptSnap.data());
+    if (receipt.status === "posted") return;
+
+    let paid = 0;
+    for (const paymentDoc of paymentQuery.docs) {
+      const paymentSnap = await transaction.get(paymentDoc.ref);
+      const payment = paymentSnap.data();
+      if (payment?.isPaid === true && payment.direction === "outgoing") {
+        const links = Array.isArray(payment.receiptIds)
+          ? Math.max(1, payment.receiptIds.length)
+          : 1;
+        paid += (Number(payment.amount) || 0) / links;
+      }
+    }
+    if (paid + 0.009 < receipt.total) {
+      throw new Error(
+        `Сначала проведите оплату счёта в банке. Оплачено ${paid.toLocaleString("ru-RU")} из ${receipt.total.toLocaleString("ru-RU")} ₽`
+      );
+    }
+
+    const quantities = new Map<string, number>();
+    for (const item of receipt.items) {
+      quantities.set(
+        item.productId,
+        (quantities.get(item.productId) || 0) + item.quantity
+      );
+    }
+    const stockRows: {
+      ref: FirebaseFirestore.DocumentReference;
+      next: number;
+    }[] = [];
+    for (const [productId, quantity] of quantities) {
+      const productRef = db.collection("products").doc(productId);
+      const productSnap = await transaction.get(productRef);
+      const current = productSnap.exists
+        ? Number(productSnap.data()?.stockQty) || 0
+        : 0;
+      stockRows.push({ ref: productRef, next: current + quantity });
+    }
+    for (const stock of stockRows) {
+      transaction.set(
+        stock.ref,
+        {
+          stockQty: stock.next,
+          inStock: stock.next > 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+    for (const item of receipt.items) {
+      const originRef = db
+        .collection("stockOrigins")
+        .doc(stockOriginId(receipt.id, item.productId));
+      transaction.set(originRef, stockOriginData(receipt, item), {
+        merge: true,
+      });
+    }
+    transaction.update(receiptRef, {
+      status: "posted",
+      postedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
 }
 
 export async function deleteReceipt(id: string): Promise<void> {
@@ -281,8 +1017,19 @@ export async function deleteReceipt(id: string): Promise<void> {
   const snap = await ref.get();
   if (!snap.exists) return;
   const receipt = mapReceipt(id, snap.data());
-  await applyStockDelta(receipt.items, -1);
+  if (receipt.status === "posted") {
+    await applyStockDelta(receipt.items, -1);
+  }
   await ref.delete();
+  const originSnap = await db
+    .collection("stockOrigins")
+    .where("receiptId", "==", id)
+    .get();
+  if (!originSnap.empty) {
+    const originBatch = db.batch();
+    originSnap.docs.forEach((doc) => originBatch.delete(doc.ref));
+    await originBatch.commit();
+  }
   // Чистим привязанные платежи: «в ожидании» только с этим поступлением —
   // удаляем; с несколькими ордерами — просто отвязываем это поступление.
   // Проведённые платежи (история денег) не трогаем.
@@ -323,10 +1070,23 @@ function mapDeal(id: string, data: any): CustomerDeal {
     number: Number(data.number) || 0,
     date: String(data.date || ""),
     customerName: String(data.customerName || ""),
-    customerPhone: data.customerPhone ?? null,
+    counterpartyId: data.counterpartyId ?? null,
+    customerPhone: data.customerPhone ?? data.phone ?? null,
+    phone: data.phone ?? data.customerPhone ?? null,
+    email: data.email ?? null,
+    inn: data.inn ?? null,
+    kpp: data.kpp ?? null,
+    address: data.address ?? null,
+    contactName: data.contactName ?? null,
     comment: data.comment ?? null,
     items: cleanItems(data.items),
     total: Number(data.total) || 0,
+    bankAdjustment: Number(data.bankAdjustment) || 0,
+    vatRate: Number(data.vatRate) || VAT_RATE,
+    vatAmount:
+      data.vatAmount !== undefined
+        ? Number(data.vatAmount) || 0
+        : includedVat(Number(data.total) || 0),
     status: (data.status as DealStatus) || "new",
     cancelReason: data.cancelReason ?? null,
     createdAt: serializeTimestamp(data.createdAt),
@@ -347,6 +1107,11 @@ export async function createDeal(data: {
   date: string;
   customerName: string;
   customerPhone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  address?: string | null;
+  contactName?: string | null;
   comment?: string | null;
   items: StockDocItem[];
 }): Promise<{ id: string; number: number }> {
@@ -357,43 +1122,322 @@ export async function createDeal(data: {
   if (items.length === 0) {
     throw new Error("Добавьте хотя бы одну позицию");
   }
+  const total = itemsTotal(items);
+  if (total <= 0) {
+    throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
+  }
   const db = getAdminDb();
   const number = await nextNumber("deal");
-  const docRef = await db.collection("customerDeals").add({
+  const paymentNumber = await nextNumber("payment");
+  const date = data.date || new Date().toISOString().slice(0, 10);
+  const customerName = String(data.customerName).slice(0, 200);
+  const vatAmount = includedVat(total);
+  const docRef = db.collection("customerDeals").doc();
+  const paymentRef = db.collection("bankPayments").doc();
+  const batch = db.batch();
+  const details: CounterpartyDetails = {
+    phone: cleanText(data.customerPhone, 60),
+    email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20),
+    kpp: cleanText(data.kpp, 20),
+    address: cleanText(data.address, 400),
+    contactName: cleanText(data.contactName, 160),
+  };
+  const counterpartyId = addCounterpartyToBatch(
+    batch,
+    "customer",
+    customerName,
+    { ...details, comment: data.comment }
+  );
+
+  batch.set(docRef, {
     number,
-    date: data.date || new Date().toISOString().slice(0, 10),
-    customerName: String(data.customerName).slice(0, 200),
-    customerPhone: data.customerPhone
-      ? String(data.customerPhone).slice(0, 40)
-      : null,
+    date,
+    customerName,
+    counterpartyId,
+    customerPhone: details.phone,
+    ...details,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items,
-    total: itemsTotal(items),
+    total,
+    bankAdjustment: 0,
+    vatRate: VAT_RATE,
+    vatAmount,
     status: "new",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
+
+  // Счёт покупателю появляется в банке одновременно с заказом. Он ещё не
+  // проведён и начнёт влиять на баланс только после фактической оплаты.
+  batch.set(paymentRef, {
+    number: paymentNumber,
+    date,
+    direction: "incoming",
+    counterparty: customerName,
+    counterpartyId,
+    dealIds: [docRef.id],
+    dealNumbers: [number],
+    receiptIds: [],
+    receiptNumbers: [],
+    amount: total,
+    invoiceNumber: null,
+    vatRate: VAT_RATE,
+    vatAmount,
+    isPaid: false,
+    paidAt: null,
+    comment: `Счёт покупателю по заказу ЗК-${number}`,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await batch.commit();
+  invalidateCounterpartyCache();
   return { id: docRef.id, number };
 }
 
-/** Провести заказ — списать товар со склада */
-export async function postDeal(id: string): Promise<void> {
+export async function updateDeal(
+  id: string,
+  data: {
+    date: string;
+    customerName: string;
+    customerPhone?: string | null;
+    email?: string | null;
+    inn?: string | null;
+    kpp?: string | null;
+    address?: string | null;
+    contactName?: string | null;
+    comment?: string | null;
+    items: StockDocItem[];
+  }
+): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection("customerDeals").doc(id);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("Заказ не найден");
-  const deal = mapDeal(id, snap.data());
-  if (deal.status === "completed") return;
-  if (deal.status === "cancelled") throw new Error("Заказ отменён");
-  await applyStockDelta(deal.items, -1);
-  await ref.update({
-    status: "completed",
-    cancelReason: null,
+  const previous = mapDeal(id, snap.data());
+  if (previous.status === "cancelled") {
+    throw new Error("Отменённый заказ нельзя редактировать");
+  }
+
+  const items = cleanItems(data.items);
+  const customerName = String(data.customerName || "").trim().slice(0, 200);
+  if (!customerName) throw new Error("Укажите покупателя");
+  if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
+  const linesTotal = itemsTotal(items);
+  if (linesTotal <= 0) {
+    throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
+  }
+
+  const paymentSnap = await db
+    .collection("bankPayments")
+    .where("dealIds", "array-contains", id)
+    .get();
+  const paidTotal = paymentSnap.docs.reduce((sum, doc) => {
+    const payment = doc.data();
+    const links = Array.isArray(payment.dealIds)
+      ? Math.max(1, payment.dealIds.length)
+      : 1;
+    return payment.isPaid === true && payment.direction === "incoming"
+      ? sum + (Number(payment.amount) || 0) / links
+      : sum;
+  }, 0);
+  const total = paidTotal > 0 ? paidTotal : linesTotal;
+  const bankAdjustment = round2(total - linesTotal);
+  const details: CounterpartyDetails = {
+    phone: cleanText(data.customerPhone, 60),
+    email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20),
+    kpp: cleanText(data.kpp, 20),
+    address: cleanText(data.address, 400),
+    contactName: cleanText(data.contactName, 160),
+  };
+  const dealPatch = {
+    date: data.date,
+    customerName,
+    customerPhone: details.phone,
+    ...details,
+    comment: cleanText(data.comment, 500),
+    items,
+    total,
+    bankAdjustment,
+    vatRate: VAT_RATE,
+    vatAmount: includedVat(total),
     updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  if (previous.status === "completed") {
+    const delta = new Map<string, number>();
+    // Старый состав возвращаем, новый состав снова списываем.
+    for (const item of previous.items) {
+      delta.set(item.productId, (delta.get(item.productId) || 0) + item.quantity);
+    }
+    for (const item of items) {
+      delta.set(item.productId, (delta.get(item.productId) || 0) - item.quantity);
+    }
+    await db.runTransaction(async (transaction) => {
+      const stocks: {
+        ref: FirebaseFirestore.DocumentReference;
+        next: number;
+      }[] = [];
+      for (const [productId, change] of delta) {
+        if (change === 0) continue;
+        const productRef = db.collection("products").doc(productId);
+        const productSnap = await transaction.get(productRef);
+        const current = productSnap.exists
+          ? Number(productSnap.data()?.stockQty) || 0
+          : 0;
+        stocks.push({ ref: productRef, next: current + change });
+      }
+      for (const stock of stocks) {
+        transaction.set(
+          stock.ref,
+          {
+            stockQty: stock.next,
+            inStock: stock.next > 0,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      transaction.update(ref, dealPatch);
+    });
+  } else {
+    await ref.update(dealPatch);
+  }
+
+  const batch = db.batch();
+  const counterpartyId = addCounterpartyToBatch(
+    batch,
+    "customer",
+    customerName,
+    { ...details, comment: data.comment }
+  );
+  batch.update(ref, { counterpartyId });
+  for (const payment of paymentSnap.docs) {
+    if (payment.data().isPaid === true) continue;
+    batch.update(payment.ref, {
+      counterparty: customerName,
+      counterpartyId,
+      amount: linesTotal,
+      vatRate: VAT_RATE,
+      vatAmount: includedVat(linesTotal),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+  await batch.commit();
+  invalidateCounterpartyCache();
+}
+
+/** Отпустить заказ — списать товар со склада после оплаты */
+export async function postDeal(id: string): Promise<void> {
+  const db = getAdminDb();
+  const dealRef = db.collection("customerDeals").doc(id);
+  const paymentQuery = await db
+    .collection("bankPayments")
+    .where("dealIds", "array-contains", id)
+    .get();
+  await db.runTransaction(async (transaction) => {
+    const dealSnap = await transaction.get(dealRef);
+    if (!dealSnap.exists) throw new Error("Заказ не найден");
+    const deal = mapDeal(id, dealSnap.data());
+    if (deal.status === "completed") return;
+    if (deal.status === "cancelled") throw new Error("Заказ отменён");
+
+    let paid = 0;
+    for (const paymentDoc of paymentQuery.docs) {
+      const paymentSnap = await transaction.get(paymentDoc.ref);
+      const payment = paymentSnap.data();
+      if (payment?.isPaid === true && payment.direction === "incoming") {
+        const links = Array.isArray(payment.dealIds)
+          ? Math.max(1, payment.dealIds.length)
+          : 1;
+        paid += (Number(payment.amount) || 0) / links;
+      }
+    }
+    if (paid + 0.009 < deal.total) {
+      throw new Error(
+        `Сначала подтвердите оплату счёта в банке. Оплачено ${paid.toLocaleString("ru-RU")} из ${deal.total.toLocaleString("ru-RU")} ₽`
+      );
+    }
+
+    const quantities = new Map<string, number>();
+    for (const item of deal.items) {
+      quantities.set(
+        item.productId,
+        (quantities.get(item.productId) || 0) + item.quantity
+      );
+    }
+    const stockRows: {
+      ref: FirebaseFirestore.DocumentReference;
+      next: number;
+    }[] = [];
+    // Все чтения выполняются до записей. Повторное нажатие «Отпустить» не
+    // спишет товар дважды: статус заказа проверяется в той же транзакции.
+    for (const [productId, quantity] of quantities) {
+      const productRef = db.collection("products").doc(productId);
+      const productSnap = await transaction.get(productRef);
+      const current = productSnap.exists
+        ? Number(productSnap.data()?.stockQty) || 0
+        : 0;
+      stockRows.push({ ref: productRef, next: current - quantity });
+    }
+    for (const row of stockRows) {
+      transaction.set(
+        row.ref,
+        {
+          stockQty: row.next,
+          inStock: row.next > 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+    transaction.update(dealRef, {
+      status: "completed",
+      postedAt: FieldValue.serverTimestamp(),
+      cancelReason: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   });
 }
 
-/** Отменить заказ — вернуть товар на склад, если был проведён */
+/** Удалить/отвязать неоплаченные счета, связанные с отменённым заказом. */
+async function cleanupPendingDealPayments(
+  dealId: string,
+  db = getAdminDb()
+): Promise<void> {
+  const paySnap = await db
+    .collection("bankPayments")
+    .where("dealIds", "array-contains", dealId)
+    .get();
+  for (const doc of paySnap.docs) {
+    const payment = doc.data() as any;
+    if (payment.isPaid === true) continue;
+    const ids: string[] = Array.isArray(payment.dealIds)
+      ? [...payment.dealIds]
+      : [];
+    const numbers: number[] = Array.isArray(payment.dealNumbers)
+      ? [...payment.dealNumbers]
+      : [];
+    const index = ids.indexOf(dealId);
+    if (index < 0) continue;
+    ids.splice(index, 1);
+    numbers.splice(index, 1);
+    const hasLinks = ids.length > 0 || (payment.receiptIds || []).length > 0;
+    if (!hasLinks) {
+      await doc.ref.delete();
+    } else {
+      await doc.ref.update({
+        dealIds: ids,
+        dealNumbers: numbers,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+}
+
+/** Отменить заказ — вернуть товар на склад, если он был отпущен */
 export async function cancelDeal(
   id: string,
   reason?: string | null
@@ -411,6 +1455,7 @@ export async function cancelDeal(
     cancelReason: reason ? String(reason).slice(0, 300) : null,
     updatedAt: FieldValue.serverTimestamp(),
   });
+  await cleanupPendingDealPayments(id, db);
 }
 
 export async function deleteDeal(id: string): Promise<void> {
@@ -423,6 +1468,7 @@ export async function deleteDeal(id: string): Promise<void> {
     await applyStockDelta(deal.items, 1);
   }
   await ref.delete();
+  await cleanupPendingDealPayments(id, db);
 }
 
 // ─── Банк (платежи) ─────────────────────────────────────
@@ -434,6 +1480,7 @@ function mapPayment(id: string, data: any): BankPayment {
     date: String(data.date || ""),
     direction: data.direction === "outgoing" ? "outgoing" : "incoming",
     counterparty: String(data.counterparty || ""),
+    counterpartyId: data.counterpartyId ?? null,
     dealIds: Array.isArray(data.dealIds) ? data.dealIds.map(String) : [],
     dealNumbers: Array.isArray(data.dealNumbers)
       ? data.dealNumbers.map((n: any) => Number(n) || 0)
@@ -445,6 +1492,12 @@ function mapPayment(id: string, data: any): BankPayment {
       ? data.receiptNumbers.map((n: any) => Number(n) || 0)
       : [],
     amount: Math.max(0, Number(data.amount) || 0),
+    invoiceNumber: data.invoiceNumber ? String(data.invoiceNumber) : null,
+    vatRate: Number(data.vatRate) || VAT_RATE,
+    vatAmount:
+      data.vatAmount !== undefined
+        ? Math.max(0, Number(data.vatAmount) || 0)
+        : includedVat(Number(data.amount) || 0),
     isPaid: data.isPaid === true,
     paidAt: data.paidAt ? String(data.paidAt) : null,
     comment: data.comment ?? null,
@@ -469,6 +1522,7 @@ export async function createPayment(data: {
   dealIds?: string[];
   receiptIds?: string[];
   amount: number;
+  invoiceNumber?: string | null;
   isPaid?: boolean;
   comment?: string | null;
 }): Promise<{ id: string; number: number }> {
@@ -498,16 +1552,29 @@ export async function createPayment(data: {
   const isPaid = data.isPaid === true;
   const date = data.date || new Date().toISOString().slice(0, 10);
   const number = await nextNumber("payment");
-  const docRef = await db.collection("bankPayments").add({
+  const docRef = db.collection("bankPayments").doc();
+  const batch = db.batch();
+  const counterparty = String(data.counterparty).trim().slice(0, 200);
+  const counterpartyId = addCounterpartyToBatch(
+    batch,
+    data.direction === "outgoing" ? "supplier" : "customer",
+    counterparty,
+    {}
+  );
+  batch.set(docRef, {
     number,
     date,
     direction: data.direction === "outgoing" ? "outgoing" : "incoming",
-    counterparty: String(data.counterparty).slice(0, 200),
+    counterparty,
+    counterpartyId,
     dealIds,
     dealNumbers,
     receiptIds,
     receiptNumbers,
     amount,
+    invoiceNumber: cleanText(data.invoiceNumber, 100),
+    vatRate: VAT_RATE,
+    vatAmount: includedVat(amount),
     // По умолчанию платёж создаётся «в ожидании» — баланс не меняется,
     // проводится позже отдельной кнопкой
     isPaid,
@@ -516,7 +1583,47 @@ export async function createPayment(data: {
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
+  await batch.commit();
+  invalidateCounterpartyCache();
   return { id: docRef.id, number };
+}
+
+async function syncPaymentAmountToDocuments(
+  payment: BankPayment,
+  amount: number
+): Promise<void> {
+  const db = getAdminDb();
+  const links = [
+    ...payment.dealIds.map((id) => ({ id, collection: "customerDeals" })),
+    ...payment.receiptIds.map((id) => ({ id, collection: "warehouseReceipts" })),
+  ];
+  if (links.length === 0) return;
+  const documents = await Promise.all(
+    links.map((link) => db.collection(link.collection).doc(link.id).get())
+  );
+  const currentTotals = documents.map((doc) =>
+    doc.exists ? Math.max(0, Number(doc.data()?.total) || 0) : 0
+  );
+  const sum = currentTotals.reduce((total, value) => total + value, 0);
+  const batch = db.batch();
+  documents.forEach((doc, index) => {
+    if (!doc.exists) return;
+    const share =
+      documents.length === 1
+        ? amount
+        : sum > 0
+          ? round2((amount * currentTotals[index]) / sum)
+          : round2(amount / documents.length);
+    const lines = itemsTotal(cleanItems(doc.data()?.items || []));
+    batch.update(doc.ref, {
+      total: share,
+      bankAdjustment: round2(share - lines),
+      vatRate: VAT_RATE,
+      vatAmount: includedVat(share),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  await batch.commit();
 }
 
 export async function updatePayment(
@@ -527,10 +1634,30 @@ export async function updatePayment(
     comment?: string | null;
     date?: string;
     counterparty?: string;
+    invoiceNumber?: string | null;
   }
 ): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection("bankPayments").doc(id);
+  const existingSnap = await ref.get();
+  if (!existingSnap.exists) throw new Error("Платёж не найден");
+  const existing = mapPayment(id, existingSnap.data());
+
+  if (data.isPaid === false && existing.receiptIds.length > 0) {
+    const receipts = await Promise.all(
+      existing.receiptIds.map((receiptId) =>
+        db.collection("warehouseReceipts").doc(receiptId).get()
+      )
+    );
+    if (receipts.some(
+      (receipt) => receipt.exists && receipt.data()?.status !== "draft"
+    )) {
+      throw new Error(
+        "Нельзя отменить оплату: связанное поступление уже проведено на склад"
+      );
+    }
+  }
+
   const patch: Record<string, any> = {
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -541,19 +1668,45 @@ export async function updatePayment(
       ? new Date().toISOString().slice(0, 10)
       : null;
   }
-  if (data.amount !== undefined)
+  if (data.amount !== undefined) {
     patch.amount = Math.max(0, Number(data.amount) || 0);
+    patch.vatRate = VAT_RATE;
+    patch.vatAmount = includedVat(patch.amount);
+  }
   if (data.comment !== undefined)
     patch.comment = data.comment ? String(data.comment).slice(0, 500) : null;
   if (data.date !== undefined) patch.date = String(data.date);
   if (data.counterparty !== undefined)
     patch.counterparty = String(data.counterparty).slice(0, 200);
+  if (data.invoiceNumber !== undefined)
+    patch.invoiceNumber = cleanText(data.invoiceNumber, 100);
   await ref.update(patch);
+  if (data.amount !== undefined) {
+    await syncPaymentAmountToDocuments(existing, patch.amount);
+  }
 }
 
 export async function deletePayment(id: string): Promise<void> {
   const db = getAdminDb();
-  await db.collection("bankPayments").doc(id).delete();
+  const ref = db.collection("bankPayments").doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const payment = mapPayment(id, snap.data());
+  if (payment.receiptIds.length > 0) {
+    const receipts = await Promise.all(
+      payment.receiptIds.map((receiptId) =>
+        db.collection("warehouseReceipts").doc(receiptId).get()
+      )
+    );
+    if (receipts.some(
+      (receipt) => receipt.exists && receipt.data()?.status !== "draft"
+    )) {
+      throw new Error(
+        "Нельзя удалить оплату: связанное поступление уже проведено на склад"
+      );
+    }
+  }
+  await ref.delete();
 }
 
 /** Сводка по банку */

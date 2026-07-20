@@ -31,6 +31,7 @@ export default async function AdminProductsPage({
     categoryId: p.categoryId ?? null,
     price: p.price ?? null,
     priceWholesale: p.priceWholesale ?? null,
+    stockQty: p.stockQty ?? 0,
     inStock: p.inStock,
     isPromo: p.isPromo,
     promoLabel: p.promoLabel ?? null,
@@ -56,13 +57,13 @@ export default async function AdminProductsPage({
           <Link
             href={`/${ADMIN_PATH}/products/bulk`}
             className="admin-btn admin-btn--ghost"
-          >
+           prefetch={false}>
             <Pencil size={15} /> Массовое редактирование
           </Link>
           <Link
             href={`/${ADMIN_PATH}/products/new`}
             className="admin-btn admin-btn--primary"
-          >
+           prefetch={false}>
             <Plus size={16} /> Добавить товар
           </Link>
         </div>

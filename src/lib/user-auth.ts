@@ -2,7 +2,7 @@
 // FILE: src/lib/user-auth.ts
 // =========================================================
 
-import { scryptSync, randomBytes, timingSafeEqual } from "crypto";
+import { createHash, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -63,10 +63,23 @@ export function normalizePhone(raw: string): string {
   return digits;
 }
 
+export function isValidRussianPhone(raw: string): boolean {
+  return /^7\d{10}$/.test(normalizePhone(raw));
+}
+
 export function formatPhoneDisplay(digits: string): string {
   const d = normalizePhone(digits);
   if (d.length !== 11) return digits;
   return `+${d[0]} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9, 11)}`;
+}
+
+/**
+ * Новые аккаунты получают стабильный id, зависящий только от
+ * нормализованного телефона. Поэтому два параллельных запроса регистрации
+ * одного номера не смогут создать две разные записи Firestore.
+ */
+function userIdForPhone(phoneDigits: string): string {
+  return `phone_${createHash("sha256").update(phoneDigits).digest("hex").slice(0, 40)}`;
 }
 
 export function hashPassword(password: string): string {
@@ -168,15 +181,17 @@ export async function createUser(data: {
   phone: string;
   password: string;
   name?: string;
-}): Promise<{ id: string } | { error: string }> {
+}): Promise<{ id: string; name: string | null } | { error: string }> {
   const phoneDigits = normalizePhone(data.phone);
-  if (phoneDigits.length < 11) {
+  if (!isValidRussianPhone(phoneDigits)) {
     return { error: "Некорректный номер телефона" };
   }
   if (!data.password || data.password.length < 8) {
     return { error: "Пароль минимум 8 символов" };
   }
 
+  // Сначала учитываем старые аккаунты со случайными id. Ошибка чтения БД
+  // должна останавливать регистрацию, иначе можно создать дубль номера.
   try {
     const existing = await findUserByPhone(phoneDigits);
     if (existing) {
@@ -184,21 +199,32 @@ export async function createUser(data: {
     }
   } catch (e) {
     console.error("findUserByPhone error:", e);
+    return { error: "Не удалось проверить номер телефона. Попробуйте ещё раз." };
   }
 
   const passwordHash = hashPassword(data.password);
+  const name = data.name?.trim().slice(0, 120) || null;
   const db = getAdminDb();
+  const docRef = db.collection("users").doc(userIdForPhone(phoneDigits));
 
   try {
-    const docRef = await db.collection("users").add({
-      phone: formatPhoneDisplay(phoneDigits),
-      phoneDigits,
-      passwordHash,
-      name: data.name?.trim() || null,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+    const created = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(docRef);
+      if (snap.exists) return false;
+      tx.set(docRef, {
+        phone: formatPhoneDisplay(phoneDigits),
+        phoneDigits,
+        passwordHash,
+        name,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return true;
     });
-    return { id: docRef.id };
+    if (!created) {
+      return { error: "Пользователь с таким телефоном уже зарегистрирован" };
+    }
+    return { id: docRef.id, name };
   } catch (e: unknown) {
     console.error("createUser Firestore error:", e);
     const msg = e instanceof Error ? e.message : String(e);
