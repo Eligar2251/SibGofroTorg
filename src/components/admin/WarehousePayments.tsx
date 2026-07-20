@@ -20,9 +20,14 @@ import {
   CheckCircle,
   Undo2,
   Pencil,
+  RotateCcw,
+  Banknote,
+  UserRound,
+  Download,
 } from "lucide-react";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
+import type { BankPaymentType } from "@/lib/warehouse";
 
 export interface DealLinkOption {
   id: string;
@@ -69,6 +74,7 @@ export function PaymentForm({
   const [direction, setDirection] = useState<"incoming" | "outgoing">(
     "incoming"
   );
+  const [type, setType] = useState<BankPaymentType>("regular");
   const [linkMode, setLinkMode] = useState<LinkMode>("deals");
   const [date, setDate] = useState(todayIso());
   const [counterparty, setCounterparty] = useState("");
@@ -155,6 +161,14 @@ export function PaymentForm({
 
   function switchDirection(dir: "incoming" | "outgoing") {
     setDirection(dir);
+    // При смене направления сбрасываем тип на regular, если текущий тип несовместим
+    if (dir === "incoming" && (type === "cash" || type === "transfer")) {
+      setType("regular");
+    }
+    if (dir === "outgoing" && type === "deposit") {
+      setType("regular");
+    }
+
     // Для входящих — привязка к заказам, для расходов — к поступлениям
     const mode: LinkMode = dir === "incoming" ? "deals" : "receipts";
     setLinkMode(mode);
@@ -164,6 +178,22 @@ export function PaymentForm({
     setAmountTouched(false);
     setCounterparty("");
     setAmount("");
+  }
+
+  function switchType(t: BankPaymentType) {
+    setType(t);
+    // Автоматически переключаем направление для специфических типов
+    if (t === "deposit") setDirection("incoming");
+    if (t === "cash" || t === "transfer") setDirection("outgoing");
+
+    // Независимые платежи обычно без привязки
+    if (t !== "regular") {
+      setLinkMode("none");
+      setSelectedDeals([]);
+      setSelectedReceipts([]);
+    } else {
+      setLinkMode(direction === "incoming" ? "deals" : "receipts");
+    }
   }
 
   function switchLinkMode(mode: LinkMode) {
@@ -178,6 +208,7 @@ export function PaymentForm({
 
   function resetForm() {
     setDirection("incoming");
+    setType("regular");
     setLinkMode("deals");
     setDate(todayIso());
     setCounterparty("");
@@ -211,6 +242,7 @@ export function PaymentForm({
         body: JSON.stringify({
           date,
           direction,
+          type,
           counterparty: counterparty.trim(),
           dealIds: linkMode === "deals" ? selectedDeals : [],
           receiptIds: linkMode === "receipts" ? selectedReceipts : [],
@@ -247,6 +279,14 @@ export function PaymentForm({
           { value: "deals", label: "К заказу" },
           { value: "none", label: "Без привязки" },
         ];
+
+  const paymentTypes: { value: BankPaymentType; label: string; icon: any }[] = [
+    { value: "regular", label: "Оплата", icon: CheckCircle },
+    { value: "refund", label: "Возврат", icon: RotateCcw },
+    { value: "cash", label: "Наличные", icon: Banknote },
+    { value: "transfer", label: "Перевод", icon: UserRound },
+    { value: "deposit", label: "Внесение", icon: Download },
+  ];
 
   return (
     <>
@@ -294,8 +334,27 @@ export function PaymentForm({
                   }`}
                   onClick={() => switchDirection("outgoing")}
                 >
-                  <ArrowUpRight size={14} /> Расход (поставщику)
+                  <ArrowUpRight size={14} /> Расход
                 </button>
+              </div>
+
+              <div className="admin-field" style={{ marginBottom: 12 }}>
+                <label className="admin-label">Тип платежа</label>
+                <div className="wh-linkmode">
+                  {paymentTypes.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      className={`wh-linkmode__btn${
+                        type === t.value ? " wh-linkmode__btn--active" : ""
+                      }`}
+                      onClick={() => switchType(t.value)}
+                    >
+                      <t.icon size={12} style={{ marginRight: 4 }} />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="admin-field">
@@ -523,6 +582,7 @@ export function PaymentControls({
   isPaid: boolean;
   edit: {
     date: string;
+    type?: BankPaymentType;
     counterparty: string;
     amount: number;
     invoiceNumber: string | null;
@@ -533,6 +593,9 @@ export function PaymentControls({
   const [saving, setSaving] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [editDate, setEditDate] = useState(edit.date);
+  const [editType, setEditType] = useState<BankPaymentType>(
+    edit.type || "regular"
+  );
   const [editCounterparty, setEditCounterparty] = useState(edit.counterparty);
   const [editAmount, setEditAmount] = useState(
     edit.amount > 0 ? String(edit.amount) : ""
@@ -582,6 +645,7 @@ export function PaymentControls({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: editDate,
+          type: editType,
           counterparty: editCounterparty.trim(),
           amount: amountNum,
           invoiceNumber: editInvoiceNumber.trim() || null,
@@ -693,6 +757,33 @@ export function PaymentControls({
               </button>
             </div>
             <form onSubmit={handleEditSubmit}>
+              <div className="admin-field" style={{ marginBottom: 12 }}>
+                <label className="admin-label">Тип платежа</label>
+                <div className="wh-linkmode">
+                  {(
+                    [
+                      { value: "regular", label: "Оплата", icon: CheckCircle },
+                      { value: "refund", label: "Возврат", icon: RotateCcw },
+                      { value: "cash", label: "Наличные", icon: Banknote },
+                      { value: "transfer", label: "Перевод", icon: UserRound },
+                      { value: "deposit", label: "Внесение", icon: Download },
+                    ] as const
+                  ).map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      className={`wh-linkmode__btn${
+                        editType === t.value ? " wh-linkmode__btn--active" : ""
+                      }`}
+                      onClick={() => setEditType(t.value)}
+                    >
+                      <t.icon size={12} style={{ marginRight: 4 }} />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="admin-field">
                 <label className="admin-label">Дата</label>
                 <input

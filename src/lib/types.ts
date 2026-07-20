@@ -98,6 +98,15 @@ export interface PopupCampaign {
   sortOrder: number;
   createdAt?: any;
   updatedAt?: any;
+
+  // New fields for product-style popup
+  isProductType?: boolean;
+  discountPercent?: number | null;
+  stockLevel?: number | null; // 0-100
+  tags?: string | null; // space separated
+  oldPrice?: number | null;
+  newPrice?: number | null;
+  timerSeconds?: number | null;
 }
 
 export function getProductEffectivePrice(product: {

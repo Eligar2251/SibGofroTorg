@@ -82,13 +82,15 @@ const dealStatusBadge: Record<string, string> = {
   cancelled: "admin-badge admin-badge--red",
 };
 
-const dealStatusLabel: Record<string, string> = {
-  new: "Новый",
-  completed: "Отпущен",
-  cancelled: "Отменён",
+const paymentTypeLabels: Record<string, string> = {
+  regular: "Оплата",
+  refund: "Возврат",
+  cash: "Наличные",
+  transfer: "Перевод",
+  deposit: "Внесение",
 };
 
-type TabKey = "stock" | "deals" | "bank" | "counterparties";
+export default async function AdminWarehousePage({
 type StockSub = "stock" | "receipts";
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
@@ -1276,6 +1278,18 @@ export default async function AdminWarehousePage({
                       <div className="bank-pay__main">
                         <div className="bank-pay__row1">
                           <span className="bank-pay__counterparty">
+                            {p.type && p.type !== "regular" && (
+                              <span
+                                className="admin-badge admin-badge--muted"
+                                style={{
+                                  marginRight: 8,
+                                  textTransform: "none",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {paymentTypeLabels[p.type] || p.type}
+                              </span>
+                            )}
                             {p.counterparty}
                           </span>
                           <span className="bank-pay__num">
@@ -1337,6 +1351,7 @@ export default async function AdminWarehousePage({
                           isPaid={p.isPaid}
                           edit={{
                             date: p.date,
+                            type: p.type,
                             counterparty: p.counterparty,
                             amount: p.amount,
                             invoiceNumber: p.invoiceNumber ?? null,

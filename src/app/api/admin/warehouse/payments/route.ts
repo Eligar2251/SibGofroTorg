@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
     const result = await createPayment({
       date: String(body.date || ""),
       direction: body.direction === "outgoing" ? "outgoing" : "incoming",
+      type: body.type,
       counterparty: String(body.counterparty || ""),
       dealIds: Array.isArray(body.dealIds) ? body.dealIds : [],
       receiptIds: Array.isArray(body.receiptIds) ? body.receiptIds : [],

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
   BellRing,
   CircleAlert,
   Edit2,
@@ -64,6 +65,14 @@ const EMPTY = {
   durationSeconds: 20,
   frequency: "session" as PopupCampaignFrequency,
   sortOrder: 0,
+  // New fields
+  isProductType: false,
+  discountPercent: 0,
+  stockLevel: 30,
+  tags: "",
+  oldPrice: 0,
+  newPrice: 0,
+  timerSeconds: 0,
 };
 
 export function PopupCampaignsManager({
@@ -108,6 +117,13 @@ export function PopupCampaignsManager({
       durationSeconds: item.durationSeconds,
       frequency: item.frequency,
       sortOrder: item.sortOrder,
+      isProductType: !!item.isProductType,
+      discountPercent: item.discountPercent || 0,
+      stockLevel: item.stockLevel || 30,
+      tags: item.tags || "",
+      oldPrice: item.oldPrice || 0,
+      newPrice: item.newPrice || 0,
+      timerSeconds: item.timerSeconds || 0,
     });
     setEditingId(item.id);
     setCreating(false);
@@ -139,6 +155,11 @@ export function PopupCampaignsManager({
         Math.max(5, Number(form.durationSeconds) || 20)
       ),
       sortOrder: Number(form.sortOrder) || 0,
+      discountPercent: Number(form.discountPercent) || 0,
+      stockLevel: Number(form.stockLevel) || 0,
+      oldPrice: Number(form.oldPrice) || 0,
+      newPrice: Number(form.newPrice) || 0,
+      timerSeconds: Number(form.timerSeconds) || 0,
     };
   }
 
@@ -301,6 +322,47 @@ export function PopupCampaignsManager({
                 />
               </div>
 
+              <div className="popup-admin-schedule" style={{ background: "var(--adm-paper-warm)", border: "1px solid var(--adm-border)" }}>
+                <h3>Стиль карточки товара</h3>
+                <label className="admin-check" style={{ marginBottom: 12 }}>
+                  <input type="checkbox" checked={form.isProductType} onChange={(e) => update("isProductType", e.target.checked)} />
+                  <span>Использовать дизайн карточки товара (узкое окно)</span>
+                </label>
+
+                {form.isProductType && (
+                  <div className="admin-stack">
+                    <div className="admin-grid-3">
+                      <div className="admin-field">
+                        <label className="admin-label">Скидка, %</label>
+                        <input type="number" className="admin-input" value={form.discountPercent} onChange={(e) => update("discountPercent", Number(e.target.value))} />
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">Заполнение остатка, %</label>
+                        <input type="number" min={0} max={100} className="admin-input" value={form.stockLevel} onChange={(e) => update("stockLevel", Number(e.target.value))} />
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">Таймер, сек.</label>
+                        <input type="number" className="admin-input" value={form.timerSeconds} onChange={(e) => update("timerSeconds", Number(e.target.value))} />
+                      </div>
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">Теги (через пробел)</label>
+                      <input className="admin-input" value={form.tags} onChange={(e) => update("tags", e.target.value)} placeholder="новинка топ_продаж эко" />
+                    </div>
+                    <div className="admin-grid-2">
+                      <div className="admin-field">
+                        <label className="admin-label">Старая цена, ₽</label>
+                        <input type="number" className="admin-input" value={form.oldPrice} onChange={(e) => update("oldPrice", Number(e.target.value))} />
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">Новая цена, ₽</label>
+                        <input type="number" className="admin-input" value={form.newPrice} onChange={(e) => update("newPrice", Number(e.target.value))} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="popup-admin-schedule">
                 <h3>Расписание и частота</h3>
                 <div className="admin-grid-2">
@@ -359,23 +421,60 @@ export function PopupCampaignsManager({
           </div>
 
           {preview && (
-            <div className={`popup-admin-preview popup-admin-preview--${form.style}`}>
-              <div className="popup-admin-preview__bar">
-                <StyleIcon size={15} /> {form.kicker || "Информация"}
-                <X size={15} />
+            form.isProductType ? (
+              <div className="product-popup" style={{ position: "sticky", top: 80, margin: "0 auto" }}>
+                <div className="product-popup__media">
+                  {form.imageUrl && <img src={form.imageUrl} alt="" className="product-popup__img" />}
+                  <button type="button" className="product-popup__close"><X size={20} /></button>
+                  <div className="product-popup__badges">
+                    <span className="product-popup__badge product-popup__badge--stock">В наличии</span>
+                    {form.discountPercent > 0 && <span className="product-popup__badge product-popup__badge--discount">−{form.discountPercent}%</span>}
+                  </div>
+                </div>
+                <div className="product-popup__body">
+                  <h2 className="product-popup__title">{form.title || "Название товара"}</h2>
+                  {form.description && <p className="product-popup__subtitle">{form.description}</p>}
+                  {form.tags && (
+                    <div className="product-popup__tags">
+                      {form.tags.split(" ").filter(Boolean).map((t, i) => <span key={i} className="product-popup__tag">{t}</span>)}
+                    </div>
+                  )}
+                  <div className="product-popup__stock">
+                    <div className="product-popup__stock-info"><span>Остаток</span><span className="product-popup__stock-warn">мало!</span></div>
+                    <div className="product-popup__stock-bar"><div className="product-popup__stock-fill" style={{ width: `${form.stockLevel}%` }} /></div>
+                  </div>
+                  <div className="product-popup__price-row">
+                    <div className="product-popup__prices">
+                      {form.oldPrice > 0 && <span className="product-popup__price-old">{form.oldPrice.toLocaleString("ru-RU")} ₽</span>}
+                      <span className="product-popup__price-new">{form.newPrice.toLocaleString("ru-RU")} ₽</span>
+                    </div>
+                    {form.timerSeconds > 0 && <div className="product-popup__timer">00:00:00</div>}
+                  </div>
+                  <div className="product-popup__actions">
+                    <button className="product-popup__cta">{form.buttonText || "ПЕРЕЙТИ"} <ArrowRight size={18} /></button>
+                    <button type="button" className="product-popup__dismiss">нет, спасибо</button>
+                  </div>
+                </div>
               </div>
-              {form.imageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={form.imageUrl} alt="" />
-              )}
-              <div className="popup-admin-preview__body">
-                <span><StyleIcon size={13} /> {form.kicker || "Объявление"}</span>
-                <h3>{form.title || "Заголовок информационного окна"}</h3>
-                <p>{form.description || "Здесь будет основной текст сообщения для посетителя."}</p>
-                {points.length > 0 && <ul>{points.map((point, index) => <li key={index}>{point}</li>)}</ul>}
-                {form.buttonUrl && <button>{form.buttonText || "Подробнее"}</button>}
+            ) : (
+              <div className={`popup-admin-preview popup-admin-preview--${form.style}`}>
+                <div className="popup-admin-preview__bar">
+                  <StyleIcon size={15} /> {form.kicker || "Информация"}
+                  <X size={15} />
+                </div>
+                {form.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={form.imageUrl} alt="" />
+                )}
+                <div className="popup-admin-preview__body">
+                  <span><StyleIcon size={13} /> {form.kicker || "Объявление"}</span>
+                  <h3>{form.title || "Заголовок информационного окна"}</h3>
+                  <p>{form.description || "Здесь будет основной текст сообщения для посетителя."}</p>
+                  {points.length > 0 && <ul>{points.map((point, index) => <li key={index}>{point}</li>)}</ul>}
+                  {form.buttonUrl && <button>{form.buttonText || "Подробнее"}</button>}
+                </div>
               </div>
-            </div>
+            )
           )}
         </div>
       )}

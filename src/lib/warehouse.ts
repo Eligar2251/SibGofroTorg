@@ -93,11 +93,19 @@ export interface CustomerDeal extends CounterpartyDetails {
   createdAt?: string | null;
 }
 
+export type BankPaymentType =
+  | "regular"
+  | "refund"
+  | "cash"
+  | "transfer"
+  | "deposit";
+
 export interface BankPayment {
   id: string;
   number: number;
   date: string;
   direction: "incoming" | "outgoing";
+  type?: BankPaymentType;
   counterparty: string;
   counterpartyId?: string | null;
   /** Привязка к заказам покупателей (может несколько) */
@@ -1479,6 +1487,7 @@ function mapPayment(id: string, data: any): BankPayment {
     number: Number(data.number) || 0,
     date: String(data.date || ""),
     direction: data.direction === "outgoing" ? "outgoing" : "incoming",
+    type: (data.type as BankPaymentType) || "regular",
     counterparty: String(data.counterparty || ""),
     counterpartyId: data.counterpartyId ?? null,
     dealIds: Array.isArray(data.dealIds) ? data.dealIds.map(String) : [],
@@ -1518,6 +1527,7 @@ export async function getPayments(): Promise<BankPayment[]> {
 export async function createPayment(data: {
   date: string;
   direction: "incoming" | "outgoing";
+  type?: BankPaymentType;
   counterparty: string;
   dealIds?: string[];
   receiptIds?: string[];
@@ -1565,6 +1575,7 @@ export async function createPayment(data: {
     number,
     date,
     direction: data.direction === "outgoing" ? "outgoing" : "incoming",
+    type: data.type || "regular",
     counterparty,
     counterpartyId,
     dealIds,
@@ -1630,6 +1641,7 @@ export async function updatePayment(
   id: string,
   data: {
     isPaid?: boolean;
+    type?: BankPaymentType;
     amount?: number;
     comment?: string | null;
     date?: string;
@@ -1667,6 +1679,9 @@ export async function updatePayment(
     patch.paidAt = data.isPaid
       ? new Date().toISOString().slice(0, 10)
       : null;
+  }
+  if (data.type !== undefined) {
+    patch.type = data.type;
   }
   if (data.amount !== undefined) {
     patch.amount = Math.max(0, Number(data.amount) || 0);

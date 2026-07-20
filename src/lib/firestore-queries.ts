@@ -456,6 +456,13 @@ async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
         ? data.frequency
         : "session",
       sortOrder: Number(data.sortOrder) || 0,
+      isProductType: !!data.isProductType,
+      discountPercent: data.discountPercent || null,
+      stockLevel: data.stockLevel || null,
+      tags: data.tags || null,
+      oldPrice: data.oldPrice || null,
+      newPrice: data.newPrice || null,
+      timerSeconds: data.timerSeconds || null,
       createdAt: serializeTimestamp(data.createdAt),
       updatedAt: serializeTimestamp(data.updatedAt),
     } as PopupCampaign;

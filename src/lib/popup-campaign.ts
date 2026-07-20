@@ -44,6 +44,14 @@ export function cleanPopupCampaign(body: Record<string, unknown>) {
     ),
     frequency,
     sortOrder: Number(body.sortOrder) || 0,
+    // New fields
+    isProductType: !!body.isProductType,
+    discountPercent: Number(body.discountPercent) || null,
+    stockLevel: Number(body.stockLevel) || null,
+    tags: text(body.tags, 200),
+    oldPrice: Number(body.oldPrice) || null,
+    newPrice: Number(body.newPrice) || null,
+    timerSeconds: Number(body.timerSeconds) || null,
   };
 }
 

@@ -63,6 +63,8 @@ function markShown(campaign: PopupCampaign) {
 export function PromotionPopups() {
   const [pending, setPending] = useState<PopupCampaign[]>([]);
   const [current, setCurrent] = useState<PopupCampaign | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +100,7 @@ export function PromotionPopups() {
       if (end > 0 && end <= Date.now()) return;
       markShown(next);
       setCurrent(next);
+      if (next.timerSeconds) setTimeLeft(next.timerSeconds);
     }, Math.min(Math.max(0, target - Date.now()), 2_147_000_000));
     return () => window.clearTimeout(timer);
   }, [current, pending]);
@@ -108,16 +111,24 @@ export function PromotionPopups() {
       600,
       Math.max(5, Number(current.durationSeconds) || 20)
     );
-    const timer = window.setTimeout(() => setCurrent(null), duration * 1000);
+    const timer = window.setTimeout(() => closePopup(), duration * 1000);
     return () => window.clearTimeout(timer);
   }, [current]);
+
+  useEffect(() => {
+    if (!current || timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [current, timeLeft]);
 
   useEffect(() => {
     if (!current) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCurrent(null);
+      if (event.key === "Escape") closePopup();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -126,7 +137,24 @@ export function PromotionPopups() {
     };
   }, [current]);
 
+  const closePopup = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      setCurrent(null);
+      setIsClosing(false);
+    }, 250);
+  };
+
   if (!current) return null;
+
+  function formatTime(seconds: number) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return [h, m, s]
+      .map((v) => v.toString().padStart(2, "0"))
+      .join(":");
+  }
 
   const Icon =
     current.style === "promo"
@@ -138,8 +166,144 @@ export function PromotionPopups() {
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
+  const tags = (current.tags || "")
+    .split(" ")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
   const external =
     !!current.buttonUrl && !current.buttonUrl.startsWith("/");
+
+  const handleCtaClick = () => {
+    closePopup();
+  };
+
+  if (current.isProductType) {
+    return (
+      <div
+        className={`promo-popup-overlay${isClosing ? " closing" : ""}`}
+        onClick={closePopup}
+      >
+        <section
+          className="product-popup"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="product-popup__media">
+            {current.imageUrl && (
+              <img
+                src={current.imageUrl}
+                alt={current.title}
+                className="product-popup__img"
+              />
+            )}
+            <button
+              type="button"
+              className="product-popup__close"
+              onClick={closePopup}
+            >
+              <X size={20} />
+            </button>
+            <div className="product-popup__badges">
+              <span className="product-popup__badge product-popup__badge--stock">
+                В наличии
+              </span>
+              {current.discountPercent && (
+                <span className="product-popup__badge product-popup__badge--discount">
+                  −{current.discountPercent}%
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="product-popup__body">
+            <h2 className="product-popup__title">{current.title}</h2>
+            {current.description && (
+              <p className="product-popup__subtitle">{current.description}</p>
+            )}
+
+            {tags.length > 0 && (
+              <div className="product-popup__tags">
+                {tags.map((tag, idx) => (
+                  <span key={idx} className="product-popup__tag">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="product-popup__stock">
+              <div className="product-popup__stock-info">
+                <span>Остаток</span>
+                <span className="product-popup__stock-warn">мало!</span>
+              </div>
+              <div className="product-popup__stock-bar">
+                <div
+                  className="product-popup__stock-fill"
+                  style={{ width: `${current.stockLevel || 30}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="product-popup__price-row">
+              <div className="product-popup__prices">
+                {current.oldPrice && (
+                  <span className="product-popup__price-old">
+                    {current.oldPrice.toLocaleString("ru-RU")} ₽
+                  </span>
+                )}
+                <span className="product-popup__price-new">
+                  {current.newPrice?.toLocaleString("ru-RU") || "0"} ₽
+                </span>
+              </div>
+              {current.timerSeconds && (
+                <div className="product-popup__timer">
+                  {formatTime(timeLeft)}
+                </div>
+              )}
+            </div>
+
+            <div className="product-popup__actions">
+              {current.buttonUrl ? (
+                external ? (
+                  <a
+                    href={current.buttonUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="product-popup__cta"
+                    onClick={handleCtaClick}
+                  >
+                    {current.buttonText || "ПЕРЕЙТИ"} <ArrowRight size={18} />
+                  </a>
+                ) : (
+                  <Link
+                    href={current.buttonUrl}
+                    className="product-popup__cta"
+                    onClick={handleCtaClick}
+                  >
+                    {current.buttonText || "ПЕРЕЙТИ"} <ArrowRight size={18} />
+                  </Link>
+                )
+              ) : (
+                <button className="product-popup__cta" onClick={handleCtaClick}>
+                  {current.buttonText || "ПЕРЕЙТИ"} <ArrowRight size={18} />
+                </button>
+              )}
+              <button
+                type="button"
+                className="product-popup__dismiss"
+                onClick={closePopup}
+              >
+                нет, спасибо
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   const button = current.buttonUrl ? (
     external ? (
       <a
@@ -147,7 +311,7 @@ export function PromotionPopups() {
         target="_blank"
         rel="noopener noreferrer"
         className="promo-popup__cta"
-        onClick={() => setCurrent(null)}
+        onClick={closePopup}
       >
         {current.buttonText || "Подробнее"} <ArrowRight size={15} />
       </a>
@@ -155,7 +319,7 @@ export function PromotionPopups() {
       <Link
         href={current.buttonUrl}
         className="promo-popup__cta"
-        onClick={() => setCurrent(null)}
+        onClick={closePopup}
       >
         {current.buttonText || "Подробнее"} <ArrowRight size={15} />
       </Link>
@@ -163,7 +327,10 @@ export function PromotionPopups() {
   ) : null;
 
   return (
-    <div className="promo-popup-overlay" onClick={() => setCurrent(null)}>
+    <div
+      className={`promo-popup-overlay${isClosing ? " closing" : ""}`}
+      onClick={closePopup}
+    >
       <section
         className={`promo-popup promo-popup--${current.style}${
           current.imageUrl ? " promo-popup--with-image" : ""
@@ -183,7 +350,7 @@ export function PromotionPopups() {
           <button
             type="button"
             className="promo-popup__close"
-            onClick={() => setCurrent(null)}
+            onClick={closePopup}
             aria-label="Закрыть информационное окно"
           >
             <X size={18} />
