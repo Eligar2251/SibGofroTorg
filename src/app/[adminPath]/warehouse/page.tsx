@@ -82,6 +82,12 @@ const dealStatusBadge: Record<string, string> = {
   cancelled: "admin-badge admin-badge--red",
 };
 
+const dealStatusLabel: Record<string, string> = {
+  new: "Новый",
+  completed: "Отпущен",
+  cancelled: "Отменён",
+};
+
 const paymentTypeLabels: Record<string, string> = {
   regular: "Оплата",
   refund: "Возврат",
