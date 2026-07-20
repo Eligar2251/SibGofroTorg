@@ -22,6 +22,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { includedVat, VAT_RATE } from "@/lib/vat";
+import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 
 export interface DealLinkOption {
   id: string;
@@ -55,9 +56,11 @@ type LinkMode = "deals" | "receipts" | "none";
 export function PaymentForm({
   deals,
   receipts,
+  counterparties = [],
 }: {
   deals: DealLinkOption[];
   receipts: ReceiptLinkOption[];
+  counterparties?: CounterpartyOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -72,6 +75,7 @@ export function PaymentForm({
   const [cpTouched, setCpTouched] = useState(false);
   const [amount, setAmount] = useState<string>("");
   const [amountTouched, setAmountTouched] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
   const [comment, setComment] = useState("");
   const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
@@ -180,6 +184,7 @@ export function PaymentForm({
     setCpTouched(false);
     setAmount("");
     setAmountTouched(false);
+    setInvoiceNumber("");
     setComment("");
     setSelectedDeals([]);
     setSelectedReceipts([]);
@@ -210,6 +215,7 @@ export function PaymentForm({
           dealIds: linkMode === "deals" ? selectedDeals : [],
           receiptIds: linkMode === "receipts" ? selectedReceipts : [],
           amount: amountNum,
+          invoiceNumber: invoiceNumber.trim() || null,
           // Всегда создаём «в ожидании» — проводим потом кнопкой
           isPaid: false,
           comment: comment.trim() || null,
@@ -399,6 +405,7 @@ export function PaymentForm({
                   <input
                     type="text"
                     className="admin-input"
+                    list="payment-counterparty-options"
                     value={counterparty}
                     onChange={(e) => {
                       setCounterparty(e.target.value);
@@ -411,6 +418,17 @@ export function PaymentForm({
                     }
                     required
                   />
+                  <datalist id="payment-counterparty-options">
+                    {counterparties
+                      .filter((item) =>
+                        item.roles.includes(
+                          direction === "incoming" ? "customer" : "supplier"
+                        )
+                      )
+                      .map((item) => (
+                        <option key={item.id} value={item.name} />
+                      ))}
+                  </datalist>
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Сумма, ₽ *</label>
@@ -425,6 +443,16 @@ export function PaymentForm({
                       setAmountTouched(true);
                     }}
                     required
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Номер счёта</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    placeholder="Номер из вашей программы"
                   />
                 </div>
                 <div className="admin-field">
@@ -497,6 +525,7 @@ export function PaymentControls({
     date: string;
     counterparty: string;
     amount: number;
+    invoiceNumber: string | null;
     comment: string | null;
   };
 }) {
@@ -505,7 +534,12 @@ export function PaymentControls({
   const [showEdit, setShowEdit] = useState(false);
   const [editDate, setEditDate] = useState(edit.date);
   const [editCounterparty, setEditCounterparty] = useState(edit.counterparty);
-  const [editAmount, setEditAmount] = useState(String(edit.amount));
+  const [editAmount, setEditAmount] = useState(
+    edit.amount > 0 ? String(edit.amount) : ""
+  );
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState(
+    edit.invoiceNumber || ""
+  );
   const [editComment, setEditComment] = useState(edit.comment || "");
   const [error, setError] = useState("");
 
@@ -545,6 +579,7 @@ export function PaymentControls({
           date: editDate,
           counterparty: editCounterparty.trim(),
           amount: amountNum,
+          invoiceNumber: editInvoiceNumber.trim() || null,
           comment: editComment.trim() || null,
         }),
       });
@@ -678,6 +713,16 @@ export function PaymentControls({
                   value={editAmount}
                   onChange={(e) => setEditAmount(e.target.value)}
                   required
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Номер счёта</label>
+                <input
+                  type="text"
+                  className="admin-input"
+                  value={editInvoiceNumber}
+                  onChange={(e) => setEditInvoiceNumber(e.target.value)}
+                  placeholder="Номер из вашей программы"
                 />
               </div>
               <div className="admin-field">

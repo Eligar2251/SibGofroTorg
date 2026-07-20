@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
       dealIds: Array.isArray(body.dealIds) ? body.dealIds : [],
       receiptIds: Array.isArray(body.receiptIds) ? body.receiptIds : [],
       amount: Number(body.amount) || 0,
+      invoiceNumber: body.invoiceNumber ?? null,
       isPaid: body.isPaid === true,
       comment: body.comment ?? null,
     });

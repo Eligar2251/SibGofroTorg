@@ -1,9 +1,8 @@
 // =========================================================
 // FILE: src/components/catalog/PriceInquiryButton.tsx
 // =========================================================
-// Авторизованный клиент отправляет заявку одним нажатием: номер берётся
-// сервером из его сессии. Гость видит короткую форму с телефоном и выбором
-// удобного канала связи.
+// Для любого клиента сначала показывается выбор удобного способа связи.
+// У авторизованного пользователя телефон берётся из аккаунта, гость вводит его сам.
 
 "use client";
 
@@ -106,7 +105,7 @@ export function PriceInquiryButton({
     [productInfo]
   );
 
-  const identifyAndSend = useCallback(async () => {
+  const identifyClient = useCallback(async () => {
     setPhase("loading");
     setErrorMsg("");
     setMe(null);
@@ -115,26 +114,18 @@ export function PriceInquiryButton({
       const data = await res.json();
       const user = (data?.user || null) as MeUser | null;
       setMe(user);
-      if (user) {
-        // Требуемое поведение «в один клик»: заявка сразу уходит с номером
-        // аккаунта. По умолчанию менеджер перезвонит.
-        await sendInquiry({
-          user,
-          communicationChannel: "call",
-        });
-      } else {
-        setPhase("form");
-      }
+      if (user?.phone) setPhone(user.phone);
+      setPhase("form");
     } catch {
       // Если профиль не удалось получить, не блокируем гостевую заявку.
       setMe(null);
       setPhase("form");
     }
-  }, [sendInquiry]);
+  }, []);
 
   useEffect(() => {
-    if (defaultOpen) void identifyAndSend();
-  }, [defaultOpen, identifyAndSend]);
+    if (defaultOpen) void identifyClient();
+  }, [defaultOpen, identifyClient]);
 
   useEffect(() => {
     if (!open) return;
@@ -160,22 +151,21 @@ export function PriceInquiryButton({
     event.preventDefault();
     event.stopPropagation();
     setOpen(true);
-    void identifyAndSend();
+    void identifyClient();
   }
 
-  async function handleGuestSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     await sendInquiry({
-      user: null,
-      customerPhone: phone,
+      user: me,
+      customerPhone: me?.phone || phone,
       communicationChannel: channel,
       customerComment: comment,
     });
   }
 
   const channelLabel =
-    CHANNELS.find((item) => item.value === (me ? "call" : channel))?.label ||
-    "телефону";
+    CHANNELS.find((item) => item.value === channel)?.label || "телефону";
   const shownPhone = me?.phone || phone;
 
   return (
@@ -216,14 +206,14 @@ export function PriceInquiryButton({
               </div>
             )}
 
-            {!me && (phase === "form" || phase === "error") && (
-              <form className="pi-form" onSubmit={handleGuestSubmit}>
+            {(phase === "form" || phase === "error") && (
+              <form className="pi-form" onSubmit={handleSubmit}>
                 <div className="pi-title" id="price-inquiry-title">
                   Узнать цену
                 </div>
                 <p className="pi-text">
-                  Оставьте номер и выберите удобный способ связи. Менеджер
-                  свяжется с вами в течение 15 минут и уточнит цену и сроки.
+                  Выберите, где вам удобнее получить ответ. Менеджер свяжется
+                  с вами в течение 15 минут и уточнит цену и сроки.
                 </p>
 
                 <label className="pi-field">
@@ -237,13 +227,19 @@ export function PriceInquiryButton({
                       autoComplete="tel"
                       maxLength={18}
                       required
-                      value={phone}
+                      readOnly={!!me}
+                      value={me?.phone || phone}
                       onChange={(event) =>
                         setPhone(formatPhoneMask(event.target.value))
                       }
                       placeholder="+7 (913) 000-00-00"
                     />
                   </div>
+                  {me && (
+                    <span className="pi-account-hint">
+                      Номер автоматически взят из вашего аккаунта
+                    </span>
+                  )}
                 </label>
 
                 <label className="pi-field">
@@ -287,26 +283,6 @@ export function PriceInquiryButton({
                   <Send size={15} /> Отправить заявку
                 </button>
               </form>
-            )}
-
-            {me && phase === "error" && (
-              <div className="pi-auth">
-                <div className="pi-title" id="price-inquiry-title">
-                  Не удалось отправить заявку
-                </div>
-                <div className="pi-error" role="alert">
-                  {errorMsg}
-                </div>
-                <button
-                  type="button"
-                  className="pi-btn pi-btn--primary"
-                  onClick={() =>
-                    void sendInquiry({ user: me, communicationChannel: "call" })
-                  }
-                >
-                  <Send size={15} /> Повторить
-                </button>
-              </div>
             )}
 
             {phase === "success" && (

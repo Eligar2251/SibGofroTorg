@@ -16,6 +16,7 @@ import {
   ArrowUpNarrowWide,
   AlertTriangle,
   PackageCheck,
+  UsersRound,
 } from "lucide-react";
 import {
   getWarehouseStock,
@@ -26,6 +27,7 @@ import {
   getDealPaidMap,
   getReceiptPaidMap,
   getCounterpartyBalances,
+  getCounterparties,
   type BankPayment,
 } from "@/lib/warehouse";
 import {
@@ -40,6 +42,12 @@ import {
   type ReceiptLinkOption,
 } from "@/components/admin/WarehousePayments";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
+import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
+import {
+  CounterpartiesManager,
+  type CounterpartyDocument,
+  type CounterpartyOption,
+} from "@/components/admin/WarehouseCounterparties";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
@@ -77,13 +85,18 @@ const dealStatusLabel: Record<string, string> = {
   cancelled: "Отменён",
 };
 
-type TabKey = "stock" | "deals" | "bank";
+type TabKey = "stock" | "deals" | "bank" | "counterparties";
 type StockSub = "stock" | "receipts";
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
   { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
   { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
+  {
+    key: "counterparties",
+    label: "Контрагенты",
+    icon: <UsersRound size={13} />,
+  },
 ];
 
 export default async function AdminWarehousePage({
@@ -105,7 +118,9 @@ export default async function AdminWarehousePage({
   if (adminPath !== ADMIN_PATH) notFound();
 
   const sp = await searchParams;
-  const activeTab: TabKey = (["stock", "deals", "bank"] as const).includes(
+  const activeTab: TabKey = (
+    ["stock", "deals", "bank", "counterparties"] as const
+  ).includes(
     sp.tab as TabKey
   )
     ? (sp.tab as TabKey)
@@ -130,13 +145,22 @@ export default async function AdminWarehousePage({
     stockQty: p.stockQty,
   }));
 
-  const needReceipts = activeTab === "stock" || activeTab === "bank";
-  const needDeals = activeTab === "deals" || activeTab === "bank";
+  const needReceipts =
+    activeTab === "stock" ||
+    activeTab === "bank" ||
+    activeTab === "counterparties";
+  const needDeals =
+    activeTab === "deals" ||
+    activeTab === "bank" ||
+    activeTab === "counterparties";
   const needPayments = activeTab === "deals" || activeTab === "bank";
 
-  const receipts = needReceipts ? await getReceipts() : [];
-  const deals = needDeals ? await getDeals() : [];
-  const payments = needPayments ? await getPayments() : [];
+  const [receipts, deals, payments, counterpartyRows] = await Promise.all([
+    needReceipts ? getReceipts() : Promise.resolve([]),
+    needDeals ? getDeals() : Promise.resolve([]),
+    needPayments ? getPayments() : Promise.resolve([]),
+    getCounterparties(),
+  ]);
 
   const bankSummary = activeTab === "bank" ? getBankSummary(payments) : null;
   const dealPaidMap = getDealPaidMap(payments);
@@ -145,6 +169,58 @@ export default async function AdminWarehousePage({
     activeTab === "bank"
       ? getCounterpartyBalances(deals, receipts, payments)
       : [];
+
+  const counterpartyOptions: CounterpartyOption[] = counterpartyRows.map(
+    (item) => ({
+      id: item.id,
+      name: item.name,
+      roles: item.roles,
+      phone: item.phone ?? null,
+      email: item.email ?? null,
+      inn: item.inn ?? null,
+      kpp: item.kpp ?? null,
+      address: item.address ?? null,
+      contactName: item.contactName ?? null,
+      comment: item.comment ?? null,
+    })
+  );
+  const counterpartyDocuments: Record<string, CounterpartyDocument[]> = {};
+  const normalizeName = (value: string) =>
+    value.trim().toLocaleLowerCase("ru-RU").replace(/[«»"']/g, "").replace(/\s+/g, " ");
+  for (const item of counterpartyRows) {
+    counterpartyDocuments[item.id] = [
+      ...deals
+        .filter(
+          (deal) =>
+            deal.counterpartyId === item.id ||
+            normalizeName(deal.customerName) === item.normalizedName
+        )
+        .map((deal) => ({
+          id: deal.id,
+          kind: "deal" as const,
+          number: deal.number,
+          date: deal.date,
+          total: deal.total,
+          status: dealStatusLabel[deal.status] || deal.status,
+          itemCount: deal.items.length,
+        })),
+      ...receipts
+        .filter(
+          (receipt) =>
+            receipt.counterpartyId === item.id ||
+            normalizeName(receipt.supplier) === item.normalizedName
+        )
+        .map((receipt) => ({
+          id: receipt.id,
+          kind: "receipt" as const,
+          number: receipt.number,
+          date: receipt.date,
+          total: receipt.total,
+          status: null,
+          itemCount: receipt.items.length,
+        })),
+    ].sort((a, b) => b.date.localeCompare(a.date));
+  }
 
   const dealLinkOptions: DealLinkOption[] = deals.map((d) => ({
     id: d.id,
@@ -191,6 +267,7 @@ export default async function AdminWarehousePage({
         const hay = [
           p.counterparty,
           p.comment || "",
+          p.invoiceNumber || "",
           `пл-${p.number}`,
           `ПЛ-${p.number}`.toLowerCase(),
           ...p.dealNumbers.map((n) => `зк-${n}`),
@@ -236,11 +313,23 @@ export default async function AdminWarehousePage({
         </div>
         <div className="admin-page-head__actions">
           {activeTab === "stock" && stockSub === "receipts" && (
-            <ReceiptForm products={pickerProducts} />
+            <ReceiptForm
+              products={pickerProducts}
+              counterparties={counterpartyOptions}
+            />
           )}
-          {activeTab === "deals" && <DealForm products={pickerProducts} />}
+          {activeTab === "deals" && (
+            <DealForm
+              products={pickerProducts}
+              counterparties={counterpartyOptions}
+            />
+          )}
           {activeTab === "bank" && (
-            <PaymentForm deals={dealLinkOptions} receipts={receiptLinkOptions} />
+            <PaymentForm
+              deals={dealLinkOptions}
+              receipts={receiptLinkOptions}
+              counterparties={counterpartyOptions}
+            />
           )}
         </div>
       </div>
@@ -356,13 +445,10 @@ export default async function AdminWarehousePage({
                             </td>
                             <td>{p.sku || "—"}</td>
                             <td style={{ textAlign: "right" }}>
-                              {p.stockQty <= 0 ? (
-                                <span className="admin-badge admin-badge--red">
-                                  0
-                                </span>
-                              ) : (
-                                <strong>{fmt(p.stockQty)}</strong>
-                              )}
+                              <StockQtyEditor
+                                productId={p.id}
+                                initialQty={p.stockQty}
+                              />
                             </td>
                             <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                               {p.price != null ? `${fmt(p.price)} ₽` : "—"}
@@ -677,6 +763,14 @@ export default async function AdminWarehousePage({
         </div>
       )}
 
+      {/* ════════════ ВКЛАДКА: КОНТРАГЕНТЫ ════════════ */}
+      {activeTab === "counterparties" && (
+        <CounterpartiesManager
+          initialCounterparties={counterpartyOptions}
+          documents={counterpartyDocuments}
+        />
+      )}
+
       {/* ════════════ ВКЛАДКА: БАНК (отдельный инструмент) ════════════ */}
       {activeTab === "bank" && bankSummary && (
         <div className="bank">
@@ -811,7 +905,7 @@ export default async function AdminWarehousePage({
               type="text"
               name="bq"
               defaultValue={sp.bq || ""}
-              placeholder="Поиск: контрагент, № платежа, ЗК/ПО, комментарий..."
+              placeholder="Поиск: контрагент, № счёта, ЗК/ПО, комментарий..."
               className="admin-input bank-toolbar__search"
             />
             <select
@@ -906,7 +1000,14 @@ export default async function AdminWarehousePage({
                           <span className="bank-pay__counterparty">
                             {p.counterparty}
                           </span>
-                          <span className="bank-pay__num">ПЛ-{p.number}</span>
+                          <span className="bank-pay__num">
+                            {p.invoiceNumber || `ПЛ-${p.number}`}
+                          </span>
+                          {p.invoiceNumber && (
+                            <span className="bank-pay__internal-num">
+                              внутренний ПЛ-{p.number}
+                            </span>
+                          )}
                           {!p.isPaid && (
                             <span className="bank-pay__wait">ожидается</span>
                           )}
@@ -960,6 +1061,7 @@ export default async function AdminWarehousePage({
                             date: p.date,
                             counterparty: p.counterparty,
                             amount: p.amount,
+                            invoiceNumber: p.invoiceNumber ?? null,
                             comment: p.comment ?? null,
                           }}
                         />

@@ -14,6 +14,7 @@ interface ProductItem {
   categoryId?: string | null;
   price: number | null;
   priceWholesale?: number | null;
+  stockQty: number;
   inStock: boolean;
   isPromo: boolean;
   promoLabel?: string | null;
@@ -42,8 +43,8 @@ export function ProductListClient({
 
   const filtered = products.filter((p) => {
     if (selectedCategory !== "all" && p.categoryId !== selectedCategory) return false;
-    if (selectedStock === "in" && !p.inStock) return false;
-    if (selectedStock === "out" && p.inStock) return false;
+    if (selectedStock === "in" && p.stockQty <= 0) return false;
+    if (selectedStock === "out" && p.stockQty > 0) return false;
     if (!search) return true;
     const s = search.toLowerCase();
     return (
@@ -181,6 +182,7 @@ export function ProductListClient({
                 <th>Товар</th>
                 <th>Категория</th>
                 <th>Цена</th>
+                <th style={{ width: 105 }}>Склад</th>
                 <th style={{ width: 110 }} title="Уникальные посетители страницы товара">
                   Просмотры
                 </th>
@@ -251,6 +253,15 @@ export function ProductListClient({
                     </td>
                     <td>
                       <span
+                        className={`admin-stock-count${
+                          product.stockQty <= 0 ? " admin-stock-count--zero" : ""
+                        }`}
+                      >
+                        {product.stockQty.toLocaleString("ru-RU")} шт.
+                      </span>
+                    </td>
+                    <td>
+                      <span
                         className="admin-views-cell"
                         style={{
                           display: "inline-flex",
@@ -267,7 +278,7 @@ export function ProductListClient({
                     </td>
                     <td>
                       <div className="admin-row">
-                        {product.inStock ? (
+                        {product.stockQty > 0 ? (
                           <span className="admin-badge admin-badge--green">
                             В наличии
                           </span>

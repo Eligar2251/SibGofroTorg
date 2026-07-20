@@ -34,10 +34,6 @@ export default async function AdminPromotionsPage({
     color: p.color ?? null,
     light: p.light ?? null,
     deadline: p.deadline ?? null,
-    isPopup: p.isPopup === true,
-    popupStartAt: p.popupStartAt ?? null,
-    popupDelaySeconds: p.popupDelaySeconds ?? 3,
-    popupDurationSeconds: p.popupDurationSeconds ?? 15,
   }));
 
   const serializedProducts = products.map((pr) => ({

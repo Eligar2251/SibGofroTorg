@@ -20,13 +20,14 @@ import {
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
 import { includedVat, VAT_RATE } from "@/lib/vat";
+import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 
 interface DealItemDraft {
   productId: string;
   name: string;
   sku: string | null;
-  quantity: number;
-  price: number;
+  quantity: number | "";
+  price: number | "";
   stockQty: number;
 }
 
@@ -36,7 +37,13 @@ function todayIso(): string {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-export function DealForm({ products }: { products: PickerProduct[] }) {
+export function DealForm({
+  products,
+  counterparties = [],
+}: {
+  products: PickerProduct[];
+  counterparties?: CounterpartyOption[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -44,18 +51,48 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
   const [date, setDate] = useState(todayIso());
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [inn, setInn] = useState("");
+  const [kpp, setKpp] = useState("");
+  const [address, setAddress] = useState("");
+  const [contactName, setContactName] = useState("");
   const [comment, setComment] = useState("");
   const [items, setItems] = useState<DealItemDraft[]>([]);
 
-  const total = items.reduce((s, it) => s + it.quantity * it.price, 0);
+  const total = items.reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
+    0
+  );
 
   function resetForm() {
     setDate(todayIso());
     setCustomerName("");
     setCustomerPhone("");
+    setEmail("");
+    setInn("");
+    setKpp("");
+    setAddress("");
+    setContactName("");
     setComment("");
     setItems([]);
     setError("");
+  }
+
+  function selectCustomer(value: string) {
+    setCustomerName(value);
+    const found = counterparties.find(
+      (item) =>
+        item.roles.includes("customer") &&
+        item.name.toLocaleLowerCase("ru-RU") ===
+          value.trim().toLocaleLowerCase("ru-RU")
+    );
+    if (!found) return;
+    setCustomerPhone(found.phone || "");
+    setEmail(found.email || "");
+    setInn(found.inn || "");
+    setKpp(found.kpp || "");
+    setAddress(found.address || "");
+    setContactName(found.contactName || "");
   }
 
   function addItem(p: PickerProduct) {
@@ -63,7 +100,9 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
       const existing = prev.find((it) => it.productId === p.id);
       if (existing) {
         return prev.map((it) =>
-          it.productId === p.id ? { ...it, quantity: it.quantity + 1 } : it
+          it.productId === p.id
+            ? { ...it, quantity: (Number(it.quantity) || 0) + 1 }
+            : it
         );
       }
       // Цена продажи подставляется автоматически (со скидкой),
@@ -75,7 +114,7 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
           name: p.name,
           sku: p.sku,
           quantity: 1,
-          price: p.price ?? 0,
+          price: p.price != null && p.price > 0 ? p.price : "",
           stockQty: p.stockQty,
         },
       ];
@@ -112,6 +151,11 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
           date,
           customerName: customerName.trim(),
           customerPhone: customerPhone.trim() || null,
+          email: email.trim() || null,
+          inn: inn.trim() || null,
+          kpp: kpp.trim() || null,
+          address: address.trim() || null,
+          contactName: contactName.trim() || null,
           comment: comment.trim() || null,
           items: items.map((it) => ({
             productId: it.productId,
@@ -182,11 +226,19 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                   <input
                     type="text"
                     className="admin-input"
+                    list="deal-customer-options"
                     value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Компания или ФИО"
+                    onChange={(e) => selectCustomer(e.target.value)}
+                    placeholder="Начните вводить название..."
                     required
                   />
+                  <datalist id="deal-customer-options">
+                    {counterparties
+                      .filter((item) => item.roles.includes("customer"))
+                      .map((item) => (
+                        <option key={item.id} value={item.name} />
+                      ))}
+                  </datalist>
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Телефон</label>
@@ -209,6 +261,17 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                   />
                 </div>
               </div>
+
+              <details className="wh-counterparty-details">
+                <summary>Полная информация о покупателе</summary>
+                <div className="wh-form-grid">
+                  <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={inn} onChange={(e) => setInn(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={kpp} onChange={(e) => setKpp(e.target.value)} /></div>
+                  <div className="admin-field" style={{ gridColumn: "1 / -1" }}><label className="admin-label">Адрес</label><input className="admin-input" value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+                </div>
+              </details>
 
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
@@ -243,7 +306,10 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                         value={it.quantity}
                         onChange={(e) =>
                           setItem(it.productId, {
-                            quantity: Number(e.target.value),
+                            quantity:
+                              e.target.value === ""
+                                ? ""
+                                : Number(e.target.value),
                           })
                         }
                       />
@@ -254,11 +320,16 @@ export function DealForm({ products }: { products: PickerProduct[] }) {
                         step={0.01}
                         value={it.price}
                         onChange={(e) =>
-                          setItem(it.productId, { price: Number(e.target.value) })
+                          setItem(it.productId, {
+                            price:
+                              e.target.value === ""
+                                ? ""
+                                : Number(e.target.value),
+                          })
                         }
                       />
                       <span className="wh-item-row__sum">
-                        {fmt(it.quantity * it.price)} ₽
+                        {fmt((Number(it.quantity) || 0) * (Number(it.price) || 0))} ₽
                       </span>
                       <button
                         type="button"

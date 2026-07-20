@@ -23,30 +23,12 @@ interface Promotion {
   color?: string | null;
   light?: string | null;
   deadline?: string | null;
-  isPopup?: boolean | null;
-  popupStartAt?: string | null;
-  popupDelaySeconds?: number | null;
-  popupDurationSeconds?: number | null;
 }
 
 interface Product {
   id: string;
   name: string;
   slug: string;
-}
-
-function toDateTimeLocal(value: string | null | undefined): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-function toIsoDateTime(value: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 export function PromotionsManager({
@@ -77,10 +59,6 @@ export function PromotionsManager({
   const [color, setColor] = useState("var(--kraft)");
   const [light, setLight] = useState("var(--kraft-light)");
   const [deadline, setDeadline] = useState("");
-  const [isPopup, setIsPopup] = useState(false);
-  const [popupStartAt, setPopupStartAt] = useState("");
-  const [popupDelaySeconds, setPopupDelaySeconds] = useState(3);
-  const [popupDurationSeconds, setPopupDurationSeconds] = useState(15);
 
   function startCreate() {
     setTitle("");
@@ -96,10 +74,6 @@ export function PromotionsManager({
     setColor("var(--kraft)");
     setLight("var(--kraft-light)");
     setDeadline("");
-    setIsPopup(false);
-    setPopupStartAt("");
-    setPopupDelaySeconds(3);
-    setPopupDurationSeconds(15);
     setEditingId(null);
     setIsCreating(true);
   }
@@ -118,10 +92,6 @@ export function PromotionsManager({
     setColor(p.color || "var(--kraft)");
     setLight(p.light || "var(--kraft-light)");
     setDeadline(p.deadline || "");
-    setIsPopup(p.isPopup === true);
-    setPopupStartAt(toDateTimeLocal(p.popupStartAt));
-    setPopupDelaySeconds(p.popupDelaySeconds ?? 3);
-    setPopupDurationSeconds(p.popupDurationSeconds ?? 15);
     setIsCreating(false);
     setEditingId(p.id);
   }
@@ -145,13 +115,6 @@ export function PromotionsManager({
         color: p.color || null,
         light: p.light || null,
         deadline: p.deadline || null,
-        isPopup: p.isPopup === true,
-        popupStartAt: p.popupStartAt || null,
-        popupDelaySeconds: Math.max(0, Number(p.popupDelaySeconds) || 0),
-        popupDurationSeconds: Math.max(
-          3,
-          Number(p.popupDurationSeconds) || 15
-        ),
       };
 
       const res = await fetch("/api/admin/promotions", {
@@ -197,13 +160,6 @@ export function PromotionsManager({
         color: color || null,
         light: light || null,
         deadline: deadline || null,
-        isPopup,
-        popupStartAt: toIsoDateTime(popupStartAt),
-        popupDelaySeconds: Math.max(0, Number(popupDelaySeconds) || 0),
-        popupDurationSeconds: Math.min(
-          300,
-          Math.max(3, Number(popupDurationSeconds) || 15)
-        ),
       };
 
       if (id) {
@@ -510,69 +466,6 @@ export function PromotionsManager({
               </div>
             </div>
 
-            {/* Настройка всплывающего окна */}
-            <div className="promo-popup-settings">
-              <label className="admin-check">
-                <input
-                  type="checkbox"
-                  checked={isPopup}
-                  onChange={(e) => setIsPopup(e.target.checked)}
-                />
-                <span>Показывать как всплывающее окно на сайте</span>
-              </label>
-              {isPopup && (
-                <>
-                  <p className="admin-hint">
-                    Окно показывается посетителю один раз за сессию. Можно
-                    задать дату запуска, задержку после открытия страницы и
-                    время до автоматического закрытия.
-                  </p>
-                  <div className="admin-grid-3">
-                    <div className="admin-field">
-                      <label className="admin-label">Начать показ</label>
-                      <input
-                        type="datetime-local"
-                        className="admin-input"
-                        value={popupStartAt}
-                        onChange={(e) => setPopupStartAt(e.target.value)}
-                      />
-                      <span className="admin-hint">Пусто — показывать сразу</span>
-                    </div>
-                    <div className="admin-field">
-                      <label className="admin-label">
-                        Задержка вывода, сек.
-                      </label>
-                      <input
-                        type="number"
-                        className="admin-input"
-                        min={0}
-                        max={3600}
-                        value={popupDelaySeconds}
-                        onChange={(e) =>
-                          setPopupDelaySeconds(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                    <div className="admin-field">
-                      <label className="admin-label">
-                        Длительность, сек.
-                      </label>
-                      <input
-                        type="number"
-                        className="admin-input"
-                        min={3}
-                        max={300}
-                        value={popupDurationSeconds}
-                        onChange={(e) =>
-                          setPopupDurationSeconds(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
             {/* Тип перехода / ссылки */}
             <div className="admin-grid-2">
               <div className="admin-field">
@@ -669,15 +562,6 @@ export function PromotionsManager({
                   <td>
                     <div style={{ fontWeight: 700, color: "var(--adm-ink)" }}>{p.title}</div>
                     {p.subtitle && <div className="admin-muted">{p.subtitle}</div>}
-                    {p.isPopup && (
-                      <div className="promo-popup-summary">
-                        Всплывающее окно · через {p.popupDelaySeconds ?? 3} сек.
-                        · на {p.popupDurationSeconds ?? 15} сек.
-                        {p.popupStartAt
-                          ? ` · с ${new Date(p.popupStartAt).toLocaleString("ru-RU")}`
-                          : ""}
-                      </div>
-                    )}
                   </td>
                   <td>
                     {p.badge ? (

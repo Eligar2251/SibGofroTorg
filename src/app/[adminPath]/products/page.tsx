@@ -31,6 +31,7 @@ export default async function AdminProductsPage({
     categoryId: p.categoryId ?? null,
     price: p.price ?? null,
     priceWholesale: p.priceWholesale ?? null,
+    stockQty: p.stockQty ?? 0,
     inStock: p.inStock,
     isPromo: p.isPromo,
     promoLabel: p.promoLabel ?? null,

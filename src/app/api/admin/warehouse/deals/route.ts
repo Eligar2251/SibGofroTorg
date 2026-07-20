@@ -12,6 +12,11 @@ export async function POST(request: NextRequest) {
       date: String(body.date || ""),
       customerName: String(body.customerName || ""),
       customerPhone: body.customerPhone ?? null,
+      email: body.email ?? null,
+      inn: body.inn ?? null,
+      kpp: body.kpp ?? null,
+      address: body.address ?? null,
+      contactName: body.contactName ?? null,
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
     });

@@ -17,6 +17,7 @@ export async function PATCH(
       comment: body.comment,
       date: body.date,
       counterparty: body.counterparty,
+      invoiceNumber: body.invoiceNumber,
     });
     return NextResponse.json({ success: true });
   } catch (error: any) {

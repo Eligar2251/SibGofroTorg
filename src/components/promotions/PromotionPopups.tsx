@@ -2,49 +2,78 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Gift, X } from "lucide-react";
+import { ArrowRight, BellRing, CircleAlert, Gift, X } from "lucide-react";
 
-interface PopupPromotion {
+type CampaignStyle = "info" | "promo" | "important";
+type CampaignFrequency = "session" | "day" | "always";
+
+interface PopupCampaign {
   id: string;
   title: string;
-  subtitle: string | null;
-  badge: string | null;
+  kicker: string | null;
+  description: string | null;
+  details: string | null;
   imageUrl: string | null;
-  href: string | null;
-  popupStartAt: string | null;
-  popupDelaySeconds: number;
-  popupDurationSeconds: number;
+  buttonText: string | null;
+  buttonUrl: string | null;
+  style: CampaignStyle;
+  startAt: string | null;
+  endAt: string | null;
+  delaySeconds: number;
+  durationSeconds: number;
+  frequency: CampaignFrequency;
 }
 
-const SESSION_PREFIX = "sib-promo-shown:";
+const STORAGE_PREFIX = "sib-info-window:";
 
-function startTime(value: string | null): number {
+function asTime(value: string | null): number {
   if (!value) return 0;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) ? time : 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function storageKey(campaign: PopupCampaign): string {
+  const base = `${STORAGE_PREFIX}${campaign.id}`;
+  if (campaign.frequency === "day") {
+    return `${base}:${new Date().toISOString().slice(0, 10)}`;
+  }
+  return base;
+}
+
+function wasShown(campaign: PopupCampaign): boolean {
+  if (campaign.frequency === "always") return false;
+  try {
+    const storage = campaign.frequency === "session" ? sessionStorage : localStorage;
+    return storage.getItem(storageKey(campaign)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markShown(campaign: PopupCampaign) {
+  if (campaign.frequency === "always") return;
+  try {
+    const storage = campaign.frequency === "session" ? sessionStorage : localStorage;
+    storage.setItem(storageKey(campaign), "1");
+  } catch {
+    // Хранилище может быть запрещено браузером.
+  }
 }
 
 export function PromotionPopups() {
-  const [pending, setPending] = useState<PopupPromotion[]>([]);
-  const [current, setCurrent] = useState<PopupPromotion | null>(null);
+  const [pending, setPending] = useState<PopupCampaign[]>([]);
+  const [current, setCurrent] = useState<PopupCampaign | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/promotions/popups")
+    fetch("/api/popups")
       .then((response) => response.json())
       .then((data) => {
         if (cancelled) return;
-        const list = Array.isArray(data?.promotions)
-          ? (data.promotions as PopupPromotion[])
+        const campaigns = Array.isArray(data?.campaigns)
+          ? (data.campaigns as PopupCampaign[])
           : [];
-        const unseen = list.filter((promotion) => {
-          try {
-            return !sessionStorage.getItem(`${SESSION_PREFIX}${promotion.id}`);
-          } catch {
-            return true;
-          }
-        });
-        setPending(unseen);
+        setPending(campaigns.filter((item) => !wasShown(item)));
       })
       .catch(() => setPending([]));
     return () => {
@@ -52,37 +81,32 @@ export function PromotionPopups() {
     };
   }, []);
 
-  // Показываем акции по очереди. Для каждой учитываются запланированная дата
-  // и задержка после загрузки предыдущего окна.
   useEffect(() => {
     if (current || pending.length === 0) return;
     const next = pending[0];
-    const scheduledAt = Math.max(
-      Date.now() + Math.max(0, next.popupDelaySeconds || 0) * 1000,
-      startTime(next.popupStartAt)
+    const target = Math.max(
+      Date.now() + Math.max(0, next.delaySeconds || 0) * 1000,
+      asTime(next.startAt)
     );
-    const wait = Math.max(0, scheduledAt - Date.now());
     const timer = window.setTimeout(() => {
-      if (Date.now() + 500 < scheduledAt) {
+      if (Date.now() + 500 < target) {
         setPending((items) => [...items]);
         return;
       }
+      const end = asTime(next.endAt);
       setPending((items) => items.slice(1));
+      if (end > 0 && end <= Date.now()) return;
+      markShown(next);
       setCurrent(next);
-      try {
-        sessionStorage.setItem(`${SESSION_PREFIX}${next.id}`, "1");
-      } catch {
-        // sessionStorage может быть запрещён настройками браузера.
-      }
-    }, Math.min(wait, 2_147_000_000));
+    }, Math.min(Math.max(0, target - Date.now()), 2_147_000_000));
     return () => window.clearTimeout(timer);
   }, [current, pending]);
 
   useEffect(() => {
     if (!current) return;
     const duration = Math.min(
-      300,
-      Math.max(3, Number(current.popupDurationSeconds) || 15)
+      600,
+      Math.max(5, Number(current.durationSeconds) || 20)
     );
     const timer = window.setTimeout(() => setCurrent(null), duration * 1000);
     return () => window.clearTimeout(timer);
@@ -104,25 +128,35 @@ export function PromotionPopups() {
 
   if (!current) return null;
 
-  const isExternal = current.href?.startsWith("https://") === true;
-  const cta = current.href ? (
-    isExternal ? (
+  const Icon =
+    current.style === "promo"
+      ? Gift
+      : current.style === "important"
+        ? CircleAlert
+        : BellRing;
+  const points = (current.details || "")
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const external = current.buttonUrl?.startsWith("https://") === true;
+  const button = current.buttonUrl ? (
+    external ? (
       <a
-        className="promo-popup__cta"
-        href={current.href}
+        href={current.buttonUrl}
         target="_blank"
         rel="noopener noreferrer"
+        className="promo-popup__cta"
         onClick={() => setCurrent(null)}
       >
-        Подробнее <ArrowRight size={15} />
+        {current.buttonText || "Подробнее"} <ArrowRight size={15} />
       </a>
     ) : (
       <Link
+        href={current.buttonUrl}
         className="promo-popup__cta"
-        href={current.href}
         onClick={() => setCurrent(null)}
       >
-        Подробнее <ArrowRight size={15} />
+        {current.buttonText || "Подробнее"} <ArrowRight size={15} />
       </Link>
     )
   ) : null;
@@ -130,42 +164,61 @@ export function PromotionPopups() {
   return (
     <div className="promo-popup-overlay" onClick={() => setCurrent(null)}>
       <section
-        className={`promo-popup${current.imageUrl ? " promo-popup--with-image" : ""}`}
+        className={`promo-popup promo-popup--${current.style}${
+          current.imageUrl ? " promo-popup--with-image" : ""
+        }`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={`promo-popup-title-${current.id}`}
+        aria-labelledby={`info-window-${current.id}`}
         onClick={(event) => event.stopPropagation()}
       >
-        <button
-          type="button"
-          className="promo-popup__close"
-          onClick={() => setCurrent(null)}
-          aria-label="Закрыть акцию"
-        >
-          <X size={19} />
-        </button>
-
-        {current.imageUrl && (
-          <div className="promo-popup__media">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={current.imageUrl} alt="" />
-          </div>
-        )}
-
-        <div className="promo-popup__body">
-          <div className="promo-popup__badge">
-            <Gift size={14} /> {current.badge || "Акция"}
-          </div>
-          <h2
-            className="promo-popup__title"
-            id={`promo-popup-title-${current.id}`}
+        <header className="promo-popup__windowbar">
+          <span className="promo-popup__window-icon">
+            <Icon size={16} />
+          </span>
+          <span className="promo-popup__window-label">
+            {current.kicker || "Информация"}
+          </span>
+          <button
+            type="button"
+            className="promo-popup__close"
+            onClick={() => setCurrent(null)}
+            aria-label="Закрыть информационное окно"
           >
-            {current.title}
-          </h2>
-          {current.subtitle && (
-            <p className="promo-popup__subtitle">{current.subtitle}</p>
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="promo-popup__content">
+          {current.imageUrl && (
+            <div className="promo-popup__media">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={current.imageUrl} alt="" />
+            </div>
           )}
-          {cta}
+
+          <div className="promo-popup__body">
+            <div className="promo-popup__eyebrow">
+              <Icon size={15} /> {current.kicker || "Объявление"}
+            </div>
+            <h2
+              className="promo-popup__title"
+              id={`info-window-${current.id}`}
+            >
+              {current.title}
+            </h2>
+            {current.description && (
+              <p className="promo-popup__subtitle">{current.description}</p>
+            )}
+            {points.length > 0 && (
+              <ul className="promo-popup__details">
+                {points.map((point, index) => (
+                  <li key={`${point}-${index}`}>{point}</li>
+                ))}
+              </ul>
+            )}
+            {button && <div className="promo-popup__actions">{button}</div>}
+          </div>
         </div>
       </section>
     </div>

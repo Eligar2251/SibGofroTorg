@@ -23,19 +23,6 @@ function cleanPromotion(body: Record<string, unknown>) {
     color: body.color ? String(body.color).slice(0, 80) : null,
     light: body.light ? String(body.light).slice(0, 80) : null,
     deadline: body.deadline ? String(body.deadline).slice(0, 100) : null,
-    isPopup: body.isPopup === true,
-    popupStartAt:
-      typeof body.popupStartAt === "string" && body.popupStartAt.trim()
-        ? body.popupStartAt.trim().slice(0, 30)
-        : null,
-    popupDelaySeconds: Math.min(
-      3600,
-      Math.max(0, Number(body.popupDelaySeconds) || 0)
-    ),
-    popupDurationSeconds: Math.min(
-      300,
-      Math.max(3, Number(body.popupDurationSeconds) || 15)
-    ),
     updatedAt: FieldValue.serverTimestamp(),
   };
 }

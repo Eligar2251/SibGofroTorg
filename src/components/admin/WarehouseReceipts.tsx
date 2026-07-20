@@ -14,14 +14,15 @@ import {
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
 import { includedVat, VAT_RATE } from "@/lib/vat";
+import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 
 interface ReceiptItemDraft {
   productId: string;
   name: string;
   sku: string | null;
-  quantity: number;
-  /** Сумма за всю партию по этой позиции (как в счёте поставщика, с НДС) */
-  lineTotal: number;
+  quantity: number | "";
+  /** Пустая строка нужна, чтобы ноль можно было стереть и ввести своё число. */
+  lineTotal: number | "";
 }
 
 function todayIso(): string {
@@ -30,13 +31,25 @@ function todayIso(): string {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-export function ReceiptForm({ products }: { products: PickerProduct[] }) {
+export function ReceiptForm({
+  products,
+  counterparties = [],
+}: {
+  products: PickerProduct[];
+  counterparties?: CounterpartyOption[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [date, setDate] = useState(todayIso());
   const [supplier, setSupplier] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [inn, setInn] = useState("");
+  const [kpp, setKpp] = useState("");
+  const [address, setAddress] = useState("");
+  const [contactName, setContactName] = useState("");
   const [comment, setComment] = useState("");
   const [items, setItems] = useState<ReceiptItemDraft[]>([]);
 
@@ -45,9 +58,32 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
   function resetForm() {
     setDate(todayIso());
     setSupplier("");
+    setPhone("");
+    setEmail("");
+    setInn("");
+    setKpp("");
+    setAddress("");
+    setContactName("");
     setComment("");
     setItems([]);
     setError("");
+  }
+
+  function selectSupplier(value: string) {
+    setSupplier(value);
+    const found = counterparties.find(
+      (item) =>
+        item.roles.includes("supplier") &&
+        item.name.toLocaleLowerCase("ru-RU") ===
+          value.trim().toLocaleLowerCase("ru-RU")
+    );
+    if (!found) return;
+    setPhone(found.phone || "");
+    setEmail(found.email || "");
+    setInn(found.inn || "");
+    setKpp(found.kpp || "");
+    setAddress(found.address || "");
+    setContactName(found.contactName || "");
   }
 
   function addItem(p: PickerProduct) {
@@ -63,7 +99,7 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
           name: p.name,
           sku: p.sku,
           quantity: 1,
-          lineTotal: suggested,
+          lineTotal: suggested > 0 ? suggested : "",
         },
       ];
     });
@@ -82,6 +118,10 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!supplier.trim()) {
+      setError("Укажите поставщика");
+      return;
+    }
     if (items.length === 0) {
       setError("Добавьте хотя бы одну позицию");
       return;
@@ -94,6 +134,12 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
         body: JSON.stringify({
           date,
           supplier: supplier.trim(),
+          phone: phone.trim() || null,
+          email: email.trim() || null,
+          inn: inn.trim() || null,
+          kpp: kpp.trim() || null,
+          address: address.trim() || null,
+          contactName: contactName.trim() || null,
           comment: comment.trim() || null,
           items: items.map((it) => ({
             productId: it.productId,
@@ -160,16 +206,37 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
                   />
                 </div>
                 <div className="admin-field">
-                  <label className="admin-label">Поставщик</label>
+                  <label className="admin-label">Поставщик *</label>
                   <input
                     type="text"
                     className="admin-input"
+                    list="receipt-supplier-options"
                     value={supplier}
-                    onChange={(e) => setSupplier(e.target.value)}
-                    placeholder="ООО «Гофрокомбинат»"
+                    onChange={(e) => selectSupplier(e.target.value)}
+                    placeholder="Начните вводить название..."
+                    required
                   />
+                  <datalist id="receipt-supplier-options">
+                    {counterparties
+                      .filter((item) => item.roles.includes("supplier"))
+                      .map((item) => (
+                        <option key={item.id} value={item.name} />
+                      ))}
+                  </datalist>
                 </div>
               </div>
+
+              <details className="wh-counterparty-details">
+                <summary>Реквизиты поставщика</summary>
+                <div className="wh-form-grid">
+                  <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Телефон</label><input className="admin-input" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={inn} onChange={(e) => setInn(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={kpp} onChange={(e) => setKpp(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Адрес</label><input className="admin-input" value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+                </div>
+              </details>
 
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
@@ -213,7 +280,10 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
                           value={it.quantity}
                           onChange={(e) =>
                             setItem(it.productId, {
-                              quantity: Number(e.target.value),
+                              quantity:
+                                e.target.value === ""
+                                  ? ""
+                                  : Number(e.target.value),
                             })
                           }
                         />
@@ -225,7 +295,10 @@ export function ReceiptForm({ products }: { products: PickerProduct[] }) {
                           value={it.lineTotal}
                           onChange={(e) =>
                             setItem(it.productId, {
-                              lineTotal: Number(e.target.value),
+                              lineTotal:
+                                e.target.value === ""
+                                  ? ""
+                                  : Number(e.target.value),
                             })
                           }
                         />

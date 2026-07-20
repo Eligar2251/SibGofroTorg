@@ -10,6 +10,7 @@ import {
   FirestoreProduct,
   FirestoreOrder,
   Promotion,
+  PopupCampaign,
   ProductReview,
   ProductQuestion,
   ProductRating,
@@ -422,6 +423,53 @@ export async function getPromotions(): Promise<Promotion[]> {
 
 export async function getAllPromotions(): Promise<Promotion[]> {
   return getCachedPromotions();
+}
+
+// ─── Standalone popup campaigns ───────────────────────────
+
+async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
+  const db = getAdminDb();
+  const snap = await db
+    .collection("popupCampaigns")
+    .orderBy("sortOrder", "asc")
+    .get();
+  return snap.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      title: String(data.title || ""),
+      kicker: data.kicker || null,
+      description: data.description || null,
+      details: data.details || null,
+      imageUrl: data.imageUrl || null,
+      buttonText: data.buttonText || null,
+      buttonUrl: data.buttonUrl || null,
+      style: ["info", "promo", "important"].includes(data.style)
+        ? data.style
+        : "info",
+      isActive: data.isActive !== false,
+      startAt: data.startAt || null,
+      endAt: data.endAt || null,
+      delaySeconds: Math.max(0, Number(data.delaySeconds) || 0),
+      durationSeconds: Math.max(5, Number(data.durationSeconds) || 20),
+      frequency: ["session", "day", "always"].includes(data.frequency)
+        ? data.frequency
+        : "session",
+      sortOrder: Number(data.sortOrder) || 0,
+      createdAt: serializeTimestamp(data.createdAt),
+      updatedAt: serializeTimestamp(data.updatedAt),
+    } as PopupCampaign;
+  });
+}
+
+const getCachedPopupCampaigns = unstable_cache(
+  fetchAllPopupCampaigns,
+  ["base-popup-campaigns"],
+  { revalidate: DATA_REVALIDATE, tags: ["popup-campaigns"] }
+);
+
+export async function getAllPopupCampaigns(): Promise<PopupCampaign[]> {
+  return getCachedPopupCampaigns();
 }
 
 // ─── Orders ───────────────────────────────────────────────
