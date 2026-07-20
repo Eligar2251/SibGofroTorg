@@ -1012,6 +1012,135 @@ export async function createDeal(data: {
   return { id: docRef.id, number };
 }
 
+export async function updateDeal(
+  id: string,
+  data: {
+    date: string;
+    customerName: string;
+    customerPhone?: string | null;
+    email?: string | null;
+    inn?: string | null;
+    kpp?: string | null;
+    address?: string | null;
+    contactName?: string | null;
+    comment?: string | null;
+    items: StockDocItem[];
+  }
+): Promise<void> {
+  const db = getAdminDb();
+  const ref = db.collection("customerDeals").doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Заказ не найден");
+  const previous = mapDeal(id, snap.data());
+  if (previous.status === "cancelled") {
+    throw new Error("Отменённый заказ нельзя редактировать");
+  }
+
+  const items = cleanItems(data.items);
+  const customerName = String(data.customerName || "").trim().slice(0, 200);
+  if (!customerName) throw new Error("Укажите покупателя");
+  if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
+  const linesTotal = itemsTotal(items);
+  if (linesTotal <= 0) {
+    throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
+  }
+
+  const paymentSnap = await db
+    .collection("bankPayments")
+    .where("dealIds", "array-contains", id)
+    .get();
+  const paidTotal = paymentSnap.docs.reduce((sum, doc) => {
+    const payment = doc.data();
+    return payment.isPaid === true && payment.direction === "incoming"
+      ? sum + (Number(payment.amount) || 0)
+      : sum;
+  }, 0);
+  const total = paidTotal > 0 ? paidTotal : linesTotal;
+  const bankAdjustment = round2(total - linesTotal);
+  const details: CounterpartyDetails = {
+    phone: cleanText(data.customerPhone, 60),
+    email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20),
+    kpp: cleanText(data.kpp, 20),
+    address: cleanText(data.address, 400),
+    contactName: cleanText(data.contactName, 160),
+  };
+  const dealPatch = {
+    date: data.date,
+    customerName,
+    customerPhone: details.phone,
+    ...details,
+    comment: cleanText(data.comment, 500),
+    items,
+    total,
+    bankAdjustment,
+    vatRate: VAT_RATE,
+    vatAmount: includedVat(total),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  if (previous.status === "completed") {
+    const delta = new Map<string, number>();
+    // Старый состав возвращаем, новый состав снова списываем.
+    for (const item of previous.items) {
+      delta.set(item.productId, (delta.get(item.productId) || 0) + item.quantity);
+    }
+    for (const item of items) {
+      delta.set(item.productId, (delta.get(item.productId) || 0) - item.quantity);
+    }
+    await db.runTransaction(async (transaction) => {
+      const stocks: {
+        ref: FirebaseFirestore.DocumentReference;
+        next: number;
+      }[] = [];
+      for (const [productId, change] of delta) {
+        if (change === 0) continue;
+        const productRef = db.collection("products").doc(productId);
+        const productSnap = await transaction.get(productRef);
+        const current = productSnap.exists
+          ? Number(productSnap.data()?.stockQty) || 0
+          : 0;
+        stocks.push({ ref: productRef, next: current + change });
+      }
+      for (const stock of stocks) {
+        transaction.set(
+          stock.ref,
+          {
+            stockQty: stock.next,
+            inStock: stock.next > 0,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      transaction.update(ref, dealPatch);
+    });
+  } else {
+    await ref.update(dealPatch);
+  }
+
+  const batch = db.batch();
+  const counterpartyId = addCounterpartyToBatch(
+    batch,
+    "customer",
+    customerName,
+    { ...details, comment: data.comment }
+  );
+  batch.update(ref, { counterpartyId });
+  for (const payment of paymentSnap.docs) {
+    if (payment.data().isPaid === true) continue;
+    batch.update(payment.ref, {
+      counterparty: customerName,
+      counterpartyId,
+      amount: linesTotal,
+      vatRate: VAT_RATE,
+      vatAmount: includedVat(linesTotal),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+  await batch.commit();
+}
+
 /** Провести заказ — списать товар со склада */
 export async function postDeal(id: string): Promise<void> {
   const db = getAdminDb();

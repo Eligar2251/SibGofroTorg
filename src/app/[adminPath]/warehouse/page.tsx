@@ -801,6 +801,32 @@ export default async function AdminWarehousePage({
                     </div>
 
                     <div className="admin-order__side">
+                      {d.status !== "cancelled" && (
+                        <DealForm
+                          products={pickerProducts}
+                          counterparties={counterpartyOptions}
+                          initialDeal={{
+                            id: d.id,
+                            date: d.date,
+                            customerName: d.customerName,
+                            customerPhone: d.customerPhone ?? null,
+                            email: d.email ?? null,
+                            inn: d.inn ?? null,
+                            kpp: d.kpp ?? null,
+                            address: d.address ?? null,
+                            contactName: d.contactName ?? null,
+                            comment: d.comment ?? null,
+                            items: d.items.map((item) => ({
+                              productId: item.productId,
+                              name: item.name,
+                              sku: item.sku ?? null,
+                              quantity: item.quantity,
+                              price: item.price,
+                              stockQty: stockById.get(item.productId) ?? 0,
+                            })),
+                          }}
+                        />
+                      )}
                       <DealActions
                         dealId={d.id}
                         status={d.status}

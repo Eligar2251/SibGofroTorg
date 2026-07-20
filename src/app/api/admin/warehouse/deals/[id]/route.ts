@@ -1,6 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { postDeal, cancelDeal, deleteDeal } from "@/lib/warehouse";
+import {
+  postDeal,
+  cancelDeal,
+  deleteDeal,
+  updateDeal,
+} from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    await updateDeal(id, {
+      date: String(body.date || ""),
+      customerName: String(body.customerName || ""),
+      customerPhone: body.customerPhone ?? null,
+      email: body.email ?? null,
+      inn: body.inn ?? null,
+      kpp: body.kpp ?? null,
+      address: body.address ?? null,
+      contactName: body.contactName ?? null,
+      comment: body.comment ?? null,
+      items: Array.isArray(body.items) ? body.items : [],
+    });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ошибка сервера" },
+      { status: 400 }
+    );
+  }
+}
 
 export async function PATCH(
   request: NextRequest,

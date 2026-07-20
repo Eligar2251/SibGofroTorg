@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Edit2,
   Plus,
   Trash2,
   X,
@@ -31,6 +32,20 @@ interface DealItemDraft {
   stockQty: number;
 }
 
+export interface EditableDeal {
+  id: string;
+  date: string;
+  customerName: string;
+  customerPhone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  address?: string | null;
+  contactName?: string | null;
+  comment?: string | null;
+  items: DealItemDraft[];
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -40,24 +55,32 @@ const fmt = (n: number) => n.toLocaleString("ru-RU");
 export function DealForm({
   products,
   counterparties = [],
+  initialDeal,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
+  initialDeal?: EditableDeal;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [date, setDate] = useState(todayIso());
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [inn, setInn] = useState("");
-  const [kpp, setKpp] = useState("");
-  const [address, setAddress] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [comment, setComment] = useState("");
-  const [items, setItems] = useState<DealItemDraft[]>([]);
+  const [date, setDate] = useState(initialDeal?.date || todayIso());
+  const [customerName, setCustomerName] = useState(
+    initialDeal?.customerName || ""
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    initialDeal?.customerPhone || ""
+  );
+  const [email, setEmail] = useState(initialDeal?.email || "");
+  const [inn, setInn] = useState(initialDeal?.inn || "");
+  const [kpp, setKpp] = useState(initialDeal?.kpp || "");
+  const [address, setAddress] = useState(initialDeal?.address || "");
+  const [contactName, setContactName] = useState(
+    initialDeal?.contactName || ""
+  );
+  const [comment, setComment] = useState(initialDeal?.comment || "");
+  const [items, setItems] = useState<DealItemDraft[]>(initialDeal?.items || []);
 
   const total = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
@@ -65,16 +88,16 @@ export function DealForm({
   );
 
   function resetForm() {
-    setDate(todayIso());
-    setCustomerName("");
-    setCustomerPhone("");
-    setEmail("");
-    setInn("");
-    setKpp("");
-    setAddress("");
-    setContactName("");
-    setComment("");
-    setItems([]);
+    setDate(initialDeal?.date || todayIso());
+    setCustomerName(initialDeal?.customerName || "");
+    setCustomerPhone(initialDeal?.customerPhone || "");
+    setEmail(initialDeal?.email || "");
+    setInn(initialDeal?.inn || "");
+    setKpp(initialDeal?.kpp || "");
+    setAddress(initialDeal?.address || "");
+    setContactName(initialDeal?.contactName || "");
+    setComment(initialDeal?.comment || "");
+    setItems(initialDeal?.items || []);
     setError("");
   }
 
@@ -144,8 +167,12 @@ export function DealForm({
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/admin/warehouse/deals", {
-        method: "POST",
+      const res = await fetch(
+        initialDeal
+          ? `/api/admin/warehouse/deals/${initialDeal.id}`
+          : "/api/admin/warehouse/deals",
+        {
+        method: initialDeal ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date,
@@ -185,10 +212,15 @@ export function DealForm({
     <>
       <button
         type="button"
-        className="admin-btn admin-btn--primary"
+        className={
+          initialDeal
+            ? "admin-btn admin-btn--ghost admin-btn--sm"
+            : "admin-btn admin-btn--primary"
+        }
         onClick={() => setOpen(true)}
       >
-        <Plus size={15} /> Новый заказ
+        {initialDeal ? <Edit2 size={14} /> : <Plus size={15} />}
+        {initialDeal ? "Изменить" : "Новый заказ"}
       </button>
 
       {open && (
@@ -198,7 +230,9 @@ export function DealForm({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="admin-modal__head">
-              <h3 className="admin-modal__title">Заказ покупателя</h3>
+              <h3 className="admin-modal__title">
+                {initialDeal ? "Редактирование заказа" : "Заказ покупателя"}
+              </h3>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -368,14 +402,14 @@ export function DealForm({
                     disabled={saving || items.length === 0}
                   >
                     {saving && <Loader2 size={14} className="animate-spin" />}
-                    Сохранить заказ
+                    {initialDeal ? "Сохранить изменения" : "Сохранить заказ"}
                   </button>
                 </div>
               </div>
               <p className="wh-form-hint">
-                Заказ создаётся без списания, а в банке автоматически появится
-                входящий счёт «в ожидании». Кнопка «Провести» в списке спишет
-                товар с остатков склада.
+                {initialDeal
+                  ? "При изменении проведённого заказа остатки склада будут автоматически скорректированы."
+                  : "Заказ создаётся без списания, а в банке автоматически появится входящий счёт. Кнопка «Провести» спишет товар со склада."}
               </p>
             </form>
           </div>
