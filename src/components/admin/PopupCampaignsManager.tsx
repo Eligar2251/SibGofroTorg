@@ -344,6 +344,12 @@ export function PopupCampaignsManager({
                     <span>Сторис (вертикальное фото)</span>
                   </label>
                 </div>
+                
+                {form.isStoryType && (
+                  <div className="admin-hint" style={{ marginBottom: 12 }}>
+                    В этом режиме будет показано только фото. Весь попап будет кликабельным (ссылка задается ниже). Рекомендуемый размер: 1080x1920 (9:16).
+                  </div>
+                )}
 
                 {form.isProductType && (
                   <div className="admin-stack">
