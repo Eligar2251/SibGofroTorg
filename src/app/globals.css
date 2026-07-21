@@ -6372,35 +6372,39 @@ select {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 20px; /* Скругляем углы самого фото */
 }
 
 .story-popup__close {
   position: absolute;
   top: 15px;
   right: 15px;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.1); /* Эффект стекла */
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 20;
-  transition: transform 0.2s;
+  z-index: 30;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .story-popup__close:hover {
-  transform: scale(1.1);
-  background: rgba(0, 0, 0, 0.5);
+  transform: rotate(90deg) scale(1.05);
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 @media (max-width: 600px) {
   .promo-popup-overlay:has(.story-popup) {
     align-items: center;
-    padding: 10px;
+    padding: 20px;
   }
 }

@@ -14,6 +14,8 @@ import {
   Save,
   Trash2,
   X,
+  ImageIcon,
+  Layout,
 } from "lucide-react";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import type {
@@ -83,6 +85,7 @@ export function PopupCampaignsManager({
 }) {
   const router = useRouter();
   const [campaigns, setCampaigns] = useState(initialCampaigns);
+  const [activeView, setActiveView] = useState<"standard" | "story">("standard");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -219,21 +222,47 @@ export function PopupCampaignsManager({
   const points = form.details.split("\n").filter((item) => item.trim());
   const showEditor = creating || editingId !== null;
 
+  const filteredCampaigns = campaigns.filter((item) =>
+    activeView === "story" ? !!item.isStoryType : !item.isStoryType
+  );
+
   return (
     <div className="admin-stack admin-stack--lg">
       <div className="popup-admin-intro">
         <div>
           <h2>Информационные окна сайта</h2>
           <p>
-            Это отдельный инструмент: окна не зависят от карточек акций на
-            главной странице.
+            Создавайте окна для объявлений, акций или важных уведомлений.
           </p>
         </div>
         {!showEditor && (
-          <button className="admin-btn admin-btn--primary" onClick={beginCreate}>
-            <Plus size={15} /> Новое окно
+          <button
+            className="admin-btn admin-btn--primary"
+            onClick={() => {
+              beginCreate();
+              if (activeView === "story") update("isStoryType", true);
+            }}
+          >
+            <Plus size={15} /> {activeView === "story" ? "Новая сторис" : "Новое окно"}
           </button>
         )}
+      </div>
+
+      <div className="admin-filters">
+        <button
+          className={`admin-filter${activeView === "standard" ? " admin-filter--active" : ""}`}
+          onClick={() => setActiveView("standard")}
+        >
+          <Layout size={13} />
+          Обычные окна
+        </button>
+        <button
+          className={`admin-filter${activeView === "story" ? " admin-filter--active" : ""}`}
+          onClick={() => setActiveView("story")}
+        >
+          <ImageIcon size={13} />
+          Сторис (баннеры)
+        </button>
       </div>
 
       {showEditor && (
@@ -509,22 +538,22 @@ export function PopupCampaignsManager({
       )}
 
       <div className="popup-admin-list">
-        {campaigns.length === 0 ? (
+        {filteredCampaigns.length === 0 ? (
           <div className="admin-card admin-empty">
             <BellRing size={36} />
-            <p>Информационных окон пока нет</p>
-            <p className="admin-empty__hint">Создайте отдельное окно для объявления, акции или важного уведомления.</p>
+            <p>В этом разделе пока нет окон</p>
+            <p className="admin-empty__hint">Создайте новое окно, используя кнопку выше.</p>
           </div>
         ) : (
-          campaigns.map((item) => (
+          filteredCampaigns.map((item) => (
             <article key={item.id} className="popup-admin-item">
               <div className={`popup-admin-item__icon popup-admin-item__icon--${item.style}`}>
-                {item.style === "promo" ? <Gift size={18} /> : item.style === "important" ? <CircleAlert size={18} /> : <BellRing size={18} />}
+                {item.isStoryType ? <ImageIcon size={18} /> : (item.style === "promo" ? <Gift size={18} /> : item.style === "important" ? <CircleAlert size={18} /> : <BellRing size={18} />)}
               </div>
               <div className="popup-admin-item__main">
                 <div className="popup-admin-item__title">{item.title}</div>
                 <div className="popup-admin-item__meta">
-                  {item.kicker || "Информация"} · через {item.delaySeconds} сек. · на {item.durationSeconds} сек.
+                  {item.isStoryType ? "Тип: Сторис" : (item.kicker || "Информация")} · через {item.delaySeconds} сек. · на {item.durationSeconds} сек.
                   {item.startAt ? ` · с ${new Date(item.startAt).toLocaleString("ru-RU")}` : ""}
                 </div>
               </div>
