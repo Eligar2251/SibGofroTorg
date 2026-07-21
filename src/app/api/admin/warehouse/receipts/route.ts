@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
       vatRate: body.vatRate,
+      linkedDealIds: body.linkedDealIds,
     });
     return NextResponse.json(result);
   } catch (error: any) {

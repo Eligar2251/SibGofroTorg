@@ -56,11 +56,13 @@ const fmt = (n: number) => n.toLocaleString("ru-RU");
 export function ReceiptForm({
   products,
   counterparties = [],
+  deals = [],
   initialReceipt,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
-  initialReceipt?: EditableReceipt;
+  deals?: any[];
+  initialReceipt?: EditableReceipt & { linkedDealIds?: string[] };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -83,6 +85,9 @@ export function ReceiptForm({
   const [items, setItems] = useState<ReceiptItemDraft[]>(
     initialReceipt?.items || []
   );
+  const [selectedDeals, setSelectedDeals] = useState<string[]>(
+    initialReceipt?.linkedDealIds || []
+  );
 
   const total = items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0);
 
@@ -98,6 +103,7 @@ export function ReceiptForm({
     setComment(initialReceipt?.comment || "");
     setVatRate(initialReceipt?.vatRate ?? VAT_RATE);
     setItems(initialReceipt?.items || []);
+    setSelectedDeals(initialReceipt?.linkedDealIds || []);
     setError("");
   }
 
@@ -169,6 +175,12 @@ export function ReceiptForm({
     setItems((prev) => prev.filter((it) => it.productId !== productId));
   }
 
+  function toggleDeal(id: string) {
+    setSelectedDeals((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -207,6 +219,7 @@ export function ReceiptForm({
             lineTotal: Number(it.lineTotal) || 0,
           })),
           vatRate,
+          linkedDealIds: selectedDeals,
         }),
       });
       if (!res.ok) {
@@ -321,6 +334,34 @@ export function ReceiptForm({
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
                 <ProductPicker products={products} onPick={addItem} />
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Заказать под клиента (привязка к заказу)</label>
+                {deals.length === 0 ? (
+                  <div className="wh-deal-pick__empty">Нет активных заказов</div>
+                ) : (
+                  <div className="wh-deal-pick">
+                    {deals.filter(d => d.status === 'new').map((d) => {
+                      const selected = selectedDeals.includes(d.id);
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          className={`wh-deal-chip${selected ? " wh-deal-chip--active" : ""}`}
+                          onClick={() => toggleDeal(d.id)}
+                        >
+                          <span className="wh-deal-chip__title">
+                            ЗК-{d.number} · {d.customerName}
+                          </span>
+                          <span className="wh-deal-chip__meta">
+                            {fmtDate(d.date)} · {fmt(d.total)} ₽
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {items.length > 0 && (

@@ -582,6 +582,8 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
       data.vatAmount !== undefined
         ? Number(data.vatAmount) || 0
         : includedVat(Number(data.total) || 0),
+    linkedDealIds: Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [],
+    linkedDealNumbers: Array.isArray(data.linkedDealNumbers) ? data.linkedDealNumbers : [],
     createdAt: serializeTimestamp(data.createdAt),
   };
 }
@@ -616,6 +618,7 @@ export async function createReceipt(data: {
   comment?: string | null;
   items: StockDocItem[];
   vatRate?: number;
+  linkedDealIds?: string[];
 }): Promise<{ id: string; number: number }> {
   const items = cleanItems(data.items);
   if (!data.supplier?.trim()) {
@@ -629,6 +632,14 @@ export async function createReceipt(data: {
     throw new Error("Укажите сумму поступления больше нуля");
   }
   const db = getAdminDb();
+  
+  const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [];
+  const linkedDealNumbers: number[] = [];
+  for (const dealId of linkedDealIds) {
+    const snap = await db.collection("customerDeals").doc(dealId).get();
+    if (snap.exists) linkedDealNumbers.push(Number((snap.data() as any)?.number) || 0);
+  }
+
   const number = await nextNumber("receipt");
   const date = data.date || new Date().toISOString().slice(0, 10);
   const supplier = String(data.supplier || "").slice(0, 200);
@@ -672,6 +683,8 @@ export async function createReceipt(data: {
     bankAdjustment: 0,
     vatRate,
     vatAmount,
+    linkedDealIds,
+    linkedDealNumbers,
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -718,6 +731,7 @@ export async function updateReceipt(
     comment?: string | null;
     items: StockDocItem[];
     vatRate?: number;
+    linkedDealIds?: string[];
   }
 ): Promise<void> {
   const db = getAdminDb();
@@ -732,6 +746,13 @@ export async function updateReceipt(
   if (linesTotal <= 0) throw new Error("Укажите сумму поступления больше нуля");
 
   const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : previous.vatRate;
+  
+  const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : previous.linkedDealIds || [];
+  const linkedDealNumbers: number[] = [];
+  for (const dealId of linkedDealIds) {
+    const snap = await db.collection("customerDeals").doc(dealId).get();
+    if (snap.exists) linkedDealNumbers.push(Number((snap.data() as any)?.number) || 0);
+  }
 
   const paymentSnap = await db
     .collection("bankPayments")
@@ -824,6 +845,8 @@ export async function updateReceipt(
         bankAdjustment,
         vatRate,
         vatAmount: includedVat(total, vatRate),
+        linkedDealIds,
+        linkedDealNumbers,
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
@@ -838,6 +861,8 @@ export async function updateReceipt(
       bankAdjustment,
       vatRate,
       vatAmount: includedVat(total, vatRate),
+      linkedDealIds,
+      linkedDealNumbers,
       updatedAt: FieldValue.serverTimestamp(),
     });
   }

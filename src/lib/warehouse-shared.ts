@@ -51,6 +51,8 @@ export interface WarehouseReceipt extends CounterpartyDetails {
   bankAdjustment: number;
   vatRate: number;
   vatAmount: number;
+  linkedDealIds?: string[];
+  linkedDealNumbers?: number[];
   createdAt?: string | null;
 }
 

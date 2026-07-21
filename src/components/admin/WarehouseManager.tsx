@@ -317,6 +317,7 @@ export function WarehouseManager({
             <ReceiptForm
               products={pickerProducts}
               counterparties={counterpartyOptions}
+              deals={deals}
             />
           )}
           {activeTab === "deals" && (
@@ -592,6 +593,18 @@ export function WarehouseManager({
                               </span>
                               <span>{fmt(r.total)} ₽</span>
                             </div>
+                            {r.linkedDealNumbers && r.linkedDealNumbers.length > 0 && (
+                              <div style={{ marginTop: 10, borderTop: '1px dashed var(--adm-border)', paddingTop: 8 }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--adm-sand)', textTransform: 'uppercase', marginBottom: 4 }}>
+                                  Под заказ для:
+                                </div>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  {r.linkedDealNumbers.map(n => (
+                                    <span key={n} className="admin-badge admin-badge--blue">ЗК-{n}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           {r.comment && (
@@ -606,6 +619,7 @@ export function WarehouseManager({
                           <ReceiptForm
                             products={pickerProducts}
                             counterparties={counterpartyOptions}
+                            deals={deals}
                             initialReceipt={{
                               id: r.id,
                               date: r.date,
@@ -625,6 +639,7 @@ export function WarehouseManager({
                                 lineTotal: item.lineTotal,
                               })),
                               vatRate: r.vatRate,
+                              linkedDealIds: r.linkedDealIds,
                             }}
                           />
                           {r.status === "draft" && (
@@ -720,25 +735,30 @@ export function WarehouseManager({
                   <div key={d.id} className="admin-order">
                     <div className="admin-order__row">
                       <div className="admin-order__main">
-                        <div className="admin-order__top">
-                          <span className="admin-order__id">ЗК-{d.number}</span>
-                          <span className={dealStatusBadge[d.status]}>
-                            {dealStatusLabel[d.status]}
-                          </span>
-                          {isFullyPaid && (
-                            <span className="admin-badge admin-badge--green">
-                              Оплачен
+                          <div className="admin-order__top">
+                            <span className="admin-order__id">ЗК-{d.number}</span>
+                            <span className={dealStatusBadge[d.status]}>
+                              {dealStatusLabel[d.status]}
                             </span>
-                          )}
-                          {!isFullyPaid && paid > 0 && (
-                            <span className="admin-badge admin-badge--blue">
-                              Оплачено {fmt(paid)} из {fmt(d.total)} ₽
+                            {isFullyPaid ? (
+                              <span className="admin-badge admin-badge--green">
+                                Оплачен
+                              </span>
+                            ) : (
+                              <span className="admin-badge admin-badge--red" style={{ fontWeight: 800 }}>
+                                <AlertTriangle size={10} style={{ marginRight: 4 }} />
+                                Клиент не оплатил!
+                              </span>
+                            )}
+                            {!isFullyPaid && paid > 0 && (
+                              <span className="admin-badge admin-badge--blue">
+                                Оплачено {fmt(paid)} из {fmt(d.total)} ₽
+                              </span>
+                            )}
+                            <span className="admin-order__date">
+                              {fmtDate(d.date)}
                             </span>
-                          )}
-                          <span className="admin-order__date">
-                            {fmtDate(d.date)}
-                          </span>
-                        </div>
+                          </div>
 
                         <div className="admin-order__grid">
                           <div className="admin-order__meta">
