@@ -162,7 +162,7 @@ export function PaymentForm({
   function switchDirection(dir: "incoming" | "outgoing") {
     setDirection(dir);
     // При смене направления сбрасываем тип на regular, если текущий тип несовместим
-    if (dir === "incoming" && (type === "cash" || type === "transfer")) {
+    if (dir === "incoming" && type === "transfer") {
       setType("regular");
     }
     if (dir === "outgoing" && type === "deposit") {
@@ -184,10 +184,13 @@ export function PaymentForm({
     setType(t);
     // Автоматически переключаем направление для специфических типов
     if (t === "deposit") setDirection("incoming");
-    if (t === "cash" || t === "transfer") setDirection("outgoing");
+    if (t === "transfer") setDirection("outgoing");
 
-    // Независимые платежи обычно без привязки
-    if (t !== "regular") {
+    // "regular" и "cash" могут быть любым направлением, их не трогаем.
+    // "refund" тоже может быть в обе стороны (возврат нам или от нас).
+
+    // По умолчанию включаем привязку для всех типов, кроме "deposit"
+    if (t === "deposit") {
       setLinkMode("none");
       setSelectedDeals([]);
       setSelectedReceipts([]);

@@ -2380,6 +2380,23 @@ body:has(.admin-login) > main {
   padding: 8px 0;
 }
 
+.wh-deal-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-card);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: all 0.12s ease;
+  min-width: 0;
+  max-width: 100%;
+}
+
 @media (max-width: 640px) {
   .wh-deal-chip {
     width: 100%;
