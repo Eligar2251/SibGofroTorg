@@ -16,6 +16,7 @@ export async function GET() {
       })
       .map((item) => ({
         id: item.id,
+        type: item.type,
         title: item.title,
         kicker: item.kicker || null,
         description: item.description || null,
