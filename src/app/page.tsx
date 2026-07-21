@@ -40,7 +40,12 @@ export const metadata: Metadata = {
   },
 };
 
+// Firestore читается в рантайме (учётка Firebase недоступна на этапе сборки
+// образа), поэтому страницу не пытаемся пререндерить в `next build`.
+// Кэширование данных всё равно работает через unstable_cache (TTL 120с)
+// в src/lib/firestore-queries.ts — см. теги [categories]/[products]/...
 export const revalidate = 120;
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const [categories, featuredProducts, promotions] = await Promise.all([
