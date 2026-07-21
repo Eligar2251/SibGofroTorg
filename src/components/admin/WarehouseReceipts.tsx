@@ -103,8 +103,42 @@ export function ReceiptForm({
     initialReceipt?.linkedDealIds || []
   );
   const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
+  const [paymentCount, setPaymentCount] = useState(1);
+  const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
 
   const total = items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0);
+
+  function autoSplit(count: number, totalSum: number) {
+    if (count <= 1) {
+      setSplitAmounts([String(totalSum)]);
+      return;
+    }
+    const base = Math.floor(totalSum / count);
+    const remainder = totalSum % count;
+    const next: string[] = [];
+    for (let i = 0; i < count; i++) {
+      // Add slight difference (1-2 rubles)
+      let val = base;
+      if (i === 0) val += remainder;
+      
+      // Implement the ruble difference requirement
+      if (count === 2) {
+        if (i === 0) val += 1;
+        if (i === 1) val -= 1;
+      } else if (count === 3) {
+        if (i === 0) val += 1;
+        if (i === 2) val -= 1;
+      }
+      
+      next.push(String(val));
+    }
+    setSplitAmounts(next);
+  }
+
+  function handleSplitCountChange(count: number) {
+    setPaymentCount(count);
+    autoSplit(count, total);
+  }
 
   function resetForm() {
     setDate(initialReceipt?.date || todayIso());
@@ -250,6 +284,7 @@ export function ReceiptForm({
           vatRate,
           linkedDealIds: selectedDeals,
           linkedPaymentIds: selectedPayments,
+          paymentSplits: paymentCount > 1 ? splitAmounts.map(Number) : [total],
         }),
       });
       if (!res.ok) {
@@ -364,6 +399,43 @@ export function ReceiptForm({
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
                 <ProductPicker products={products} onPick={addItem} />
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Оплата (разбить на части?)</label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  {[1, 2, 3].map(count => (
+                    <button
+                      key={count}
+                      type="button"
+                      className={`admin-btn ${paymentCount === count ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                      style={{ flex: 1 }}
+                      onClick={() => handleSplitCountChange(count)}
+                    >
+                      {count} {count === 1 ? 'платеж' : 'платежа'}
+                    </button>
+                  ))}
+                </div>
+                
+                {paymentCount > 1 && (
+                  <div className="wh-form-grid" style={{ marginTop: 8 }}>
+                    {splitAmounts.map((val, idx) => (
+                      <div key={idx} className="admin-field">
+                        <label className="admin-label">Сумма части {idx + 1}, ₽</label>
+                        <input
+                          type="number"
+                          className="admin-input"
+                          value={val}
+                          onChange={(e) => {
+                            const next = [...splitAmounts];
+                            next[idx] = e.target.value;
+                            setSplitAmounts(next);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="admin-field" style={{ marginTop: 12 }}>

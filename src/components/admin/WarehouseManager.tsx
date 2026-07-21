@@ -147,9 +147,9 @@ export function WarehouseManager({
     [deals, receipts, payments]
   );
 
-  // Filter counterparties to only show those with debt
+  // Filter counterparties to only show those with positive debt (what is owed)
   const counterpartiesWithDebt = useMemo(
-    () => allCounterparties.filter((c) => Math.abs(c.balance) > 0.009),
+    () => allCounterparties.filter((c) => c.balance > 0.009),
     [allCounterparties]
   );
 

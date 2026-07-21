@@ -617,9 +617,9 @@ export async function createReceipt(data: {
   contactName?: string | null;
   comment?: string | null;
   items: StockDocItem[];
-  vatRate?: number;
   linkedDealIds?: string[];
   linkedPaymentIds?: string[];
+  paymentSplits?: number[]; // Array of payment amounts
 }): Promise<{ id: string; number: number }> {
   const items = cleanItems(data.items);
   if (!data.supplier?.trim()) {
@@ -636,7 +636,10 @@ export async function createReceipt(data: {
   
   const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [];
   const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
-  
+  const paymentSplits = Array.isArray(data.paymentSplits) && data.paymentSplits.length > 0
+    ? data.paymentSplits
+    : [total];
+
   const linkedDealNumbers: number[] = [];
   for (const dealId of linkedDealIds) {
     const snap = await db.collection("customerDeals").doc(dealId).get();
@@ -648,10 +651,10 @@ export async function createReceipt(data: {
   const supplier = String(data.supplier || "").slice(0, 200);
   const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : VAT_RATE;
   const vatAmount = includedVat(total, vatRate);
-  const payNumber = await nextNumber("payment");
+  
   const docRef = db.collection("warehouseReceipts").doc();
-  const paymentRef = db.collection("bankPayments").doc();
   const batch = db.batch();
+  
   const details: CounterpartyDetails = {
     phone: cleanText(data.phone, 60),
     email: cleanText(data.email, 160),
@@ -691,29 +694,35 @@ export async function createReceipt(data: {
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  // Новый документ остаётся черновиком: товар попадёт на склад только
-  // после оплаты связанного счёта и отдельного ручного проведения.
-
-  batch.set(paymentRef, {
-    number: payNumber,
-    date,
-    direction: "outgoing",
-    counterparty: supplier || "Поставщик",
-    counterpartyId,
-    dealIds: [],
-    dealNumbers: [],
-    receiptIds: [docRef.id],
-    receiptNumbers: [number],
-    amount: total,
-    invoiceNumber: null,
-    vatRate,
-    vatAmount,
-    isPaid: false,
-    paidAt: null,
-    comment: `Оплата поставщику по приходному ордеру ПО-${number}`,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  // Create one or more payments based on splits
+  for (let i = 0; i < paymentSplits.length; i++) {
+    const splitAmount = Number(paymentSplits[i]) || 0;
+    if (splitAmount <= 0) continue;
+    
+    const payNumber = await nextNumber("payment");
+    const paymentRef = db.collection("bankPayments").doc();
+    
+    batch.set(paymentRef, {
+      number: payNumber,
+      date,
+      direction: "outgoing",
+      counterparty: supplier || "Поставщик",
+      counterpartyId,
+      dealIds: [],
+      dealNumbers: [],
+      receiptIds: [docRef.id],
+      receiptNumbers: [number],
+      amount: splitAmount,
+      invoiceNumber: null,
+      vatRate,
+      vatAmount: includedVat(splitAmount, vatRate),
+      isPaid: false,
+      paidAt: null,
+      comment: `Оплата поставщику по приходному ордеру ПО-${number}${paymentSplits.length > 1 ? ` (часть ${i+1})` : ""}`,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
 
   for (const payId of linkedPaymentIds) {
     const payRef = db.collection("bankPayments").doc(payId);

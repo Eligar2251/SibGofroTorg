@@ -279,9 +279,9 @@ export function getCounterpartyBalances(
 
   // Sort: Debtors first (balance > 0.009), then name
   list.sort((a, b) => {
-    const aOpen = Math.abs(a.balance) > 0.009 ? 1 : 0;
-    const bOpen = Math.abs(b.balance) > 0.009 ? 1 : 0;
-    if (aOpen !== bOpen) return bOpen - aOpen;
+    const aDebt = a.balance > 0.009 ? 1 : 0;
+    const bDebt = b.balance > 0.009 ? 1 : 0;
+    if (aDebt !== bDebt) return bDebt - aDebt;
     return a.name.localeCompare(b.name, "ru");
   });
   
