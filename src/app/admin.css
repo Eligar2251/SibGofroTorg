@@ -1328,12 +1328,16 @@
   padding: 2px 7px;
   border-radius: 3px;
   border: 1px solid var(--adm-border);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-order__date {
   font-size: 11px;
   color: var(--adm-sand);
   margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-order__grid {
@@ -2683,11 +2687,11 @@ body:has(.admin-login) > main {
 /* Тёмная панель баланса */
 .bank-hero {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 22px;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
   background: linear-gradient(135deg, #191914 0%, #232318 52%, #1b2a1e 100%);
   border-radius: 16px;
-  padding: 26px 28px;
+  padding: 24px;
   color: #f5f2ea;
   border: 1px solid rgba(200, 134, 10, 0.25);
   box-shadow: 0 10px 34px rgba(20, 20, 14, 0.28);
@@ -2696,8 +2700,22 @@ body:has(.admin-login) > main {
 .bank-hero__main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  gap: 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  padding-right: 20px;
+}
+
+@media (max-width: 800px) {
+  .bank-hero {
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+  .bank-hero__main {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-right: 0;
+    padding-bottom: 20px;
+  }
 }
 
 .bank-hero__label {
@@ -2707,6 +2725,9 @@ body:has(.admin-login) > main {
   letter-spacing: 0.12em;
   color: rgba(245, 242, 234, 0.55);
   font-family: var(--adm-font-head);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .bank-hero__value {
@@ -2732,10 +2753,8 @@ body:has(.admin-login) > main {
 .bank-hero__stats {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 10px;
-  border-left: 1px solid rgba(245, 242, 234, 0.12);
-  padding-left: 22px;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .bank-hero__stat {
@@ -2782,21 +2801,6 @@ body:has(.admin-login) > main {
 
 .bank-hero__stat--plan strong {
   color: #f5f2ea;
-}
-
-@media (max-width: 760px) {
-  .bank-hero {
-    grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 20px;
-  }
-
-  .bank-hero__stats {
-    border-left: none;
-    border-top: 1px solid rgba(245, 242, 234, 0.12);
-    padding-left: 0;
-    padding-top: 14px;
-  }
 }
 
 /* Баланс по контрагентам */

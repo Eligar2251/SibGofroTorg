@@ -852,28 +852,30 @@ export function WarehouseManager({
       {/* ════════════ ВКЛАДКА: БАНК ════════════ */}
       {activeTab === "bank" && bankSummary && (
         <div className="bank">
-          <div className="bank-hero" style={{ gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div className="bank-hero__main" style={{ borderRight: '1px solid rgba(255,255,255,0.1)', paddingRight: 20 }}>
-              <div className="bank-hero__label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <CreditCard size={14} /> Безналичный расчет
+          <div className="bank-hero">
+            <div className="bank-hero__main">
+              <div>
+                <div className="bank-hero__label">
+                  <CreditCard size={14} /> Безналичный расчет
+                </div>
+                <div className="bank-hero__value" style={{ color: '#fff' }}>
+                  {fmt(bankSummary.bankBalance)} ₽
+                </div>
               </div>
-              <div className="bank-hero__value" style={{ color: '#fff' }}>
-                {fmt(bankSummary.bankBalance)} ₽
-              </div>
-              <div style={{ marginTop: 24 }}>
-                <div className="bank-hero__label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div>
+                <div className="bank-hero__label">
                   <Banknote size={14} /> Касса (наличные)
                 </div>
                 <div className="bank-hero__value" style={{ color: '#fff' }}>
                   {fmt(bankSummary.cashBalance)} ₽
                 </div>
               </div>
-              <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
                 Общий итог (факт): <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
               </div>
             </div>
 
-            <div className="bank-hero__stats" style={{ borderLeft: 'none', paddingLeft: 0, justifyContent: 'space-between' }}>
+            <div className="bank-hero__stats">
               <div className="bank-hero__stat">
                 <ArrowDownLeft size={16} style={{ color: '#7dd181' }} />
                 <div>
