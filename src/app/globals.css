@@ -5998,8 +5998,8 @@ select {
 /* ── Сторис-попап ── */
 .story-v2 {
   position: relative;
-  width: min(340px, 85vw);
-  max-height: 85vh; /* Не более 85% высоты экрана */
+  width: min(280px, 80vw);
+  max-height: 75vh;
   aspect-ratio: 9 / 16;
   background: #000;
   border-radius: 28px;
@@ -6008,11 +6008,11 @@ select {
   animation: banner-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Если экран низкий, уменьшаем ширину, чтобы сохранить пропорции */
+/* Если экран низкий, уменьшаем высоту еще больше */
 @media (max-height: 700px) {
   .story-v2 {
     width: auto;
-    height: 80vh;
+    height: 70vh;
   }
 }
 

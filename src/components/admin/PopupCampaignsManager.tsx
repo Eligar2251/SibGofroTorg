@@ -96,6 +96,14 @@ export function PopupCampaignsManager({
     }
   }, []);
 
+  // Persistence for activeTab
+  useEffect(() => {
+    const saved = localStorage.getItem("sib-popup-active-tab");
+    if (saved === "story" || saved === "banner") {
+      setActiveTab(saved);
+    }
+  }, []);
+
   const handleTabChange = (tab: PopupCampaignType) => {
     setActiveTab(tab);
     localStorage.setItem("sib-popup-active-tab", tab);

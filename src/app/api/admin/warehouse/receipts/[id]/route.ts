@@ -25,6 +25,7 @@ export async function PUT(
       items: Array.isArray(body.items) ? body.items : [],
       vatRate: body.vatRate,
       linkedDealIds: body.linkedDealIds,
+      linkedPaymentIds: body.linkedPaymentIds,
     });
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });

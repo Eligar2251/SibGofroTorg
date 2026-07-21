@@ -619,6 +619,7 @@ export async function createReceipt(data: {
   items: StockDocItem[];
   vatRate?: number;
   linkedDealIds?: string[];
+  linkedPaymentIds?: string[];
 }): Promise<{ id: string; number: number }> {
   const items = cleanItems(data.items);
   if (!data.supplier?.trim()) {
@@ -634,6 +635,8 @@ export async function createReceipt(data: {
   const db = getAdminDb();
   
   const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [];
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
+  
   const linkedDealNumbers: number[] = [];
   for (const dealId of linkedDealIds) {
     const snap = await db.collection("customerDeals").doc(dealId).get();
@@ -712,6 +715,15 @@ export async function createReceipt(data: {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  for (const payId of linkedPaymentIds) {
+    const payRef = db.collection("bankPayments").doc(payId);
+    batch.update(payRef, {
+      receiptIds: FieldValue.arrayUnion(docRef.id),
+      receiptNumbers: FieldValue.arrayUnion(number),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   await batch.commit();
   invalidateCounterpartyCache(true);
   return { id: docRef.id, number };
@@ -732,6 +744,7 @@ export async function updateReceipt(
     items: StockDocItem[];
     vatRate?: number;
     linkedDealIds?: string[];
+    linkedPaymentIds?: string[];
   }
 ): Promise<void> {
   const db = getAdminDb();
@@ -748,6 +761,8 @@ export async function updateReceipt(
   const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : previous.vatRate;
   
   const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : previous.linkedDealIds || [];
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
+  
   const linkedDealNumbers: number[] = [];
   for (const dealId of linkedDealIds) {
     const snap = await db.collection("customerDeals").doc(dealId).get();
@@ -887,6 +902,16 @@ export async function updateReceipt(
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
+  
+  for (const payId of linkedPaymentIds) {
+    const payRef = db.collection("bankPayments").doc(payId);
+    batch.update(payRef, {
+      receiptIds: FieldValue.arrayUnion(id),
+      receiptNumbers: FieldValue.arrayUnion(previous.number),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   await batch.commit();
   invalidateCounterpartyCache(true);
 }
@@ -1122,6 +1147,7 @@ export async function createDeal(data: {
   contactName?: string | null;
   comment?: string | null;
   items: StockDocItem[];
+  linkedPaymentIds?: string[];
 }): Promise<{ id: string; number: number }> {
   const items = cleanItems(data.items);
   if (!data.customerName?.trim()) {
@@ -1135,6 +1161,9 @@ export async function createDeal(data: {
     throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
   }
   const db = getAdminDb();
+  
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
+
   const number = await nextNumber("deal");
   const paymentNumber = await nextNumber("payment");
   const date = data.date || new Date().toISOString().slice(0, 10);
@@ -1199,6 +1228,15 @@ export async function createDeal(data: {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  for (const payId of linkedPaymentIds) {
+    const payRef = db.collection("bankPayments").doc(payId);
+    batch.update(payRef, {
+      dealIds: FieldValue.arrayUnion(docRef.id),
+      dealNumbers: FieldValue.arrayUnion(number),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   await batch.commit();
   invalidateCounterpartyCache();
   return { id: docRef.id, number };
@@ -1217,6 +1255,7 @@ export async function updateDeal(
     contactName?: string | null;
     comment?: string | null;
     items: StockDocItem[];
+    linkedPaymentIds?: string[];
   }
 ): Promise<void> {
   const db = getAdminDb();
@@ -1227,6 +1266,8 @@ export async function updateDeal(
   if (previous.status === "cancelled") {
     throw new Error("Отменённый заказ нельзя редактировать");
   }
+  
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
 
   const items = cleanItems(data.items);
   const customerName = String(data.customerName || "").trim().slice(0, 200);
@@ -1333,6 +1374,16 @@ export async function updateDeal(
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
+  
+  for (const payId of linkedPaymentIds) {
+    const payRef = db.collection("bankPayments").doc(payId);
+    batch.update(payRef, {
+      dealIds: FieldValue.arrayUnion(id),
+      dealNumbers: FieldValue.arrayUnion(previous.number),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   await batch.commit();
   invalidateCounterpartyCache();
 }

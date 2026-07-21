@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   Boxes,
@@ -21,11 +21,11 @@ import {
   History,
 } from "lucide-react";
 import {
+  type BankPayment,
   getBankSummary,
   getCounterpartyBalances,
   getDealPaidMap,
   getReceiptPaidMap,
-  type BankPayment,
   type WarehouseStockRow,
   type WarehouseReceipt,
   type CustomerDeal,
@@ -328,12 +328,14 @@ export function WarehouseManager({
               products={pickerProducts}
               counterparties={counterpartyOptions}
               deals={deals}
+              payments={payments}
             />
           )}
           {activeTab === "deals" && (
             <DealForm
               products={pickerProducts}
               counterparties={counterpartyOptions}
+              payments={payments}
             />
           )}
           {activeTab === "bank" && (
@@ -630,6 +632,7 @@ export function WarehouseManager({
                             products={pickerProducts}
                             counterparties={counterpartyOptions}
                             deals={deals}
+                            payments={payments}
                             initialReceipt={{
                               id: r.id,
                               date: r.date,
@@ -726,7 +729,7 @@ export function WarehouseManager({
             {filteredDeals.length > 0 ? (
               filteredDeals.map((d) => {
                 const paid = dealPaidMap.get(d.id) || 0;
-                const isFullyPaid = d.total > 0 && paid >= d.total;
+                const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
                 const shortage =
                   d.status === "new"
                     ? d.items
@@ -739,36 +742,36 @@ export function WarehouseManager({
                           };
                         })
                         .filter((r) => r.missing > 0)
-                    : [];
+                      : [];
                 const hasShortage = shortage.length > 0;
                 return (
                   <div key={d.id} className="admin-order">
                     <div className="admin-order__row">
                       <div className="admin-order__main">
-                          <div className="admin-order__top">
-                            <span className="admin-order__id">ЗК-{d.number}</span>
-                            <span className={dealStatusBadge[d.status]}>
-                              {dealStatusLabel[d.status]}
+                        <div className="admin-order__top">
+                          <span className="admin-order__id">ЗК-{d.number}</span>
+                          <span className={dealStatusBadge[d.status]}>
+                            {dealStatusLabel[d.status]}
+                          </span>
+                          {isFullyPaid ? (
+                            <span className="admin-badge admin-badge--green">
+                              Оплачен
                             </span>
-                            {isFullyPaid ? (
-                              <span className="admin-badge admin-badge--green">
-                                Оплачен
-                              </span>
-                            ) : (
-                              <span className="admin-badge admin-badge--red" style={{ fontWeight: 800 }}>
-                                <AlertTriangle size={10} style={{ marginRight: 4 }} />
-                                Клиент не оплатил!
-                              </span>
-                            )}
-                            {!isFullyPaid && paid > 0 && (
-                              <span className="admin-badge admin-badge--blue">
-                                Оплачено {fmt(paid)} из {fmt(d.total)} ₽
-                              </span>
-                            )}
-                            <span className="admin-order__date">
-                              {fmtDate(d.date)}
+                          ) : (
+                            <span className="admin-badge admin-badge--red" style={{ fontWeight: 800 }}>
+                              <AlertTriangle size={10} style={{ marginRight: 4 }} />
+                              Клиент не оплатил!
                             </span>
-                          </div>
+                          )}
+                          {!isFullyPaid && paid > 0 && (
+                            <span className="admin-badge admin-badge--blue">
+                              Оплачено {fmt(paid)} из {fmt(d.total)} ₽
+                            </span>
+                          )}
+                          <span className="admin-order__date">
+                            {fmtDate(d.date)}
+                          </span>
+                        </div>
 
                         <div className="admin-order__grid">
                           <div className="admin-order__meta">
@@ -831,6 +834,31 @@ export function WarehouseManager({
                       </div>
 
                       <div className="admin-order__side">
+                        <DealForm
+                          products={pickerProducts}
+                          counterparties={counterpartyOptions}
+                          payments={payments}
+                          initialDeal={{
+                            id: d.id,
+                            date: d.date,
+                            customerName: d.customerName,
+                            customerPhone: d.customerPhone ?? null,
+                            email: d.email ?? null,
+                            inn: d.inn ?? null,
+                            kpp: d.kpp ?? null,
+                            address: d.address ?? null,
+                            contactName: d.contactName ?? null,
+                            comment: d.comment ?? null,
+                            items: d.items.map((item) => ({
+                              productId: item.productId,
+                              name: item.name,
+                              sku: item.sku ?? null,
+                              quantity: item.quantity,
+                              price: item.price,
+                              stockQty: stockById.get(item.productId) ?? 0,
+                            })),
+                          }}
+                        />
                         <DealActions
                           dealId={d.id}
                           status={d.status}
@@ -971,7 +999,7 @@ export function WarehouseManager({
                           {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: '#7dd181' }}>
+                      <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
@@ -996,7 +1024,7 @@ export function WarehouseManager({
                           {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: '#ef8f76' }}>
+                      <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
@@ -1182,9 +1210,7 @@ export function WarehouseManager({
                     <div className="bank-pay__side">
                       <span
                         className={`bank-pay__amount ${
-                          p.direction === "incoming"
-                            ? "bank-pay__amount--in"
-                            : "bank-pay__amount--out"
+                          p.direction === "incoming" ? "+" : "−"
                         }`}
                       >
                         {p.direction === "incoming" ? "+" : "−"}

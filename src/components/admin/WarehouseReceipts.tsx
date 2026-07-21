@@ -22,6 +22,7 @@ import {
 } from "@/components/admin/ProductPicker";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
+import type { BankPayment } from "@/lib/warehouse-shared";
 
 interface ReceiptItemDraft {
   productId: string;
@@ -68,11 +69,13 @@ export function ReceiptForm({
   products,
   counterparties = [],
   deals = [],
+  payments = [],
   initialReceipt,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
   deals?: any[];
+  payments?: BankPayment[];
   initialReceipt?: EditableReceipt & { linkedDealIds?: string[] };
 }) {
   const router = useRouter();
@@ -99,6 +102,7 @@ export function ReceiptForm({
   const [selectedDeals, setSelectedDeals] = useState<string[]>(
     initialReceipt?.linkedDealIds || []
   );
+  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
 
   const total = items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0);
 
@@ -192,6 +196,20 @@ export function ReceiptForm({
     );
   }
 
+  function togglePayment(id: string) {
+    setSelectedPayments((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  const availablePayments = payments.filter(
+    (p) =>
+      p.counterparty.toLocaleLowerCase("ru-RU") ===
+        supplier.toLocaleLowerCase("ru-RU") &&
+      p.isPaid &&
+      (!p.receiptIds || p.receiptIds.length === 0)
+  );
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -231,6 +249,7 @@ export function ReceiptForm({
           })),
           vatRate,
           linkedDealIds: selectedDeals,
+          linkedPaymentIds: selectedPayments,
         }),
       });
       if (!res.ok) {
@@ -371,6 +390,34 @@ export function ReceiptForm({
                           <span className="wh-deal-chip__meta" style={{ fontStyle: 'italic', opacity: 0.6 }}>
                             {d.items?.map((it: any) => it.name).join(", ").slice(0, 60)}
                             {d.items?.map((it: any) => it.name).join(", ").length > 60 ? "..." : ""}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Привязать существующую оплату</label>
+                {availablePayments.length === 0 ? (
+                  <div className="wh-deal-pick__empty">Нет свободных платежей для этого поставщика</div>
+                ) : (
+                  <div className="wh-deal-pick">
+                    {availablePayments.map((p) => {
+                      const selected = selectedPayments.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`wh-deal-chip${selected ? " wh-deal-chip--active" : ""}`}
+                          onClick={() => togglePayment(p.id)}
+                        >
+                          <span className="wh-deal-chip__title">
+                            ПЛ-{p.number} · {fmt(p.amount)} ₽
+                          </span>
+                          <span className="wh-deal-chip__meta">
+                            {fmtDate(p.date)} · {p.type === 'cash' ? 'Наличные' : 'Безнал'}
                           </span>
                         </button>
                       );

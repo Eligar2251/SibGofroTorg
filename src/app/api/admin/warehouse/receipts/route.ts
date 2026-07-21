@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       items: Array.isArray(body.items) ? body.items : [],
       vatRate: body.vatRate,
       linkedDealIds: body.linkedDealIds,
+      linkedPaymentIds: body.linkedPaymentIds,
     });
     return NextResponse.json(result);
   } catch (error: any) {
