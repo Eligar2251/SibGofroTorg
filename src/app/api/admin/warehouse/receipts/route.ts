@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       contactName: body.contactName ?? null,
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
+      vatRate: body.vatRate,
     });
     return NextResponse.json(result);
   } catch (error: any) {

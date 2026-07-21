@@ -2,8 +2,8 @@
 // Shared types and pure logic functions for warehouse/bank.
 // Safe for both Client and Server components.
 
-import { includedVat, VAT_RATE } from "./vat";
-export { includedVat, VAT_RATE } from "./vat";
+import { includedVat, VAT_RATE, VAT_RATES } from "./vat";
+export { includedVat, VAT_RATE, VAT_RATES } from "./vat";
 
 export interface StockDocItem {
   productId: string;

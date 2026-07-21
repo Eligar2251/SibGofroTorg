@@ -20,7 +20,7 @@ import {
   ProductPicker,
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
-import { includedVat, VAT_RATE } from "@/lib/vat";
+import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 
 interface ReceiptItemDraft {
@@ -44,6 +44,7 @@ export interface EditableReceipt {
   contactName?: string | null;
   comment?: string | null;
   items: ReceiptItemDraft[];
+  vatRate?: number;
 }
 
 function todayIso(): string {
@@ -76,6 +77,9 @@ export function ReceiptForm({
     initialReceipt?.contactName || ""
   );
   const [comment, setComment] = useState(initialReceipt?.comment || "");
+  const [vatRate, setVatRate] = useState<number>(
+    initialReceipt?.vatRate ?? VAT_RATE
+  );
   const [items, setItems] = useState<ReceiptItemDraft[]>(
     initialReceipt?.items || []
   );
@@ -92,6 +96,7 @@ export function ReceiptForm({
     setAddress(initialReceipt?.address || "");
     setContactName(initialReceipt?.contactName || "");
     setComment(initialReceipt?.comment || "");
+    setVatRate(initialReceipt?.vatRate ?? VAT_RATE);
     setItems(initialReceipt?.items || []);
     setError("");
   }
@@ -201,6 +206,7 @@ export function ReceiptForm({
             quantity: Number(it.quantity) || 0,
             lineTotal: Number(it.lineTotal) || 0,
           })),
+          vatRate,
         }),
       });
       if (!res.ok) {
@@ -283,6 +289,20 @@ export function ReceiptForm({
                         <option key={item.id} value={item.name} />
                       ))}
                   </datalist>
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Ставка НДС</label>
+                  <select
+                    className="admin-select"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                  >
+                    {VAT_RATES.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -400,7 +420,7 @@ export function ReceiptForm({
                 <div className="wh-form-total">
                   Итого (с НДС): <strong>{fmt(total)} ₽</strong>
                   <span className="wh-form-vat">
-                    в т.ч. НДС {VAT_RATE}% — {fmt(includedVat(total))} ₽
+                    в т.ч. НДС {vatRate > 0 ? `${vatRate}%` : "0%"} — {fmt(includedVat(total, vatRate))} ₽
                   </span>
                 </div>
                 <div className="admin-form-actions">

@@ -624,6 +624,7 @@ export function WarehouseManager({
                                 quantity: item.quantity,
                                 lineTotal: item.lineTotal,
                               })),
+                              vatRate: r.vatRate,
                             }}
                           />
                           {r.status === "draft" && (

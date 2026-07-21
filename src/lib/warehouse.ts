@@ -615,6 +615,7 @@ export async function createReceipt(data: {
   contactName?: string | null;
   comment?: string | null;
   items: StockDocItem[];
+  vatRate?: number;
 }): Promise<{ id: string; number: number }> {
   const items = cleanItems(data.items);
   if (!data.supplier?.trim()) {
@@ -631,7 +632,8 @@ export async function createReceipt(data: {
   const number = await nextNumber("receipt");
   const date = data.date || new Date().toISOString().slice(0, 10);
   const supplier = String(data.supplier || "").slice(0, 200);
-  const vatAmount = includedVat(total);
+  const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : VAT_RATE;
+  const vatAmount = includedVat(total, vatRate);
   const payNumber = await nextNumber("payment");
   const docRef = db.collection("warehouseReceipts").doc();
   const paymentRef = db.collection("bankPayments").doc();
@@ -668,7 +670,7 @@ export async function createReceipt(data: {
     items,
     total,
     bankAdjustment: 0,
-    vatRate: VAT_RATE,
+    vatRate,
     vatAmount,
     createdAt: FieldValue.serverTimestamp(),
   });
@@ -688,7 +690,7 @@ export async function createReceipt(data: {
     receiptNumbers: [number],
     amount: total,
     invoiceNumber: null,
-    vatRate: VAT_RATE,
+    vatRate,
     vatAmount,
     isPaid: false,
     paidAt: null,
@@ -715,6 +717,7 @@ export async function updateReceipt(
     contactName?: string | null;
     comment?: string | null;
     items: StockDocItem[];
+    vatRate?: number;
   }
 ): Promise<void> {
   const db = getAdminDb();
@@ -727,6 +730,8 @@ export async function updateReceipt(
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
   const linesTotal = itemsTotal(items);
   if (linesTotal <= 0) throw new Error("Укажите сумму поступления больше нуля");
+
+  const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : previous.vatRate;
 
   const paymentSnap = await db
     .collection("bankPayments")
@@ -817,8 +822,8 @@ export async function updateReceipt(
         items,
         total,
         bankAdjustment,
-        vatRate: VAT_RATE,
-        vatAmount: includedVat(total),
+        vatRate,
+        vatAmount: includedVat(total, vatRate),
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
@@ -831,8 +836,8 @@ export async function updateReceipt(
       items,
       total,
       bankAdjustment,
-      vatRate: VAT_RATE,
-      vatAmount: includedVat(total),
+      vatRate,
+      vatAmount: includedVat(total, vatRate),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
@@ -852,8 +857,8 @@ export async function updateReceipt(
       counterparty: supplier,
       counterpartyId,
       amount: linesTotal,
-      vatRate: VAT_RATE,
-      vatAmount: includedVat(linesTotal),
+      vatRate,
+      vatAmount: includedVat(linesTotal, vatRate),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
