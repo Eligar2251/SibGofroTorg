@@ -1019,6 +1019,61 @@ export async function postReceipt(id: string): Promise<void> {
   });
 }
 
+export async function cancelReceipt(id: string): Promise<void> {
+  const db = getAdminDb();
+  const receiptRef = db.collection("warehouseReceipts").doc(id);
+
+  await db.runTransaction(async (transaction) => {
+    const receiptSnap = await transaction.get(receiptRef);
+    if (!receiptSnap.exists) throw new Error("Поступление не найдено");
+    const receipt = mapReceipt(id, receiptSnap.data());
+    if (receipt.status !== "posted") return;
+
+    const quantities = new Map<string, number>();
+    for (const item of receipt.items) {
+      quantities.set(
+        item.productId,
+        (quantities.get(item.productId) || 0) + item.quantity
+      );
+    }
+    const stockRows: {
+      ref: FirebaseFirestore.DocumentReference;
+      next: number;
+    }[] = [];
+    for (const [productId, quantity] of quantities) {
+      const productRef = db.collection("products").doc(productId);
+      const productSnap = await transaction.get(productRef);
+      const current = productSnap.exists
+        ? Number(productSnap.data()?.stockQty) || 0
+        : 0;
+      stockRows.push({ ref: productRef, next: current - quantity });
+    }
+    for (const row of stockRows) {
+      transaction.set(
+        row.ref,
+        {
+          stockQty: row.next,
+          inStock: row.next > 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+    // Удаляем записи о происхождении
+    for (const item of receipt.items) {
+      const originRef = db
+        .collection("stockOrigins")
+        .doc(stockOriginId(receipt.id, item.productId));
+      transaction.delete(originRef);
+    }
+    transaction.update(receiptRef, {
+      status: "draft",
+      postedAt: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+}
+
 export async function deleteReceipt(id: string): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection("warehouseReceipts").doc(id);

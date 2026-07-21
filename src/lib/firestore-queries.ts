@@ -299,11 +299,14 @@ export async function getProducts(opts?: {
   limitCount?: number;
   promoOnly?: boolean;
   featuredOnly?: boolean;
+  includeHidden?: boolean;
 }): Promise<FirestoreProduct[]> {
   /* База — общий кэш товаров (см. getCachedProducts), фильтры в памяти */
-  let filteredResults = (await getCachedProducts()).filter(
-    (p) => p.isVisible !== false
-  );
+  let filteredResults = await getCachedProducts();
+
+  if (!opts?.includeHidden) {
+    filteredResults = filteredResults.filter((p) => p.isVisible !== false);
+  }
 
   if (opts?.categoryId) {
     filteredResults = filteredResults.filter(

@@ -486,6 +486,47 @@ export function ReceiptPostButton({
   );
 }
 
+export function ReceiptCancelButton({ receiptId }: { receiptId: string }) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+
+  async function cancel() {
+    if (
+      !confirm(
+        "Вернуть поступление в черновики? Остатки на складе будут уменьшены."
+      )
+    )
+      return;
+    setSaving(true);
+    const response = await fetch(`/api/admin/warehouse/receipts/${receiptId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "cancel" }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok) router.refresh();
+    else alert(body.error || "Не удалось отменить проведение");
+    setSaving(false);
+  }
+
+  return (
+    <button
+      type="button"
+      className="admin-status__btn admin-status__btn--outline-red"
+      onClick={cancel}
+      disabled={saving}
+      title="Вернуть в черновик (списать со склада)"
+    >
+      {saving ? (
+        <Loader2 size={14} className="animate-spin" />
+      ) : (
+        <X size={14} />
+      )}
+      Отменить приход
+    </button>
+  );
+}
+
 export function ReceiptDeleteButton({ receiptId }: { receiptId: string }) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
