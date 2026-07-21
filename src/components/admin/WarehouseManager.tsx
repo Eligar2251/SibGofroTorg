@@ -1220,6 +1220,8 @@ export function WarehouseManager({
                         paymentId={p.id}
                         isPaid={p.isPaid}
                         excludeFromBalance={p.excludeFromBalance}
+                        deals={dealLinkOptions}
+                        receipts={receiptLinkOptions}
                         edit={{
                           date: p.date,
                           type: p.type,
@@ -1227,6 +1229,9 @@ export function WarehouseManager({
                           amount: p.amount,
                           invoiceNumber: p.invoiceNumber ?? null,
                           comment: p.comment ?? null,
+                          dealIds: p.dealIds,
+                          receiptIds: p.receiptIds,
+                          direction: p.direction,
                         }}
                       />
                     </div>

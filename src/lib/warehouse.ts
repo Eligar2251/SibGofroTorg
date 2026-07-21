@@ -1654,38 +1654,10 @@ async function syncPaymentAmountToDocuments(
   payment: BankPayment,
   amount: number
 ): Promise<void> {
-  const db = getAdminDb();
-  const links = [
-    ...payment.dealIds.map((id) => ({ id, collection: "customerDeals" })),
-    ...payment.receiptIds.map((id) => ({ id, collection: "warehouseReceipts" })),
-  ];
-  if (links.length === 0) return;
-  const documents = await Promise.all(
-    links.map((link) => db.collection(link.collection).doc(link.id).get())
-  );
-  const currentTotals = documents.map((doc) =>
-    doc.exists ? Math.max(0, Number(doc.data()?.total) || 0) : 0
-  );
-  const sum = currentTotals.reduce((total, value) => total + value, 0);
-  const batch = db.batch();
-  documents.forEach((doc, index) => {
-    if (!doc.exists) return;
-    const share =
-      documents.length === 1
-        ? amount
-        : sum > 0
-          ? round2((amount * currentTotals[index]) / sum)
-          : round2(amount / documents.length);
-    const lines = itemsTotal(cleanItems(doc.data()?.items || []));
-    batch.update(doc.ref, {
-      total: share,
-      bankAdjustment: round2(share - lines),
-      vatRate: VAT_RATE,
-      vatAmount: includedVat(share),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  });
-  await batch.commit();
+  // We no longer sync payment amount to document total because it masks overpayments/underpayments
+  // and makes the counterparty balance always zero.
+  // The document total should stay as the sum of its items.
+  return;
 }
 
 export async function updatePayment(
@@ -1699,13 +1671,17 @@ export async function updatePayment(
     date?: string;
     counterparty?: string;
     invoiceNumber?: string | null;
+    dealIds?: string[];
+    receiptIds?: string[];
   }
 ): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection("bankPayments").doc(id);
   const existingSnap = await ref.get();
   if (!existingSnap.exists) throw new Error("Платёж не найден");
-  const existing = mapPayment(id, existingSnap.data());
+  
+  const existingData = existingSnap.data();
+  const existing = mapPayment(id, existingData);
 
   if (data.isPaid === false && existing.receiptIds.length > 0) {
     const receipts = await Promise.all(
@@ -1725,12 +1701,10 @@ export async function updatePayment(
   const patch: Record<string, any> = {
     updatedAt: FieldValue.serverTimestamp(),
   };
+  
   if (data.isPaid !== undefined) {
     patch.isPaid = data.isPaid === true;
-    // Проведение фиксирует дату факта; возврат в ожидание её снимает
-    patch.paidAt = data.isPaid
-      ? new Date().toISOString().slice(0, 10)
-      : null;
+    patch.paidAt = data.isPaid ? new Date().toISOString().slice(0, 10) : null;
   }
   if (data.excludeFromBalance !== undefined) {
     patch.excludeFromBalance = data.excludeFromBalance === true;
@@ -1750,9 +1724,33 @@ export async function updatePayment(
     patch.counterparty = String(data.counterparty).slice(0, 200);
   if (data.invoiceNumber !== undefined)
     patch.invoiceNumber = cleanText(data.invoiceNumber, 100);
+
+  // Updating links
+  if (data.dealIds !== undefined) {
+    patch.dealIds = data.dealIds;
+    const dealNumbers: number[] = [];
+    for (const dealId of data.dealIds) {
+      const dSnap = await db.collection("customerDeals").doc(dealId).get();
+      if (dSnap.exists) dealNumbers.push(Number(dSnap.data()?.number) || 0);
+    }
+    patch.dealNumbers = dealNumbers;
+  }
+  if (data.receiptIds !== undefined) {
+    patch.receiptIds = data.receiptIds;
+    const receiptNumbers: number[] = [];
+    for (const rId of data.receiptIds) {
+      const rSnap = await db.collection("warehouseReceipts").doc(rId).get();
+      if (rSnap.exists) receiptNumbers.push(Number(rSnap.data()?.number) || 0);
+    }
+    patch.receiptNumbers = receiptNumbers;
+  }
+
   await ref.update(patch);
-  if (data.amount !== undefined) {
-    await syncPaymentAmountToDocuments(existing, patch.amount);
+  
+  if (data.amount !== undefined || data.dealIds !== undefined || data.receiptIds !== undefined) {
+    // If we updated links or amount, sync to documents
+    const updatedPayment = mapPayment(id, { ...existingData, ...patch });
+    await syncPaymentAmountToDocuments(updatedPayment, updatedPayment.amount);
   }
 }
 

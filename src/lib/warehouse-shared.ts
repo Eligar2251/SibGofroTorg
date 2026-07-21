@@ -235,9 +235,12 @@ export function getCounterpartyBalances(
     }
   }
 
-  // 2. Process ONLY LINKED payments for debt balance
+  // 2. Process ALL paid payments for debt balance
   for (const p of payments) {
-    if (!p.isPaid || p.excludeFromBalance) continue;
+    if (!p.isPaid) continue;
+    // Note: we include excludeFromBalance payments here because they still 
+    // represent money that was paid towards a document, even if they don't 
+    // affect the "current" bank balance.
     
     const hasDealLink = p.dealIds && p.dealIds.length > 0;
     const hasReceiptLink = p.receiptIds && p.receiptIds.length > 0;

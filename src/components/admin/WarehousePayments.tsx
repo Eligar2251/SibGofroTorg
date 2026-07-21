@@ -88,8 +88,34 @@ export function PaymentForm({
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
 
   const activeDeals = useMemo(
-    () => deals.filter((d) => d.status !== "cancelled"),
-    [deals]
+    () =>
+      deals.filter(
+        (d) =>
+          d.status !== "cancelled" &&
+          (!counterparty.trim() ||
+            d.customerName
+              .toLocaleLowerCase("ru-RU")
+              .includes(counterparty.toLocaleLowerCase("ru-RU")) ||
+            counterparty
+              .toLocaleLowerCase("ru-RU")
+              .includes(d.customerName.toLocaleLowerCase("ru-RU")))
+      ),
+    [deals, counterparty]
+  );
+
+  const activeReceipts = useMemo(
+    () =>
+      receipts.filter(
+        (r) =>
+          !counterparty.trim() ||
+          r.supplier
+            .toLocaleLowerCase("ru-RU")
+            .includes(counterparty.toLocaleLowerCase("ru-RU")) ||
+          counterparty
+            .toLocaleLowerCase("ru-RU")
+            .includes(r.supplier.toLocaleLowerCase("ru-RU"))
+      ),
+    [receipts, counterparty]
   );
 
   function autoAmount(
@@ -593,11 +619,15 @@ export function PaymentControls({
   paymentId,
   isPaid,
   excludeFromBalance = false,
+  deals = [],
+  receipts = [],
   edit,
 }: {
   paymentId: string;
   isPaid: boolean;
   excludeFromBalance?: boolean;
+  deals?: DealLinkOption[];
+  receipts?: ReceiptLinkOption[];
   edit: {
     date: string;
     type?: BankPaymentType;
@@ -605,6 +635,9 @@ export function PaymentControls({
     amount: number;
     invoiceNumber: string | null;
     comment: string | null;
+    dealIds?: string[];
+    receiptIds?: string[];
+    direction: "incoming" | "outgoing";
   };
 }) {
   const router = useRouter();
@@ -623,7 +656,42 @@ export function PaymentControls({
   );
   const [editComment, setEditComment] = useState(edit.comment || "");
   const [editExclude, setEditExclude] = useState(excludeFromBalance);
+  const [editDealIds, setEditDealIds] = useState<string[]>(edit.dealIds || []);
+  const [editReceiptIds, setEditReceiptIds] = useState<string[]>(
+    edit.receiptIds || []
+  );
   const [error, setError] = useState("");
+
+  const activeDeals = useMemo(
+    () =>
+      deals.filter(
+        (d) =>
+          d.status !== "cancelled" &&
+          (!editCounterparty.trim() ||
+            d.customerName
+              .toLocaleLowerCase("ru-RU")
+              .includes(editCounterparty.toLocaleLowerCase("ru-RU")) ||
+            editCounterparty
+              .toLocaleLowerCase("ru-RU")
+              .includes(d.customerName.toLocaleLowerCase("ru-RU")))
+      ),
+    [deals, editCounterparty]
+  );
+
+  const activeReceipts = useMemo(
+    () =>
+      receipts.filter(
+        (r) =>
+          !editCounterparty.trim() ||
+          r.supplier
+            .toLocaleLowerCase("ru-RU")
+            .includes(editCounterparty.toLocaleLowerCase("ru-RU")) ||
+          editCounterparty
+            .toLocaleLowerCase("ru-RU")
+            .includes(r.supplier.toLocaleLowerCase("ru-RU"))
+      ),
+    [receipts, editCounterparty]
+  );
 
   async function togglePaid() {
     setSaving(true);
@@ -670,6 +738,8 @@ export function PaymentControls({
           invoiceNumber: editInvoiceNumber.trim() || null,
           comment: editComment.trim() || null,
           excludeFromBalance: editExclude,
+          dealIds: editDealIds,
+          receiptIds: editReceiptIds,
         }),
       });
       if (res.ok) {
@@ -807,6 +877,51 @@ export function PaymentControls({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="admin-field">
+                <label className="admin-label">Привязка к документам</label>
+                {edit.direction === "incoming" ? (
+                  <div className="wh-deal-pick" style={{ maxHeight: 120 }}>
+                    {activeDeals.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        className={`wh-deal-chip${editDealIds.includes(d.id) ? " wh-deal-chip--active" : ""}`}
+                        onClick={() =>
+                          setEditDealIds((prev) =>
+                            prev.includes(d.id)
+                              ? prev.filter((id) => id !== d.id)
+                              : [...prev, d.id]
+                          )
+                        }
+                      >
+                        <span className="wh-deal-chip__title">ЗК-{d.number}</span>
+                        <span className="wh-deal-chip__meta">{fmt(d.total)} ₽</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="wh-deal-pick" style={{ maxHeight: 120 }}>
+                    {receipts.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        className={`wh-deal-chip${editReceiptIds.includes(r.id) ? " wh-deal-chip--active" : ""}`}
+                        onClick={() =>
+                          setEditReceiptIds((prev) =>
+                            prev.includes(r.id)
+                              ? prev.filter((id) => id !== r.id)
+                              : [...prev, r.id]
+                          )
+                        }
+                      >
+                        <span className="wh-deal-chip__title">ПО-{r.number}</span>
+                        <span className="wh-deal-chip__meta">{fmt(r.total)} ₽</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="admin-field">

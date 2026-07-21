@@ -5998,8 +5998,8 @@ select {
 /* ── Сторис-попап ── */
 .story-v2 {
   position: relative;
-  width: min(280px, 80vw);
-  max-height: 75vh;
+  width: min(230px, 80vw);
+  max-height: 70vh;
   aspect-ratio: 9 / 16;
   background: #000;
   border-radius: 28px;
@@ -6012,7 +6012,7 @@ select {
 @media (max-height: 700px) {
   .story-v2 {
     width: auto;
-    height: 70vh;
+    height: 65vh;
   }
 }
 

@@ -20,6 +20,8 @@ export async function PATCH(
       date: body.date,
       counterparty: body.counterparty,
       invoiceNumber: body.invoiceNumber,
+      dealIds: body.dealIds,
+      receiptIds: body.receiptIds,
     });
     return NextResponse.json({ success: true });
   } catch (error: any) {
