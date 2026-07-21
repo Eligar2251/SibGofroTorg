@@ -486,37 +486,38 @@ export function DealActions({
     <div className="admin-status">
       {status === "new" && (
         <div className="admin-status__btns">
-          {!paidEnough ? (
-            <div className="admin-status__label-hint">
-              <Loader2 size={14} className="animate-pulse" />
-              Ожидает оплаты в банке
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  hasShortage &&
-                  !confirm(
-                    "Товара на складе не хватает — остаток уйдёт в минус. Отпустить всё равно?"
-                  )
-                ) {
-                  return;
-                }
-                callApi({ action: "post" });
-              }}
-              disabled={saving}
-              className="admin-status__btn admin-status__btn--primary"
-              title="Списать товар со склада и отметить заказ отпущенным"
-            >
-              {saving ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <CheckCircle size={14} />
-              )}
-              Отпустить товар
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                hasShortage &&
+                !confirm(
+                  "Товара на складе не хватает — остаток уйдёт в минус. Отпустить всё равно?"
+                )
+              ) {
+                return;
+              }
+              callApi({ action: "post" });
+            }}
+            disabled={saving}
+            className={`admin-status__btn ${
+              paidEnough
+                ? "admin-status__btn--primary"
+                : "admin-status__btn--outline"
+            }`}
+            title={
+              paidEnough
+                ? "Списать товар со склада и отметить заказ отпущенным"
+                : "Отпустить товар до подтверждения оплаты в банке"
+            }
+          >
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <CheckCircle size={14} />
+            )}
+            {paidEnough ? "Отпустить товар" : "Отпустить без оплаты"}
+          </button>
           <button
             type="button"
             onClick={() => setShowCancelModal(true)}

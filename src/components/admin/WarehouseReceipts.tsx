@@ -466,15 +466,6 @@ export function ReceiptPostButton({
     setSaving(false);
   }
 
-  if (!paidEnough) {
-    return (
-      <div className="admin-status__label-hint">
-        <Loader2 size={14} className="animate-pulse" />
-        Ожидает оплаты в банке
-      </div>
-    );
-  }
-
   return (
     <button
       type="button"
