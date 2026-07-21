@@ -129,7 +129,7 @@ export interface CounterpartyBalance {
 }
 
 function normalizeName(name: string): string {
-  return name
+  return (name || "")
     .trim()
     .toLocaleLowerCase("ru-RU")
     .replace(/[«»"']/g, "")
@@ -144,7 +144,7 @@ export function getBankSummary(payments: BankPayment[]) {
   let expectedOut = 0;
   for (const p of payments) {
     if (p.isPaid) {
-      if (p.excludeFromBalance) continue; // Пропускаем архивные/старые платежи
+      if (p.excludeFromBalance) continue;
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
       if (p.type === "cash") cashBalance += amt;
       else bankBalance += amt;
@@ -167,7 +167,10 @@ export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const p of payments) {
     if (!p.isPaid || p.direction !== "incoming") continue;
-    const share = p.dealIds.length > 0 ? p.amount / p.dealIds.length : p.amount;
+    // We only map payments that are explicitly linked to a deal
+    if (!p.dealIds || p.dealIds.length === 0) continue;
+    
+    const share = p.amount / p.dealIds.length;
     for (const dealId of p.dealIds) {
       map.set(dealId, (map.get(dealId) || 0) + share);
     }
@@ -180,8 +183,10 @@ export function getReceiptPaidMap(payments: BankPayment[]): Map<string, number> 
   const map = new Map<string, number>();
   for (const p of payments) {
     if (!p.isPaid || p.direction !== "outgoing") continue;
-    const share =
-      p.receiptIds.length > 0 ? p.amount / p.receiptIds.length : p.amount;
+    // We only map payments that are explicitly linked to a receipt
+    if (!p.receiptIds || p.receiptIds.length === 0) continue;
+    
+    const share = p.amount / p.receiptIds.length;
     for (const receiptId of p.receiptIds) {
       map.set(receiptId, (map.get(receiptId) || 0) + share);
     }
@@ -196,9 +201,9 @@ export function getCounterpartyBalances(
 ): CounterpartyBalance[] {
   const result = new Map<string, CounterpartyBalance>();
 
-  // Helper to get or create a balance row
   const getRow = (name: string, type: "customer" | "supplier") => {
     const norm = normalizeName(name);
+    if (!norm) return null;
     const key = `${type}:${norm}`;
     if (!result.has(key)) {
       result.set(key, {
@@ -214,58 +219,55 @@ export function getCounterpartyBalances(
     return result.get(key)!;
   };
 
-  // 1. Process all documents to establish docsTotal (debt incurred)
+  // 1. Process documents
   for (const d of deals) {
     if (d.status === "cancelled") continue;
     const row = getRow(d.customerName, "customer");
-    row.docsTotal += d.total;
-    row.docsCount += 1;
+    if (row) {
+      row.docsTotal += d.total;
+      row.docsCount += 1;
+    }
   }
   for (const r of receipts) {
     if (!r.supplier) continue;
     const row = getRow(r.supplier, "supplier");
-    row.docsTotal += r.total;
-    row.docsCount += 1;
+    if (row) {
+      row.docsTotal += r.total;
+      row.docsCount += 1;
+    }
   }
 
-  // 2. Process all paid payments to establish paidTotal (debt settled)
+  // 2. Process payments
   for (const p of payments) {
-    if (!p.isPaid) continue;
-    if (p.excludeFromBalance) continue;
+    if (!p.isPaid || p.excludeFromBalance) continue;
     const payDate = p.paidAt || p.date;
-
     const normName = normalizeName(p.counterparty);
-    const customerKey = `customer:${normName}`;
-    const supplierKey = `supplier:${normName}`;
+    if (!normName) continue;
 
-    // Decide which bucket this payment goes into.
+    // Determine target role
     let type: "customer" | "supplier";
-    
-    if (p.dealIds.length > 0) {
+    if (p.dealIds && p.dealIds.length > 0) {
       type = "customer";
-    } else if (p.receiptIds.length > 0) {
+    } else if (p.receiptIds && p.receiptIds.length > 0) {
       type = "supplier";
-    } else if (p.direction === "incoming") {
-      type = "customer";
-    } else if (p.direction === "outgoing") {
-      if (result.has(supplierKey)) {
+    } else {
+      // Automatic detection by existing roles or direction
+      if (result.has(`supplier:${normName}`)) {
         type = "supplier";
-      } else if (result.has(customerKey)) {
+      } else if (result.has(`customer:${normName}`)) {
         type = "customer";
       } else {
-        type = "supplier";
+        type = p.direction === "incoming" ? "customer" : "supplier";
       }
-    } else {
-      type = p.direction === "incoming" ? "customer" : "supplier";
     }
 
     const row = getRow(p.counterparty, type);
-    const amount = p.amount;
-    
+    if (!row) continue;
+
     if (type === "customer") {
-      row.paidTotal += (p.direction === "incoming" ? amount : -amount);
+      row.paidTotal += (p.direction === "incoming" ? p.amount : -p.amount);
     } else {
-      row.paidTotal += (p.direction === "outgoing" ? amount : -amount);
+      row.paidTotal += (p.direction === "outgoing" ? p.amount : -p.amount);
     }
 
     if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
@@ -280,12 +282,13 @@ export function getCounterpartyBalances(
     balance: Math.round((row.docsTotal - row.paidTotal) * 100) / 100,
   }));
 
-  // Сначала с открытым долгом (баланс > 0.009), потом по имени
+  // Sort: Debtors first (balance > 0), then by name
   list.sort((a, b) => {
     const aOpen = a.balance > 0.009 ? 1 : 0;
     const bOpen = b.balance > 0.009 ? 1 : 0;
     if (aOpen !== bOpen) return bOpen - aOpen;
     return a.name.localeCompare(b.name, "ru");
   });
+  
   return list;
 }
