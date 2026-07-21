@@ -617,6 +617,7 @@ export async function createReceipt(data: {
   contactName?: string | null;
   comment?: string | null;
   items: StockDocItem[];
+  vatRate?: number;
   linkedDealIds?: string[];
   linkedPaymentIds?: string[];
   paymentSplits?: number[]; // Array of payment amounts
