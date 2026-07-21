@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { deleteReceipt, postReceipt, updateReceipt } from "@/lib/warehouse";
+import { deleteReceipt, postReceipt, cancelReceipt, updateReceipt } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function PUT(
@@ -23,6 +23,9 @@ export async function PUT(
       contactName: body.contactName ?? null,
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
+      vatRate: body.vatRate,
+      linkedDealIds: body.linkedDealIds,
+      linkedPaymentIds: body.linkedPaymentIds,
     });
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
@@ -43,10 +46,13 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    if (body.action !== "post") {
+    if (body.action === "post") {
+      await postReceipt(id);
+    } else if (body.action === "cancel") {
+      await cancelReceipt(id);
+    } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }
-    await postReceipt(id);
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {

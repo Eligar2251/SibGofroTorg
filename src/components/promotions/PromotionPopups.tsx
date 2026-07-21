@@ -1,28 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { ArrowRight, BellRing, CircleAlert, Gift, X } from "lucide-react";
-
-type CampaignStyle = "info" | "promo" | "important";
-type CampaignFrequency = "session" | "day" | "always";
-
-interface PopupCampaign {
-  id: string;
-  title: string;
-  kicker: string | null;
-  description: string | null;
-  details: string | null;
-  imageUrl: string | null;
-  buttonText: string | null;
-  buttonUrl: string | null;
-  style: CampaignStyle;
-  startAt: string | null;
-  endAt: string | null;
-  delaySeconds: number;
-  durationSeconds: number;
-  frequency: CampaignFrequency;
-}
+import type { PopupCampaign } from "@/lib/types";
 
 const STORAGE_PREFIX = "sib-info-window:";
 
@@ -56,13 +37,14 @@ function markShown(campaign: PopupCampaign) {
     const storage = campaign.frequency === "session" ? sessionStorage : localStorage;
     storage.setItem(storageKey(campaign), "1");
   } catch {
-    // Хранилище может быть запрещено браузером.
+    // Storage might be blocked
   }
 }
 
 export function PromotionPopups() {
   const [pending, setPending] = useState<PopupCampaign[]>([]);
   const [current, setCurrent] = useState<PopupCampaign | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +61,14 @@ export function PromotionPopups() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const closePopup = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      setCurrent(null);
+      setIsClosing(false);
+    }, 300);
   }, []);
 
   useEffect(() => {
@@ -104,124 +94,83 @@ export function PromotionPopups() {
 
   useEffect(() => {
     if (!current) return;
-    const duration = Math.min(
-      600,
-      Math.max(5, Number(current.durationSeconds) || 20)
-    );
-    const timer = window.setTimeout(() => setCurrent(null), duration * 1000);
+    const duration = Math.min(600, Math.max(5, Number(current.durationSeconds) || 20));
+    const timer = window.setTimeout(() => closePopup(), duration * 1000);
     return () => window.clearTimeout(timer);
-  }, [current]);
+  }, [current, closePopup]);
 
   useEffect(() => {
     if (!current) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCurrent(null);
+      if (event.key === "Escape") closePopup();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [current]);
+  }, [current, closePopup]);
 
   if (!current) return null;
 
-  const Icon =
-    current.style === "promo"
-      ? Gift
-      : current.style === "important"
-        ? CircleAlert
-        : BellRing;
-  const points = (current.details || "")
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const external =
-    !!current.buttonUrl && !current.buttonUrl.startsWith("/");
-  const button = current.buttonUrl ? (
-    external ? (
-      <a
-        href={current.buttonUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="promo-popup__cta"
-        onClick={() => setCurrent(null)}
-      >
-        {current.buttonText || "Подробнее"} <ArrowRight size={15} />
-      </a>
-    ) : (
-      <Link
-        href={current.buttonUrl}
-        className="promo-popup__cta"
-        onClick={() => setCurrent(null)}
-      >
-        {current.buttonText || "Подробнее"} <ArrowRight size={15} />
-      </Link>
-    )
-  ) : null;
+  if (current.type === "story" && current.imageUrl) {
+    return (
+      <div className={`popup-root-overlay${isClosing ? " closing" : ""}`} onClick={closePopup}>
+        <div className="story-v2" onClick={(e) => e.stopPropagation()}>
+          {current.buttonUrl ? (
+            <Link href={current.buttonUrl} className="story-v2__link" onClick={closePopup}>
+              <img src={current.imageUrl} alt={current.title} className="story-v2__img" />
+            </Link>
+          ) : (
+            <img src={current.imageUrl} alt={current.title} className="story-v2__img" />
+          )}
+          <button type="button" className="story-v2__close" onClick={closePopup} aria-label="Закрыть">
+            <X size={24} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Banner type (standard modal without photo)
+  const Icon = current.style === "promo" ? Gift : current.style === "important" ? CircleAlert : BellRing;
+  const points = (current.details || "").split("\n").map((s) => s.trim()).filter(Boolean);
 
   return (
-    <div className="promo-popup-overlay" onClick={() => setCurrent(null)}>
-      <section
-        className={`promo-popup promo-popup--${current.style}${
-          current.imageUrl ? " promo-popup--with-image" : ""
-        }`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`info-window-${current.id}`}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header className="promo-popup__windowbar">
-          <span className="promo-popup__window-icon">
-            <Icon size={16} />
-          </span>
-          <span className="promo-popup__window-label">
-            {current.kicker || "Информация"}
-          </span>
-          <button
-            type="button"
-            className="promo-popup__close"
-            onClick={() => setCurrent(null)}
-            aria-label="Закрыть информационное окно"
-          >
-            <X size={18} />
-          </button>
-        </header>
+    <div className={`popup-root-overlay${isClosing ? " closing" : ""}`} onClick={closePopup}>
+      <div className={`banner-v2 banner-v2--${current.style || "info"}`} onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="banner-v2__close" onClick={closePopup} aria-label="Закрыть">
+          <X size={20} />
+        </button>
 
-        <div className="promo-popup__content">
-          {current.imageUrl && (
-            <div className="promo-popup__media">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={current.imageUrl} alt="" />
+        <div className="banner-v2__body">
+          {current.kicker && (
+            <div className="banner-v2__kicker">
+              <Icon size={14} /> {current.kicker}
             </div>
           )}
+          <h2 className="banner-v2__title">{current.title}</h2>
+          {current.description && <p className="banner-v2__desc">{current.description}</p>}
 
-          <div className="promo-popup__body">
-            <div className="promo-popup__eyebrow">
-              <Icon size={15} /> {current.kicker || "Объявление"}
+          {points.length > 0 && (
+            <ul className="banner-v2__list">
+              {points.map((p, idx) => (
+                <li key={idx}>{p}</li>
+              ))}
+            </ul>
+          )}
+
+          {current.buttonUrl && (
+            <div className="banner-v2__actions">
+              <Link href={current.buttonUrl} className="banner-v2__cta" onClick={closePopup}>
+                {current.buttonText || "Подробнее"} <ArrowRight size={18} />
+              </Link>
             </div>
-            <h2
-              className="promo-popup__title"
-              id={`info-window-${current.id}`}
-            >
-              {current.title}
-            </h2>
-            {current.description && (
-              <p className="promo-popup__subtitle">{current.description}</p>
-            )}
-            {points.length > 0 && (
-              <ul className="promo-popup__details">
-                {points.map((point, index) => (
-                  <li key={`${point}-${index}`}>{point}</li>
-                ))}
-              </ul>
-            )}
-            {button && <div className="promo-popup__actions">{button}</div>}
-          </div>
+          )}
         </div>
-      </section>
+      </div>
     </div>
   );
 }

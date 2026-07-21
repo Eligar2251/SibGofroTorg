@@ -28,6 +28,7 @@ export async function PUT(
       contactName: body.contactName ?? null,
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
+      linkedPaymentIds: body.linkedPaymentIds,
     });
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });

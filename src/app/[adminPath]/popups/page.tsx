@@ -28,6 +28,7 @@ export default async function AdminPopupsPage({
       <PopupCampaignsManager
         initialCampaigns={campaigns.map((item) => ({
           id: item.id,
+          type: item.type || "banner",
           title: item.title,
           kicker: item.kicker || null,
           description: item.description || null,

@@ -13,11 +13,15 @@ export async function PATCH(
     const body = await request.json();
     await updatePayment(id, {
       isPaid: body.isPaid,
+      excludeFromBalance: body.excludeFromBalance,
+      type: body.type,
       amount: body.amount !== undefined ? Number(body.amount) : undefined,
       comment: body.comment,
       date: body.date,
       counterparty: body.counterparty,
       invoiceNumber: body.invoiceNumber,
+      dealIds: body.dealIds,
+      receiptIds: body.receiptIds,
     });
     return NextResponse.json({ success: true });
   } catch (error: any) {

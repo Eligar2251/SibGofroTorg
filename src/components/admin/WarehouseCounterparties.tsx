@@ -12,7 +12,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import type { CounterpartyRole } from "@/lib/warehouse";
+import type { CounterpartyRole } from "@/lib/warehouse-shared";
 
 export interface CounterpartyOption {
   id: string;

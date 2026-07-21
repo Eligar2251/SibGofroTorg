@@ -20,8 +20,9 @@ import {
   ProductPicker,
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
-import { includedVat, VAT_RATE } from "@/lib/vat";
+import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
+import type { BankPayment } from "@/lib/warehouse-shared";
 
 interface ReceiptItemDraft {
   productId: string;
@@ -44,10 +45,22 @@ export interface EditableReceipt {
   contactName?: string | null;
   comment?: string | null;
   items: ReceiptItemDraft[];
+  vatRate?: number;
 }
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function fmtDate(raw: string | null | undefined): string {
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
@@ -55,11 +68,15 @@ const fmt = (n: number) => n.toLocaleString("ru-RU");
 export function ReceiptForm({
   products,
   counterparties = [],
+  deals = [],
+  payments = [],
   initialReceipt,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
-  initialReceipt?: EditableReceipt;
+  deals?: any[];
+  payments?: BankPayment[];
+  initialReceipt?: EditableReceipt & { linkedDealIds?: string[] };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -76,11 +93,52 @@ export function ReceiptForm({
     initialReceipt?.contactName || ""
   );
   const [comment, setComment] = useState(initialReceipt?.comment || "");
+  const [vatRate, setVatRate] = useState<number>(
+    initialReceipt?.vatRate ?? VAT_RATE
+  );
   const [items, setItems] = useState<ReceiptItemDraft[]>(
     initialReceipt?.items || []
   );
+  const [selectedDeals, setSelectedDeals] = useState<string[]>(
+    initialReceipt?.linkedDealIds || []
+  );
+  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
+  const [paymentCount, setPaymentCount] = useState(1);
+  const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
 
   const total = items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0);
+
+  function autoSplit(count: number, totalSum: number) {
+    if (count <= 1) {
+      setSplitAmounts([String(totalSum)]);
+      return;
+    }
+    const base = Math.floor(totalSum / count);
+    const remainder = totalSum % count;
+    const next: string[] = [];
+    for (let i = 0; i < count; i++) {
+      // Add slight difference (1-2 rubles)
+      let val = base;
+      if (i === 0) val += remainder;
+      
+      // Implement the ruble difference requirement
+      if (count === 2) {
+        if (i === 0) val += 1;
+        if (i === 1) val -= 1;
+      } else if (count === 3) {
+        if (i === 0) val += 1;
+        if (i === 2) val -= 1;
+      }
+      
+      next.push(String(val));
+    }
+    setSplitAmounts(next);
+  }
+
+  function handleSplitCountChange(count: number) {
+    setPaymentCount(count);
+    autoSplit(count, total);
+  }
 
   function resetForm() {
     setDate(initialReceipt?.date || todayIso());
@@ -92,7 +150,9 @@ export function ReceiptForm({
     setAddress(initialReceipt?.address || "");
     setContactName(initialReceipt?.contactName || "");
     setComment(initialReceipt?.comment || "");
+    setVatRate(initialReceipt?.vatRate ?? VAT_RATE);
     setItems(initialReceipt?.items || []);
+    setSelectedDeals(initialReceipt?.linkedDealIds || []);
     setError("");
   }
 
@@ -164,6 +224,26 @@ export function ReceiptForm({
     setItems((prev) => prev.filter((it) => it.productId !== productId));
   }
 
+  function toggleDeal(id: string) {
+    setSelectedDeals((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  function togglePayment(id: string) {
+    setSelectedPayments((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  const availablePayments = payments.filter(
+    (p) =>
+      p.counterparty.toLocaleLowerCase("ru-RU") ===
+        supplier.toLocaleLowerCase("ru-RU") &&
+      p.isPaid &&
+      (!p.receiptIds || p.receiptIds.length === 0)
+  );
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -201,6 +281,10 @@ export function ReceiptForm({
             quantity: Number(it.quantity) || 0,
             lineTotal: Number(it.lineTotal) || 0,
           })),
+          vatRate,
+          linkedDealIds: selectedDeals,
+          linkedPaymentIds: selectedPayments,
+          paymentSplits: paymentCount > 1 ? splitAmounts.map(Number) : [total],
         }),
       });
       if (!res.ok) {
@@ -284,6 +368,20 @@ export function ReceiptForm({
                       ))}
                   </datalist>
                 </div>
+                <div className="admin-field">
+                  <label className="admin-label">Ставка НДС</label>
+                  <select
+                    className="admin-select"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                  >
+                    {VAT_RATES.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <details className="wh-counterparty-details">
@@ -301,6 +399,103 @@ export function ReceiptForm({
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
                 <ProductPicker products={products} onPick={addItem} />
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Оплата (разбить на части?)</label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  {[1, 2, 3].map(count => (
+                    <button
+                      key={count}
+                      type="button"
+                      className={`admin-btn ${paymentCount === count ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                      style={{ flex: 1 }}
+                      onClick={() => handleSplitCountChange(count)}
+                    >
+                      {count} {count === 1 ? 'платеж' : 'платежа'}
+                    </button>
+                  ))}
+                </div>
+                
+                {paymentCount > 1 && (
+                  <div className="wh-form-grid" style={{ marginTop: 8 }}>
+                    {splitAmounts.map((val, idx) => (
+                      <div key={idx} className="admin-field">
+                        <label className="admin-label">Сумма части {idx + 1}, ₽</label>
+                        <input
+                          type="number"
+                          className="admin-input"
+                          value={val}
+                          onChange={(e) => {
+                            const next = [...splitAmounts];
+                            next[idx] = e.target.value;
+                            setSplitAmounts(next);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Заказать под клиента (привязка к заказу)</label>
+                {deals.length === 0 ? (
+                  <div className="wh-deal-pick__empty">Нет активных заказов</div>
+                ) : (
+                  <div className="wh-deal-pick">
+                    {deals.filter(d => d.status === 'new').map((d) => {
+                      const selected = selectedDeals.includes(d.id);
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          className={`wh-deal-chip${selected ? " wh-deal-chip--active" : ""}`}
+                          onClick={() => toggleDeal(d.id)}
+                        >
+                          <span className="wh-deal-chip__title">
+                            ЗК-{d.number} · {d.customerName}
+                          </span>
+                          <span className="wh-deal-chip__meta">
+                            {fmtDate(d.date)} · {fmt(d.total)} ₽
+                          </span>
+                          <span className="wh-deal-chip__meta" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                            {d.items?.map((it: any) => it.name).join(", ").slice(0, 60)}
+                            {d.items?.map((it: any) => it.name).join(", ").length > 60 ? "..." : ""}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Привязать существующую оплату</label>
+                {availablePayments.length === 0 ? (
+                  <div className="wh-deal-pick__empty">Нет свободных платежей для этого поставщика</div>
+                ) : (
+                  <div className="wh-deal-pick">
+                    {availablePayments.map((p) => {
+                      const selected = selectedPayments.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`wh-deal-chip${selected ? " wh-deal-chip--active" : ""}`}
+                          onClick={() => togglePayment(p.id)}
+                        >
+                          <span className="wh-deal-chip__title">
+                            ПЛ-{p.number} · {fmt(p.amount)} ₽
+                          </span>
+                          <span className="wh-deal-chip__meta">
+                            {fmtDate(p.date)} · {p.type === 'cash' ? 'Наличные' : 'Безнал'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {items.length > 0 && (
@@ -400,7 +595,7 @@ export function ReceiptForm({
                 <div className="wh-form-total">
                   Итого (с НДС): <strong>{fmt(total)} ₽</strong>
                   <span className="wh-form-vat">
-                    в т.ч. НДС {VAT_RATE}% — {fmt(includedVat(total))} ₽
+                    в т.ч. НДС {vatRate > 0 ? `${vatRate}%` : "0%"} — {fmt(includedVat(total, vatRate))} ₽
                   </span>
                 </div>
                 <div className="admin-form-actions">
@@ -447,6 +642,13 @@ export function ReceiptPostButton({
   const [saving, setSaving] = useState(false);
 
   async function post() {
+    if (
+      !paidEnough &&
+      !confirm(
+        "Поступление еще не оплачено в банке. Провести на склад без подтверждения оплаты?"
+      )
+    )
+      return;
     setSaving(true);
     const response = await fetch(`/api/admin/warehouse/receipts/${receiptId}`, {
       method: "PATCH",
@@ -462,13 +664,15 @@ export function ReceiptPostButton({
   return (
     <button
       type="button"
-      className="admin-status__btn admin-status__btn--primary"
+      className={`admin-status__btn ${
+        paidEnough ? "admin-status__btn--primary" : "admin-status__btn--outline"
+      }`}
       onClick={post}
-      disabled={saving || !paidEnough}
+      disabled={saving}
       title={
         paidEnough
           ? "Добавить товары на склад"
-          : "Сначала подтвердите оплату счёта в банке"
+          : "Товар будет зачислен, но останется долг перед поставщиком"
       }
     >
       {saving ? (
@@ -476,7 +680,48 @@ export function ReceiptPostButton({
       ) : (
         <CheckCircle size={14} />
       )}
-      {paidEnough ? "Провести на склад" : "Сначала оплатите счёт"}
+      {paidEnough ? "Провести на склад" : "Провести без оплаты"}
+    </button>
+  );
+}
+
+export function ReceiptCancelButton({ receiptId }: { receiptId: string }) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+
+  async function cancel() {
+    if (
+      !confirm(
+        "Вернуть поступление в черновики? Остатки на складе будут уменьшены."
+      )
+    )
+      return;
+    setSaving(true);
+    const response = await fetch(`/api/admin/warehouse/receipts/${receiptId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "cancel" }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok) router.refresh();
+    else alert(body.error || "Не удалось отменить проведение");
+    setSaving(false);
+  }
+
+  return (
+    <button
+      type="button"
+      className="admin-status__btn admin-status__btn--outline-red"
+      onClick={cancel}
+      disabled={saving}
+      title="Вернуть в черновик (списать со склада)"
+    >
+      {saving ? (
+        <Loader2 size={14} className="animate-spin" />
+      ) : (
+        <X size={14} />
+      )}
+      Отменить приход
     </button>
   );
 }

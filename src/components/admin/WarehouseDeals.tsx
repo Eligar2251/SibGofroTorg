@@ -55,11 +55,13 @@ const fmt = (n: number) => n.toLocaleString("ru-RU");
 export function DealForm({
   products,
   counterparties = [],
+  payments = [],
   initialDeal,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
-  initialDeal?: EditableDeal;
+  payments?: BankPayment[];
+  initialDeal?: EditableDeal & { linkedPaymentIds?: string[] };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -81,6 +83,9 @@ export function DealForm({
   );
   const [comment, setComment] = useState(initialDeal?.comment || "");
   const [items, setItems] = useState<DealItemDraft[]>(initialDeal?.items || []);
+  const [selectedPayments, setSelectedPayments] = useState<string[]>(
+    initialDeal?.linkedPaymentIds || []
+  );
 
   const total = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
@@ -98,6 +103,7 @@ export function DealForm({
     setContactName(initialDeal?.contactName || "");
     setComment(initialDeal?.comment || "");
     setItems(initialDeal?.items || []);
+    setSelectedPayments(initialDeal?.linkedPaymentIds || []);
     setError("");
   }
 
@@ -154,6 +160,20 @@ export function DealForm({
     setItems((prev) => prev.filter((it) => it.productId !== productId));
   }
 
+  function togglePayment(id: string) {
+    setSelectedPayments((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  const availablePayments = payments.filter(
+    (p) =>
+      p.counterparty.toLocaleLowerCase("ru-RU") ===
+        customerName.toLocaleLowerCase("ru-RU") &&
+      p.isPaid &&
+      (!p.dealIds || p.dealIds.length === 0)
+  );
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -191,6 +211,7 @@ export function DealForm({
             quantity: Number(it.quantity) || 0,
             price: Number(it.price) || 0,
           })),
+          linkedPaymentIds: selectedPayments,
         }),
       });
       if (!res.ok) {
@@ -310,6 +331,34 @@ export function DealForm({
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
                 <ProductPicker products={products} onPick={addItem} />
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Привязать существующую оплату</label>
+                {availablePayments.length === 0 ? (
+                  <div className="wh-deal-pick__empty">Нет свободных платежей для этого клиента</div>
+                ) : (
+                  <div className="wh-deal-pick">
+                    {availablePayments.map((p) => {
+                      const selected = selectedPayments.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`wh-deal-chip${selected ? " wh-deal-chip--active" : ""}`}
+                          onClick={() => togglePayment(p.id)}
+                        >
+                          <span className="wh-deal-chip__title">
+                            ПЛ-{p.number} · {fmt(p.amount)} ₽
+                          </span>
+                          <span className="wh-deal-chip__meta">
+                            {fmtDate(p.date)} · {p.type === 'cash' ? 'Наличные' : 'Безнал'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {items.length > 0 && (
@@ -499,12 +548,16 @@ export function DealActions({
               }
               callApi({ action: "post" });
             }}
-            disabled={saving || !paidEnough}
-            className="admin-status__btn admin-status__btn--primary"
+            disabled={saving}
+            className={`admin-status__btn ${
+              paidEnough
+                ? "admin-status__btn--primary"
+                : "admin-status__btn--outline"
+            }`}
             title={
               paidEnough
                 ? "Списать товар со склада и отметить заказ отпущенным"
-                : "Сначала подтвердите оплату счёта в банке"
+                : "Отпустить товар до подтверждения оплаты в банке"
             }
           >
             {saving ? (
@@ -512,7 +565,7 @@ export function DealActions({
             ) : (
               <CheckCircle size={14} />
             )}
-            {paidEnough ? "Отпустить товар" : "Сначала оплатите счёт"}
+            {paidEnough ? "Отпустить товар" : "Отпустить без оплаты"}
           </button>
           <button
             type="button"

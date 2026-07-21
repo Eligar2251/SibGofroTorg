@@ -220,6 +220,8 @@
   transition: color 0.15s, background 0.15s;
   position: relative;
   letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-sidebar__link svg {
@@ -286,6 +288,8 @@
   text-align: left;
   font-family: inherit;
   transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-sidebar__footer-link:hover {
@@ -352,7 +356,7 @@
 .admin-mobile-bar__link {
   min-width: 0;
   height: 40px;
-  padding: 0;
+  padding: 0 4px;
   color: rgba(255,255,255,0.48);
   border-radius: var(--adm-r-sm);
   transition: color 0.15s, background-color 0.15s;
@@ -360,6 +364,8 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-mobile-bar__link svg {
@@ -694,6 +700,7 @@
   line-height: 1.2;
   white-space: nowrap;
   letter-spacing: 0.01em;
+  flex-shrink: 0;
 }
 
 .admin-btn:disabled {
@@ -1090,7 +1097,7 @@
 .admin-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   padding: 2px 7px;
   font-size: 10px;
   font-weight: 700;
@@ -1100,6 +1107,7 @@
   line-height: 1.4;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  flex-shrink: 0;
 }
 
 .admin-badge--green {
@@ -1165,6 +1173,8 @@
   text-decoration: none;
   transition: all 0.13s ease;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-filter:hover {
@@ -1318,12 +1328,16 @@
   padding: 2px 7px;
   border-radius: 3px;
   border: 1px solid var(--adm-border);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-order__date {
   font-size: 11px;
   color: var(--adm-sand);
   margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-order__grid {
@@ -1344,6 +1358,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .admin-order__meta-label {
@@ -1523,6 +1538,7 @@
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease,
     color 0.15s ease;
+  flex-shrink: 0;
 }
 
 .admin-status__btn:disabled {
@@ -1537,6 +1553,17 @@
 
 .admin-status__btn--primary:hover:not(:disabled) {
   background: #163a22;
+}
+
+.admin-status__btn--outline {
+  background: #fff;
+  color: var(--adm-ink);
+  border-color: var(--adm-border-mid);
+}
+
+.admin-status__btn--outline:hover:not(:disabled) {
+  background: var(--adm-paper-warm);
+  border-color: var(--adm-ink-muted);
 }
 
 .admin-status__btn--outline-red {
@@ -1561,13 +1588,22 @@
   border-color: var(--adm-rust);
 }
 
-.admin-status__reason {
-  font-size: 10px;
-  color: var(--adm-sand);
-  max-width: 180px;
-  text-align: right;
-  font-style: italic;
-  line-height: 1.35;
+/* Подсказка вместо кнопки действия */
+.admin-status__label-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-paper-warm);
+  border: 1px dashed var(--adm-border-mid);
+  font-size: 12px;
+  color: var(--adm-ink-muted);
+  font-weight: 600;
+  text-align: center;
 }
 
 .admin-modal-overlay {
@@ -1590,6 +1626,15 @@
   width: 100%;
   max-width: 26rem;
   padding: 22px;
+  position: relative;
+}
+
+@media (max-width: 640px) {
+  .admin-modal {
+    padding: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+  }
 }
 
 .admin-modal__head {
@@ -1668,6 +1713,8 @@
 .admin-modal__actions {
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* ══════════════════════════════════════
@@ -2001,7 +2048,7 @@ body:has(.admin-login) > main {
   margin-bottom: 0;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 600px) {
   .wh-form-grid {
     grid-template-columns: 1fr;
   }
@@ -2310,6 +2357,7 @@ body:has(.admin-login) > main {
   cursor: pointer;
   transition: all 0.13s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .wh-direction__btn--in.wh-direction__btn--active {
@@ -2324,7 +2372,7 @@ body:has(.admin-login) > main {
   color: #fff;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 600px) {
   .wh-direction {
     grid-template-columns: 1fr;
   }
@@ -2361,6 +2409,12 @@ body:has(.admin-login) > main {
   transition: all 0.12s ease;
   min-width: 0;
   max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .wh-deal-chip {
+    width: 100%;
+  }
 }
 
 .wh-deal-chip:hover {
@@ -2584,6 +2638,7 @@ body:has(.admin-login) > main {
   cursor: pointer;
   transition: all 0.13s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .wh-linkmode__btn:hover {
@@ -2632,11 +2687,11 @@ body:has(.admin-login) > main {
 /* Тёмная панель баланса */
 .bank-hero {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 22px;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
   background: linear-gradient(135deg, #191914 0%, #232318 52%, #1b2a1e 100%);
   border-radius: 16px;
-  padding: 26px 28px;
+  padding: 24px;
   color: #f5f2ea;
   border: 1px solid rgba(200, 134, 10, 0.25);
   box-shadow: 0 10px 34px rgba(20, 20, 14, 0.28);
@@ -2645,8 +2700,22 @@ body:has(.admin-login) > main {
 .bank-hero__main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  gap: 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  padding-right: 20px;
+}
+
+@media (max-width: 800px) {
+  .bank-hero {
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+  .bank-hero__main {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-right: 0;
+    padding-bottom: 20px;
+  }
 }
 
 .bank-hero__label {
@@ -2656,6 +2725,9 @@ body:has(.admin-login) > main {
   letter-spacing: 0.12em;
   color: rgba(245, 242, 234, 0.55);
   font-family: var(--adm-font-head);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .bank-hero__value {
@@ -2681,10 +2753,8 @@ body:has(.admin-login) > main {
 .bank-hero__stats {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 10px;
-  border-left: 1px solid rgba(245, 242, 234, 0.12);
-  padding-left: 22px;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .bank-hero__stat {
@@ -2731,21 +2801,6 @@ body:has(.admin-login) > main {
 
 .bank-hero__stat--plan strong {
   color: #f5f2ea;
-}
-
-@media (max-width: 760px) {
-  .bank-hero {
-    grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 20px;
-  }
-
-  .bank-hero__stats {
-    border-left: none;
-    border-top: 1px solid rgba(245, 242, 234, 0.12);
-    padding-left: 0;
-    padding-top: 14px;
-  }
 }
 
 /* Баланс по контрагентам */

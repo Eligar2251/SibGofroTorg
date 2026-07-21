@@ -299,11 +299,14 @@ export async function getProducts(opts?: {
   limitCount?: number;
   promoOnly?: boolean;
   featuredOnly?: boolean;
+  includeHidden?: boolean;
 }): Promise<FirestoreProduct[]> {
   /* База — общий кэш товаров (см. getCachedProducts), фильтры в памяти */
-  let filteredResults = (await getCachedProducts()).filter(
-    (p) => p.isVisible !== false
-  );
+  let filteredResults = await getCachedProducts();
+
+  if (!opts?.includeHidden) {
+    filteredResults = filteredResults.filter((p) => p.isVisible !== false);
+  }
 
   if (opts?.categoryId) {
     filteredResults = filteredResults.filter(
@@ -437,17 +440,18 @@ async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
     const data = doc.data();
     return {
       id: doc.id,
-      title: String(data.title || ""),
+      type: (data.type as PopupCampaignType) || "banner",
+      title: String(data.title || "Без названия"),
+      isActive: data.isActive !== false,
       kicker: data.kicker || null,
       description: data.description || null,
       details: data.details || null,
-      imageUrl: data.imageUrl || null,
       buttonText: data.buttonText || null,
       buttonUrl: data.buttonUrl || null,
       style: ["info", "promo", "important"].includes(data.style)
         ? data.style
         : "info",
-      isActive: data.isActive !== false,
+      imageUrl: data.imageUrl || null,
       startAt: data.startAt || null,
       endAt: data.endAt || null,
       delaySeconds: Math.max(0, Number(data.delaySeconds) || 0),

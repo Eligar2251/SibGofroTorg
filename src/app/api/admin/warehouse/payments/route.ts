@@ -11,12 +11,14 @@ export async function POST(request: NextRequest) {
     const result = await createPayment({
       date: String(body.date || ""),
       direction: body.direction === "outgoing" ? "outgoing" : "incoming",
+      type: body.type,
       counterparty: String(body.counterparty || ""),
       dealIds: Array.isArray(body.dealIds) ? body.dealIds : [],
       receiptIds: Array.isArray(body.receiptIds) ? body.receiptIds : [],
       amount: Number(body.amount) || 0,
       invoiceNumber: body.invoiceNumber ?? null,
       isPaid: body.isPaid === true,
+      excludeFromBalance: body.excludeFromBalance === true,
       comment: body.comment ?? null,
     });
     return NextResponse.json(result);

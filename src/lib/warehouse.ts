@@ -14,109 +14,47 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "./firebase-admin";
 import { getProductEffectivePrice } from "./types";
-import { includedVat, VAT_RATE } from "./vat";
+import {
+  includedVat,
+  VAT_RATE,
+  type StockDocItem,
+  type CounterpartyRole,
+  type CounterpartyDetails,
+  type Counterparty,
+  type ReceiptStatus,
+  type WarehouseReceipt,
+  type DealStatus,
+  type CustomerDeal,
+  type BankPaymentType,
+  type BankPayment,
+  type WarehouseStockRow,
+  type CounterpartyBalance,
+  getBankSummary,
+  getDealPaidMap,
+  getReceiptPaidMap,
+  getCounterpartyBalances,
+} from "./warehouse-shared";
 
-export { includedVat, VAT_RATE } from "./vat";
-
-// ─── Типы ────────────────────────────────────────────────
-
-export interface StockDocItem {
-  productId: string;
-  name: string;
-  sku?: string | null;
-  quantity: number;
-  /** Цена за единицу (вычисляется из суммы строки для поступлений) */
-  price: number;
-  /** Сумма строки за всю партию (для поступлений — как ввели, с НДС) */
-  lineTotal: number;
-}
-
-export type CounterpartyRole = "supplier" | "customer";
-
-export interface CounterpartyDetails {
-  phone?: string | null;
-  email?: string | null;
-  inn?: string | null;
-  kpp?: string | null;
-  address?: string | null;
-  contactName?: string | null;
-}
-
-export interface Counterparty extends CounterpartyDetails {
-  id: string;
-  name: string;
-  normalizedName: string;
-  roles: CounterpartyRole[];
-  /** Последняя закупочная цена по каждому товару для этого поставщика. */
-  supplierPrices?: Record<string, number>;
-  comment?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-}
-
-export type ReceiptStatus = "draft" | "posted";
-
-export interface WarehouseReceipt extends CounterpartyDetails {
-  id: string;
-  number: number;
-  date: string; // YYYY-MM-DD
-  supplier: string;
-  status: ReceiptStatus;
-  counterpartyId?: string | null;
-  comment?: string | null;
-  items: StockDocItem[];
-  total: number;
-  /** Разница между суммой строк и фактическим банковским платежом. */
-  bankAdjustment: number;
-  vatRate: number;
-  vatAmount: number;
-  createdAt?: string | null;
-}
-
-export type DealStatus = "new" | "completed" | "cancelled";
-
-export interface CustomerDeal extends CounterpartyDetails {
-  id: string;
-  number: number;
-  date: string;
-  customerName: string;
-  counterpartyId?: string | null;
-  customerPhone?: string | null;
-  comment?: string | null;
-  items: StockDocItem[];
-  total: number;
-  bankAdjustment: number;
-  vatRate: number;
-  vatAmount: number;
-  status: DealStatus;
-  cancelReason?: string | null;
-  createdAt?: string | null;
-}
-
-export interface BankPayment {
-  id: string;
-  number: number;
-  date: string;
-  direction: "incoming" | "outgoing";
-  counterparty: string;
-  counterpartyId?: string | null;
-  /** Привязка к заказам покупателей (может несколько) */
-  dealIds: string[];
-  dealNumbers: number[];
-  /** Привязка к поступлениям — для расходов поставщику */
-  receiptIds: string[];
-  receiptNumbers: number[];
-  amount: number;
-  /** Пользовательский номер счёта из внешней учётной программы. */
-  invoiceNumber?: string | null;
-  vatRate: number;
-  vatAmount: number;
-  isPaid: boolean;
-  /** Дата фактического проведения платежа (YYYY-MM-DD) */
-  paidAt?: string | null;
-  comment?: string | null;
-  createdAt?: string | null;
-}
+export {
+  includedVat,
+  VAT_RATE,
+  type StockDocItem,
+  type CounterpartyRole,
+  type CounterpartyDetails,
+  type Counterparty,
+  type ReceiptStatus,
+  type WarehouseReceipt,
+  type DealStatus,
+  type CustomerDeal,
+  type BankPaymentType,
+  type BankPayment,
+  type WarehouseStockRow,
+  type CounterpartyBalance,
+  getBankSummary,
+  getDealPaidMap,
+  getReceiptPaidMap,
+  getCounterpartyBalances,
+} from "./warehouse-shared";
 
 // ─── Утилиты ─────────────────────────────────────────────
 
@@ -460,17 +398,6 @@ async function applyStockDelta(
 
 // ─── Остатки ─────────────────────────────────────────────
 
-export interface WarehouseStockRow {
-  id: string;
-  name: string;
-  sku: string | null;
-  stockQty: number;
-  inStock: boolean;
-  price: number | null;
-  priceWholesale: number | null;
-  isVisible: boolean;
-}
-
 export interface StockOrigin {
   id: string;
   productId: string;
@@ -655,6 +582,8 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
       data.vatAmount !== undefined
         ? Number(data.vatAmount) || 0
         : includedVat(Number(data.total) || 0),
+    linkedDealIds: Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [],
+    linkedDealNumbers: Array.isArray(data.linkedDealNumbers) ? data.linkedDealNumbers : [],
     createdAt: serializeTimestamp(data.createdAt),
   };
 }
@@ -688,6 +617,9 @@ export async function createReceipt(data: {
   contactName?: string | null;
   comment?: string | null;
   items: StockDocItem[];
+  linkedDealIds?: string[];
+  linkedPaymentIds?: string[];
+  paymentSplits?: number[]; // Array of payment amounts
 }): Promise<{ id: string; number: number }> {
   const items = cleanItems(data.items);
   if (!data.supplier?.trim()) {
@@ -701,14 +633,28 @@ export async function createReceipt(data: {
     throw new Error("Укажите сумму поступления больше нуля");
   }
   const db = getAdminDb();
+  
+  const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [];
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
+  const paymentSplits = Array.isArray(data.paymentSplits) && data.paymentSplits.length > 0
+    ? data.paymentSplits
+    : [total];
+
+  const linkedDealNumbers: number[] = [];
+  for (const dealId of linkedDealIds) {
+    const snap = await db.collection("customerDeals").doc(dealId).get();
+    if (snap.exists) linkedDealNumbers.push(Number((snap.data() as any)?.number) || 0);
+  }
+
   const number = await nextNumber("receipt");
   const date = data.date || new Date().toISOString().slice(0, 10);
   const supplier = String(data.supplier || "").slice(0, 200);
-  const vatAmount = includedVat(total);
-  const payNumber = await nextNumber("payment");
+  const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : VAT_RATE;
+  const vatAmount = includedVat(total, vatRate);
+  
   const docRef = db.collection("warehouseReceipts").doc();
-  const paymentRef = db.collection("bankPayments").doc();
   const batch = db.batch();
+  
   const details: CounterpartyDetails = {
     phone: cleanText(data.phone, 60),
     email: cleanText(data.email, 160),
@@ -741,34 +687,51 @@ export async function createReceipt(data: {
     items,
     total,
     bankAdjustment: 0,
-    vatRate: VAT_RATE,
+    vatRate,
     vatAmount,
+    linkedDealIds,
+    linkedDealNumbers,
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  // Новый документ остаётся черновиком: товар попадёт на склад только
-  // после оплаты связанного счёта и отдельного ручного проведения.
+  // Create one or more payments based on splits
+  for (let i = 0; i < paymentSplits.length; i++) {
+    const splitAmount = Number(paymentSplits[i]) || 0;
+    if (splitAmount <= 0) continue;
+    
+    const payNumber = await nextNumber("payment");
+    const paymentRef = db.collection("bankPayments").doc();
+    
+    batch.set(paymentRef, {
+      number: payNumber,
+      date,
+      direction: "outgoing",
+      counterparty: supplier || "Поставщик",
+      counterpartyId,
+      dealIds: [],
+      dealNumbers: [],
+      receiptIds: [docRef.id],
+      receiptNumbers: [number],
+      amount: splitAmount,
+      invoiceNumber: null,
+      vatRate,
+      vatAmount: includedVat(splitAmount, vatRate),
+      isPaid: false,
+      paidAt: null,
+      comment: `Оплата поставщику по приходному ордеру ПО-${number}${paymentSplits.length > 1 ? ` (часть ${i+1})` : ""}`,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
 
-  batch.set(paymentRef, {
-    number: payNumber,
-    date,
-    direction: "outgoing",
-    counterparty: supplier || "Поставщик",
-    counterpartyId,
-    dealIds: [],
-    dealNumbers: [],
-    receiptIds: [docRef.id],
-    receiptNumbers: [number],
-    amount: total,
-    invoiceNumber: null,
-    vatRate: VAT_RATE,
-    vatAmount,
-    isPaid: false,
-    paidAt: null,
-    comment: `Оплата поставщику по приходному ордеру ПО-${number}`,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  for (const payId of linkedPaymentIds) {
+    const payRef = db.collection("bankPayments").doc(payId);
+    batch.update(payRef, {
+      receiptIds: FieldValue.arrayUnion(docRef.id),
+      receiptNumbers: FieldValue.arrayUnion(number),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
 
   await batch.commit();
   invalidateCounterpartyCache(true);
@@ -788,6 +751,9 @@ export async function updateReceipt(
     contactName?: string | null;
     comment?: string | null;
     items: StockDocItem[];
+    vatRate?: number;
+    linkedDealIds?: string[];
+    linkedPaymentIds?: string[];
   }
 ): Promise<void> {
   const db = getAdminDb();
@@ -800,6 +766,17 @@ export async function updateReceipt(
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
   const linesTotal = itemsTotal(items);
   if (linesTotal <= 0) throw new Error("Укажите сумму поступления больше нуля");
+
+  const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : previous.vatRate;
+  
+  const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : previous.linkedDealIds || [];
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
+  
+  const linkedDealNumbers: number[] = [];
+  for (const dealId of linkedDealIds) {
+    const snap = await db.collection("customerDeals").doc(dealId).get();
+    if (snap.exists) linkedDealNumbers.push(Number((snap.data() as any)?.number) || 0);
+  }
 
   const paymentSnap = await db
     .collection("bankPayments")
@@ -890,8 +867,10 @@ export async function updateReceipt(
         items,
         total,
         bankAdjustment,
-        vatRate: VAT_RATE,
-        vatAmount: includedVat(total),
+        vatRate,
+        vatAmount: includedVat(total, vatRate),
+        linkedDealIds,
+        linkedDealNumbers,
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
@@ -904,8 +883,10 @@ export async function updateReceipt(
       items,
       total,
       bankAdjustment,
-      vatRate: VAT_RATE,
-      vatAmount: includedVat(total),
+      vatRate,
+      vatAmount: includedVat(total, vatRate),
+      linkedDealIds,
+      linkedDealNumbers,
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
@@ -925,11 +906,21 @@ export async function updateReceipt(
       counterparty: supplier,
       counterpartyId,
       amount: linesTotal,
-      vatRate: VAT_RATE,
-      vatAmount: includedVat(linesTotal),
+      vatRate,
+      vatAmount: includedVat(linesTotal, vatRate),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
+  
+  for (const payId of linkedPaymentIds) {
+    const payRef = db.collection("bankPayments").doc(payId);
+    batch.update(payRef, {
+      receiptIds: FieldValue.arrayUnion(id),
+      receiptNumbers: FieldValue.arrayUnion(previous.number),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   await batch.commit();
   invalidateCounterpartyCache(true);
 }
@@ -959,11 +950,7 @@ export async function postReceipt(id: string): Promise<void> {
         paid += (Number(payment.amount) || 0) / links;
       }
     }
-    if (paid + 0.009 < receipt.total) {
-      throw new Error(
-        `Сначала проведите оплату счёта в банке. Оплачено ${paid.toLocaleString("ru-RU")} из ${receipt.total.toLocaleString("ru-RU")} ₽`
-      );
-    }
+    // Проверка оплаты теперь не блокирует проведение, разрешаем постоплату.
 
     const quantities = new Map<string, number>();
     for (const item of receipt.items) {
@@ -1006,6 +993,61 @@ export async function postReceipt(id: string): Promise<void> {
     transaction.update(receiptRef, {
       status: "posted",
       postedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+}
+
+export async function cancelReceipt(id: string): Promise<void> {
+  const db = getAdminDb();
+  const receiptRef = db.collection("warehouseReceipts").doc(id);
+
+  await db.runTransaction(async (transaction) => {
+    const receiptSnap = await transaction.get(receiptRef);
+    if (!receiptSnap.exists) throw new Error("Поступление не найдено");
+    const receipt = mapReceipt(id, receiptSnap.data());
+    if (receipt.status !== "posted") return;
+
+    const quantities = new Map<string, number>();
+    for (const item of receipt.items) {
+      quantities.set(
+        item.productId,
+        (quantities.get(item.productId) || 0) + item.quantity
+      );
+    }
+    const stockRows: {
+      ref: FirebaseFirestore.DocumentReference;
+      next: number;
+    }[] = [];
+    for (const [productId, quantity] of quantities) {
+      const productRef = db.collection("products").doc(productId);
+      const productSnap = await transaction.get(productRef);
+      const current = productSnap.exists
+        ? Number(productSnap.data()?.stockQty) || 0
+        : 0;
+      stockRows.push({ ref: productRef, next: current - quantity });
+    }
+    for (const row of stockRows) {
+      transaction.set(
+        row.ref,
+        {
+          stockQty: row.next,
+          inStock: row.next > 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+    // Удаляем записи о происхождении
+    for (const item of receipt.items) {
+      const originRef = db
+        .collection("stockOrigins")
+        .doc(stockOriginId(receipt.id, item.productId));
+      transaction.delete(originRef);
+    }
+    transaction.update(receiptRef, {
+      status: "draft",
+      postedAt: null,
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
@@ -1114,6 +1156,7 @@ export async function createDeal(data: {
   contactName?: string | null;
   comment?: string | null;
   items: StockDocItem[];
+  linkedPaymentIds?: string[];
 }): Promise<{ id: string; number: number }> {
   const items = cleanItems(data.items);
   if (!data.customerName?.trim()) {
@@ -1127,6 +1170,9 @@ export async function createDeal(data: {
     throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
   }
   const db = getAdminDb();
+  
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
+
   const number = await nextNumber("deal");
   const paymentNumber = await nextNumber("payment");
   const date = data.date || new Date().toISOString().slice(0, 10);
@@ -1191,6 +1237,15 @@ export async function createDeal(data: {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  for (const payId of linkedPaymentIds) {
+    const payRef = db.collection("bankPayments").doc(payId);
+    batch.update(payRef, {
+      dealIds: FieldValue.arrayUnion(docRef.id),
+      dealNumbers: FieldValue.arrayUnion(number),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   await batch.commit();
   invalidateCounterpartyCache();
   return { id: docRef.id, number };
@@ -1209,6 +1264,7 @@ export async function updateDeal(
     contactName?: string | null;
     comment?: string | null;
     items: StockDocItem[];
+    linkedPaymentIds?: string[];
   }
 ): Promise<void> {
   const db = getAdminDb();
@@ -1219,6 +1275,8 @@ export async function updateDeal(
   if (previous.status === "cancelled") {
     throw new Error("Отменённый заказ нельзя редактировать");
   }
+  
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
 
   const items = cleanItems(data.items);
   const customerName = String(data.customerName || "").trim().slice(0, 200);
@@ -1325,6 +1383,16 @@ export async function updateDeal(
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
+  
+  for (const payId of linkedPaymentIds) {
+    const payRef = db.collection("bankPayments").doc(payId);
+    batch.update(payRef, {
+      dealIds: FieldValue.arrayUnion(id),
+      dealNumbers: FieldValue.arrayUnion(previous.number),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   await batch.commit();
   invalidateCounterpartyCache();
 }
@@ -1355,11 +1423,7 @@ export async function postDeal(id: string): Promise<void> {
         paid += (Number(payment.amount) || 0) / links;
       }
     }
-    if (paid + 0.009 < deal.total) {
-      throw new Error(
-        `Сначала подтвердите оплату счёта в банке. Оплачено ${paid.toLocaleString("ru-RU")} из ${deal.total.toLocaleString("ru-RU")} ₽`
-      );
-    }
+    // Снята блокировка проведения без оплаты по требованию пользователя.
 
     const quantities = new Map<string, number>();
     for (const item of deal.items) {
@@ -1479,6 +1543,7 @@ function mapPayment(id: string, data: any): BankPayment {
     number: Number(data.number) || 0,
     date: String(data.date || ""),
     direction: data.direction === "outgoing" ? "outgoing" : "incoming",
+    type: (data.type as BankPaymentType) || "regular",
     counterparty: String(data.counterparty || ""),
     counterpartyId: data.counterpartyId ?? null,
     dealIds: Array.isArray(data.dealIds) ? data.dealIds.map(String) : [],
@@ -1499,6 +1564,7 @@ function mapPayment(id: string, data: any): BankPayment {
         ? Math.max(0, Number(data.vatAmount) || 0)
         : includedVat(Number(data.amount) || 0),
     isPaid: data.isPaid === true,
+    excludeFromBalance: data.excludeFromBalance === true,
     paidAt: data.paidAt ? String(data.paidAt) : null,
     comment: data.comment ?? null,
     createdAt: serializeTimestamp(data.createdAt),
@@ -1518,12 +1584,14 @@ export async function getPayments(): Promise<BankPayment[]> {
 export async function createPayment(data: {
   date: string;
   direction: "incoming" | "outgoing";
+  type?: BankPaymentType;
   counterparty: string;
   dealIds?: string[];
   receiptIds?: string[];
   amount: number;
   invoiceNumber?: string | null;
   isPaid?: boolean;
+  excludeFromBalance?: boolean;
   comment?: string | null;
 }): Promise<{ id: string; number: number }> {
   const amount = Math.max(0, Number(data.amount) || 0);
@@ -1550,6 +1618,7 @@ export async function createPayment(data: {
   }
 
   const isPaid = data.isPaid === true;
+  const excludeFromBalance = data.excludeFromBalance === true;
   const date = data.date || new Date().toISOString().slice(0, 10);
   const number = await nextNumber("payment");
   const docRef = db.collection("bankPayments").doc();
@@ -1565,6 +1634,7 @@ export async function createPayment(data: {
     number,
     date,
     direction: data.direction === "outgoing" ? "outgoing" : "incoming",
+    type: data.type || "regular",
     counterparty,
     counterpartyId,
     dealIds,
@@ -1578,6 +1648,7 @@ export async function createPayment(data: {
     // По умолчанию платёж создаётся «в ожидании» — баланс не меняется,
     // проводится позже отдельной кнопкой
     isPaid,
+    excludeFromBalance,
     paidAt: isPaid ? date : null,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     createdAt: FieldValue.serverTimestamp(),
@@ -1592,56 +1663,34 @@ async function syncPaymentAmountToDocuments(
   payment: BankPayment,
   amount: number
 ): Promise<void> {
-  const db = getAdminDb();
-  const links = [
-    ...payment.dealIds.map((id) => ({ id, collection: "customerDeals" })),
-    ...payment.receiptIds.map((id) => ({ id, collection: "warehouseReceipts" })),
-  ];
-  if (links.length === 0) return;
-  const documents = await Promise.all(
-    links.map((link) => db.collection(link.collection).doc(link.id).get())
-  );
-  const currentTotals = documents.map((doc) =>
-    doc.exists ? Math.max(0, Number(doc.data()?.total) || 0) : 0
-  );
-  const sum = currentTotals.reduce((total, value) => total + value, 0);
-  const batch = db.batch();
-  documents.forEach((doc, index) => {
-    if (!doc.exists) return;
-    const share =
-      documents.length === 1
-        ? amount
-        : sum > 0
-          ? round2((amount * currentTotals[index]) / sum)
-          : round2(amount / documents.length);
-    const lines = itemsTotal(cleanItems(doc.data()?.items || []));
-    batch.update(doc.ref, {
-      total: share,
-      bankAdjustment: round2(share - lines),
-      vatRate: VAT_RATE,
-      vatAmount: includedVat(share),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  });
-  await batch.commit();
+  // We no longer sync payment amount to document total because it masks overpayments/underpayments
+  // and makes the counterparty balance always zero.
+  // The document total should stay as the sum of its items.
+  return;
 }
 
 export async function updatePayment(
   id: string,
   data: {
     isPaid?: boolean;
+    excludeFromBalance?: boolean;
+    type?: BankPaymentType;
     amount?: number;
     comment?: string | null;
     date?: string;
     counterparty?: string;
     invoiceNumber?: string | null;
+    dealIds?: string[];
+    receiptIds?: string[];
   }
 ): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection("bankPayments").doc(id);
   const existingSnap = await ref.get();
   if (!existingSnap.exists) throw new Error("Платёж не найден");
-  const existing = mapPayment(id, existingSnap.data());
+  
+  const existingData = existingSnap.data();
+  const existing = mapPayment(id, existingData);
 
   if (data.isPaid === false && existing.receiptIds.length > 0) {
     const receipts = await Promise.all(
@@ -1661,12 +1710,16 @@ export async function updatePayment(
   const patch: Record<string, any> = {
     updatedAt: FieldValue.serverTimestamp(),
   };
+  
   if (data.isPaid !== undefined) {
     patch.isPaid = data.isPaid === true;
-    // Проведение фиксирует дату факта; возврат в ожидание её снимает
-    patch.paidAt = data.isPaid
-      ? new Date().toISOString().slice(0, 10)
-      : null;
+    patch.paidAt = data.isPaid ? new Date().toISOString().slice(0, 10) : null;
+  }
+  if (data.excludeFromBalance !== undefined) {
+    patch.excludeFromBalance = data.excludeFromBalance === true;
+  }
+  if (data.type !== undefined) {
+    patch.type = data.type;
   }
   if (data.amount !== undefined) {
     patch.amount = Math.max(0, Number(data.amount) || 0);
@@ -1680,9 +1733,33 @@ export async function updatePayment(
     patch.counterparty = String(data.counterparty).slice(0, 200);
   if (data.invoiceNumber !== undefined)
     patch.invoiceNumber = cleanText(data.invoiceNumber, 100);
+
+  // Updating links
+  if (data.dealIds !== undefined) {
+    patch.dealIds = data.dealIds;
+    const dealNumbers: number[] = [];
+    for (const dealId of data.dealIds) {
+      const dSnap = await db.collection("customerDeals").doc(dealId).get();
+      if (dSnap.exists) dealNumbers.push(Number(dSnap.data()?.number) || 0);
+    }
+    patch.dealNumbers = dealNumbers;
+  }
+  if (data.receiptIds !== undefined) {
+    patch.receiptIds = data.receiptIds;
+    const receiptNumbers: number[] = [];
+    for (const rId of data.receiptIds) {
+      const rSnap = await db.collection("warehouseReceipts").doc(rId).get();
+      if (rSnap.exists) receiptNumbers.push(Number(rSnap.data()?.number) || 0);
+    }
+    patch.receiptNumbers = receiptNumbers;
+  }
+
   await ref.update(patch);
-  if (data.amount !== undefined) {
-    await syncPaymentAmountToDocuments(existing, patch.amount);
+  
+  if (data.amount !== undefined || data.dealIds !== undefined || data.receiptIds !== undefined) {
+    // If we updated links or amount, sync to documents
+    const updatedPayment = mapPayment(id, { ...existingData, ...patch });
+    await syncPaymentAmountToDocuments(updatedPayment, updatedPayment.amount);
   }
 }
 
@@ -1709,163 +1786,3 @@ export async function deletePayment(id: string): Promise<void> {
   await ref.delete();
 }
 
-/** Сводка по банку */
-export function getBankSummary(payments: BankPayment[]) {
-  let balance = 0;
-  let expectedIn = 0;
-  let expectedOut = 0;
-  for (const p of payments) {
-    if (p.isPaid) {
-      balance += p.direction === "incoming" ? p.amount : -p.amount;
-    } else if (p.direction === "incoming") {
-      expectedIn += p.amount;
-    } else {
-      expectedOut += p.amount;
-    }
-  }
-  return { balance, expectedIn, expectedOut };
-}
-
-/** Оплачено по каждому заказу (id → сумма оплаченных входящих платежей) */
-export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const p of payments) {
-    if (!p.isPaid || p.direction !== "incoming") continue;
-    const share = p.dealIds.length > 0 ? p.amount / p.dealIds.length : 0;
-    for (const dealId of p.dealIds) {
-      map.set(dealId, (map.get(dealId) || 0) + share);
-    }
-  }
-  return map;
-}
-
-/** Оплачено по каждому поступлению (id → сумма оплаченных исходящих) */
-export function getReceiptPaidMap(payments: BankPayment[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const p of payments) {
-    if (!p.isPaid || p.direction !== "outgoing") continue;
-    const share =
-      p.receiptIds.length > 0 ? p.amount / p.receiptIds.length : 0;
-    for (const receiptId of p.receiptIds) {
-      map.set(receiptId, (map.get(receiptId) || 0) + share);
-    }
-  }
-  return map;
-}
-
-// ─── Баланс по контрагентам ─────────────────────────────
-
-export interface CounterpartyBalance {
-  name: string;
-  type: "customer" | "supplier";
-  /** Сумма документов (заказов/поступлений) */
-  docsTotal: number;
-  /** Оплачено проведёнными платежами */
-  paidTotal: number;
-  /** Долг: положительный — нам должны (покупатель), мы должны (поставщик) */
-  balance: number;
-  /** Дата последнего проведённого платежа */
-  lastPaymentDate: string | null;
-  docsCount: number;
-}
-
-export function getCounterpartyBalances(
-  deals: CustomerDeal[],
-  receipts: WarehouseReceipt[],
-  payments: BankPayment[]
-): CounterpartyBalance[] {
-  const result = new Map<string, CounterpartyBalance>();
-
-  // Покупатели — из неотменённых заказов
-  const dealCustomer = new Map<string, string>();
-  for (const d of deals) {
-    if (d.status === "cancelled") continue;
-    dealCustomer.set(d.id, d.customerName);
-    const key = `customer:${d.customerName}`;
-    const row =
-      result.get(key) ??
-      ({
-        name: d.customerName,
-        type: "customer",
-        docsTotal: 0,
-        paidTotal: 0,
-        balance: 0,
-        lastPaymentDate: null,
-        docsCount: 0,
-      } satisfies CounterpartyBalance);
-    row.docsTotal += d.total;
-    row.docsCount += 1;
-    result.set(key, row);
-  }
-
-  // Поставщики — из поступлений
-  const receiptSupplier = new Map<string, string>();
-  for (const r of receipts) {
-    if (!r.supplier) continue;
-    receiptSupplier.set(r.id, r.supplier);
-    const key = `supplier:${r.supplier}`;
-    const row =
-      result.get(key) ??
-      ({
-        name: r.supplier,
-        type: "supplier",
-        docsTotal: 0,
-        paidTotal: 0,
-        balance: 0,
-        lastPaymentDate: null,
-        docsCount: 0,
-      } satisfies CounterpartyBalance);
-    row.docsTotal += r.total;
-    row.docsCount += 1;
-    result.set(key, row);
-  }
-
-  // Проведённые платежи распределяем по привязанным документам
-  for (const p of payments) {
-    if (!p.isPaid) continue;
-    const payDate = p.paidAt || p.date;
-
-    if (p.direction === "incoming" && p.dealIds.length > 0) {
-      const share = p.amount / p.dealIds.length;
-      for (const dealId of p.dealIds) {
-        const name = dealCustomer.get(dealId);
-        if (!name) continue;
-        const row = result.get(`customer:${name}`);
-        if (!row) continue;
-        row.paidTotal += share;
-        if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
-          row.lastPaymentDate = payDate;
-        }
-      }
-    }
-
-    if (p.direction === "outgoing" && p.receiptIds.length > 0) {
-      const share = p.amount / p.receiptIds.length;
-      for (const receiptId of p.receiptIds) {
-        const name = receiptSupplier.get(receiptId);
-        if (!name) continue;
-        const row = result.get(`supplier:${name}`);
-        if (!row) continue;
-        row.paidTotal += share;
-        if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
-          row.lastPaymentDate = payDate;
-        }
-      }
-    }
-  }
-
-  const list = [...result.values()].map((row) => ({
-    ...row,
-    docsTotal: round2(row.docsTotal),
-    paidTotal: round2(row.paidTotal),
-    balance: round2(row.docsTotal - row.paidTotal),
-  }));
-  // Сначала с открытым долгом, потом по имени
-  list.sort((a, b) => {
-    const aOpen = Math.abs(a.balance) > 0.009 ? 1 : 0;
-    const bOpen = Math.abs(b.balance) > 0.009 ? 1 : 0;
-    if (aOpen !== bOpen) return bOpen - aOpen;
-    return a.name.localeCompare(b.name, "ru");
-  });
-  return list;
-}

@@ -36,6 +36,7 @@ export function ProductListClient({
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedStock, setSelectedStock] = useState("all");
+  const [selectedVisibility, setSelectedVisibility] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
@@ -45,6 +46,8 @@ export function ProductListClient({
     if (selectedCategory !== "all" && p.categoryId !== selectedCategory) return false;
     if (selectedStock === "in" && p.stockQty <= 0) return false;
     if (selectedStock === "out" && p.stockQty > 0) return false;
+    if (selectedVisibility === "visible" && !p.isVisible) return false;
+    if (selectedVisibility === "hidden" && p.isVisible) return false;
     if (!search) return true;
     const s = search.toLowerCase();
     return (
@@ -143,6 +146,17 @@ export function ProductListClient({
           <option value="all">Все наличие</option>
           <option value="in">В наличии</option>
           <option value="out">Нет в наличии</option>
+        </select>
+
+        <select
+          className="admin-select"
+          value={selectedVisibility}
+          onChange={(e) => setSelectedVisibility(e.target.value)}
+          style={{ minWidth: 150 }}
+        >
+          <option value="all">Любая видимость</option>
+          <option value="visible">Видимые</option>
+          <option value="hidden">Скрытые</option>
         </select>
 
         {selectedIds.size > 0 && (

@@ -20,7 +20,7 @@ export default async function AdminProductsPage({
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
-  const allProducts = await getProducts({});
+  const allProducts = await getProducts({ includeHidden: true });
   const cats = await getAllCategories();
 
   const serializedProducts = allProducts.map((p) => ({

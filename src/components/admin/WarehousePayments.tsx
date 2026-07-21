@@ -20,9 +20,14 @@ import {
   CheckCircle,
   Undo2,
   Pencil,
+  RotateCcw,
+  Banknote,
+  UserRound,
+  Download,
 } from "lucide-react";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
+import type { BankPaymentType } from "@/lib/warehouse-shared";
 
 export interface DealLinkOption {
   id: string;
@@ -69,6 +74,7 @@ export function PaymentForm({
   const [direction, setDirection] = useState<"incoming" | "outgoing">(
     "incoming"
   );
+  const [type, setType] = useState<BankPaymentType>("regular");
   const [linkMode, setLinkMode] = useState<LinkMode>("deals");
   const [date, setDate] = useState(todayIso());
   const [counterparty, setCounterparty] = useState("");
@@ -77,12 +83,39 @@ export function PaymentForm({
   const [amountTouched, setAmountTouched] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [comment, setComment] = useState("");
+  const [excludeFromBalance, setExcludeFromBalance] = useState(false);
   const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
 
   const activeDeals = useMemo(
-    () => deals.filter((d) => d.status !== "cancelled"),
-    [deals]
+    () =>
+      deals.filter(
+        (d) =>
+          d.status !== "cancelled" &&
+          (!counterparty.trim() ||
+            d.customerName
+              .toLocaleLowerCase("ru-RU")
+              .includes(counterparty.toLocaleLowerCase("ru-RU")) ||
+            counterparty
+              .toLocaleLowerCase("ru-RU")
+              .includes(d.customerName.toLocaleLowerCase("ru-RU")))
+      ),
+    [deals, counterparty]
+  );
+
+  const activeReceipts = useMemo(
+    () =>
+      receipts.filter(
+        (r) =>
+          !counterparty.trim() ||
+          r.supplier
+            .toLocaleLowerCase("ru-RU")
+            .includes(counterparty.toLocaleLowerCase("ru-RU")) ||
+          counterparty
+            .toLocaleLowerCase("ru-RU")
+            .includes(r.supplier.toLocaleLowerCase("ru-RU"))
+      ),
+    [receipts, counterparty]
   );
 
   function autoAmount(
@@ -155,6 +188,14 @@ export function PaymentForm({
 
   function switchDirection(dir: "incoming" | "outgoing") {
     setDirection(dir);
+    // При смене направления сбрасываем тип на regular, если текущий тип несовместим
+    if (dir === "incoming" && type === "transfer") {
+      setType("regular");
+    }
+    if (dir === "outgoing" && type === "deposit") {
+      setType("regular");
+    }
+
     // Для входящих — привязка к заказам, для расходов — к поступлениям
     const mode: LinkMode = dir === "incoming" ? "deals" : "receipts";
     setLinkMode(mode);
@@ -164,6 +205,25 @@ export function PaymentForm({
     setAmountTouched(false);
     setCounterparty("");
     setAmount("");
+  }
+
+  function switchType(t: BankPaymentType) {
+    setType(t);
+    // Автоматически переключаем направление для специфических типов
+    if (t === "deposit") setDirection("incoming");
+    if (t === "transfer") setDirection("outgoing");
+
+    // "regular" и "cash" могут быть любым направлением, их не трогаем.
+    // "refund" тоже может быть в обе стороны (возврат нам или от нас).
+
+    // По умолчанию включаем привязку для всех типов, кроме "deposit"
+    if (t === "deposit") {
+      setLinkMode("none");
+      setSelectedDeals([]);
+      setSelectedReceipts([]);
+    } else {
+      setLinkMode(direction === "incoming" ? "deals" : "receipts");
+    }
   }
 
   function switchLinkMode(mode: LinkMode) {
@@ -178,6 +238,7 @@ export function PaymentForm({
 
   function resetForm() {
     setDirection("incoming");
+    setType("regular");
     setLinkMode("deals");
     setDate(todayIso());
     setCounterparty("");
@@ -211,6 +272,7 @@ export function PaymentForm({
         body: JSON.stringify({
           date,
           direction,
+          type,
           counterparty: counterparty.trim(),
           dealIds: linkMode === "deals" ? selectedDeals : [],
           receiptIds: linkMode === "receipts" ? selectedReceipts : [],
@@ -218,6 +280,7 @@ export function PaymentForm({
           invoiceNumber: invoiceNumber.trim() || null,
           // Всегда создаём «в ожидании» — проводим потом кнопкой
           isPaid: false,
+          excludeFromBalance,
           comment: comment.trim() || null,
         }),
       });
@@ -247,6 +310,14 @@ export function PaymentForm({
           { value: "deals", label: "К заказу" },
           { value: "none", label: "Без привязки" },
         ];
+
+  const paymentTypes: { value: BankPaymentType; label: string; icon: any }[] = [
+    { value: "regular", label: "Оплата", icon: CheckCircle },
+    { value: "refund", label: "Возврат", icon: RotateCcw },
+    { value: "cash", label: "Наличные", icon: Banknote },
+    { value: "transfer", label: "Перевод", icon: UserRound },
+    { value: "deposit", label: "Внесение", icon: Download },
+  ];
 
   return (
     <>
@@ -294,8 +365,27 @@ export function PaymentForm({
                   }`}
                   onClick={() => switchDirection("outgoing")}
                 >
-                  <ArrowUpRight size={14} /> Расход (поставщику)
+                  <ArrowUpRight size={14} /> Расход
                 </button>
+              </div>
+
+              <div className="admin-field" style={{ marginBottom: 12 }}>
+                <label className="admin-label">Тип платежа</label>
+                <div className="wh-linkmode">
+                  {paymentTypes.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      className={`wh-linkmode__btn${
+                        type === t.value ? " wh-linkmode__btn--active" : ""
+                      }`}
+                      onClick={() => switchType(t.value)}
+                    >
+                      <t.icon size={12} style={{ marginRight: 4 }} />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="admin-field">
@@ -464,11 +554,22 @@ export function PaymentForm({
                     onChange={(e) => setComment(e.target.value)}
                     placeholder={
                       direction === "outgoing"
-                        ? "Например: фура с завода"
+                        ? "Нанапример: фура с завода"
                         : "Например: оплата по счёту"
                     }
                   />
                 </div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <label className="admin-check">
+                  <input
+                    type="checkbox"
+                    checked={excludeFromBalance}
+                    onChange={(e) => setExcludeFromBalance(e.target.checked)}
+                  />
+                  <span>Не учитывать в балансе (старый архивный платеж)</span>
+                </label>
               </div>
 
               {error && <div className="wh-form-error">{error}</div>}
@@ -517,22 +618,35 @@ export function PaymentForm({
 export function PaymentControls({
   paymentId,
   isPaid,
+  excludeFromBalance = false,
+  deals = [],
+  receipts = [],
   edit,
 }: {
   paymentId: string;
   isPaid: boolean;
+  excludeFromBalance?: boolean;
+  deals?: DealLinkOption[];
+  receipts?: ReceiptLinkOption[];
   edit: {
     date: string;
+    type?: BankPaymentType;
     counterparty: string;
     amount: number;
     invoiceNumber: string | null;
     comment: string | null;
+    dealIds?: string[];
+    receiptIds?: string[];
+    direction: "incoming" | "outgoing";
   };
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [editDate, setEditDate] = useState(edit.date);
+  const [editType, setEditType] = useState<BankPaymentType>(
+    edit.type || "regular"
+  );
   const [editCounterparty, setEditCounterparty] = useState(edit.counterparty);
   const [editAmount, setEditAmount] = useState(
     edit.amount > 0 ? String(edit.amount) : ""
@@ -541,7 +655,43 @@ export function PaymentControls({
     edit.invoiceNumber || ""
   );
   const [editComment, setEditComment] = useState(edit.comment || "");
+  const [editExclude, setEditExclude] = useState(excludeFromBalance);
+  const [editDealIds, setEditDealIds] = useState<string[]>(edit.dealIds || []);
+  const [editReceiptIds, setEditReceiptIds] = useState<string[]>(
+    edit.receiptIds || []
+  );
   const [error, setError] = useState("");
+
+  const activeDeals = useMemo(
+    () =>
+      deals.filter(
+        (d) =>
+          d.status !== "cancelled" &&
+          (!editCounterparty.trim() ||
+            d.customerName
+              .toLocaleLowerCase("ru-RU")
+              .includes(editCounterparty.toLocaleLowerCase("ru-RU")) ||
+            editCounterparty
+              .toLocaleLowerCase("ru-RU")
+              .includes(d.customerName.toLocaleLowerCase("ru-RU")))
+      ),
+    [deals, editCounterparty]
+  );
+
+  const activeReceipts = useMemo(
+    () =>
+      receipts.filter(
+        (r) =>
+          !editCounterparty.trim() ||
+          r.supplier
+            .toLocaleLowerCase("ru-RU")
+            .includes(editCounterparty.toLocaleLowerCase("ru-RU")) ||
+          editCounterparty
+            .toLocaleLowerCase("ru-RU")
+            .includes(r.supplier.toLocaleLowerCase("ru-RU"))
+      ),
+    [receipts, editCounterparty]
+  );
 
   async function togglePaid() {
     setSaving(true);
@@ -582,10 +732,14 @@ export function PaymentControls({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: editDate,
+          type: editType,
           counterparty: editCounterparty.trim(),
           amount: amountNum,
           invoiceNumber: editInvoiceNumber.trim() || null,
           comment: editComment.trim() || null,
+          excludeFromBalance: editExclude,
+          dealIds: editDealIds,
+          receiptIds: editReceiptIds,
         }),
       });
       if (res.ok) {
@@ -622,6 +776,11 @@ export function PaymentControls({
 
   return (
     <div className="wh-pay-controls">
+      {excludeFromBalance && (
+        <span className="admin-badge admin-badge--muted" style={{ marginBottom: 4, width: '100%', justifyContent: 'center' }}>
+          Вне баланса
+        </span>
+      )}
       {!isPaid ? (
         <button
           type="button"
@@ -693,6 +852,78 @@ export function PaymentControls({
               </button>
             </div>
             <form onSubmit={handleEditSubmit}>
+              <div className="admin-field" style={{ marginBottom: 12 }}>
+                <label className="admin-label">Тип платежа</label>
+                <div className="wh-linkmode">
+                  {(
+                    [
+                      { value: "regular", label: "Оплата", icon: CheckCircle },
+                      { value: "refund", label: "Возврат", icon: RotateCcw },
+                      { value: "cash", label: "Наличные", icon: Banknote },
+                      { value: "transfer", label: "Перевод", icon: UserRound },
+                      { value: "deposit", label: "Внесение", icon: Download },
+                    ] as const
+                  ).map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      className={`wh-linkmode__btn${
+                        editType === t.value ? " wh-linkmode__btn--active" : ""
+                      }`}
+                      onClick={() => setEditType(t.value)}
+                    >
+                      <t.icon size={12} style={{ marginRight: 4 }} />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="admin-field">
+                <label className="admin-label">Привязка к документам</label>
+                {edit.direction === "incoming" ? (
+                  <div className="wh-deal-pick" style={{ maxHeight: 120 }}>
+                    {activeDeals.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        className={`wh-deal-chip${editDealIds.includes(d.id) ? " wh-deal-chip--active" : ""}`}
+                        onClick={() =>
+                          setEditDealIds((prev) =>
+                            prev.includes(d.id)
+                              ? prev.filter((id) => id !== d.id)
+                              : [...prev, d.id]
+                          )
+                        }
+                      >
+                        <span className="wh-deal-chip__title">ЗК-{d.number}</span>
+                        <span className="wh-deal-chip__meta">{fmt(d.total)} ₽</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="wh-deal-pick" style={{ maxHeight: 120 }}>
+                    {receipts.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        className={`wh-deal-chip${editReceiptIds.includes(r.id) ? " wh-deal-chip--active" : ""}`}
+                        onClick={() =>
+                          setEditReceiptIds((prev) =>
+                            prev.includes(r.id)
+                              ? prev.filter((id) => id !== r.id)
+                              : [...prev, r.id]
+                          )
+                        }
+                      >
+                        <span className="wh-deal-chip__title">ПО-{r.number}</span>
+                        <span className="wh-deal-chip__meta">{fmt(r.total)} ₽</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="admin-field">
                 <label className="admin-label">Дата</label>
                 <input
@@ -744,6 +975,16 @@ export function PaymentControls({
                   onChange={(e) => setEditComment(e.target.value)}
                   placeholder="Необязательно"
                 />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label className="admin-check">
+                  <input
+                    type="checkbox"
+                    checked={editExclude}
+                    onChange={(e) => setEditExclude(e.target.checked)}
+                  />
+                  <span>Исключить из баланса (старый платеж)</span>
+                </label>
               </div>
               {error && <div className="wh-form-error">{error}</div>}
               <div className="admin-modal__actions" style={{ marginTop: 14 }}>
