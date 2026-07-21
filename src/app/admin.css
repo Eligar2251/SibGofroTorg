@@ -221,6 +221,7 @@
   position: relative;
   letter-spacing: 0.01em;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-sidebar__link svg {
@@ -287,6 +288,8 @@
   text-align: left;
   font-family: inherit;
   transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-sidebar__footer-link:hover {
@@ -362,6 +365,7 @@
   justify-content: center;
   overflow: hidden;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-mobile-bar__link svg {
@@ -1170,6 +1174,7 @@
   transition: all 0.13s ease;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-filter:hover {
@@ -2348,6 +2353,7 @@ body:has(.admin-login) > main {
   cursor: pointer;
   transition: all 0.13s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .wh-direction__btn--in.wh-direction__btn--active {
@@ -2628,6 +2634,7 @@ body:has(.admin-login) > main {
   cursor: pointer;
   transition: all 0.13s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .wh-linkmode__btn:hover {

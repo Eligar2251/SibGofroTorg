@@ -368,6 +368,10 @@ export function ReceiptForm({
                           <span className="wh-deal-chip__meta">
                             {fmtDate(d.date)} · {fmt(d.total)} ₽
                           </span>
+                          <span className="wh-deal-chip__meta" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                            {d.items?.map((it: any) => it.name).join(", ").slice(0, 60)}
+                            {d.items?.map((it: any) => it.name).join(", ").length > 60 ? "..." : ""}
+                          </span>
                         </button>
                       );
                     })}
