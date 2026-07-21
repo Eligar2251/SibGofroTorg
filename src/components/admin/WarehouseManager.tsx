@@ -21,18 +21,18 @@ import {
   History,
 } from "lucide-react";
 import {
-  type BankPayment,
   getBankSummary,
   getCounterpartyBalances,
   getDealPaidMap,
   getReceiptPaidMap,
+  type BankPayment,
   type WarehouseStockRow,
   type WarehouseReceipt,
   type CustomerDeal,
   type Counterparty,
   includedVat,
   VAT_RATE,
-} from "@/lib/warehouse";
+} from "@/lib/warehouse-shared";
 import {
   ReceiptForm,
   ReceiptPostButton,

@@ -14,117 +14,47 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "./firebase-admin";
 import { getProductEffectivePrice } from "./types";
-import { includedVat, VAT_RATE } from "./vat";
+import {
+  includedVat,
+  VAT_RATE,
+  type StockDocItem,
+  type CounterpartyRole,
+  type CounterpartyDetails,
+  type Counterparty,
+  type ReceiptStatus,
+  type WarehouseReceipt,
+  type DealStatus,
+  type CustomerDeal,
+  type BankPaymentType,
+  type BankPayment,
+  type WarehouseStockRow,
+  type CounterpartyBalance,
+  getBankSummary,
+  getDealPaidMap,
+  getReceiptPaidMap,
+  getCounterpartyBalances,
+} from "./warehouse-shared";
 
-export { includedVat, VAT_RATE } from "./vat";
-
-// ─── Типы ────────────────────────────────────────────────
-
-export interface StockDocItem {
-  productId: string;
-  name: string;
-  sku?: string | null;
-  quantity: number;
-  /** Цена за единицу (вычисляется из суммы строки для поступлений) */
-  price: number;
-  /** Сумма строки за всю партию (для поступлений — как ввели, с НДС) */
-  lineTotal: number;
-}
-
-export type CounterpartyRole = "supplier" | "customer";
-
-export interface CounterpartyDetails {
-  phone?: string | null;
-  email?: string | null;
-  inn?: string | null;
-  kpp?: string | null;
-  address?: string | null;
-  contactName?: string | null;
-}
-
-export interface Counterparty extends CounterpartyDetails {
-  id: string;
-  name: string;
-  normalizedName: string;
-  roles: CounterpartyRole[];
-  /** Последняя закупочная цена по каждому товару для этого поставщика. */
-  supplierPrices?: Record<string, number>;
-  comment?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-}
-
-export type ReceiptStatus = "draft" | "posted";
-
-export interface WarehouseReceipt extends CounterpartyDetails {
-  id: string;
-  number: number;
-  date: string; // YYYY-MM-DD
-  supplier: string;
-  status: ReceiptStatus;
-  counterpartyId?: string | null;
-  comment?: string | null;
-  items: StockDocItem[];
-  total: number;
-  /** Разница между суммой строк и фактическим банковским платежом. */
-  bankAdjustment: number;
-  vatRate: number;
-  vatAmount: number;
-  createdAt?: string | null;
-}
-
-export type DealStatus = "new" | "completed" | "cancelled";
-
-export interface CustomerDeal extends CounterpartyDetails {
-  id: string;
-  number: number;
-  date: string;
-  customerName: string;
-  counterpartyId?: string | null;
-  customerPhone?: string | null;
-  comment?: string | null;
-  items: StockDocItem[];
-  total: number;
-  bankAdjustment: number;
-  vatRate: number;
-  vatAmount: number;
-  status: DealStatus;
-  cancelReason?: string | null;
-  createdAt?: string | null;
-}
-
-export type BankPaymentType =
-  | "regular"
-  | "refund"
-  | "cash"
-  | "transfer"
-  | "deposit";
-
-export interface BankPayment {
-  id: string;
-  number: number;
-  date: string;
-  direction: "incoming" | "outgoing";
-  type?: BankPaymentType;
-  counterparty: string;
-  counterpartyId?: string | null;
-  /** Привязка к заказам покупателей (может несколько) */
-  dealIds: string[];
-  dealNumbers: number[];
-  /** Привязка к поступлениям — для расходов поставщику */
-  receiptIds: string[];
-  receiptNumbers: number[];
-  amount: number;
-  /** Пользовательский номер счёта из внешней учётной программы. */
-  invoiceNumber?: string | null;
-  vatRate: number;
-  vatAmount: number;
-  isPaid: boolean;
-  /** Дата фактического проведения платежа (YYYY-MM-DD) */
-  paidAt?: string | null;
-  comment?: string | null;
-  createdAt?: string | null;
-}
+export {
+  includedVat,
+  VAT_RATE,
+  type StockDocItem,
+  type CounterpartyRole,
+  type CounterpartyDetails,
+  type Counterparty,
+  type ReceiptStatus,
+  type WarehouseReceipt,
+  type DealStatus,
+  type CustomerDeal,
+  type BankPaymentType,
+  type BankPayment,
+  type WarehouseStockRow,
+  type CounterpartyBalance,
+  getBankSummary,
+  getDealPaidMap,
+  getReceiptPaidMap,
+  getCounterpartyBalances,
+} from "./warehouse-shared";
 
 // ─── Утилиты ─────────────────────────────────────────────
 
@@ -467,17 +397,6 @@ async function applyStockDelta(
 }
 
 // ─── Остатки ─────────────────────────────────────────────
-
-export interface WarehouseStockRow {
-  id: string;
-  name: string;
-  sku: string | null;
-  stockQty: number;
-  inStock: boolean;
-  price: number | null;
-  priceWholesale: number | null;
-  isVisible: boolean;
-}
 
 export interface StockOrigin {
   id: string;
@@ -1775,171 +1694,3 @@ export async function deletePayment(id: string): Promise<void> {
   await ref.delete();
 }
 
-/** Сводка по банку */
-export function getBankSummary(payments: BankPayment[]) {
-  let bankBalance = 0;
-  let cashBalance = 0;
-  let expectedIn = 0;
-  let expectedOut = 0;
-  for (const p of payments) {
-    if (p.isPaid) {
-      const amt = p.direction === "incoming" ? p.amount : -p.amount;
-      if (p.type === "cash") cashBalance += amt;
-      else bankBalance += amt;
-    } else {
-      if (p.direction === "incoming") expectedIn += p.amount;
-      else expectedOut += p.amount;
-    }
-  }
-  return {
-    balance: bankBalance + cashBalance,
-    bankBalance,
-    cashBalance,
-    expectedIn,
-    expectedOut,
-  };
-}
-
-/** Оплачено по каждому заказу (id → сумма оплаченных входящих платежей) */
-export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const p of payments) {
-    if (!p.isPaid || p.direction !== "incoming") continue;
-    const share = p.dealIds.length > 0 ? p.amount / p.dealIds.length : 0;
-    for (const dealId of p.dealIds) {
-      map.set(dealId, (map.get(dealId) || 0) + share);
-    }
-  }
-  return map;
-}
-
-/** Оплачено по каждому поступлению (id → сумма оплаченных исходящих) */
-export function getReceiptPaidMap(payments: BankPayment[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const p of payments) {
-    if (!p.isPaid || p.direction !== "outgoing") continue;
-    const share =
-      p.receiptIds.length > 0 ? p.amount / p.receiptIds.length : 0;
-    for (const receiptId of p.receiptIds) {
-      map.set(receiptId, (map.get(receiptId) || 0) + share);
-    }
-  }
-  return map;
-}
-
-// ─── Баланс по контрагентам ─────────────────────────────
-
-export interface CounterpartyBalance {
-  name: string;
-  type: "customer" | "supplier";
-  /** Сумма документов (заказов/поступлений) */
-  docsTotal: number;
-  /** Оплачено проведёнными платежами */
-  paidTotal: number;
-  /** Долг: положительный — нам должны (покупатель), мы должны (поставщик) */
-  balance: number;
-  /** Дата последнего проведённого платежа */
-  lastPaymentDate: string | null;
-  docsCount: number;
-}
-
-export function getCounterpartyBalances(
-  deals: CustomerDeal[],
-  receipts: WarehouseReceipt[],
-  payments: BankPayment[]
-): CounterpartyBalance[] {
-  const result = new Map<string, CounterpartyBalance>();
-
-  // Покупатели — из неотменённых заказов
-  const dealCustomer = new Map<string, string>();
-  for (const d of deals) {
-    if (d.status === "cancelled") continue;
-    dealCustomer.set(d.id, d.customerName);
-    const key = `customer:${d.customerName}`;
-    const row =
-      result.get(key) ??
-      ({
-        name: d.customerName,
-        type: "customer",
-        docsTotal: 0,
-        paidTotal: 0,
-        balance: 0,
-        lastPaymentDate: null,
-        docsCount: 0,
-      } satisfies CounterpartyBalance);
-    row.docsTotal += d.total;
-    row.docsCount += 1;
-    result.set(key, row);
-  }
-
-  // Поставщики — из поступлений
-  const receiptSupplier = new Map<string, string>();
-  for (const r of receipts) {
-    if (!r.supplier) continue;
-    receiptSupplier.set(r.id, r.supplier);
-    const key = `supplier:${r.supplier}`;
-    const row =
-      result.get(key) ??
-      ({
-        name: r.supplier,
-        type: "supplier",
-        docsTotal: 0,
-        paidTotal: 0,
-        balance: 0,
-        lastPaymentDate: null,
-        docsCount: 0,
-      } satisfies CounterpartyBalance);
-    row.docsTotal += r.total;
-    row.docsCount += 1;
-    result.set(key, row);
-  }
-
-  // Проведённые платежи распределяем по привязанным документам
-  for (const p of payments) {
-    if (!p.isPaid) continue;
-    const payDate = p.paidAt || p.date;
-
-    if (p.direction === "incoming" && p.dealIds.length > 0) {
-      const share = p.amount / p.dealIds.length;
-      for (const dealId of p.dealIds) {
-        const name = dealCustomer.get(dealId);
-        if (!name) continue;
-        const row = result.get(`customer:${name}`);
-        if (!row) continue;
-        row.paidTotal += share;
-        if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
-          row.lastPaymentDate = payDate;
-        }
-      }
-    }
-
-    if (p.direction === "outgoing" && p.receiptIds.length > 0) {
-      const share = p.amount / p.receiptIds.length;
-      for (const receiptId of p.receiptIds) {
-        const name = receiptSupplier.get(receiptId);
-        if (!name) continue;
-        const row = result.get(`supplier:${name}`);
-        if (!row) continue;
-        row.paidTotal += share;
-        if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
-          row.lastPaymentDate = payDate;
-        }
-      }
-    }
-  }
-
-  const list = [...result.values()].map((row) => ({
-    ...row,
-    docsTotal: round2(row.docsTotal),
-    paidTotal: round2(row.paidTotal),
-    balance: round2(row.docsTotal - row.paidTotal),
-  }));
-  // Сначала с открытым долгом, потом по имени
-  list.sort((a, b) => {
-    const aOpen = Math.abs(a.balance) > 0.009 ? 1 : 0;
-    const bOpen = Math.abs(b.balance) > 0.009 ? 1 : 0;
-    if (aOpen !== bOpen) return bOpen - aOpen;
-    return a.name.localeCompare(b.name, "ru");
-  });
-  return list;
-}

@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
-import type { BankPaymentType } from "@/lib/warehouse";
+import type { BankPaymentType } from "@/lib/warehouse-shared";
 
 export interface DealLinkOption {
   id: string;
