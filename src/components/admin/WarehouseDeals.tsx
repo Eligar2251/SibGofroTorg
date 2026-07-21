@@ -22,6 +22,7 @@ import {
 } from "@/components/admin/ProductPicker";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
+import type { BankPayment } from "@/lib/warehouse-shared";
 
 interface DealItemDraft {
   productId: string;
@@ -48,6 +49,17 @@ export interface EditableDeal {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function fmtDate(raw: string | null | undefined): string {
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
