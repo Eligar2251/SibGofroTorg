@@ -7,7 +7,7 @@ import type { PopupCampaign } from "@/lib/types";
 
 const STORAGE_PREFIX = "sib-info-window:";
 
-function asTime(value: string | null): number {
+function asTime(value: string | null | undefined): number {
   if (!value) return 0;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;

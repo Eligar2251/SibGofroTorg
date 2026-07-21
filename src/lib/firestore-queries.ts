@@ -11,6 +11,7 @@ import {
   FirestoreOrder,
   Promotion,
   PopupCampaign,
+  PopupCampaignType,
   ProductReview,
   ProductQuestion,
   ProductRating,
