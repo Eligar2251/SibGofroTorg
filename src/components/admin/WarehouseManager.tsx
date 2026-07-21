@@ -96,6 +96,8 @@ const paymentTypeLabels: Record<string, string> = {
 
 type TabKey = "stock" | "deals" | "bank" | "counterparties";
 type StockSub = "stock" | "receipts";
+type DealsSub = "new" | "released";
+type BankSub = "pending" | "history";
 
 interface WarehouseManagerProps {
   adminPath: string;
@@ -126,12 +128,13 @@ export function WarehouseManager({
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<StockSub>(initialSub);
+  const [dealsSub, setDealsSub] = useState<DealsSub>("new");
+  const [bankSub, setBankSub] = useState<BankSub>("pending");
 
   // Filters
   const [q, setQ] = useState(""); // Stock/Deals query
   const [bq, setBq] = useState(""); // Bank query
   const [bdir, setBdir] = useState("all");
-  const [bstat, setBstat] = useState("all");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
 
   // Calculations
@@ -169,12 +172,27 @@ export function WarehouseManager({
     );
   }, [stock, q]);
 
+  // Filtered Deals
+  const filteredDeals = useMemo(() => {
+    const query = q.toLowerCase().trim();
+    return deals.filter((d) => {
+      const matchesTab =
+        dealsSub === "new" ? d.status === "new" : d.status !== "new";
+      if (!matchesTab) return false;
+      if (!query) return true;
+      return (
+        d.customerName.toLowerCase().includes(query) ||
+        String(d.number).includes(query)
+      );
+    });
+  }, [deals, dealsSub, q]);
+
   const bankList = useMemo(() => {
     const query = bq.toLowerCase().trim();
     let list = payments.filter((p) => {
+      const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
+      if (!matchesTab) return false;
       if (bdir !== "all" && p.direction !== bdir) return false;
-      if (bstat === "paid" && !p.isPaid) return false;
-      if (bstat === "pending" && p.isPaid) return false;
       if (query) {
         const hay = [
           p.counterparty,
@@ -198,7 +216,7 @@ export function WarehouseManager({
         : b.date.localeCompare(a.date) || b.number - a.number
     );
     return list;
-  }, [payments, bq, bdir, bstat, bsort]);
+  }, [payments, bankSub, bq, bdir, bsort]);
 
   const bankFilteredTotals = useMemo(() => {
     let inSum = 0;
@@ -515,6 +533,12 @@ export function WarehouseManager({
                                 Не оплачен
                               </span>
                             )}
+                            {r.status === "posted" && !isFullyPaid && (
+                              <span className="admin-badge admin-badge--red" style={{ fontWeight: 800 }}>
+                                <AlertTriangle size={10} style={{ marginRight: 4 }} />
+                                Нужно оплатить долг!
+                              </span>
+                            )}
                             <span className="admin-order__date">
                               {fmtDate(r.date)}
                             </span>
@@ -633,6 +657,23 @@ export function WarehouseManager({
       {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}
       {activeTab === "deals" && (
         <>
+          <div className="admin-filters admin-filters--sub">
+            <button
+              onClick={() => setDealsSub("new")}
+              className={`admin-filter${dealsSub === "new" ? " admin-filter--active" : ""}`}
+            >
+              <ClipboardList size={12} />
+              Новые заказы
+            </button>
+            <button
+              onClick={() => setDealsSub("released")}
+              className={`admin-filter${dealsSub === "released" ? " admin-filter--active" : ""}`}
+            >
+              <PackageCheck size={12} />
+              Архив (отпущенные)
+            </button>
+          </div>
+
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <div style={{ position: "relative", flex: 1 }}>
               <Search
@@ -656,129 +697,123 @@ export function WarehouseManager({
             </div>
           </div>
           <div className="admin-card">
-            {deals.length > 0 ? (
-              deals
-                .filter(
-                  (d) =>
-                    d.customerName.toLowerCase().includes(q.toLowerCase()) ||
-                    String(d.number).includes(q)
-                )
-                .map((d) => {
-                  const paid = dealPaidMap.get(d.id) || 0;
-                  const isFullyPaid = d.total > 0 && paid >= d.total;
-                  const shortage =
-                    d.status === "new"
-                      ? d.items
-                          .map((it) => {
-                            const available = stockById.get(it.productId) ?? 0;
-                            return {
-                              it,
-                              available,
-                              missing: Math.max(0, it.quantity - available),
-                            };
-                          })
-                          .filter((r) => r.missing > 0)
-                      : [];
-                  const hasShortage = shortage.length > 0;
-                  return (
-                    <div key={d.id} className="admin-order">
-                      <div className="admin-order__row">
-                        <div className="admin-order__main">
-                          <div className="admin-order__top">
-                            <span className="admin-order__id">ЗК-{d.number}</span>
-                            <span className={dealStatusBadge[d.status]}>
-                              {dealStatusLabel[d.status]}
+            {filteredDeals.length > 0 ? (
+              filteredDeals.map((d) => {
+                const paid = dealPaidMap.get(d.id) || 0;
+                const isFullyPaid = d.total > 0 && paid >= d.total;
+                const shortage =
+                  d.status === "new"
+                    ? d.items
+                        .map((it) => {
+                          const available = stockById.get(it.productId) ?? 0;
+                          return {
+                            it,
+                            available,
+                            missing: Math.max(0, it.quantity - available),
+                          };
+                        })
+                        .filter((r) => r.missing > 0)
+                    : [];
+                const hasShortage = shortage.length > 0;
+                return (
+                  <div key={d.id} className="admin-order">
+                    <div className="admin-order__row">
+                      <div className="admin-order__main">
+                        <div className="admin-order__top">
+                          <span className="admin-order__id">ЗК-{d.number}</span>
+                          <span className={dealStatusBadge[d.status]}>
+                            {dealStatusLabel[d.status]}
+                          </span>
+                          {isFullyPaid && (
+                            <span className="admin-badge admin-badge--green">
+                              Оплачен
                             </span>
-                            {isFullyPaid && (
-                              <span className="admin-badge admin-badge--green">
-                                Оплачен
-                              </span>
-                            )}
-                            {!isFullyPaid && paid > 0 && (
-                              <span className="admin-badge admin-badge--blue">
-                                Оплачено {fmt(paid)} из {fmt(d.total)} ₽
-                              </span>
-                            )}
-                            <span className="admin-order__date">
-                              {fmtDate(d.date)}
+                          )}
+                          {!isFullyPaid && paid > 0 && (
+                            <span className="admin-badge admin-badge--blue">
+                              Оплачено {fmt(paid)} из {fmt(d.total)} ₽
+                            </span>
+                          )}
+                          <span className="admin-order__date">
+                            {fmtDate(d.date)}
+                          </span>
+                        </div>
+
+                        <div className="admin-order__grid">
+                          <div className="admin-order__meta">
+                            <span className="admin-order__meta-label wh-meta-label">
+                              Покупатель:
+                            </span>
+                            <span className="admin-order__meta-val">
+                              {d.customerName}
                             </span>
                           </div>
+                        </div>
 
-                          <div className="admin-order__grid">
-                            <div className="admin-order__meta">
-                              <span className="admin-order__meta-label wh-meta-label">
-                                Покупатель:
+                        <div className="admin-order__items">
+                          <div className="admin-order__items-title">Товары</div>
+                          {d.items.map((it, idx) => (
+                            <div key={idx} className="admin-order__item">
+                              <span>
+                                {it.name} × {it.quantity}
                               </span>
-                              <span className="admin-order__meta-val">
-                                {d.customerName}
+                              <span className="admin-order__item-sum">
+                                {fmt(it.lineTotal)} ₽
                               </span>
                             </div>
+                          ))}
+                          <div className="admin-order__total">
+                            <span>Итого (с НДС)</span>
+                            <span>{fmt(d.total)} ₽</span>
                           </div>
+                        </div>
 
-                          <div className="admin-order__items">
-                            <div className="admin-order__items-title">Товары</div>
-                            {d.items.map((it, idx) => (
-                              <div key={idx} className="admin-order__item">
-                                <span>
-                                  {it.name} × {it.quantity}
-                                </span>
-                                <span className="admin-order__item-sum">
-                                  {fmt(it.lineTotal)} ₽
-                                </span>
+                        {d.status === "new" &&
+                          (hasShortage ? (
+                            <div className="deal-stock deal-stock--miss">
+                              <div className="deal-stock__title">
+                                <AlertTriangle size={12} />
+                                Не хватает на складе
                               </div>
-                            ))}
-                            <div className="admin-order__total">
-                              <span>Итого (с НДС)</span>
-                              <span>{fmt(d.total)} ₽</span>
-                            </div>
-                          </div>
-
-                          {d.status === "new" &&
-                            (hasShortage ? (
-                              <div className="deal-stock deal-stock--miss">
-                                <div className="deal-stock__title">
-                                  <AlertTriangle size={12} />
-                                  Не хватает на складе
+                              {shortage.map((r) => (
+                                <div
+                                  key={r.it.productId}
+                                  className="deal-stock__row"
+                                >
+                                  <span className="deal-stock__name">
+                                    {r.it.name}
+                                  </span>
+                                  <span className="deal-stock__nums">
+                                    нужно {r.it.quantity} · на складе{" "}
+                                    {r.available} ·{" "}
+                                    <b>не хватает {r.missing}</b>
+                                  </span>
                                 </div>
-                                {shortage.map((r) => (
-                                  <div
-                                    key={r.it.productId}
-                                    className="deal-stock__row"
-                                  >
-                                    <span className="deal-stock__name">
-                                      {r.it.name}
-                                    </span>
-                                    <span className="deal-stock__nums">
-                                      нужно {r.it.quantity} · на складе{" "}
-                                      {r.available} ·{" "}
-                                      <b>не хватает {r.missing}</b>
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="deal-stock deal-stock--ok">
-                                <PackageCheck size={13} />
-                                Все позиции есть на складе
-                              </div>
-                            ))}
-                        </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="deal-stock deal-stock--ok">
+                              <PackageCheck size={13} />
+                              Все позиции есть на складе
+                            </div>
+                          ))}
+                      </div>
 
-                        <div className="admin-order__side">
-                          <DealActions
-                            dealId={d.id}
-                            status={d.status}
-                            hasShortage={hasShortage}
-                            paidEnough={isFullyPaid}
-                          />
-                        </div>
+                      <div className="admin-order__side">
+                        <DealActions
+                          dealId={d.id}
+                          status={d.status}
+                          hasShortage={hasShortage}
+                          paidEnough={isFullyPaid}
+                        />
                       </div>
                     </div>
-                  );
-                })
+                  </div>
+                );
+              })
             ) : (
               <div className="admin-empty">
-                <p>Заказов пока нет</p>
+                <p>В этом списке пока пусто</p>
               </div>
             )}
           </div>
@@ -927,6 +962,23 @@ export function WarehouseManager({
             </div>
           </div>
 
+          <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
+            <button
+              onClick={() => setBankSub("pending")}
+              className={`admin-filter${bankSub === "pending" ? " admin-filter--active" : ""}`}
+            >
+              <Wallet size={12} />
+              Ожидают оплаты
+            </button>
+            <button
+              onClick={() => setBankSub("history")}
+              className={`admin-filter${bankSub === "history" ? " admin-filter--active" : ""}`}
+            >
+              <History size={12} />
+              История (архив)
+            </button>
+          </div>
+
           <div className="bank-toolbar">
             <div className="bank-toolbar__search" style={{ position: "relative" }}>
               <Search
@@ -957,15 +1009,6 @@ export function WarehouseManager({
               <option value="incoming">Только приход</option>
               <option value="outgoing">Только расход</option>
             </select>
-            <select
-              className="admin-select bank-toolbar__select"
-              value={bstat}
-              onChange={(e) => setBstat(e.target.value)}
-            >
-              <option value="all">Любой статус</option>
-              <option value="paid">Проведённые</option>
-              <option value="pending">В ожидании</option>
-            </select>
             <button
               onClick={() => setBsort(bsort === "asc" ? "desc" : "asc")}
               className="admin-btn admin-btn--ghost"
@@ -976,12 +1019,11 @@ export function WarehouseManager({
                 <ArrowUpNarrowWide size={14} />
               )}
             </button>
-            {(bq || bdir !== "all" || bstat !== "all") && (
+            {(bq || bdir !== "all") && (
               <button
                 onClick={() => {
                   setBq("");
                   setBdir("all");
-                  setBstat("all");
                 }}
                 className="admin-btn admin-btn--ghost"
               >
