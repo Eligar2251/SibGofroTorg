@@ -188,6 +188,7 @@ export function getCounterpartyBalances(
 ): CounterpartyBalance[] {
   const result = new Map<string, CounterpartyBalance>();
 
+<<<<<<< HEAD
   // Покупатели — из неотменённых заказов
   const dealCustomer = new Map<string, string>();
   for (const d of deals) {
@@ -233,10 +234,45 @@ export function getCounterpartyBalances(
   }
 
   // Проведённые платежи распределяем по привязанным документам
+=======
+  // Helper to get or create a balance row
+  const getRow = (name: string, type: "customer" | "supplier") => {
+    const key = `${type}:${name}`;
+    if (!result.has(key)) {
+      result.set(key, {
+        name,
+        type,
+        docsTotal: 0,
+        paidTotal: 0,
+        balance: 0,
+        lastPaymentDate: null,
+        docsCount: 0,
+      });
+    }
+    return result.get(key)!;
+  };
+
+  // 1. Process all documents to establish docsTotal (debt incurred)
+  for (const d of deals) {
+    if (d.status === "cancelled") continue;
+    const row = getRow(d.customerName, "customer");
+    row.docsTotal += d.total;
+    row.docsCount += 1;
+  }
+  for (const r of receipts) {
+    if (!r.supplier) continue;
+    const row = getRow(r.supplier, "supplier");
+    row.docsTotal += r.total;
+    row.docsCount += 1;
+  }
+
+  // 2. Process all paid payments to establish paidTotal (debt settled)
+>>>>>>> 86b6541 (Учет: исправление логики расчета долгов и цветовой индикации баланса)
   for (const p of payments) {
     if (!p.isPaid) continue;
     const payDate = p.paidAt || p.date;
 
+<<<<<<< HEAD
     if (p.direction === "incoming" && p.dealIds.length > 0) {
       const share = p.amount / p.dealIds.length;
       for (const dealId of p.dealIds) {
@@ -263,6 +299,29 @@ export function getCounterpartyBalances(
           row.lastPaymentDate = payDate;
         }
       }
+=======
+    // A counterparty can have rows for both roles if they are both customer and supplier.
+    // We attribute the payment based on direction or explicit links.
+    let targetRow: CounterpartyBalance;
+    const customerKey = `customer:${p.counterparty}`;
+    const supplierKey = `supplier:${p.counterparty}`;
+
+    if (p.dealIds.length > 0 || (p.direction === "incoming" && result.has(customerKey))) {
+      targetRow = getRow(p.counterparty, "customer");
+      targetRow.paidTotal += (p.direction === "incoming" ? p.amount : -p.amount);
+    } else if (p.receiptIds.length > 0 || (p.direction === "outgoing" && result.has(supplierKey))) {
+      targetRow = getRow(p.counterparty, "supplier");
+      targetRow.paidTotal += (p.direction === "outgoing" ? p.amount : -p.amount);
+    } else {
+      // Default to direction if no explicit role found yet
+      const type = p.direction === "incoming" ? "customer" : "supplier";
+      targetRow = getRow(p.counterparty, type);
+      targetRow.paidTotal += p.amount;
+    }
+
+    if (!targetRow.lastPaymentDate || payDate > targetRow.lastPaymentDate) {
+      targetRow.lastPaymentDate = payDate;
+>>>>>>> 86b6541 (Учет: исправление логики расчета долгов и цветовой индикации баланса)
     }
   }
 
@@ -272,7 +331,12 @@ export function getCounterpartyBalances(
     paidTotal: Math.round(row.paidTotal * 100) / 100,
     balance: Math.round((row.docsTotal - row.paidTotal) * 100) / 100,
   }));
+<<<<<<< HEAD
   // Сначала с открытым долгом, потом по имени
+=======
+
+  // Сначала с открытым долгом (баланс != 0), потом по имени
+>>>>>>> 86b6541 (Учет: исправление логики расчета долгов и цветовой индикации баланса)
   list.sort((a, b) => {
     const aOpen = Math.abs(a.balance) > 0.009 ? 1 : 0;
     const bOpen = Math.abs(b.balance) > 0.009 ? 1 : 0;
