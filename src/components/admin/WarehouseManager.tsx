@@ -886,28 +886,6 @@ export function WarehouseManager({
             </div>
 
             <div className="bank-hero__stats">
-<<<<<<< HEAD
-              <div className="bank-hero__stat">
-                <ArrowDownLeft size={16} style={{ color: '#7dd181' }} />
-                <div>
-                  <span style={{ color: '#7dd181', fontWeight: 700 }}>Должны нам (ожидаем)</span>
-                  <strong style={{ color: '#7dd181', fontSize: 22 }}>+{fmt(bankSummary.expectedIn)} ₽</strong>
-                </div>
-              </div>
-              
-              <div className="bank-hero__stat">
-                <ArrowUpRight size={16} style={{ color: '#ef8f76' }} />
-                <div>
-                  <span style={{ color: '#ef8f76', fontWeight: 700 }}>Мы должны (к оплате)</span>
-                  <strong style={{ color: '#ef8f76', fontSize: 22 }}>−{fmt(bankSummary.expectedOut)} ₽</strong>
-                </div>
-              </div>
-
-              <div className="bank-hero__stat" style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 12, marginTop: 4 }}>
-                <History size={16} style={{ color: '#e09b12' }} />
-                <div>
-                  <span style={{ color: 'rgba(255,255,255,0.45)' }}>Прогноз после всех оплат</span>
-=======
               <div className="bank-hero__stat" style={{ color: '#7dd181' }}>
                 <ArrowDownLeft size={16} />
                 <div>
@@ -928,7 +906,6 @@ export function WarehouseManager({
                 <History size={16} />
                 <div>
                   <span style={{ color: 'rgba(224,155,18,0.7)' }}>Прогноз после всех оплат</span>
->>>>>>> 86b6541 (Учет: исправление логики расчета долгов и цветовой индикации баланса)
                   <strong style={{ color: '#fff', fontSize: 18 }}>{fmt(bankSummary.balance + bankSummary.expectedIn - bankSummary.expectedOut)} ₽</strong>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   BellRing,
@@ -88,6 +88,19 @@ export function PopupCampaignsManager({
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(false);
 
+  // Persistence for activeTab
+  useEffect(() => {
+    const saved = localStorage.getItem("sib-popup-active-tab");
+    if (saved === "story" || saved === "banner") {
+      setActiveTab(saved);
+    }
+  }, []);
+
+  const handleTabChange = (tab: PopupCampaignType) => {
+    setActiveTab(tab);
+    localStorage.setItem("sib-popup-active-tab", tab);
+  };
+
   const filteredList = campaigns.filter((c) => c.type === activeTab);
 
   function updateForm<K extends keyof Campaign>(key: K, value: Campaign[K]) {
@@ -173,13 +186,13 @@ export function PopupCampaignsManager({
         <div className="admin-filters">
           <button
             className={`admin-filter${activeTab === "banner" ? " admin-filter--active" : ""}`}
-            onClick={() => setActiveTab("banner")}
+            onClick={() => handleTabChange("banner")}
           >
             <Layout size={13} /> Текстовые баннеры
           </button>
           <button
             className={`admin-filter${activeTab === "story" ? " admin-filter--active" : ""}`}
-            onClick={() => setActiveTab("story")}
+            onClick={() => handleTabChange("story")}
           >
             <ImageIcon size={13} /> Сторис (фото)
           </button>
