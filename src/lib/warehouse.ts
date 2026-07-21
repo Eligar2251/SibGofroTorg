@@ -1363,11 +1363,7 @@ export async function postDeal(id: string): Promise<void> {
         paid += (Number(payment.amount) || 0) / links;
       }
     }
-    if (paid + 0.009 < deal.total) {
-      throw new Error(
-        `Сначала подтвердите оплату счёта в банке. Оплачено ${paid.toLocaleString("ru-RU")} из ${deal.total.toLocaleString("ru-RU")} ₽`
-      );
-    }
+    // Снята блокировка проведения без оплаты по требованию пользователя.
 
     const quantities = new Map<string, number>();
     for (const item of deal.items) {

@@ -176,8 +176,18 @@ export function WarehouseManager({
   const filteredDeals = useMemo(() => {
     const query = q.toLowerCase().trim();
     return deals.filter((d) => {
-      const matchesTab =
-        dealsSub === "new" ? d.status === "new" : d.status !== "new";
+      const paid = dealPaidMap.get(d.id) || 0;
+      const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
+
+      // В "Новые" попадают: все статуса 'new' + отпущенные ('completed'), но не оплаченные.
+      // В "Архив" попадают: отпущенные ('completed') + оплаченные, а также отмененные.
+      let matchesTab = false;
+      if (dealsSub === "new") {
+        matchesTab = d.status === "new" || (d.status === "completed" && !isFullyPaid);
+      } else {
+        matchesTab = (d.status === "completed" && isFullyPaid) || d.status === "cancelled";
+      }
+
       if (!matchesTab) return false;
       if (!query) return true;
       return (
@@ -185,7 +195,7 @@ export function WarehouseManager({
         String(d.number).includes(query)
       );
     });
-  }, [deals, dealsSub, q]);
+  }, [deals, dealsSub, q, dealPaidMap]);
 
   const bankList = useMemo(() => {
     const query = bq.toLowerCase().trim();
