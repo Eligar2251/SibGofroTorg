@@ -83,6 +83,7 @@ export function PaymentForm({
   const [amountTouched, setAmountTouched] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [comment, setComment] = useState("");
+  const [excludeFromBalance, setExcludeFromBalance] = useState(false);
   const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
 
@@ -253,6 +254,7 @@ export function PaymentForm({
           invoiceNumber: invoiceNumber.trim() || null,
           // Всегда создаём «в ожидании» — проводим потом кнопкой
           isPaid: false,
+          excludeFromBalance,
           comment: comment.trim() || null,
         }),
       });
@@ -526,11 +528,22 @@ export function PaymentForm({
                     onChange={(e) => setComment(e.target.value)}
                     placeholder={
                       direction === "outgoing"
-                        ? "Например: фура с завода"
+                        ? "Нанапример: фура с завода"
                         : "Например: оплата по счёту"
                     }
                   />
                 </div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <label className="admin-check">
+                  <input
+                    type="checkbox"
+                    checked={excludeFromBalance}
+                    onChange={(e) => setExcludeFromBalance(e.target.checked)}
+                  />
+                  <span>Не учитывать в балансе (старый архивный платеж)</span>
+                </label>
               </div>
 
               {error && <div className="wh-form-error">{error}</div>}
@@ -579,10 +592,12 @@ export function PaymentForm({
 export function PaymentControls({
   paymentId,
   isPaid,
+  excludeFromBalance = false,
   edit,
 }: {
   paymentId: string;
   isPaid: boolean;
+  excludeFromBalance?: boolean;
   edit: {
     date: string;
     type?: BankPaymentType;
@@ -607,6 +622,7 @@ export function PaymentControls({
     edit.invoiceNumber || ""
   );
   const [editComment, setEditComment] = useState(edit.comment || "");
+  const [editExclude, setEditExclude] = useState(excludeFromBalance);
   const [error, setError] = useState("");
 
   async function togglePaid() {
@@ -653,6 +669,7 @@ export function PaymentControls({
           amount: amountNum,
           invoiceNumber: editInvoiceNumber.trim() || null,
           comment: editComment.trim() || null,
+          excludeFromBalance: editExclude,
         }),
       });
       if (res.ok) {
@@ -689,6 +706,11 @@ export function PaymentControls({
 
   return (
     <div className="wh-pay-controls">
+      {excludeFromBalance && (
+        <span className="admin-badge admin-badge--muted" style={{ marginBottom: 4, width: '100%', justifyContent: 'center' }}>
+          Вне баланса
+        </span>
+      )}
       {!isPaid ? (
         <button
           type="button"
@@ -838,6 +860,16 @@ export function PaymentControls({
                   onChange={(e) => setEditComment(e.target.value)}
                   placeholder="Необязательно"
                 />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label className="admin-check">
+                  <input
+                    type="checkbox"
+                    checked={editExclude}
+                    onChange={(e) => setEditExclude(e.target.checked)}
+                  />
+                  <span>Исключить из баланса (старый платеж)</span>
+                </label>
               </div>
               {error && <div className="wh-form-error">{error}</div>}
               <div className="admin-modal__actions" style={{ marginTop: 14 }}>

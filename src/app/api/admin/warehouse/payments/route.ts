@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
       amount: Number(body.amount) || 0,
       invoiceNumber: body.invoiceNumber ?? null,
       isPaid: body.isPaid === true,
+      excludeFromBalance: body.excludeFromBalance === true,
       comment: body.comment ?? null,
     });
     return NextResponse.json(result);

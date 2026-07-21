@@ -1483,6 +1483,7 @@ function mapPayment(id: string, data: any): BankPayment {
         ? Math.max(0, Number(data.vatAmount) || 0)
         : includedVat(Number(data.amount) || 0),
     isPaid: data.isPaid === true,
+    excludeFromBalance: data.excludeFromBalance === true,
     paidAt: data.paidAt ? String(data.paidAt) : null,
     comment: data.comment ?? null,
     createdAt: serializeTimestamp(data.createdAt),
@@ -1509,6 +1510,7 @@ export async function createPayment(data: {
   amount: number;
   invoiceNumber?: string | null;
   isPaid?: boolean;
+  excludeFromBalance?: boolean;
   comment?: string | null;
 }): Promise<{ id: string; number: number }> {
   const amount = Math.max(0, Number(data.amount) || 0);
@@ -1535,6 +1537,7 @@ export async function createPayment(data: {
   }
 
   const isPaid = data.isPaid === true;
+  const excludeFromBalance = data.excludeFromBalance === true;
   const date = data.date || new Date().toISOString().slice(0, 10);
   const number = await nextNumber("payment");
   const docRef = db.collection("bankPayments").doc();
@@ -1564,6 +1567,7 @@ export async function createPayment(data: {
     // По умолчанию платёж создаётся «в ожидании» — баланс не меняется,
     // проводится позже отдельной кнопкой
     isPaid,
+    excludeFromBalance,
     paidAt: isPaid ? date : null,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     createdAt: FieldValue.serverTimestamp(),
@@ -1616,6 +1620,7 @@ export async function updatePayment(
   id: string,
   data: {
     isPaid?: boolean;
+    excludeFromBalance?: boolean;
     type?: BankPaymentType;
     amount?: number;
     comment?: string | null;
@@ -1654,6 +1659,9 @@ export async function updatePayment(
     patch.paidAt = data.isPaid
       ? new Date().toISOString().slice(0, 10)
       : null;
+  }
+  if (data.excludeFromBalance !== undefined) {
+    patch.excludeFromBalance = data.excludeFromBalance === true;
   }
   if (data.type !== undefined) {
     patch.type = data.type;

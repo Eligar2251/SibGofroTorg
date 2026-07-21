@@ -13,6 +13,7 @@ export async function PATCH(
     const body = await request.json();
     await updatePayment(id, {
       isPaid: body.isPaid,
+      excludeFromBalance: body.excludeFromBalance,
       type: body.type,
       amount: body.amount !== undefined ? Number(body.amount) : undefined,
       comment: body.comment,

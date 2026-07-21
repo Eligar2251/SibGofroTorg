@@ -861,44 +861,47 @@ export function WarehouseManager({
                   <strong>{fmt(bankSummary.cashBalance)} ₽</strong>
                 </div>
               </div>
+              <div className="bank-hero__stat" style={{ color: "#e09b12", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 8, marginTop: 4 }}>
+                <History size={15} />
+                <div>
+                  <span style={{ color: "rgba(255,255,255,0.45)" }}>Прогноз (баланс + ожид.)</span>
+                  <strong>{fmt(bankSummary.balance + bankSummary.expectedIn - bankSummary.expectedOut)} ₽</strong>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Unpaid Posted Receipts Block */}
           {unpaidPostedReceipts.length > 0 && (
-            <div className="admin-card" style={{ border: "1px solid var(--adm-rust-line)", background: "var(--adm-rust-pale)" }}>
-              <div className="admin-card__head" style={{ background: "transparent" }}>
+            <div className="admin-card" style={{ border: "1px solid var(--adm-rust-line)", background: "var(--adm-rust-pale)", marginBottom: 16 }}>
+              <div className="admin-card__head" style={{ background: "transparent", borderBottom: "1px solid var(--adm-rust-line)" }}>
                 <h3 className="admin-card__title" style={{ color: "var(--adm-rust)" }}>
                   <AlertTriangle size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
                   Нужно оплатить поставщикам
                 </h3>
               </div>
-              <div className="admin-card__pad" style={{ paddingTop: 0 }}>
+              <div className="admin-card__pad">
                 <div className="bank-month__list">
                   {unpaidPostedReceipts.map((r) => {
                     const paid = receiptPaidMap.get(r.id) || 0;
                     return (
-                      <div key={r.id} className="bank-pay" style={{ background: "#fff" }}>
-                        <div className="bank-pay__icon bank-pay__icon--out">
-                          <Truck size={17} />
+                      <div key={r.id} className="bank-pay" style={{ background: "#fff", padding: "10px 14px" }}>
+                        <div className="bank-pay__icon bank-pay__icon--out" style={{ width: 32, height: 32 }}>
+                          <Truck size={15} />
                         </div>
                         <div className="bank-pay__main">
                           <div className="bank-pay__row1">
-                            <span className="bank-pay__counterparty">{r.supplier}</span>
+                            <span className="bank-pay__counterparty" style={{ fontSize: 13 }}>{r.supplier}</span>
                             <span className="bank-pay__num">ПО-{r.number}</span>
-                            <span className="admin-badge admin-badge--green">На складе</span>
                           </div>
                           <div className="bank-pay__row2">
                             <span className="bank-pay__date">Поступление от {fmtDate(r.date)}</span>
                           </div>
                         </div>
                         <div className="bank-pay__side">
-                          <span className="bank-pay__amount bank-pay__amount--out">
+                          <span className="bank-pay__amount bank-pay__amount--out" style={{ fontSize: 16 }}>
                             {fmt(r.total - paid)} ₽
                           </span>
-                          <div style={{ fontSize: 11, color: "var(--adm-sand)" }}>
-                            остаток из {fmt(r.total)} ₽
-                          </div>
                         </div>
                       </div>
                     );
@@ -924,11 +927,10 @@ export function WarehouseManager({
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
-                          заказов: {c.docsCount}
-                          {c.lastPaymentDate && ` · последний платёж ${fmtDate(c.lastPaymentDate)}`}
+                          {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <div className="bank-due__sum bank-due__sum--debt">
+                      <div className="bank-due__sum bank-due__sum--debt" style={{ fontSize: 18 }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
@@ -1100,6 +1102,11 @@ export function WarehouseManager({
                         {!p.isPaid && (
                           <span className="bank-pay__wait">ожидается</span>
                         )}
+                        {p.isPaid && p.excludeFromBalance && (
+                          <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>
+                            архив (вне баланса)
+                          </span>
+                        )}
                       </div>
                       <div className="bank-pay__row2">
                         {(p.dealNumbers.length > 0 ||
@@ -1146,6 +1153,7 @@ export function WarehouseManager({
                       <PaymentControls
                         paymentId={p.id}
                         isPaid={p.isPaid}
+                        excludeFromBalance={p.excludeFromBalance}
                         edit={{
                           date: p.date,
                           type: p.type,

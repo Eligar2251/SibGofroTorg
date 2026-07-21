@@ -98,6 +98,8 @@ export interface BankPayment {
   vatRate: number;
   vatAmount: number;
   isPaid: boolean;
+  /** Если true, платёж проведён, но не учитывается в текущем балансе (старый учёт) */
+  excludeFromBalance?: boolean;
   paidAt?: string | null;
   comment?: string | null;
   createdAt?: string | null;
@@ -132,6 +134,7 @@ export function getBankSummary(payments: BankPayment[]) {
   let expectedOut = 0;
   for (const p of payments) {
     if (p.isPaid) {
+      if (p.excludeFromBalance) continue; // Пропускаем архивные/старые платежи
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
       if (p.type === "cash") cashBalance += amt;
       else bankBalance += amt;
