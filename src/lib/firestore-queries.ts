@@ -440,17 +440,18 @@ async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
     const data = doc.data();
     return {
       id: doc.id,
-      title: String(data.title || ""),
+      type: (data.type as PopupCampaignType) || "banner",
+      title: String(data.title || "Без названия"),
+      isActive: data.isActive !== false,
       kicker: data.kicker || null,
       description: data.description || null,
       details: data.details || null,
-      imageUrl: data.imageUrl || null,
       buttonText: data.buttonText || null,
       buttonUrl: data.buttonUrl || null,
       style: ["info", "promo", "important"].includes(data.style)
         ? data.style
         : "info",
-      isActive: data.isActive !== false,
+      imageUrl: data.imageUrl || null,
       startAt: data.startAt || null,
       endAt: data.endAt || null,
       delaySeconds: Math.max(0, Number(data.delaySeconds) || 0),
@@ -459,14 +460,6 @@ async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
         ? data.frequency
         : "session",
       sortOrder: Number(data.sortOrder) || 0,
-      isProductType: !!data.isProductType,
-      isStoryType: !!data.isStoryType,
-      discountPercent: data.discountPercent || null,
-      stockLevel: data.stockLevel || null,
-      tags: data.tags || null,
-      oldPrice: data.oldPrice || null,
-      newPrice: data.newPrice || null,
-      timerSeconds: data.timerSeconds || null,
       createdAt: serializeTimestamp(data.createdAt),
       updatedAt: serializeTimestamp(data.updatedAt),
     } as PopupCampaign;

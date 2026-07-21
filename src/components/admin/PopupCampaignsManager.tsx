@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowRight,
   BellRing,
   CircleAlert,
   Edit2,
@@ -14,14 +13,16 @@ import {
   Save,
   Trash2,
   X,
-  ImageIcon,
   Layout,
+  ImageIcon,
+  ArrowRight,
 } from "lucide-react";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import type {
   PopupCampaign,
   PopupCampaignFrequency,
   PopupCampaignStyle,
+  PopupCampaignType,
 } from "@/lib/types";
 
 type Campaign = Omit<PopupCampaign, "createdAt" | "updatedAt">;
@@ -40,42 +41,38 @@ function toIso(value: string): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-const SITE_PAGES = [
-  { value: "/", label: "Главная" },
-  { value: "/catalog", label: "Каталог" },
-  { value: "/order", label: "Корзина / оформление заказа" },
-  { value: "/delivery", label: "Доставка и оплата" },
-  { value: "/contacts", label: "Контакты" },
-  { value: "/about", label: "О компании" },
-  { value: "/wastepaper", label: "Приём макулатуры" },
-  { value: "/cabinet", label: "Личный кабинет" },
-];
-
-const EMPTY = {
+const EMPTY_BANNER: Campaign = {
+  id: "",
+  type: "banner",
   title: "",
-  kicker: "Важная информация",
+  isActive: true,
+  kicker: "Специальное предложение",
   description: "",
   details: "",
-  imageUrl: "",
-  buttonText: "Подробнее",
+  buttonText: "Узнать больше",
   buttonUrl: "",
-  style: "info" as PopupCampaignStyle,
-  isActive: true,
+  style: "promo",
   startAt: "",
   endAt: "",
   delaySeconds: 3,
   durationSeconds: 20,
-  frequency: "session" as PopupCampaignFrequency,
+  frequency: "session",
   sortOrder: 0,
-  // New fields
-  isProductType: false,
-  isStoryType: false,
-  discountPercent: 0,
-  stockLevel: 30,
-  tags: "",
-  oldPrice: 0,
-  newPrice: 0,
-  timerSeconds: 0,
+};
+
+const EMPTY_STORY: Campaign = {
+  id: "",
+  type: "story",
+  title: "",
+  isActive: true,
+  imageUrl: "",
+  buttonUrl: "",
+  startAt: "",
+  endAt: "",
+  delaySeconds: 3,
+  durationSeconds: 20,
+  frequency: "session",
+  sortOrder: 0,
 };
 
 export function PopupCampaignsManager({
@@ -85,489 +82,348 @@ export function PopupCampaignsManager({
 }) {
   const router = useRouter();
   const [campaigns, setCampaigns] = useState(initialCampaigns);
-  const [activeView, setActiveView] = useState<"standard" | "story">("standard");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [activeTab, setActiveTab] = useState<PopupCampaignType>("banner");
+  const [editingItem, setEditingItem] = useState<Campaign | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(false);
-  const [form, setForm] = useState(EMPTY);
 
-  function update<K extends keyof typeof EMPTY>(key: K, value: (typeof EMPTY)[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+  const filteredList = campaigns.filter((c) => c.type === activeTab);
+
+  function updateForm<K extends keyof Campaign>(key: K, value: Campaign[K]) {
+    if (!editingItem) return;
+    setEditingItem({ ...editingItem, [key]: value });
   }
 
-  function beginCreate() {
-    setForm({ ...EMPTY, sortOrder: campaigns.length });
-    setEditingId(null);
-    setCreating(true);
+  function startCreate() {
+    setEditingItem(activeTab === "story" ? { ...EMPTY_STORY } : { ...EMPTY_BANNER });
     setError("");
-  }
-
-  function beginEdit(item: Campaign) {
-    setForm({
-      title: item.title,
-      kicker: item.kicker || "",
-      description: item.description || "",
-      details: item.details || "",
-      imageUrl: item.imageUrl || "",
-      buttonText: item.buttonText || "",
-      buttonUrl: item.buttonUrl || "",
-      style: item.style,
-      isActive: item.isActive,
-      startAt: toDateTimeLocal(item.startAt),
-      endAt: toDateTimeLocal(item.endAt),
-      delaySeconds: item.delaySeconds,
-      durationSeconds: item.durationSeconds,
-      frequency: item.frequency,
-      sortOrder: item.sortOrder,
-      isProductType: !!item.isProductType,
-      isStoryType: !!item.isStoryType,
-      discountPercent: item.discountPercent || 0,
-      stockLevel: item.stockLevel || 30,
-      tags: item.tags || "",
-      oldPrice: item.oldPrice || 0,
-      newPrice: item.newPrice || 0,
-      timerSeconds: item.timerSeconds || 0,
-    });
-    setEditingId(item.id);
-    setCreating(false);
-    setError("");
-  }
-
-  function closeForm() {
-    setCreating(false);
-    setEditingId(null);
-    setPreview(false);
-    setError("");
-  }
-
-  function payload() {
-    return {
-      ...form,
-      title: form.title.trim(),
-      kicker: form.kicker.trim() || null,
-      description: form.description.trim() || null,
-      details: form.details.trim() || null,
-      imageUrl: form.imageUrl || null,
-      buttonText: form.buttonText.trim() || null,
-      buttonUrl: form.buttonUrl.trim() || null,
-      startAt: toIso(form.startAt),
-      endAt: toIso(form.endAt),
-      delaySeconds: Math.max(0, Number(form.delaySeconds) || 0),
-      durationSeconds: Math.min(
-        600,
-        Math.max(5, Number(form.durationSeconds) || 20)
-      ),
-      sortOrder: Number(form.sortOrder) || 0,
-      isProductType: !!form.isProductType,
-      isStoryType: !!form.isStoryType,
-      discountPercent: Number(form.discountPercent) || 0,
-      stockLevel: Number(form.stockLevel) || 0,
-      oldPrice: Number(form.oldPrice) || 0,
-      newPrice: Number(form.newPrice) || 0,
-      timerSeconds: Number(form.timerSeconds) || 0,
-    };
   }
 
   async function save() {
-    if (!form.title.trim()) {
-      setError("Укажите заголовок окна");
+    if (!editingItem) return;
+    if (!editingItem.title.trim()) {
+      setError("Укажите название (заголовок)");
       return;
     }
-    const data = payload();
+    if (editingItem.type === "story" && !editingItem.imageUrl) {
+      setError("Загрузите изображение для сторис");
+      return;
+    }
+
     setSaving(true);
     setError("");
+    
+    const isNew = !editingItem.id;
+    const url = isNew ? "/api/admin/popups" : `/api/admin/popups/${editingItem.id}`;
+    const method = isNew ? "POST" : "PUT";
+    
+    const data = {
+      ...editingItem,
+      startAt: toIso(editingItem.startAt || ""),
+      endAt: toIso(editingItem.endAt || ""),
+    };
+
     try {
-      const url = editingId ? `/api/admin/popups/${editingId}` : "/api/admin/popups";
-      const response = await fetch(url, {
-        method: editingId ? "PUT" : "POST",
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Не удалось сохранить окно");
-      if (editingId) {
-        setCampaigns((items) =>
-          items.map((item) =>
-            item.id === editingId ? ({ ...item, ...data } as Campaign) : item
-          )
-        );
-      } else {
-        setCampaigns((items) => [
-          ...items,
-          { id: body.id, ...data } as Campaign,
-        ]);
-      }
-      closeForm();
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Ошибка сохранения");
+      
+      setEditingItem(null);
       router.refresh();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Ошибка сети");
+      // Normally we'd fetch again or update local state, 
+      // but router.refresh() handles Server Components data.
+      window.location.reload(); 
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setSaving(false);
     }
   }
 
   async function remove(id: string) {
-    if (!confirm("Удалить информационное окно?")) return;
-    const response = await fetch(`/api/admin/popups/${id}`, { method: "DELETE" });
-    if (response.ok) {
-      setCampaigns((items) => items.filter((item) => item.id !== id));
-      router.refresh();
+    if (!confirm("Удалить это окно?")) return;
+    try {
+      const res = await fetch(`/api/admin/popups/${id}`, { method: "DELETE" });
+      if (res.ok) window.location.reload();
+    } catch (e) {
+      console.error(e);
     }
   }
-
-  const StyleIcon =
-    form.style === "promo" ? Gift : form.style === "important" ? CircleAlert : BellRing;
-  const points = form.details.split("\n").filter((item) => item.trim());
-  const showEditor = creating || editingId !== null;
-
-  const filteredCampaigns = campaigns.filter((item) =>
-    activeView === "story" ? !!item.isStoryType : !item.isStoryType
-  );
 
   return (
     <div className="admin-stack admin-stack--lg">
       <div className="popup-admin-intro">
         <div>
-          <h2>Информационные окна сайта</h2>
-          <p>
-            Создавайте окна для объявлений, акций или важных уведомлений.
-          </p>
+          <h2>Уведомления и Баннеры</h2>
+          <p>Настройка всплывающих окон (попапов) для посетителей сайта.</p>
         </div>
-        {!showEditor && (
-          <button
-            className="admin-btn admin-btn--primary"
-            onClick={() => {
-              beginCreate();
-              if (activeView === "story") update("isStoryType", true);
-            }}
-          >
-            <Plus size={15} /> {activeView === "story" ? "Новая сторис" : "Новое окно"}
+        {!editingItem && (
+          <button className="admin-btn admin-btn--primary" onClick={startCreate}>
+            <Plus size={15} /> Создать {activeTab === "story" ? "Сторис" : "Баннер"}
           </button>
         )}
       </div>
 
-      <div className="admin-filters">
-        <button
-          className={`admin-filter${activeView === "standard" ? " admin-filter--active" : ""}`}
-          onClick={() => setActiveView("standard")}
-        >
-          <Layout size={13} />
-          Обычные окна
-        </button>
-        <button
-          className={`admin-filter${activeView === "story" ? " admin-filter--active" : ""}`}
-          onClick={() => setActiveView("story")}
-        >
-          <ImageIcon size={13} />
-          Сторис (баннеры)
-        </button>
-      </div>
-
-      {showEditor && (
-        <div className="popup-admin-layout">
-          <div className="admin-card popup-admin-form">
-            <div className="admin-card__head">
-              <h2 className="admin-card__title">
-                {editingId ? "Редактирование окна" : "Новое информационное окно"}
-              </h2>
-              <button className="admin-modal__close" onClick={closeForm} aria-label="Закрыть">
-                <X size={17} />
-              </button>
-            </div>
-            <div className="admin-card__pad admin-stack">
-              <div className="admin-grid-2">
-                <div className="admin-field">
-                  <label className="admin-label">Название в шапке окна</label>
-                  <input className="admin-input" value={form.kicker} onChange={(e) => update("kicker", e.target.value)} placeholder="Важная информация" />
-                </div>
-                <div className="admin-field">
-                  <label className="admin-label">Тип оформления</label>
-                  <select className="admin-select" value={form.style} onChange={(e) => update("style", e.target.value as PopupCampaignStyle)}>
-                    <option value="info">Информация — зелёный</option>
-                    <option value="promo">Предложение — янтарный</option>
-                    <option value="important">Важно — красный</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="admin-field">
-                <label className="admin-label">Главный заголовок *</label>
-                <input className="admin-input" value={form.title} onChange={(e) => update("title", e.target.value)} placeholder="Изменение графика работы" />
-              </div>
-              <div className="admin-field">
-                <label className="admin-label">Текст сообщения</label>
-                <textarea className="admin-textarea" rows={4} value={form.description} onChange={(e) => update("description", e.target.value)} placeholder="Полная информация для посетителя..." />
-              </div>
-              <div className="admin-field">
-                <label className="admin-label">Пункты информации</label>
-                <textarea className="admin-textarea" rows={3} value={form.details} onChange={(e) => update("details", e.target.value)} placeholder={"Каждый пункт с новой строки\nНапример: доставка работает без изменений"} />
-              </div>
-
-              <div className="admin-grid-2">
-                <div className="admin-field">
-                  <label className="admin-label">Текст кнопки</label>
-                  <input className="admin-input" value={form.buttonText} onChange={(e) => update("buttonText", e.target.value)} placeholder="Подробнее" />
-                </div>
-                <div className="admin-field">
-                  <label className="admin-label">Выбрать страницу сайта</label>
-                  <select
-                    className="admin-select"
-                    value={
-                      SITE_PAGES.some((page) => page.value === form.buttonUrl)
-                        ? form.buttonUrl
-                        : ""
-                    }
-                    onChange={(e) => {
-                      if (e.target.value) update("buttonUrl", e.target.value);
-                    }}
-                  >
-                    <option value="">— Быстрый выбор страницы —</option>
-                    {SITE_PAGES.map((page) => (
-                      <option key={page.value} value={page.value}>
-                        {page.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="admin-field">
-                <label className="admin-label">
-                  Ссылка вручную (можно указать внешний сайт)
-                </label>
-                <input
-                  className="admin-input"
-                  value={form.buttonUrl}
-                  onChange={(e) => update("buttonUrl", e.target.value)}
-                  placeholder="/catalog или https://другой-сайт.ru/..."
-                />
-                <span className="admin-hint">
-                  Ручной ввод не ограничен страницами сайта и имеет приоритет.
-                </span>
-              </div>
-
-              <div className="admin-field">
-                <label className="admin-label">Изображение</label>
-                <ImageUploader
-                  images={form.imageUrl ? [{ url: form.imageUrl, publicId: "" }] : []}
-                  onChange={(images) => update("imageUrl", images[0]?.url || "")}
-                />
-              </div>
-
-              <div className="popup-admin-schedule" style={{ background: "var(--adm-paper-warm)", border: "1px solid var(--adm-border)" }}>
-                <h3>Стиль окна</h3>
-                <div className="admin-grid-2">
-                  <label className="admin-check">
-                    <input type="checkbox" checked={form.isProductType} onChange={(e) => {
-                      update("isProductType", e.target.checked);
-                      if (e.target.checked) update("isStoryType", false);
-                    }} />
-                    <span>Карточка товара</span>
-                  </label>
-                  <label className="admin-check">
-                    <input type="checkbox" checked={form.isStoryType} onChange={(e) => {
-                      update("isStoryType", e.target.checked);
-                      if (e.target.checked) update("isProductType", false);
-                    }} />
-                    <span>Сторис (вертикальное фото)</span>
-                  </label>
-                </div>
-                
-                {form.isStoryType && (
-                  <div className="admin-hint" style={{ marginBottom: 12 }}>
-                    В этом режиме будет показано только фото. Весь попап будет кликабельным (ссылка задается ниже). Рекомендуемый размер: 1080x1920 (9:16).
-                  </div>
-                )}
-
-                {form.isProductType && (
-                  <div className="admin-stack">
-                    <div className="admin-grid-3">
-                      <div className="admin-field">
-                        <label className="admin-label">Скидка, %</label>
-                        <input type="number" className="admin-input" value={form.discountPercent} onChange={(e) => update("discountPercent", Number(e.target.value))} />
-                      </div>
-                      <div className="admin-field">
-                        <label className="admin-label">Заполнение остатка, %</label>
-                        <input type="number" min={0} max={100} className="admin-input" value={form.stockLevel} onChange={(e) => update("stockLevel", Number(e.target.value))} />
-                      </div>
-                      <div className="admin-field">
-                        <label className="admin-label">Таймер, сек.</label>
-                        <input type="number" className="admin-input" value={form.timerSeconds} onChange={(e) => update("timerSeconds", Number(e.target.value))} />
-                      </div>
-                    </div>
-                    <div className="admin-field">
-                      <label className="admin-label">Теги (через пробел)</label>
-                      <input className="admin-input" value={form.tags} onChange={(e) => update("tags", e.target.value)} placeholder="новинка топ_продаж эко" />
-                    </div>
-                    <div className="admin-grid-2">
-                      <div className="admin-field">
-                        <label className="admin-label">Старая цена, ₽</label>
-                        <input type="number" className="admin-input" value={form.oldPrice} onChange={(e) => update("oldPrice", Number(e.target.value))} />
-                      </div>
-                      <div className="admin-field">
-                        <label className="admin-label">Новая цена, ₽</label>
-                        <input type="number" className="admin-input" value={form.newPrice} onChange={(e) => update("newPrice", Number(e.target.value))} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="popup-admin-schedule">
-                <h3>Расписание и частота</h3>
-                <div className="admin-grid-2">
-                  <div className="admin-field">
-                    <label className="admin-label">Начало показа</label>
-                    <input type="datetime-local" className="admin-input" value={form.startAt} onChange={(e) => update("startAt", e.target.value)} />
-                  </div>
-                  <div className="admin-field">
-                    <label className="admin-label">Окончание показа</label>
-                    <input type="datetime-local" className="admin-input" value={form.endAt} onChange={(e) => update("endAt", e.target.value)} />
-                  </div>
-                </div>
-                <div className="admin-grid-3">
-                  <div className="admin-field">
-                    <label className="admin-label">Задержка, сек.</label>
-                    <input type="number" min={0} max={3600} className="admin-input" value={form.delaySeconds} onChange={(e) => update("delaySeconds", Number(e.target.value))} />
-                  </div>
-                  <div className="admin-field">
-                    <label className="admin-label">Длительность, сек.</label>
-                    <input type="number" min={5} max={600} className="admin-input" value={form.durationSeconds} onChange={(e) => update("durationSeconds", Number(e.target.value))} />
-                  </div>
-                  <div className="admin-field">
-                    <label className="admin-label">Повтор показа</label>
-                    <select className="admin-select" value={form.frequency} onChange={(e) => update("frequency", e.target.value as PopupCampaignFrequency)}>
-                      <option value="session">Один раз за сессию</option>
-                      <option value="day">Один раз в день</option>
-                      <option value="always">При каждом посещении</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="admin-grid-2">
-                <label className="admin-check">
-                  <input type="checkbox" checked={form.isActive} onChange={(e) => update("isActive", e.target.checked)} />
-                  <span>Окно активно</span>
-                </label>
-                <div className="admin-field">
-                  <label className="admin-label">Порядок</label>
-                  <input type="number" className="admin-input" value={form.sortOrder} onChange={(e) => update("sortOrder", Number(e.target.value))} />
-                </div>
-              </div>
-
-              {error && <div className="admin-error">{error}</div>}
-              <div className="popup-admin-actions">
-                <button className="admin-btn admin-btn--ghost" onClick={() => setPreview((value) => !value)}>
-                  <Eye size={15} /> {preview ? "Скрыть превью" : "Показать превью"}
-                </button>
-                <button className="admin-btn admin-btn--ghost" onClick={closeForm}>Отмена</button>
-                <button className="admin-btn admin-btn--primary" disabled={saving} onClick={save}>
-                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                  Сохранить окно
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {preview && (
-            form.isStoryType ? (
-              <div className="story-popup" style={{ position: "sticky", top: 80, margin: "0 auto" }}>
-                {form.imageUrl ? <img src={form.imageUrl} alt="" className="story-popup__img" /> : <div className="story-popup__img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eee' }}>Нет фото</div>}
-                <button type="button" className="story-popup__close"><X size={24} /></button>
-              </div>
-            ) : form.isProductType ? (
-              <div className="product-popup" style={{ position: "sticky", top: 80, margin: "0 auto" }}>
-                <div className="product-popup__media">
-                  {form.imageUrl && <img src={form.imageUrl} alt="" className="product-popup__img" />}
-                  <button type="button" className="product-popup__close"><X size={20} /></button>
-                  <div className="product-popup__badges">
-                    <span className="product-popup__badge product-popup__badge--stock">В наличии</span>
-                    {form.discountPercent > 0 && <span className="product-popup__badge product-popup__badge--discount">−{form.discountPercent}%</span>}
-                  </div>
-                </div>
-                <div className="product-popup__body">
-                  <h2 className="product-popup__title">{form.title || "Название товара"}</h2>
-                  {form.description && <p className="product-popup__subtitle">{form.description}</p>}
-                  {form.tags && (
-                    <div className="product-popup__tags">
-                      {form.tags.split(" ").filter(Boolean).map((t, i) => <span key={i} className="product-popup__tag">{t}</span>)}
-                    </div>
-                  )}
-                  <div className="product-popup__stock">
-                    <div className="product-popup__stock-info"><span>Остаток</span><span className="product-popup__stock-warn">мало!</span></div>
-                    <div className="product-popup__stock-bar"><div className="product-popup__stock-fill" style={{ width: `${form.stockLevel}%` }} /></div>
-                  </div>
-                  <div className="product-popup__price-row">
-                    <div className="product-popup__prices">
-                      {form.oldPrice > 0 && <span className="product-popup__price-old">{form.oldPrice.toLocaleString("ru-RU")} ₽</span>}
-                      <span className="product-popup__price-new">{form.newPrice.toLocaleString("ru-RU")} ₽</span>
-                    </div>
-                    {form.timerSeconds > 0 && <div className="product-popup__timer">00:00:00</div>}
-                  </div>
-                  <div className="product-popup__actions">
-                    <button className="product-popup__cta">{form.buttonText || "ПЕРЕЙТИ"} <ArrowRight size={18} /></button>
-                    <button type="button" className="product-popup__dismiss">нет, спасибо</button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className={`popup-admin-preview popup-admin-preview--${form.style}`}>
-                <div className="popup-admin-preview__bar">
-                  <StyleIcon size={15} /> {form.kicker || "Информация"}
-                  <X size={15} />
-                </div>
-                {form.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={form.imageUrl} alt="" />
-                )}
-                <div className="popup-admin-preview__body" style={{ padding: '30px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, padding: '5px 12px', background: 'var(--paper)', color: 'var(--preview-accent)', borderRadius: '8px', textTransform: 'uppercase' }}>
-                    <StyleIcon size={14} style={{ marginRight: 6, verticalAlign: -2 }} /> {form.kicker || "Объявление"}
-                  </span>
-                  <h3 style={{ fontSize: '28px', fontWeight: 850, marginTop: '20px', lineHeight: 1.1 }}>{form.title || "Заголовок информационного окна"}</h3>
-                  <p style={{ fontSize: '15px', color: 'var(--adm-ink-muted)', lineHeight: 1.6, marginTop: '14px' }}>{form.description || "Здесь будет основной текст сообщения для посетителя."}</p>
-                  {points.length > 0 && <ul style={{ marginTop: '20px', paddingLeft: '20px' }}>{points.map((point, index) => <li key={index} style={{ marginBottom: '6px' }}>{point}</li>)}</ul>}
-                  {form.buttonUrl && <button style={{ marginTop: '26px', width: '100%', height: '50px', background: 'var(--preview-accent)', color: '#fff', border: 0, borderRadius: '12px', fontWeight: 750, fontSize: '15px' }}>{form.buttonText || "Подробнее"}</button>}
-                </div>
-              </div>
-            )
-          )}
+      {!editingItem && (
+        <div className="admin-filters">
+          <button
+            className={`admin-filter${activeTab === "banner" ? " admin-filter--active" : ""}`}
+            onClick={() => setActiveTab("banner")}
+          >
+            <Layout size={13} /> Текстовые баннеры
+          </button>
+          <button
+            className={`admin-filter${activeTab === "story" ? " admin-filter--active" : ""}`}
+            onClick={() => setActiveTab("story")}
+          >
+            <ImageIcon size={13} /> Сторис (фото)
+          </button>
         </div>
       )}
 
-      <div className="popup-admin-list">
-        {filteredCampaigns.length === 0 ? (
-          <div className="admin-card admin-empty">
-            <BellRing size={36} />
-            <p>В этом разделе пока нет окон</p>
-            <p className="admin-empty__hint">Создайте новое окно, используя кнопку выше.</p>
+      {editingItem && (
+        <div className="admin-card">
+          <div className="admin-card__head">
+            <h3 className="admin-card__title">
+              {editingItem.id ? "Редактирование" : "Создание"} {editingItem.type === "story" ? "сторис" : "баннера"}
+            </h3>
+            <button className="admin-modal__close" onClick={() => setEditingItem(null)}>
+              <X size={18} />
+            </button>
           </div>
-        ) : (
-          filteredCampaigns.map((item) => (
-            <article key={item.id} className="popup-admin-item">
-              <div className={`popup-admin-item__icon popup-admin-item__icon--${item.style}`}>
-                {item.isStoryType ? <ImageIcon size={18} /> : (item.style === "promo" ? <Gift size={18} /> : item.style === "important" ? <CircleAlert size={18} /> : <BellRing size={18} />)}
+          <div className="admin-card__pad admin-stack">
+            <div className="admin-grid-2">
+              <div className="admin-field">
+                <label className="admin-label">Внутреннее название / Заголовок *</label>
+                <input
+                  className="admin-input"
+                  value={editingItem.title}
+                  onChange={(e) => updateForm("title", e.target.value)}
+                  placeholder="Напр: Акция на гофрокартон"
+                />
               </div>
-              <div className="popup-admin-item__main">
-                <div className="popup-admin-item__title">{item.title}</div>
-                <div className="popup-admin-item__meta">
-                  {item.isStoryType ? "Тип: Сторис" : (item.kicker || "Информация")} · через {item.delaySeconds} сек. · на {item.durationSeconds} сек.
-                  {item.startAt ? ` · с ${new Date(item.startAt).toLocaleString("ru-RU")}` : ""}
+              <div className="admin-field">
+                <label className="admin-label">Частота показа</label>
+                <select
+                  className="admin-select"
+                  value={editingItem.frequency}
+                  onChange={(e) => updateForm("frequency", e.target.value as any)}
+                >
+                  <option value="session">Раз в сессию (рекомендуется)</option>
+                  <option value="day">Раз в день</option>
+                  <option value="always">При каждом входе</option>
+                </select>
+              </div>
+            </div>
+
+            {editingItem.type === "banner" && (
+              <>
+                <div className="admin-grid-2">
+                  <div className="admin-field">
+                    <label className="admin-label">Метка (кикер)</label>
+                    <input
+                      className="admin-input"
+                      value={editingItem.kicker || ""}
+                      onChange={(e) => updateForm("kicker", e.target.value)}
+                      placeholder="Напр: Только до 31 августа"
+                    />
+                  </div>
+                  <div className="admin-field">
+                    <label className="admin-label">Стиль (цвет)</label>
+                    <select
+                      className="admin-select"
+                      value={editingItem.style}
+                      onChange={(e) => updateForm("style", e.target.value as any)}
+                    >
+                      <option value="info">Информационный (зеленый)</option>
+                      <option value="promo">Акционный (оранжевый)</option>
+                      <option value="important">Важный (красный)</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Описание</label>
+                  <textarea
+                    className="admin-textarea"
+                    rows={3}
+                    value={editingItem.description || ""}
+                    onChange={(e) => updateForm("description", e.target.value)}
+                    placeholder="Основной текст предложения..."
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Пункты (список, каждый с новой строки)</label>
+                  <textarea
+                    className="admin-textarea"
+                    rows={3}
+                    value={editingItem.details || ""}
+                    onChange={(e) => updateForm("details", e.target.value)}
+                    placeholder="Бесплатная доставка\nСкидка 10% от 100 шт..."
+                  />
+                </div>
+                <div className="admin-grid-2">
+                  <div className="admin-field">
+                    <label className="admin-label">Текст кнопки</label>
+                    <input
+                      className="admin-input"
+                      value={editingItem.buttonText || ""}
+                      onChange={(e) => updateForm("buttonText", e.target.value)}
+                    />
+                  </div>
+                  <div className="admin-field">
+                    <label className="admin-label">Ссылка кнопки</label>
+                    <input
+                      className="admin-input"
+                      value={editingItem.buttonUrl || ""}
+                      onChange={(e) => updateForm("buttonUrl", e.target.value)}
+                      placeholder="/catalog или https://..."
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {editingItem.type === "story" && (
+              <>
+                <div className="admin-field">
+                  <label className="admin-label">Вертикальное изображение (9:16)</label>
+                  <ImageUploader
+                    images={editingItem.imageUrl ? [{ url: editingItem.imageUrl, publicId: "" }] : []}
+                    onChange={(imgs) => updateForm("imageUrl", imgs[0]?.url || "")}
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Ссылка при клике на фото</label>
+                  <input
+                    className="admin-input"
+                    value={editingItem.buttonUrl || ""}
+                    onChange={(e) => updateForm("buttonUrl", e.target.value)}
+                    placeholder="/catalog или https://..."
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="popup-admin-schedule">
+              <h3>Расписание и Тайминги</h3>
+              <div className="admin-grid-2">
+                <div className="admin-field">
+                  <label className="admin-label">Начало показа</label>
+                  <input
+                    type="datetime-local"
+                    className="admin-input"
+                    value={toDateTimeLocal(editingItem.startAt)}
+                    onChange={(e) => updateForm("startAt", e.target.value)}
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Окончание</label>
+                  <input
+                    type="datetime-local"
+                    className="admin-input"
+                    value={toDateTimeLocal(editingItem.endAt)}
+                    onChange={(e) => updateForm("endAt", e.target.value)}
+                  />
                 </div>
               </div>
-              <span className={`admin-badge ${item.isActive ? "admin-badge--green" : "admin-badge--muted"}`}>
-                {item.isActive ? "Активно" : "Выключено"}
-              </span>
-              <div className="admin-actions">
-                <button className="admin-btn admin-btn--icon" onClick={() => beginEdit(item)} title="Редактировать"><Edit2 size={14} /></button>
-                <button className="admin-btn admin-btn--icon" onClick={() => remove(item.id)} title="Удалить"><Trash2 size={14} /></button>
+              <div className="admin-grid-2">
+                <div className="admin-field">
+                  <label className="admin-label">Задержка (сек)</label>
+                  <input
+                    type="number"
+                    className="admin-input"
+                    value={editingItem.delaySeconds}
+                    onChange={(e) => updateForm("delaySeconds", Number(e.target.value))}
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Длительность (сек)</label>
+                  <input
+                    type="number"
+                    className="admin-input"
+                    value={editingItem.durationSeconds}
+                    onChange={(e) => updateForm("durationSeconds", Number(e.target.value))}
+                  />
+                </div>
               </div>
-            </article>
-          ))
-        )}
-      </div>
+            </div>
+
+            <div className="admin-grid-2">
+              <label className="admin-check">
+                <input
+                  type="checkbox"
+                  checked={editingItem.isActive}
+                  onChange={(e) => updateForm("isActive", e.target.checked)}
+                />
+                <span>Активно</span>
+              </label>
+              <div className="admin-field">
+                <label className="admin-label">Сортировка</label>
+                <input
+                  type="number"
+                  className="admin-input"
+                  value={editingItem.sortOrder}
+                  onChange={(e) => updateForm("sortOrder", Number(e.target.value))}
+                />
+              </div>
+            </div>
+
+            {error && <div className="admin-error">{error}</div>}
+
+            <div className="admin-form-actions">
+              <button className="admin-btn admin-btn--ghost" onClick={() => setEditingItem(null)}>
+                Отмена
+              </button>
+              <button className="admin-btn admin-btn--primary" disabled={saving} onClick={save}>
+                {saving && <Loader2 size={14} className="animate-spin" />}
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!editingItem && (
+        <div className="popup-admin-list">
+          {filteredList.length === 0 ? (
+            <div className="admin-card admin-empty">
+              <BellRing size={36} />
+              <p>Ничего не найдено</p>
+            </div>
+          ) : (
+            filteredList.map((item) => (
+              <article key={item.id} className="popup-admin-item">
+                <div className={`popup-admin-item__icon popup-admin-item__icon--${item.style || 'info'}`}>
+                  {item.type === "story" ? <ImageIcon size={18} /> : (item.style === "promo" ? <Gift size={18} /> : <BellRing size={18} />)}
+                </div>
+                <div className="popup-admin-item__main">
+                  <div className="popup-admin-item__title">{item.title}</div>
+                  <div className="popup-admin-item__meta">
+                    {item.isActive ? "Активен" : "Выключен"} · {item.delaySeconds}с задержка · {item.durationSeconds}с показ
+                  </div>
+                </div>
+                <div className="admin-actions">
+                  <button className="admin-btn admin-btn--icon" onClick={() => setEditingItem({
+                    ...item,
+                    startAt: item.startAt || "",
+                    endAt: item.endAt || "",
+                  })}>
+                    <Edit2 size={14} />
+                  </button>
+                  <button className="admin-btn admin-btn--icon" onClick={() => remove(item.id)}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

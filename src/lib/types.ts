@@ -75,39 +75,37 @@ export interface Promotion {
   popupDurationSeconds?: number | null;
 }
 
+export type PopupCampaignType = "banner" | "story";
 export type PopupCampaignStyle = "info" | "promo" | "important";
 export type PopupCampaignFrequency = "session" | "day" | "always";
 
 export interface PopupCampaign {
   id: string;
-  title: string;
+  type: PopupCampaignType;
+  title: string; // Internal name or banner title
+  isActive: boolean;
+  
+  // Banner specific
   kicker?: string | null;
   description?: string | null;
-  /** Дополнительные пункты, по одному на строку. */
-  details?: string | null;
-  imageUrl?: string | null;
+  details?: string | null; // Bullets
   buttonText?: string | null;
   buttonUrl?: string | null;
-  style: PopupCampaignStyle;
-  isActive: boolean;
+  style?: PopupCampaignStyle;
+  
+  // Story specific
+  imageUrl?: string | null;
+  
+  // Timing & Frequency
   startAt?: string | null;
   endAt?: string | null;
   delaySeconds: number;
   durationSeconds: number;
   frequency: PopupCampaignFrequency;
+  
   sortOrder: number;
   createdAt?: any;
   updatedAt?: any;
-
-  // New fields for product-style popup
-  isProductType?: boolean;
-  isStoryType?: boolean;
-  discountPercent?: number | null;
-  stockLevel?: number | null; // 0-100
-  tags?: string | null; // space separated
-  oldPrice?: number | null;
-  newPrice?: number | null;
-  timerSeconds?: number | null;
 }
 
 export function getProductEffectivePrice(product: {
