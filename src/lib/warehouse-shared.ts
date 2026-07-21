@@ -128,6 +128,14 @@ export interface CounterpartyBalance {
   docsCount: number;
 }
 
+function normalizeName(name: string): string {
+  return name
+    .trim()
+    .toLocaleLowerCase("ru-RU")
+    .replace(/[«»"']/g, "")
+    .replace(/\s+/g, " ");
+}
+
 /** Сводка по банку */
 export function getBankSummary(payments: BankPayment[]) {
   let bankBalance = 0;
@@ -190,10 +198,11 @@ export function getCounterpartyBalances(
 
   // Helper to get or create a balance row
   const getRow = (name: string, type: "customer" | "supplier") => {
-    const key = `${type}:${name}`;
+    const norm = normalizeName(name);
+    const key = `${type}:${norm}`;
     if (!result.has(key)) {
       result.set(key, {
-        name,
+        name: name.trim(),
         type,
         docsTotal: 0,
         paidTotal: 0,
@@ -225,11 +234,11 @@ export function getCounterpartyBalances(
     if (p.excludeFromBalance) continue;
     const payDate = p.paidAt || p.date;
 
-    const customerKey = `customer:${p.counterparty}`;
-    const supplierKey = `supplier:${p.counterparty}`;
+    const normName = normalizeName(p.counterparty);
+    const customerKey = `customer:${normName}`;
+    const supplierKey = `supplier:${normName}`;
 
     // Decide which bucket this payment goes into.
-    // Preference: 1. Explicit link, 2. Direction-based if role exists, 3. Direction-based default.
     let type: "customer" | "supplier";
     
     if (p.dealIds.length > 0) {
@@ -239,7 +248,6 @@ export function getCounterpartyBalances(
     } else if (p.direction === "incoming") {
       type = "customer";
     } else if (p.direction === "outgoing") {
-      // Could be payment to supplier OR refund to customer
       if (result.has(supplierKey)) {
         type = "supplier";
       } else if (result.has(customerKey)) {
@@ -254,8 +262,6 @@ export function getCounterpartyBalances(
     const row = getRow(p.counterparty, type);
     const amount = p.amount;
     
-    // For customers: incoming is positive (paying us), outgoing is negative (refund to them)
-    // For suppliers: outgoing is positive (we paying them), incoming is negative (refund to us)
     if (type === "customer") {
       row.paidTotal += (p.direction === "incoming" ? amount : -amount);
     } else {
@@ -274,10 +280,10 @@ export function getCounterpartyBalances(
     balance: Math.round((row.docsTotal - row.paidTotal) * 100) / 100,
   }));
 
-  // Сначала с открытым долгом (баланс != 0), потом по имени
+  // Сначала с открытым долгом (баланс > 0.009), потом по имени
   list.sort((a, b) => {
-    const aOpen = Math.abs(a.balance) > 0.009 ? 1 : 0;
-    const bOpen = Math.abs(b.balance) > 0.009 ? 1 : 0;
+    const aOpen = a.balance > 0.009 ? 1 : 0;
+    const bOpen = b.balance > 0.009 ? 1 : 0;
     if (aOpen !== bOpen) return bOpen - aOpen;
     return a.name.localeCompare(b.name, "ru");
   });
