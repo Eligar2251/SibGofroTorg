@@ -832,40 +832,49 @@ export function WarehouseManager({
       {/* ════════════ ВКЛАДКА: БАНК ════════════ */}
       {activeTab === "bank" && bankSummary && (
         <div className="bank">
-          <div className="bank-hero">
-            <div className="bank-hero__main">
-              <div className="bank-hero__label">На счету (факт)</div>
-              <div
-                className={`bank-hero__value${
-                  bankSummary.balance < 0 ? " bank-hero__value--neg" : ""
-                }`}
-              >
-                {fmt(bankSummary.balance)} ₽
+          <div className="bank-hero" style={{ gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="bank-hero__main" style={{ borderRight: '1px solid rgba(255,255,255,0.1)', paddingRight: 20 }}>
+              <div className="bank-hero__label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <CreditCard size={14} /> Безналичный расчет
               </div>
-              <div className="bank-hero__note">
-                Из них <strong>{fmt(bankSummary.cashBalance)} ₽</strong> наличными
+              <div className="bank-hero__value" style={{ color: '#fff' }}>
+                {fmt(bankSummary.bankBalance)} ₽
+              </div>
+              <div style={{ marginTop: 24 }}>
+                <div className="bank-hero__label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Banknote size={14} /> Касса (наличные)
+                </div>
+                <div className="bank-hero__value" style={{ color: '#fff' }}>
+                  {fmt(bankSummary.cashBalance)} ₽
+                </div>
+              </div>
+              <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+                Общий итог (факт): <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
               </div>
             </div>
-            <div className="bank-hero__stats">
-              <div className="bank-hero__stat bank-hero__stat--in">
-                <CreditCard size={15} />
+
+            <div className="bank-hero__stats" style={{ borderLeft: 'none', paddingLeft: 0, justifyContent: 'space-between' }}>
+              <div className="bank-hero__stat">
+                <ArrowDownLeft size={16} style={{ color: '#7dd181' }} />
                 <div>
-                  <span>Безналичный расчет</span>
-                  <strong>{fmt(bankSummary.bankBalance)} ₽</strong>
+                  <span style={{ color: '#7dd181', fontWeight: 700 }}>Должны нам (ожидаем)</span>
+                  <strong style={{ color: '#7dd181', fontSize: 22 }}>+{fmt(bankSummary.expectedIn)} ₽</strong>
                 </div>
               </div>
-              <div className="bank-hero__stat bank-hero__stat--plan">
-                <Banknote size={15} />
+              
+              <div className="bank-hero__stat">
+                <ArrowUpRight size={16} style={{ color: '#ef8f76' }} />
                 <div>
-                  <span>Касса (наличные)</span>
-                  <strong>{fmt(bankSummary.cashBalance)} ₽</strong>
+                  <span style={{ color: '#ef8f76', fontWeight: 700 }}>Мы должны (к оплате)</span>
+                  <strong style={{ color: '#ef8f76', fontSize: 22 }}>−{fmt(bankSummary.expectedOut)} ₽</strong>
                 </div>
               </div>
-              <div className="bank-hero__stat" style={{ color: "#e09b12", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 8, marginTop: 4 }}>
-                <History size={15} />
+
+              <div className="bank-hero__stat" style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 12, marginTop: 4 }}>
+                <History size={16} style={{ color: '#e09b12' }} />
                 <div>
-                  <span style={{ color: "rgba(255,255,255,0.45)" }}>Прогноз (баланс + ожид.)</span>
-                  <strong>{fmt(bankSummary.balance + bankSummary.expectedIn - bankSummary.expectedOut)} ₽</strong>
+                  <span style={{ color: 'rgba(255,255,255,0.45)' }}>Прогноз после всех оплат</span>
+                  <strong style={{ color: '#fff', fontSize: 18 }}>{fmt(bankSummary.balance + bankSummary.expectedIn - bankSummary.expectedOut)} ₽</strong>
                 </div>
               </div>
             </div>
@@ -915,7 +924,7 @@ export function WarehouseManager({
           <div className="bank-due">
             <div className="bank-due__group">
               <div className="bank-due__title">
-                Покупатели <span>долг нам</span>
+                Покупатели <span style={{ color: '#7dd181' }}>должны нам</span>
               </div>
               {counterpartiesWithDebt.filter((c) => c.type === "customer").length === 0 ? (
                 <div className="bank-due__empty">Долгов нет</div>
@@ -930,7 +939,7 @@ export function WarehouseManager({
                           {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <div className="bank-due__sum bank-due__sum--debt" style={{ fontSize: 18 }}>
+                      <div className="bank-due__sum" style={{ fontSize: 18, color: '#7dd181' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
@@ -940,7 +949,7 @@ export function WarehouseManager({
 
             <div className="bank-due__group">
               <div className="bank-due__title">
-                Поставщики <span>мы должны</span>
+                Поставщики <span style={{ color: '#ef8f76' }}>мы должны</span>
               </div>
               {counterpartiesWithDebt.filter((c) => c.type === "supplier").length === 0 ? (
                 <div className="bank-due__empty">Долгов нет</div>
@@ -952,11 +961,10 @@ export function WarehouseManager({
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
-                          поступлений: {c.docsCount}
-                          {c.lastPaymentDate && ` · последний платёж ${fmtDate(c.lastPaymentDate)}`}
+                          {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <div className="bank-due__sum bank-due__sum--debt">
+                      <div className="bank-due__sum" style={{ fontSize: 18, color: '#ef8f76' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
