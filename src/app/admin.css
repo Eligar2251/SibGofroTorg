@@ -1542,6 +1542,17 @@
   background: #163a22;
 }
 
+.admin-status__btn--outline {
+  background: #fff;
+  color: var(--adm-ink);
+  border-color: var(--adm-border-mid);
+}
+
+.admin-status__btn--outline:hover:not(:disabled) {
+  background: var(--adm-paper-warm);
+  border-color: var(--adm-ink-muted);
+}
+
 .admin-status__btn--outline-red {
   background: #fff;
   color: var(--adm-rust);

@@ -967,11 +967,7 @@ export async function postReceipt(id: string): Promise<void> {
         paid += (Number(payment.amount) || 0) / links;
       }
     }
-    if (paid + 0.009 < receipt.total) {
-      throw new Error(
-        `Сначала проведите оплату счёта в банке. Оплачено ${paid.toLocaleString("ru-RU")} из ${receipt.total.toLocaleString("ru-RU")} ₽`
-      );
-    }
+    // Проверка оплаты теперь не блокирует проведение, разрешаем постоплату.
 
     const quantities = new Map<string, number>();
     for (const item of receipt.items) {
@@ -1781,19 +1777,27 @@ export async function deletePayment(id: string): Promise<void> {
 
 /** Сводка по банку */
 export function getBankSummary(payments: BankPayment[]) {
-  let balance = 0;
+  let bankBalance = 0;
+  let cashBalance = 0;
   let expectedIn = 0;
   let expectedOut = 0;
   for (const p of payments) {
     if (p.isPaid) {
-      balance += p.direction === "incoming" ? p.amount : -p.amount;
-    } else if (p.direction === "incoming") {
-      expectedIn += p.amount;
+      const amt = p.direction === "incoming" ? p.amount : -p.amount;
+      if (p.type === "cash") cashBalance += amt;
+      else bankBalance += amt;
     } else {
-      expectedOut += p.amount;
+      if (p.direction === "incoming") expectedIn += p.amount;
+      else expectedOut += p.amount;
     }
   }
-  return { balance, expectedIn, expectedOut };
+  return {
+    balance: bankBalance + cashBalance,
+    bankBalance,
+    cashBalance,
+    expectedIn,
+    expectedOut,
+  };
 }
 
 /** Оплачено по каждому заказу (id → сумма оплаченных входящих платежей) */

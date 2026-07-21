@@ -447,6 +447,13 @@ export function ReceiptPostButton({
   const [saving, setSaving] = useState(false);
 
   async function post() {
+    if (
+      !paidEnough &&
+      !confirm(
+        "Поступление еще не оплачено в банке. Провести на склад без подтверждения оплаты?"
+      )
+    )
+      return;
     setSaving(true);
     const response = await fetch(`/api/admin/warehouse/receipts/${receiptId}`, {
       method: "PATCH",
@@ -471,17 +478,31 @@ export function ReceiptPostButton({
   return (
     <button
       type="button"
-      className="admin-status__btn admin-status__btn--primary"
+      className={`admin-status__btn ${
+        paidEnough ? "admin-status__btn--primary" : "admin-status__btn--outline"
+      }`}
       onClick={post}
       disabled={saving}
+<<<<<<< HEAD
       title="Добавить товары на склад"
+=======
+      title={
+        paidEnough
+          ? "Добавить товары на склад"
+          : "Товар будет зачислен, но останется долг перед поставщиком"
+      }
+>>>>>>> c9b36a0 (Учет: разделение налички и безнала, проведение без оплаты, только долги в списках контрагентов)
     >
       {saving ? (
         <Loader2 size={14} className="animate-spin" />
       ) : (
         <CheckCircle size={14} />
       )}
+<<<<<<< HEAD
       Провести на склад
+=======
+      {paidEnough ? "Провести на склад" : "Провести без оплаты"}
+>>>>>>> c9b36a0 (Учет: разделение налички и безнала, проведение без оплаты, только долги в списках контрагентов)
     </button>
   );
 }

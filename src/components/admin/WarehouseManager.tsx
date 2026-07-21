@@ -16,6 +16,9 @@ import {
   UsersRound,
   X,
   Search,
+  Banknote,
+  CreditCard,
+  History,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -131,6 +134,30 @@ export function WarehouseManager({
   const [bstat, setBstat] = useState("all");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
 
+  // Calculations
+  const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
+  const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
+  const bankSummary = useMemo(() => getBankSummary(payments), [payments]);
+  
+  const allCounterparties = useMemo(
+    () => getCounterpartyBalances(deals, receipts, payments),
+    [deals, receipts, payments]
+  );
+
+  // Filter counterparties to only show those with debt
+  const counterpartiesWithDebt = useMemo(
+    () => allCounterparties.filter((c) => Math.abs(c.balance) > 0.009),
+    [allCounterparties]
+  );
+
+  // Find posted receipts that are not fully paid
+  const unpaidPostedReceipts = useMemo(() => {
+    return receipts.filter((r) => {
+      const paid = receiptPaidMap.get(r.id) || 0;
+      return r.status === "posted" && paid + 0.009 < r.total;
+    });
+  }, [receipts, receiptPaidMap]);
+
   // Filtered Stock
   const filteredStock = useMemo(() => {
     const query = q.toLowerCase().trim();
@@ -141,15 +168,6 @@ export function WarehouseManager({
         (p.sku && p.sku.toLowerCase().includes(query))
     );
   }, [stock, q]);
-
-  // Bank Data
-  const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
-  const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
-  const bankSummary = useMemo(() => getBankSummary(payments), [payments]);
-  const counterparties = useMemo(
-    () => getCounterpartyBalances(deals, receipts, payments),
-    [deals, receipts, payments]
-  );
 
   const bankList = useMemo(() => {
     const query = bq.toLowerCase().trim();
@@ -511,32 +529,6 @@ export function WarehouseManager({
                                 {r.supplier || "—"}
                               </span>
                             </div>
-                            <div className="admin-order__meta">
-                              <span className="admin-order__meta-label wh-meta-label">
-                                Позиций:
-                              </span>
-                              <span className="admin-order__meta-val">
-                                {r.items.length}
-                              </span>
-                            </div>
-                            {r.contactName && (
-                              <div className="admin-order__meta">
-                                <span className="admin-order__meta-label wh-meta-label">
-                                  Контакт:
-                                </span>
-                                <span className="admin-order__meta-val">
-                                  {r.contactName}
-                                </span>
-                              </div>
-                            )}
-                            {r.phone && (
-                              <div className="admin-order__meta">
-                                <span className="admin-order__meta-label wh-meta-label">
-                                  Телефон:
-                                </span>
-                                <a href={`tel:${r.phone}`}>{r.phone}</a>
-                              </div>
-                            )}
                             {r.inn && (
                               <div className="admin-order__meta">
                                 <span className="admin-order__meta-label wh-meta-label">
@@ -545,16 +537,6 @@ export function WarehouseManager({
                                 <span className="admin-order__meta-val">
                                   {r.inn}
                                   {r.kpp ? ` · КПП ${r.kpp}` : ""}
-                                </span>
-                              </div>
-                            )}
-                            {r.address && (
-                              <div className="admin-order__meta">
-                                <span className="admin-order__meta-label wh-meta-label">
-                                  Адрес:
-                                </span>
-                                <span className="admin-order__meta-val">
-                                  {r.address}
                                 </span>
                               </div>
                             )}
@@ -577,15 +559,6 @@ export function WarehouseManager({
                                 </span>
                               </div>
                             ))}
-                            {Math.abs(r.bankAdjustment) > 0.009 && (
-                              <div className="admin-order__item admin-order__item--adjustment">
-                                <span>Корректировка по фактической оплате</span>
-                                <span className="admin-order__item-sum">
-                                  {r.bankAdjustment > 0 ? "+" : ""}
-                                  {fmt(r.bankAdjustment)} ₽
-                                </span>
-                              </div>
-                            )}
                             <div className="admin-order__total">
                               <span>
                                 Итого (с НДС)
@@ -620,7 +593,7 @@ export function WarehouseManager({
                               address: r.address ?? null,
                               contactName: r.contactName ?? null,
                               comment: r.comment ?? null,
-                              items: r.items.map((item: any) => ({
+                              items: r.items.map((item) => ({
                                 productId: item.productId,
                                 name: item.name,
                                 sku: item.sku ?? null,
@@ -696,7 +669,7 @@ export function WarehouseManager({
                   const shortage =
                     d.status === "new"
                       ? d.items
-                          .map((it: any) => {
+                          .map((it) => {
                             const available = stockById.get(it.productId) ?? 0;
                             return {
                               it,
@@ -704,7 +677,7 @@ export function WarehouseManager({
                               missing: Math.max(0, it.quantity - available),
                             };
                           })
-                          .filter((r: any) => r.missing > 0)
+                          .filter((r) => r.missing > 0)
                       : [];
                   const hasShortage = shortage.length > 0;
                   return (
@@ -740,16 +713,6 @@ export function WarehouseManager({
                                 {d.customerName}
                               </span>
                             </div>
-                            {d.customerPhone && (
-                              <div className="admin-order__meta">
-                                <span className="admin-order__meta-label wh-meta-label">
-                                  Телефон:
-                                </span>
-                                <a href={`tel:${d.customerPhone}`}>
-                                  {d.customerPhone}
-                                </a>
-                              </div>
-                            )}
                           </div>
 
                           <div className="admin-order__items">
@@ -777,7 +740,7 @@ export function WarehouseManager({
                                   <AlertTriangle size={12} />
                                   Не хватает на складе
                                 </div>
-                                {shortage.map((r: any) => (
+                                {shortage.map((r) => (
                                   <div
                                     key={r.it.productId}
                                     className="deal-stock__row"
@@ -843,22 +806,124 @@ export function WarehouseManager({
               >
                 {fmt(bankSummary.balance)} ₽
               </div>
+              <div className="bank-hero__note">
+                Из них <strong>{fmt(bankSummary.cashBalance)} ₽</strong> наличными
+              </div>
             </div>
             <div className="bank-hero__stats">
               <div className="bank-hero__stat bank-hero__stat--in">
-                <ArrowDownLeft size={15} />
+                <CreditCard size={15} />
                 <div>
-                  <span>Ожидается поступление</span>
-                  <strong>+{fmt(bankSummary.expectedIn)} ₽</strong>
+                  <span>Безналичный расчет</span>
+                  <strong>{fmt(bankSummary.bankBalance)} ₽</strong>
                 </div>
               </div>
-              <div className="bank-hero__stat bank-hero__stat--out">
-                <ArrowUpRight size={15} />
+              <div className="bank-hero__stat bank-hero__stat--plan">
+                <Banknote size={15} />
                 <div>
-                  <span>К оплате (исходящие)</span>
-                  <strong>−{fmt(bankSummary.expectedOut)} ₽</strong>
+                  <span>Касса (наличные)</span>
+                  <strong>{fmt(bankSummary.cashBalance)} ₽</strong>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Unpaid Posted Receipts Block */}
+          {unpaidPostedReceipts.length > 0 && (
+            <div className="admin-card" style={{ border: "1px solid var(--adm-rust-line)", background: "var(--adm-rust-pale)" }}>
+              <div className="admin-card__head" style={{ background: "transparent" }}>
+                <h3 className="admin-card__title" style={{ color: "var(--adm-rust)" }}>
+                  <AlertTriangle size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
+                  Нужно оплатить поставщикам
+                </h3>
+              </div>
+              <div className="admin-card__pad" style={{ paddingTop: 0 }}>
+                <div className="bank-month__list">
+                  {unpaidPostedReceipts.map((r) => {
+                    const paid = receiptPaidMap.get(r.id) || 0;
+                    return (
+                      <div key={r.id} className="bank-pay" style={{ background: "#fff" }}>
+                        <div className="bank-pay__icon bank-pay__icon--out">
+                          <Truck size={17} />
+                        </div>
+                        <div className="bank-pay__main">
+                          <div className="bank-pay__row1">
+                            <span className="bank-pay__counterparty">{r.supplier}</span>
+                            <span className="bank-pay__num">ПО-{r.number}</span>
+                            <span className="admin-badge admin-badge--green">На складе</span>
+                          </div>
+                          <div className="bank-pay__row2">
+                            <span className="bank-pay__date">Поступление от {fmtDate(r.date)}</span>
+                          </div>
+                        </div>
+                        <div className="bank-pay__side">
+                          <span className="bank-pay__amount bank-pay__amount--out">
+                            {fmt(r.total - paid)} ₽
+                          </span>
+                          <div style={{ fontSize: 11, color: "var(--adm-sand)" }}>
+                            остаток из {fmt(r.total)} ₽
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Баланс по контрагентам (только с долгами) */}
+          <div className="bank-due">
+            <div className="bank-due__group">
+              <div className="bank-due__title">
+                Покупатели <span>долг нам</span>
+              </div>
+              {counterpartiesWithDebt.filter((c) => c.type === "customer").length === 0 ? (
+                <div className="bank-due__empty">Долгов нет</div>
+              ) : (
+                counterpartiesWithDebt
+                  .filter((c) => c.type === "customer")
+                  .map((c) => (
+                    <div key={`c-${c.name}`} className="bank-due__row">
+                      <div className="bank-due__name">
+                        {c.name}
+                        <span className="bank-due__meta">
+                          заказов: {c.docsCount}
+                          {c.lastPaymentDate && ` · последний платёж ${fmtDate(c.lastPaymentDate)}`}
+                        </span>
+                      </div>
+                      <div className="bank-due__sum bank-due__sum--debt">
+                        {fmt(c.balance)} ₽
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            <div className="bank-due__group">
+              <div className="bank-due__title">
+                Поставщики <span>мы должны</span>
+              </div>
+              {counterpartiesWithDebt.filter((c) => c.type === "supplier").length === 0 ? (
+                <div className="bank-due__empty">Долгов нет</div>
+              ) : (
+                counterpartiesWithDebt
+                  .filter((c) => c.type === "supplier")
+                  .map((c) => (
+                    <div key={`s-${c.name}`} className="bank-due__row">
+                      <div className="bank-due__name">
+                        {c.name}
+                        <span className="bank-due__meta">
+                          поступлений: {c.docsCount}
+                          {c.lastPaymentDate && ` · последний платёж ${fmtDate(c.lastPaymentDate)}`}
+                        </span>
+                      </div>
+                      <div className="bank-due__sum bank-due__sum--debt">
+                        {fmt(c.balance)} ₽
+                      </div>
+                    </div>
+                  ))
+              )}
             </div>
           </div>
 
