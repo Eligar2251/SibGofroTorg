@@ -460,6 +460,7 @@ async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
         : "session",
       sortOrder: Number(data.sortOrder) || 0,
       isProductType: !!data.isProductType,
+      isStoryType: !!data.isStoryType,
       discountPercent: data.discountPercent || null,
       stockLevel: data.stockLevel || null,
       tags: data.tags || null,

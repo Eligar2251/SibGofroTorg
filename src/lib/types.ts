@@ -101,6 +101,7 @@ export interface PopupCampaign {
 
   // New fields for product-style popup
   isProductType?: boolean;
+  isStoryType?: boolean;
   discountPercent?: number | null;
   stockLevel?: number | null; // 0-100
   tags?: string | null; // space separated

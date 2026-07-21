@@ -24,6 +24,7 @@ interface PopupCampaign {
   frequency: CampaignFrequency;
   // New fields
   isProductType?: boolean;
+  isStoryType?: boolean;
   discountPercent?: number | null;
   stockLevel?: number | null;
   tags?: string | null;
@@ -185,6 +186,48 @@ export function PromotionPopups() {
   const handleCtaClick = () => {
     closePopup();
   };
+
+  if (current.isStoryType && current.imageUrl) {
+    return (
+      <div
+        className={`promo-popup-overlay${isClosing ? " closing" : ""}`}
+        onClick={closePopup}
+      >
+        <div
+          className="story-popup"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {current.buttonUrl ? (
+            <Link
+              href={current.buttonUrl}
+              className="story-popup__link"
+              onClick={handleCtaClick}
+            >
+              <img
+                src={current.imageUrl}
+                alt={current.title}
+                className="story-popup__img"
+              />
+            </Link>
+          ) : (
+            <img
+              src={current.imageUrl}
+              alt={current.title}
+              className="story-popup__img"
+            />
+          )}
+          <button
+            type="button"
+            className="story-popup__close"
+            onClick={closePopup}
+            aria-label="Закрыть"
+          >
+            <X size={24} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (current.isProductType) {
     return (
@@ -375,7 +418,7 @@ export function PromotionPopups() {
 
           <div className="promo-popup__body">
             <div className="promo-popup__eyebrow">
-              <Icon size={15} /> {current.kicker || "Объявление"}
+              <Icon size={14} style={{ verticalAlign: -2 }} /> {current.kicker || "Объявление"}
             </div>
             <h2
               className="promo-popup__title"
@@ -384,16 +427,16 @@ export function PromotionPopups() {
               {current.title}
             </h2>
             {current.description && (
-              <p className="promo-popup__subtitle">{current.description}</p>
+              <p className="promo-popup__subtitle" style={{ fontSize: '15px', lineHeight: '1.6' }}>{current.description}</p>
             )}
             {points.length > 0 && (
-              <ul className="promo-popup__details">
+              <ul className="promo-popup__details" style={{ marginTop: '18px' }}>
                 {points.map((point, index) => (
                   <li key={`${point}-${index}`}>{point}</li>
                 ))}
               </ul>
             )}
-            {button && <div className="promo-popup__actions">{button}</div>}
+            {button && <div className="promo-popup__actions" style={{ marginTop: '24px' }}>{button}</div>}
           </div>
         </div>
       </section>

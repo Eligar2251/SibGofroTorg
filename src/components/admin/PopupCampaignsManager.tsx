@@ -67,6 +67,7 @@ const EMPTY = {
   sortOrder: 0,
   // New fields
   isProductType: false,
+  isStoryType: false,
   discountPercent: 0,
   stockLevel: 30,
   tags: "",
@@ -118,6 +119,7 @@ export function PopupCampaignsManager({
       frequency: item.frequency,
       sortOrder: item.sortOrder,
       isProductType: !!item.isProductType,
+      isStoryType: !!item.isStoryType,
       discountPercent: item.discountPercent || 0,
       stockLevel: item.stockLevel || 30,
       tags: item.tags || "",
@@ -155,6 +157,8 @@ export function PopupCampaignsManager({
         Math.max(5, Number(form.durationSeconds) || 20)
       ),
       sortOrder: Number(form.sortOrder) || 0,
+      isProductType: !!form.isProductType,
+      isStoryType: !!form.isStoryType,
       discountPercent: Number(form.discountPercent) || 0,
       stockLevel: Number(form.stockLevel) || 0,
       oldPrice: Number(form.oldPrice) || 0,
@@ -323,11 +327,23 @@ export function PopupCampaignsManager({
               </div>
 
               <div className="popup-admin-schedule" style={{ background: "var(--adm-paper-warm)", border: "1px solid var(--adm-border)" }}>
-                <h3>Стиль карточки товара</h3>
-                <label className="admin-check" style={{ marginBottom: 12 }}>
-                  <input type="checkbox" checked={form.isProductType} onChange={(e) => update("isProductType", e.target.checked)} />
-                  <span>Использовать дизайн карточки товара (узкое окно)</span>
-                </label>
+                <h3>Стиль окна</h3>
+                <div className="admin-grid-2">
+                  <label className="admin-check">
+                    <input type="checkbox" checked={form.isProductType} onChange={(e) => {
+                      update("isProductType", e.target.checked);
+                      if (e.target.checked) update("isStoryType", false);
+                    }} />
+                    <span>Карточка товара</span>
+                  </label>
+                  <label className="admin-check">
+                    <input type="checkbox" checked={form.isStoryType} onChange={(e) => {
+                      update("isStoryType", e.target.checked);
+                      if (e.target.checked) update("isProductType", false);
+                    }} />
+                    <span>Сторис (вертикальное фото)</span>
+                  </label>
+                </div>
 
                 {form.isProductType && (
                   <div className="admin-stack">
@@ -421,7 +437,12 @@ export function PopupCampaignsManager({
           </div>
 
           {preview && (
-            form.isProductType ? (
+            form.isStoryType ? (
+              <div className="story-popup" style={{ position: "sticky", top: 80, margin: "0 auto" }}>
+                {form.imageUrl ? <img src={form.imageUrl} alt="" className="story-popup__img" /> : <div className="story-popup__img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eee' }}>Нет фото</div>}
+                <button type="button" className="story-popup__close"><X size={24} /></button>
+              </div>
+            ) : form.isProductType ? (
               <div className="product-popup" style={{ position: "sticky", top: 80, margin: "0 auto" }}>
                 <div className="product-popup__media">
                   {form.imageUrl && <img src={form.imageUrl} alt="" className="product-popup__img" />}
@@ -466,12 +487,14 @@ export function PopupCampaignsManager({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={form.imageUrl} alt="" />
                 )}
-                <div className="popup-admin-preview__body">
-                  <span><StyleIcon size={13} /> {form.kicker || "Объявление"}</span>
-                  <h3>{form.title || "Заголовок информационного окна"}</h3>
-                  <p>{form.description || "Здесь будет основной текст сообщения для посетителя."}</p>
-                  {points.length > 0 && <ul>{points.map((point, index) => <li key={index}>{point}</li>)}</ul>}
-                  {form.buttonUrl && <button>{form.buttonText || "Подробнее"}</button>}
+                <div className="popup-admin-preview__body" style={{ padding: '30px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, padding: '5px 12px', background: 'var(--paper)', color: 'var(--preview-accent)', borderRadius: '8px', textTransform: 'uppercase' }}>
+                    <StyleIcon size={14} style={{ marginRight: 6, verticalAlign: -2 }} /> {form.kicker || "Объявление"}
+                  </span>
+                  <h3 style={{ fontSize: '28px', fontWeight: 850, marginTop: '20px', lineHeight: 1.1 }}>{form.title || "Заголовок информационного окна"}</h3>
+                  <p style={{ fontSize: '15px', color: 'var(--adm-ink-muted)', lineHeight: 1.6, marginTop: '14px' }}>{form.description || "Здесь будет основной текст сообщения для посетителя."}</p>
+                  {points.length > 0 && <ul style={{ marginTop: '20px', paddingLeft: '20px' }}>{points.map((point, index) => <li key={index} style={{ marginBottom: '6px' }}>{point}</li>)}</ul>}
+                  {form.buttonUrl && <button style={{ marginTop: '26px', width: '100%', height: '50px', background: 'var(--preview-accent)', color: '#fff', border: 0, borderRadius: '12px', fontWeight: 750, fontSize: '15px' }}>{form.buttonText || "Подробнее"}</button>}
                 </div>
               </div>
             )

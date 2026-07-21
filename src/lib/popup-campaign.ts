@@ -46,6 +46,7 @@ export function cleanPopupCampaign(body: Record<string, unknown>) {
     sortOrder: Number(body.sortOrder) || 0,
     // New fields
     isProductType: !!body.isProductType,
+    isStoryType: !!body.isStoryType,
     discountPercent: Number(body.discountPercent) || null,
     stockLevel: Number(body.stockLevel) || null,
     tags: text(body.tags, 200),
