@@ -342,7 +342,7 @@ export function PromotionsManager({
                   className="admin-input"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Например: Скидка 10% на гофрокороба"
+                  placeholder="Например: Скидка 10% на гофрокороб"
                 />
               </div>
               <div className="admin-field">

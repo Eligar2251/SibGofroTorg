@@ -2,6 +2,8 @@ import Link from "next/link";
 import { WastepaperCalculator } from "@/components/wastepaper/WastepaperCalculator";
 import { CheckCircle, Truck, Coins, ShieldCheck, ArrowRight } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { getWastepaperRates } from "@/lib/firestore-queries";
+import { formatRate, WASTEPAPER_SELF_BONUS } from "@/lib/wastepaper";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
 
@@ -12,7 +14,23 @@ export const metadata: Metadata = {
   alternates: { canonical: `${SITE_URL}/wastepaper` },
 };
 
-export default function WastepaperPage() {
+// Цены читаем из настроек в рантайме (редактируются в админке),
+// поэтому страница не пререндерится на этапе сборки.
+export const dynamic = "force-dynamic";
+
+export default async function WastepaperPage() {
+  const rates = await getWastepaperRates();
+  const minRate = Math.min(...Object.values(rates));
+  const selfBonus = `+ ${WASTEPAPER_SELF_BONUS} ₽/кг самовывоз`;
+
+  // Тарифы: названия фиксированные, цены — из настроек
+  const rateRows = [
+    { icon: "box", name: "Гофрокартон (коробки в разобранном виде)", rate: rates.cardboard, bonus: selfBonus },
+    { icon: "file", name: "Белая архивная бумага А4", rate: rates.office_paper, bonus: selfBonus },
+    { icon: "books", name: "Книги, журналы, газеты, каталоги", rate: rates.books, bonus: selfBonus },
+    { icon: "trash", name: "Смешанная макулатура", rate: rates.mix, bonus: selfBonus },
+  ];
+
   return (
     <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: "64px" }}>
 
@@ -45,7 +63,7 @@ export default function WastepaperPage() {
             </p>
             <div className="wp-hero__stats">
               <div className="wp-hero__stat">
-                <div className="wp-hero__stat-val">от 6 ₽</div>
+                <div className="wp-hero__stat-val">от {formatRate(minRate)} ₽</div>
                 <div className="wp-hero__stat-label">за кг</div>
               </div>
               <div className="wp-hero__stat-div" />
@@ -118,12 +136,7 @@ export default function WastepaperPage() {
                 <span className="wp-rates-card__badge">обновлено сегодня</span>
               </div>
               <div className="wp-rates-list">
-                {[
-                  { icon: "box", name: "Гофрокартон (коробки в разобранном виде)", rate: 8.0, bonus: "+ 0.5 ₽/кг самовывоз" },
-                  { icon: "file", name: "Белая архивная бумага А4", rate: 11.5, bonus: "+ 0.5 ₽/кг самовывоз" },
-                  { icon: "books", name: "Книги, журналы, газеты, каталоги", rate: 9.0, bonus: "+ 0.5 ₽/кг самовывоз" },
-                  { icon: "trash", name: "Смешанная макулатура", rate: 6.0, bonus: "+ 0.5 ₽/кг самовывоз" },
-                ].map((row, i) => (
+                {rateRows.map((row, i) => (
                   <div key={i} className="wp-rate-row">
                     <div className="wp-rate-row__left">
                       <span className="wp-rate-row__icon"><GlyphIcon value={row.icon} size={22} /></span>
@@ -132,7 +145,7 @@ export default function WastepaperPage() {
                         <div className="wp-rate-row__bonus">{row.bonus}</div>
                       </div>
                     </div>
-                    <div className="wp-rate-row__price">{row.rate} ₽<span>/кг</span></div>
+                    <div className="wp-rate-row__price">{formatRate(row.rate)} ₽<span>/кг</span></div>
                   </div>
                 ))}
               </div>
@@ -188,7 +201,7 @@ export default function WastepaperPage() {
                   <div className="wp-calc-card__sub">Узнайте сколько получите за партию</div>
                 </div>
               </div>
-              <WastepaperCalculator />
+              <WastepaperCalculator rates={rates} />
             </div>
           </div>
         </div>

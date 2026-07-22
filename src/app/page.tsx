@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { getCategories, getProducts, getPromotions, getProductById } from "@/lib/firestore-queries";
+import {
+  getCategories,
+  getProducts,
+  getPromotions,
+  getProductById,
+  getWastepaperRates,
+} from "@/lib/firestore-queries";
+import { formatRate } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
@@ -48,13 +55,14 @@ export const revalidate = 120;
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [categories, featuredProducts, promotions] = await Promise.all([
+  const [categories, featuredProducts, promotions, wpRates] = await Promise.all([
     getCategories(),
     getProducts({
       featuredOnly: true,
       limitCount: 12,
     }),
     getPromotions(),
+    getWastepaperRates(),
   ]);
 
   // Для акций со ссылкой на товар резолвим slug товара,
@@ -135,10 +143,10 @@ export default async function HomePage() {
         <div className="hero__left">
           <div className="hero__left-inner container-half">
             <span className="hero__eyebrow">
-              Склад в Новосибирске · отгрузка день в день
+              Быстрая отгрузка
             </span>
             <h1 className="hero__h1">
-              Гофрокороба
+              Гофрокороб
               <br />
               <span className="hero__accent">от 1 штуки</span>
               <br />
@@ -153,7 +161,7 @@ export default async function HomePage() {
             <div className="hero__perks">
               <div className="hero__perk">
                 <Truck size={16} />
-                <span>Доставка 1-2 дня</span>
+                <span>Доставка 2-3 дня</span>
               </div>
               <div className="hero__perk">
                 <Zap size={16} />
@@ -199,15 +207,15 @@ export default async function HomePage() {
             <div className="hero__wp-rates">
               <div className="hero__wp-rate">
                 <span>Гофрокартон</span>
-                <strong>8 ₽/кг</strong>
+                <strong>{formatRate(wpRates.cardboard)} ₽/кг</strong>
               </div>
               <div className="hero__wp-rate">
                 <span>Белая бумага</span>
-                <strong>11.5 ₽/кг</strong>
+                <strong>{formatRate(wpRates.office_paper)} ₽/кг</strong>
               </div>
               <div className="hero__wp-rate">
                 <span>Книги / архив</span>
-                <strong>9 ₽/кг</strong>
+                <strong>{formatRate(wpRates.books)} ₽/кг</strong>
               </div>
             </div>
 

@@ -516,7 +516,7 @@ export default function OrderPage() {
                           id: "courier" as const,
                           icon: <Truck size={20} />,
                           title: "Курьером по Новосибирску",
-                          desc: "1–2 рабочих дня",
+                          desc: "2–3 рабочих дня",
                           price: totalSum >= 30000 ? "Бесплатно" : "800 ₽",
                           free: totalSum >= 30000,
                         },

@@ -6,6 +6,13 @@ import { FieldValue, type Query } from "firebase-admin/firestore";
 import { unstable_cache } from "next/cache";
 import { getAdminDb } from "./firebase-admin";
 import {
+  WASTEPAPER_RATE_IDS,
+  WASTEPAPER_RATE_DEFAULTS,
+  wpRateSettingKey,
+  parseWastepaperRate,
+  type WastepaperRates,
+} from "./wastepaper";
+import {
   FirestoreCategory,
   FirestoreProduct,
   FirestoreOrder,
@@ -658,6 +665,29 @@ export const getSettings = unstable_cache(fetchSettings, ["base-settings"], {
 export async function updateSettings(data: Record<string, string>) {
   const db = getAdminDb();
   await db.collection("settings").doc("main").set(data, { merge: true });
+}
+
+/**
+ * Актуальные цены приёма макулатуры (₽/кг) из настроек.
+ * Значения редактируются в админке (Настройки → Цены на макулатуру)
+ * и показываются на главной и на странице «Приём макулатуры».
+ * При отсутствии/ошибке чтения — дефолтные цены.
+ */
+export async function getWastepaperRates(): Promise<WastepaperRates> {
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = (await getSettings()) || {};
+  } catch {
+    settings = {};
+  }
+  const result: WastepaperRates = { ...WASTEPAPER_RATE_DEFAULTS };
+  for (const id of WASTEPAPER_RATE_IDS) {
+    result[id] = parseWastepaperRate(
+      settings[wpRateSettingKey(id)],
+      WASTEPAPER_RATE_DEFAULTS[id]
+    );
+  }
+  return result;
 }
 
 export async function deleteOrder(id: string) {

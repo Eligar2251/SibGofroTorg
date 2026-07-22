@@ -45,7 +45,7 @@ export default function DeliveryPage() {
             </p>
             <ul style={{ display: "flex", flexDirection: "column", gap: "8px", listStyle: "none" }}>
               <li style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: "var(--ink-light)" }}>
-                <Check size={14} style={{ color: "var(--green)" }} /> Доставка в течение 1–2 рабочих дней
+                <Check size={14} style={{ color: "var(--green)" }} /> Доставка в течение 2–3 рабочих дней
               </li>
               <li style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: "var(--ink-light)" }}>
                 <Check size={14} style={{ color: "var(--green)" }} /> Возможность срочной доставки в день заказа

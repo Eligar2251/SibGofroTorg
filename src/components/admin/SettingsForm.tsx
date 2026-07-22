@@ -6,6 +6,12 @@
 
 import { useState } from "react";
 import { Save, Loader2, CheckCircle } from "lucide-react";
+import {
+  WASTEPAPER_RATE_IDS,
+  WASTEPAPER_RATE_DEFAULTS,
+  wpRateSettingKey,
+  type WastepaperRateId,
+} from "@/lib/wastepaper";
 
 interface SettingsFormProps {
   settings: Record<string, string>;
@@ -21,6 +27,14 @@ const contactFields = [
     label: "Порог бесплатной доставки (₽)",
     type: "number",
   },
+];
+
+/** Виды макулатуры, цены на которые редактируются в этом блоке */
+const wastepaperFields: { id: WastepaperRateId; label: string }[] = [
+  { id: "cardboard", label: "Гофрокартон" },
+  { id: "office_paper", label: "Белая бумага (архив)" },
+  { id: "books", label: "Книги, журналы, газеты" },
+  { id: "mix", label: "Смешанная макулатура" },
 ];
 
 const botFields = [
@@ -39,7 +53,15 @@ const botFields = [
 ];
 
 export function SettingsForm({ settings }: SettingsFormProps) {
-  const [values, setValues] = useState(settings);
+  // Цены макулатуры: если в настройках ещё пусто — подставляем дефолты,
+  // чтобы админ сразу видел действующие значения, а не пустые поля
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const defaults: Record<string, string> = {};
+    for (const id of WASTEPAPER_RATE_IDS) {
+      defaults[wpRateSettingKey(id)] = String(WASTEPAPER_RATE_DEFAULTS[id]);
+    }
+    return { ...defaults, ...settings };
+  });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -85,6 +107,39 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                 />
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-card">
+        <div className="admin-card__pad">
+          <h2 className="admin-h2">Цены на макулатуру (₽/кг)</h2>
+          <div className="admin-stack">
+            <div className="admin-grid-2">
+              {wastepaperFields.map((field) => {
+                const key = wpRateSettingKey(field.id);
+                return (
+                  <div key={field.id} className="admin-field">
+                    <label className="admin-label">{field.label}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={values[key] ?? ""}
+                      onChange={(e) =>
+                        setValues({ ...values, [key]: e.target.value })
+                      }
+                      className="admin-input"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="admin-hint">
+              Эти цены показываются на главной странице и на странице «Приём
+              макулатуры» (в тарифах и калькуляторе). Изменения применяются
+              сразу после сохранения.
+            </p>
           </div>
         </div>
       </div>
