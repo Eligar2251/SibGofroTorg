@@ -567,30 +567,6 @@ export function WarehouseManager({
             заявками с сайта.
           </p>
         </div>
-        <div className="admin-page-head__actions">
-          {activeTab === "receipts" && receiptSub === "active" && (
-            <ReceiptForm
-              products={pickerProducts}
-              counterparties={counterpartyOptions}
-              deals={deals}
-              payments={payments}
-            />
-          )}
-          {activeTab === "deals" && (
-            <DealForm
-              products={pickerProducts}
-              counterparties={counterpartyOptions}
-              payments={payments}
-            />
-          )}
-          {activeTab === "bank" && (
-            <PaymentForm
-              deals={dealLinkOptions}
-              receipts={receiptLinkOptions}
-              counterparties={counterpartyOptions}
-            />
-          )}
-        </div>
       </div>
 
       <div className="admin-filters">
@@ -604,6 +580,30 @@ export function WarehouseManager({
             {t.label}
           </button>
         ))}
+      </div>
+      <div className="admin-page-head__actions" style={{ justifyContent: "flex-start", marginTop: -10, marginBottom: 18 }}>
+        {activeTab === "receipts" && receiptSub === "active" && (
+          <ReceiptForm
+            products={pickerProducts}
+            counterparties={counterpartyOptions}
+            deals={deals}
+            payments={payments}
+          />
+        )}
+        {activeTab === "deals" && (
+          <DealForm
+            products={pickerProducts}
+            counterparties={counterpartyOptions}
+            payments={payments}
+          />
+        )}
+        {activeTab === "bank" && (
+          <PaymentForm
+            deals={dealLinkOptions}
+            receipts={receiptLinkOptions}
+            counterparties={counterpartyOptions}
+          />
+        )}
       </div>
 
       {/* ════════════ ВКЛАДКА: СКЛАД ════════════ */}

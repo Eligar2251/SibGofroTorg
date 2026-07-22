@@ -21,6 +21,10 @@ export async function GET(request: NextRequest) {
       sku: p.sku ?? null,
       price: p.price,
       imageUrl: p.imageUrl ?? null,
+      dimensions:
+        p.dimensionLength && p.dimensionWidth && p.dimensionHeight
+          ? `${p.dimensionLength}×${p.dimensionWidth}×${p.dimensionHeight} ${p.dimensionUnit || "мм"}`
+          : null,
     }));
 
     return NextResponse.json(result);

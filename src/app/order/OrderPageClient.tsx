@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { formatPhoneMask } from "@/lib/phone-mask";
 
 type DeliveryMethod = "courier" | "pickup" | "transport";
 type PaymentMethod = "card" | "cash" | "invoice";
@@ -750,7 +751,7 @@ export function OrderPageClient({
                             className="form-input"
                             value={companyName}
                             onChange={(e) => setCompanyName(e.target.value)}
-                            placeholder='ООО «...»'
+                            placeholder='Например: ООО «Ромашка» или ИП Иванов Иван Иванович'
                           />
                         </div>
                         <div style={{ gridColumn: "1 / -1" }}>
@@ -761,7 +762,7 @@ export function OrderPageClient({
                             className="form-input"
                             value={shortName}
                             onChange={(e) => setShortName(e.target.value)}
-                            placeholder='ООО «КОРУНА» / ИП Иванов И.И.'
+                            placeholder='Например: ООО «Ромашка» / ИП Иванов И.И.'
                           />
                         </div>
                         <div>
@@ -823,7 +824,7 @@ export function OrderPageClient({
                         </div>
                         <div>
                           <label className="checkout-label">Банк</label>
-                          <input className="form-input" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder='ООО "Банк Точка"' />
+                          <input className="form-input" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder='Например: ПАО «Сбербанк»' />
                         </div>
                         <div>
                           <label className="checkout-label">БИК</label>
@@ -854,7 +855,7 @@ export function OrderPageClient({
                         className="form-input"
                         type="tel"
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
                         readOnly={!!sessionUser}
                         style={
                           sessionUser
@@ -1219,7 +1220,7 @@ export function OrderPageClient({
                       type="tel"
                       className="form-input"
                       value={accPhone}
-                      onChange={(e) => setAccPhone(e.target.value)}
+                      onChange={(e) => setAccPhone(formatPhoneMask(e.target.value))}
                       placeholder="+7 ..."
                     />
                   </div>

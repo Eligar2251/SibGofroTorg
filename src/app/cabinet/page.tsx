@@ -284,7 +284,7 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
             </div>
           )}
 
-          <div className="cab-order__meta">
+          <div className="cab-order__meta" style={{ alignItems: "flex-start", textAlign: "left", marginLeft: 0 }}>
             {order.communicationChannel && (
               <div className="cab-order__meta-row">
                 <span className="cab-order__meta-label">
@@ -324,11 +324,11 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
 
           {isOrder && (
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-              <button type="button" className="btn-primary" onClick={startEdit} disabled={saving} style={{ height: 38, padding: "0 14px" }}>
-                <Package size={14} /> Изменить / добавить товар
+              <button type="button" className="btn-primary" onClick={startEdit} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                <Package size={14} /> <span>Изменить / добавить товар</span>
               </button>
-              <button type="button" className="btn-back" onClick={cancelOrder} disabled={saving} style={{ height: 38, padding: "0 14px", borderColor: "#ef4444", color: "#dc2626" }}>
-                <X size={14} /> Отменить заказ
+              <button type="button" className="btn-back" onClick={cancelOrder} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", border: "1.5px solid #ef4444", color: "#dc2626", background: "#fff", borderRadius: 8, fontWeight: 700 }}>
+                <X size={14} /> <span>Отменить заказ</span>
               </button>
             </div>
           )}
@@ -378,8 +378,8 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
                 <span className="cab-order__total-sum">{editItems.reduce((s, item) => s + item.price * item.quantity, 0).toLocaleString("ru-RU")} ₽</span>
               </div>
               {editError && <div className="checkout-error" style={{ marginTop: 10 }}>{editError}</div>}
-              <button type="button" className="checkout-submit" onClick={saveEdit} disabled={saving || editItems.length === 0} style={{ marginTop: 12 }}>
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Сохранить изменения
+              <button type="button" className="checkout-submit" onClick={saveEdit} disabled={saving || editItems.length === 0} style={{ marginTop: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span>Сохранить изменения</span>
               </button>
             </div>
           )}

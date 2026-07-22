@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Recycle, Loader2, CheckCircle } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ymGoal } from "@/lib/ym";
+import { formatPhoneMask } from "@/lib/phone-mask";
 import {
   withDefaultRates,
   formatRate,
@@ -34,6 +35,7 @@ export function WastepaperCalculator({
   const [delivery, setDelivery] = useState<"self" | "pickup">("self");
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [err, setErr] = useState("");
+  const [phone, setPhone] = useState("");
 
   const currentRateObj = RATE_META.find(r => r.id === type) || RATE_META[0];
   const baseRate = effectiveRates[currentRateObj.id];
@@ -86,6 +88,7 @@ export function WastepaperCalculator({
       setState("success");
       ymGoal("wastepaper_submit");
       (e.target as HTMLFormElement).reset();
+      setPhone("");
     } catch {
       setErr("Не удалось отправить заявку. Попробуйте ещё раз.");
       setState("error");
@@ -198,7 +201,9 @@ export function WastepaperCalculator({
             name="phone"
             type="tel"
             required
-            placeholder="Телефон *"
+            value={phone}
+            onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
+            placeholder="+7 (913) 000-00-00 *"
             className="form-input"
           />
         </div>
