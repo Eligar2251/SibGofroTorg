@@ -200,8 +200,8 @@ export function HomeCatalogSection({
               <div
                 className={`products-grid-4${loading ? " products-grid-4--loading" : ""}`}
               >
-                {products.map((p) => (
-                  <ProductCardCompact key={p.id} product={p} />
+                {products.map((p, idx) => (
+                  <ProductCardCompact key={p.id} product={p} highlight={idx === 0} />
                 ))}
               </div>
             ) : (

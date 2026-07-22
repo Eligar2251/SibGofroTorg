@@ -57,7 +57,7 @@ export default async function RootLayout({
   /* Никаких headers()/cookies() здесь — иначе весь сайт становится
      динамическим и теряет ISR-кэширование страниц */
   return (
-    <html lang="ru">
+    <html lang="ru" data-scroll-behavior="smooth">
       <head>
         <JsonLd
           data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}

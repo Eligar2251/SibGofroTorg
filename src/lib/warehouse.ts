@@ -227,14 +227,40 @@ async function fetchCounterpartyRows(): Promise<Counterparty[]> {
 async function fetchSupplierPriceRows(): Promise<
   { counterpartyId: string; productId: string; price: number }[]
 > {
-  const snap = await getAdminDb().collectionGroup("supplierPrices").get();
-  return snap.docs
-    .map((doc) => ({
+  const db = getAdminDb();
+  const [priceSnap, receiptSnap] = await Promise.all([
+    db.collectionGroup("supplierPrices").get(),
+    db.collection("warehouseReceipts").limit(1000).get(),
+  ]);
+
+  const rows: { counterpartyId: string; productId: string; price: number }[] = [];
+
+  for (const doc of priceSnap.docs) {
+    rows.push({
       counterpartyId: doc.ref.parent.parent?.id || "",
       productId: String(doc.data().productId || doc.id),
       price: Math.max(0, Number(doc.data().price) || 0),
-    }))
-    .filter((row) => row.counterpartyId && row.productId && row.price > 0);
+    });
+  }
+
+  // Подтягиваем товары поставщиков из всех оформленных поставок, даже если
+  // закупочная цена не сохранилась или равна 0 — цену можно будет проставить вручную.
+  for (const doc of receiptSnap.docs) {
+    const receipt = doc.data() as any;
+    const counterpartyId = receipt.counterpartyId || counterpartyIdForName(String(receipt.supplier || ""));
+    const items = Array.isArray(receipt.items) ? receipt.items : [];
+    for (const item of items) {
+      const productId = String(item.productId || "");
+      if (!counterpartyId || !productId) continue;
+      rows.push({
+        counterpartyId,
+        productId,
+        price: Math.max(0, Number(item.price) || 0),
+      });
+    }
+  }
+
+  return rows.filter((row) => row.counterpartyId && row.productId);
 }
 
 const getCachedCounterpartyRows = unstable_cache(
@@ -276,9 +302,10 @@ export async function getCounterparties(options?: {
   for (const priceRow of priceRows) {
     const counterparty = byId.get(priceRow.counterpartyId);
     if (!counterparty) continue;
+    const current = counterparty.supplierPrices?.[priceRow.productId];
     counterparty.supplierPrices = {
       ...(counterparty.supplierPrices || {}),
-      [priceRow.productId]: priceRow.price,
+      [priceRow.productId]: current && current > 0 ? current : priceRow.price,
     };
   }
   rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
@@ -2505,4 +2532,36 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
     customerCancelledAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
+}
+
+export async function updateSupplierPriceList(
+  counterpartyId: string,
+  prices: { productId: string; price: number }[]
+): Promise<void> {
+  const db = getAdminDb();
+  const ref = db.collection("counterparties").doc(counterpartyId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Поставщик не найден");
+  const data = snap.data() || {};
+  const roles = Array.isArray(data.roles) ? data.roles : [];
+  if (!roles.includes("supplier")) {
+    await ref.set({ roles: FieldValue.arrayUnion("supplier"), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+
+  const batch = db.batch();
+  const inline: Record<string, number> = { ...(data.supplierPrices || {}) };
+  for (const row of prices) {
+    const productId = String(row.productId || "").trim();
+    if (!productId) continue;
+    const price = Math.max(0, Number(row.price) || 0);
+    inline[productId] = price;
+    batch.set(
+      ref.collection("supplierPrices").doc(productId),
+      { productId, price, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+  }
+  batch.set(ref, { supplierPrices: inline, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  await batch.commit();
+  invalidateCounterpartyCache(true);
 }

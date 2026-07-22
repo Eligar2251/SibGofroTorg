@@ -23,6 +23,7 @@ import {
   Plus,
   Send,
   Loader2,
+  Save,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -167,6 +168,9 @@ export function WarehouseManager({
   const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [procurementQuery, setProcurementQuery] = useState("");
+  const [supplierPriceQuery, setSupplierPriceQuery] = useState("");
+  const [supplierPriceDrafts, setSupplierPriceDrafts] = useState<Record<string, string>>({});
+  const [supplierPriceSaving, setSupplierPriceSaving] = useState(false);
   const [procurementCart, setProcurementCart] = useState<ProcurementCartItem[]>([]);
   const [procurementSaving, setProcurementSaving] = useState(false);
   const [bankSub, setBankSub] = useState<BankSub>("pending");
@@ -200,6 +204,17 @@ export function WarehouseManager({
   const [bq, setBq] = useState(""); // Bank query
   const [bdir, setBdir] = useState("all");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
+
+  useEffect(() => {
+    if (!selectedSupplierId) return;
+    const supplier = counterpartyOptions.find((item) => item.id === selectedSupplierId);
+    const next: Record<string, string> = {};
+    for (const [productId, price] of Object.entries(supplier?.supplierPrices || {})) {
+      next[productId] = String(price ?? 0);
+    }
+    setSupplierPriceDrafts(next);
+    setSupplierPriceQuery("");
+  }, [counterpartyOptions, selectedSupplierId]);
 
   // Calculations
   const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
@@ -407,7 +422,7 @@ export function WarehouseManager({
           return { supplier, productId, product, price: Number(price) || 0 };
         })
       )
-      .filter((row) => row.product && row.price > 0)
+      .filter((row) => row.product)
       .sort((a, b) => (a.product?.name || "").localeCompare(b.product?.name || "", "ru"));
   }, [counterpartyOptions, productById]);
   const supplierCards = useMemo(() => {
@@ -483,6 +498,39 @@ export function WarehouseManager({
 
   function patchProcurementItem(index: number, patch: Partial<ProcurementCartItem>) {
     setProcurementCart((prev) => prev.map((item, idx) => idx === index ? { ...item, ...patch } : item));
+  }
+
+  const supplierPriceProducts = useMemo(() => {
+    const query = supplierPriceQuery.trim().toLocaleLowerCase("ru-RU");
+    return pickerProducts
+      .filter((product) => {
+        if (!query) return supplierPriceDrafts[product.id] !== undefined;
+        return `${product.name} ${product.sku || ""}`.toLocaleLowerCase("ru-RU").includes(query);
+      })
+      .slice(0, query ? 80 : 300);
+  }, [pickerProducts, supplierPriceDrafts, supplierPriceQuery]);
+
+  async function saveSupplierPrices() {
+    if (!selectedSupplier) return;
+    setSupplierPriceSaving(true);
+    try {
+      const prices = Object.entries(supplierPriceDrafts).map(([productId, price]) => ({
+        productId,
+        price: Math.max(0, Number(String(price).replace(",", ".")) || 0),
+      }));
+      const res = await fetch(`/api/admin/warehouse/counterparties/${selectedSupplier.supplier.id}/supplier-prices`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prices }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Не удалось сохранить прайс");
+      window.location.reload();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось сохранить прайс");
+    } finally {
+      setSupplierPriceSaving(false);
+    }
   }
 
   async function sendProcurementToReceipts() {
@@ -1111,6 +1159,63 @@ export function WarehouseManager({
                   </div>
                   <Link href={`/${adminPath}/warehouse?tab=counterparties`} className="admin-btn admin-btn--ghost" prefetch={false}>Открыть контрагентов</Link>
                 </div>
+
+                <div className="admin-card__pad" style={{ display: "grid", gap: 12, borderTop: "1px solid var(--adm-border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <div>
+                      <strong style={{ color: "var(--adm-navy)" }}>Прайс-лист поставщика</strong>
+                      <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>Массово добавьте товар и закупочную цену. Если цена неизвестна — оставьте 0.</div>
+                    </div>
+                    <button type="button" className="admin-btn admin-btn--primary" disabled={supplierPriceSaving} onClick={saveSupplierPrices}>
+                      {supplierPriceSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      Сохранить прайс
+                    </button>
+                  </div>
+                  <div style={{ position: "relative" }}>
+                    <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
+                    <input
+                      className="admin-input"
+                      value={supplierPriceQuery}
+                      onChange={(e) => setSupplierPriceQuery(e.target.value)}
+                      placeholder="Найти товар для прайса..."
+                      style={{ paddingLeft: 36 }}
+                    />
+                  </div>
+                  <div className="admin-table-wrap" style={{ maxHeight: 320, overflow: "auto" }}>
+                    <table className="admin-table">
+                      <thead><tr><th>Товар</th><th style={{ width: 170 }}>Цена закупки</th><th style={{ width: 120 }}>Действие</th></tr></thead>
+                      <tbody>
+                        {supplierPriceProducts.map((product) => {
+                          const inPrice = supplierPriceDrafts[product.id] !== undefined;
+                          return (
+                            <tr key={product.id}>
+                              <td><strong>{product.name}</strong>{product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}</td>
+                              <td>
+                                <input
+                                  className="admin-input"
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={supplierPriceDrafts[product.id] ?? ""}
+                                  onChange={(e) => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: e.target.value }))}
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td>
+                                {inPrice ? (
+                                  <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => { const next = { ...prev }; delete next[product.id]; return next; })}>Убрать</button>
+                                ) : (
+                                  <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: "0" }))}>Добавить</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
                 {selectedSupplier.products.length > 0 ? (
                   <div className="admin-table-wrap"><table className="admin-table">
                     <thead><tr><th>Товар</th><th>Остаток</th><th>Порог</th><th>Закупочная цена</th><th>Статус</th><th></th></tr></thead>
