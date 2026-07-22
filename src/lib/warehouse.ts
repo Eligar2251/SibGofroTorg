@@ -29,6 +29,9 @@ import {
   type BankPayment,
   type WarehouseStockRow,
   type CounterpartyBalance,
+  type Employee,
+  type Salary,
+  type SalarySource,
   getBankSummary,
   getDealPaidMap,
   getReceiptPaidMap,
@@ -50,6 +53,9 @@ export {
   type BankPayment,
   type WarehouseStockRow,
   type CounterpartyBalance,
+  type Employee,
+  type Salary,
+  type SalarySource,
   getBankSummary,
   getDealPaidMap,
   getReceiptPaidMap,
@@ -112,6 +118,15 @@ function counterpartyPayload(
     "email",
     "inn",
     "kpp",
+    "ogrn",
+    "fullName",
+    "shortName",
+    "legalAddress",
+    "taxSystem",
+    "bankAccount",
+    "bankName",
+    "bik",
+    "correspondentAccount",
     "address",
     "contactName",
   ];
@@ -187,6 +202,15 @@ function mapCounterparty(id: string, data: any): Counterparty {
     email: data.email ?? null,
     inn: data.inn ?? null,
     kpp: data.kpp ?? null,
+    ogrn: data.ogrn ?? null,
+    fullName: data.fullName ?? null,
+    shortName: data.shortName ?? null,
+    legalAddress: data.legalAddress ?? null,
+    taxSystem: data.taxSystem ?? null,
+    bankAccount: data.bankAccount ?? null,
+    bankName: data.bankName ?? null,
+    bik: data.bik ?? null,
+    correspondentAccount: data.correspondentAccount ?? null,
     address: data.address ?? null,
     contactName: data.contactName ?? null,
     comment: data.comment ?? null,
@@ -195,24 +219,78 @@ function mapCounterparty(id: string, data: any): Counterparty {
   };
 }
 
+let memoryCounterpartiesCache: { at: number; data: Counterparty[] } | null = null;
+
 async function fetchCounterpartyRows(): Promise<Counterparty[]> {
-  const snap = await getAdminDb().collection("counterparties").get();
-  return snap.docs.map((doc) => mapCounterparty(doc.id, doc.data()));
+  const now = Date.now();
+  if (memoryCounterpartiesCache && now - memoryCounterpartiesCache.at < 60_000) {
+    return memoryCounterpartiesCache.data;
+  }
+  try {
+    const snap = await getAdminDb().collection("counterparties").get();
+    const data = snap.docs.map((doc) => mapCounterparty(doc.id, doc.data()));
+    memoryCounterpartiesCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("fetchCounterpartyRows error:", error?.message || error);
+    return memoryCounterpartiesCache?.data || [];
+  }
 }
+
+let memorySupplierPricesCache: {
+  at: number;
+  data: { counterpartyId: string; productId: string; price: number }[];
+} | null = null;
 
 async function fetchSupplierPriceRows(): Promise<
   { counterpartyId: string; productId: string; price: number }[]
 > {
-  const snap = await getAdminDb().collectionGroup("supplierPrices").get();
-  return snap.docs
-    .map((doc) => ({
-      counterpartyId: doc.ref.parent.parent?.id || "",
-      productId: String(doc.data().productId || doc.id),
-      price: Math.max(0, Number(doc.data().price) || 0),
-    }))
-    .filter((row) => row.counterpartyId && row.productId && row.price > 0);
-}
+  const now = Date.now();
+  if (memorySupplierPricesCache && now - memorySupplierPricesCache.at < 60_000) {
+    return memorySupplierPricesCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const [priceSnap, receiptSnap] = await Promise.all([
+      db.collectionGroup("supplierPrices").get(),
+      db.collection("warehouseReceipts").limit(1000).get(),
+    ]);
 
+    const rows: { counterpartyId: string; productId: string; price: number }[] = [];
+
+    for (const doc of priceSnap.docs) {
+      rows.push({
+        counterpartyId: doc.ref.parent.parent?.id || "",
+        productId: String(doc.data().productId || doc.id),
+        price: Math.max(0, Number(doc.data().price) || 0),
+      });
+    }
+
+    // Подтягиваем товары поставщиков из всех оформленных поставок, даже если
+    // закупочная цена не сохранилась или равна 0 — цену можно будет проставить вручную.
+    for (const doc of receiptSnap.docs) {
+      const receipt = doc.data() as any;
+      const counterpartyId = receipt.counterpartyId || counterpartyIdForName(String(receipt.supplier || ""));
+      const items = Array.isArray(receipt.items) ? receipt.items : [];
+      for (const item of items) {
+        const productId = String(item.productId || "");
+        if (!counterpartyId || !productId) continue;
+        rows.push({
+          counterpartyId,
+          productId,
+          price: Math.max(0, Number(item.price) || 0),
+        });
+      }
+    }
+
+    const data = rows.filter((row) => row.counterpartyId && row.productId);
+    memorySupplierPricesCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("fetchSupplierPriceRows error:", error?.message || error);
+    return memorySupplierPricesCache?.data || [];
+  }
+}
 const getCachedCounterpartyRows = unstable_cache(
   fetchCounterpartyRows,
   ["warehouse-counterparties"],
@@ -252,9 +330,10 @@ export async function getCounterparties(options?: {
   for (const priceRow of priceRows) {
     const counterparty = byId.get(priceRow.counterpartyId);
     if (!counterparty) continue;
+    const current = counterparty.supplierPrices?.[priceRow.productId];
     counterparty.supplierPrices = {
       ...(counterparty.supplierPrices || {}),
-      [priceRow.productId]: priceRow.price,
+      [priceRow.productId]: current && current > 0 ? current : priceRow.price,
     };
   }
   rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
@@ -269,6 +348,15 @@ export async function saveCounterparty(data: {
   email?: string | null;
   inn?: string | null;
   kpp?: string | null;
+  ogrn?: string | null;
+  fullName?: string | null;
+  shortName?: string | null;
+  legalAddress?: string | null;
+  taxSystem?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
@@ -294,6 +382,15 @@ export async function saveCounterparty(data: {
         email: cleanText(data.email, 160),
         inn: cleanText(data.inn, 20),
         kpp: cleanText(data.kpp, 20),
+        ogrn: cleanText(data.ogrn, 20),
+        fullName: cleanText(data.fullName, 200),
+        shortName: cleanText(data.shortName, 200),
+        legalAddress: cleanText(data.legalAddress, 400),
+        taxSystem: cleanText(data.taxSystem, 40),
+        bankAccount: cleanText(data.bankAccount, 40),
+        bankName: cleanText(data.bankName, 200),
+        bik: cleanText(data.bik, 20),
+        correspondentAccount: cleanText(data.correspondentAccount, 40),
         address: cleanText(data.address, 400),
         contactName: cleanText(data.contactName, 160),
         comment: cleanText(data.comment, 1000),
@@ -451,39 +548,55 @@ function mapStockOrigin(id: string, data: any): StockOrigin {
   };
 }
 
+let memoryStockCache: { at: number; data: WarehouseStockRow[] } | null = null;
+
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
-  const db = getAdminDb();
-  const snap = await db.collection("products").get();
-  const rows: WarehouseStockRow[] = snap.docs.map((d) => {
-    const data = d.data() as any;
-    const price =
-      data.price !== undefined && data.price !== null
-        ? Number(data.price)
-        : null;
-    const effective = getProductEffectivePrice({
-      price,
-      discountType: data.discountType ?? null,
-      discountValue: data.discountValue ?? null,
+  const now = Date.now();
+  if (memoryStockCache && now - memoryStockCache.at < 60_000) {
+    return memoryStockCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("products").get();
+    const rows: WarehouseStockRow[] = snap.docs.map((d) => {
+      const data = d.data() as any;
+      const price =
+        data.price !== undefined && data.price !== null
+          ? Number(data.price)
+          : null;
+      const effective = getProductEffectivePrice({
+        price,
+        discountType: data.discountType ?? null,
+        discountValue: data.discountValue ?? null,
+      });
+      return {
+        id: d.id,
+        name: String(data.name || ""),
+        sku: data.sku ? String(data.sku) : null,
+        stockQty:
+          data.stockQty !== undefined && data.stockQty !== null
+            ? Number(data.stockQty)
+            : 0,
+        stockWarnQty:
+          data.stockWarnQty !== undefined && data.stockWarnQty !== null
+            ? Number(data.stockWarnQty)
+            : null,
+        inStock: data.inStock !== false,
+        price: effective,
+        priceWholesale:
+          data.priceWholesale !== undefined && data.priceWholesale !== null
+            ? Number(data.priceWholesale)
+            : null,
+        isVisible: data.isVisible !== false,
+      };
     });
-    return {
-      id: d.id,
-      name: String(data.name || ""),
-      sku: data.sku ? String(data.sku) : null,
-      stockQty:
-        data.stockQty !== undefined && data.stockQty !== null
-          ? Number(data.stockQty)
-          : 0,
-      inStock: data.inStock !== false,
-      price: effective,
-      priceWholesale:
-        data.priceWholesale !== undefined && data.priceWholesale !== null
-          ? Number(data.priceWholesale)
-          : null,
-      isVisible: data.isVisible !== false,
-    };
-  });
-  rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
-  return rows;
+    rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    memoryStockCache = { at: now, data: rows };
+    return rows;
+  } catch (error: any) {
+    console.error("getWarehouseStock error:", error?.message || error);
+    return memoryStockCache?.data || [];
+  }
 }
 
 export async function getProductStockOrigins(
@@ -571,6 +684,15 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
     email: data.email ?? null,
     inn: data.inn ?? null,
     kpp: data.kpp ?? null,
+    ogrn: data.ogrn ?? null,
+    fullName: data.fullName ?? null,
+    shortName: data.shortName ?? null,
+    legalAddress: data.legalAddress ?? null,
+    taxSystem: data.taxSystem ?? null,
+    bankAccount: data.bankAccount ?? null,
+    bankName: data.bankName ?? null,
+    bik: data.bik ?? null,
+    correspondentAccount: data.correspondentAccount ?? null,
     address: data.address ?? null,
     contactName: data.contactName ?? null,
     comment: data.comment ?? null,
@@ -588,14 +710,27 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
   };
 }
 
+let memoryReceiptsCache: { at: number; data: WarehouseReceipt[] } | null = null;
+
 export async function getReceipts(): Promise<WarehouseReceipt[]> {
-  const db = getAdminDb();
-  const snap = await db
-    .collection("warehouseReceipts")
-    .orderBy("number", "desc")
-    .limit(200)
-    .get();
-  return snap.docs.map((d) => mapReceipt(d.id, d.data()));
+  const now = Date.now();
+  if (memoryReceiptsCache && now - memoryReceiptsCache.at < 60_000) {
+    return memoryReceiptsCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("warehouseReceipts")
+      .orderBy("number", "desc")
+      .limit(200)
+      .get();
+    const data = snap.docs.map((d) => mapReceipt(d.id, d.data()));
+    memoryReceiptsCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("getReceipts error:", error?.message || error);
+    return memoryReceiptsCache?.data || [];
+  }
 }
 
 export async function getReceiptById(
@@ -613,6 +748,15 @@ export async function createReceipt(data: {
   email?: string | null;
   inn?: string | null;
   kpp?: string | null;
+  ogrn?: string | null;
+  fullName?: string | null;
+  shortName?: string | null;
+  legalAddress?: string | null;
+  taxSystem?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
@@ -637,9 +781,15 @@ export async function createReceipt(data: {
   
   const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [];
   const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
-  const paymentSplits = Array.isArray(data.paymentSplits) && data.paymentSplits.length > 0
-    ? data.paymentSplits
-    : [total];
+  // Разбивка оплаты на части: оставляем только положительные суммы.
+  // Если корректных частей нет (пустые/нулевые/отрицательные) — создаём
+  // один платёж на весь итог, чтобы в банк не уходил «общий» мусор.
+  const paymentSplits = (
+    Array.isArray(data.paymentSplits) ? data.paymentSplits : []
+  )
+    .map((n) => round2(Number(n) || 0))
+    .filter((n) => n > 0);
+  if (paymentSplits.length === 0) paymentSplits.push(total);
 
   const linkedDealNumbers: number[] = [];
   for (const dealId of linkedDealIds) {
@@ -755,6 +905,7 @@ export async function updateReceipt(
     vatRate?: number;
     linkedDealIds?: string[];
     linkedPaymentIds?: string[];
+    paymentSplits?: number[];
   }
 ): Promise<void> {
   const db = getAdminDb();
@@ -901,18 +1052,89 @@ export async function updateReceipt(
     ),
   });
   batch.update(ref, { counterpartyId });
-  for (const payment of paymentSnap.docs) {
-    if (payment.data().isPaid === true) continue;
-    batch.update(payment.ref, {
-      counterparty: supplier,
-      counterpartyId,
-      amount: linesTotal,
-      vatRate,
-      vatAmount: includedVat(linesTotal, vatRate),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+
+  // Синхронизация платежей с поступлением.
+  //  • Оплаченные не трогаем (это история денег).
+  //  • Неоплаченные приводим к запрошенной разбивке (paymentSplits из формы):
+    //    если количество совпало — правим суммы на месте (сохраняя номера),
+  //    иначе удаляем старые и создаём новые. Заодно это пересоздаёт
+  //    платёж, который удалили в банке, а поступление пересохраняют.
+  //  • Сумма неоплаченных частей всегда соответствует остатку долга
+  //    (итог − уже оплачено), поэтому задвоений не бывает.
+  const unpaidSoloDocs = paymentSnap.docs.filter((d) => {
+    const p = d.data();
+    if (p.isPaid === true) return false;
+    const receiptLinks = Array.isArray(p.receiptIds) ? p.receiptIds.length : 0;
+    const dealLinks = Array.isArray(p.dealIds) ? p.dealIds.length : 0;
+    return receiptLinks === 1 && dealLinks === 0;
+  });
+  const remaining = Math.max(0, round2(linesTotal - paidTotal));
+
+  const requested = (
+    Array.isArray(data.paymentSplits) ? data.paymentSplits : []
+  )
+    .map((n) => round2(Number(n) || 0))
+    .filter((n) => n > 0);
+
+  // Целевые суммы неоплаченных платежей (в сумме дают ровно остаток долга)
+  let targets: number[];
+  if (remaining <= 0) {
+    targets = [];
+  } else if (requested.length > 0) {
+    const reqSum = requested.reduce((s, n) => s + n, 0);
+    const factor = reqSum > 0 ? remaining / reqSum : 1;
+    targets = requested.map((n) => round2(n * factor));
+    const headSum = targets.slice(0, -1).reduce((s, n) => s + n, 0);
+    targets[targets.length - 1] = round2(remaining - headSum);
+    targets = targets.filter((n) => n > 0);
+  } else {
+    targets = [remaining];
   }
-  
+
+  if (targets.length > 0 && unpaidSoloDocs.length === targets.length) {
+    // Количество частей не изменилось — обновляем суммы, сохраняя номера
+    unpaidSoloDocs.forEach((d, idx) => {
+      batch.update(d.ref, {
+        counterparty: supplier,
+        counterpartyId,
+        amount: targets[idx],
+        vatRate,
+        vatAmount: includedVat(targets[idx], vatRate),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } else {
+    // Количество изменилось (включая «платёж удалили») — пересоздаём
+    for (const d of unpaidSoloDocs) batch.delete(d.ref);
+    for (let i = 0; i < targets.length; i++) {
+      const amt = targets[i];
+      const payNumber = await nextNumber("payment");
+      const payRef = db.collection("bankPayments").doc();
+      batch.set(payRef, {
+        number: payNumber,
+        date: data.date,
+        direction: "outgoing",
+        counterparty: supplier || "Поставщик",
+        counterpartyId,
+        dealIds: [],
+        dealNumbers: [],
+        receiptIds: [id],
+        receiptNumbers: [previous.number],
+        amount: amt,
+        invoiceNumber: null,
+        vatRate,
+        vatAmount: includedVat(amt, vatRate),
+        isPaid: false,
+        paidAt: null,
+        comment: `Оплата поставщику по приходному ордеру ПО-${previous.number}${
+          targets.length > 1 ? ` (часть ${i + 1})` : ""
+        }`,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
   for (const payId of linkedPaymentIds) {
     const payRef = db.collection("bankPayments").doc(payId);
     batch.update(payRef, {
@@ -1136,14 +1358,27 @@ function mapDeal(id: string, data: any): CustomerDeal {
   };
 }
 
+let memoryDealsCache: { at: number; data: CustomerDeal[] } | null = null;
+
 export async function getDeals(): Promise<CustomerDeal[]> {
-  const db = getAdminDb();
-  const snap = await db
-    .collection("customerDeals")
-    .orderBy("number", "desc")
-    .limit(300)
-    .get();
-  return snap.docs.map((d) => mapDeal(d.id, d.data()));
+  const now = Date.now();
+  if (memoryDealsCache && now - memoryDealsCache.at < 60_000) {
+    return memoryDealsCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("customerDeals")
+      .orderBy("number", "desc")
+      .limit(300)
+      .get();
+    const data = snap.docs.map((d) => mapDeal(d.id, d.data()));
+    memoryDealsCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("getDeals error:", error?.message || error);
+    return memoryDealsCache?.data || [];
+  }
 }
 
 export async function createDeal(data: {
@@ -1153,6 +1388,15 @@ export async function createDeal(data: {
   email?: string | null;
   inn?: string | null;
   kpp?: string | null;
+  ogrn?: string | null;
+  fullName?: string | null;
+  shortName?: string | null;
+  legalAddress?: string | null;
+  taxSystem?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
@@ -1373,18 +1617,50 @@ export async function updateDeal(
     { ...details, comment: data.comment }
   );
   batch.update(ref, { counterpartyId });
-  for (const payment of paymentSnap.docs) {
-    if (payment.data().isPaid === true) continue;
-    batch.update(payment.ref, {
+
+  // Аналогично поступлениям: оплаченные платежи не трогаем, а остаток долга
+  // распределяем между неоплаченными (иначе при нескольких счетах каждому
+  // записался бы весь итог).
+  const unpaidDocs = paymentSnap.docs.filter(
+    (d) => d.data().isPaid !== true
+  );
+  const remaining = Math.max(0, round2(linesTotal - paidTotal));
+  if (unpaidDocs.length === 1) {
+    batch.update(unpaidDocs[0].ref, {
       counterparty: customerName,
       counterpartyId,
-      amount: linesTotal,
+      amount: remaining,
       vatRate: VAT_RATE,
-      vatAmount: includedVat(linesTotal),
+      vatAmount: includedVat(remaining),
       updatedAt: FieldValue.serverTimestamp(),
     });
+  } else if (unpaidDocs.length > 1) {
+    const currentSum = unpaidDocs.reduce(
+      (s, d) => s + (Number(d.data().amount) || 0),
+      0
+    );
+    let allocated = 0;
+    unpaidDocs.forEach((d, idx) => {
+      const current = Number(d.data().amount) || 0;
+      const share =
+        currentSum > 0 ? current / currentSum : 1 / unpaidDocs.length;
+      const amt =
+        idx === unpaidDocs.length - 1
+          ? round2(remaining - allocated)
+          : round2(remaining * share);
+      allocated = round2(allocated + amt);
+      const safe = Math.max(0, amt);
+      batch.update(d.ref, {
+        counterparty: customerName,
+        counterpartyId,
+        amount: safe,
+        vatRate: VAT_RATE,
+        vatAmount: includedVat(safe),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
   }
-  
+
   for (const payId of linkedPaymentIds) {
     const payRef = db.collection("bankPayments").doc(payId);
     batch.update(payRef, {
@@ -1528,12 +1804,30 @@ export async function deleteDeal(id: string): Promise<void> {
   const ref = db.collection("customerDeals").doc(id);
   const snap = await ref.get();
   if (!snap.exists) return;
-  const deal = mapDeal(id, snap.data());
+  const rawDeal = snap.data() || {};
+  const deal = mapDeal(id, rawDeal);
   if (deal.status === "completed") {
     await applyStockDelta(deal.items, 1);
   }
   await ref.delete();
   await cleanupPendingDealPayments(id, db);
+
+  // Если заказ в учёте был создан из заявки сайта, после удаления отвязываем
+  // его от заявки: убираем надпись «В учёте: ЗК-…» и возвращаем заявку в обычные новые.
+  const sourceOrderId = rawDeal.sourceOrderId ? String(rawDeal.sourceOrderId) : "";
+  if (sourceOrderId) {
+    await db.collection("orders").doc(sourceOrderId).set(
+      {
+        status: "new",
+        dealId: null,
+        dealNumber: null,
+        paymentId: null,
+        closeReason: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
 }
 
 // ─── Банк (платежи) ─────────────────────────────────────
@@ -1572,14 +1866,27 @@ function mapPayment(id: string, data: any): BankPayment {
   };
 }
 
+let memoryPaymentsCache: { at: number; data: BankPayment[] } | null = null;
+
 export async function getPayments(): Promise<BankPayment[]> {
-  const db = getAdminDb();
-  const snap = await db
-    .collection("bankPayments")
-    .orderBy("number", "desc")
-    .limit(500)
-    .get();
-  return snap.docs.map((d) => mapPayment(d.id, d.data()));
+  const now = Date.now();
+  if (memoryPaymentsCache && now - memoryPaymentsCache.at < 60_000) {
+    return memoryPaymentsCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("bankPayments")
+      .orderBy("number", "desc")
+      .limit(500)
+      .get();
+    const data = snap.docs.map((d) => mapPayment(d.id, d.data()));
+    memoryPaymentsCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("getPayments error:", error?.message || error);
+    return memoryPaymentsCache?.data || [];
+  }
 }
 
 export async function createPayment(data: {
@@ -1787,3 +2094,578 @@ export async function deletePayment(id: string): Promise<void> {
   await ref.delete();
 }
 
+// ─── Сотрудники ────────────────────────────────────
+
+function mapEmployee(id: string, data: any): Employee {
+  return {
+    id,
+    name: String(data.name || ""),
+    position: data.position ?? null,
+    phone: data.phone ?? null,
+    comment: data.comment ?? null,
+    createdAt: serializeTimestamp(data.createdAt),
+  };
+}
+
+let memoryEmployeesCache: { at: number; data: Employee[] } | null = null;
+
+export async function getEmployees(): Promise<Employee[]> {
+  const now = Date.now();
+  if (memoryEmployeesCache && now - memoryEmployeesCache.at < 60_000) {
+    return memoryEmployeesCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("employees").get();
+    const rows = snap.docs.map((d) => mapEmployee(d.id, d.data()));
+    rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    memoryEmployeesCache = { at: now, data: rows };
+    return rows;
+  } catch (error: any) {
+    console.error("getEmployees error:", error?.message || error);
+    return memoryEmployeesCache?.data || [];
+  }
+}
+
+export async function saveEmployee(data: {
+  id?: string | null;
+  name: string;
+  position?: string | null;
+  phone?: string | null;
+  comment?: string | null;
+}): Promise<{ id: string }> {
+  const name = String(data.name || "").trim();
+  if (!name) throw new Error("Укажите имя сотрудника");
+  const db = getAdminDb();
+  const ref = data.id
+    ? db.collection("employees").doc(data.id)
+    : db.collection("employees").doc();
+  await ref.set(
+    {
+      name: name.slice(0, 200),
+      normalizedName: normalizeCounterpartyName(name),
+      position: cleanText(data.position, 160),
+      phone: cleanText(data.phone, 60),
+      comment: cleanText(data.comment, 500),
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(data.id ? {} : { createdAt: FieldValue.serverTimestamp() }),
+    },
+    { merge: true }
+  );
+  return { id: ref.id };
+}
+
+export async function deleteEmployee(id: string): Promise<void> {
+  // Начисления зарплаты хранят employeeName, поэтому история не теряется
+  await getAdminDb().collection("employees").doc(id).delete();
+}
+
+// ─── Зарплаты ──────────────────────────────────────
+
+function mapSalary(id: string, data: any): Salary {
+  return {
+    id,
+    employeeId: data.employeeId ?? null,
+    employeeName: String(data.employeeName || ""),
+    amount: Math.max(0, Number(data.amount) || 0),
+    date: String(data.date || ""),
+    source: data.source === "cash" ? "cash" : "bank",
+    isPaid: data.isPaid === true,
+    paidAt: data.paidAt ? String(data.paidAt) : null,
+    comment: data.comment ?? null,
+    createdAt: serializeTimestamp(data.createdAt),
+  };
+}
+
+let memorySalariesCache: { at: number; data: Salary[] } | null = null;
+
+export async function getSalaries(): Promise<Salary[]> {
+  const now = Date.now();
+  if (memorySalariesCache && now - memorySalariesCache.at < 60_000) {
+    return memorySalariesCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("salaries")
+      .orderBy("date", "desc")
+      .limit(300)
+      .get();
+    const data = snap.docs.map((d) => mapSalary(d.id, d.data()));
+    memorySalariesCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("getSalaries error:", error?.message || error);
+    return memorySalariesCache?.data || [];
+  }
+}
+
+export async function createSalary(data: {
+  employeeId?: string | null;
+  employeeName: string;
+  amount: number;
+  date: string;
+  source: SalarySource;
+  isPaid?: boolean;
+  comment?: string | null;
+}): Promise<{ id: string; employeeId: string | null }> {
+  const amount = Math.max(0, Number(data.amount) || 0);
+  if (amount <= 0) throw new Error("Укажите сумму зарплаты");
+  const employeeName = String(data.employeeName || "").trim();
+  if (!employeeName) throw new Error("Укажите сотрудника");
+  const db = getAdminDb();
+
+  // Новый сотрудник (без id) — сохраняем в справочник.
+  // Сначала ищем по имени, чтобы не плодить дубликаты.
+  let employeeId = data.employeeId || null;
+  if (!employeeId) {
+    const existing = await db
+      .collection("employees")
+      .where("normalizedName", "==", normalizeCounterpartyName(employeeName))
+      .limit(1)
+      .get();
+    if (!existing.empty) {
+      employeeId = existing.docs[0].id;
+    } else {
+      const empRef = db.collection("employees").doc();
+      await empRef.set({
+        name: employeeName.slice(0, 200),
+        normalizedName: normalizeCounterpartyName(employeeName),
+        position: null,
+        phone: null,
+        comment: null,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      employeeId = empRef.id;
+    }
+  }
+
+  const isPaid = data.isPaid === true;
+  const date = data.date || new Date().toISOString().slice(0, 10);
+  const ref = db.collection("salaries").doc();
+  await ref.set({
+    employeeId,
+    employeeName: employeeName.slice(0, 200),
+    amount,
+    date,
+    source: data.source === "cash" ? "cash" : "bank",
+    isPaid,
+    paidAt: isPaid ? date : null,
+    comment: cleanText(data.comment, 500),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { id: ref.id, employeeId };
+}
+
+export async function updateSalary(
+  id: string,
+  data: {
+    employeeId?: string | null;
+    employeeName?: string;
+    amount?: number;
+    date?: string;
+    source?: SalarySource;
+    isPaid?: boolean;
+    comment?: string | null;
+  }
+): Promise<void> {
+  const db = getAdminDb();
+  const ref = db.collection("salaries").doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Начисление не найдено");
+
+  const patch: Record<string, any> = {
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (data.employeeName !== undefined)
+    patch.employeeName = String(data.employeeName).trim().slice(0, 200);
+  if (data.employeeId !== undefined) patch.employeeId = data.employeeId;
+  if (data.amount !== undefined)
+    patch.amount = Math.max(0, Number(data.amount) || 0);
+  if (data.date !== undefined) patch.date = String(data.date);
+  if (data.source !== undefined)
+    patch.source = data.source === "cash" ? "cash" : "bank";
+  if (data.isPaid !== undefined) {
+    patch.isPaid = data.isPaid === true;
+    patch.paidAt = data.isPaid
+      ? String(data.date || snap.data()?.date || new Date().toISOString().slice(0, 10))
+      : null;
+  }
+  if (data.comment !== undefined) patch.comment = cleanText(data.comment, 500);
+
+  await ref.update(patch);
+}
+
+export async function deleteSalary(id: string): Promise<void> {
+  await getAdminDb().collection("salaries").doc(id).delete();
+}
+
+
+// ─── Передача заявки с сайта в учёт ────────────────────
+
+/**
+ * Передаёт заявку (заказ с сайта) в учёт: создаёт заказ покупателя
+ * (customerDeals) и входящий счёт в банке (bankPayments) на сумму заявки.
+ * Идемпотентно: если заявка уже передана (order.dealId), повторно не создаёт.
+ */
+export async function convertOrderToDeal(orderId: string): Promise<{
+  dealId: string | null;
+  dealNumber: number | null;
+  paymentId: string | null;
+  skipped: boolean;
+  reason?: string;
+}> {
+  const db = getAdminDb();
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) throw new Error("Заявка не найдена");
+  const order = orderSnap.data() as any;
+
+  // Уже передана в учёт — не дублируем
+  if (order.dealId) {
+    return {
+      dealId: order.dealId,
+      dealNumber: order.dealNumber ?? null,
+      paymentId: order.paymentId ?? null,
+      skipped: true,
+      reason: "already",
+    };
+  }
+
+  const rawItems = Array.isArray(order.items) ? order.items : [];
+  const items = cleanItems(
+    rawItems.map((it: any) => ({
+      productId: String(it.productId || ""),
+      name: String(it.name || ""),
+      sku: it.sku ?? null,
+      quantity: Math.max(1, Number(it.quantity) || 1),
+      price: Math.max(0, Number(it.price) || 0),
+      lineTotal: 0,
+    }))
+  );
+  if (items.length === 0) {
+    return { dealId: null, dealNumber: null, paymentId: null, skipped: true, reason: "no-items" };
+  }
+
+  const linesSum = itemsTotal(items);
+  // Сумма заявки (итог клиента). Если нет — берём сумму позиций.
+  const total = Math.max(0, round2(Number(order.totalSum) || 0)) || linesSum;
+  const customerName = String(
+    order.companyName || order.shortName || order.customerName || order.customerPhone || "Клиент"
+  ).slice(0, 200);
+
+  const number = await nextNumber("deal");
+  const paymentNumber = await nextNumber("payment");
+  const date = new Date().toISOString().slice(0, 10);
+  const vatAmount = includedVat(total);
+
+  const dealRef = db.collection("customerDeals").doc();
+  const paymentRef = db.collection("bankPayments").doc();
+  const batch = db.batch();
+
+  const details: CounterpartyDetails = {
+    phone: order.customerPhone ? String(order.customerPhone).slice(0, 60) : null,
+    email: order.customerEmail ? String(order.customerEmail).slice(0, 160) : null,
+    inn: order.inn ? String(order.inn).slice(0, 20) : null,
+    kpp: order.kpp ? String(order.kpp).slice(0, 20) : null,
+    ogrn: order.ogrn ? String(order.ogrn).slice(0, 20) : null,
+    fullName: order.companyName ? String(order.companyName).slice(0, 200) : null,
+    shortName: order.shortName ? String(order.shortName).slice(0, 200) : null,
+    legalAddress: order.legalAddress ? String(order.legalAddress).slice(0, 400) : null,
+    address: order.actualAddress || order.legalAddress ? String(order.actualAddress || order.legalAddress).slice(0, 400) : null,
+    taxSystem: order.taxSystem ? String(order.taxSystem).slice(0, 40) : null,
+    bankAccount: order.bankAccount ? String(order.bankAccount).slice(0, 40) : null,
+    bankName: order.bankName ? String(order.bankName).slice(0, 200) : null,
+    bik: order.bik ? String(order.bik).slice(0, 20) : null,
+    correspondentAccount: order.correspondentAccount ? String(order.correspondentAccount).slice(0, 40) : null,
+    contactName: order.customerName ? String(order.customerName).slice(0, 160) : null,
+  };
+  const counterpartyId = addCounterpartyToBatch(batch, "customer", customerName, {
+    ...details,
+    comment: order.comment ? String(order.comment).slice(0, 500) : null,
+  });
+
+  const orderComment = order.comment
+    ? `Из заявки с сайта. ${String(order.comment).slice(0, 400)}`
+    : "Из заявки с сайта";
+
+  batch.set(dealRef, {
+    number,
+    date,
+    customerName,
+    counterpartyId,
+    customerPhone: details.phone,
+    ...details,
+    comment: orderComment,
+    items,
+    total,
+    bankAdjustment: round2(total - linesSum),
+    vatRate: VAT_RATE,
+    vatAmount,
+    status: "new",
+    sourceOrderId: orderId,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  // Входящий счёт в банке на сумму заявки, привязан к созданному заказу
+  batch.set(paymentRef, {
+    number: paymentNumber,
+    date,
+    direction: "incoming",
+    type: "regular",
+    counterparty: customerName,
+    counterpartyId,
+    dealIds: [dealRef.id],
+    dealNumbers: [number],
+    receiptIds: [],
+    receiptNumbers: [],
+    amount: total,
+    invoiceNumber: null,
+    vatRate: VAT_RATE,
+    vatAmount,
+    isPaid: false,
+    paidAt: null,
+    excludeFromBalance: false,
+    comment: `Счёт покупателю по заказу ЗК-${number} (из заявки с сайта)`,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  // Связываем заявку с созданными заказом и платежом
+  batch.update(orderRef, {
+    dealId: dealRef.id,
+    dealNumber: number,
+    paymentId: paymentRef.id,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await batch.commit();
+  invalidateCounterpartyCache();
+  return { dealId: dealRef.id, dealNumber: number, paymentId: paymentRef.id, skipped: false };
+}
+
+// ─── Правки заказа клиентом из личного кабинета ─────────────
+
+async function buildOrderItemsFromProducts(
+  rawItems: { productId?: string; quantity?: number }[]
+): Promise<StockDocItem[]> {
+  const db = getAdminDb();
+  const merged = new Map<string, number>();
+  for (const item of Array.isArray(rawItems) ? rawItems : []) {
+    const productId = String(item.productId || "").trim();
+    const quantity = Math.max(0, Math.min(100_000, Number(item.quantity) || 0));
+    if (!productId || quantity <= 0) continue;
+    merged.set(productId, (merged.get(productId) || 0) + quantity);
+  }
+  const result: StockDocItem[] = [];
+  for (const [productId, quantity] of merged) {
+    const snap = await db.collection("products").doc(productId).get();
+    if (!snap.exists) continue;
+    const data = snap.data() || {};
+    if (data.isVisible === false) continue;
+    const price = getProductEffectivePrice({
+      price: data.price !== undefined && data.price !== null ? Number(data.price) : null,
+      discountType: data.discountType ?? null,
+      discountValue: data.discountValue ?? null,
+    });
+    const safePrice = Math.max(0, Number(price) || 0);
+    result.push({
+      productId,
+      name: String(data.name || "Товар").slice(0, 200),
+      sku: data.sku ? String(data.sku).slice(0, 80) : "—",
+      quantity,
+      price: safePrice,
+      lineTotal: round2(quantity * safePrice),
+    });
+  }
+  return result;
+}
+
+async function paidTotalForDeal(db: FirebaseFirestore.Firestore, dealId: string) {
+  const paymentSnap = await db
+    .collection("bankPayments")
+    .where("dealIds", "array-contains", dealId)
+    .get();
+  let paidTotal = 0;
+  const unpaidDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  for (const doc of paymentSnap.docs) {
+    const payment = doc.data();
+    const links = Array.isArray(payment.dealIds) ? Math.max(1, payment.dealIds.length) : 1;
+    if (payment.isPaid === true && payment.direction === "incoming") {
+      paidTotal += (Number(payment.amount) || 0) / links;
+    } else if (payment.direction === "incoming") {
+      unpaidDocs.push(doc);
+    }
+  }
+  return { paidTotal: round2(paidTotal), unpaidDocs };
+}
+
+/**
+ * Клиент может менять заказ на любом этапе. Заказ и связанный ЗК снова
+ * возвращаются в обработку. Если уже была оплата — создаётся/обновляется
+ * счёт на доплату только на недостающую сумму.
+ */
+export async function reviseWebsiteOrderByCustomer(
+  orderId: string,
+  data: { items: { productId?: string; quantity?: number }[]; comment?: string | null }
+): Promise<{ totalSum: number; paidTotal: number; additionalDue: number }> {
+  const db = getAdminDb();
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) throw new Error("Заказ не найден");
+  const order = orderSnap.data() as any;
+  if (order.type !== "order") throw new Error("Можно менять только заказ из корзины");
+
+  const items = await buildOrderItemsFromProducts(data.items);
+  if (items.length === 0) throw new Error("В заказе должен быть хотя бы один товар");
+  const total = itemsTotal(items);
+  const now = FieldValue.serverTimestamp();
+  const comment = cleanText(data.comment, 2000);
+
+  let paidTotal = 0;
+  let additionalDue = total;
+
+  const dealId = order.dealId ? String(order.dealId) : "";
+  if (dealId) {
+    const dealRef = db.collection("customerDeals").doc(dealId);
+    const dealSnap = await dealRef.get();
+    if (dealSnap.exists) {
+      const deal = mapDeal(dealId, dealSnap.data());
+      if (deal.status === "completed") {
+        // Заказ был готов/отпущен — возвращаем старый состав на склад.
+        await applyStockDelta(deal.items, 1);
+      }
+      const payInfo = await paidTotalForDeal(db, dealId);
+      paidTotal = payInfo.paidTotal;
+      additionalDue = Math.max(0, round2(total - paidTotal));
+
+      const batch = db.batch();
+      batch.update(dealRef, {
+        items,
+        total,
+        bankAdjustment: 0,
+        vatRate: VAT_RATE,
+        vatAmount: includedVat(total),
+        status: "new",
+        comment: [deal.comment, "Клиент изменил заказ из личного кабинета"].filter(Boolean).join(". ").slice(0, 500),
+        updatedAt: now,
+      });
+
+      if (payInfo.unpaidDocs.length > 0) {
+        payInfo.unpaidDocs.forEach((doc, idx) => {
+          const amount = idx === 0 ? additionalDue : 0;
+          batch.update(doc.ref, {
+            amount,
+            vatRate: VAT_RATE,
+            vatAmount: includedVat(amount),
+            comment: additionalDue > 0
+              ? `Доплата по изменённому заказу ЗК-${deal.number}`
+              : `Доплата не требуется по изменённому заказу ЗК-${deal.number}`,
+            updatedAt: now,
+          });
+        });
+      } else if (additionalDue > 0) {
+        const paymentNumber = await nextNumber("payment");
+        const paymentRef = db.collection("bankPayments").doc();
+        batch.set(paymentRef, {
+          number: paymentNumber,
+          date: new Date().toISOString().slice(0, 10),
+          direction: "incoming",
+          type: "regular",
+          counterparty: deal.customerName || order.customerName || "Клиент",
+          counterpartyId: deal.counterpartyId ?? null,
+          dealIds: [dealId],
+          dealNumbers: [deal.number],
+          receiptIds: [],
+          receiptNumbers: [],
+          amount: additionalDue,
+          invoiceNumber: null,
+          vatRate: VAT_RATE,
+          vatAmount: includedVat(additionalDue),
+          isPaid: false,
+          paidAt: null,
+          excludeFromBalance: false,
+          comment: `Доплата по изменённому заказу ЗК-${deal.number}`,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await batch.commit();
+    }
+  }
+
+  if (!dealId) {
+    additionalDue = total;
+  }
+
+  await orderRef.update({
+    items: items.map(({ productId, name, sku, quantity, price }) => ({
+      productId,
+      name,
+      sku: sku ?? "—",
+      quantity,
+      price,
+    })),
+    totalSum: total,
+    status: "new",
+    closeReason: null,
+    comment: comment || order.comment || null,
+    customerEditedAt: now,
+    updatedAt: now,
+  });
+
+  return { totalSum: total, paidTotal, additionalDue };
+}
+
+/** Клиентская отмена заказа на любом этапе. */
+export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<void> {
+  const db = getAdminDb();
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) throw new Error("Заказ не найден");
+  const order = orderSnap.data() as any;
+  if (order.dealId) {
+    await cancelDeal(String(order.dealId), "Клиент отменил заказ из личного кабинета");
+  }
+  await orderRef.update({
+    status: "rejected",
+    closeReason: "Клиент отменил заказ из личного кабинета",
+    customerCancelledAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+export async function updateSupplierPriceList(
+  counterpartyId: string,
+  prices: { productId: string; price: number }[]
+): Promise<void> {
+  const db = getAdminDb();
+  const ref = db.collection("counterparties").doc(counterpartyId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Поставщик не найден");
+  const data = snap.data() || {};
+  const roles = Array.isArray(data.roles) ? data.roles : [];
+  if (!roles.includes("supplier")) {
+    await ref.set({ roles: FieldValue.arrayUnion("supplier"), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+
+  const batch = db.batch();
+  const inline: Record<string, number> = { ...(data.supplierPrices || {}) };
+  for (const row of prices) {
+    const productId = String(row.productId || "").trim();
+    if (!productId) continue;
+    const price = Math.max(0, Number(row.price) || 0);
+    inline[productId] = price;
+    batch.set(
+      ref.collection("supplierPrices").doc(productId),
+      { productId, price, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+  }
+  batch.set(ref, { supplierPrices: inline, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  await batch.commit();
+  invalidateCounterpartyCache(true);
+}

@@ -10,7 +10,6 @@ import {
   ClipboardList,
   FolderOpen,
   TrendingUp,
-  Users,
   CheckCircle,
   CheckCircle2,
   Clock,
@@ -25,7 +24,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { Timestamp } from "firebase-admin/firestore";
+import { getDeals, getPayments, getReceipts, getSalaries } from "@/lib/warehouse";
+import { getBankSummary, getDealPaidMap, getReceiptPaidMap } from "@/lib/warehouse-shared";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +60,6 @@ function formatDate(raw: any): string {
 
 export default async function AdminDashboard() {
   const db = getAdminDb();
-  const weekStart = Timestamp.fromMillis(Date.now() - 7 * 86_400_000);
 
   // Для дашборда читаем только 50 последних заявок. Общие показатели
   // получаем агрегатами Firestore: это значительно дешевле, чем загружать
@@ -70,49 +69,76 @@ export default async function AdminDashboard() {
     recentOrderPool,
     allCats,
     promotions,
-    totalOrdersAgg,
     newOrdersAgg,
+    newWastepaperAgg,
     inProgressAgg,
+    inProgressWastepaperAgg,
     completedAgg,
+    completedWastepaperAgg,
     rejectedAgg,
-    usersAgg,
-    weekAgg,
+    rejectedWastepaperAgg,
+    payments,
+    salaries,
+    deals,
+    receipts,
   ] = await Promise.all([
-    getProducts({}),
+    // includeHidden: считаем ВСЕ товары, как и «Учёт → Остатки»
+    // (getWarehouseStock), чтобы число позиций на дашборде и в учёте
+    // совпадало (раньше тут были только видимые — числа расходились).
+    getProducts({ includeHidden: true }),
     getOrders({ limit: 50 }),
     getAllCategories(),
     getPromotions(),
-    db.collection("orders").count().get(),
     db.collection("orders").where("status", "==", "new").count().get(),
+    db.collection("wastepaper_requests").where("status", "==", "new").count().get(),
     db
       .collection("orders")
       .where("status", "==", "in_progress")
       .count()
       .get(),
+    db.collection("wastepaper_requests").where("status", "==", "in_progress").count().get(),
     db.collection("orders").where("status", "==", "completed").count().get(),
+    db.collection("wastepaper_requests").where("status", "==", "completed").count().get(),
     db.collection("orders").where("status", "==", "rejected").count().get(),
-    db.collection("users").count().get(),
-    db.collection("orders").where("createdAt", ">=", weekStart).count().get(),
+    db.collection("wastepaper_requests").where("status", "==", "rejected").count().get(),
+    getPayments(),
+    getSalaries(),
+    getDeals(),
+    getReceipts(),
   ]);
 
-  const totalOrdersCount = totalOrdersAgg.data().count;
-  const newOrdersCount = newOrdersAgg.data().count;
-  const inProgressOrdersCount = inProgressAgg.data().count;
-  const completedOrdersCount = completedAgg.data().count;
-  const rejectedOrdersCount = rejectedAgg.data().count;
-  const usersCount = usersAgg.data().count;
-  const weekOrders = weekAgg.data().count;
-  const totalRevenue = recentOrderPool
-    .filter((order) => order.status === "completed")
-    .reduce((sum, order) => sum + (Number(order.totalSum) || 0), 0);
+  const newOrdersCount = newOrdersAgg.data().count + newWastepaperAgg.data().count;
+  const inProgressOrdersCount = inProgressAgg.data().count + inProgressWastepaperAgg.data().count;
+  const completedOrdersCount = completedAgg.data().count + completedWastepaperAgg.data().count;
+  const rejectedOrdersCount = rejectedAgg.data().count + rejectedWastepaperAgg.data().count;
+  const totalOrdersCount =
+    newOrdersCount + inProgressOrdersCount + completedOrdersCount + rejectedOrdersCount;
+  // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
+  const bankSummary = getBankSummary(payments, salaries);
+  const totalRevenue = bankSummary.balance;
   const recentOrders = recentOrderPool.slice(0, 8);
-
-  const lowStockProducts = allProducts.filter(
-    (product) =>
-      product.stockQty !== null &&
-      product.stockQty !== undefined &&
-      product.stockQty <= 10
+  const dealPaidMap = getDealPaidMap(payments);
+  const receiptPaidMap = getReceiptPaidMap(payments);
+  const stockValue = allProducts.reduce(
+    (sum, product) => sum + (Number(product.stockQty) || 0) * (Number(product.price) || 0),
+    0
   );
+  const outOfStockProducts = allProducts.filter((product) => (Number(product.stockQty) || 0) <= 0);
+  const lowStockProducts = allProducts.filter((product) => {
+    const qty = Number(product.stockQty) || 0;
+    const warn = product.stockWarnQty != null ? Number(product.stockWarnQty) : 10;
+    return qty > 0 && qty <= warn;
+  });
+  const unpaidDeals = deals.filter((deal) => {
+    if (deal.status === "cancelled") return false;
+    const paid = dealPaidMap.get(deal.id) || 0;
+    return paid + 0.009 < deal.total;
+  });
+  const unpaidReceipts = receipts.filter((receipt) => {
+    if (receipt.status !== "posted") return false;
+    const paid = receiptPaidMap.get(receipt.id) || 0;
+    return paid + 0.009 < receipt.total;
+  });
 
   return (
     <div>
@@ -150,7 +176,7 @@ export default async function AdminDashboard() {
             href: `/${ADMIN_PATH}/products`,
             iconBg: "rgba(27,43,75,0.08)",
             iconColor: "#1b2b4b",
-            sub: `${allProducts.filter((p) => p.inStock).length} в наличии`,
+            sub: `${allProducts.filter((p) => (p.stockQty ?? 0) > 0).length} в наличии`,
           },
           {
             label: "Категорий",
@@ -162,15 +188,6 @@ export default async function AdminDashboard() {
             sub: `${allCats.filter((c) => c.isVisible !== false).length} видимых`,
           },
           {
-            label: "Всего заявок",
-            value: totalOrdersCount,
-            icon: <ClipboardList size={20} />,
-            href: `/${ADMIN_PATH}/orders`,
-            iconBg: "#f0fdf4",
-            iconColor: "#16a34a",
-            sub: `+${weekOrders} за 7 дней`,
-          },
-          {
             label: "Новых заявок",
             value: newOrdersCount,
             icon: <TrendingUp size={20} />,
@@ -179,26 +196,45 @@ export default async function AdminDashboard() {
             iconColor: "#ef4444",
             sub: "требуют обработки",
           },
-          {
-            label: "Клиентов",
-            value: usersCount,
-            icon: <Users size={20} />,
-            href: `/${ADMIN_PATH}/clients`,
-            iconBg: "rgba(37,99,235,0.08)",
-            iconColor: "#2563eb",
-            sub: "зарегистрировано",
-          },
+
           {
             label: "Выручка",
             value:
-              totalRevenue > 0
+              totalRevenue !== 0
                 ? `${(totalRevenue / 1000).toFixed(0)}К ₽`
                 : "—",
             icon: <BarChart3 size={20} />,
             href: `/${ADMIN_PATH}/orders?status=completed`,
             iconBg: "rgba(16,185,129,0.1)",
             iconColor: "#10b981",
-            sub: "по 50 последним заявкам",
+            sub: "оплаты минус расходы из учёта",
+          },
+          {
+            label: "К оплате нам",
+            value: `${(bankSummary.expectedIn / 1000).toFixed(0)}К ₽`,
+            icon: <TrendingUp size={20} />,
+            href: `/${ADMIN_PATH}/warehouse?tab=bank`,
+            iconBg: "rgba(16,185,129,0.1)",
+            iconColor: "#10b981",
+            sub: `${unpaidDeals.length} неоплаченных заказов`,
+          },
+          {
+            label: "Мы должны",
+            value: `${(bankSummary.expectedOut / 1000).toFixed(0)}К ₽`,
+            icon: <AlertTriangle size={20} />,
+            href: `/${ADMIN_PATH}/warehouse?tab=bank`,
+            iconBg: "#fef2f2",
+            iconColor: "#ef4444",
+            sub: `${unpaidReceipts.length} поставок + зарплаты`,
+          },
+          {
+            label: "Склад в ценах",
+            value: `${(stockValue / 1000).toFixed(0)}К ₽`,
+            icon: <Package size={20} />,
+            href: `/${ADMIN_PATH}/warehouse?tab=stock`,
+            iconBg: "rgba(27,43,75,0.08)",
+            iconColor: "#1b2b4b",
+            sub: `${outOfStockProducts.length} нет, ${lowStockProducts.length} скоро закончатся`,
           },
           {
             label: "Акции",
@@ -515,51 +551,56 @@ export default async function AdminDashboard() {
               </Link>
             </div>
 
-            {lowStockProducts.length > 0 ? (
+            {outOfStockProducts.length + lowStockProducts.length > 0 ? (
               <div>
-                {lowStockProducts.slice(0, 6).map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      padding: "10px 24px",
-                      borderBottom: "1px solid rgba(200,196,188,0.15)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                    }}
-                  >
-                    <div
+                {[...outOfStockProducts, ...lowStockProducts].slice(0, 8).map((p) => {
+                  const qty = Number(p.stockQty) || 0;
+                  const warn = p.stockWarnQty != null ? Number(p.stockWarnQty) : 10;
+                  return (
+                    <Link
+                      key={p.id}
+                      href={`/${ADMIN_PATH}/products/${p.id}`}
+                      prefetch={false}
                       style={{
-                        fontSize: 13,
-                        color: "#1b2b4b",
-                        fontWeight: 500,
-                        flex: 1,
+                        padding: "10px 24px",
+                        borderBottom: "1px solid rgba(200,196,188,0.15)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        textDecoration: "none",
                       }}
                     >
-                      {p.name}
-                    </div>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color:
-                          (p.stockQty || 0) === 0
-                            ? "#ef4444"
-                            : "#f59e0b",
-                        background:
-                          (p.stockQty || 0) === 0
-                            ? "#fef2f2"
-                            : "#fffbeb",
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      {p.stockQty === 0 ? "закончился" : `${p.stockQty} шт.`}
-                    </span>
-                  </div>
-                ))}
-                {lowStockProducts.length > 6 && (
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: "#1b2b4b",
+                          fontWeight: 500,
+                          flex: 1,
+                        }}
+                      >
+                        {p.name}
+                        <div style={{ color: "var(--adm-muted)", fontSize: 11 }}>
+                          порог предупреждения: {warn} шт.
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: qty <= 0 ? "#ef4444" : "#f59e0b",
+                          background: qty <= 0 ? "#fef2f2" : "#fffbeb",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {qty <= 0 ? "нет в наличии" : `пополните: ${qty} шт.`}
+                      </span>
+                    </Link>
+                  );
+                })}
+                {outOfStockProducts.length + lowStockProducts.length > 8 && (
                   <div
                     style={{
                       padding: "10px 24px",
@@ -567,7 +608,7 @@ export default async function AdminDashboard() {
                       color: "var(--adm-muted)",
                     }}
                   >
-                    + ещё {lowStockProducts.length - 6} товаров
+                    + ещё {outOfStockProducts.length + lowStockProducts.length - 8} товаров
                   </div>
                 )}
               </div>
@@ -634,11 +675,7 @@ export default async function AdminDashboard() {
                   label: `Новые заявки (${newOrdersCount})`,
                   icon: <ClipboardList size={14} />,
                 },
-                {
-                  href: `/${ADMIN_PATH}/clients`,
-                  label: `Клиенты (${usersCount})`,
-                  icon: <Users size={14} />,
-                },
+
                 {
                   href: `/${ADMIN_PATH}/categories`,
                   label: "Управление категориями",

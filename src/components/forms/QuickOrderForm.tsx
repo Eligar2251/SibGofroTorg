@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Send, CheckCircle, Loader2 } from "lucide-react";
 import { ymGoal } from "@/lib/ym";
+import { formatPhoneMask } from "@/lib/phone-mask";
 
 interface QuickOrderFormProps {
   productName?: string;
@@ -18,6 +19,7 @@ export function QuickOrderForm({
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [phone, setPhone] = useState("");
 
   const isLight = variant === "light";
 
@@ -53,6 +55,7 @@ export function QuickOrderForm({
 
       setFormState("success");
       form.reset();
+      setPhone("");
       ymGoal("inquiry_submit");
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Произошла ошибка");
@@ -103,6 +106,8 @@ export function QuickOrderForm({
             name="phone"
             type="tel"
             required
+            value={phone}
+            onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
             placeholder="+7 (913) 000-00-00"
             className={isLight ? "qof-input qof-input--light" : "qof-input"}
           />

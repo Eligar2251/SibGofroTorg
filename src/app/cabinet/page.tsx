@@ -15,16 +15,30 @@ import {
   MessageSquare,
   LogOut,
   LogIn,
+  X,
+  Save,
+  Search,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 interface OrderItem {
+  productId?: string;
   name: string;
   quantity: number;
   price: number;
   sku?: string;
+}
+
+interface ProductOption {
+  id: string;
+  name: string;
+  sku?: string | null;
+  price: number | null;
+  imageUrl?: string | null;
 }
 
 interface Order {
@@ -114,10 +128,100 @@ function parseDate(raw: any): string {
   return "—";
 }
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editItems, setEditItems] = useState<OrderItem[]>(order.items || []);
+  const [productQuery, setProductQuery] = useState("");
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const st = statusStyles[order.status || "new"] || statusStyles.new;
   const isOrder = order.type === "order";
+
+  async function loadProducts(q = "") {
+    setLoadingProducts(true);
+    try {
+      const res = await fetch(`/api/products?limit=50${q ? `&q=${encodeURIComponent(q)}` : ""}`, { cache: "no-store" });
+      const data = await res.json();
+      setProducts(Array.isArray(data.products) ? data.products : []);
+    } catch {
+      setProducts([]);
+    }
+    setLoadingProducts(false);
+  }
+
+  function startEdit() {
+    setEditItems(order.items || []);
+    setEditError("");
+    setEditing(true);
+    loadProducts();
+  }
+
+  function patchQty(productId: string | undefined, delta: number) {
+    if (!productId) return;
+    setEditItems((prev) =>
+      prev
+        .map((item) =>
+          item.productId === productId
+            ? { ...item, quantity: Math.max(0, item.quantity + delta) }
+            : item
+        )
+        .filter((item) => item.quantity > 0)
+    );
+  }
+
+  function addProduct(p: ProductOption) {
+    const price = Number(p.price) || 0;
+    setEditItems((prev) => {
+      const found = prev.find((item) => item.productId === p.id);
+      if (found) {
+        return prev.map((item) =>
+          item.productId === p.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      }
+      return [...prev, { productId: p.id, name: p.name, sku: p.sku || "—", quantity: 1, price }];
+    });
+  }
+
+  async function saveEdit() {
+    setSaving(true);
+    setEditError("");
+    try {
+      const res = await fetch(`/api/cabinet/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: editItems.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+          comment: order.comment || null,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Не удалось изменить заказ");
+      const due = Number(body.additionalDue) || 0;
+      alert(due > 0 ? `Заказ снова в обработке. Сумма доплаты: ${due.toLocaleString("ru-RU")} ₽` : "Заказ снова в обработке. Доплата не требуется.");
+      setEditing(false);
+      onChanged();
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Ошибка сети");
+    }
+    setSaving(false);
+  }
+
+  async function cancelOrder() {
+    if (!confirm("Отменить заказ? Это можно сделать на любом этапе.")) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/cabinet/orders/${order.id}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Не удалось отменить заказ");
+      onChanged();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Ошибка сети");
+    }
+    setSaving(false);
+  }
 
   return (
     <div className="cab-order">
@@ -180,7 +284,7 @@ function OrderCard({ order }: { order: Order }) {
             </div>
           )}
 
-          <div className="cab-order__meta">
+          <div className="cab-order__meta" style={{ alignItems: "flex-start", textAlign: "left", marginLeft: 0 }}>
             {order.communicationChannel && (
               <div className="cab-order__meta-row">
                 <span className="cab-order__meta-label">
@@ -217,6 +321,68 @@ function OrderCard({ order }: { order: Order }) {
               <span className="cab-order__comment-val">«{order.comment}»</span>
             </div>
           )}
+
+          {isOrder && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+              <button type="button" className="btn-primary" onClick={startEdit} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                <Package size={14} /> <span>Изменить / добавить товар</span>
+              </button>
+              <button type="button" className="btn-back" onClick={cancelOrder} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", border: "1.5px solid #ef4444", color: "#dc2626", background: "#fff", borderRadius: 8, fontWeight: 700 }}>
+                <X size={14} /> <span>Отменить заказ</span>
+              </button>
+            </div>
+          )}
+
+          {editing && (
+            <div style={{ marginTop: 16, border: "1px solid var(--border)", borderRadius: 14, padding: 14, background: "var(--bg-card)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+                <strong style={{ color: "var(--ink)" }}>Изменение заказа</strong>
+                <button type="button" className="cart-item__del" onClick={() => setEditing(false)}><X size={14} /></button>
+              </div>
+
+              <div className="cab-order__items-list" style={{ marginBottom: 12 }}>
+                {editItems.map((item) => (
+                  <div key={item.productId || item.name} className="cab-order__item">
+                    <div className="cab-order__item-name">{item.name}<span className="cab-order__item-sku">{item.sku}</span></div>
+                    <div className="cab-order__item-right">
+                      <button type="button" className="qty-btn" onClick={() => patchQty(item.productId, -1)}><Minus size={12} /></button>
+                      <span className="cab-order__item-qty">{item.quantity} шт.</span>
+                      <button type="button" className="qty-btn" onClick={() => patchQty(item.productId, 1)}><Plus size={12} /></button>
+                      <span className="cab-order__item-sum">{(item.price * item.quantity).toLocaleString("ru-RU")} ₽</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+                <input
+                  className="form-input"
+                  value={productQuery}
+                  onChange={(e) => { setProductQuery(e.target.value); loadProducts(e.target.value); }}
+                  placeholder="Найти товар и добавить..."
+                  style={{ paddingLeft: 36 }}
+                />
+              </div>
+              <div style={{ maxHeight: 220, overflow: "auto", display: "grid", gap: 6 }}>
+                {loadingProducts ? <div style={{ color: "var(--muted)", fontSize: 13 }}>Загрузка...</div> : products.map((p) => (
+                  <button key={p.id} type="button" onClick={() => addProduct(p)} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 10, background: "#fff", cursor: "pointer", textAlign: "left" }}>
+                    <span>{p.name}</span>
+                    <strong>{Number(p.price || 0).toLocaleString("ru-RU")} ₽</strong>
+                  </button>
+                ))}
+              </div>
+
+              <div className="cab-order__total" style={{ marginTop: 12 }}>
+                <span>Новая сумма:</span>
+                <span className="cab-order__total-sum">{editItems.reduce((s, item) => s + item.price * item.quantity, 0).toLocaleString("ru-RU")} ₽</span>
+              </div>
+              {editError && <div className="checkout-error" style={{ marginTop: 10 }}>{editError}</div>}
+              <button type="button" className="checkout-submit" onClick={saveEdit} disabled={saving || editItems.length === 0} style={{ marginTop: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span>Сохранить изменения</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -229,6 +395,7 @@ export default function CabinetPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -271,7 +438,7 @@ export default function CabinetPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -362,18 +529,11 @@ export default function CabinetPage() {
                 </div>
               )}
               <p className="cab-sidebar__desc">
-                Здесь только ваши заказы, привязанные к аккаунту. Поиск чужих номеров недоступен.
+                Здесь ваши заказы, привязанные к номеру.
               </p>
               <button type="button" onClick={handleLogout} className="cab-sidebar__btn" style={{ background: "var(--ink)" }}>
                 <LogOut size={15} /> Выйти
               </button>
-              <div className="cab-sidebar__hint">
-                <div className="cab-sidebar__hint-icon"><GlyphIcon value="bulb" size={18} /></div>
-                <p>
-                  Оформляйте заказ будучи в аккаунте — он сразу появится здесь. Старые заказы с
-                  тем же телефоном тоже подтянутся.
-                </p>
-              </div>
             </div>
 
             <div className="cab-sidebar__contact">
@@ -384,7 +544,7 @@ export default function CabinetPage() {
                 <Phone size={15} /> +7 (383) 291-81-46
               </a>
               <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginTop: "4px" }}>
-                Пн–Пт 9:00–18:00 · Сб 10:00–15:00
+                Пн–Пт 8:30–17:00 · Сб, Вс — выходные
               </div>
             </div>
           </aside>
@@ -407,7 +567,7 @@ export default function CabinetPage() {
             {!loading && orders.length > 0 && (
               <div className="cab-orders__list">
                 {orders.map((order) => (
-                  <OrderCard key={order.id} order={order} />
+                  <OrderCard key={order.id} order={order} onChanged={() => setRefreshKey((v) => v + 1)} />
                 ))}
               </div>
             )}

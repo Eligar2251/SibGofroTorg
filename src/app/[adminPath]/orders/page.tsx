@@ -1,5 +1,5 @@
 // src/app/[adminPath]/orders/page.tsx
-import { getOrders } from "@/lib/firestore-queries";
+import { getOrders, getWastepaperRequests } from "@/lib/firestore-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
@@ -30,6 +30,8 @@ const commLabels: Record<string, { token: string; text: string }> = {
   telegram: { token: "send", text: "Telegram" },
   max: { token: "chats", text: "Макс" },
   email: { token: "mail", text: "Почта" },
+  self: { token: "truck", text: "Привезут сами" },
+  pickup: { token: "truck", text: "Нужен вывоз" },
 };
 
 const paymentLabels: Record<string, { token: string; text: string }> = {
@@ -44,6 +46,13 @@ const filterOptions = [
   { value: "in_progress", label: "В работе" },
   { value: "completed", label: "Проведённые" },
   { value: "rejected", label: "Отклонённые" },
+];
+
+const typeOptions = [
+  { value: "all", label: "Все заявки", token: "clipboard" },
+  { value: "order", label: "Заявки-заказы", token: "box" },
+  { value: "inquiry", label: "На уточнение", token: "chat" },
+  { value: "wastepaper", label: "За макулатуру", token: "recycle" },
 ];
 
 function formatDate(raw: any): string {
@@ -66,96 +75,150 @@ function formatDate(raw: any): string {
   return "—";
 }
 
+function createdMs(raw: any): number {
+  if (!raw) return 0;
+  if (typeof raw === "string") return Date.parse(raw) || 0;
+  if (typeof raw === "number") return raw;
+  if (raw?.seconds !== undefined) return raw.seconds * 1000;
+  return 0;
+}
+
+function typeMeta(order: any) {
+  if (order.type === "wastepaper") {
+    return { label: "За макулатуру", icon: "recycle", cls: "admin-badge admin-badge--green" };
+  }
+  if (order.type === "order") {
+    return { label: "Заявка-заказ", icon: "box", cls: "admin-badge admin-badge--indigo" };
+  }
+  return { label: "На уточнение", icon: "chat", cls: "admin-badge admin-badge--teal" };
+}
+
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; type?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; type?: string; sort?: string }>;
 }) {
-  const { status: filterStatus, q: searchQuery, type: typeQuery } = await searchParams;
+  const {
+    status: filterStatus,
+    q: searchQuery,
+    type: typeQuery,
+    sort: sortQuery,
+  } = await searchParams;
   const activeFilter = filterStatus || "all";
   const activeType = typeQuery || "all";
+  const activeSort = sortQuery || "new_first";
   const query = searchQuery ? searchQuery.toLowerCase().trim() : "";
 
-  const allOrders = await getOrders({ status: activeFilter, limit: 50 });
+  const [siteOrders, wastepaperRequests] = await Promise.all([
+    getOrders({ status: activeFilter, limit: 200 }),
+    getWastepaperRequests({ status: activeFilter, limit: 200 }),
+  ]);
 
-  const filteredOrders = allOrders.filter((order: any) => {
-    if (activeType !== "all" && order.type !== activeType) return false;
-    if (!query) return true;
-    return (
-      (order.customerName && order.customerName.toLowerCase().includes(query)) ||
-      (order.customerPhone && order.customerPhone.includes(query)) ||
-      (order.customerEmail && order.customerEmail.toLowerCase().includes(query)) ||
-      (order.id && order.id.toLowerCase().includes(query)) ||
-      (order.productInfo && order.productInfo.toLowerCase().includes(query))
-    );
-  });
+  const allOrders = [...siteOrders, ...wastepaperRequests];
+
+  const filteredOrders = allOrders
+    .filter((order: any) => {
+      if (activeType !== "all" && order.type !== activeType) return false;
+      if (!query) return true;
+      const itemText = Array.isArray(order.items)
+        ? order.items.map((it: any) => `${it.name || ""} ${it.sku || ""}`).join(" ")
+        : "";
+      return (
+        (order.customerName && order.customerName.toLowerCase().includes(query)) ||
+        (order.customerPhone && order.customerPhone.includes(query)) ||
+        (order.customerEmail && order.customerEmail.toLowerCase().includes(query)) ||
+        (order.id && order.id.toLowerCase().includes(query)) ||
+        (order.productInfo && order.productInfo.toLowerCase().includes(query)) ||
+        (order.wastepaperType && order.wastepaperType.toLowerCase().includes(query)) ||
+        itemText.toLowerCase().includes(query)
+      );
+    })
+    .sort((a: any, b: any) => {
+      if (activeSort === "old_first") return createdMs(a.createdAt) - createdMs(b.createdAt);
+      if (activeSort === "status") return String(a.status || "").localeCompare(String(b.status || ""), "ru");
+      if (activeSort === "type") return String(a.type || "").localeCompare(String(b.type || ""), "ru");
+      return createdMs(b.createdAt) - createdMs(a.createdAt);
+    });
+
+  const hrefBase = `/${ADMIN_PATH}/orders`;
+  const qSuffix = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
 
   return (
     <div>
       <OrdersAutoRefresh intervalMs={10000} />
       <div className="admin-page-head">
         <div>
-          <h1 className="admin-h1">Заявки и Заказы</h1>
+          <h1 className="admin-h1">Заявки</h1>
           <p className="admin-sub">
-            Всего обращений:{" "}
-            <strong style={{ color: "var(--adm-navy)" }}>
-              {filteredOrders.length}
-            </strong>{" "}
-            {allOrders.length !== filteredOrders.length ? `(из ${allOrders.length})` : ""}
+            Показано: <strong style={{ color: "var(--adm-navy)" }}>{filteredOrders.length}</strong>
+            {allOrders.length !== filteredOrders.length ? ` из ${allOrders.length}` : ""}
           </p>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 260 }}>
-          <form method="GET" action={`/${ADMIN_PATH}/orders`} style={{ display: "flex", gap: 8 }}>
+          <form method="GET" action={hrefBase} style={{ display: "flex", gap: 8 }}>
             <input type="hidden" name="status" value={activeFilter} />
             <input type="hidden" name="type" value={activeType} />
+            <input type="hidden" name="sort" value={activeSort} />
             <input
               type="text"
               name="q"
               defaultValue={searchQuery || ""}
-              placeholder="Поиск по имени, телефону, почте, ID..."
+              placeholder="Поиск по имени, телефону, почте, ID, товару..."
               className="admin-input"
             />
-            <button type="submit" className="admin-btn admin-btn--navy">
-              Найти
-            </button>
+            <button type="submit" className="admin-btn admin-btn--navy">Найти</button>
             {searchQuery && (
-              <Link href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${activeType}`} className="admin-btn admin-btn--ghost" prefetch={false}>
+              <Link href={`${hrefBase}?status=${activeFilter}&type=${activeType}&sort=${activeSort}`} className="admin-btn admin-btn--ghost" prefetch={false}>
                 Сбросить
               </Link>
             )}
           </form>
         </div>
 
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {[
-            { value: "all", label: "Все типы", token: "" },
-            { value: "order", label: "Заказы", token: "box" },
-            { value: "inquiry", label: "Заявки", token: "chat" },
-          ].map((t) => (
+            { value: "new_first", label: "Новые сверху" },
+            { value: "old_first", label: "Старые сверху" },
+            { value: "status", label: "По статусу" },
+            { value: "type", label: "По типу" },
+          ].map((s) => (
             <Link
-              key={t.value}
-              href={`/${ADMIN_PATH}/orders?status=${activeFilter}&type=${t.value}${searchQuery ? `&q=${searchQuery}` : ""}`}
-              className={`admin-filter${activeType === t.value ? " admin-filter--active" : ""}`}
-             prefetch={false}>
-              {t.token && (
-                <GlyphIcon value={t.token} size={13} />
-              )}
-              {t.label}
+              key={s.value}
+              href={`${hrefBase}?status=${activeFilter}&type=${activeType}&sort=${s.value}${qSuffix}`}
+              className={`admin-filter${activeSort === s.value ? " admin-filter--active" : ""}`}
+              prefetch={false}
+            >
+              {s.label}
             </Link>
           ))}
         </div>
+      </div>
+
+      <div className="admin-filters" style={{ marginBottom: 10 }}>
+        {typeOptions.map((t) => (
+          <Link
+            key={t.value}
+            href={`${hrefBase}?status=${activeFilter}&type=${t.value}&sort=${activeSort}${qSuffix}`}
+            className={`admin-filter${activeType === t.value ? " admin-filter--active" : ""}`}
+            prefetch={false}
+          >
+            <GlyphIcon value={t.token} size={13} />
+            {t.label}
+          </Link>
+        ))}
       </div>
 
       <div className="admin-filters">
         {filterOptions.map((opt) => (
           <Link
             key={opt.value}
-            href={`/${ADMIN_PATH}/orders?status=${opt.value}&type=${activeType}${searchQuery ? `&q=${searchQuery}` : ""}`}
+            href={`${hrefBase}?status=${opt.value}&type=${activeType}&sort=${activeSort}${qSuffix}`}
             className={`admin-filter${activeFilter === opt.value ? " admin-filter--active" : ""}`}
-           prefetch={false}>
+            prefetch={false}
+          >
             {opt.label}
           </Link>
         ))}
@@ -165,212 +228,128 @@ export default async function AdminOrdersPage({
         {filteredOrders.length > 0 ? (
           <div>
             {filteredOrders.map((order: any) => {
-              const isOrder = order.type === "order";
+              const meta = typeMeta(order);
+              const isSiteOrder = order.type === "order";
+              const isWastepaper = order.type === "wastepaper";
+              const endpoint = isWastepaper ? `/api/admin/wastepaper/${order.id}` : undefined;
               return (
-                <div key={order.id} className="admin-order">
-                  <div className="admin-order__row">
-                    <div className="admin-order__main">
-                      <div className="admin-order__top">
-                        <span className="admin-order__id">
-                          #{order.id.slice(0, 8)}
-                        </span>
-                        <span
-                          className={
-                            isOrder
-                              ? "admin-badge admin-badge--indigo"
-                              : "admin-badge admin-badge--teal"
-                          }
-                        >
-                          <GlyphIcon value={isOrder ? "box" : "chat"} size={11} />
-                          {isOrder ? "Заказ" : "Заявка"}
-                        </span>
-                        <span
-                          className={statusBadge[order.status ?? "new"]}
-                        >
-                          {statusLabels[order.status ?? "new"]}
-                        </span>
-                        <span className="admin-order__date">
-                          {formatDate(order.createdAt)}
-                        </span>
+                <details key={`${order.type}-${order.id}`} className="admin-order" style={{ display: "block" }}>
+                  <summary style={{ listStyle: "none", cursor: "pointer" }}>
+                    <div className="admin-order__row">
+                      <div className="admin-order__main">
+                        <div className="admin-order__top">
+                          <span className="admin-order__id">#{order.id.slice(0, 8)}</span>
+                          <span className={meta.cls}>
+                            <GlyphIcon value={meta.icon} size={11} />
+                            {meta.label}
+                          </span>
+                          <span className={statusBadge[order.status ?? "new"]}>{statusLabels[order.status ?? "new"]}</span>
+                          <span className="admin-order__date">{formatDate(order.createdAt)}</span>
+                          <span className="admin-muted" style={{ marginLeft: "auto", fontSize: 12 }}>Нажмите, чтобы раскрыть</span>
+                        </div>
+                        <div style={{ fontSize: 14, color: "var(--adm-navy)", fontWeight: 700 }}>
+                          {order.customerName || "Без имени"} · {order.customerPhone || "—"}
+                        </div>
+                        <div style={{ fontSize: 13, color: "var(--adm-muted)", marginTop: 4 }}>
+                          {isWastepaper
+                            ? `${order.wastepaperType || "Макулатура"}${order.weight ? ` · ${order.weight} кг` : ""}`
+                            : isSiteOrder && order.items?.length
+                            ? `${order.items.length} поз. · ${(order.totalSum || 0).toLocaleString("ru-RU")} ₽`
+                            : order.productInfo || "Заявка на уточнение"}
+                        </div>
                       </div>
+                    </div>
+                  </summary>
 
+                  <div className="admin-order__row" style={{ borderTop: "1px solid rgba(200,196,188,0.35)", paddingTop: 14, marginTop: 12 }}>
+                    <div className="admin-order__main">
                       <div className="admin-order__grid">
                         <div className="admin-order__meta">
-                          <span className="admin-order__meta-label">
-                            Клиент:
-                          </span>
+                          <span className="admin-order__meta-label">Клиент:</span>
                           <span className="admin-order__meta-val">
                             {order.customerName}{" "}
                             <span className="admin-badge admin-badge--muted">
-                              <GlyphIcon
-                                value={order.customerType === "legal" ? "building" : "user"}
-                                size={11}
-                              />
-                              {order.customerType === "legal"
-                                ? "Юр. лицо"
-                                : "Физ. лицо"}
+                              <GlyphIcon value={order.customerType === "legal" ? "building" : "user"} size={11} />
+                              {order.customerType === "legal" ? "Юр. лицо" : "Физ. лицо"}
                             </span>
                           </span>
                         </div>
                         <div className="admin-order__meta">
-                          <span className="admin-order__meta-label">
-                            Телефон:
-                          </span>
-                          <a href={`tel:${order.customerPhone}`}>
-                            {order.customerPhone}
-                          </a>
+                          <span className="admin-order__meta-label">Телефон:</span>
+                          <a href={`tel:${order.customerPhone}`}>{order.customerPhone}</a>
                         </div>
                         {order.customerEmail && (
-                          <div
-                            className="admin-order__meta"
-                            style={{ gridColumn: "1 / -1" }}
-                          >
-                            <span className="admin-order__meta-label">
-                              Почта:
-                            </span>
-                            <a href={`mailto:${order.customerEmail}`}>
-                              {order.customerEmail}
-                            </a>
+                          <div className="admin-order__meta" style={{ gridColumn: "1 / -1" }}>
+                            <span className="admin-order__meta-label">Почта:</span>
+                            <a href={`mailto:${order.customerEmail}`}>{order.customerEmail}</a>
                           </div>
                         )}
                         <div className="admin-order__meta">
-                          <span className="admin-order__meta-label">
-                            Связь:
-                          </span>
-                          <span
-                            className="admin-order__meta-val"
-                            style={{ fontWeight: 500, fontSize: 13 }}
-                          >
+                          <span className="admin-order__meta-label">Связь:</span>
+                          <span className="admin-order__meta-val" style={{ fontWeight: 500, fontSize: 13 }}>
                             {(() => {
-                              const c =
-                                commLabels[order.communicationChannel];
-                              return c ? (
-                                <span
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 5,
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  <GlyphIcon value={c.token} size={13} />
-                                  {c.text}
-                                </span>
-                              ) : (
-                                order.communicationChannel ?? "—"
-                              );
+                              const c = commLabels[order.communicationChannel];
+                              return c ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}><GlyphIcon value={c.token} size={13} />{c.text}</span> : order.communicationChannel ?? "—";
                             })()}
                           </span>
                         </div>
                         {order.paymentMethod && (
                           <div className="admin-order__meta">
-                            <span className="admin-order__meta-label">
-                              Оплата:
-                            </span>
-                            <span
-                              className="admin-order__meta-val"
-                              style={{ fontWeight: 500, fontSize: 13 }}
-                            >
+                            <span className="admin-order__meta-label">Оплата:</span>
+                            <span className="admin-order__meta-val" style={{ fontWeight: 500, fontSize: 13 }}>
                               {(() => {
-                                const pm =
-                                  paymentLabels[order.paymentMethod];
-                                return pm ? (
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 5,
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    <GlyphIcon value={pm.token} size={13} />
-                                    {pm.text}
-                                  </span>
-                                ) : (
-                                  order.paymentMethod
-                                );
+                                const pm = paymentLabels[order.paymentMethod];
+                                return pm ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}><GlyphIcon value={pm.token} size={13} />{pm.text}</span> : order.paymentMethod;
                               })()}
                             </span>
                           </div>
                         )}
                       </div>
 
-                      {isOrder &&
-                        order.items &&
-                        order.items.length > 0 && (
-                          <div className="admin-order__items">
-                            <div className="admin-order__items-title">
-                              Позиции заказа ({order.items.length})
+                      {isSiteOrder && order.items && order.items.length > 0 && (
+                        <div className="admin-order__items">
+                          <div className="admin-order__items-title">Позиции заявки-заказа ({order.items.length})</div>
+                          {order.items.map((item: { name: string; quantity: number; price: number }, idx: number) => (
+                            <div key={idx} className="admin-order__item">
+                              <span>{item.name}<span className="admin-muted"> × {item.quantity} шт.</span></span>
+                              <span className="admin-order__item-sum">{(item.price * item.quantity).toLocaleString("ru-RU")} ₽</span>
                             </div>
-                            {order.items.map(
-                              (
-                                item: {
-                                  name: string;
-                                  quantity: number;
-                                  price: number;
-                                },
-                                idx: number
-                              ) => (
-                                <div key={idx} className="admin-order__item">
-                                  <span>
-                                    {item.name}
-                                    <span className="admin-muted">
-                                      {" "}
-                                      × {item.quantity} шт.
-                                    </span>
-                                  </span>
-                                  <span className="admin-order__item-sum">
-                                    {(
-                                      item.price * item.quantity
-                                    ).toLocaleString("ru-RU")}{" "}
-                                    ₽
-                                  </span>
-                                </div>
-                              )
-                            )}
-                            <div className="admin-order__total">
-                              <span>Итоговая сумма:</span>
-                              <span>
-                                {order.totalSum?.toLocaleString("ru-RU")} ₽
-                              </span>
-                            </div>
+                          ))}
+                          <div className="admin-order__total">
+                            <span>Итоговая сумма:</span>
+                            <span>{order.totalSum?.toLocaleString("ru-RU")} ₽</span>
                           </div>
-                        )}
+                        </div>
+                      )}
 
-                      {!isOrder && order.productInfo && (
+                      {!isSiteOrder && !isWastepaper && order.productInfo && (
                         <div style={{ fontSize: 14 }}>
                           <span className="admin-muted">Интересует товар: </span>
-                          <strong style={{ color: "var(--adm-navy)" }}>
-                            {order.productInfo}
-                          </strong>
-                          {order.quantity && (
-                            <span className="admin-muted">
-                              {" "}
-                              ({order.quantity} шт.)
-                            </span>
-                          )}
+                          <strong style={{ color: "var(--adm-navy)" }}>{order.productInfo}</strong>
+                          {order.quantity && <span className="admin-muted"> ({order.quantity} шт.)</span>}
+                        </div>
+                      )}
+
+                      {isWastepaper && (
+                        <div className="admin-order__items">
+                          <div className="admin-order__items-title">Заявка за макулатуру</div>
+                          <div className="admin-order__item"><span>Сырьё</span><strong>{order.wastepaperType || "—"}</strong></div>
+                          <div className="admin-order__item"><span>Вес</span><strong>{order.weight ? `${order.weight} кг` : "—"}</strong></div>
+                          <div className="admin-order__item"><span>Доставка</span><strong>{order.deliveryMethod === "self" ? "Привезут сами" : "Нужен вывоз"}</strong></div>
+                          {order.estimatedPayout > 0 && <div className="admin-order__total"><span>Ориентировочная выплата:</span><span>{order.estimatedPayout.toLocaleString("ru-RU")} ₽</span></div>}
                         </div>
                       )}
 
                       {order.comment && (
                         <div className="admin-order__comment">
                           <strong>Комментарий клиента:</strong>
-                          <span
-                            style={{
-                              fontStyle: "italic",
-                              color: "var(--adm-navy)",
-                            }}
-                          >
-                            «{order.comment}»
-                          </span>
+                          <span style={{ fontStyle: "italic", color: "var(--adm-navy)" }}>«{order.comment}»</span>
                         </div>
                       )}
 
                       {order.closeReason && (
                         <div className="admin-order__close-reason">
-                          <strong style={{ display: "block", marginBottom: 4 }}>
-                            Причина закрытия / отклонения:
-                          </strong>
+                          <strong style={{ display: "block", marginBottom: 4 }}>Причина закрытия / отклонения:</strong>
                           {order.closeReason}
                         </div>
                       )}
@@ -381,11 +360,14 @@ export default async function AdminOrdersPage({
                         orderId={order.id}
                         currentStatus={order.status ?? "new"}
                         currentCloseReason={order.closeReason ?? null}
+                        dealNumber={order.dealNumber ?? null}
+                        adminPath={ADMIN_PATH}
+                        endpoint={endpoint}
                       />
-                      <OrderDeleteButton orderId={order.id} />
+                      <OrderDeleteButton orderId={order.id} endpoint={endpoint} />
                     </div>
                   </div>
-                </div>
+                </details>
               );
             })}
           </div>
@@ -396,8 +378,8 @@ export default async function AdminOrdersPage({
               {searchQuery
                 ? `По запросу «${searchQuery}» ничего не найдено`
                 : activeFilter === "all"
-                ? "Заявок и заказов пока нет"
-                : `Нет обращений со статусом «${statusLabels[activeFilter]}»`}
+                ? "Заявок пока нет"
+                : `Нет заявок со статусом «${statusLabels[activeFilter]}»`}
             </p>
           </div>
         )}

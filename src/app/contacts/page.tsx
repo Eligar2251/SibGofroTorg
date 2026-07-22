@@ -11,7 +11,6 @@ import {
   SITE_PHONE_HREF,
   SITE_EMAIL,
   SITE_HOURS_WEEKDAY,
-  SITE_HOURS_SATURDAY,
   SITE_MAP_EMBED_URL,
   SITE_MAP_LINK,
 } from "@/lib/site-config";
@@ -100,10 +99,10 @@ export default function ContactsPage() {
               <div>
                 <div className="contacts-card__label">Режим работы</div>
                 <div className="contacts-card__value contacts-card__value--md">
-                  Пн–Пт: {SITE_HOURS_WEEKDAY} · Сб: {SITE_HOURS_SATURDAY}
+                  Пн–Пт: {SITE_HOURS_WEEKDAY}
                 </div>
                 <div className="contacts-card__closed">
-                  Воскресенье: выходной день
+                  Сб, Вс: выходные дни
                 </div>
               </div>
             </div>

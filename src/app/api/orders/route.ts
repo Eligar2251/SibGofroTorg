@@ -82,12 +82,18 @@ export async function POST(request: NextRequest) {
     }
 
     const companyName = isLegal ? clip(body.companyName, 200) : null;
+    const shortName = isLegal ? clip(body.shortName, 200) || null : null;
     const inn = isLegal ? clip(body.inn, 20).replace(/\D/g, "") : null;
     const kpp = isLegal && body.kpp ? clip(body.kpp, 20).replace(/\D/g, "") : null;
     const ogrn = isLegal && body.ogrn ? clip(body.ogrn, 20).replace(/\D/g, "") : null;
     const legalAddress = isLegal ? clip(body.legalAddress, 300) : null;
     const actualAddress =
       isLegal && body.actualAddress ? clip(body.actualAddress, 300) : null;
+    const taxSystem = isLegal && body.taxSystem ? clip(body.taxSystem, 40) : null;
+    const bankAccount = isLegal && body.bankAccount ? clip(body.bankAccount, 40).replace(/\D/g, "") : null;
+    const bankName = isLegal && body.bankName ? clip(body.bankName, 200) : null;
+    const bik = isLegal && body.bik ? clip(body.bik, 20).replace(/\D/g, "") : null;
+    const correspondentAccount = isLegal && body.correspondentAccount ? clip(body.correspondentAccount, 40).replace(/\D/g, "") : null;
     const deliveryAddress = body.deliveryAddress
       ? clip(body.deliveryAddress, 300)
       : null;
@@ -180,11 +186,17 @@ export async function POST(request: NextRequest) {
       // ТОЛЬКО из session
       userId: session?.uid ?? null,
       companyName,
+      shortName,
       inn,
       kpp,
       ogrn,
       legalAddress,
       actualAddress,
+      taxSystem,
+      bankAccount,
+      bankName,
+      bik,
+      correspondentAccount,
       deliveryAddress,
     };
 

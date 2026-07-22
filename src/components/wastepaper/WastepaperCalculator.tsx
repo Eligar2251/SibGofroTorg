@@ -5,26 +5,43 @@ import { useState } from "react";
 import { Recycle, Loader2, CheckCircle } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ymGoal } from "@/lib/ym";
+import { formatPhoneMask } from "@/lib/phone-mask";
+import {
+  withDefaultRates,
+  formatRate,
+  WASTEPAPER_SELF_BONUS,
+  WASTEPAPER_PICKUP_MIN_KG,
+  type WastepaperRates,
+} from "@/lib/wastepaper";
 
-const RATES = [
-  { id: "cardboard",    label: "Гофрокартон",     token: "box",   rate: 8.0 },
-  { id: "office_paper", label: "Белая бумага А4", token: "file",  rate: 11.5 },
-  { id: "books",        label: "Книги и журналы", token: "books", rate: 9.0 },
-  { id: "mix",          label: "Смешанная",       token: "trash", rate: 6.0 },
-];
+/** Метаданные видов сырья; цены берутся из настроек (prop rates) */
+const RATE_META = [
+  { id: "cardboard",    label: "Гофрокартон",     token: "box" },
+  { id: "office_paper", label: "Белая бумага А4", token: "file" },
+  { id: "books",        label: "Книги и журналы", token: "books" },
+  { id: "mix",          label: "Смешанная",       token: "trash" },
+] as const;
 
-export function WastepaperCalculator() {
+export function WastepaperCalculator({
+  rates,
+}: {
+  /** Цены ₽/кг из настроек; пустые значения дополняются дефолтами */
+  rates?: Partial<WastepaperRates>;
+}) {
+  const effectiveRates = withDefaultRates(rates);
   const [type, setType] = useState("cardboard");
   const [weight, setWeight] = useState(100);
   const [weightInput, setWeightInput] = useState("100");
   const [delivery, setDelivery] = useState<"self" | "pickup">("self");
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [err, setErr] = useState("");
+  const [phone, setPhone] = useState("");
 
-  const currentRateObj = RATES.find(r => r.id === type) || RATES[0];
-  const rate = currentRateObj.rate + (delivery === "self" ? 0.5 : 0);
+  const currentRateObj = RATE_META.find(r => r.id === type) || RATE_META[0];
+  const baseRate = effectiveRates[currentRateObj.id];
+  const rate = baseRate + (delivery === "self" ? WASTEPAPER_SELF_BONUS : 0);
   const payout = weight * rate;
-  const isPickupValid = delivery === "pickup" ? weight >= 150 : true;
+  const isPickupValid = delivery === "pickup" ? weight >= WASTEPAPER_PICKUP_MIN_KG : true;
 
   function handleWeightChange(val: string) {
     setWeightInput(val);
@@ -46,7 +63,7 @@ export function WastepaperCalculator() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!isPickupValid) {
-      setErr("Минимум 150 кг для бесплатного вывоза");
+      setErr(`Минимум ${WASTEPAPER_PICKUP_MIN_KG} кг для бесплатного вывоза`);
       setState("error");
       return;
     }
@@ -71,6 +88,7 @@ export function WastepaperCalculator() {
       setState("success");
       ymGoal("wastepaper_submit");
       (e.target as HTMLFormElement).reset();
+      setPhone("");
     } catch {
       setErr("Не удалось отправить заявку. Попробуйте ещё раз.");
       setState("error");
@@ -98,7 +116,7 @@ export function WastepaperCalculator() {
       <div className="wpcalc__section">
         <div className="wpcalc__label">Тип сырья</div>
         <div className="wpcalc__type-grid">
-          {RATES.map(r => (
+          {RATE_META.map(r => (
             <button
               key={r.id}
               type="button"
@@ -106,7 +124,7 @@ export function WastepaperCalculator() {
               className={`wpcalc__type-btn${type === r.id ? " wpcalc__type-btn--active" : ""}`}
             >
               <span className="wpcalc__type-name"><GlyphIcon value={r.token} size={14} /> {r.label}</span>
-              <span className="wpcalc__type-rate">{r.rate} ₽/кг</span>
+              <span className="wpcalc__type-rate">{formatRate(effectiveRates[r.id])} ₽/кг</span>
             </button>
           ))}
         </div>
@@ -136,7 +154,7 @@ export function WastepaperCalculator() {
               <span><GlyphIcon value="factory" size={20} /></span>
               <div>
                 <div className="wpcalc__del-name">Привезу сам</div>
-                <div className="wpcalc__del-sub">+0.5 ₽/кг бонус</div>
+                <div className="wpcalc__del-sub">+{WASTEPAPER_SELF_BONUS} ₽/кг бонус</div>
               </div>
             </button>
             <button
@@ -147,7 +165,7 @@ export function WastepaperCalculator() {
               <span><GlyphIcon value="truck" size={20} /></span>
               <div>
                 <div className="wpcalc__del-name">Вывоз</div>
-                <div className="wpcalc__del-sub">от 150 кг</div>
+                <div className="wpcalc__del-sub">от {WASTEPAPER_PICKUP_MIN_KG} кг</div>
               </div>
             </button>
           </div>
@@ -155,10 +173,10 @@ export function WastepaperCalculator() {
       </div>
 
       {/* Предупреждение вывоза */}
-      {delivery === "pickup" && weight < 150 && (
+      {delivery === "pickup" && weight < WASTEPAPER_PICKUP_MIN_KG && (
         <div className="wpcalc__warn">
-          <GlyphIcon value="warning" size={14} /> Бесплатный вывоз — от 150
-          кг. Сейчас: {weight} кг
+          <GlyphIcon value="warning" size={14} /> Бесплатный вывоз — от{" "}
+          {WASTEPAPER_PICKUP_MIN_KG} кг. Сейчас: {weight} кг
         </div>
       )}
 
@@ -166,7 +184,7 @@ export function WastepaperCalculator() {
       <div className="wpcalc__result">
         <div className="wpcalc__result-label">Ориентировочная выплата</div>
         <div className="wpcalc__result-sum">{payout.toLocaleString("ru-RU")} ₽</div>
-        <div className="wpcalc__result-rate">тариф: {rate} ₽/кг · {weight} кг</div>
+        <div className="wpcalc__result-rate">тариф: {formatRate(rate)} ₽/кг · {weight} кг</div>
       </div>
 
       {/* Форма */}
@@ -183,7 +201,9 @@ export function WastepaperCalculator() {
             name="phone"
             type="tel"
             required
-            placeholder="Телефон *"
+            value={phone}
+            onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
+            placeholder="+7 (913) 000-00-00 *"
             className="form-input"
           />
         </div>

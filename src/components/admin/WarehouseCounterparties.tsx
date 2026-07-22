@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import type { CounterpartyRole } from "@/lib/warehouse-shared";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 
 export interface CounterpartyOption {
   id: string;
@@ -23,6 +25,15 @@ export interface CounterpartyOption {
   email?: string | null;
   inn?: string | null;
   kpp?: string | null;
+  ogrn?: string | null;
+  fullName?: string | null;
+  shortName?: string | null;
+  legalAddress?: string | null;
+  taxSystem?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
@@ -46,6 +57,15 @@ interface FormState {
   email: string;
   inn: string;
   kpp: string;
+  ogrn: string;
+  fullName: string;
+  shortName: string;
+  legalAddress: string;
+  taxSystem: string;
+  bankAccount: string;
+  bankName: string;
+  bik: string;
+  correspondentAccount: string;
   address: string;
   contactName: string;
   comment: string;
@@ -59,12 +79,22 @@ const EMPTY: FormState = {
   email: "",
   inn: "",
   kpp: "",
+  ogrn: "",
+  fullName: "",
+  shortName: "",
+  legalAddress: "",
+  taxSystem: "",
+  bankAccount: "",
+  bankName: "",
+  bik: "",
+  correspondentAccount: "",
   address: "",
   contactName: "",
   comment: "",
 };
 
 const fmt = (value: number) => value.toLocaleString("ru-RU");
+const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 export function CounterpartiesManager({
   initialCounterparties,
@@ -126,6 +156,15 @@ export function CounterpartiesManager({
       email: item.email || "",
       inn: item.inn || "",
       kpp: item.kpp || "",
+      ogrn: item.ogrn || "",
+      fullName: item.fullName || "",
+      shortName: item.shortName || "",
+      legalAddress: item.legalAddress || "",
+      taxSystem: item.taxSystem || "",
+      bankAccount: item.bankAccount || "",
+      bankName: item.bankName || "",
+      bik: item.bik || "",
+      correspondentAccount: item.correspondentAccount || "",
       address: item.address || "",
       contactName: item.contactName || "",
       comment: item.comment || "",
@@ -172,6 +211,15 @@ export function CounterpartiesManager({
         email: form.email || null,
         inn: form.inn || null,
         kpp: form.kpp || null,
+        ogrn: form.ogrn || null,
+        fullName: form.fullName || null,
+        shortName: form.shortName || null,
+        legalAddress: form.legalAddress || null,
+        taxSystem: form.taxSystem || null,
+        bankAccount: form.bankAccount || null,
+        bankName: form.bankName || null,
+        bik: form.bik || null,
+        correspondentAccount: form.correspondentAccount || null,
         address: form.address || null,
         contactName: form.contactName || null,
         comment: form.comment || null,
@@ -301,9 +349,18 @@ export function CounterpartiesManager({
                                 <div><dt>Контакт</dt><dd>{item.contactName || "—"}</dd></div>
                                 <div><dt>Телефон</dt><dd>{item.phone || "—"}</dd></div>
                                 <div><dt>Email</dt><dd>{item.email || "—"}</dd></div>
+                                <div><dt>Полное наименование</dt><dd>{item.fullName || item.name || "—"}</dd></div>
+                                <div><dt>Сокращенное</dt><dd>{item.shortName || "—"}</dd></div>
                                 <div><dt>ИНН</dt><dd>{item.inn || "—"}</dd></div>
                                 <div><dt>КПП</dt><dd>{item.kpp || "—"}</dd></div>
+                                <div><dt>ОГРН</dt><dd>{item.ogrn || "—"}</dd></div>
+                                <div><dt>Налогообложение</dt><dd>{item.taxSystem || "—"}</dd></div>
+                                <div><dt>Юр. адрес</dt><dd>{item.legalAddress || "—"}</dd></div>
                                 <div><dt>Адрес</dt><dd>{item.address || "—"}</dd></div>
+                                <div><dt>Расчётный счёт</dt><dd>{item.bankAccount || "—"}</dd></div>
+                                <div><dt>Банк</dt><dd>{item.bankName || "—"}</dd></div>
+                                <div><dt>БИК</dt><dd>{item.bik || "—"}</dd></div>
+                                <div><dt>Корр. счёт</dt><dd>{item.correspondentAccount || "—"}</dd></div>
                                 <div><dt>Цен поставщика</dt><dd>{Object.keys(item.supplierPrices || {}).length}</dd></div>
                               </dl>
                               {item.comment && <p>{item.comment}</p>}
@@ -313,11 +370,21 @@ export function CounterpartiesManager({
                               {docs.length === 0 ? (
                                 <span>Связанных документов нет</span>
                               ) : docs.map((doc) => (
-                                <div key={`${doc.kind}-${doc.id}`} className="cp-doc">
+                                <Link
+                                  key={`${doc.kind}-${doc.id}`}
+                                  className="cp-doc"
+                                  href={
+                                    doc.kind === "deal"
+                                      ? `/${ADMIN_PATH}/warehouse?tab=deals&deal=${doc.id}`
+                                      : `/${ADMIN_PATH}/warehouse?tab=receipts&receipt=${doc.id}`
+                                  }
+                                  prefetch={false}
+                                  style={{ textDecoration: "none" }}
+                                >
                                   <span>{doc.kind === "deal" ? `ЗК-${doc.number}` : `ПО-${doc.number}`}</span>
                                   <small>{doc.date} · позиций: {doc.itemCount}{doc.status ? ` · ${doc.status}` : ""}</small>
                                   <strong>{fmt(doc.total)} ₽</strong>
-                                </div>
+                                </Link>
                               ))}
                             </div>
                           </div>
@@ -337,6 +404,7 @@ export function CounterpartiesManager({
       )}
 
       {editingId && (
+        <ModalPortal>
         <div className="admin-modal-overlay" onClick={() => setEditingId(null)}>
           <div className="admin-modal cp-modal" onClick={(event) => event.stopPropagation()}>
             <div className="admin-modal__head">
@@ -358,6 +426,17 @@ export function CounterpartiesManager({
                 <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={form.email} onChange={(e) => patch("email", e.target.value)} /></div>
                 <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={form.inn} onChange={(e) => patch("inn", e.target.value)} /></div>
                 <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={form.kpp} onChange={(e) => patch("kpp", e.target.value)} /></div>
+                <div className="admin-field"><label className="admin-label">ОГРН</label><input className="admin-input" value={form.ogrn} onChange={(e) => patch("ogrn", e.target.value)} /></div>
+                <div className="admin-field"><label className="admin-label">Сокращенное наименование</label><input className="admin-input" value={form.shortName} onChange={(e) => patch("shortName", e.target.value)} /></div>
+                <div className="admin-field"><label className="admin-label">Налогообложение</label><input className="admin-input" value={form.taxSystem} onChange={(e) => patch("taxSystem", e.target.value)} /></div>
+              </div>
+              <div className="admin-field"><label className="admin-label">Полное наименование</label><input className="admin-input" value={form.fullName} onChange={(e) => patch("fullName", e.target.value)} /></div>
+              <div className="admin-field"><label className="admin-label">Юридический адрес</label><input className="admin-input" value={form.legalAddress} onChange={(e) => patch("legalAddress", e.target.value)} /></div>
+              <div className="admin-grid-2">
+                <div className="admin-field"><label className="admin-label">Расчётный счёт</label><input className="admin-input" value={form.bankAccount} onChange={(e) => patch("bankAccount", e.target.value)} /></div>
+                <div className="admin-field"><label className="admin-label">Банк</label><input className="admin-input" value={form.bankName} onChange={(e) => patch("bankName", e.target.value)} /></div>
+                <div className="admin-field"><label className="admin-label">БИК</label><input className="admin-input" value={form.bik} onChange={(e) => patch("bik", e.target.value)} /></div>
+                <div className="admin-field"><label className="admin-label">Корр. счёт</label><input className="admin-input" value={form.correspondentAccount} onChange={(e) => patch("correspondentAccount", e.target.value)} /></div>
               </div>
               <div className="admin-field"><label className="admin-label">Адрес</label><input className="admin-input" value={form.address} onChange={(e) => patch("address", e.target.value)} /></div>
               <div className="admin-field"><label className="admin-label">Комментарий</label><textarea className="admin-textarea" value={form.comment} onChange={(e) => patch("comment", e.target.value)} /></div>
@@ -369,6 +448,7 @@ export function CounterpartiesManager({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

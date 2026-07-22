@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { getCategories, getProducts, getPromotions, getProductById } from "@/lib/firestore-queries";
+import {
+  getCategories,
+  getProducts,
+  getPromotions,
+  getProductById,
+  getWastepaperRates,
+} from "@/lib/firestore-queries";
+import { formatRate } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
@@ -20,8 +27,7 @@ import {
   SITE_ADDRESS,
   SITE_PHONE,
   SITE_PHONE_HREF,
-  SITE_HOURS_WEEKDAY,
-  SITE_HOURS_SATURDAY,
+  SITE_HOURS_LABEL,
   SITE_MAP_EMBED_URL,
   SITE_MAP_LINK,
 } from "@/lib/site-config";
@@ -48,13 +54,14 @@ export const revalidate = 120;
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [categories, featuredProducts, promotions] = await Promise.all([
+  const [categories, featuredProducts, promotions, wpRates] = await Promise.all([
     getCategories(),
     getProducts({
       featuredOnly: true,
       limitCount: 12,
     }),
     getPromotions(),
+    getWastepaperRates(),
   ]);
 
   // Для акций со ссылкой на товар резолвим slug товара,
@@ -135,10 +142,10 @@ export default async function HomePage() {
         <div className="hero__left">
           <div className="hero__left-inner container-half">
             <span className="hero__eyebrow">
-              Склад в Новосибирске · отгрузка день в день
+              Склад в Новосибирске · быстрая отгрузка
             </span>
             <h1 className="hero__h1">
-              Гофрокороба
+              Гофрокороб
               <br />
               <span className="hero__accent">от 1 штуки</span>
               <br />
@@ -153,7 +160,7 @@ export default async function HomePage() {
             <div className="hero__perks">
               <div className="hero__perk">
                 <Truck size={16} />
-                <span>Доставка 1-2 дня</span>
+                <span>Доставка 2-3 дня</span>
               </div>
               <div className="hero__perk">
                 <Zap size={16} />
@@ -192,22 +199,21 @@ export default async function HomePage() {
               макулатуру
             </h2>
             <p className="hero__wp-sub">
-              Сдай картон, бумагу, архивы —<br />
-              получи скидку на новую тару
+              Сдай картон, бумагу, архивы
             </p>
 
             <div className="hero__wp-rates">
               <div className="hero__wp-rate">
                 <span>Гофрокартон</span>
-                <strong>8 ₽/кг</strong>
+                <strong>{formatRate(wpRates.cardboard)} ₽/кг</strong>
               </div>
               <div className="hero__wp-rate">
                 <span>Белая бумага</span>
-                <strong>11.5 ₽/кг</strong>
+                <strong>{formatRate(wpRates.office_paper)} ₽/кг</strong>
               </div>
               <div className="hero__wp-rate">
                 <span>Книги / архив</span>
-                <strong>9 ₽/кг</strong>
+                <strong>{formatRate(wpRates.books)} ₽/кг</strong>
               </div>
             </div>
 
@@ -300,7 +306,7 @@ export default async function HomePage() {
                 <Phone size={18} /> {SITE_PHONE}
               </a>
               <p className="consult-hours">
-                Пн–Пт {SITE_HOURS_WEEKDAY} · Сб {SITE_HOURS_SATURDAY}
+                {SITE_HOURS_LABEL}
               </p>
             </div>
             <div className="consult-form">
@@ -322,9 +328,7 @@ export default async function HomePage() {
               </div>
               <div className="map-info__row">
                 <Clock size={15} />
-                <span>
-                  Пн–Пт {SITE_HOURS_WEEKDAY} · Сб {SITE_HOURS_SATURDAY}
-                </span>
+                <span>{SITE_HOURS_LABEL}</span>
               </div>
               <div className="map-info__row">
                 <Phone size={15} />

@@ -13,6 +13,7 @@ interface Suggestion {
   sku?: string | null;
   price: number | null;
   imageUrl?: string | null;
+  dimensions?: string | null;
 }
 
 interface SearchBarProps {
@@ -137,6 +138,7 @@ export function SearchBar({
               <div className="search-suggestion-info">
                 <div className="search-suggestion-name">{s.name}</div>
                 {s.sku && <div className="search-suggestion-sku">{s.sku}</div>}
+                {s.dimensions && <div className="search-suggestion-sku">Размер: {s.dimensions}</div>}
               </div>
               <div className="search-suggestion-price">
                 {s.price != null ? `${s.price.toLocaleString("ru-RU")} ₽` : "—"}

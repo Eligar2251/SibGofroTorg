@@ -26,8 +26,7 @@ import {
   SITE_ADDRESS,
   SITE_PHONE,
   SITE_PHONE_HREF,
-  SITE_HOURS_WEEKDAY,
-  SITE_HOURS_SATURDAY,
+  SITE_HOURS_LABEL,
 } from "@/lib/site-config";
 
 interface Category {
@@ -44,8 +43,21 @@ export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   const [userLoaded, setUserLoaded] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { totalItems } = useCart();
+
+  // Когда страница прокручена, шапка «отлипает» от верхней плашки —
+  // добавляем тень, чтобы было видно, что она парит над контентом.
+  useEffect(() => {
+    function onScroll() {
+      const isScrolled = window.scrollY > 8;
+      setScrolled((prev) => (prev === isScrolled ? prev : isScrolled));
+    }
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     fetch("/api/categories")
@@ -93,6 +105,7 @@ export function Header() {
 
   return (
     <>
+      <div className="site-header-wrap">
       <div className="topbar">
         <div className="container-wide topbar-inner">
           <div className="topbar-left">
@@ -102,7 +115,7 @@ export function Header() {
             </span>
             <span className="topbar-item hide-mobile">
               <Clock size={12} />
-              Пн–Пт {SITE_HOURS_WEEKDAY} · Сб {SITE_HOURS_SATURDAY}
+              {SITE_HOURS_LABEL}
             </span>
           </div>
           <div className="topbar-right">
@@ -122,7 +135,7 @@ export function Header() {
         </div>
       </div>
 
-      <header className="site-header">
+      <header className={`site-header${scrolled ? " site-header--scrolled" : ""}`}>
         <div className="container-wide header-inner">
           <Link href="/" className="logo" aria-label="СибГофроТорг — на главную">
             <SiteLogo />
@@ -205,6 +218,7 @@ export function Header() {
           </div>
         </div>
       </header>
+      </div>
 
       {isMobileMenuOpen && (
         <div className="mobile-menu-panel">

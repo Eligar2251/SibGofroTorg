@@ -6,7 +6,8 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle,
@@ -15,14 +16,24 @@ import {
   Trash2,
   X,
   Loader2,
+  Truck,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   ProductPicker,
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
+import {
+  SearchCombobox,
+  SearchMultiSelect,
+  type PickerOption,
+} from "@/components/admin/SearchPicker";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
-import type { BankPayment } from "@/lib/warehouse-shared";
+import type { BankPayment, WarehouseReceipt } from "@/lib/warehouse-shared";
 
 interface ReceiptItemDraft {
   productId: string;
@@ -64,6 +75,36 @@ function fmtDate(raw: string | null | undefined): string {
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
+
+/** Округление до копеек, чтобы не копился хвост из float-арифметики */
+function roundKopeck(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Равномерно разбить сумму на count частей так, чтобы сумма частей
+ * совпала с итогом до копейки: первые (count-1) частей одинаковые,
+ * остаток добирается в последней части.
+ */
+function splitEvenly(totalSum: number, count: number): string[] {
+  const sum = roundKopeck(totalSum);
+  if (count <= 1) return [String(sum)];
+  // Итог ещё не введён — показываем нужное количество нулевых полей
+  if (sum <= 0) return Array.from({ length: count }, () => "0");
+  const base = Math.floor((sum / count) * 100) / 100;
+  const next: string[] = [];
+  let allocated = 0;
+  for (let i = 0; i < count; i++) {
+    if (i === count - 1) {
+      next.push(String(roundKopeck(sum - allocated)));
+    } else {
+      next.push(String(base));
+      allocated = roundKopeck(allocated + base);
+    }
+  }
+  return next;
+}
 
 export function ReceiptForm({
   products,
@@ -103,41 +144,56 @@ export function ReceiptForm({
     initialReceipt?.linkedDealIds || []
   );
   const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
-  const [paymentCount, setPaymentCount] = useState(1);
+
+  // При редактировании — существующие неоплаченные платежи поступления.
+  // По их количеству выставляем число частей, чтобы при пересохранении
+  // разбивка не слетала на «1 платёж» (а удалённый платёж пересоздавался).
+  const existingUnpaid = useMemo(() => {
+    if (!initialReceipt) return [] as BankPayment[];
+    return payments.filter(
+      (p) =>
+        p.direction === "outgoing" &&
+        !p.isPaid &&
+        (p.receiptIds || []).includes(initialReceipt.id)
+    );
+  }, [payments, initialReceipt]);
+
+  const [paymentCount, setPaymentCount] = useState(
+    initialReceipt && existingUnpaid.length > 1 ? existingUnpaid.length : 1
+  );
   const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
+  /** Пользователь вручную правил суммы частей — автопересчёт выключаем */
+  const [splitTouched, setSplitTouched] = useState(false);
 
-  const total = items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0);
+  const total = useMemo(
+    () => items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0),
+    [items]
+  );
 
-  function autoSplit(count: number, totalSum: number) {
-    if (count <= 1) {
-      setSplitAmounts([String(totalSum)]);
-      return;
+  // Пересчитываем части при изменении итога, если суммы ещё не правили
+  // вручную. Без этого выбор «2 платежа» до ввода позиций (или изменение
+  // позиций после) оставлял устаревшие/нулевые/отрицательные суммы, и в банк
+  // уходил один общий платёж вместо нескольких.
+  useEffect(() => {
+    if (paymentCount > 1 && !splitTouched) {
+      setSplitAmounts(splitEvenly(total, paymentCount));
     }
-    const base = Math.floor(totalSum / count);
-    const remainder = totalSum % count;
-    const next: string[] = [];
-    for (let i = 0; i < count; i++) {
-      // Add slight difference (1-2 rubles)
-      let val = base;
-      if (i === 0) val += remainder;
-      
-      // Implement the ruble difference requirement
-      if (count === 2) {
-        if (i === 0) val += 1;
-        if (i === 1) val -= 1;
-      } else if (count === 3) {
-        if (i === 0) val += 1;
-        if (i === 2) val -= 1;
-      }
-      
-      next.push(String(val));
-    }
-    setSplitAmounts(next);
-  }
+  }, [total, paymentCount, splitTouched]);
 
   function handleSplitCountChange(count: number) {
     setPaymentCount(count);
-    autoSplit(count, total);
+    setSplitTouched(false);
+    setSplitAmounts(splitEvenly(total, count));
+  }
+
+  /** Итоговый массив сумм платежей, который уходит на сервер */
+  function buildPaymentSplits(): number[] {
+    if (paymentCount <= 1) return [roundKopeck(total)];
+    const parts = splitAmounts
+      .map((v) => roundKopeck(Number(v) || 0))
+      .filter((v) => v > 0);
+    // Если введённые части пустые/нулевые — делим итог сами
+    return parts.length > 0 ? parts : splitEvenly(total, paymentCount).map(Number);
   }
 
   function resetForm() {
@@ -153,6 +209,10 @@ export function ReceiptForm({
     setVatRate(initialReceipt?.vatRate ?? VAT_RATE);
     setItems(initialReceipt?.items || []);
     setSelectedDeals(initialReceipt?.linkedDealIds || []);
+    setSelectedPayments([]);
+    setPaymentCount(1);
+    setSplitAmounts([""]);
+    setSplitTouched(false);
     setError("");
   }
 
@@ -244,6 +304,53 @@ export function ReceiptForm({
       (!p.receiptIds || p.receiptIds.length === 0)
   );
 
+  // Варианты для переиспользуемых контролов выбора с поиском
+  const supplierOptions: PickerOption[] = useMemo(
+    () =>
+      counterparties
+        .filter((item) => item.roles.includes("supplier"))
+        .map((item) => ({
+          id: item.id,
+          title: item.name,
+          meta: [item.contactName, item.phone, item.inn]
+            .filter(Boolean)
+            .join(" · "),
+        })),
+    [counterparties]
+  );
+
+  const newDeals = useMemo(
+    () => deals.filter((d) => d.status === "new"),
+    [deals]
+  );
+
+  const dealOptions: PickerOption[] = useMemo(
+    () =>
+      newDeals.map((d) => {
+        const names = (d.items?.map((it: any) => it.name) || []).join(", ");
+        return {
+          id: d.id,
+          title: `ЗК-${d.number} · ${d.customerName}`,
+          meta: `${fmtDate(d.date)} · ${fmt(d.total)} ₽`,
+          hint: names || undefined,
+          keywords: names,
+          right: `${fmt(d.total)} ₽`,
+        };
+      }),
+    [newDeals]
+  );
+
+  const paymentOptions: PickerOption[] = useMemo(
+    () =>
+      availablePayments.map((p) => ({
+        id: p.id,
+        title: `ПЛ-${p.number} · ${fmt(p.amount)} ₽`,
+        meta: `${fmtDate(p.date)} · ${p.type === "cash" ? "Наличные" : "Безнал"}`,
+        right: `${fmt(p.amount)} ₽`,
+      })),
+    [availablePayments]
+  );
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -284,7 +391,7 @@ export function ReceiptForm({
           vatRate,
           linkedDealIds: selectedDeals,
           linkedPaymentIds: selectedPayments,
-          paymentSplits: paymentCount > 1 ? splitAmounts.map(Number) : [total],
+          paymentSplits: buildPaymentSplits(),
         }),
       });
       if (!res.ok) {
@@ -318,6 +425,7 @@ export function ReceiptForm({
       </button>
 
       {open && (
+        <ModalPortal>
         <div className="admin-modal-overlay" onClick={() => setOpen(false)}>
           <div
             className="admin-modal wh-modal"
@@ -351,22 +459,13 @@ export function ReceiptForm({
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Поставщик *</label>
-                  <input
-                    type="text"
-                    className="admin-input"
-                    list="receipt-supplier-options"
+                  <SearchCombobox
+                    options={supplierOptions}
                     value={supplier}
-                    onChange={(e) => selectSupplier(e.target.value)}
+                    onChange={(value) => selectSupplier(value)}
                     placeholder="Начните вводить название..."
-                    required
+                    emptyText="Такого поставщика нет — впишите нового"
                   />
-                  <datalist id="receipt-supplier-options">
-                    {counterparties
-                      .filter((item) => item.roles.includes("supplier"))
-                      .map((item) => (
-                        <option key={item.id} value={item.name} />
-                      ))}
-                  </datalist>
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Ставка НДС</label>
@@ -418,55 +517,60 @@ export function ReceiptForm({
                 </div>
                 
                 {paymentCount > 1 && (
-                  <div className="wh-form-grid" style={{ marginTop: 8 }}>
-                    {splitAmounts.map((val, idx) => (
-                      <div key={idx} className="admin-field">
-                        <label className="admin-label">Сумма части {idx + 1}, ₽</label>
-                        <input
-                          type="number"
-                          className="admin-input"
-                          value={val}
-                          onChange={(e) => {
-                            const next = [...splitAmounts];
-                            next[idx] = e.target.value;
-                            setSplitAmounts(next);
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <div className="wh-form-grid" style={{ marginTop: 8 }}>
+                      {splitAmounts.map((val, idx) => (
+                        <div key={idx} className="admin-field">
+                          <label className="admin-label">Сумма части {idx + 1}, ₽</label>
+                          <input
+                            type="number"
+                            className="admin-input"
+                            min={0}
+                            step={0.01}
+                            value={val}
+                            onChange={(e) => {
+                              const next = [...splitAmounts];
+                              next[idx] = e.target.value;
+                              setSplitAmounts(next);
+                              setSplitTouched(true);
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="wh-form-hint" style={{ margin: "6px 0 0" }}>
+                      Сумма частей:{" "}
+                      <strong>
+                        {fmt(
+                          splitAmounts.reduce(
+                            (s, v) => s + (Number(v) || 0),
+                            0
+                          )
+                        )}{" "}
+                        ₽
+                      </strong>{" "}
+                      из {fmt(total)} ₽
+                      {Math.abs(
+                        splitAmounts.reduce((s, v) => s + (Number(v) || 0), 0) -
+                          total
+                      ) > 0.009 && " — не сходится с итогом!"}
+                    </div>
+                  </>
                 )}
               </div>
 
               <div className="admin-field" style={{ marginTop: 12 }}>
                 <label className="admin-label">Заказать под клиента (привязка к заказу)</label>
-                {deals.length === 0 ? (
+                {newDeals.length === 0 ? (
                   <div className="wh-deal-pick__empty">Нет активных заказов</div>
                 ) : (
-                  <div className="wh-deal-pick">
-                    {deals.filter(d => d.status === 'new').map((d) => {
-                      const selected = selectedDeals.includes(d.id);
-                      return (
-                        <button
-                          key={d.id}
-                          type="button"
-                          className={`wh-deal-chip${selected ? " wh-deal-chip--active" : ""}`}
-                          onClick={() => toggleDeal(d.id)}
-                        >
-                          <span className="wh-deal-chip__title">
-                            ЗК-{d.number} · {d.customerName}
-                          </span>
-                          <span className="wh-deal-chip__meta">
-                            {fmtDate(d.date)} · {fmt(d.total)} ₽
-                          </span>
-                          <span className="wh-deal-chip__meta" style={{ fontStyle: 'italic', opacity: 0.6 }}>
-                            {d.items?.map((it: any) => it.name).join(", ").slice(0, 60)}
-                            {d.items?.map((it: any) => it.name).join(", ").length > 60 ? "..." : ""}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <SearchMultiSelect
+                    options={dealOptions}
+                    selectedIds={selectedDeals}
+                    onToggle={toggleDeal}
+                    placeholder="Поиск заказа по номеру, клиенту или товару…"
+                    emptyText="Заказы не найдены"
+                  />
                 )}
               </div>
 
@@ -475,26 +579,13 @@ export function ReceiptForm({
                 {availablePayments.length === 0 ? (
                   <div className="wh-deal-pick__empty">Нет свободных платежей для этого поставщика</div>
                 ) : (
-                  <div className="wh-deal-pick">
-                    {availablePayments.map((p) => {
-                      const selected = selectedPayments.includes(p.id);
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          className={`wh-deal-chip${selected ? " wh-deal-chip--active" : ""}`}
-                          onClick={() => togglePayment(p.id)}
-                        >
-                          <span className="wh-deal-chip__title">
-                            ПЛ-{p.number} · {fmt(p.amount)} ₽
-                          </span>
-                          <span className="wh-deal-chip__meta">
-                            {fmtDate(p.date)} · {p.type === 'cash' ? 'Наличные' : 'Безнал'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <SearchMultiSelect
+                    options={paymentOptions}
+                    selectedIds={selectedPayments}
+                    onToggle={togglePayment}
+                    placeholder="Поиск платежа по номеру или сумме…"
+                    emptyText="Платежи не найдены"
+                  />
                 )}
               </div>
 
@@ -626,8 +717,199 @@ export function ReceiptForm({
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
+  );
+}
+
+/**
+ * Карточка поступления: компактный свёрнутый вид (основная информация) +
+ * раскрытие по клику до полных деталей и действий.
+ */
+export function ReceiptCard({
+  receipt: r,
+  paidAmount,
+  products,
+  counterparties,
+  deals,
+  payments,
+}: {
+  receipt: WarehouseReceipt;
+  paidAmount: number;
+  products: PickerProduct[];
+  counterparties: CounterpartyOption[];
+  deals: any[];
+  payments: BankPayment[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isFullyPaid = r.total > 0 && paidAmount >= r.total;
+  const hasDebt = r.status === "posted" && !isFullyPaid;
+
+  return (
+    <div id={`receipt-${r.id}`} className="admin-order">
+      <button
+        type="button"
+        className="receipt-head"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span className="admin-order__id">ПО-{r.number}</span>
+        <span
+          className={`admin-badge ${
+            r.status === "posted" ? "admin-badge--green" : "admin-badge--amber"
+          }`}
+        >
+          {r.status === "posted" ? "На складе" : "Не проведено"}
+        </span>
+        {isFullyPaid ? (
+          <span className="admin-badge admin-badge--green">Оплачен</span>
+        ) : paidAmount > 0 ? (
+          <span className="admin-badge admin-badge--blue">
+            Оплачено {fmt(paidAmount)} из {fmt(r.total)} ₽
+          </span>
+        ) : (
+          <span className="admin-badge admin-badge--amber">Не оплачен</span>
+        )}
+        {hasDebt && (
+          <span className="admin-badge admin-badge--red">
+            <AlertTriangle size={10} /> Долг
+          </span>
+        )}
+        <span className="receipt-head__supplier">{r.supplier || "—"}</span>
+        <span className="receipt-head__date">{fmtDate(r.date)}</span>
+        <span className="receipt-head__total">{fmt(r.total)} ₽</span>
+        <span className="receipt-head__chevron">
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="admin-order__row" style={{ paddingTop: 14 }}>
+          <div className="admin-order__main">
+            <div className="admin-order__grid">
+              <div className="admin-order__meta">
+                <span className="admin-order__meta-label wh-meta-label">
+                  Поставщик:
+                </span>
+                <span className="admin-order__meta-val">{r.supplier || "—"}</span>
+              </div>
+              {r.inn && (
+                <div className="admin-order__meta">
+                  <span className="admin-order__meta-label wh-meta-label">ИНН:</span>
+                  <span className="admin-order__meta-val">
+                    {r.inn}
+                    {r.kpp ? ` · КПП ${r.kpp}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="admin-order__items">
+              <div className="admin-order__items-title">Товары (с НДС)</div>
+              {r.items.map((it, idx) => (
+                <div key={idx} className="admin-order__item">
+                  <Link
+                    href={`/${ADMIN_PATH}/products/${it.productId}`}
+                    prefetch={false}
+                    style={{ color: "inherit", fontWeight: 650 }}
+                  >
+                    {it.name} × {it.quantity}
+                    <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
+                  </Link>
+                  <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
+                </div>
+              ))}
+              <div className="admin-order__total">
+                <span>
+                  Итого (с НДС)
+                  <small className="wh-vat-note">
+                    НДС {r.vatRate}%: {fmt(r.vatAmount)} ₽
+                  </small>
+                </span>
+                <span>{fmt(r.total)} ₽</span>
+              </div>
+              {r.linkedDealNumbers && r.linkedDealNumbers.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    borderTop: "1px dashed var(--adm-border)",
+                    paddingTop: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "var(--adm-sand)",
+                      textTransform: "uppercase",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Под заказ для:
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {r.linkedDealNumbers.map((n, idx) => (
+                      <Link
+                        key={n}
+                        className="admin-badge admin-badge--blue"
+                        href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${r.linkedDealIds?.[idx] || ""}`}
+                        prefetch={false}
+                        style={{ textDecoration: "none" }}
+                      >
+                        ЗК-{n}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {r.comment && (
+              <div className="admin-order__comment">
+                <strong>Комментарий</strong>
+                {r.comment}
+              </div>
+            )}
+          </div>
+
+          <div className="admin-order__side">
+            <ReceiptForm
+              products={products}
+              counterparties={counterparties}
+              deals={deals}
+              payments={payments}
+              initialReceipt={{
+                id: r.id,
+                date: r.date,
+                supplier: r.supplier,
+                phone: r.phone ?? null,
+                email: r.email ?? null,
+                inn: r.inn ?? null,
+                kpp: r.kpp ?? null,
+                address: r.address ?? null,
+                contactName: r.contactName ?? null,
+                comment: r.comment ?? null,
+                items: r.items.map((item) => ({
+                  productId: item.productId,
+                  name: item.name,
+                  sku: item.sku ?? null,
+                  quantity: item.quantity,
+                  lineTotal: item.lineTotal,
+                })),
+                vatRate: r.vatRate,
+                linkedDealIds: r.linkedDealIds,
+              }}
+            />
+            {r.status === "draft" && (
+              <ReceiptPostButton receiptId={r.id} paidEnough={isFullyPaid} />
+            )}
+            {r.status === "posted" && <ReceiptCancelButton receiptId={r.id} />}
+            <ReceiptDeleteButton receiptId={r.id} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

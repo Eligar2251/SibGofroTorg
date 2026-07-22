@@ -6,6 +6,17 @@ import { FieldValue, type Query } from "firebase-admin/firestore";
 import { unstable_cache } from "next/cache";
 import { getAdminDb } from "./firebase-admin";
 import {
+  extractQueryDims,
+  dimensionScore,
+} from "./dimension-search";
+import {
+  WASTEPAPER_RATE_IDS,
+  WASTEPAPER_RATE_DEFAULTS,
+  wpRateSettingKey,
+  parseWastepaperRate,
+  type WastepaperRates,
+} from "./wastepaper";
+import {
   FirestoreCategory,
   FirestoreProduct,
   FirestoreOrder,
@@ -128,6 +139,10 @@ function mapProduct(id: string, data: FirebaseFirestore.DocumentData): Firestore
       data.stockQty !== undefined && data.stockQty !== null
         ? Number(data.stockQty)
         : null,
+    stockWarnQty:
+      data.stockWarnQty !== undefined && data.stockWarnQty !== null
+        ? Number(data.stockWarnQty)
+        : null,
     isPromo: data.isPromo ?? false,
     promoLabel: data.promoLabel || null,
     madeToOrder: data.madeToOrder ?? false,
@@ -241,10 +256,26 @@ const getCachedCategories = unstable_cache(
   { revalidate: DATA_REVALIDATE, tags: ["categories"] }
 );
 
+let memoryProductsCache: { at: number; data: FirestoreProduct[] } | null = null;
+
 async function fetchAllProducts(): Promise<FirestoreProduct[]> {
-  const db = getAdminDb();
-  const snap = await db.collection("products").get();
-  return snap.docs.map((d) => mapProduct(d.id, d.data()));
+  const now = Date.now();
+  // Дополнительный in-memory кэш защищает dev-режим и частые переходы от
+  // лишних чтений Firestore. При исчерпанной квоте не роняем сайт, а отдаём
+  // последнее успешное значение или пустой список.
+  if (memoryProductsCache && now - memoryProductsCache.at < DATA_REVALIDATE * 1000) {
+    return memoryProductsCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("products").get();
+    const data = snap.docs.map((d) => mapProduct(d.id, d.data()));
+    memoryProductsCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("fetchAllProducts error:", error?.message || error);
+    return memoryProductsCache?.data || [];
+  }
 }
 
 const getCachedProducts = unstable_cache(
@@ -293,6 +324,16 @@ export async function getCategoryBySlug(slug: string): Promise<FirestoreCategory
 
 // ─── Products ─────────────────────────────────────────────
 
+/** Размеры товара: строго из характеристик карточки (Д × Ш × В). */
+function getProductDims(p: FirestoreProduct): number[] {
+  const dims: number[] = [];
+  for (const v of [p.dimensionLength, p.dimensionWidth, p.dimensionHeight]) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) dims.push(n);
+  }
+  return dims;
+}
+
 export async function getProducts(opts?: {
   categoryId?: string;
   search?: string;
@@ -321,15 +362,41 @@ export async function getProducts(opts?: {
     filteredResults = filteredResults.filter((p) => p.isFeatured === true);
   }
 
+  let dimensionSearchApplied = false;
   if (opts?.search) {
-    const s = opts.search.toLowerCase();
-    filteredResults = filteredResults.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(s) || p.sku?.toLowerCase().includes(s)
-    );
+    const raw = opts.search;
+    const s = raw.toLowerCase().trim();
+    const qDims = extractQueryDims(raw);
+    if (qDims) {
+      dimensionSearchApplied = true;
+      // Поиск по размерам берёт только полноценные Д × Ш × В из характеристик
+      // товара. Точные совпадения идут первыми; близкие размеры — ниже.
+      const scored = filteredResults
+        .map((p) => {
+          const pDims = getProductDims(p);
+          const score = pDims.length >= qDims.length ? dimensionScore(qDims, pDims) : 0;
+          const exact =
+            qDims.length === 3 &&
+            pDims.length >= 3 &&
+            [...qDims].sort((a, b) => a - b).join("x") ===
+              [...pDims.slice(0, 3)].sort((a, b) => a - b).join("x");
+          return { p, score, exact };
+        })
+        .filter((x) => x.exact || x.score >= 0.75);
+      scored.sort((a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score);
+      filteredResults = scored.map((x) => x.p);
+    } else {
+      filteredResults = filteredResults.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(s) || p.sku?.toLowerCase().includes(s)
+      );
+    }
   }
 
-  switch (opts?.sortBy) {
+  switch (dimensionSearchApplied && !opts?.sortBy ? "dimension" : opts?.sortBy) {
+    case "dimension":
+      // Порядок уже задан скорингом по размерам выше.
+      break;
     case "price_asc":
       filteredResults.sort(
         (a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)
@@ -545,34 +612,48 @@ export async function createOrder(
   });
 }
 
+const memoryOrdersCache = new Map<string, { at: number; data: FirestoreOrder[] }>();
+
 export async function getOrders(opts?: {
   status?: string;
   limit?: number;
 }): Promise<FirestoreOrder[]> {
-  const db = getAdminDb();
-  let q: Query = db.collection("orders").orderBy("createdAt", "desc");
+  const key = `${opts?.status || "all"}:${opts?.limit || "all"}`;
+  const cached = memoryOrdersCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.at < 30_000) return cached.data;
 
-  if (opts?.status && opts.status !== "all") {
-    q = db
-      .collection("orders")
-      .where("status", "==", opts.status)
-      .orderBy("createdAt", "desc");
+  try {
+    const db = getAdminDb();
+    let q: Query = db.collection("orders").orderBy("createdAt", "desc");
+
+    if (opts?.status && opts.status !== "all") {
+      q = db
+        .collection("orders")
+        .where("status", "==", opts.status)
+        .orderBy("createdAt", "desc");
+    }
+
+    if (opts?.limit) {
+      q = q.limit(opts.limit);
+    }
+
+    const snap = await q.get();
+    const data = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...(data as Omit<FirestoreOrder, "id">),
+        createdAt: serializeTimestamp(data.createdAt),
+        updatedAt: serializeTimestamp(data.updatedAt),
+      };
+    });
+    memoryOrdersCache.set(key, { at: now, data });
+    return data;
+  } catch (error: any) {
+    console.error("getOrders error:", error?.message || error);
+    return cached?.data || [];
   }
-
-  if (opts?.limit) {
-    q = q.limit(opts.limit);
-  }
-
-  const snap = await q.get();
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      ...(data as Omit<FirestoreOrder, "id">),
-      createdAt: serializeTimestamp(data.createdAt),
-      updatedAt: serializeTimestamp(data.updatedAt),
-    };
-  });
 }
 
 export async function updateOrderStatus(
@@ -660,9 +741,103 @@ export async function updateSettings(data: Record<string, string>) {
   await db.collection("settings").doc("main").set(data, { merge: true });
 }
 
+/**
+ * Актуальные цены приёма макулатуры (₽/кг) из настроек.
+ * Значения редактируются в админке (Настройки → Цены на макулатуру)
+ * и показываются на главной и на странице «Приём макулатуры».
+ * При отсутствии/ошибке чтения — дефолтные цены.
+ */
+export async function getWastepaperRates(): Promise<WastepaperRates> {
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = (await getSettings()) || {};
+  } catch {
+    settings = {};
+  }
+  const result: WastepaperRates = { ...WASTEPAPER_RATE_DEFAULTS };
+  for (const id of WASTEPAPER_RATE_IDS) {
+    result[id] = parseWastepaperRate(
+      settings[wpRateSettingKey(id)],
+      WASTEPAPER_RATE_DEFAULTS[id]
+    );
+  }
+  return result;
+}
+
 export async function deleteOrder(id: string) {
   const db = getAdminDb();
   await db.collection("orders").doc(id).delete();
+}
+
+const memoryWastepaperCache = new Map<string, { at: number; data: any[] }>();
+
+export async function getWastepaperRequests(opts?: {
+  status?: string;
+  limit?: number;
+}): Promise<any[]> {
+  const key = `${opts?.status || "all"}:${opts?.limit || "all"}`;
+  const cached = memoryWastepaperCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.at < 30_000) return cached.data;
+
+  try {
+    const db = getAdminDb();
+    let q: Query = db.collection("wastepaper_requests").orderBy("createdAt", "desc");
+
+    if (opts?.status && opts.status !== "all") {
+      q = db
+        .collection("wastepaper_requests")
+        .where("status", "==", opts.status)
+        .orderBy("createdAt", "desc");
+    }
+
+    if (opts?.limit) q = q.limit(opts.limit);
+
+    const snap = await q.get();
+    const result = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        source: "wastepaper" as const,
+        type: "wastepaper" as const,
+        customerType: "individual",
+        customerName: data.customerName || "",
+        customerPhone: data.customerPhone || "",
+        customerEmail: null,
+        communicationChannel: data.deliveryMethod || null,
+        wastepaperType: data.wastepaperType || null,
+        weight: Number(data.weight || 0),
+        deliveryMethod: data.deliveryMethod || null,
+        estimatedPayout: Number(data.estimatedPayout || 0),
+        productInfo: data.wastepaperType ? `Макулатура: ${data.wastepaperType}` : "Макулатура",
+        comment: data.comment || null,
+        status: data.status || "new",
+        createdAt: serializeTimestamp(data.createdAt),
+        updatedAt: serializeTimestamp(data.updatedAt),
+      };
+    });
+    memoryWastepaperCache.set(key, { at: now, data: result });
+    return result;
+  } catch (error: any) {
+    console.error("getWastepaperRequests error:", error?.message || error);
+    return cached?.data || [];
+  }
+}
+
+export async function updateWastepaperRequestStatus(
+  id: string,
+  status: string
+) {
+  const db = getAdminDb();
+  await db.collection("wastepaper_requests").doc(id).update({
+    status,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+export async function deleteWastepaperRequest(id: string) {
+  const db = getAdminDb();
+  await db.collection("wastepaper_requests").doc(id).delete();
 }
 
 export async function deleteProductQuestion(questionId: string) {

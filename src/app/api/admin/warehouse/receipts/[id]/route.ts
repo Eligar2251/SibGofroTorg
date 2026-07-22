@@ -26,6 +26,9 @@ export async function PUT(
       vatRate: body.vatRate,
       linkedDealIds: body.linkedDealIds,
       linkedPaymentIds: body.linkedPaymentIds,
+      paymentSplits: Array.isArray(body.paymentSplits)
+        ? body.paymentSplits
+        : undefined,
     });
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });

@@ -13,7 +13,9 @@ export async function GET() {
       slug: cat.slug,
       icon: cat.icon ?? "box",
     }));
-    return NextResponse.json(serialized);
+    return NextResponse.json(serialized, {
+      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
+    });
   } catch (error) {
     console.error("API Categories dropdown error:", error);
     return NextResponse.json({ error: "Ошибка базы данных" }, { status: 500 });

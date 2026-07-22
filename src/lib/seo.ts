@@ -7,7 +7,6 @@ import {
   SITE_PHONE,
   SITE_EMAIL,
   SITE_HOURS_WEEKDAY,
-  SITE_HOURS_SATURDAY,
 } from "@/lib/site-config";
 
 export const SITE_URL =
@@ -52,20 +51,11 @@ export function buildLocalBusinessJsonLd() {
       {
         "@type": "OpeningHoursSpecification",
         dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-        opens: SITE_HOURS_WEEKDAY.split("–")[0]?.replace(":", ":") || "09:00",
+        opens: SITE_HOURS_WEEKDAY.split("–")[0]?.trim() || "8:30",
         closes:
           SITE_HOURS_WEEKDAY.split("–")[1]?.trim() ||
           SITE_HOURS_WEEKDAY.split("-")[1]?.trim() ||
-          "18:00",
-      },
-      {
-        "@type": "OpeningHoursSpecification",
-        dayOfWeek: "Saturday",
-        opens: SITE_HOURS_SATURDAY.split("–")[0] || "10:00",
-        closes:
-          SITE_HOURS_SATURDAY.split("–")[1]?.trim() ||
-          SITE_HOURS_SATURDAY.split("-")[1]?.trim() ||
-          "15:00",
+          "17:00",
       },
     ],
     areaServed: [

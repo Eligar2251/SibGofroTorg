@@ -31,6 +31,7 @@ export interface FirestoreProduct {
   note?: string | null | undefined;
   inStock: boolean;
   stockQty?: number | null | undefined;
+  stockWarnQty?: number | null | undefined;
   isPromo: boolean;
   promoLabel?: string | null | undefined;
   madeToOrder?: boolean | null | undefined;
@@ -153,6 +154,10 @@ export interface FirestoreOrder {
   channel?: string | null;
   status: "new" | "in_progress" | "completed" | "rejected";
   closeReason?: string | null;
+  /** Связь с учётом: создаётся при «Передать в работу» */
+  dealId?: string | null;
+  dealNumber?: number | null;
+  paymentId?: string | null;
   createdAt?: any;
   updatedAt?: any;
 }
