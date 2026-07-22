@@ -1222,6 +1222,7 @@ export function WarehouseManager({
                         excludeFromBalance={p.excludeFromBalance}
                         deals={dealLinkOptions}
                         receipts={receiptLinkOptions}
+                        counterparties={counterpartyOptions}
                         edit={{
                           date: p.date,
                           type: p.type,

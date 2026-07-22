@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Edit2,
@@ -20,6 +20,11 @@ import {
   ProductPicker,
   type PickerProduct,
 } from "@/components/admin/ProductPicker";
+import {
+  SearchCombobox,
+  SearchMultiSelect,
+  type PickerOption,
+} from "@/components/admin/SearchPicker";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPayment } from "@/lib/warehouse-shared";
@@ -186,6 +191,32 @@ export function DealForm({
       (!p.dealIds || p.dealIds.length === 0)
   );
 
+  // Варианты для переиспользуемых контролов выбора с поиском
+  const customerOptions: PickerOption[] = useMemo(
+    () =>
+      counterparties
+        .filter((item) => item.roles.includes("customer"))
+        .map((item) => ({
+          id: item.id,
+          title: item.name,
+          meta: [item.contactName, item.phone, item.inn]
+            .filter(Boolean)
+            .join(" · "),
+        })),
+    [counterparties]
+  );
+
+  const paymentOptions: PickerOption[] = useMemo(
+    () =>
+      availablePayments.map((p) => ({
+        id: p.id,
+        title: `ПЛ-${p.number} · ${fmt(p.amount)} ₽`,
+        meta: `${fmtDate(p.date)} · ${p.type === "cash" ? "Наличные" : "Безнал"}`,
+        right: `${fmt(p.amount)} ₽`,
+      })),
+    [availablePayments]
+  );
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -290,22 +321,13 @@ export function DealForm({
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Покупатель *</label>
-                  <input
-                    type="text"
-                    className="admin-input"
-                    list="deal-customer-options"
+                  <SearchCombobox
+                    options={customerOptions}
                     value={customerName}
-                    onChange={(e) => selectCustomer(e.target.value)}
+                    onChange={(value) => selectCustomer(value)}
                     placeholder="Начните вводить название..."
-                    required
+                    emptyText="Такого покупателя нет — впишите нового"
                   />
-                  <datalist id="deal-customer-options">
-                    {counterparties
-                      .filter((item) => item.roles.includes("customer"))
-                      .map((item) => (
-                        <option key={item.id} value={item.name} />
-                      ))}
-                  </datalist>
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Телефон</label>
@@ -350,26 +372,13 @@ export function DealForm({
                 {availablePayments.length === 0 ? (
                   <div className="wh-deal-pick__empty">Нет свободных платежей для этого клиента</div>
                 ) : (
-                  <div className="wh-deal-pick">
-                    {availablePayments.map((p) => {
-                      const selected = selectedPayments.includes(p.id);
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          className={`wh-deal-chip${selected ? " wh-deal-chip--active" : ""}`}
-                          onClick={() => togglePayment(p.id)}
-                        >
-                          <span className="wh-deal-chip__title">
-                            ПЛ-{p.number} · {fmt(p.amount)} ₽
-                          </span>
-                          <span className="wh-deal-chip__meta">
-                            {fmtDate(p.date)} · {p.type === 'cash' ? 'Наличные' : 'Безнал'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <SearchMultiSelect
+                    options={paymentOptions}
+                    selectedIds={selectedPayments}
+                    onToggle={togglePayment}
+                    placeholder="Поиск платежа по номеру или сумме…"
+                    emptyText="Платежи не найдены"
+                  />
                 )}
               </div>
 

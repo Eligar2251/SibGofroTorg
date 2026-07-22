@@ -25,6 +25,11 @@ import {
   UserRound,
   Download,
 } from "lucide-react";
+import {
+  SearchCombobox,
+  SearchMultiSelect,
+  type PickerOption,
+} from "@/components/admin/SearchPicker";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPaymentType } from "@/lib/warehouse-shared";
@@ -116,6 +121,55 @@ export function PaymentForm({
             .includes(r.supplier.toLocaleLowerCase("ru-RU"))
       ),
     [receipts, counterparty]
+  );
+
+  // Варианты для переиспользуемых контролов выбора с поиском
+  const counterpartyOptions: PickerOption[] = useMemo(
+    () =>
+      counterparties
+        .filter((item) =>
+          item.roles.includes(direction === "incoming" ? "customer" : "supplier")
+        )
+        .map((item) => ({
+          id: item.id,
+          title: item.name,
+          meta: [item.contactName, item.phone, item.inn]
+            .filter(Boolean)
+            .join(" · "),
+        })),
+    [counterparties, direction]
+  );
+
+  const dealOptions: PickerOption[] = useMemo(
+    () =>
+      activeDeals.map((d) => {
+        const rest = Math.max(0, d.total - d.paidAmount);
+        return {
+          id: d.id,
+          title: `ЗК-${d.number} · ${d.customerName}`,
+          meta: `${d.status === "completed" ? "отпущен" : "новый"} · ${
+            direction === "incoming"
+              ? `осталось ${fmt(rest)} ₽`
+              : `${fmt(d.total)} ₽`
+          }`,
+          right: `${fmt(direction === "incoming" ? rest : d.total)} ₽`,
+        };
+      }),
+    [activeDeals, direction]
+  );
+
+  const receiptOptions: PickerOption[] = useMemo(
+    () =>
+      activeReceipts.map((r) => {
+        const rest = Math.max(0, r.total - r.paidAmount);
+        return {
+          id: r.id,
+          title: `ПО-${r.number} · ${r.supplier || "Поставщик"}`,
+          meta: `осталось ${fmt(rest)} ₽ из ${fmt(r.total)} ₽`,
+          right: `${fmt(rest)} ₽`,
+        };
+      }),
+    [activeReceipts]
   );
 
   function autoAmount(
@@ -416,64 +470,28 @@ export function PaymentForm({
                       Нет заказов для привязки
                     </div>
                   ) : (
-                    <div className="wh-deal-pick">
-                      {activeDeals.slice(0, 30).map((d) => {
-                        const selected = selectedDeals.includes(d.id);
-                        const rest = Math.max(0, d.total - d.paidAmount);
-                        return (
-                          <button
-                            key={d.id}
-                            type="button"
-                            className={`wh-deal-chip${
-                              selected ? " wh-deal-chip--active" : ""
-                            }`}
-                            onClick={() => toggleDeal(d.id)}
-                          >
-                            <span className="wh-deal-chip__title">
-                              ЗК-{d.number} · {d.customerName}
-                            </span>
-                            <span className="wh-deal-chip__meta">
-                              {d.status === "completed" ? "отпущен" : "новый"}
-                              {" · "}
-                              {direction === "incoming"
-                                ? `осталось ${fmt(rest)} ₽`
-                                : `${fmt(d.total)} ₽`}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <SearchMultiSelect
+                      options={dealOptions}
+                      selectedIds={selectedDeals}
+                      onToggle={toggleDeal}
+                      placeholder="Поиск заказа по номеру или клиенту…"
+                      emptyText="Заказы не найдены"
+                    />
                   ))}
 
                 {linkMode === "receipts" &&
-                  (receipts.length === 0 ? (
+                  (activeReceipts.length === 0 ? (
                     <div className="wh-deal-pick__empty">
                       Нет поступлений для привязки
                     </div>
                   ) : (
-                    <div className="wh-deal-pick">
-                      {receipts.slice(0, 30).map((r) => {
-                        const selected = selectedReceipts.includes(r.id);
-                        const rest = Math.max(0, r.total - r.paidAmount);
-                        return (
-                          <button
-                            key={r.id}
-                            type="button"
-                            className={`wh-deal-chip${
-                              selected ? " wh-deal-chip--active" : ""
-                            }`}
-                            onClick={() => toggleReceipt(r.id)}
-                          >
-                            <span className="wh-deal-chip__title">
-                              ПО-{r.number} · {r.supplier || "Поставщик"}
-                            </span>
-                            <span className="wh-deal-chip__meta">
-                              осталось {fmt(rest)} ₽ из {fmt(r.total)} ₽
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <SearchMultiSelect
+                      options={receiptOptions}
+                      selectedIds={selectedReceipts}
+                      onToggle={toggleReceipt}
+                      placeholder="Поиск поступления по номеру или поставщику…"
+                      emptyText="Поступления не найдены"
+                    />
                   ))}
               </div>
 
@@ -492,13 +510,11 @@ export function PaymentForm({
                   <label className="admin-label">
                     {direction === "incoming" ? "Плательщик *" : "Получатель *"}
                   </label>
-                  <input
-                    type="text"
-                    className="admin-input"
-                    list="payment-counterparty-options"
+                  <SearchCombobox
+                    options={counterpartyOptions}
                     value={counterparty}
-                    onChange={(e) => {
-                      setCounterparty(e.target.value);
+                    onChange={(value) => {
+                      setCounterparty(value);
                       setCpTouched(true);
                     }}
                     placeholder={
@@ -506,19 +522,8 @@ export function PaymentForm({
                         ? "От кого платёж"
                         : "Поставщик"
                     }
-                    required
+                    emptyText="Не найдено — можно вписать вручную"
                   />
-                  <datalist id="payment-counterparty-options">
-                    {counterparties
-                      .filter((item) =>
-                        item.roles.includes(
-                          direction === "incoming" ? "customer" : "supplier"
-                        )
-                      )
-                      .map((item) => (
-                        <option key={item.id} value={item.name} />
-                      ))}
-                  </datalist>
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Сумма, ₽ *</label>
@@ -621,6 +626,7 @@ export function PaymentControls({
   excludeFromBalance = false,
   deals = [],
   receipts = [],
+  counterparties = [],
   edit,
 }: {
   paymentId: string;
@@ -628,6 +634,7 @@ export function PaymentControls({
   excludeFromBalance?: boolean;
   deals?: DealLinkOption[];
   receipts?: ReceiptLinkOption[];
+  counterparties?: CounterpartyOption[];
   edit: {
     date: string;
     type?: BankPaymentType;
@@ -691,6 +698,47 @@ export function PaymentControls({
             .includes(r.supplier.toLocaleLowerCase("ru-RU"))
       ),
     [receipts, editCounterparty]
+  );
+
+  // Варианты для переиспользуемых контролов выбора с поиском
+  const editCounterpartyOptions: PickerOption[] = useMemo(
+    () =>
+      counterparties
+        .filter((item) =>
+          item.roles.includes(
+            edit.direction === "incoming" ? "customer" : "supplier"
+          )
+        )
+        .map((item) => ({
+          id: item.id,
+          title: item.name,
+          meta: [item.contactName, item.phone, item.inn]
+            .filter(Boolean)
+            .join(" · "),
+        })),
+    [counterparties, edit.direction]
+  );
+
+  const editDealOptions: PickerOption[] = useMemo(
+    () =>
+      activeDeals.map((d) => ({
+        id: d.id,
+        title: `ЗК-${d.number} · ${d.customerName}`,
+        meta: `${d.status === "completed" ? "отпущен" : "новый"}`,
+        right: `${fmt(d.total)} ₽`,
+      })),
+    [activeDeals]
+  );
+
+  const editReceiptOptions: PickerOption[] = useMemo(
+    () =>
+      receipts.map((r) => ({
+        id: r.id,
+        title: `ПО-${r.number} · ${r.supplier || "Поставщик"}`,
+        meta: `всего ${fmt(r.total)} ₽`,
+        right: `${fmt(r.total)} ₽`,
+      })),
+    [receipts]
   );
 
   async function togglePaid() {
@@ -882,45 +930,35 @@ export function PaymentControls({
               <div className="admin-field">
                 <label className="admin-label">Привязка к документам</label>
                 {edit.direction === "incoming" ? (
-                  <div className="wh-deal-pick" style={{ maxHeight: 120 }}>
-                    {activeDeals.map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        className={`wh-deal-chip${editDealIds.includes(d.id) ? " wh-deal-chip--active" : ""}`}
-                        onClick={() =>
-                          setEditDealIds((prev) =>
-                            prev.includes(d.id)
-                              ? prev.filter((id) => id !== d.id)
-                              : [...prev, d.id]
-                          )
-                        }
-                      >
-                        <span className="wh-deal-chip__title">ЗК-{d.number}</span>
-                        <span className="wh-deal-chip__meta">{fmt(d.total)} ₽</span>
-                      </button>
-                    ))}
-                  </div>
+                  <SearchMultiSelect
+                    options={editDealOptions}
+                    selectedIds={editDealIds}
+                    onToggle={(id) =>
+                      setEditDealIds((prev) =>
+                        prev.includes(id)
+                          ? prev.filter((x) => x !== id)
+                          : [...prev, id]
+                      )
+                    }
+                    placeholder="Поиск заказа…"
+                    emptyText="Заказы не найдены"
+                    maxHeight={160}
+                  />
                 ) : (
-                  <div className="wh-deal-pick" style={{ maxHeight: 120 }}>
-                    {receipts.map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        className={`wh-deal-chip${editReceiptIds.includes(r.id) ? " wh-deal-chip--active" : ""}`}
-                        onClick={() =>
-                          setEditReceiptIds((prev) =>
-                            prev.includes(r.id)
-                              ? prev.filter((id) => id !== r.id)
-                              : [...prev, r.id]
-                          )
-                        }
-                      >
-                        <span className="wh-deal-chip__title">ПО-{r.number}</span>
-                        <span className="wh-deal-chip__meta">{fmt(r.total)} ₽</span>
-                      </button>
-                    ))}
-                  </div>
+                  <SearchMultiSelect
+                    options={editReceiptOptions}
+                    selectedIds={editReceiptIds}
+                    onToggle={(id) =>
+                      setEditReceiptIds((prev) =>
+                        prev.includes(id)
+                          ? prev.filter((x) => x !== id)
+                          : [...prev, id]
+                      )
+                    }
+                    placeholder="Поиск поступления…"
+                    emptyText="Поступления не найдены"
+                    maxHeight={160}
+                  />
                 )}
               </div>
 
@@ -936,12 +974,12 @@ export function PaymentControls({
               </div>
               <div className="admin-field">
                 <label className="admin-label">Контрагент *</label>
-                <input
-                  type="text"
-                  className="admin-input"
+                <SearchCombobox
+                  options={editCounterpartyOptions}
                   value={editCounterparty}
-                  onChange={(e) => setEditCounterparty(e.target.value)}
-                  required
+                  onChange={(value) => setEditCounterparty(value)}
+                  placeholder="Начните вводить название…"
+                  emptyText="Не найдено — можно вписать вручную"
                 />
               </div>
               <div className="admin-field">

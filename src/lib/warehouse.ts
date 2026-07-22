@@ -637,9 +637,15 @@ export async function createReceipt(data: {
   
   const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [];
   const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
-  const paymentSplits = Array.isArray(data.paymentSplits) && data.paymentSplits.length > 0
-    ? data.paymentSplits
-    : [total];
+  // Разбивка оплаты на части: оставляем только положительные суммы.
+  // Если корректных частей нет (пустые/нулевые/отрицательные) — создаём
+  // один платёж на весь итог, чтобы в банк не уходил «общий» мусор.
+  const paymentSplits = (
+    Array.isArray(data.paymentSplits) ? data.paymentSplits : []
+  )
+    .map((n) => round2(Number(n) || 0))
+    .filter((n) => n > 0);
+  if (paymentSplits.length === 0) paymentSplits.push(total);
 
   const linkedDealNumbers: number[] = [];
   for (const dealId of linkedDealIds) {
@@ -901,18 +907,51 @@ export async function updateReceipt(
     ),
   });
   batch.update(ref, { counterpartyId });
-  for (const payment of paymentSnap.docs) {
-    if (payment.data().isPaid === true) continue;
-    batch.update(payment.ref, {
+
+  // Не ломаем разбивку оплаты: раньше каждому неоплаченному платежу
+  // записывался ВЕСЬ итог, из-за чего при 2–3 частях сумма задваивалась.
+  // Теперь оплаченные платежи не трогаем, а остаток долга
+  // (итог − уже оплачено) распределяем между неоплаченными частями.
+  const unpaidDocs = paymentSnap.docs.filter(
+    (d) => d.data().isPaid !== true
+  );
+  const remaining = Math.max(0, round2(linesTotal - paidTotal));
+  if (unpaidDocs.length === 1) {
+    batch.update(unpaidDocs[0].ref, {
       counterparty: supplier,
       counterpartyId,
-      amount: linesTotal,
+      amount: remaining,
       vatRate,
-      vatAmount: includedVat(linesTotal, vatRate),
+      vatAmount: includedVat(remaining, vatRate),
       updatedAt: FieldValue.serverTimestamp(),
     });
+  } else if (unpaidDocs.length > 1) {
+    const currentSum = unpaidDocs.reduce(
+      (s, d) => s + (Number(d.data().amount) || 0),
+      0
+    );
+    let allocated = 0;
+    unpaidDocs.forEach((d, idx) => {
+      const current = Number(d.data().amount) || 0;
+      const share =
+        currentSum > 0 ? current / currentSum : 1 / unpaidDocs.length;
+      const amt =
+        idx === unpaidDocs.length - 1
+          ? round2(remaining - allocated)
+          : round2(remaining * share);
+      allocated = round2(allocated + amt);
+      const safe = Math.max(0, amt);
+      batch.update(d.ref, {
+        counterparty: supplier,
+        counterpartyId,
+        amount: safe,
+        vatRate,
+        vatAmount: includedVat(safe, vatRate),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
   }
-  
+
   for (const payId of linkedPaymentIds) {
     const payRef = db.collection("bankPayments").doc(payId);
     batch.update(payRef, {
@@ -1373,18 +1412,50 @@ export async function updateDeal(
     { ...details, comment: data.comment }
   );
   batch.update(ref, { counterpartyId });
-  for (const payment of paymentSnap.docs) {
-    if (payment.data().isPaid === true) continue;
-    batch.update(payment.ref, {
+
+  // Аналогично поступлениям: оплаченные платежи не трогаем, а остаток долга
+  // распределяем между неоплаченными (иначе при нескольких счетах каждому
+  // записался бы весь итог).
+  const unpaidDocs = paymentSnap.docs.filter(
+    (d) => d.data().isPaid !== true
+  );
+  const remaining = Math.max(0, round2(linesTotal - paidTotal));
+  if (unpaidDocs.length === 1) {
+    batch.update(unpaidDocs[0].ref, {
       counterparty: customerName,
       counterpartyId,
-      amount: linesTotal,
+      amount: remaining,
       vatRate: VAT_RATE,
-      vatAmount: includedVat(linesTotal),
+      vatAmount: includedVat(remaining),
       updatedAt: FieldValue.serverTimestamp(),
     });
+  } else if (unpaidDocs.length > 1) {
+    const currentSum = unpaidDocs.reduce(
+      (s, d) => s + (Number(d.data().amount) || 0),
+      0
+    );
+    let allocated = 0;
+    unpaidDocs.forEach((d, idx) => {
+      const current = Number(d.data().amount) || 0;
+      const share =
+        currentSum > 0 ? current / currentSum : 1 / unpaidDocs.length;
+      const amt =
+        idx === unpaidDocs.length - 1
+          ? round2(remaining - allocated)
+          : round2(remaining * share);
+      allocated = round2(allocated + amt);
+      const safe = Math.max(0, amt);
+      batch.update(d.ref, {
+        counterparty: customerName,
+        counterpartyId,
+        amount: safe,
+        vatRate: VAT_RATE,
+        vatAmount: includedVat(safe),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
   }
-  
+
   for (const payId of linkedPaymentIds) {
     const payRef = db.collection("bankPayments").doc(payId);
     batch.update(payRef, {
