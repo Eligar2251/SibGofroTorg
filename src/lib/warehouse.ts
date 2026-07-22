@@ -219,50 +219,78 @@ function mapCounterparty(id: string, data: any): Counterparty {
   };
 }
 
+let memoryCounterpartiesCache: { at: number; data: Counterparty[] } | null = null;
+
 async function fetchCounterpartyRows(): Promise<Counterparty[]> {
-  const snap = await getAdminDb().collection("counterparties").get();
-  return snap.docs.map((doc) => mapCounterparty(doc.id, doc.data()));
+  const now = Date.now();
+  if (memoryCounterpartiesCache && now - memoryCounterpartiesCache.at < 60_000) {
+    return memoryCounterpartiesCache.data;
+  }
+  try {
+    const snap = await getAdminDb().collection("counterparties").get();
+    const data = snap.docs.map((doc) => mapCounterparty(doc.id, doc.data()));
+    memoryCounterpartiesCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("fetchCounterpartyRows error:", error?.message || error);
+    return memoryCounterpartiesCache?.data || [];
+  }
 }
+
+let memorySupplierPricesCache: {
+  at: number;
+  data: { counterpartyId: string; productId: string; price: number }[];
+} | null = null;
 
 async function fetchSupplierPriceRows(): Promise<
   { counterpartyId: string; productId: string; price: number }[]
 > {
-  const db = getAdminDb();
-  const [priceSnap, receiptSnap] = await Promise.all([
-    db.collectionGroup("supplierPrices").get(),
-    db.collection("warehouseReceipts").limit(1000).get(),
-  ]);
-
-  const rows: { counterpartyId: string; productId: string; price: number }[] = [];
-
-  for (const doc of priceSnap.docs) {
-    rows.push({
-      counterpartyId: doc.ref.parent.parent?.id || "",
-      productId: String(doc.data().productId || doc.id),
-      price: Math.max(0, Number(doc.data().price) || 0),
-    });
+  const now = Date.now();
+  if (memorySupplierPricesCache && now - memorySupplierPricesCache.at < 60_000) {
+    return memorySupplierPricesCache.data;
   }
+  try {
+    const db = getAdminDb();
+    const [priceSnap, receiptSnap] = await Promise.all([
+      db.collectionGroup("supplierPrices").get(),
+      db.collection("warehouseReceipts").limit(1000).get(),
+    ]);
 
-  // Подтягиваем товары поставщиков из всех оформленных поставок, даже если
-  // закупочная цена не сохранилась или равна 0 — цену можно будет проставить вручную.
-  for (const doc of receiptSnap.docs) {
-    const receipt = doc.data() as any;
-    const counterpartyId = receipt.counterpartyId || counterpartyIdForName(String(receipt.supplier || ""));
-    const items = Array.isArray(receipt.items) ? receipt.items : [];
-    for (const item of items) {
-      const productId = String(item.productId || "");
-      if (!counterpartyId || !productId) continue;
+    const rows: { counterpartyId: string; productId: string; price: number }[] = [];
+
+    for (const doc of priceSnap.docs) {
       rows.push({
-        counterpartyId,
-        productId,
-        price: Math.max(0, Number(item.price) || 0),
+        counterpartyId: doc.ref.parent.parent?.id || "",
+        productId: String(doc.data().productId || doc.id),
+        price: Math.max(0, Number(doc.data().price) || 0),
       });
     }
+
+    // Подтягиваем товары поставщиков из всех оформленных поставок, даже если
+    // закупочная цена не сохранилась или равна 0 — цену можно будет проставить вручную.
+    for (const doc of receiptSnap.docs) {
+      const receipt = doc.data() as any;
+      const counterpartyId = receipt.counterpartyId || counterpartyIdForName(String(receipt.supplier || ""));
+      const items = Array.isArray(receipt.items) ? receipt.items : [];
+      for (const item of items) {
+        const productId = String(item.productId || "");
+        if (!counterpartyId || !productId) continue;
+        rows.push({
+          counterpartyId,
+          productId,
+          price: Math.max(0, Number(item.price) || 0),
+        });
+      }
+    }
+
+    const data = rows.filter((row) => row.counterpartyId && row.productId);
+    memorySupplierPricesCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("fetchSupplierPriceRows error:", error?.message || error);
+    return memorySupplierPricesCache?.data || [];
   }
-
-  return rows.filter((row) => row.counterpartyId && row.productId);
 }
-
 const getCachedCounterpartyRows = unstable_cache(
   fetchCounterpartyRows,
   ["warehouse-counterparties"],
@@ -520,43 +548,55 @@ function mapStockOrigin(id: string, data: any): StockOrigin {
   };
 }
 
+let memoryStockCache: { at: number; data: WarehouseStockRow[] } | null = null;
+
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
-  const db = getAdminDb();
-  const snap = await db.collection("products").get();
-  const rows: WarehouseStockRow[] = snap.docs.map((d) => {
-    const data = d.data() as any;
-    const price =
-      data.price !== undefined && data.price !== null
-        ? Number(data.price)
-        : null;
-    const effective = getProductEffectivePrice({
-      price,
-      discountType: data.discountType ?? null,
-      discountValue: data.discountValue ?? null,
+  const now = Date.now();
+  if (memoryStockCache && now - memoryStockCache.at < 60_000) {
+    return memoryStockCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("products").get();
+    const rows: WarehouseStockRow[] = snap.docs.map((d) => {
+      const data = d.data() as any;
+      const price =
+        data.price !== undefined && data.price !== null
+          ? Number(data.price)
+          : null;
+      const effective = getProductEffectivePrice({
+        price,
+        discountType: data.discountType ?? null,
+        discountValue: data.discountValue ?? null,
+      });
+      return {
+        id: d.id,
+        name: String(data.name || ""),
+        sku: data.sku ? String(data.sku) : null,
+        stockQty:
+          data.stockQty !== undefined && data.stockQty !== null
+            ? Number(data.stockQty)
+            : 0,
+        stockWarnQty:
+          data.stockWarnQty !== undefined && data.stockWarnQty !== null
+            ? Number(data.stockWarnQty)
+            : null,
+        inStock: data.inStock !== false,
+        price: effective,
+        priceWholesale:
+          data.priceWholesale !== undefined && data.priceWholesale !== null
+            ? Number(data.priceWholesale)
+            : null,
+        isVisible: data.isVisible !== false,
+      };
     });
-    return {
-      id: d.id,
-      name: String(data.name || ""),
-      sku: data.sku ? String(data.sku) : null,
-      stockQty:
-        data.stockQty !== undefined && data.stockQty !== null
-          ? Number(data.stockQty)
-          : 0,
-      stockWarnQty:
-        data.stockWarnQty !== undefined && data.stockWarnQty !== null
-          ? Number(data.stockWarnQty)
-          : null,
-      inStock: data.inStock !== false,
-      price: effective,
-      priceWholesale:
-        data.priceWholesale !== undefined && data.priceWholesale !== null
-          ? Number(data.priceWholesale)
-          : null,
-      isVisible: data.isVisible !== false,
-    };
-  });
-  rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
-  return rows;
+    rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    memoryStockCache = { at: now, data: rows };
+    return rows;
+  } catch (error: any) {
+    console.error("getWarehouseStock error:", error?.message || error);
+    return memoryStockCache?.data || [];
+  }
 }
 
 export async function getProductStockOrigins(
@@ -670,14 +710,27 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
   };
 }
 
+let memoryReceiptsCache: { at: number; data: WarehouseReceipt[] } | null = null;
+
 export async function getReceipts(): Promise<WarehouseReceipt[]> {
-  const db = getAdminDb();
-  const snap = await db
-    .collection("warehouseReceipts")
-    .orderBy("number", "desc")
-    .limit(200)
-    .get();
-  return snap.docs.map((d) => mapReceipt(d.id, d.data()));
+  const now = Date.now();
+  if (memoryReceiptsCache && now - memoryReceiptsCache.at < 60_000) {
+    return memoryReceiptsCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("warehouseReceipts")
+      .orderBy("number", "desc")
+      .limit(200)
+      .get();
+    const data = snap.docs.map((d) => mapReceipt(d.id, d.data()));
+    memoryReceiptsCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("getReceipts error:", error?.message || error);
+    return memoryReceiptsCache?.data || [];
+  }
 }
 
 export async function getReceiptById(
@@ -1305,14 +1358,27 @@ function mapDeal(id: string, data: any): CustomerDeal {
   };
 }
 
+let memoryDealsCache: { at: number; data: CustomerDeal[] } | null = null;
+
 export async function getDeals(): Promise<CustomerDeal[]> {
-  const db = getAdminDb();
-  const snap = await db
-    .collection("customerDeals")
-    .orderBy("number", "desc")
-    .limit(300)
-    .get();
-  return snap.docs.map((d) => mapDeal(d.id, d.data()));
+  const now = Date.now();
+  if (memoryDealsCache && now - memoryDealsCache.at < 60_000) {
+    return memoryDealsCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("customerDeals")
+      .orderBy("number", "desc")
+      .limit(300)
+      .get();
+    const data = snap.docs.map((d) => mapDeal(d.id, d.data()));
+    memoryDealsCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("getDeals error:", error?.message || error);
+    return memoryDealsCache?.data || [];
+  }
 }
 
 export async function createDeal(data: {
@@ -1800,14 +1866,27 @@ function mapPayment(id: string, data: any): BankPayment {
   };
 }
 
+let memoryPaymentsCache: { at: number; data: BankPayment[] } | null = null;
+
 export async function getPayments(): Promise<BankPayment[]> {
-  const db = getAdminDb();
-  const snap = await db
-    .collection("bankPayments")
-    .orderBy("number", "desc")
-    .limit(500)
-    .get();
-  return snap.docs.map((d) => mapPayment(d.id, d.data()));
+  const now = Date.now();
+  if (memoryPaymentsCache && now - memoryPaymentsCache.at < 60_000) {
+    return memoryPaymentsCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("bankPayments")
+      .orderBy("number", "desc")
+      .limit(500)
+      .get();
+    const data = snap.docs.map((d) => mapPayment(d.id, d.data()));
+    memoryPaymentsCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("getPayments error:", error?.message || error);
+    return memoryPaymentsCache?.data || [];
+  }
 }
 
 export async function createPayment(data: {
@@ -2086,14 +2165,27 @@ function mapSalary(id: string, data: any): Salary {
   };
 }
 
+let memorySalariesCache: { at: number; data: Salary[] } | null = null;
+
 export async function getSalaries(): Promise<Salary[]> {
-  const db = getAdminDb();
-  const snap = await db
-    .collection("salaries")
-    .orderBy("date", "desc")
-    .limit(500)
-    .get();
-  return snap.docs.map((d) => mapSalary(d.id, d.data()));
+  const now = Date.now();
+  if (memorySalariesCache && now - memorySalariesCache.at < 60_000) {
+    return memorySalariesCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("salaries")
+      .orderBy("date", "desc")
+      .limit(300)
+      .get();
+    const data = snap.docs.map((d) => mapSalary(d.id, d.data()));
+    memorySalariesCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("getSalaries error:", error?.message || error);
+    return memorySalariesCache?.data || [];
+  }
 }
 
 export async function createSalary(data: {

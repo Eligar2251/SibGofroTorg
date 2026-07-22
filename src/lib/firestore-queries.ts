@@ -256,10 +256,26 @@ const getCachedCategories = unstable_cache(
   { revalidate: DATA_REVALIDATE, tags: ["categories"] }
 );
 
+let memoryProductsCache: { at: number; data: FirestoreProduct[] } | null = null;
+
 async function fetchAllProducts(): Promise<FirestoreProduct[]> {
-  const db = getAdminDb();
-  const snap = await db.collection("products").get();
-  return snap.docs.map((d) => mapProduct(d.id, d.data()));
+  const now = Date.now();
+  // Дополнительный in-memory кэш защищает dev-режим и частые переходы от
+  // лишних чтений Firestore. При исчерпанной квоте не роняем сайт, а отдаём
+  // последнее успешное значение или пустой список.
+  if (memoryProductsCache && now - memoryProductsCache.at < DATA_REVALIDATE * 1000) {
+    return memoryProductsCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("products").get();
+    const data = snap.docs.map((d) => mapProduct(d.id, d.data()));
+    memoryProductsCache = { at: now, data };
+    return data;
+  } catch (error: any) {
+    console.error("fetchAllProducts error:", error?.message || error);
+    return memoryProductsCache?.data || [];
+  }
 }
 
 const getCachedProducts = unstable_cache(
