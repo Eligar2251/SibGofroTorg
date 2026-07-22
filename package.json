@@ -24,7 +24,8 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "slugify": "^1.6.9",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@supabase/supabase-js": "^2.49.0"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.2.10",
