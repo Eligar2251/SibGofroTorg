@@ -78,7 +78,10 @@ export default async function AdminDashboard() {
     usersAgg,
     weekAgg,
   ] = await Promise.all([
-    getProducts({}),
+    // includeHidden: считаем ВСЕ товары, как и «Учёт → Остатки»
+    // (getWarehouseStock), чтобы число позиций на дашборде и в учёте
+    // совпадало (раньше тут были только видимые — числа расходились).
+    getProducts({ includeHidden: true }),
     getOrders({ limit: 50 }),
     getAllCategories(),
     getPromotions(),
@@ -150,7 +153,7 @@ export default async function AdminDashboard() {
             href: `/${ADMIN_PATH}/products`,
             iconBg: "rgba(27,43,75,0.08)",
             iconColor: "#1b2b4b",
-            sub: `${allProducts.filter((p) => p.inStock).length} в наличии`,
+            sub: `${allProducts.filter((p) => (p.stockQty ?? 0) > 0).length} в наличии`,
           },
           {
             label: "Категорий",

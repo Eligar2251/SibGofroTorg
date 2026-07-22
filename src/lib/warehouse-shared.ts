@@ -128,6 +128,34 @@ export interface CounterpartyBalance {
   docsCount: number;
 }
 
+/** Сотрудник для учёта зарплат */
+export interface Employee {
+  id: string;
+  name: string;
+  position?: string | null;
+  phone?: string | null;
+  comment?: string | null;
+  createdAt?: string | null;
+}
+
+/** Счёт, с которого выплачивается зарплата */
+export type SalarySource = "cash" | "bank";
+
+/** Начисление/выплата зарплаты сотруднику */
+export interface Salary {
+  id: string;
+  employeeId: string | null;
+  employeeName: string;
+  amount: number;
+  date: string;
+  /** cash = касса (наличные), bank = расчётный счёт (безнал) */
+  source: SalarySource;
+  isPaid: boolean;
+  paidAt?: string | null;
+  comment?: string | null;
+  createdAt?: string | null;
+}
+
 function normalizeName(name: string): string {
   return (name || "")
     .trim()
@@ -136,8 +164,9 @@ function normalizeName(name: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** Сводка по банку */
-export function getBankSummary(payments: BankPayment[]) {
+/** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
+ *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
+export function getBankSummary(payments: BankPayment[], salaries: Salary[] = []) {
   let bankBalance = 0;
   let cashBalance = 0;
   let expectedIn = 0;
@@ -151,6 +180,16 @@ export function getBankSummary(payments: BankPayment[]) {
     } else {
       if (p.direction === "incoming") expectedIn += p.amount;
       else expectedOut += p.amount;
+    }
+  }
+  // Зарплаты — это расход: выплаченные уменьшают кассу/банк,
+  // начисленные, но ещё не выплаченные — это долг «к оплате».
+  for (const s of salaries) {
+    if (s.isPaid) {
+      if (s.source === "cash") cashBalance -= s.amount;
+      else bankBalance -= s.amount;
+    } else {
+      expectedOut += s.amount;
     }
   }
   return {

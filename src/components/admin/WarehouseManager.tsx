@@ -30,6 +30,8 @@ import {
   type WarehouseReceipt,
   type CustomerDeal,
   type Counterparty,
+  type Employee,
+  type Salary,
   includedVat,
   VAT_RATE,
 } from "@/lib/warehouse-shared";
@@ -53,6 +55,7 @@ import {
   type CounterpartyDocument,
   type CounterpartyOption,
 } from "@/components/admin/WarehouseCounterparties";
+import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -94,7 +97,7 @@ const paymentTypeLabels: Record<string, string> = {
   deposit: "Внесение",
 };
 
-type TabKey = "stock" | "deals" | "bank" | "counterparties";
+type TabKey = "stock" | "deals" | "bank" | "salaries" | "counterparties";
 type StockSub = "stock" | "receipts";
 type DealsSub = "new" | "released";
 type BankSub = "pending" | "history";
@@ -107,6 +110,8 @@ interface WarehouseManagerProps {
   receipts: WarehouseReceipt[];
   deals: CustomerDeal[];
   payments: BankPayment[];
+  employees: Employee[];
+  salaries: Salary[];
   counterpartyRows: Counterparty[];
   pickerProducts: PickerProduct[];
   counterpartyOptions: CounterpartyOption[];
@@ -121,6 +126,8 @@ export function WarehouseManager({
   receipts,
   deals,
   payments,
+  employees,
+  salaries,
   counterpartyRows,
   pickerProducts,
   counterpartyOptions,
@@ -140,7 +147,10 @@ export function WarehouseManager({
   // Calculations
   const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
   const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
-  const bankSummary = useMemo(() => getBankSummary(payments), [payments]);
+  const bankSummary = useMemo(
+    () => getBankSummary(payments, salaries),
+    [payments, salaries]
+  );
   
   const allCounterparties = useMemo(
     () => getCounterpartyBalances(deals, receipts, payments),
@@ -273,6 +283,7 @@ export function WarehouseManager({
     { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
     { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
+    { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
     {
       key: "counterparties",
       label: "Контрагенты",
@@ -877,6 +888,11 @@ export function WarehouseManager({
             )}
           </div>
         </>
+      )}
+
+      {/* ════════════ ВКЛАДКА: ЗАРПЛАТЫ ════════════ */}
+      {activeTab === "salaries" && (
+        <WarehouseSalaries employees={employees} salaries={salaries} />
       )}
 
       {/* ════════════ ВКЛАДКА: КОНТРАГЕНТЫ ════════════ */}

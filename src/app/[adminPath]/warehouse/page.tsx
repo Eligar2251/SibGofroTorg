@@ -10,6 +10,8 @@ import {
   getReceiptById,
   getDeals,
   getPayments,
+  getEmployees,
+  getSalaries,
   getCounterparties,
 } from "@/lib/warehouse";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
@@ -47,6 +49,8 @@ export default async function AdminWarehousePage({
     loadedReceipts,
     deals,
     payments,
+    employees,
+    salaries,
     counterpartyRows,
     focusedReceipt,
   ] = await Promise.all([
@@ -54,6 +58,8 @@ export default async function AdminWarehousePage({
     getReceipts(),
     getDeals(),
     getPayments(),
+    getEmployees(),
+    getSalaries(),
     getCounterparties({ includeSupplierPrices: true }),
     sp.receipt ? getReceiptById(sp.receipt) : Promise.resolve(null),
   ]);
@@ -147,6 +153,8 @@ export default async function AdminWarehousePage({
       receipts={receipts}
       deals={deals}
       payments={payments}
+      employees={employees}
+      salaries={salaries}
       counterpartyRows={counterpartyRows}
       pickerProducts={pickerProducts}
       counterpartyOptions={counterpartyOptions}

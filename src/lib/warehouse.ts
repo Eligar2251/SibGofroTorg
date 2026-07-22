@@ -29,6 +29,9 @@ import {
   type BankPayment,
   type WarehouseStockRow,
   type CounterpartyBalance,
+  type Employee,
+  type Salary,
+  type SalarySource,
   getBankSummary,
   getDealPaidMap,
   getReceiptPaidMap,
@@ -50,6 +53,9 @@ export {
   type BankPayment,
   type WarehouseStockRow,
   type CounterpartyBalance,
+  type Employee,
+  type Salary,
+  type SalarySource,
   getBankSummary,
   getDealPaidMap,
   getReceiptPaidMap,
@@ -1895,5 +1901,188 @@ export async function deletePayment(id: string): Promise<void> {
     }
   }
   await ref.delete();
+}
+
+// ─── Сотрудники ────────────────────────────────────
+
+function mapEmployee(id: string, data: any): Employee {
+  return {
+    id,
+    name: String(data.name || ""),
+    position: data.position ?? null,
+    phone: data.phone ?? null,
+    comment: data.comment ?? null,
+    createdAt: serializeTimestamp(data.createdAt),
+  };
+}
+
+export async function getEmployees(): Promise<Employee[]> {
+  const db = getAdminDb();
+  const snap = await db.collection("employees").get();
+  const rows = snap.docs.map((d) => mapEmployee(d.id, d.data()));
+  rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  return rows;
+}
+
+export async function saveEmployee(data: {
+  id?: string | null;
+  name: string;
+  position?: string | null;
+  phone?: string | null;
+  comment?: string | null;
+}): Promise<{ id: string }> {
+  const name = String(data.name || "").trim();
+  if (!name) throw new Error("Укажите имя сотрудника");
+  const db = getAdminDb();
+  const ref = data.id
+    ? db.collection("employees").doc(data.id)
+    : db.collection("employees").doc();
+  await ref.set(
+    {
+      name: name.slice(0, 200),
+      normalizedName: normalizeCounterpartyName(name),
+      position: cleanText(data.position, 160),
+      phone: cleanText(data.phone, 60),
+      comment: cleanText(data.comment, 500),
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(data.id ? {} : { createdAt: FieldValue.serverTimestamp() }),
+    },
+    { merge: true }
+  );
+  return { id: ref.id };
+}
+
+export async function deleteEmployee(id: string): Promise<void> {
+  // Начисления зарплаты хранят employeeName, поэтому история не теряется
+  await getAdminDb().collection("employees").doc(id).delete();
+}
+
+// ─── Зарплаты ──────────────────────────────────────
+
+function mapSalary(id: string, data: any): Salary {
+  return {
+    id,
+    employeeId: data.employeeId ?? null,
+    employeeName: String(data.employeeName || ""),
+    amount: Math.max(0, Number(data.amount) || 0),
+    date: String(data.date || ""),
+    source: data.source === "cash" ? "cash" : "bank",
+    isPaid: data.isPaid === true,
+    paidAt: data.paidAt ? String(data.paidAt) : null,
+    comment: data.comment ?? null,
+    createdAt: serializeTimestamp(data.createdAt),
+  };
+}
+
+export async function getSalaries(): Promise<Salary[]> {
+  const db = getAdminDb();
+  const snap = await db
+    .collection("salaries")
+    .orderBy("date", "desc")
+    .limit(500)
+    .get();
+  return snap.docs.map((d) => mapSalary(d.id, d.data()));
+}
+
+export async function createSalary(data: {
+  employeeId?: string | null;
+  employeeName: string;
+  amount: number;
+  date: string;
+  source: SalarySource;
+  isPaid?: boolean;
+  comment?: string | null;
+}): Promise<{ id: string; employeeId: string | null }> {
+  const amount = Math.max(0, Number(data.amount) || 0);
+  if (amount <= 0) throw new Error("Укажите сумму зарплаты");
+  const employeeName = String(data.employeeName || "").trim();
+  if (!employeeName) throw new Error("Укажите сотрудника");
+  const db = getAdminDb();
+
+  // Новый сотрудник (без id) — сохраняем в справочник.
+  // Сначала ищем по имени, чтобы не плодить дубликаты.
+  let employeeId = data.employeeId || null;
+  if (!employeeId) {
+    const existing = await db
+      .collection("employees")
+      .where("normalizedName", "==", normalizeCounterpartyName(employeeName))
+      .limit(1)
+      .get();
+    if (!existing.empty) {
+      employeeId = existing.docs[0].id;
+    } else {
+      const empRef = db.collection("employees").doc();
+      await empRef.set({
+        name: employeeName.slice(0, 200),
+        normalizedName: normalizeCounterpartyName(employeeName),
+        position: null,
+        phone: null,
+        comment: null,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      employeeId = empRef.id;
+    }
+  }
+
+  const isPaid = data.isPaid === true;
+  const date = data.date || new Date().toISOString().slice(0, 10);
+  const ref = db.collection("salaries").doc();
+  await ref.set({
+    employeeId,
+    employeeName: employeeName.slice(0, 200),
+    amount,
+    date,
+    source: data.source === "cash" ? "cash" : "bank",
+    isPaid,
+    paidAt: isPaid ? date : null,
+    comment: cleanText(data.comment, 500),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { id: ref.id, employeeId };
+}
+
+export async function updateSalary(
+  id: string,
+  data: {
+    employeeId?: string | null;
+    employeeName?: string;
+    amount?: number;
+    date?: string;
+    source?: SalarySource;
+    isPaid?: boolean;
+    comment?: string | null;
+  }
+): Promise<void> {
+  const db = getAdminDb();
+  const ref = db.collection("salaries").doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Начисление не найдено");
+
+  const patch: Record<string, any> = {
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (data.employeeName !== undefined)
+    patch.employeeName = String(data.employeeName).trim().slice(0, 200);
+  if (data.employeeId !== undefined) patch.employeeId = data.employeeId;
+  if (data.amount !== undefined)
+    patch.amount = Math.max(0, Number(data.amount) || 0);
+  if (data.date !== undefined) patch.date = String(data.date);
+  if (data.source !== undefined)
+    patch.source = data.source === "cash" ? "cash" : "bank";
+  if (data.isPaid !== undefined) {
+    patch.isPaid = data.isPaid === true;
+    patch.paidAt = data.isPaid
+      ? String(data.date || snap.data()?.date || new Date().toISOString().slice(0, 10))
+      : null;
+  }
+  if (data.comment !== undefined) patch.comment = cleanText(data.comment, 500);
+
+  await ref.update(patch);
+}
+
+export async function deleteSalary(id: string): Promise<void> {
+  await getAdminDb().collection("salaries").doc(id).delete();
 }
 

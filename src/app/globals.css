@@ -307,6 +307,13 @@ select {
   top: 0;
   z-index: 250;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  transition: box-shadow var(--transition);
+}
+
+/* Шапка «парит» над контентом после скролла (когда верхняя плашка
+   уехала вверх) — усиливаем тень для визуального отделения */
+.site-header--scrolled {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
 }
 
 .header-inner {
@@ -5842,8 +5849,10 @@ select {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(10, 20, 15, 0.7);
-  backdrop-filter: blur(8px);
+  /* Плотный тёмный фон вместо backdrop-filter: blur() — блюр всего,
+     что под оверлеем, перерисовывается каждый кадр и сильно лагал
+     на десктопе. 0.78 непрозрачности даёт то же затемнение без блюра. */
+  background: rgba(8, 16, 12, 0.78);
   transition: opacity 0.3s ease;
   animation: popup-fade-in 0.3s ease both;
 }
@@ -5862,12 +5871,16 @@ select {
 .banner-v2 {
   --banner-acc: var(--green);
   --banner-bg: #fff;
-  width: min(520px, 100%);
+  /* Крупнее на десктопе (было 520px — «слишком мелкий»), но не на весь
+     экран. Тень компактнее: 100px blur лагал при scale-анимации. */
+  width: min(680px, 100%);
+  max-height: min(88vh, 760px);
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--banner-bg);
   border-radius: 24px;
-  box-shadow: 0 30px 100px rgba(0,0,0,0.4);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.35);
   position: relative;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   animation: banner-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -6003,13 +6016,15 @@ select {
 /* ── Сторис-попап ── */
 .story-v2 {
   position: relative;
-  width: min(230px, 80vw);
-  max-height: 70vh;
+  /* Крупнее на десктопе (было 230px — «слишком мелкий»), но не на весь
+     экран: ширина до 400px, высота ограничена 82vh. */
+  width: min(400px, 90vw);
+  max-height: 82vh;
   aspect-ratio: 9 / 16;
   background: #000;
   border-radius: 28px;
   overflow: hidden;
-  box-shadow: 0 40px 120px rgba(0,0,0,0.6);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
   animation: banner-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -6042,10 +6057,9 @@ select {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(12px) saturate(180%);
-  -webkit-backdrop-filter: blur(12px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  /* Полупрозрачный фон вместо backdrop-filter: blur() — дешевле и не лагает */
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   color: #fff;
   display: flex;
   align-items: center;
