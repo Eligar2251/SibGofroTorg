@@ -2315,3 +2315,194 @@ export async function convertOrderToDeal(orderId: string): Promise<{
   invalidateCounterpartyCache();
   return { dealId: dealRef.id, dealNumber: number, paymentId: paymentRef.id, skipped: false };
 }
+
+// ─── Правки заказа клиентом из личного кабинета ─────────────
+
+async function buildOrderItemsFromProducts(
+  rawItems: { productId?: string; quantity?: number }[]
+): Promise<StockDocItem[]> {
+  const db = getAdminDb();
+  const merged = new Map<string, number>();
+  for (const item of Array.isArray(rawItems) ? rawItems : []) {
+    const productId = String(item.productId || "").trim();
+    const quantity = Math.max(0, Math.min(100_000, Number(item.quantity) || 0));
+    if (!productId || quantity <= 0) continue;
+    merged.set(productId, (merged.get(productId) || 0) + quantity);
+  }
+  const result: StockDocItem[] = [];
+  for (const [productId, quantity] of merged) {
+    const snap = await db.collection("products").doc(productId).get();
+    if (!snap.exists) continue;
+    const data = snap.data() || {};
+    if (data.isVisible === false) continue;
+    const price = getProductEffectivePrice({
+      price: data.price !== undefined && data.price !== null ? Number(data.price) : null,
+      discountType: data.discountType ?? null,
+      discountValue: data.discountValue ?? null,
+    });
+    const safePrice = Math.max(0, Number(price) || 0);
+    result.push({
+      productId,
+      name: String(data.name || "Товар").slice(0, 200),
+      sku: data.sku ? String(data.sku).slice(0, 80) : "—",
+      quantity,
+      price: safePrice,
+      lineTotal: round2(quantity * safePrice),
+    });
+  }
+  return result;
+}
+
+async function paidTotalForDeal(db: FirebaseFirestore.Firestore, dealId: string) {
+  const paymentSnap = await db
+    .collection("bankPayments")
+    .where("dealIds", "array-contains", dealId)
+    .get();
+  let paidTotal = 0;
+  const unpaidDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  for (const doc of paymentSnap.docs) {
+    const payment = doc.data();
+    const links = Array.isArray(payment.dealIds) ? Math.max(1, payment.dealIds.length) : 1;
+    if (payment.isPaid === true && payment.direction === "incoming") {
+      paidTotal += (Number(payment.amount) || 0) / links;
+    } else if (payment.direction === "incoming") {
+      unpaidDocs.push(doc);
+    }
+  }
+  return { paidTotal: round2(paidTotal), unpaidDocs };
+}
+
+/**
+ * Клиент может менять заказ на любом этапе. Заказ и связанный ЗК снова
+ * возвращаются в обработку. Если уже была оплата — создаётся/обновляется
+ * счёт на доплату только на недостающую сумму.
+ */
+export async function reviseWebsiteOrderByCustomer(
+  orderId: string,
+  data: { items: { productId?: string; quantity?: number }[]; comment?: string | null }
+): Promise<{ totalSum: number; paidTotal: number; additionalDue: number }> {
+  const db = getAdminDb();
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) throw new Error("Заказ не найден");
+  const order = orderSnap.data() as any;
+  if (order.type !== "order") throw new Error("Можно менять только заказ из корзины");
+
+  const items = await buildOrderItemsFromProducts(data.items);
+  if (items.length === 0) throw new Error("В заказе должен быть хотя бы один товар");
+  const total = itemsTotal(items);
+  const now = FieldValue.serverTimestamp();
+  const comment = cleanText(data.comment, 2000);
+
+  let paidTotal = 0;
+  let additionalDue = total;
+
+  const dealId = order.dealId ? String(order.dealId) : "";
+  if (dealId) {
+    const dealRef = db.collection("customerDeals").doc(dealId);
+    const dealSnap = await dealRef.get();
+    if (dealSnap.exists) {
+      const deal = mapDeal(dealId, dealSnap.data());
+      if (deal.status === "completed") {
+        // Заказ был готов/отпущен — возвращаем старый состав на склад.
+        await applyStockDelta(deal.items, 1);
+      }
+      const payInfo = await paidTotalForDeal(db, dealId);
+      paidTotal = payInfo.paidTotal;
+      additionalDue = Math.max(0, round2(total - paidTotal));
+
+      const batch = db.batch();
+      batch.update(dealRef, {
+        items,
+        total,
+        bankAdjustment: 0,
+        vatRate: VAT_RATE,
+        vatAmount: includedVat(total),
+        status: "new",
+        comment: [deal.comment, "Клиент изменил заказ из личного кабинета"].filter(Boolean).join(". ").slice(0, 500),
+        updatedAt: now,
+      });
+
+      if (payInfo.unpaidDocs.length > 0) {
+        payInfo.unpaidDocs.forEach((doc, idx) => {
+          const amount = idx === 0 ? additionalDue : 0;
+          batch.update(doc.ref, {
+            amount,
+            vatRate: VAT_RATE,
+            vatAmount: includedVat(amount),
+            comment: additionalDue > 0
+              ? `Доплата по изменённому заказу ЗК-${deal.number}`
+              : `Доплата не требуется по изменённому заказу ЗК-${deal.number}`,
+            updatedAt: now,
+          });
+        });
+      } else if (additionalDue > 0) {
+        const paymentNumber = await nextNumber("payment");
+        const paymentRef = db.collection("bankPayments").doc();
+        batch.set(paymentRef, {
+          number: paymentNumber,
+          date: new Date().toISOString().slice(0, 10),
+          direction: "incoming",
+          type: "regular",
+          counterparty: deal.customerName || order.customerName || "Клиент",
+          counterpartyId: deal.counterpartyId ?? null,
+          dealIds: [dealId],
+          dealNumbers: [deal.number],
+          receiptIds: [],
+          receiptNumbers: [],
+          amount: additionalDue,
+          invoiceNumber: null,
+          vatRate: VAT_RATE,
+          vatAmount: includedVat(additionalDue),
+          isPaid: false,
+          paidAt: null,
+          excludeFromBalance: false,
+          comment: `Доплата по изменённому заказу ЗК-${deal.number}`,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await batch.commit();
+    }
+  }
+
+  if (!dealId) {
+    additionalDue = total;
+  }
+
+  await orderRef.update({
+    items: items.map(({ productId, name, sku, quantity, price }) => ({
+      productId,
+      name,
+      sku: sku ?? "—",
+      quantity,
+      price,
+    })),
+    totalSum: total,
+    status: "new",
+    closeReason: null,
+    comment: comment || order.comment || null,
+    customerEditedAt: now,
+    updatedAt: now,
+  });
+
+  return { totalSum: total, paidTotal, additionalDue };
+}
+
+/** Клиентская отмена заказа на любом этапе. */
+export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<void> {
+  const db = getAdminDb();
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) throw new Error("Заказ не найден");
+  const order = orderSnap.data() as any;
+  if (order.dealId) {
+    await cancelDeal(String(order.dealId), "Клиент отменил заказ из личного кабинета");
+  }
+  await orderRef.update({
+    status: "rejected",
+    closeReason: "Клиент отменил заказ из личного кабинета",
+    customerCancelledAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}

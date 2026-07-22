@@ -33,7 +33,15 @@ function serializeOrder(id: string, data: Record<string, any>) {
     customerEmail: data.customerEmail ?? null,
     communicationChannel: data.communicationChannel,
     paymentMethod: data.paymentMethod ?? null,
-    items: data.items ?? null,
+    items: Array.isArray(data.items)
+      ? data.items.map((item: any) => ({
+          productId: item.productId ?? null,
+          name: item.name,
+          sku: item.sku ?? null,
+          quantity: item.quantity,
+          price: item.price,
+        }))
+      : null,
     totalSum: data.totalSum ?? null,
     productInfo: data.productInfo ?? null,
     quantity: data.quantity ?? null,
