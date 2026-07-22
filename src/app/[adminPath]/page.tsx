@@ -113,6 +113,7 @@ export default async function AdminDashboard() {
   const rejectedOrdersCount = rejectedAgg.data().count + rejectedWastepaperAgg.data().count;
   const totalOrdersCount =
     newOrdersCount + inProgressOrdersCount + completedOrdersCount + rejectedOrdersCount;
+  // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
   const bankSummary = getBankSummary(payments, salaries);
   const totalRevenue = bankSummary.balance;
   const recentOrders = recentOrderPool.slice(0, 8);
