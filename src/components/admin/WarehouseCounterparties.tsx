@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { CounterpartyRole } from "@/lib/warehouse-shared";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 
 export interface CounterpartyOption {
   id: string;
@@ -337,6 +338,7 @@ export function CounterpartiesManager({
       )}
 
       {editingId && (
+        <ModalPortal>
         <div className="admin-modal-overlay" onClick={() => setEditingId(null)}>
           <div className="admin-modal cp-modal" onClick={(event) => event.stopPropagation()}>
             <div className="admin-modal__head">
@@ -369,6 +371,7 @@ export function CounterpartiesManager({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

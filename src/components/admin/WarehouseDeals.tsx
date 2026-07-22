@@ -25,6 +25,7 @@ import {
   SearchMultiSelect,
   type PickerOption,
 } from "@/components/admin/SearchPicker";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPayment } from "@/lib/warehouse-shared";
@@ -288,6 +289,7 @@ export function DealForm({
       </button>
 
       {open && (
+        <ModalPortal>
         <div className="admin-modal-overlay" onClick={() => setOpen(false)}>
           <div
             className="admin-modal wh-modal"
@@ -484,6 +486,7 @@ export function DealForm({
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );
@@ -650,6 +653,7 @@ export function DealActions({
       )}
 
       {showCancelModal && (
+        <ModalPortal>
         <div className="admin-modal-overlay">
           <div className="admin-modal">
             <div className="admin-modal__head">
@@ -716,6 +720,7 @@ export function DealActions({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

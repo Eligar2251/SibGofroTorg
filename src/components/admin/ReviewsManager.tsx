@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { Eye, Edit2, Trash2, Check, X, Filter, Star, ShieldCheck, AlertTriangle, Loader2, MessageSquare, Image, Download, ChevronRight, ChevronLeft } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 
 interface Review {
   id: string;
@@ -232,6 +233,7 @@ export function ReviewsManager() {
 
       {/* Moderation Modal */}
       {moderationData && (
+        <ModalPortal>
         <div className="admin-modal-overlay" onClick={() => setModerationData(null)}>
           <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <h3 className="admin-h2" style={{ marginBottom: 16 }}>
@@ -266,10 +268,12 @@ export function ReviewsManager() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* View Modal */}
       {viewingId && (
+        <ModalPortal>
         <div className="admin-modal-overlay" onClick={() => setViewingId(null)}>
           <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 800, maxHeight: "80vh", overflow: "auto" }}>
             {(() => {
@@ -359,6 +363,7 @@ export function ReviewsManager() {
             )})()}
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Reviews Table */}

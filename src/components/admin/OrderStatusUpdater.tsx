@@ -13,6 +13,7 @@ import {
   XCircle,
   Loader2,
 } from "lucide-react";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 
 const STATUSES = [
   {
@@ -134,6 +135,7 @@ export function OrderStatusUpdater({
       )}
 
       {showCloseModal && (
+        <ModalPortal>
         <div className="admin-modal-overlay">
           <div className="admin-modal">
             <div className="admin-modal__head">
@@ -206,6 +208,7 @@ export function OrderStatusUpdater({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

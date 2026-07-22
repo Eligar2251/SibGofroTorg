@@ -37,21 +37,6 @@ const wastepaperFields: { id: WastepaperRateId; label: string }[] = [
   { id: "mix", label: "Смешанная макулатура" },
 ];
 
-const botFields = [
-  { key: "telegram_bot_token", label: "Telegram Bot Token", type: "password" },
-  {
-    key: "telegram_admin_chat_id",
-    label: "Telegram Chat ID администратора",
-    type: "text",
-  },
-  { key: "max_bot_token", label: "Макс Bot Token", type: "password" },
-  {
-    key: "max_admin_chat_id",
-    label: "Макс Chat ID администратора",
-    type: "text",
-  },
-];
-
 export function SettingsForm({ settings }: SettingsFormProps) {
   // Цены макулатуры: если в настройках ещё пусто — подставляем дефолты,
   // чтобы админ сразу видел действующие значения, а не пустые поля
@@ -139,31 +124,6 @@ export function SettingsForm({ settings }: SettingsFormProps) {
               Эти цены показываются на главной странице и на странице «Приём
               макулатуры» (в тарифах и калькуляторе). Изменения применяются
               сразу после сохранения.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="admin-card">
-        <div className="admin-card__pad">
-          <h2 className="admin-h2">Интеграции (Боты)</h2>
-          <div className="admin-stack">
-            {botFields.map((field) => (
-              <div key={field.key} className="admin-field">
-                <label className="admin-label">{field.label}</label>
-                <input
-                  type={field.type}
-                  value={values[field.key] || ""}
-                  onChange={(e) =>
-                    setValues({ ...values, [field.key]: e.target.value })
-                  }
-                  className="admin-input admin-mono"
-                  style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-                />
-              </div>
-            ))}
-            <p className="admin-hint">
-              Токены ботов и Chat ID нужны для уведомлений о новых заявках.
             </p>
           </div>
         </div>

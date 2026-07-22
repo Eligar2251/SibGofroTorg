@@ -761,6 +761,7 @@ export async function updateReceipt(
     vatRate?: number;
     linkedDealIds?: string[];
     linkedPaymentIds?: string[];
+    paymentSplits?: number[];
   }
 ): Promise<void> {
   const db = getAdminDb();
@@ -908,48 +909,86 @@ export async function updateReceipt(
   });
   batch.update(ref, { counterpartyId });
 
-  // Не ломаем разбивку оплаты: раньше каждому неоплаченному платежу
-  // записывался ВЕСЬ итог, из-за чего при 2–3 частях сумма задваивалась.
-  // Теперь оплаченные платежи не трогаем, а остаток долга
-  // (итог − уже оплачено) распределяем между неоплаченными частями.
-  const unpaidDocs = paymentSnap.docs.filter(
-    (d) => d.data().isPaid !== true
-  );
+  // Синхронизация платежей с поступлением.
+  //  • Оплаченные не трогаем (это история денег).
+  //  • Неоплаченные приводим к запрошенной разбивке (paymentSplits из формы):
+    //    если количество совпало — правим суммы на месте (сохраняя номера),
+  //    иначе удаляем старые и создаём новые. Заодно это пересоздаёт
+  //    платёж, который удалили в банке, а поступление пересохраняют.
+  //  • Сумма неоплаченных частей всегда соответствует остатку долга
+  //    (итог − уже оплачено), поэтому задвоений не бывает.
+  const unpaidSoloDocs = paymentSnap.docs.filter((d) => {
+    const p = d.data();
+    if (p.isPaid === true) return false;
+    const receiptLinks = Array.isArray(p.receiptIds) ? p.receiptIds.length : 0;
+    const dealLinks = Array.isArray(p.dealIds) ? p.dealIds.length : 0;
+    return receiptLinks === 1 && dealLinks === 0;
+  });
   const remaining = Math.max(0, round2(linesTotal - paidTotal));
-  if (unpaidDocs.length === 1) {
-    batch.update(unpaidDocs[0].ref, {
-      counterparty: supplier,
-      counterpartyId,
-      amount: remaining,
-      vatRate,
-      vatAmount: includedVat(remaining, vatRate),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  } else if (unpaidDocs.length > 1) {
-    const currentSum = unpaidDocs.reduce(
-      (s, d) => s + (Number(d.data().amount) || 0),
-      0
-    );
-    let allocated = 0;
-    unpaidDocs.forEach((d, idx) => {
-      const current = Number(d.data().amount) || 0;
-      const share =
-        currentSum > 0 ? current / currentSum : 1 / unpaidDocs.length;
-      const amt =
-        idx === unpaidDocs.length - 1
-          ? round2(remaining - allocated)
-          : round2(remaining * share);
-      allocated = round2(allocated + amt);
-      const safe = Math.max(0, amt);
+
+  const requested = (
+    Array.isArray(data.paymentSplits) ? data.paymentSplits : []
+  )
+    .map((n) => round2(Number(n) || 0))
+    .filter((n) => n > 0);
+
+  // Целевые суммы неоплаченных платежей (в сумме дают ровно остаток долга)
+  let targets: number[];
+  if (remaining <= 0) {
+    targets = [];
+  } else if (requested.length > 0) {
+    const reqSum = requested.reduce((s, n) => s + n, 0);
+    const factor = reqSum > 0 ? remaining / reqSum : 1;
+    targets = requested.map((n) => round2(n * factor));
+    const headSum = targets.slice(0, -1).reduce((s, n) => s + n, 0);
+    targets[targets.length - 1] = round2(remaining - headSum);
+    targets = targets.filter((n) => n > 0);
+  } else {
+    targets = [remaining];
+  }
+
+  if (targets.length > 0 && unpaidSoloDocs.length === targets.length) {
+    // Количество частей не изменилось — обновляем суммы, сохраняя номера
+    unpaidSoloDocs.forEach((d, idx) => {
       batch.update(d.ref, {
         counterparty: supplier,
         counterpartyId,
-        amount: safe,
+        amount: targets[idx],
         vatRate,
-        vatAmount: includedVat(safe, vatRate),
+        vatAmount: includedVat(targets[idx], vatRate),
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
+  } else {
+    // Количество изменилось (включая «платёж удалили») — пересоздаём
+    for (const d of unpaidSoloDocs) batch.delete(d.ref);
+    for (let i = 0; i < targets.length; i++) {
+      const amt = targets[i];
+      const payNumber = await nextNumber("payment");
+      const payRef = db.collection("bankPayments").doc();
+      batch.set(payRef, {
+        number: payNumber,
+        date: data.date,
+        direction: "outgoing",
+        counterparty: supplier || "Поставщик",
+        counterpartyId,
+        dealIds: [],
+        dealNumbers: [],
+        receiptIds: [id],
+        receiptNumbers: [previous.number],
+        amount: amt,
+        invoiceNumber: null,
+        vatRate,
+        vatAmount: includedVat(amt, vatRate),
+        isPaid: false,
+        paidAt: null,
+        comment: `Оплата поставщику по приходному ордеру ПО-${previous.number}${
+          targets.length > 1 ? ` (часть ${i + 1})` : ""
+        }`,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
   }
 
   for (const payId of linkedPaymentIds) {

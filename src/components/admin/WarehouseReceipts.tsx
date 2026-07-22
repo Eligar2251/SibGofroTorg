@@ -25,6 +25,7 @@ import {
   SearchMultiSelect,
   type PickerOption,
 } from "@/components/admin/SearchPicker";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPayment } from "@/lib/warehouse-shared";
@@ -137,7 +138,23 @@ export function ReceiptForm({
     initialReceipt?.linkedDealIds || []
   );
   const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
-  const [paymentCount, setPaymentCount] = useState(1);
+
+  // При редактировании — существующие неоплаченные платежи поступления.
+  // По их количеству выставляем число частей, чтобы при пересохранении
+  // разбивка не слетала на «1 платёж» (а удалённый платёж пересоздавался).
+  const existingUnpaid = useMemo(() => {
+    if (!initialReceipt) return [] as BankPayment[];
+    return payments.filter(
+      (p) =>
+        p.direction === "outgoing" &&
+        !p.isPaid &&
+        (p.receiptIds || []).includes(initialReceipt.id)
+    );
+  }, [payments, initialReceipt]);
+
+  const [paymentCount, setPaymentCount] = useState(
+    initialReceipt && existingUnpaid.length > 1 ? existingUnpaid.length : 1
+  );
   const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
   /** Пользователь вручную правил суммы частей — автопересчёт выключаем */
   const [splitTouched, setSplitTouched] = useState(false);
@@ -402,6 +419,7 @@ export function ReceiptForm({
       </button>
 
       {open && (
+        <ModalPortal>
         <div className="admin-modal-overlay" onClick={() => setOpen(false)}>
           <div
             className="admin-modal wh-modal"
@@ -693,6 +711,7 @@ export function ReceiptForm({
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

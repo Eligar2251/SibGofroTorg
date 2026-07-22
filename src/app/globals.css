@@ -1008,14 +1008,17 @@ select {
 
 .hero__wp-title {
   font-family: var(--font-body);
-  /* Чуть крупнее по запросу; line-height и margin уменьшены так, чтобы
-     итоговая высота блока не изменилась и соседние элементы не «уехали» */
-  font-size: clamp(22px, 2.4vw, 28px);
-  font-weight: 700;
+  /* Крупный акцентный заголовок плашки «Принимаем макулатуру».
+     Правая панель hero — flex-колонка: кнопка «Рассчитать выплату»
+     прижата к низу (margin-top: auto), поэтому рост заголовка
+     компенсируется свободным местом и соседние элементы не съезжают. */
+  font-size: clamp(27px, 3.2vw, 38px);
+  font-weight: 800;
   color: #fff;
-  line-height: 1.18;
-  max-width: 320px;
-  margin-bottom: 6px;
+  line-height: 1.12;
+  max-width: 380px;
+  margin-bottom: 8px;
+  letter-spacing: 0.01em;
 }
 
 .hero__wp-sub {

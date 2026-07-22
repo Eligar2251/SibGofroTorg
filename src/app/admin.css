@@ -1918,6 +1918,15 @@ body:has(.admin-login) > main {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Вариант БЕЗ transform: для карточек/статов. Любой transform (даже
+   итоговый translateY(0) при fill-mode:both) делает элемент
+   containing block для position:fixed потомков — из-за этого модалка,
+   отрендеренная внутри карточки, «прилипала» к ней вместо окна. */
+@keyframes adm-fade-in-flat {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 @keyframes adm-spin {
   to { transform: rotate(360deg); }
 }
@@ -1927,7 +1936,10 @@ body:has(.admin-login) > main {
 }
 
 .admin-card,
-.admin-stat,
+.admin-stat {
+  animation: adm-fade-in-flat 0.18s ease both;
+}
+
 .admin-modal {
   animation: adm-fade-in 0.18s ease both;
 }

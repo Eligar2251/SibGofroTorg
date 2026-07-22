@@ -143,7 +143,7 @@ export default async function HomePage() {
         <div className="hero__left">
           <div className="hero__left-inner container-half">
             <span className="hero__eyebrow">
-              Быстрая отгрузка
+              Склад в Новосибирске · быстрая отгрузка
             </span>
             <h1 className="hero__h1">
               Гофрокороб
