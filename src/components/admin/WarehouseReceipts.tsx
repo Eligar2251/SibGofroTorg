@@ -7,6 +7,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle,
@@ -74,6 +75,7 @@ function fmtDate(raw: string | null | undefined): string {
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 /** Округление до копеек, чтобы не копился хвост из float-арифметики */
 function roundKopeck(n: number): number {
@@ -807,10 +809,14 @@ export function ReceiptCard({
               <div className="admin-order__items-title">Товары (с НДС)</div>
               {r.items.map((it, idx) => (
                 <div key={idx} className="admin-order__item">
-                  <span>
+                  <Link
+                    href={`/${ADMIN_PATH}/products/${it.productId}`}
+                    prefetch={false}
+                    style={{ color: "inherit", fontWeight: 650 }}
+                  >
                     {it.name} × {it.quantity}
                     <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
-                  </span>
+                  </Link>
                   <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
                 </div>
               ))}
@@ -843,10 +849,16 @@ export function ReceiptCard({
                     Под заказ для:
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {r.linkedDealNumbers.map((n) => (
-                      <span key={n} className="admin-badge admin-badge--blue">
+                    {r.linkedDealNumbers.map((n, idx) => (
+                      <Link
+                        key={n}
+                        className="admin-badge admin-badge--blue"
+                        href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${r.linkedDealIds?.[idx] || ""}`}
+                        prefetch={false}
+                        style={{ textDecoration: "none" }}
+                      >
                         ЗК-{n}
-                      </span>
+                      </Link>
                     ))}
                   </div>
                 </div>

@@ -21,6 +21,8 @@ import {
   UsersRound,
   Banknote,
   CreditCard,
+  CalendarDays,
+  UserCheck,
 } from "lucide-react";
 import {
   SearchCombobox,
@@ -44,6 +46,22 @@ function fmtDate(raw: string | null | undefined): string {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+function monthKey(raw: string | null | undefined): string {
+  return (raw || todayIso()).slice(0, 7);
+}
+
+function monthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  const date = new Date(year, month - 1, 1);
+  const text = date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function dayOfMonth(raw: string): number {
+  const n = Number(raw.slice(8, 10));
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 // ─── Форма начисления зарплаты ─────────────────────
@@ -474,14 +492,30 @@ export function WarehouseSalaries({
   const [editing, setEditing] = useState<Salary | null>(null);
   const [empOpen, setEmpOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const monthOptions = useMemo(() => {
+    const keys = new Set(salaries.map((s) => monthKey(s.date)));
+    keys.add(todayIso().slice(0, 7));
+    return [...keys].sort((a, b) => b.localeCompare(a));
+  }, [salaries]);
+  const [activeMonth, setActiveMonth] = useState(todayIso().slice(0, 7));
+  const [activeEmployee, setActiveEmployee] = useState("all");
 
   // Синхронизируем локальное состояние после router.refresh()
   useEffect(() => setEmployees(initialEmployees), [initialEmployees]);
   useEffect(() => setSalaries(initialSalaries), [initialSalaries]);
 
-  const pending = salaries.filter((s) => !s.isPaid);
-  const paid = salaries.filter((s) => s.isPaid);
+  const monthSalaries = salaries.filter((s) => monthKey(s.date) === activeMonth);
+  const activeEmployeeName = employees.find((e) => e.id === activeEmployee)?.name || activeEmployee;
+  const scopedSalaries = monthSalaries.filter((s) =>
+    activeEmployee === "all"
+      ? true
+      : s.employeeId === activeEmployee || s.employeeName === activeEmployeeName
+  );
+  const pending = scopedSalaries.filter((s) => !s.isPaid);
+  const paid = scopedSalaries.filter((s) => s.isPaid);
   const pendingTotal = pending.reduce((s, x) => s + x.amount, 0);
+  const accruedTotal = scopedSalaries.reduce((s, x) => s + x.amount, 0);
+  const paidTotal = paid.reduce((s, x) => s + x.amount, 0);
   const paidCash = paid
     .filter((s) => s.source === "cash")
     .reduce((s, x) => s + x.amount, 0);
@@ -489,7 +523,23 @@ export function WarehouseSalaries({
     .filter((s) => s.source === "bank")
     .reduce((s, x) => s + x.amount, 0);
 
-  const filtered = salaries.filter((s) =>
+  const employeeMonthRows = employees
+    .map((employee) => {
+      const rows = monthSalaries.filter(
+        (s) => s.employeeId === employee.id || (!s.employeeId && s.employeeName === employee.name)
+      );
+      const accrued = rows.reduce((sum, item) => sum + item.amount, 0);
+      const paidSum = rows.filter((item) => item.isPaid).reduce((sum, item) => sum + item.amount, 0);
+      const days = rows.reduce<Record<number, number>>((acc, item) => {
+        const day = dayOfMonth(item.date);
+        acc[day] = (acc[day] || 0) + item.amount;
+        return acc;
+      }, {});
+      return { employee, rows, accrued, paidSum, debt: accrued - paidSum, days };
+    })
+    .filter((row) => row.rows.length > 0 || activeEmployee === row.employee.id);
+
+  const filtered = scopedSalaries.filter((s) =>
     filter === "all" ? true : filter === "pending" ? !s.isPaid : s.isPaid
   );
 
@@ -554,6 +604,12 @@ export function WarehouseSalaries({
       {/* Сводка */}
       <div className="admin-stat-grid wh-stat-grid">
         <div className="admin-stat">
+          <div className="admin-stat__value" style={{ color: "var(--adm-navy)" }}>
+            {fmt(accruedTotal)} ₽
+          </div>
+          <div className="admin-stat__label">Начислено за {monthLabel(activeMonth)}</div>
+        </div>
+        <div className="admin-stat">
           <div className="admin-stat__value" style={{ color: "var(--adm-kraft)" }}>
             {fmt(pendingTotal)} ₽
           </div>
@@ -576,6 +632,66 @@ export function WarehouseSalaries({
           <div className="admin-stat__label">Сотрудников</div>
         </div>
       </div>
+
+      <div className="bank-toolbar" style={{ alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: 1 }}>
+          <span className="admin-badge admin-badge--muted"><CalendarDays size={12} /> Месяц</span>
+          <select
+            className="admin-select"
+            value={activeMonth}
+            onChange={(e) => setActiveMonth(e.target.value)}
+            style={{ minWidth: 180 }}
+          >
+            {monthOptions.map((key) => (
+              <option key={key} value={key}>{monthLabel(key)}</option>
+            ))}
+          </select>
+          <span className="admin-badge admin-badge--muted"><UserCheck size={12} /> Сотрудник</span>
+          <select
+            className="admin-select"
+            value={activeEmployee}
+            onChange={(e) => setActiveEmployee(e.target.value)}
+            style={{ minWidth: 220 }}
+          >
+            <option value="all">Все сотрудники</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>{employee.name}</option>
+            ))}
+          </select>
+          <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>
+            Выплачено за период: <strong>{fmt(paidTotal)} ₽</strong>
+          </span>
+        </div>
+      </div>
+
+      {employeeMonthRows.length > 0 && (
+        <div className="admin-card" style={{ marginBottom: 14 }}>
+          <div className="admin-card__head">
+            <h3 className="admin-card__title">Зарплата по сотрудникам и дням</h3>
+          </div>
+          <div className="admin-card__pad" style={{ display: "grid", gap: 10 }}>
+            {employeeMonthRows.map((row) => (
+              <div key={row.employee.id} style={{ border: "1px solid var(--adm-border)", borderRadius: 12, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                  <strong style={{ color: "var(--adm-navy)" }}>{row.employee.name}</strong>
+                  <span style={{ fontSize: 12, color: "var(--adm-muted)" }}>
+                    начислено <strong>{fmt(row.accrued)} ₽</strong> · выплачено <strong>{fmt(row.paidSum)} ₽</strong> · остаток <strong>{fmt(row.debt)} ₽</strong>
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {Object.entries(row.days)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([day, sum]) => (
+                      <span key={day} className="admin-badge admin-badge--blue" style={{ textTransform: "none" }}>
+                        {day.padStart(2, "0")} число · {fmt(sum)} ₽
+                      </span>
+                    ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Панель действий */}
       <div className="bank-toolbar">

@@ -15,6 +15,7 @@ import {
   getCounterparties,
 } from "@/lib/warehouse";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
+import { getAdminDb } from "@/lib/firebase-admin";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import type {
   CounterpartyDocument,
@@ -24,6 +25,61 @@ import type {
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
+
+function toIso(raw: any): string | null {
+  if (!raw) return null;
+  if (typeof raw?.toDate === "function") return raw.toDate().toISOString();
+  if (raw._seconds != null) return new Date(raw._seconds * 1000).toISOString();
+  if (raw.seconds != null) return new Date(raw.seconds * 1000).toISOString();
+  if (typeof raw === "string") return raw;
+  return null;
+}
+
+async function getClientsForWarehouse() {
+  const db = getAdminDb();
+  const [usersSnap, ordersSnap] = await Promise.all([
+    db.collection("users").orderBy("createdAt", "desc").limit(200).get(),
+    db.collection("orders").orderBy("createdAt", "desc").limit(500).get(),
+  ]);
+  const orders = ordersSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      userId: data.userId ?? null,
+      customerPhoneDigits: data.customerPhoneDigits ?? null,
+      customerName: data.customerName ?? null,
+      customerPhone: data.customerPhone ?? null,
+      type: data.type ?? "inquiry",
+      status: data.status ?? "new",
+      totalSum: data.totalSum ?? null,
+      productInfo: data.productInfo ?? null,
+      items: data.items ?? null,
+      createdAt: toIso(data.createdAt),
+    };
+  });
+  return usersSnap.docs.map((d) => {
+    const data = d.data();
+    const uid = d.id;
+    const userOrders = orders.filter(
+      (o) => o.userId === uid || (data.phoneDigits && o.customerPhoneDigits === data.phoneDigits)
+    );
+    return {
+      id: uid,
+      name: data.name ?? null,
+      phone: data.phone ?? null,
+      email: data.email ?? null,
+      customerType: data.customerType ?? "individual",
+      companyName: data.companyName ?? null,
+      inn: data.inn ?? null,
+      createdAt: toIso(data.createdAt),
+      ordersCount: userOrders.length,
+      completedCount: userOrders.filter((o) => o.status === "completed").length,
+      totalSpent: userOrders.filter((o) => o.status === "completed").reduce((s, o) => s + (o.totalSum || 0), 0),
+      lastOrderAt: userOrders[0]?.createdAt ?? null,
+      orders: userOrders,
+    };
+  });
+}
 
 export default async function AdminWarehousePage({
   params,
@@ -35,6 +91,8 @@ export default async function AdminWarehousePage({
     sub?: string;
     product?: string;
     receipt?: string;
+    deal?: string;
+    payment?: string;
   }>;
 }) {
   const { adminPath } = await params;
@@ -53,6 +111,7 @@ export default async function AdminWarehousePage({
     salaries,
     counterpartyRows,
     focusedReceipt,
+    clients,
   ] = await Promise.all([
     getWarehouseStock(),
     getReceipts(),
@@ -62,6 +121,7 @@ export default async function AdminWarehousePage({
     getSalaries(),
     getCounterparties({ includeSupplierPrices: true }),
     sp.receipt ? getReceiptById(sp.receipt) : Promise.resolve(null),
+    getClientsForWarehouse(),
   ]);
 
   const receipts =
@@ -89,6 +149,15 @@ export default async function AdminWarehousePage({
       email: item.email ?? null,
       inn: item.inn ?? null,
       kpp: item.kpp ?? null,
+      ogrn: item.ogrn ?? null,
+      fullName: item.fullName ?? null,
+      shortName: item.shortName ?? null,
+      legalAddress: item.legalAddress ?? null,
+      taxSystem: item.taxSystem ?? null,
+      bankAccount: item.bankAccount ?? null,
+      bankName: item.bankName ?? null,
+      bik: item.bik ?? null,
+      correspondentAccount: item.correspondentAccount ?? null,
       address: item.address ?? null,
       contactName: item.contactName ?? null,
       comment: item.comment ?? null,
@@ -149,6 +218,10 @@ export default async function AdminWarehousePage({
       adminPath={ADMIN_PATH}
       initialTab={initialTab}
       initialSub={initialSub}
+      focusDealId={sp.deal || null}
+      focusReceiptId={sp.receipt || null}
+      focusProductId={sp.product || null}
+      focusPaymentId={sp.payment || null}
       stock={stock}
       receipts={receipts}
       deals={deals}
@@ -159,6 +232,7 @@ export default async function AdminWarehousePage({
       pickerProducts={pickerProducts}
       counterpartyOptions={counterpartyOptions}
       counterpartyDocuments={counterpartyDocuments}
+      clients={clients}
     />
   );
 }

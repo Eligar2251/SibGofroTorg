@@ -52,6 +52,7 @@ import {
   type CounterpartyOption,
 } from "@/components/admin/WarehouseCounterparties";
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
+import { ClientsManager } from "@/components/admin/ClientsManager";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -93,7 +94,7 @@ const paymentTypeLabels: Record<string, string> = {
   deposit: "Внесение",
 };
 
-type TabKey = "stock" | "deals" | "bank" | "salaries" | "counterparties";
+type TabKey = "stock" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers";
 type StockSub = "stock" | "receipts" | "archive";
 type DealsSub = "new" | "released";
 type BankSub = "pending" | "history";
@@ -102,6 +103,10 @@ interface WarehouseManagerProps {
   adminPath: string;
   initialTab: TabKey;
   initialSub: StockSub;
+  focusDealId?: string | null;
+  focusReceiptId?: string | null;
+  focusProductId?: string | null;
+  focusPaymentId?: string | null;
   stock: WarehouseStockRow[];
   receipts: WarehouseReceipt[];
   deals: CustomerDeal[];
@@ -112,12 +117,17 @@ interface WarehouseManagerProps {
   pickerProducts: PickerProduct[];
   counterpartyOptions: CounterpartyOption[];
   counterpartyDocuments: Record<string, CounterpartyDocument[]>;
+  clients?: any[];
 }
 
 export function WarehouseManager({
   adminPath,
   initialTab,
   initialSub,
+  focusDealId,
+  focusReceiptId,
+  focusProductId,
+  focusPaymentId,
   stock,
   receipts,
   deals,
@@ -128,11 +138,35 @@ export function WarehouseManager({
   pickerProducts,
   counterpartyOptions,
   counterpartyDocuments,
+  clients = [],
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<StockSub>(initialSub);
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
   const [bankSub, setBankSub] = useState<BankSub>("pending");
+
+  useEffect(() => {
+    if (focusDealId) {
+      setActiveTab("deals");
+      const deal = deals.find((item) => item.id === focusDealId);
+      setDealsSub(deal?.status === "completed" || deal?.status === "cancelled" ? "released" : "new");
+      window.setTimeout(() => document.getElementById(`deal-${focusDealId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    } else if (focusReceiptId) {
+      setActiveTab("stock");
+      const receipt = receipts.find((item) => item.id === focusReceiptId);
+      setStockSub(receipt?.status === "posted" ? "archive" : "receipts");
+      window.setTimeout(() => document.getElementById(`receipt-${focusReceiptId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    } else if (focusProductId) {
+      setActiveTab("stock");
+      setStockSub("stock");
+      window.setTimeout(() => document.getElementById(`stock-${focusProductId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    } else if (focusPaymentId) {
+      setActiveTab("bank");
+      const payment = payments.find((item) => item.id === focusPaymentId);
+      setBankSub(payment?.isPaid ? "history" : "pending");
+      window.setTimeout(() => document.getElementById(`payment-${focusPaymentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    }
+  }, [deals, focusDealId, focusPaymentId, focusProductId, focusReceiptId, payments, receipts]);
 
   // Filters
   const [q, setQ] = useState(""); // Stock/Deals query
@@ -285,6 +319,8 @@ export function WarehouseManager({
       label: "Контрагенты",
       icon: <UsersRound size={13} />,
     },
+    { key: "clients", label: "Клиенты", icon: <UsersRound size={13} /> },
+    { key: "suppliers", label: "Поставщики", icon: <Truck size={13} /> },
   ];
 
   const dealLinkOptions: DealLinkOption[] = useMemo(
@@ -318,6 +354,19 @@ export function WarehouseManager({
     () => new Map(stock.map((p) => [p.id, p.stockQty])),
     [stock]
   );
+  const productById = useMemo(() => new Map(stock.map((p) => [p.id, p])), [stock]);
+  const supplierRows = useMemo(() => {
+    return counterpartyOptions
+      .filter((cp) => cp.roles.includes("supplier"))
+      .flatMap((supplier) =>
+        Object.entries(supplier.supplierPrices || {}).map(([productId, price]) => {
+          const product = productById.get(productId);
+          return { supplier, productId, product, price: Number(price) || 0 };
+        })
+      )
+      .filter((row) => row.product && row.price > 0)
+      .sort((a, b) => (a.product?.name || "").localeCompare(b.product?.name || "", "ru"));
+  }, [counterpartyOptions, productById]);
 
   // Активные поступления (не проведены) и архив (проведённые/на складе).
   // Отмена проведения возвращает поступление из архива в активные.
@@ -475,11 +524,15 @@ export function WarehouseManager({
                       </thead>
                       <tbody>
                         {filteredStock.map((p) => (
-                          <tr key={p.id}>
+                          <tr key={p.id} id={`stock-${p.id}`}>
                             <td>
-                              <span className="wh-stock-product-name">
+                              <Link
+                                href={`/${adminPath}/products/${p.id}`}
+                                prefetch={false}
+                                className="wh-stock-product-name"
+                              >
                                 {p.name}
-                              </span>
+                              </Link>
                               <Link
                                 href={`/${adminPath}/warehouse?tab=stock&product=${p.id}#stock-origins`}
                                 prefetch={false}
@@ -493,6 +546,16 @@ export function WarehouseManager({
                                   style={{ marginLeft: 6 }}
                                 >
                                   скрыт
+                                </span>
+                              )}
+                              {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
+                                <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>
+                                  пополните
+                                </span>
+                              )}
+                              {p.stockQty <= 0 && (
+                                <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>
+                                  нет в наличии
                                 </span>
                               )}
                             </td>
@@ -652,7 +715,7 @@ export function WarehouseManager({
                       : [];
                 const hasShortage = shortage.length > 0;
                 return (
-                  <div key={d.id} className="admin-order">
+                  <div key={d.id} id={`deal-${d.id}`} className="admin-order">
                     <div className="admin-order__row">
                       <div className="admin-order__main">
                         <div className="admin-order__top">
@@ -695,9 +758,13 @@ export function WarehouseManager({
                           <div className="admin-order__items-title">Товары</div>
                           {d.items.map((it, idx) => (
                             <div key={idx} className="admin-order__item">
-                              <span>
+                              <Link
+                                href={`/${adminPath}/products/${it.productId}`}
+                                prefetch={false}
+                                style={{ color: "inherit", fontWeight: 650 }}
+                              >
                                 {it.name} × {it.quantity}
-                              </span>
+                              </Link>
                               <span className="admin-order__item-sum">
                                 {fmt(it.lineTotal)} ₽
                               </span>
@@ -797,6 +864,62 @@ export function WarehouseManager({
           initialCounterparties={counterpartyOptions}
           documents={counterpartyDocuments}
         />
+      )}
+
+      {/* ════════════ ВКЛАДКА: КЛИЕНТЫ ════════════ */}
+      {activeTab === "clients" && <ClientsManager clients={clients} />}
+
+      {/* ════════════ ВКЛАДКА: ПОСТАВЩИКИ ════════════ */}
+      {activeTab === "suppliers" && (
+        <div className="admin-card">
+          {supplierRows.length > 0 ? (
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Товар</th>
+                    <th>Остаток</th>
+                    <th>Поставщик</th>
+                    <th>Закупочная цена</th>
+                    <th>Контакты</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supplierRows.map((row) => {
+                    const warn = row.product?.stockWarnQty ?? 10;
+                    const need = (row.product?.stockQty || 0) <= warn;
+                    return (
+                      <tr key={`${row.supplier.id}-${row.productId}`}>
+                        <td>
+                          <Link href={`/${adminPath}/products/${row.productId}`} prefetch={false} style={{ fontWeight: 700 }}>
+                            {row.product?.name}
+                          </Link>
+                          {need && <span className="admin-badge admin-badge--amber" style={{ marginLeft: 8 }}>заказать</span>}
+                        </td>
+                        <td>{row.product?.stockQty ?? 0} шт.</td>
+                        <td>
+                          <strong>{row.supplier.name}</strong>
+                          {row.supplier.inn && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>ИНН {row.supplier.inn}</div>}
+                        </td>
+                        <td><strong>{fmt(row.price)} ₽</strong></td>
+                        <td>
+                          <div style={{ display: "grid", gap: 2 }}>
+                            {row.supplier.contactName && <span>{row.supplier.contactName}</span>}
+                            {row.supplier.phone && <a href={`tel:${row.supplier.phone}`}>{row.supplier.phone}</a>}
+                            {row.supplier.email && <a href={`mailto:${row.supplier.email}`}>{row.supplier.email}</a>}
+                            {row.supplier.address && <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>{row.supplier.address}</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="admin-empty"><p>Закупочные цены поставщиков пока не заполнены</p></div>
+          )}
+        </div>
       )}
 
       {/* ════════════ ВКЛАДКА: БАНК ════════════ */}
@@ -1032,6 +1155,7 @@ export function WarehouseManager({
                 {g.items.map((p) => (
                   <div
                     key={p.id}
+                    id={`payment-${p.id}`}
                     className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}`}
                   >
                     <div
@@ -1092,15 +1216,25 @@ export function WarehouseManager({
                         {(p.dealNumbers.length > 0 ||
                           p.receiptNumbers.length > 0) && (
                           <span className="bank-pay__links">
-                            {p.dealNumbers.map((n) => (
-                              <span key={`d${n}`} className="bank-pay__doc">
+                            {p.dealNumbers.map((n, idx) => (
+                              <Link
+                                key={`d${n}`}
+                                className="bank-pay__doc"
+                                href={`/${adminPath}/warehouse?tab=deals&deal=${p.dealIds[idx] || ""}`}
+                                prefetch={false}
+                              >
                                 ЗК-{n}
-                              </span>
+                              </Link>
                             ))}
-                            {p.receiptNumbers.map((n) => (
-                              <span key={`r${n}`} className="bank-pay__doc">
+                            {p.receiptNumbers.map((n, idx) => (
+                              <Link
+                                key={`r${n}`}
+                                className="bank-pay__doc"
+                                href={`/${adminPath}/warehouse?tab=stock&receipt=${p.receiptIds[idx] || ""}`}
+                                prefetch={false}
+                              >
                                 ПО-{n}
-                              </span>
+                              </Link>
                             ))}
                           </span>
                         )}

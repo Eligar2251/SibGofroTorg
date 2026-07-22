@@ -5,7 +5,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, Loader2 } from "lucide-react";
 
-export function OrderDeleteButton({ orderId }: { orderId: string }) {
+export function OrderDeleteButton({
+  orderId,
+  endpoint,
+}: {
+  orderId: string;
+  endpoint?: string;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -18,7 +24,7 @@ export function OrderDeleteButton({ orderId }: { orderId: string }) {
       return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}`, {
+      const res = await fetch(endpoint || `/api/admin/orders/${orderId}`, {
         method: "DELETE",
       });
       if (res.ok) {

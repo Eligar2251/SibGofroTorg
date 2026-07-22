@@ -6,15 +6,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Package,
-  FolderOpen,
   ClipboardList,
   Settings,
   LayoutDashboard,
   ExternalLink,
   LogOut,
-  Users,
   Megaphone,
-  BellRing,
   Star,
   Boxes,
 } from "lucide-react";
@@ -42,23 +39,13 @@ export function AdminShell({
     },
     {
       href: `/${adminPath}/products`,
-      label: "Товары",
+      label: "Товары и категории",
       icon: <Package size={18} />,
     },
     {
-      href: `/${adminPath}/categories`,
-      label: "Категории",
-      icon: <FolderOpen size={18} />,
-    },
-    {
       href: `/${adminPath}/promotions`,
-      label: "Акции",
+      label: "Акции и окна",
       icon: <Megaphone size={18} />,
-    },
-    {
-      href: `/${adminPath}/popups`,
-      label: "Инфо-окна",
-      icon: <BellRing size={18} />,
     },
     {
       href: `/${adminPath}/reviews`,
@@ -74,11 +61,6 @@ export function AdminShell({
       href: `/${adminPath}/warehouse`,
       label: "Учёт",
       icon: <Boxes size={18} />,
-    },
-    {
-      href: `/${adminPath}/clients`,
-      label: "Клиенты",
-      icon: <Users size={18} />,
     },
     {
       href: `/${adminPath}/settings`,

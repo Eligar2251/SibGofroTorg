@@ -31,6 +31,7 @@ export interface FirestoreProduct {
   note?: string | null | undefined;
   inStock: boolean;
   stockQty?: number | null | undefined;
+  stockWarnQty?: number | null | undefined;
   isPromo: boolean;
   promoLabel?: string | null | undefined;
   madeToOrder?: boolean | null | undefined;

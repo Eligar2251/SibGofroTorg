@@ -43,6 +43,7 @@ interface ProductData {
   priceWholesale?: number | null;
   minWholesaleQty?: number | null;
   stockQty?: number | null;
+  stockWarnQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;
   dimensionHeight?: number | null;
@@ -129,6 +130,8 @@ export function ProductFormClient({
 
     const body = {
       stockQty: data.get("stockQty") !== "" ? Number(data.get("stockQty")) : null,
+      stockWarnQty:
+        data.get("stockWarnQty") !== "" ? Number(data.get("stockWarnQty")) : null,
       name: data.get("name"),
       sku: data.get("sku") || null,
       categoryId: data.get("categoryId") || null,
@@ -525,6 +528,18 @@ export function ProductFormClient({
                 placeholder="Не ограничено"
                 className="admin-input"
               />
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Предупреждать при остатке ≤</label>
+              <input
+                name="stockWarnQty"
+                type="number"
+                min={0}
+                defaultValue={product?.stockWarnQty ?? ""}
+                placeholder="Напр. 10"
+                className="admin-input"
+              />
+              <span className="admin-hint">На дашборде появится «пополните» при этом остатке.</span>
             </div>
             <div className="admin-field">
               <label className="admin-label">В упаковке (шт.)</label>

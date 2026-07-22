@@ -38,6 +38,7 @@ export function Footer() {
   const [catalogLinks, setCatalogLinks] = useState<CatLink[]>([
     { href: "/catalog", label: "Весь каталог" },
   ]);
+  const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState(30000);
 
   useEffect(() => {
     fetch("/api/categories")
@@ -51,6 +52,16 @@ export function Footer() {
           })),
           { href: "/catalog", label: "Все категории →" },
         ]);
+      })
+      .catch(() => {});
+
+    fetch("/api/settings/public")
+      .then((r) => r.json())
+      .then((data) => {
+        const threshold = Number(data.freeDeliveryThreshold);
+        if (Number.isFinite(threshold) && threshold > 0) {
+          setFreeDeliveryThreshold(threshold);
+        }
       })
       .catch(() => {});
   }, []);
@@ -102,7 +113,7 @@ export function Footer() {
             ))}
             <div className="footer-delivery-box">
               <div className="footer-delivery-label">Бесплатная доставка</div>
-              <div className="footer-delivery-value">от 15 000 ₽</div>
+              <div className="footer-delivery-value">от {freeDeliveryThreshold.toLocaleString("ru-RU")} ₽</div>
               <div className="footer-delivery-sub">по Новосибирску</div>
             </div>
           </div>

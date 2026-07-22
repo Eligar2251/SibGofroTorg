@@ -1619,7 +1619,7 @@ body {
   .footer-delivery-box {
     width: 100%;
     max-width: 280px;
-    margin-top: 10px;
+    margin: 10px auto 0;
     padding: 12px;
     text-align: center;
   }

@@ -1,0 +1,20 @@
+// src/app/api/settings/public/route.ts
+import { NextResponse } from "next/server";
+import { getSettings } from "@/lib/firestore-queries";
+
+export async function GET() {
+  try {
+    const settings = (await getSettings()) || {};
+    const deliveryPrice = Number(settings.delivery_price);
+    const freeDeliveryThreshold = Number(settings.free_delivery_threshold);
+    return NextResponse.json({
+      deliveryPrice: Number.isFinite(deliveryPrice) && deliveryPrice >= 0 ? deliveryPrice : 800,
+      freeDeliveryThreshold:
+        Number.isFinite(freeDeliveryThreshold) && freeDeliveryThreshold > 0
+          ? freeDeliveryThreshold
+          : 30000,
+    });
+  } catch {
+    return NextResponse.json({ deliveryPrice: 800, freeDeliveryThreshold: 30000 });
+  }
+}

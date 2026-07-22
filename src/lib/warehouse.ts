@@ -118,6 +118,15 @@ function counterpartyPayload(
     "email",
     "inn",
     "kpp",
+    "ogrn",
+    "fullName",
+    "shortName",
+    "legalAddress",
+    "taxSystem",
+    "bankAccount",
+    "bankName",
+    "bik",
+    "correspondentAccount",
     "address",
     "contactName",
   ];
@@ -193,6 +202,15 @@ function mapCounterparty(id: string, data: any): Counterparty {
     email: data.email ?? null,
     inn: data.inn ?? null,
     kpp: data.kpp ?? null,
+    ogrn: data.ogrn ?? null,
+    fullName: data.fullName ?? null,
+    shortName: data.shortName ?? null,
+    legalAddress: data.legalAddress ?? null,
+    taxSystem: data.taxSystem ?? null,
+    bankAccount: data.bankAccount ?? null,
+    bankName: data.bankName ?? null,
+    bik: data.bik ?? null,
+    correspondentAccount: data.correspondentAccount ?? null,
     address: data.address ?? null,
     contactName: data.contactName ?? null,
     comment: data.comment ?? null,
@@ -275,6 +293,15 @@ export async function saveCounterparty(data: {
   email?: string | null;
   inn?: string | null;
   kpp?: string | null;
+  ogrn?: string | null;
+  fullName?: string | null;
+  shortName?: string | null;
+  legalAddress?: string | null;
+  taxSystem?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
@@ -300,6 +327,15 @@ export async function saveCounterparty(data: {
         email: cleanText(data.email, 160),
         inn: cleanText(data.inn, 20),
         kpp: cleanText(data.kpp, 20),
+        ogrn: cleanText(data.ogrn, 20),
+        fullName: cleanText(data.fullName, 200),
+        shortName: cleanText(data.shortName, 200),
+        legalAddress: cleanText(data.legalAddress, 400),
+        taxSystem: cleanText(data.taxSystem, 40),
+        bankAccount: cleanText(data.bankAccount, 40),
+        bankName: cleanText(data.bankName, 200),
+        bik: cleanText(data.bik, 20),
+        correspondentAccount: cleanText(data.correspondentAccount, 40),
         address: cleanText(data.address, 400),
         contactName: cleanText(data.contactName, 160),
         comment: cleanText(data.comment, 1000),
@@ -479,6 +515,10 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
         data.stockQty !== undefined && data.stockQty !== null
           ? Number(data.stockQty)
           : 0,
+      stockWarnQty:
+        data.stockWarnQty !== undefined && data.stockWarnQty !== null
+          ? Number(data.stockWarnQty)
+          : null,
       inStock: data.inStock !== false,
       price: effective,
       priceWholesale:
@@ -577,6 +617,15 @@ function mapReceipt(id: string, data: any): WarehouseReceipt {
     email: data.email ?? null,
     inn: data.inn ?? null,
     kpp: data.kpp ?? null,
+    ogrn: data.ogrn ?? null,
+    fullName: data.fullName ?? null,
+    shortName: data.shortName ?? null,
+    legalAddress: data.legalAddress ?? null,
+    taxSystem: data.taxSystem ?? null,
+    bankAccount: data.bankAccount ?? null,
+    bankName: data.bankName ?? null,
+    bik: data.bik ?? null,
+    correspondentAccount: data.correspondentAccount ?? null,
     address: data.address ?? null,
     contactName: data.contactName ?? null,
     comment: data.comment ?? null,
@@ -619,6 +668,15 @@ export async function createReceipt(data: {
   email?: string | null;
   inn?: string | null;
   kpp?: string | null;
+  ogrn?: string | null;
+  fullName?: string | null;
+  shortName?: string | null;
+  legalAddress?: string | null;
+  taxSystem?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
@@ -1237,6 +1295,15 @@ export async function createDeal(data: {
   email?: string | null;
   inn?: string | null;
   kpp?: string | null;
+  ogrn?: string | null;
+  fullName?: string | null;
+  shortName?: string | null;
+  legalAddress?: string | null;
+  taxSystem?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
@@ -1644,12 +1711,30 @@ export async function deleteDeal(id: string): Promise<void> {
   const ref = db.collection("customerDeals").doc(id);
   const snap = await ref.get();
   if (!snap.exists) return;
-  const deal = mapDeal(id, snap.data());
+  const rawDeal = snap.data() || {};
+  const deal = mapDeal(id, rawDeal);
   if (deal.status === "completed") {
     await applyStockDelta(deal.items, 1);
   }
   await ref.delete();
   await cleanupPendingDealPayments(id, db);
+
+  // Если заказ в учёте был создан из заявки сайта, после удаления отвязываем
+  // его от заявки: убираем надпись «В учёте: ЗК-…» и возвращаем заявку в обычные новые.
+  const sourceOrderId = rawDeal.sourceOrderId ? String(rawDeal.sourceOrderId) : "";
+  if (sourceOrderId) {
+    await db.collection("orders").doc(sourceOrderId).set(
+      {
+        status: "new",
+        dealId: null,
+        dealNumber: null,
+        paymentId: null,
+        closeReason: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
 }
 
 // ─── Банк (платежи) ─────────────────────────────────────
@@ -2137,7 +2222,7 @@ export async function convertOrderToDeal(orderId: string): Promise<{
   // Сумма заявки (итог клиента). Если нет — берём сумму позиций.
   const total = Math.max(0, round2(Number(order.totalSum) || 0)) || linesSum;
   const customerName = String(
-    order.customerName || order.customerPhone || "Клиент"
+    order.companyName || order.shortName || order.customerName || order.customerPhone || "Клиент"
   ).slice(0, 200);
 
   const number = await nextNumber("deal");
@@ -2152,6 +2237,19 @@ export async function convertOrderToDeal(orderId: string): Promise<{
   const details: CounterpartyDetails = {
     phone: order.customerPhone ? String(order.customerPhone).slice(0, 60) : null,
     email: order.customerEmail ? String(order.customerEmail).slice(0, 160) : null,
+    inn: order.inn ? String(order.inn).slice(0, 20) : null,
+    kpp: order.kpp ? String(order.kpp).slice(0, 20) : null,
+    ogrn: order.ogrn ? String(order.ogrn).slice(0, 20) : null,
+    fullName: order.companyName ? String(order.companyName).slice(0, 200) : null,
+    shortName: order.shortName ? String(order.shortName).slice(0, 200) : null,
+    legalAddress: order.legalAddress ? String(order.legalAddress).slice(0, 400) : null,
+    address: order.actualAddress || order.legalAddress ? String(order.actualAddress || order.legalAddress).slice(0, 400) : null,
+    taxSystem: order.taxSystem ? String(order.taxSystem).slice(0, 40) : null,
+    bankAccount: order.bankAccount ? String(order.bankAccount).slice(0, 40) : null,
+    bankName: order.bankName ? String(order.bankName).slice(0, 200) : null,
+    bik: order.bik ? String(order.bik).slice(0, 20) : null,
+    correspondentAccount: order.correspondentAccount ? String(order.correspondentAccount).slice(0, 40) : null,
+    contactName: order.customerName ? String(order.customerName).slice(0, 160) : null,
   };
   const counterpartyId = addCounterpartyToBatch(batch, "customer", customerName, {
     ...details,

@@ -21,6 +21,15 @@ export interface CounterpartyDetails {
   email?: string | null;
   inn?: string | null;
   kpp?: string | null;
+  ogrn?: string | null;
+  fullName?: string | null;
+  shortName?: string | null;
+  legalAddress?: string | null;
+  taxSystem?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
   address?: string | null;
   contactName?: string | null;
 }
@@ -112,6 +121,7 @@ export interface WarehouseStockRow {
   name: string;
   sku: string | null;
   stockQty: number;
+  stockWarnQty?: number | null;
   inStock: boolean;
   price: number | null;
   priceWholesale: number | null;

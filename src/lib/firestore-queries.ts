@@ -8,7 +8,6 @@ import { getAdminDb } from "./firebase-admin";
 import {
   extractQueryDims,
   dimensionScore,
-  normalizeDimString,
 } from "./dimension-search";
 import {
   WASTEPAPER_RATE_IDS,
@@ -139,6 +138,10 @@ function mapProduct(id: string, data: FirebaseFirestore.DocumentData): Firestore
     stockQty:
       data.stockQty !== undefined && data.stockQty !== null
         ? Number(data.stockQty)
+        : null,
+    stockWarnQty:
+      data.stockWarnQty !== undefined && data.stockWarnQty !== null
+        ? Number(data.stockWarnQty)
         : null,
     isPromo: data.isPromo ?? false,
     promoLabel: data.promoLabel || null,
@@ -305,16 +308,13 @@ export async function getCategoryBySlug(slug: string): Promise<FirestoreCategory
 
 // ─── Products ─────────────────────────────────────────────
 
-/** Размеры товара: из полей карточки, а если их нет — парсим из названия */
+/** Размеры товара: строго из характеристик карточки (Д × Ш × В). */
 function getProductDims(p: FirestoreProduct): number[] {
   const dims: number[] = [];
   for (const v of [p.dimensionLength, p.dimensionWidth, p.dimensionHeight]) {
     const n = Number(v);
     if (Number.isFinite(n) && n > 0) dims.push(n);
   }
-  if (dims.length >= 2) return dims;
-  const fromName = extractQueryDims(p.name || "");
-  if (fromName && fromName.length >= 2) return fromName;
   return dims;
 }
 
@@ -346,29 +346,28 @@ export async function getProducts(opts?: {
     filteredResults = filteredResults.filter((p) => p.isFeatured === true);
   }
 
+  let dimensionSearchApplied = false;
   if (opts?.search) {
     const raw = opts.search;
-    const s = raw.toLowerCase();
+    const s = raw.toLowerCase().trim();
     const qDims = extractQueryDims(raw);
     if (qDims) {
-      // Поиск по размерам: ранжируем по близости габаритов (порядок Д×Ш×В
-      // не важен). Точное текстовое совпадение получает максимальный вес.
-      const ns = normalizeDimString(raw);
+      dimensionSearchApplied = true;
+      // Поиск по размерам берёт только полноценные Д × Ш × В из характеристик
+      // товара. Точные совпадения идут первыми; близкие размеры — ниже.
       const scored = filteredResults
         .map((p) => {
           const pDims = getProductDims(p);
-          let score = pDims.length >= 2 ? dimensionScore(qDims, pDims) : 0;
-          const name = p.name?.toLowerCase() || "";
-          const sku = p.sku?.toLowerCase() || "";
-          if (name.includes(s) || sku.includes(s)) {
-            score = Math.max(score, 1);
-          } else if (ns.length >= 3 && normalizeDimString(name).includes(ns)) {
-            score = Math.max(score, 1);
-          }
-          return { p, score };
+          const score = pDims.length >= qDims.length ? dimensionScore(qDims, pDims) : 0;
+          const exact =
+            qDims.length === 3 &&
+            pDims.length >= 3 &&
+            [...qDims].sort((a, b) => a - b).join("x") ===
+              [...pDims.slice(0, 3)].sort((a, b) => a - b).join("x");
+          return { p, score, exact };
         })
-        .filter((x) => x.score >= 0.2);
-      scored.sort((a, b) => b.score - a.score);
+        .filter((x) => x.exact || x.score >= 0.75);
+      scored.sort((a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score);
       filteredResults = scored.map((x) => x.p);
     } else {
       filteredResults = filteredResults.filter(
@@ -378,7 +377,10 @@ export async function getProducts(opts?: {
     }
   }
 
-  switch (opts?.sortBy) {
+  switch (dimensionSearchApplied && !opts?.sortBy ? "dimension" : opts?.sortBy) {
+    case "dimension":
+      // Порядок уже задан скорингом по размерам выше.
+      break;
     case "price_asc":
       filteredResults.sort(
         (a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)
@@ -735,6 +737,63 @@ export async function getWastepaperRates(): Promise<WastepaperRates> {
 export async function deleteOrder(id: string) {
   const db = getAdminDb();
   await db.collection("orders").doc(id).delete();
+}
+
+export async function getWastepaperRequests(opts?: {
+  status?: string;
+  limit?: number;
+}): Promise<any[]> {
+  const db = getAdminDb();
+  let q: Query = db.collection("wastepaper_requests").orderBy("createdAt", "desc");
+
+  if (opts?.status && opts.status !== "all") {
+    q = db
+      .collection("wastepaper_requests")
+      .where("status", "==", opts.status)
+      .orderBy("createdAt", "desc");
+  }
+
+  if (opts?.limit) q = q.limit(opts.limit);
+
+  const snap = await q.get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      source: "wastepaper" as const,
+      type: "wastepaper" as const,
+      customerType: "individual",
+      customerName: data.customerName || "",
+      customerPhone: data.customerPhone || "",
+      customerEmail: null,
+      communicationChannel: data.deliveryMethod || null,
+      wastepaperType: data.wastepaperType || null,
+      weight: Number(data.weight || 0),
+      deliveryMethod: data.deliveryMethod || null,
+      estimatedPayout: Number(data.estimatedPayout || 0),
+      productInfo: data.wastepaperType ? `Макулатура: ${data.wastepaperType}` : "Макулатура",
+      comment: data.comment || null,
+      status: data.status || "new",
+      createdAt: serializeTimestamp(data.createdAt),
+      updatedAt: serializeTimestamp(data.updatedAt),
+    };
+  });
+}
+
+export async function updateWastepaperRequestStatus(
+  id: string,
+  status: string
+) {
+  const db = getAdminDb();
+  await db.collection("wastepaper_requests").doc(id).update({
+    status,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+export async function deleteWastepaperRequest(id: string) {
+  const db = getAdminDb();
+  await db.collection("wastepaper_requests").doc(id).delete();
 }
 
 export async function deleteProductQuestion(questionId: string) {

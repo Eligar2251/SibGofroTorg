@@ -29,7 +29,7 @@ import { ModalPortal } from "@/components/admin/ModalPortal";
 type DeliveryMethod = "courier" | "pickup" | "transport";
 type PaymentMethod = "card" | "cash" | "invoice";
 type CustomerType = "individual" | "legal";
-type CommChannel = "call" | "whatsapp" | "telegram";
+type CommChannel = "call" | "whatsapp" | "telegram" | "max";
 
 const STEPS = [
   { n: 1, label: "Корзина" },
@@ -71,11 +71,17 @@ export function OrderPageClient({
 
   // юрлицо
   const [companyName, setCompanyName] = useState("");
+  const [shortName, setShortName] = useState("");
   const [inn, setInn] = useState("");
   const [kpp, setKpp] = useState("");
   const [ogrn, setOgrn] = useState("");
   const [legalAddress, setLegalAddress] = useState("");
   const [actualAddress, setActualAddress] = useState("");
+  const [taxSystem, setTaxSystem] = useState("ОСНО");
+  const [bankAccount, setBankAccount] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [bik, setBik] = useState("");
+  const [correspondentAccount, setCorrespondentAccount] = useState("");
 
   // Модалка создания личного кабинета (регистрация без потери корзины)
   const [accountModalOpen, setAccountModalOpen] = useState(false);
@@ -104,6 +110,7 @@ export function OrderPageClient({
           setCustomerType(u.customerType);
         }
         if (u.companyName) setCompanyName(u.companyName);
+        if (u.shortName) setShortName(u.shortName);
         if (u.inn) setInn(u.inn);
         if (u.kpp) setKpp(u.kpp);
         if (u.ogrn) setOgrn(u.ogrn);
@@ -273,12 +280,19 @@ export function OrderPageClient({
         communicationChannel: commChannel,
         paymentMethod: finalPayment,
         companyName: customerType === "legal" ? companyName.trim() : null,
+        shortName: customerType === "legal" ? shortName.trim() || null : null,
         inn: customerType === "legal" ? inn.trim() : null,
         kpp: customerType === "legal" ? kpp.trim() || null : null,
         ogrn: customerType === "legal" ? ogrn.trim() || null : null,
         legalAddress: customerType === "legal" ? legalAddress.trim() : null,
         actualAddress:
           customerType === "legal" ? actualAddress.trim() || null : null,
+        taxSystem: customerType === "legal" ? taxSystem.trim() || null : null,
+        bankAccount: customerType === "legal" ? bankAccount.trim() || null : null,
+        bankName: customerType === "legal" ? bankName.trim() || null : null,
+        bik: customerType === "legal" ? bik.trim() || null : null,
+        correspondentAccount:
+          customerType === "legal" ? correspondentAccount.trim() || null : null,
         deliveryAddress: address.trim() || null,
         comment: [
           address ? `Адрес доставки: ${address}` : "",
@@ -721,7 +735,7 @@ export function OrderPageClient({
                           : ""
                       }`}
                     >
-                      <GlyphIcon value="building" size={14} /> Юридическое лицо
+                      <GlyphIcon value="building" size={14} /> Юр. лицо / ИП
                     </button>
                   </div>
 
@@ -737,6 +751,17 @@ export function OrderPageClient({
                             value={companyName}
                             onChange={(e) => setCompanyName(e.target.value)}
                             placeholder='ООО «...»'
+                          />
+                        </div>
+                        <div style={{ gridColumn: "1 / -1" }}>
+                          <label className="checkout-label">
+                            Сокращённое наименование
+                          </label>
+                          <input
+                            className="form-input"
+                            value={shortName}
+                            onChange={(e) => setShortName(e.target.value)}
+                            placeholder='ООО «КОРУНА» / ИП Иванов И.И.'
                           />
                         </div>
                         <div>
@@ -782,6 +807,31 @@ export function OrderPageClient({
                             value={actualAddress}
                             onChange={(e) => setActualAddress(e.target.value)}
                           />
+                        </div>
+                        <div>
+                          <label className="checkout-label">Налогообложение</label>
+                          <select className="form-input" value={taxSystem} onChange={(e) => setTaxSystem(e.target.value)}>
+                            <option value="ОСНО">ОСНО</option>
+                            <option value="УСН">УСН</option>
+                            <option value="ПСН">ПСН</option>
+                            <option value="ЕСХН">ЕСХН</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="checkout-label">Расчётный счёт</label>
+                          <input className="form-input" value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="checkout-label">Банк</label>
+                          <input className="form-input" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder='ООО "Банк Точка"' />
+                        </div>
+                        <div>
+                          <label className="checkout-label">БИК</label>
+                          <input className="form-input" value={bik} onChange={(e) => setBik(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="checkout-label">Корр. счёт</label>
+                          <input className="form-input" value={correspondentAccount} onChange={(e) => setCorrespondentAccount(e.target.value)} />
                         </div>
                       </>
                     )}
@@ -831,7 +881,7 @@ export function OrderPageClient({
                   <div style={{ marginTop: 16 }}>
                     <label className="checkout-label">Способ связи</label>
                     <div className="comm-options">
-                      {(["call", "whatsapp", "telegram"] as CommChannel[]).map(
+                      {(["call", "whatsapp", "telegram", "max"] as CommChannel[]).map(
                         (ch) => (
                           <button
                             key={ch}
@@ -854,6 +904,11 @@ export function OrderPageClient({
                             {ch === "telegram" && (
                               <>
                                 <GlyphIcon value="send" size={13} /> Telegram
+                              </>
+                            )}
+                            {ch === "max" && (
+                              <>
+                                <GlyphIcon value="chats" size={13} /> Макс
                               </>
                             )}
                           </button>
