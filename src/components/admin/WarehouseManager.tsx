@@ -94,10 +94,26 @@ const paymentTypeLabels: Record<string, string> = {
   deposit: "Внесение",
 };
 
-type TabKey = "stock" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers";
+type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers";
 type StockSub = "stock" | "receipts" | "archive";
+type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
 type BankSub = "pending" | "history";
+type BankEntry =
+  | (BankPayment & { entryKind: "payment" })
+  | {
+      entryKind: "salary";
+      id: string;
+      number: number;
+      date: string;
+      direction: "outgoing";
+      counterparty: string;
+      amount: number;
+      isPaid: boolean;
+      source: "cash" | "bank";
+      comment?: string | null;
+      salary: Salary;
+    };
 
 interface WarehouseManagerProps {
   adminPath: string;
@@ -142,7 +158,10 @@ export function WarehouseManager({
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<StockSub>(initialSub);
+  const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
+  const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [bankSub, setBankSub] = useState<BankSub>("pending");
 
   useEffect(() => {
@@ -150,11 +169,12 @@ export function WarehouseManager({
       setActiveTab("deals");
       const deal = deals.find((item) => item.id === focusDealId);
       setDealsSub(deal?.status === "completed" || deal?.status === "cancelled" ? "released" : "new");
+      setExpandedDealId(focusDealId);
       window.setTimeout(() => document.getElementById(`deal-${focusDealId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     } else if (focusReceiptId) {
-      setActiveTab("stock");
+      setActiveTab("receipts");
       const receipt = receipts.find((item) => item.id === focusReceiptId);
-      setStockSub(receipt?.status === "posted" ? "archive" : "receipts");
+      setReceiptSub(receipt?.status === "posted" ? "archive" : "active");
       window.setTimeout(() => document.getElementById(`receipt-${focusReceiptId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     } else if (focusProductId) {
       setActiveTab("stock");
@@ -237,24 +257,39 @@ export function WarehouseManager({
     });
   }, [deals, dealsSub, q, dealPaidMap]);
 
-  const bankList = useMemo(() => {
+  const bankList = useMemo<BankEntry[]>(() => {
     const query = bq.toLowerCase().trim();
-    let list = payments.filter((p) => {
+    const salaryEntries: BankEntry[] = salaries.map((salary, idx) => ({
+      entryKind: "salary",
+      id: `salary-${salary.id}`,
+      number: idx + 1,
+      date: salary.paidAt || salary.date,
+      direction: "outgoing",
+      counterparty: salary.employeeName,
+      amount: salary.amount,
+      isPaid: salary.isPaid,
+      source: salary.source,
+      comment: salary.comment,
+      salary,
+    }));
+    let list: BankEntry[] = [
+      ...payments.map((payment) => ({ ...payment, entryKind: "payment" as const })),
+      ...salaryEntries,
+    ].filter((p) => {
       const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
       if (!matchesTab) return false;
       if (bdir !== "all" && p.direction !== bdir) return false;
       if (query) {
-        const hay = [
-          p.counterparty,
-          p.comment || "",
-          p.invoiceNumber || "",
-          `пл-${p.number}`,
-          `ПЛ-${p.number}`.toLowerCase(),
-          ...p.dealNumbers.map((n) => `зк-${n}`),
-          ...p.receiptNumbers.map((n) => `по-${n}`),
-        ]
-          .join(" ")
-          .toLowerCase();
+        const hay = p.entryKind === "payment"
+          ? [
+              p.counterparty,
+              p.comment || "",
+              p.invoiceNumber || "",
+              `пл-${p.number}`,
+              ...p.dealNumbers.map((n) => `зк-${n}`),
+              ...p.receiptNumbers.map((n) => `по-${n}`),
+            ].join(" ").toLowerCase()
+          : ["зп", "зарплата", p.counterparty, p.comment || "", p.source === "cash" ? "касса" : "банк"].join(" ").toLowerCase();
         if (!hay.includes(query)) return false;
       }
       return true;
@@ -266,7 +301,7 @@ export function WarehouseManager({
         : b.date.localeCompare(a.date) || b.number - a.number
     );
     return list;
-  }, [payments, bankSub, bq, bdir, bsort]);
+  }, [payments, salaries, bankSub, bq, bdir, bsort]);
 
   const bankFilteredTotals = useMemo(() => {
     let inSum = 0;
@@ -279,7 +314,7 @@ export function WarehouseManager({
   }, [bankList]);
 
   const bankGroups = useMemo(() => {
-    const groups: { key: string; label: string; items: BankPayment[] }[] = [];
+    const groups: { key: string; label: string; items: BankEntry[] }[] = [];
     for (const p of bankList) {
       const key = (p.date || "").slice(0, 7) || "unknown";
       const lastGroup = groups[groups.length - 1];
@@ -311,6 +346,7 @@ export function WarehouseManager({
 
   const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
+    { key: "receipts", label: "Поступления", icon: <Truck size={13} /> },
     { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
     { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
@@ -367,6 +403,20 @@ export function WarehouseManager({
       .filter((row) => row.product && row.price > 0)
       .sort((a, b) => (a.product?.name || "").localeCompare(b.product?.name || "", "ru"));
   }, [counterpartyOptions, productById]);
+  const supplierCards = useMemo(() => {
+    return counterpartyOptions
+      .filter((supplier) => supplier.roles.includes("supplier"))
+      .map((supplier) => {
+        const products = supplierRows.filter((row) => row.supplier.id === supplier.id);
+        const needCount = products.filter((row) => {
+          const warn = row.product?.stockWarnQty ?? 10;
+          return (row.product?.stockQty || 0) <= warn;
+        }).length;
+        return { supplier, products, needCount };
+      })
+      .sort((a, b) => b.needCount - a.needCount || a.supplier.name.localeCompare(b.supplier.name, "ru"));
+  }, [counterpartyOptions, supplierRows]);
+  const selectedSupplier = supplierCards.find((item) => item.supplier.id === selectedSupplierId) || null;
 
   // Активные поступления (не проведены) и архив (проведённые/на складе).
   // Отмена проведения возвращает поступление из архива в активные.
@@ -390,7 +440,7 @@ export function WarehouseManager({
           </p>
         </div>
         <div className="admin-page-head__actions">
-          {activeTab === "stock" && stockSub === "receipts" && (
+          {activeTab === "receipts" && receiptSub === "active" && (
             <ReceiptForm
               products={pickerProducts}
               counterparties={counterpartyOptions}
@@ -431,170 +481,135 @@ export function WarehouseManager({
       {/* ════════════ ВКЛАДКА: СКЛАД ════════════ */}
       {activeTab === "stock" && (
         <>
+          <div className="admin-stat-grid wh-stat-grid">
+            <div className="admin-stat">
+              <div className="admin-stat__value">{stock.length}</div>
+              <div className="admin-stat__label">Позиций номенклатуры</div>
+            </div>
+            <div className="admin-stat">
+              <div className="admin-stat__value">{fmt(totalUnits)}</div>
+              <div className="admin-stat__label">Единиц на складе</div>
+            </div>
+            <div className="admin-stat">
+              <div className="admin-stat__value">{fmt(stockValue)} ₽</div>
+              <div className="admin-stat__label">Оценка по ценам продажи</div>
+            </div>
+            <div className="admin-stat">
+              <div className="admin-stat__value">{zeroStock}</div>
+              <div className="admin-stat__label">С нулевым остатком</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <div style={{ position: "relative", flex: 1 }}>
+              <Search
+                size={16}
+                style={{
+                  position: "absolute",
+                  left: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--adm-sand)",
+                }}
+              />
+              <input
+                type="text"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Поиск по названию или артикулу..."
+                className="admin-input"
+                style={{ paddingLeft: 36 }}
+              />
+            </div>
+            {q && (
+              <button onClick={() => setQ("")} className="admin-btn admin-btn--ghost">
+                Сбросить
+              </button>
+            )}
+          </div>
+
+          <div className="admin-card">
+            {filteredStock.length > 0 ? (
+              <div className="admin-table-wrap">
+                <table className="admin-table wh-stock-table">
+                  <thead>
+                    <tr>
+                      <th>Товар</th>
+                      <th>Артикул</th>
+                      <th style={{ textAlign: "right" }}>Остаток</th>
+                      <th style={{ textAlign: "right" }}>Цена продажи</th>
+                      <th style={{ textAlign: "right" }}>Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredStock.map((p) => (
+                      <tr key={p.id} id={`stock-${p.id}`}>
+                        <td>
+                          <Link href={`/${adminPath}/products/${p.id}`} prefetch={false} className="wh-stock-product-name">
+                            {p.name}
+                          </Link>
+                          <Link
+                            href={`/${adminPath}/warehouse?tab=stock&product=${p.id}#stock-origins`}
+                            prefetch={false}
+                            className="wh-stock-origin-link"
+                          >
+                            Откуда поступил →
+                          </Link>
+                          {!p.isVisible && (
+                            <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>скрыт</span>
+                          )}
+                          {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
+                            <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
+                          )}
+                          {p.stockQty <= 0 && (
+                            <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
+                          )}
+                        </td>
+                        <td>{p.sku || "—"}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <StockQtyEditor productId={p.id} initialQty={p.stockQty} />
+                        </td>
+                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          {p.price != null ? `${fmt(p.price)} ₽` : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="admin-empty"><p>Товары не найдены</p></div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ════════════ ВКЛАДКА: ПОСТУПЛЕНИЯ ════════════ */}
+      {activeTab === "receipts" && (
+        <>
           <div className="admin-filters admin-filters--sub">
             <button
-              onClick={() => setStockSub("stock")}
-              className={`admin-filter${stockSub === "stock" ? " admin-filter--active" : ""}`}
-            >
-              <Boxes size={12} />
-              Остатки
-            </button>
-            <button
-              onClick={() => setStockSub("receipts")}
-              className={`admin-filter${stockSub === "receipts" ? " admin-filter--active" : ""}`}
+              onClick={() => setReceiptSub("active")}
+              className={`admin-filter${receiptSub === "active" ? " admin-filter--active" : ""}`}
             >
               <Truck size={12} />
-              Поступления
+              Активные поступления
             </button>
             <button
-              onClick={() => setStockSub("archive")}
-              className={`admin-filter${stockSub === "archive" ? " admin-filter--active" : ""}`}
+              onClick={() => setReceiptSub("archive")}
+              className={`admin-filter${receiptSub === "archive" ? " admin-filter--active" : ""}`}
             >
               <Archive size={12} />
-              Архив
+              Архив поступлений
             </button>
           </div>
 
-          {stockSub === "stock" && (
-            <>
-              <div className="admin-stat-grid wh-stat-grid">
-                <div className="admin-stat">
-                  <div className="admin-stat__value">{stock.length}</div>
-                  <div className="admin-stat__label">Позиций номенклатуры</div>
-                </div>
-                <div className="admin-stat">
-                  <div className="admin-stat__value">{fmt(totalUnits)}</div>
-                  <div className="admin-stat__label">Единиц на складе</div>
-                </div>
-                <div className="admin-stat">
-                  <div className="admin-stat__value">{fmt(stockValue)} ₽</div>
-                  <div className="admin-stat__label">
-                    Оценка по ценам продажи
-                  </div>
-                </div>
-                <div className="admin-stat">
-                  <div className="admin-stat__value">{zeroStock}</div>
-                  <div className="admin-stat__label">С нулевым остатком</div>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                <div style={{ position: "relative", flex: 1 }}>
-                  <Search
-                    size={16}
-                    style={{
-                      position: "absolute",
-                      left: 12,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      color: "var(--adm-sand)",
-                    }}
-                  />
-                  <input
-                    type="text"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Поиск по названию или артикулу..."
-                    className="admin-input"
-                    style={{ paddingLeft: 36 }}
-                  />
-                </div>
-                {q && (
-                  <button
-                    onClick={() => setQ("")}
-                    className="admin-btn admin-btn--ghost"
-                  >
-                    Сбросить
-                  </button>
-                )}
-              </div>
-
-              <div className="admin-card">
-                {filteredStock.length > 0 ? (
-                  <div className="admin-table-wrap">
-                    <table className="admin-table wh-stock-table">
-                      <thead>
-                        <tr>
-                          <th>Товар</th>
-                          <th>Артикул</th>
-                          <th style={{ textAlign: "right" }}>Остаток</th>
-                          <th style={{ textAlign: "right" }}>Цена продажи</th>
-                          <th style={{ textAlign: "right" }}>Сумма</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredStock.map((p) => (
-                          <tr key={p.id} id={`stock-${p.id}`}>
-                            <td>
-                              <Link
-                                href={`/${adminPath}/products/${p.id}`}
-                                prefetch={false}
-                                className="wh-stock-product-name"
-                              >
-                                {p.name}
-                              </Link>
-                              <Link
-                                href={`/${adminPath}/warehouse?tab=stock&product=${p.id}#stock-origins`}
-                                prefetch={false}
-                                className="wh-stock-origin-link"
-                              >
-                                Откуда поступил →
-                              </Link>
-                              {!p.isVisible && (
-                                <span
-                                  className="admin-badge admin-badge--muted"
-                                  style={{ marginLeft: 6 }}
-                                >
-                                  скрыт
-                                </span>
-                              )}
-                              {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
-                                <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>
-                                  пополните
-                                </span>
-                              )}
-                              {p.stockQty <= 0 && (
-                                <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>
-                                  нет в наличии
-                                </span>
-                              )}
-                            </td>
-                            <td>{p.sku || "—"}</td>
-                            <td style={{ textAlign: "right" }}>
-                              <StockQtyEditor
-                                productId={p.id}
-                                initialQty={p.stockQty}
-                              />
-                            </td>
-                            <td
-                              style={{ textAlign: "right", whiteSpace: "nowrap" }}
-                            >
-                              {p.price != null ? `${fmt(p.price)} ₽` : "—"}
-                            </td>
-                            <td
-                              style={{ textAlign: "right", whiteSpace: "nowrap" }}
-                            >
-                              {p.price != null
-                                ? `${fmt(p.stockQty * p.price)} ₽`
-                                : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="admin-empty">
-                    <p>Товары не найдены</p>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {stockSub === "receipts" && (
-            <div className="admin-card">
-              {activeReceipts.length > 0 ? (
+          <div className="admin-card">
+            {receiptSub === "active" ? (
+              activeReceipts.length > 0 ? (
                 activeReceipts.map((r) => (
                   <ReceiptCard
                     key={r.id}
@@ -608,48 +623,30 @@ export function WarehouseManager({
                 ))
               ) : (
                 <div className="admin-empty">
-                  <div className="admin-empty__icon">
-                    <Truck size={40} />
-                  </div>
+                  <div className="admin-empty__icon"><Truck size={40} /></div>
                   <p>Активных поступлений нет</p>
-                  <p className="admin-empty__hint">
-                    Новые поступления появляются здесь. Проведённые
-                    автоматически попадают в Архив.
-                  </p>
+                  <p className="admin-empty__hint">Новые поступления появляются здесь. Проведённые попадают в архив.</p>
                 </div>
-              )}
-            </div>
-          )}
-
-          {stockSub === "archive" && (
-            <div className="admin-card">
-              {archivedReceipts.length > 0 ? (
-                archivedReceipts.map((r) => (
-                  <ReceiptCard
-                    key={r.id}
-                    receipt={r}
-                    paidAmount={receiptPaidMap.get(r.id) || 0}
-                    products={pickerProducts}
-                    counterparties={counterpartyOptions}
-                    deals={deals}
-                    payments={payments}
-                  />
-                ))
-              ) : (
-                <div className="admin-empty">
-                  <div className="admin-empty__icon">
-                    <Archive size={40} />
-                  </div>
-                  <p>В архиве пусто</p>
-                  <p className="admin-empty__hint">
-                    Сюда попадают проведённые поступления. Отмена проведения
-                    вернёт поступление обратно в список (товар спишется со
-                    склада).
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
+              )
+            ) : archivedReceipts.length > 0 ? (
+              archivedReceipts.map((r) => (
+                <ReceiptCard
+                  key={r.id}
+                  receipt={r}
+                  paidAmount={receiptPaidMap.get(r.id) || 0}
+                  products={pickerProducts}
+                  counterparties={counterpartyOptions}
+                  deals={deals}
+                  payments={payments}
+                />
+              ))
+            ) : (
+              <div className="admin-empty">
+                <div className="admin-empty__icon"><Archive size={40} /></div>
+                <p>В архиве поступлений пусто</p>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -705,149 +702,124 @@ export function WarehouseManager({
                     ? d.items
                         .map((it) => {
                           const available = stockById.get(it.productId) ?? 0;
-                          return {
-                            it,
-                            available,
-                            missing: Math.max(0, it.quantity - available),
-                          };
+                          return { it, available, missing: Math.max(0, it.quantity - available) };
                         })
                         .filter((r) => r.missing > 0)
-                      : [];
+                    : [];
                 const hasShortage = shortage.length > 0;
+                const expanded = expandedDealId === d.id;
                 return (
                   <div key={d.id} id={`deal-${d.id}`} className="admin-order">
-                    <div className="admin-order__row">
-                      <div className="admin-order__main">
-                        <div className="admin-order__top">
-                          <span className="admin-order__id">ЗК-{d.number}</span>
-                          <span className={dealStatusBadge[d.status]}>
-                            {dealStatusLabel[d.status]}
-                          </span>
-                          {isFullyPaid ? (
-                            <span className="admin-badge admin-badge--green">
-                              Оплачен
-                            </span>
-                          ) : (
-                            <span className="admin-badge admin-badge--red" style={{ fontWeight: 800 }}>
-                              <AlertTriangle size={10} style={{ marginRight: 4 }} />
-                              Клиент не оплатил!
-                            </span>
-                          )}
-                          {!isFullyPaid && paid > 0 && (
-                            <span className="admin-badge admin-badge--blue">
-                              Оплачено {fmt(paid)} из {fmt(d.total)} ₽
-                            </span>
-                          )}
-                          <span className="admin-order__date">
-                            {fmtDate(d.date)}
-                          </span>
-                        </div>
+                    <button
+                      type="button"
+                      className="receipt-head"
+                      onClick={() => setExpandedDealId(expanded ? null : d.id)}
+                      aria-expanded={expanded}
+                    >
+                      <span className="admin-order__id">ЗК-{d.number}</span>
+                      <span className={dealStatusBadge[d.status]}>{dealStatusLabel[d.status]}</span>
+                      {isFullyPaid ? (
+                        <span className="admin-badge admin-badge--green">Оплачен</span>
+                      ) : (
+                        <span className="admin-badge admin-badge--red" style={{ fontWeight: 800 }}>
+                          <AlertTriangle size={10} /> Клиент не оплатил
+                        </span>
+                      )}
+                      {!isFullyPaid && paid > 0 && (
+                        <span className="admin-badge admin-badge--blue">Оплачено {fmt(paid)} из {fmt(d.total)} ₽</span>
+                      )}
+                      {hasShortage && (
+                        <span className="admin-badge admin-badge--red"><AlertTriangle size={10} /> не хватает товара</span>
+                      )}
+                      <span className="receipt-head__supplier">{d.customerName}</span>
+                      <span className="receipt-head__date">{fmtDate(d.date)}</span>
+                      <span className="receipt-head__total">{fmt(d.total)} ₽</span>
+                      <span className="receipt-head__chevron">{expanded ? "▲" : "▼"}</span>
+                    </button>
 
-                        <div className="admin-order__grid">
-                          <div className="admin-order__meta">
-                            <span className="admin-order__meta-label wh-meta-label">
-                              Покупатель:
-                            </span>
-                            <span className="admin-order__meta-val">
-                              {d.customerName}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="admin-order__items">
-                          <div className="admin-order__items-title">Товары</div>
-                          {d.items.map((it, idx) => (
-                            <div key={idx} className="admin-order__item">
-                              <Link
-                                href={`/${adminPath}/products/${it.productId}`}
-                                prefetch={false}
-                                style={{ color: "inherit", fontWeight: 650 }}
-                              >
-                                {it.name} × {it.quantity}
-                              </Link>
-                              <span className="admin-order__item-sum">
-                                {fmt(it.lineTotal)} ₽
-                              </span>
+                    {expanded && (
+                      <div className="admin-order__row" style={{ paddingTop: 14 }}>
+                        <div className="admin-order__main">
+                          <div className="admin-order__grid">
+                            <div className="admin-order__meta">
+                              <span className="admin-order__meta-label wh-meta-label">Покупатель:</span>
+                              <span className="admin-order__meta-val">{d.customerName}</span>
                             </div>
-                          ))}
-                          <div className="admin-order__total">
-                            <span>Итого (с НДС)</span>
-                            <span>{fmt(d.total)} ₽</span>
                           </div>
-                        </div>
 
-                        {d.status === "new" &&
-                          (hasShortage ? (
-                            <div className="deal-stock deal-stock--miss">
-                              <div className="deal-stock__title">
-                                <AlertTriangle size={12} />
-                                Не хватает на складе
-                              </div>
-                              {shortage.map((r) => (
-                                <div
-                                  key={r.it.productId}
-                                  className="deal-stock__row"
+                          <div className="admin-order__items">
+                            <div className="admin-order__items-title">Товары</div>
+                            {d.items.map((it, idx) => (
+                              <div key={idx} className="admin-order__item">
+                                <Link
+                                  href={`/${adminPath}/products/${it.productId}`}
+                                  prefetch={false}
+                                  style={{ color: "inherit", fontWeight: 650 }}
                                 >
-                                  <span className="deal-stock__name">
-                                    {r.it.name}
-                                  </span>
-                                  <span className="deal-stock__nums">
-                                    нужно {r.it.quantity} · на складе{" "}
-                                    {r.available} ·{" "}
-                                    <b>не хватает {r.missing}</b>
-                                  </span>
-                                </div>
-                              ))}
+                                  {it.name} × {it.quantity}
+                                </Link>
+                                <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
+                              </div>
+                            ))}
+                            <div className="admin-order__total">
+                              <span>Итого (с НДС)</span>
+                              <span>{fmt(d.total)} ₽</span>
                             </div>
-                          ) : (
-                            <div className="deal-stock deal-stock--ok">
-                              <PackageCheck size={13} />
-                              Все позиции есть на складе
-                            </div>
-                          ))}
-                      </div>
+                          </div>
 
-                      <div className="admin-order__side">
-                        <DealForm
-                          products={pickerProducts}
-                          counterparties={counterpartyOptions}
-                          payments={payments}
-                          initialDeal={{
-                            id: d.id,
-                            date: d.date,
-                            customerName: d.customerName,
-                            customerPhone: d.customerPhone ?? null,
-                            email: d.email ?? null,
-                            inn: d.inn ?? null,
-                            kpp: d.kpp ?? null,
-                            address: d.address ?? null,
-                            contactName: d.contactName ?? null,
-                            comment: d.comment ?? null,
-                            items: d.items.map((item) => ({
-                              productId: item.productId,
-                              name: item.name,
-                              sku: item.sku ?? null,
-                              quantity: item.quantity,
-                              price: item.price,
-                              stockQty: stockById.get(item.productId) ?? 0,
-                            })),
-                          }}
-                        />
-                        <DealActions
-                          dealId={d.id}
-                          status={d.status}
-                          hasShortage={hasShortage}
-                          paidEnough={isFullyPaid}
-                        />
+                          {d.status === "new" &&
+                            (hasShortage ? (
+                              <div className="deal-stock deal-stock--miss">
+                                <div className="deal-stock__title"><AlertTriangle size={12} />Не хватает на складе</div>
+                                {shortage.map((r) => (
+                                  <div key={r.it.productId} className="deal-stock__row">
+                                    <span className="deal-stock__name">{r.it.name}</span>
+                                    <span className="deal-stock__nums">
+                                      нужно {r.it.quantity} · на складе {r.available} · <b>не хватает {r.missing}</b>
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="deal-stock deal-stock--ok"><PackageCheck size={13} />Все позиции есть на складе</div>
+                            ))}
+                        </div>
+
+                        <div className="admin-order__side">
+                          <DealForm
+                            products={pickerProducts}
+                            counterparties={counterpartyOptions}
+                            payments={payments}
+                            initialDeal={{
+                              id: d.id,
+                              date: d.date,
+                              customerName: d.customerName,
+                              customerPhone: d.customerPhone ?? null,
+                              email: d.email ?? null,
+                              inn: d.inn ?? null,
+                              kpp: d.kpp ?? null,
+                              address: d.address ?? null,
+                              contactName: d.contactName ?? null,
+                              comment: d.comment ?? null,
+                              items: d.items.map((item) => ({
+                                productId: item.productId,
+                                name: item.name,
+                                sku: item.sku ?? null,
+                                quantity: item.quantity,
+                                price: item.price,
+                                stockQty: stockById.get(item.productId) ?? 0,
+                              })),
+                            }}
+                          />
+                          <DealActions dealId={d.id} status={d.status} hasShortage={hasShortage} paidEnough={isFullyPaid} />
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               })
             ) : (
-              <div className="admin-empty">
-                <p>В этом списке пока пусто</p>
-              </div>
+              <div className="admin-empty"><p>В этом списке пока пусто</p></div>
             )}
           </div>
         </>
@@ -872,52 +844,90 @@ export function WarehouseManager({
       {/* ════════════ ВКЛАДКА: ПОСТАВЩИКИ ════════════ */}
       {activeTab === "suppliers" && (
         <div className="admin-card">
-          {supplierRows.length > 0 ? (
-            <div className="admin-table-wrap">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Товар</th>
-                    <th>Остаток</th>
-                    <th>Поставщик</th>
-                    <th>Закупочная цена</th>
-                    <th>Контакты</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {supplierRows.map((row) => {
-                    const warn = row.product?.stockWarnQty ?? 10;
-                    const need = (row.product?.stockQty || 0) <= warn;
-                    return (
-                      <tr key={`${row.supplier.id}-${row.productId}`}>
-                        <td>
-                          <Link href={`/${adminPath}/products/${row.productId}`} prefetch={false} style={{ fontWeight: 700 }}>
-                            {row.product?.name}
-                          </Link>
-                          {need && <span className="admin-badge admin-badge--amber" style={{ marginLeft: 8 }}>заказать</span>}
-                        </td>
-                        <td>{row.product?.stockQty ?? 0} шт.</td>
-                        <td>
-                          <strong>{row.supplier.name}</strong>
-                          {row.supplier.inn && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>ИНН {row.supplier.inn}</div>}
-                        </td>
-                        <td><strong>{fmt(row.price)} ₽</strong></td>
-                        <td>
-                          <div style={{ display: "grid", gap: 2 }}>
-                            {row.supplier.contactName && <span>{row.supplier.contactName}</span>}
-                            {row.supplier.phone && <a href={`tel:${row.supplier.phone}`}>{row.supplier.phone}</a>}
-                            {row.supplier.email && <a href={`mailto:${row.supplier.email}`}>{row.supplier.email}</a>}
-                            {row.supplier.address && <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>{row.supplier.address}</span>}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          {!selectedSupplier ? (
+            supplierCards.length > 0 ? (
+              <div className="admin-card__pad" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+                {supplierCards.map(({ supplier, products, needCount }) => (
+                  <button
+                    key={supplier.id}
+                    type="button"
+                    onClick={() => setSelectedSupplierId(supplier.id)}
+                    className="admin-card"
+                    style={{ padding: 16, textAlign: "left", cursor: "pointer", border: "1px solid var(--adm-border)" }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                      <strong style={{ color: "var(--adm-navy)", fontSize: 15 }}>{supplier.name}</strong>
+                      {needCount > 0 && <span className="admin-badge admin-badge--amber">заказать {needCount}</span>}
+                    </div>
+                    <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 6 }}>
+                      {products.length} товаров в закупочном прайсе
+                    </div>
+                    <div style={{ display: "grid", gap: 2, marginTop: 10, fontSize: 12 }}>
+                      {supplier.inn && <span>ИНН {supplier.inn}</span>}
+                      {supplier.phone && <span>{supplier.phone}</span>}
+                      {supplier.email && <span>{supplier.email}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="admin-empty"><p>Поставщики пока не заведены в контрагентах</p></div>
+            )
           ) : (
-            <div className="admin-empty"><p>Закупочные цены поставщиков пока не заполнены</p></div>
+            <div>
+              <div className="admin-card__head" style={{ alignItems: "flex-start", gap: 12 }}>
+                <div>
+                  <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSelectedSupplierId(null)} style={{ marginBottom: 10 }}>
+                    ← Все поставщики
+                  </button>
+                  <h3 className="admin-card__title" style={{ margin: 0 }}>{selectedSupplier.supplier.name}</h3>
+                  <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 6 }}>
+                    {[selectedSupplier.supplier.contactName, selectedSupplier.supplier.phone, selectedSupplier.supplier.email, selectedSupplier.supplier.inn ? `ИНН ${selectedSupplier.supplier.inn}` : ""]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                  {selectedSupplier.supplier.address && <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 4 }}>{selectedSupplier.supplier.address}</div>}
+                </div>
+                <Link href={`/${adminPath}/warehouse?tab=counterparties`} className="admin-btn admin-btn--ghost" prefetch={false}>Открыть контрагентов</Link>
+              </div>
+              {selectedSupplier.products.length > 0 ? (
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Товар</th>
+                        <th>Остаток</th>
+                        <th>Порог</th>
+                        <th>Закупочная цена</th>
+                        <th>Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSupplier.products.map((row) => {
+                        const warn = row.product?.stockWarnQty ?? 10;
+                        const need = (row.product?.stockQty || 0) <= warn;
+                        return (
+                          <tr key={`${row.supplier.id}-${row.productId}`}>
+                            <td>
+                              <Link href={`/${adminPath}/products/${row.productId}`} prefetch={false} style={{ fontWeight: 700 }}>
+                                {row.product?.name}
+                              </Link>
+                              {row.product?.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {row.product.sku}</div>}
+                            </td>
+                            <td>{row.product?.stockQty ?? 0} шт.</td>
+                            <td>{warn} шт.</td>
+                            <td><strong>{fmt(row.price)} ₽</strong></td>
+                            <td>{need ? <span className="admin-badge admin-badge--amber">заказать</span> : <span className="admin-badge admin-badge--green">достаточно</span>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="admin-empty"><p>У этого поставщика пока нет закупочных цен по товарам</p></div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1174,7 +1184,12 @@ export function WarehouseManager({
                     <div className="bank-pay__main">
                       <div className="bank-pay__row1">
                         <span className="bank-pay__counterparty">
-                          {p.type && p.type !== "regular" && (
+                          {p.entryKind === "salary" && (
+                            <span className="admin-badge admin-badge--amber" style={{ marginRight: 8, textTransform: "none", fontWeight: 700 }}>
+                              ЗП
+                            </span>
+                          )}
+                          {p.entryKind === "payment" && p.type && p.type !== "regular" && (
                             <span
                               className="admin-badge admin-badge--muted"
                               style={{
@@ -1186,12 +1201,12 @@ export function WarehouseManager({
                               {paymentTypeLabels[p.type] || p.type}
                             </span>
                           )}
-                          {p.counterparty}
+                          {p.entryKind === "salary" ? `Зарплата: ${p.counterparty}` : p.counterparty}
                         </span>
                         <span className="bank-pay__num">
-                          {p.invoiceNumber || `ПЛ-${p.number}`}
+                          {p.entryKind === "salary" ? `ЗП-${p.salary.id.slice(0, 6)}` : (p.invoiceNumber || `ПЛ-${p.number}`)}
                         </span>
-                        {p.invoiceNumber && (
+                        {p.entryKind === "payment" && p.invoiceNumber && (
                           <span
                             className="admin-badge admin-badge--muted"
                             style={{
@@ -1206,14 +1221,14 @@ export function WarehouseManager({
                         {!p.isPaid && (
                           <span className="bank-pay__wait">ожидается</span>
                         )}
-                        {p.isPaid && p.excludeFromBalance && (
+                        {p.entryKind === "payment" && p.isPaid && p.excludeFromBalance && (
                           <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>
                             архив (вне баланса)
                           </span>
                         )}
                       </div>
                       <div className="bank-pay__row2">
-                        {(p.dealNumbers.length > 0 ||
+                        {p.entryKind === "payment" && (p.dealNumbers.length > 0 ||
                           p.receiptNumbers.length > 0) && (
                           <span className="bank-pay__links">
                             {p.dealNumbers.map((n, idx) => (
@@ -1230,7 +1245,7 @@ export function WarehouseManager({
                               <Link
                                 key={`r${n}`}
                                 className="bank-pay__doc"
-                                href={`/${adminPath}/warehouse?tab=stock&receipt=${p.receiptIds[idx] || ""}`}
+                                href={`/${adminPath}/warehouse?tab=receipts&receipt=${p.receiptIds[idx] || ""}`}
                                 prefetch={false}
                               >
                                 ПО-{n}
@@ -1239,15 +1254,21 @@ export function WarehouseManager({
                           </span>
                         )}
                         <span className="bank-pay__date">{fmtDate(p.date)}</span>
-                        <div
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 600,
-                            color: "var(--adm-pine)",
-                          }}
-                        >
-                          В т.ч. НДС {p.vatRate}%: {fmt(p.vatAmount)} ₽
-                        </div>
+                        {p.entryKind === "payment" ? (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 600,
+                              color: "var(--adm-pine)",
+                            }}
+                          >
+                            В т.ч. НДС {p.vatRate}%: {fmt(p.vatAmount)} ₽
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-kraft)" }}>
+                            Зарплата · {p.source === "cash" ? "касса" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
+                          </div>
+                        )}
                         {p.comment && (
                           <span className="bank-pay__comment">{p.comment}</span>
                         )}
@@ -1262,25 +1283,31 @@ export function WarehouseManager({
                         {p.direction === "incoming" ? "+" : "−"}
                         {fmt(p.amount)} ₽
                       </span>
-                      <PaymentControls
-                        paymentId={p.id}
-                        isPaid={p.isPaid}
-                        excludeFromBalance={p.excludeFromBalance}
-                        deals={dealLinkOptions}
-                        receipts={receiptLinkOptions}
-                        counterparties={counterpartyOptions}
-                        edit={{
-                          date: p.date,
-                          type: p.type,
-                          counterparty: p.counterparty,
-                          amount: p.amount,
-                          invoiceNumber: p.invoiceNumber ?? null,
-                          comment: p.comment ?? null,
-                          dealIds: p.dealIds,
-                          receiptIds: p.receiptIds,
-                          direction: p.direction,
-                        }}
-                      />
+                      {p.entryKind === "payment" ? (
+                        <PaymentControls
+                          paymentId={p.id}
+                          isPaid={p.isPaid}
+                          excludeFromBalance={p.excludeFromBalance}
+                          deals={dealLinkOptions}
+                          receipts={receiptLinkOptions}
+                          counterparties={counterpartyOptions}
+                          edit={{
+                            date: p.date,
+                            type: p.type,
+                            counterparty: p.counterparty,
+                            amount: p.amount,
+                            invoiceNumber: p.invoiceNumber ?? null,
+                            comment: p.comment ?? null,
+                            dealIds: p.dealIds,
+                            receiptIds: p.receiptIds,
+                            direction: p.direction,
+                          }}
+                        />
+                      ) : (
+                        <button className="admin-status__btn admin-status__btn--outline" type="button" onClick={() => setActiveTab("salaries")}>
+                          Открыть ЗП
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

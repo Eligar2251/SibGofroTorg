@@ -376,7 +376,7 @@ export function CounterpartiesManager({
                                   href={
                                     doc.kind === "deal"
                                       ? `/${ADMIN_PATH}/warehouse?tab=deals&deal=${doc.id}`
-                                      : `/${ADMIN_PATH}/warehouse?tab=stock&receipt=${doc.id}`
+                                      : `/${ADMIN_PATH}/warehouse?tab=receipts&receipt=${doc.id}`
                                   }
                                   prefetch={false}
                                   style={{ textDecoration: "none" }}
