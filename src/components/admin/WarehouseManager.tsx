@@ -1163,8 +1163,10 @@ export function WarehouseManager({
                 <div className="admin-card__pad" style={{ display: "grid", gap: 12, borderTop: "1px solid var(--adm-border)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     <div>
-                      <strong style={{ color: "var(--adm-navy)" }}>Прайс-лист поставщика</strong>
-                      <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>Массово добавьте товар и закупочную цену. Если цена неизвестна — оставьте 0.</div>
+                      <strong style={{ color: "var(--adm-navy)" }}>Товары и прайс-лист</strong>
+                      <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>
+                        Один список: товар, остаток, цена поставщика и добавление в корзину заказа. Если цены нет — поставьте 0 или свою цену и сохраните.
+                      </div>
                     </div>
                     <button type="button" className="admin-btn admin-btn--primary" disabled={supplierPriceSaving} onClick={saveSupplierPrices}>
                       {supplierPriceSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -1177,19 +1179,38 @@ export function WarehouseManager({
                       className="admin-input"
                       value={supplierPriceQuery}
                       onChange={(e) => setSupplierPriceQuery(e.target.value)}
-                      placeholder="Найти товар для прайса..."
+                      placeholder="Найти товар, добавить в прайс или в корзину..."
                       style={{ paddingLeft: 36 }}
                     />
                   </div>
-                  <div className="admin-table-wrap" style={{ maxHeight: 320, overflow: "auto" }}>
+                  <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
                     <table className="admin-table">
-                      <thead><tr><th>Товар</th><th style={{ width: 170 }}>Цена закупки</th><th style={{ width: 120 }}>Действие</th></tr></thead>
+                      <thead>
+                        <tr>
+                          <th>Товар</th>
+                          <th>Остаток</th>
+                          <th>Порог</th>
+                          <th style={{ width: 170 }}>Цена поставщика</th>
+                          <th>Статус</th>
+                          <th style={{ width: 190 }}>Действия</th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {supplierPriceProducts.map((product) => {
                           const inPrice = supplierPriceDrafts[product.id] !== undefined;
+                          const stockProduct = productById.get(product.id);
+                          const warn = stockProduct?.stockWarnQty ?? 10;
+                          const need = (product.stockQty || 0) <= warn;
                           return (
                             <tr key={product.id}>
-                              <td><strong>{product.name}</strong>{product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}</td>
+                              <td>
+                                <Link href={`/${adminPath}/products/${product.id}`} prefetch={false} style={{ fontWeight: 700 }}>
+                                  {product.name}
+                                </Link>
+                                {product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}
+                              </td>
+                              <td>{product.stockQty ?? 0} шт.</td>
+                              <td>{warn} шт.</td>
                               <td>
                                 <input
                                   className="admin-input"
@@ -1201,12 +1222,33 @@ export function WarehouseManager({
                                   placeholder="0"
                                 />
                               </td>
+                              <td>{need ? <span className="admin-badge admin-badge--amber">заказать</span> : <span className="admin-badge admin-badge--green">достаточно</span>}</td>
                               <td>
-                                {inPrice ? (
-                                  <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => { const next = { ...prev }; delete next[product.id]; return next; })}>Убрать</button>
-                                ) : (
-                                  <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: "0" }))}>Добавить</button>
-                                )}
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  {!inPrice && (
+                                    <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: "0" }))}>В прайс</button>
+                                  )}
+                                  {inPrice && (
+                                    <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => { const next = { ...prev }; delete next[product.id]; return next; })}>Убрать</button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                                    onClick={() => {
+                                      const price = Math.max(0, Number(String(supplierPriceDrafts[product.id] ?? "0").replace(",", ".")) || 0);
+                                      setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: String(price) }));
+                                      setProcurementCart((prev) => {
+                                        const found = prev.find((item) => item.productId === product.id && item.supplierId === selectedSupplier.supplier.id);
+                                        if (found) {
+                                          return prev.map((item) => item.productId === product.id && item.supplierId === selectedSupplier.supplier.id ? { ...item, quantity: item.quantity + 1, price } : item);
+                                        }
+                                        return [...prev, { productId: product.id, supplierId: selectedSupplier.supplier.id, quantity: 1, price, vatRate: VAT_RATE }];
+                                      });
+                                    }}
+                                  >
+                                    В корзину
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1215,24 +1257,6 @@ export function WarehouseManager({
                     </table>
                   </div>
                 </div>
-
-                {selectedSupplier.products.length > 0 ? (
-                  <div className="admin-table-wrap"><table className="admin-table">
-                    <thead><tr><th>Товар</th><th>Остаток</th><th>Порог</th><th>Закупочная цена</th><th>Статус</th><th></th></tr></thead>
-                    <tbody>{selectedSupplier.products.map((row) => {
-                      const warn = row.product?.stockWarnQty ?? 10;
-                      const need = (row.product?.stockQty || 0) <= warn;
-                      return <tr key={`${row.supplier.id}-${row.productId}`}>
-                        <td><Link href={`/${adminPath}/products/${row.productId}`} prefetch={false} style={{ fontWeight: 700 }}>{row.product?.name}</Link>{row.product?.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {row.product.sku}</div>}</td>
-                        <td>{row.product?.stockQty ?? 0} шт.</td>
-                        <td>{warn} шт.</td>
-                        <td><strong>{fmt(row.price)} ₽</strong></td>
-                        <td>{need ? <span className="admin-badge admin-badge--amber">заказать</span> : <span className="admin-badge admin-badge--green">достаточно</span>}</td>
-                        <td><button type="button" className="admin-btn admin-btn--sm admin-btn--ghost" onClick={() => addProcurementProduct(row.productId)}>В корзину</button></td>
-                      </tr>;
-                    })}</tbody>
-                  </table></div>
-                ) : <div className="admin-empty"><p>У этого поставщика пока нет закупочных цен по товарам</p></div>}
               </div>
             )}
           </div>
