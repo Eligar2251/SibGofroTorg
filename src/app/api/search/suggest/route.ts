@@ -9,7 +9,9 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get("q")?.trim() || "";
 
     if (q.length < 2) {
-      return NextResponse.json([]);
+      return NextResponse.json([], {
+        headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
+      });
     }
 
     const products = await getProducts({ search: q, limitCount: 6 });
@@ -27,9 +29,14 @@ export async function GET(request: NextRequest) {
           : null,
     }));
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
+    });
   } catch (error) {
     console.error("Search suggest error:", error);
-    return NextResponse.json([], { status: 500 });
+    return NextResponse.json([], {
+      status: 200,
+      headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120" },
+    });
   }
 }

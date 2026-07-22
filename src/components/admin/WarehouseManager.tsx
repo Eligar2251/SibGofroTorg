@@ -621,7 +621,10 @@ export function WarehouseManager({
         {TABS.map((t) => (
           <button
             key={t.key}
-            onClick={() => setActiveTab(t.key)}
+            onClick={() => {
+              if (t.key === activeTab) return;
+              window.location.href = `/${adminPath}/warehouse?tab=${t.key}`;
+            }}
             className={`admin-filter${activeTab === t.key ? " admin-filter--active" : ""}`}
           >
             {t.icon}

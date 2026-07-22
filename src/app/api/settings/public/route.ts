@@ -13,8 +13,13 @@ export async function GET() {
         Number.isFinite(freeDeliveryThreshold) && freeDeliveryThreshold > 0
           ? freeDeliveryThreshold
           : 30000,
+    }, {
+      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
     });
   } catch {
-    return NextResponse.json({ deliveryPrice: 800, freeDeliveryThreshold: 30000 });
+    return NextResponse.json(
+      { deliveryPrice: 800, freeDeliveryThreshold: 30000 },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    );
   }
 }

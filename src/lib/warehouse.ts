@@ -2107,12 +2107,24 @@ function mapEmployee(id: string, data: any): Employee {
   };
 }
 
+let memoryEmployeesCache: { at: number; data: Employee[] } | null = null;
+
 export async function getEmployees(): Promise<Employee[]> {
-  const db = getAdminDb();
-  const snap = await db.collection("employees").get();
-  const rows = snap.docs.map((d) => mapEmployee(d.id, d.data()));
-  rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
-  return rows;
+  const now = Date.now();
+  if (memoryEmployeesCache && now - memoryEmployeesCache.at < 60_000) {
+    return memoryEmployeesCache.data;
+  }
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("employees").get();
+    const rows = snap.docs.map((d) => mapEmployee(d.id, d.data()));
+    rows.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    memoryEmployeesCache = { at: now, data: rows };
+    return rows;
+  } catch (error: any) {
+    console.error("getEmployees error:", error?.message || error);
+    return memoryEmployeesCache?.data || [];
+  }
 }
 
 export async function saveEmployee(data: {

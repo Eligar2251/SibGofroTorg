@@ -102,6 +102,19 @@ export default async function AdminWarehousePage({
   const initialTab: any = sp.tab || "stock";
   const initialSub: any = sp.sub || "stock";
 
+  // Экономия квоты Firestore: вкладки учёта грузятся лениво по URL.
+  // Раньше при открытии «Склад» читались сразу поставки, заказы, банк,
+  // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
+  // только необходимые ей коллекции.
+  const needStock = ["stock", "receipts", "deals", "suppliers"].includes(initialTab) || !!sp.product;
+  const needReceipts = ["receipts", "bank", "counterparties"].includes(initialTab) || !!sp.receipt;
+  const needDeals = ["deals", "bank", "counterparties", "receipts"].includes(initialTab) || !!sp.deal;
+  const needPayments = ["bank", "deals", "receipts"].includes(initialTab) || !!sp.payment;
+  const needEmployees = initialTab === "salaries";
+  const needSalaries = initialTab === "salaries" || initialTab === "bank";
+  const needCounterparties = ["counterparties", "suppliers", "deals", "receipts", "bank"].includes(initialTab);
+  const needClients = initialTab === "clients";
+
   const [
     stock,
     loadedReceipts,
@@ -113,15 +126,15 @@ export default async function AdminWarehousePage({
     focusedReceipt,
     clients,
   ] = await Promise.all([
-    getWarehouseStock(),
-    getReceipts(),
-    getDeals(),
-    getPayments(),
-    getEmployees(),
-    getSalaries(),
-    getCounterparties({ includeSupplierPrices: true }),
+    needStock ? getWarehouseStock() : Promise.resolve([]),
+    needReceipts ? getReceipts() : Promise.resolve([]),
+    needDeals ? getDeals() : Promise.resolve([]),
+    needPayments ? getPayments() : Promise.resolve([]),
+    needEmployees ? getEmployees() : Promise.resolve([]),
+    needSalaries ? getSalaries() : Promise.resolve([]),
+    needCounterparties ? getCounterparties({ includeSupplierPrices: initialTab === "suppliers" || initialTab === "receipts" || initialTab === "deals" || initialTab === "bank" }) : Promise.resolve([]),
     sp.receipt ? getReceiptById(sp.receipt) : Promise.resolve(null),
-    getClientsForWarehouse(),
+    needClients ? getClientsForWarehouse() : Promise.resolve([]),
   ]);
 
   const receipts =

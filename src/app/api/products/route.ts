@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
     if (categorySlug) {
       const cat = await getCategoryBySlug(categorySlug);
       if (!cat) {
-        return NextResponse.json({ products: [] });
+        return NextResponse.json({ products: [] }, {
+        headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300" },
+      });
       }
       categoryId = cat.id;
     }
@@ -54,9 +56,14 @@ export async function GET(request: NextRequest) {
       products = products.slice(0, 100);
     }
 
-    return NextResponse.json({ products });
+    return NextResponse.json({ products }, {
+      headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300" },
+    });
   } catch (error) {
     console.error("API /api/products error:", error);
-    return NextResponse.json({ products: [] }, { status: 500 });
+    return NextResponse.json({ products: [] }, {
+      status: 200,
+      headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120" },
+    });
   }
 }

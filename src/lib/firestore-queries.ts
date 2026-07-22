@@ -612,34 +612,48 @@ export async function createOrder(
   });
 }
 
+const memoryOrdersCache = new Map<string, { at: number; data: FirestoreOrder[] }>();
+
 export async function getOrders(opts?: {
   status?: string;
   limit?: number;
 }): Promise<FirestoreOrder[]> {
-  const db = getAdminDb();
-  let q: Query = db.collection("orders").orderBy("createdAt", "desc");
+  const key = `${opts?.status || "all"}:${opts?.limit || "all"}`;
+  const cached = memoryOrdersCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.at < 30_000) return cached.data;
 
-  if (opts?.status && opts.status !== "all") {
-    q = db
-      .collection("orders")
-      .where("status", "==", opts.status)
-      .orderBy("createdAt", "desc");
+  try {
+    const db = getAdminDb();
+    let q: Query = db.collection("orders").orderBy("createdAt", "desc");
+
+    if (opts?.status && opts.status !== "all") {
+      q = db
+        .collection("orders")
+        .where("status", "==", opts.status)
+        .orderBy("createdAt", "desc");
+    }
+
+    if (opts?.limit) {
+      q = q.limit(opts.limit);
+    }
+
+    const snap = await q.get();
+    const data = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...(data as Omit<FirestoreOrder, "id">),
+        createdAt: serializeTimestamp(data.createdAt),
+        updatedAt: serializeTimestamp(data.updatedAt),
+      };
+    });
+    memoryOrdersCache.set(key, { at: now, data });
+    return data;
+  } catch (error: any) {
+    console.error("getOrders error:", error?.message || error);
+    return cached?.data || [];
   }
-
-  if (opts?.limit) {
-    q = q.limit(opts.limit);
-  }
-
-  const snap = await q.get();
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      ...(data as Omit<FirestoreOrder, "id">),
-      createdAt: serializeTimestamp(data.createdAt),
-      updatedAt: serializeTimestamp(data.updatedAt),
-    };
-  });
 }
 
 export async function updateOrderStatus(
@@ -755,45 +769,59 @@ export async function deleteOrder(id: string) {
   await db.collection("orders").doc(id).delete();
 }
 
+const memoryWastepaperCache = new Map<string, { at: number; data: any[] }>();
+
 export async function getWastepaperRequests(opts?: {
   status?: string;
   limit?: number;
 }): Promise<any[]> {
-  const db = getAdminDb();
-  let q: Query = db.collection("wastepaper_requests").orderBy("createdAt", "desc");
+  const key = `${opts?.status || "all"}:${opts?.limit || "all"}`;
+  const cached = memoryWastepaperCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.at < 30_000) return cached.data;
 
-  if (opts?.status && opts.status !== "all") {
-    q = db
-      .collection("wastepaper_requests")
-      .where("status", "==", opts.status)
-      .orderBy("createdAt", "desc");
+  try {
+    const db = getAdminDb();
+    let q: Query = db.collection("wastepaper_requests").orderBy("createdAt", "desc");
+
+    if (opts?.status && opts.status !== "all") {
+      q = db
+        .collection("wastepaper_requests")
+        .where("status", "==", opts.status)
+        .orderBy("createdAt", "desc");
+    }
+
+    if (opts?.limit) q = q.limit(opts.limit);
+
+    const snap = await q.get();
+    const result = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        source: "wastepaper" as const,
+        type: "wastepaper" as const,
+        customerType: "individual",
+        customerName: data.customerName || "",
+        customerPhone: data.customerPhone || "",
+        customerEmail: null,
+        communicationChannel: data.deliveryMethod || null,
+        wastepaperType: data.wastepaperType || null,
+        weight: Number(data.weight || 0),
+        deliveryMethod: data.deliveryMethod || null,
+        estimatedPayout: Number(data.estimatedPayout || 0),
+        productInfo: data.wastepaperType ? `Макулатура: ${data.wastepaperType}` : "Макулатура",
+        comment: data.comment || null,
+        status: data.status || "new",
+        createdAt: serializeTimestamp(data.createdAt),
+        updatedAt: serializeTimestamp(data.updatedAt),
+      };
+    });
+    memoryWastepaperCache.set(key, { at: now, data: result });
+    return result;
+  } catch (error: any) {
+    console.error("getWastepaperRequests error:", error?.message || error);
+    return cached?.data || [];
   }
-
-  if (opts?.limit) q = q.limit(opts.limit);
-
-  const snap = await q.get();
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      source: "wastepaper" as const,
-      type: "wastepaper" as const,
-      customerType: "individual",
-      customerName: data.customerName || "",
-      customerPhone: data.customerPhone || "",
-      customerEmail: null,
-      communicationChannel: data.deliveryMethod || null,
-      wastepaperType: data.wastepaperType || null,
-      weight: Number(data.weight || 0),
-      deliveryMethod: data.deliveryMethod || null,
-      estimatedPayout: Number(data.estimatedPayout || 0),
-      productInfo: data.wastepaperType ? `Макулатура: ${data.wastepaperType}` : "Макулатура",
-      comment: data.comment || null,
-      status: data.status || "new",
-      createdAt: serializeTimestamp(data.createdAt),
-      updatedAt: serializeTimestamp(data.updatedAt),
-    };
-  });
 }
 
 export async function updateWastepaperRequestStatus(
