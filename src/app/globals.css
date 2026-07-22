@@ -300,12 +300,17 @@ select {
 /* ══════════════════════════════════════
    HEADER
    ══════════════════════════════════════ */
-.site-header {
-  background: var(--white);
-  border-bottom: 1px solid var(--border);
+/* Верхняя плашка + шапка «прилипают» вместе: липким сделан общий
+   контейнер, поэтому topbar следует за шапкой при скролле */
+.site-header-wrap {
   position: sticky;
   top: 0;
   z-index: 250;
+}
+
+.site-header {
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   transition: box-shadow var(--transition);
 }
@@ -5873,8 +5878,8 @@ select {
   --banner-bg: #fff;
   /* Крупнее на десктопе (было 520px — «слишком мелкий»), но не на весь
      экран. Тень компактнее: 100px blur лагал при scale-анимации. */
-  width: min(680px, 100%);
-  max-height: min(88vh, 760px);
+  width: min(740px, 100%);
+  max-height: min(90vh, 800px);
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--banner-bg);
@@ -6016,24 +6021,17 @@ select {
 /* ── Сторис-попап ── */
 .story-v2 {
   position: relative;
-  /* Крупнее на десктопе (было 230px — «слишком мелкий»), но не на весь
-     экран: ширина до 400px, высота ограничена 82vh. */
-  width: min(400px, 90vw);
-  max-height: 82vh;
+  /* Крупный сторис на десктопе, но не на весь экран. Ширина ограничена
+     сразу тремя величинами: 460px, 92vw и высотой 90vh (пересчёт через
+     пропорцию 9:16), поэтому на любом экране сохраняется соотношение
+     сторон и сторис влезает по высоте без отдельного media-запроса. */
+  width: min(460px, 92vw, calc(90vh * 9 / 16));
   aspect-ratio: 9 / 16;
   background: #000;
   border-radius: 28px;
   overflow: hidden;
   box-shadow: 0 24px 64px rgba(0,0,0,0.5);
   animation: banner-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* Если экран низкий, уменьшаем высоту еще больше */
-@media (max-height: 700px) {
-  .story-v2 {
-    width: auto;
-    height: 65vh;
-  }
 }
 
 .story-v2__link {

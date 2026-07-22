@@ -56,7 +56,7 @@ export default function OrderSuccessPage() {
             <a href="tel:+73832918146" className="success-phone">
               <PhoneCall size={18} /> +7 (383) 291-81-46
             </a>
-            <div className="success-phone-hours">Пн–Пт 9:00–18:00 · Сб 10:00–15:00</div>
+            <div className="success-phone-hours">Пн–Пт 8:30–17:00 · Сб, Вс — выходные</div>
           </div>
 
           <div className="success-actions">

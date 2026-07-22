@@ -27,8 +27,7 @@ import {
   SITE_ADDRESS,
   SITE_PHONE,
   SITE_PHONE_HREF,
-  SITE_HOURS_WEEKDAY,
-  SITE_HOURS_SATURDAY,
+  SITE_HOURS_LABEL,
   SITE_MAP_EMBED_URL,
   SITE_MAP_LINK,
 } from "@/lib/site-config";
@@ -200,8 +199,7 @@ export default async function HomePage() {
               макулатуру
             </h2>
             <p className="hero__wp-sub">
-              Сдай картон, бумагу, архивы —<br />
-              получи скидку на новую тару
+              Сдай картон, бумагу, архивы
             </p>
 
             <div className="hero__wp-rates">
@@ -308,7 +306,7 @@ export default async function HomePage() {
                 <Phone size={18} /> {SITE_PHONE}
               </a>
               <p className="consult-hours">
-                Пн–Пт {SITE_HOURS_WEEKDAY} · Сб {SITE_HOURS_SATURDAY}
+                {SITE_HOURS_LABEL}
               </p>
             </div>
             <div className="consult-form">
@@ -330,9 +328,7 @@ export default async function HomePage() {
               </div>
               <div className="map-info__row">
                 <Clock size={15} />
-                <span>
-                  Пн–Пт {SITE_HOURS_WEEKDAY} · Сб {SITE_HOURS_SATURDAY}
-                </span>
+                <span>{SITE_HOURS_LABEL}</span>
               </div>
               <div className="map-info__row">
                 <Phone size={15} />

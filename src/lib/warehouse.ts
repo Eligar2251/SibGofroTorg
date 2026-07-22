@@ -2086,3 +2086,134 @@ export async function deleteSalary(id: string): Promise<void> {
   await getAdminDb().collection("salaries").doc(id).delete();
 }
 
+
+// ─── Передача заявки с сайта в учёт ────────────────────
+
+/**
+ * Передаёт заявку (заказ с сайта) в учёт: создаёт заказ покупателя
+ * (customerDeals) и входящий счёт в банке (bankPayments) на сумму заявки.
+ * Идемпотентно: если заявка уже передана (order.dealId), повторно не создаёт.
+ */
+export async function convertOrderToDeal(orderId: string): Promise<{
+  dealId: string | null;
+  dealNumber: number | null;
+  paymentId: string | null;
+  skipped: boolean;
+  reason?: string;
+}> {
+  const db = getAdminDb();
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) throw new Error("Заявка не найдена");
+  const order = orderSnap.data() as any;
+
+  // Уже передана в учёт — не дублируем
+  if (order.dealId) {
+    return {
+      dealId: order.dealId,
+      dealNumber: order.dealNumber ?? null,
+      paymentId: order.paymentId ?? null,
+      skipped: true,
+      reason: "already",
+    };
+  }
+
+  const rawItems = Array.isArray(order.items) ? order.items : [];
+  const items = cleanItems(
+    rawItems.map((it: any) => ({
+      productId: String(it.productId || ""),
+      name: String(it.name || ""),
+      sku: it.sku ?? null,
+      quantity: Math.max(1, Number(it.quantity) || 1),
+      price: Math.max(0, Number(it.price) || 0),
+      lineTotal: 0,
+    }))
+  );
+  if (items.length === 0) {
+    return { dealId: null, dealNumber: null, paymentId: null, skipped: true, reason: "no-items" };
+  }
+
+  const linesSum = itemsTotal(items);
+  // Сумма заявки (итог клиента). Если нет — берём сумму позиций.
+  const total = Math.max(0, round2(Number(order.totalSum) || 0)) || linesSum;
+  const customerName = String(
+    order.customerName || order.customerPhone || "Клиент"
+  ).slice(0, 200);
+
+  const number = await nextNumber("deal");
+  const paymentNumber = await nextNumber("payment");
+  const date = new Date().toISOString().slice(0, 10);
+  const vatAmount = includedVat(total);
+
+  const dealRef = db.collection("customerDeals").doc();
+  const paymentRef = db.collection("bankPayments").doc();
+  const batch = db.batch();
+
+  const details: CounterpartyDetails = {
+    phone: order.customerPhone ? String(order.customerPhone).slice(0, 60) : null,
+    email: order.customerEmail ? String(order.customerEmail).slice(0, 160) : null,
+  };
+  const counterpartyId = addCounterpartyToBatch(batch, "customer", customerName, {
+    ...details,
+    comment: order.comment ? String(order.comment).slice(0, 500) : null,
+  });
+
+  const orderComment = order.comment
+    ? `Из заявки с сайта. ${String(order.comment).slice(0, 400)}`
+    : "Из заявки с сайта";
+
+  batch.set(dealRef, {
+    number,
+    date,
+    customerName,
+    counterpartyId,
+    customerPhone: details.phone,
+    ...details,
+    comment: orderComment,
+    items,
+    total,
+    bankAdjustment: round2(total - linesSum),
+    vatRate: VAT_RATE,
+    vatAmount,
+    status: "new",
+    sourceOrderId: orderId,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  // Входящий счёт в банке на сумму заявки, привязан к созданному заказу
+  batch.set(paymentRef, {
+    number: paymentNumber,
+    date,
+    direction: "incoming",
+    type: "regular",
+    counterparty: customerName,
+    counterpartyId,
+    dealIds: [dealRef.id],
+    dealNumbers: [number],
+    receiptIds: [],
+    receiptNumbers: [],
+    amount: total,
+    invoiceNumber: null,
+    vatRate: VAT_RATE,
+    vatAmount,
+    isPaid: false,
+    paidAt: null,
+    excludeFromBalance: false,
+    comment: `Счёт покупателю по заказу ЗК-${number} (из заявки с сайта)`,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  // Связываем заявку с созданными заказом и платежом
+  batch.update(orderRef, {
+    dealId: dealRef.id,
+    dealNumber: number,
+    paymentId: paymentRef.id,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await batch.commit();
+  invalidateCounterpartyCache();
+  return { dealId: dealRef.id, dealNumber: number, paymentId: paymentRef.id, skipped: false };
+}

@@ -524,7 +524,7 @@ export default function OrderPage() {
                           id: "pickup" as const,
                           icon: <MapPin size={20} />,
                           title: "Самовывоз со склада",
-                          desc: "ул. Ватутина, 42а к1 · Пн–Пт 9-18",
+                          desc: "ул. Ватутина, 42а к1 · Пн–Пт 8:30–17:00",
                           price: "Бесплатно",
                           free: true,
                         },

@@ -10,8 +10,7 @@ import {
   SITE_ADDRESS,
   SITE_PHONE,
   SITE_PHONE_HREF,
-  SITE_HOURS_WEEKDAY,
-  SITE_HOURS_SATURDAY,
+  SITE_HOURS_LABEL,
   SITE_EMAIL,
 } from "@/lib/site-config";
 
@@ -72,7 +71,7 @@ export function Footer() {
               {SITE_PHONE}
             </a>
             <p className="footer-hours">
-              Пн–Пт {SITE_HOURS_WEEKDAY} · Сб {SITE_HOURS_SATURDAY}
+              {SITE_HOURS_LABEL}
             </p>
           </div>
 

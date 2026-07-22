@@ -12,6 +12,7 @@ import {
   Clock,
   XCircle,
   Loader2,
+  Send,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 
@@ -53,10 +54,14 @@ export function OrderStatusUpdater({
   orderId,
   currentStatus,
   currentCloseReason,
+  dealNumber,
+  adminPath = "admin",
 }: {
   orderId: string;
   currentStatus: string;
   currentCloseReason?: string | null;
+  dealNumber?: number | null;
+  adminPath?: string;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -102,13 +107,45 @@ export function OrderStatusUpdater({
         {currentStatusObj.label}
       </span>
 
+      {dealNumber != null && (
+        <a
+          href={`/${adminPath}/warehouse?tab=deals`}
+          className="admin-badge admin-badge--green"
+          style={{ textDecoration: "none", justifyContent: "center" }}
+          title="Заказ передан в учёт — открыть вкладку «Заказы»"
+        >
+          <CheckCircle size={11} /> В учёте: ЗК-{dealNumber}
+        </a>
+      )}
+
       {(currentStatus === "new" || currentStatus === "in_progress") && (
         <div className="admin-status__btns">
+          {currentStatus === "new" && (
+            <button
+              type="button"
+              onClick={() => updateStatus("in_progress")}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--primary"
+              title="Создать заказ в учёте и счёт в банке на сумму заявки"
+            >
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Send size={14} />
+              )}
+              Передать в работу
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => updateStatus("completed")}
             disabled={saving}
-            className="admin-status__btn admin-status__btn--primary"
+            className={`admin-status__btn ${
+              currentStatus === "new"
+                ? "admin-status__btn--outline"
+                : "admin-status__btn--primary"
+            }`}
           >
             {saving ? (
               <Loader2 size={14} className="animate-spin" />

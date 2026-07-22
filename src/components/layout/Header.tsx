@@ -26,8 +26,7 @@ import {
   SITE_ADDRESS,
   SITE_PHONE,
   SITE_PHONE_HREF,
-  SITE_HOURS_WEEKDAY,
-  SITE_HOURS_SATURDAY,
+  SITE_HOURS_LABEL,
 } from "@/lib/site-config";
 
 interface Category {
@@ -106,6 +105,7 @@ export function Header() {
 
   return (
     <>
+      <div className="site-header-wrap">
       <div className="topbar">
         <div className="container-wide topbar-inner">
           <div className="topbar-left">
@@ -115,7 +115,7 @@ export function Header() {
             </span>
             <span className="topbar-item hide-mobile">
               <Clock size={12} />
-              Пн–Пт {SITE_HOURS_WEEKDAY} · Сб {SITE_HOURS_SATURDAY}
+              {SITE_HOURS_LABEL}
             </span>
           </div>
           <div className="topbar-right">
@@ -218,6 +218,7 @@ export function Header() {
           </div>
         </div>
       </header>
+      </div>
 
       {isMobileMenuOpen && (
         <div className="mobile-menu-panel">

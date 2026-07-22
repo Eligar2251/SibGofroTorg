@@ -185,12 +185,9 @@ body {
 
   /* ═══════════════════════════
      HEADER
-     ═══════════════════════════ */
-  .site-header {
-    position: sticky;
-    top: 0;
-    z-index: 200;
-  }
+     ═══════════════════════════
+     sticky перенесён на .site-header-wrap (globals.css) —
+     верхняя плашка и шапка липнут вместе */
 
   .header-inner {
     display: grid;

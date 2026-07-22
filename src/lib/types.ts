@@ -153,6 +153,10 @@ export interface FirestoreOrder {
   channel?: string | null;
   status: "new" | "in_progress" | "completed" | "rejected";
   closeReason?: string | null;
+  /** Связь с учётом: создаётся при «Передать в работу» */
+  dealId?: string | null;
+  dealNumber?: number | null;
+  paymentId?: string | null;
   createdAt?: any;
   updatedAt?: any;
 }

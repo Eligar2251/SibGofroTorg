@@ -384,7 +384,7 @@ export default function CabinetPage() {
                 <Phone size={15} /> +7 (383) 291-81-46
               </a>
               <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginTop: "4px" }}>
-                Пн–Пт 9:00–18:00 · Сб 10:00–15:00
+                Пн–Пт 8:30–17:00 · Сб, Вс — выходные
               </div>
             </div>
           </aside>

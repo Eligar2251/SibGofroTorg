@@ -4,6 +4,7 @@ import { Truck, MapPin, CreditCard, BadgePercent, Check } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
+import { SITE_HOURS_LABEL } from "@/lib/site-config";
 
 export const metadata: Metadata = {
   title: "Доставка и оплата в Новосибирске",
@@ -70,7 +71,7 @@ export default function DeliveryPage() {
                 <Check size={14} style={{ color: "var(--ink)" }} /> Адрес: г. Новосибирск, ул. Ватутина, 42а корп. 1
               </li>
               <li style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: "var(--ink-light)" }}>
-                <Check size={14} style={{ color: "var(--ink)" }} /> Пн–Пт 9:00–18:00, Сб 10:00–15:00
+                <Check size={14} style={{ color: "var(--ink)" }} /> {SITE_HOURS_LABEL}
               </li>
               <li style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: "var(--ink-light)" }}>
                 <Check size={14} style={{ color: "var(--ink)" }} /> Без платы за сборку и подготовку заказа

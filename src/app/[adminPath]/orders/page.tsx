@@ -381,6 +381,8 @@ export default async function AdminOrdersPage({
                         orderId={order.id}
                         currentStatus={order.status ?? "new"}
                         currentCloseReason={order.closeReason ?? null}
+                        dealNumber={order.dealNumber ?? null}
+                        adminPath={ADMIN_PATH}
                       />
                       <OrderDeleteButton orderId={order.id} />
                     </div>

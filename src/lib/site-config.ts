@@ -9,10 +9,13 @@ export const SITE_PHONE =
 export const SITE_PHONE_HREF = `tel:${SITE_PHONE.replace(/[^\d+]/g, "")}`;
 
 export const SITE_HOURS_WEEKDAY =
-  process.env.NEXT_PUBLIC_COMPANY_HOURS_WEEKDAY || "9:00–18:00";
+  process.env.NEXT_PUBLIC_COMPANY_HOURS_WEEKDAY || "8:30–17:00";
 
-export const SITE_HOURS_SATURDAY =
-  process.env.NEXT_PUBLIC_COMPANY_HOURS_SATURDAY || "10:00–15:00";
+/** Работаем только Пн–Пт; Сб и Вс — выходные */
+export const SITE_HOURS_WEEKEND = "выходные";
+
+/** Единая фраза режима работы для всего сайта */
+export const SITE_HOURS_LABEL = `Пн–Пт ${SITE_HOURS_WEEKDAY} · Сб, Вс — выходные`;
 
 export const SITE_EMAIL =
   process.env.NEXT_PUBLIC_COMPANY_EMAIL || "info@gofrotara.online";
