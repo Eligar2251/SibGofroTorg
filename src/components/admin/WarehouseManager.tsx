@@ -19,6 +19,7 @@ import {
   Banknote,
   CreditCard,
   History,
+  Archive,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -35,12 +36,7 @@ import {
   includedVat,
   VAT_RATE,
 } from "@/lib/warehouse-shared";
-import {
-  ReceiptForm,
-  ReceiptPostButton,
-  ReceiptCancelButton,
-  ReceiptDeleteButton,
-} from "@/components/admin/WarehouseReceipts";
+import { ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
 import { DealForm, DealActions } from "@/components/admin/WarehouseDeals";
 import {
   PaymentForm,
@@ -98,7 +94,7 @@ const paymentTypeLabels: Record<string, string> = {
 };
 
 type TabKey = "stock" | "deals" | "bank" | "salaries" | "counterparties";
-type StockSub = "stock" | "receipts";
+type StockSub = "stock" | "receipts" | "archive";
 type DealsSub = "new" | "released";
 type BankSub = "pending" | "history";
 
@@ -323,6 +319,17 @@ export function WarehouseManager({
     [stock]
   );
 
+  // Активные поступления (не проведены) и архив (проведённые/на складе).
+  // Отмена проведения возвращает поступление из архива в активные.
+  const activeReceipts = useMemo(
+    () => receipts.filter((r) => r.status !== "posted"),
+    [receipts]
+  );
+  const archivedReceipts = useMemo(
+    () => receipts.filter((r) => r.status === "posted"),
+    [receipts]
+  );
+
   return (
     <div>
       <div className="admin-page-head">
@@ -389,6 +396,13 @@ export function WarehouseManager({
             >
               <Truck size={12} />
               Поступления
+            </button>
+            <button
+              onClick={() => setStockSub("archive")}
+              className={`admin-filter${stockSub === "archive" ? " admin-filter--active" : ""}`}
+            >
+              <Archive size={12} />
+              Архив
             </button>
           </div>
 
@@ -517,176 +531,58 @@ export function WarehouseManager({
 
           {stockSub === "receipts" && (
             <div className="admin-card">
-              {receipts.length > 0 ? (
-                receipts.map((r) => {
-                  const paid = receiptPaidMap.get(r.id) || 0;
-                  const isFullyPaid = r.total > 0 && paid >= r.total;
-                  return (
-                    <div key={r.id} id={`receipt-${r.id}`} className="admin-order">
-                      <div className="admin-order__row">
-                        <div className="admin-order__main">
-                          <div className="admin-order__top">
-                            <span className="admin-order__id">
-                              ПО-{r.number}
-                            </span>
-                            <span className="admin-badge admin-badge--teal">
-                              <Truck size={11} />
-                              Поступление
-                            </span>
-                            <span
-                              className={`admin-badge ${
-                                r.status === "posted"
-                                  ? "admin-badge--green"
-                                  : "admin-badge--amber"
-                              }`}
-                            >
-                              {r.status === "posted"
-                                ? "На складе"
-                                : "Не проведено"}
-                            </span>
-                            {isFullyPaid ? (
-                              <span className="admin-badge admin-badge--green">
-                                Оплачен
-                              </span>
-                            ) : paid > 0 ? (
-                              <span className="admin-badge admin-badge--blue">
-                                Оплачено {fmt(paid)} из {fmt(r.total)} ₽
-                              </span>
-                            ) : (
-                              <span className="admin-badge admin-badge--amber">
-                                Не оплачен
-                              </span>
-                            )}
-                            {r.status === "posted" && !isFullyPaid && (
-                              <span className="admin-badge admin-badge--red" style={{ fontWeight: 800 }}>
-                                <AlertTriangle size={10} style={{ marginRight: 4 }} />
-                                Нужно оплатить долг!
-                              </span>
-                            )}
-                            <span className="admin-order__date">
-                              {fmtDate(r.date)}
-                            </span>
-                          </div>
-
-                          <div className="admin-order__grid">
-                            <div className="admin-order__meta">
-                              <span className="admin-order__meta-label wh-meta-label">
-                                Поставщик:
-                              </span>
-                              <span className="admin-order__meta-val">
-                                {r.supplier || "—"}
-                              </span>
-                            </div>
-                            {r.inn && (
-                              <div className="admin-order__meta">
-                                <span className="admin-order__meta-label wh-meta-label">
-                                  ИНН:
-                                </span>
-                                <span className="admin-order__meta-val">
-                                  {r.inn}
-                                  {r.kpp ? ` · КПП ${r.kpp}` : ""}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="admin-order__items">
-                            <div className="admin-order__items-title">
-                              Товары (с НДС)
-                            </div>
-                            {r.items.map((it, idx) => (
-                              <div key={idx} className="admin-order__item">
-                                <span>
-                                  {it.name} × {it.quantity}
-                                  <span className="wh-item-unit">
-                                    {fmt(it.price)} ₽/шт
-                                  </span>
-                                </span>
-                                <span className="admin-order__item-sum">
-                                  {fmt(it.lineTotal)} ₽
-                                </span>
-                              </div>
-                            ))}
-                            <div className="admin-order__total">
-                              <span>
-                                Итого (с НДС)
-                                <small className="wh-vat-note">
-                                  НДС {r.vatRate}%: {fmt(r.vatAmount)} ₽
-                                </small>
-                              </span>
-                              <span>{fmt(r.total)} ₽</span>
-                            </div>
-                            {r.linkedDealNumbers && r.linkedDealNumbers.length > 0 && (
-                              <div style={{ marginTop: 10, borderTop: '1px dashed var(--adm-border)', paddingTop: 8 }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--adm-sand)', textTransform: 'uppercase', marginBottom: 4 }}>
-                                  Под заказ для:
-                                </div>
-                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                  {r.linkedDealNumbers.map(n => (
-                                    <span key={n} className="admin-badge admin-badge--blue">ЗК-{n}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {r.comment && (
-                            <div className="admin-order__comment">
-                              <strong>Комментарий</strong>
-                              {r.comment}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="admin-order__side">
-                          <ReceiptForm
-                            products={pickerProducts}
-                            counterparties={counterpartyOptions}
-                            deals={deals}
-                            payments={payments}
-                            initialReceipt={{
-                              id: r.id,
-                              date: r.date,
-                              supplier: r.supplier,
-                              phone: r.phone ?? null,
-                              email: r.email ?? null,
-                              inn: r.inn ?? null,
-                              kpp: r.kpp ?? null,
-                              address: r.address ?? null,
-                              contactName: r.contactName ?? null,
-                              comment: r.comment ?? null,
-                              items: r.items.map((item) => ({
-                                productId: item.productId,
-                                name: item.name,
-                                sku: item.sku ?? null,
-                                quantity: item.quantity,
-                                lineTotal: item.lineTotal,
-                              })),
-                              vatRate: r.vatRate,
-                              linkedDealIds: r.linkedDealIds,
-                            }}
-                          />
-                          {r.status === "draft" && (
-                            <ReceiptPostButton
-                              receiptId={r.id}
-                              paidEnough={isFullyPaid}
-                            />
-                          )}
-                          {r.status === "posted" && (
-                            <ReceiptCancelButton receiptId={r.id} />
-                          )}
-                          <ReceiptDeleteButton receiptId={r.id} />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+              {activeReceipts.length > 0 ? (
+                activeReceipts.map((r) => (
+                  <ReceiptCard
+                    key={r.id}
+                    receipt={r}
+                    paidAmount={receiptPaidMap.get(r.id) || 0}
+                    products={pickerProducts}
+                    counterparties={counterpartyOptions}
+                    deals={deals}
+                    payments={payments}
+                  />
+                ))
               ) : (
                 <div className="admin-empty">
                   <div className="admin-empty__icon">
                     <Truck size={40} />
                   </div>
-                  <p>Поступлений пока нет</p>
+                  <p>Активных поступлений нет</p>
+                  <p className="admin-empty__hint">
+                    Новые поступления появляются здесь. Проведённые
+                    автоматически попадают в Архив.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {stockSub === "archive" && (
+            <div className="admin-card">
+              {archivedReceipts.length > 0 ? (
+                archivedReceipts.map((r) => (
+                  <ReceiptCard
+                    key={r.id}
+                    receipt={r}
+                    paidAmount={receiptPaidMap.get(r.id) || 0}
+                    products={pickerProducts}
+                    counterparties={counterpartyOptions}
+                    deals={deals}
+                    payments={payments}
+                  />
+                ))
+              ) : (
+                <div className="admin-empty">
+                  <div className="admin-empty__icon">
+                    <Archive size={40} />
+                  </div>
+                  <p>В архиве пусто</p>
+                  <p className="admin-empty__hint">
+                    Сюда попадают проведённые поступления. Отмена проведения
+                    вернёт поступление обратно в список (товар спишется со
+                    склада).
+                  </p>
                 </div>
               )}
             </div>

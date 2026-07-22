@@ -2852,6 +2852,66 @@ body:has(.admin-modal-overlay) {
   }
 }
 
+/* Компактная свёрнутая карточка поступления — кликабельная строка
+   с основной информацией; раскрытие показывает полные детали */
+.receipt-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  flex-wrap: wrap;
+  transition: background 0.1s ease;
+}
+
+.receipt-head:hover {
+  background: var(--adm-sand-pale);
+}
+
+.receipt-head__supplier {
+  flex: 1;
+  min-width: 120px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-head__date {
+  font-size: 12px;
+  color: var(--adm-sand);
+  white-space: nowrap;
+}
+
+.receipt-head__total {
+  font-family: var(--adm-font-head);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  white-space: nowrap;
+}
+
+.receipt-head__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--adm-sand);
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .receipt-head__date {
+    display: none;
+  }
+}
+
 /* Подсказка «= 134,54 ₽/шт» под названием в приходном ордере */
 .wh-item-row__hint {
   display: block;

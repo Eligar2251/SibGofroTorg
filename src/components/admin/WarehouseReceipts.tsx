@@ -15,6 +15,10 @@ import {
   Trash2,
   X,
   Loader2,
+  Truck,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   ProductPicker,
@@ -28,7 +32,7 @@ import {
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
-import type { BankPayment } from "@/lib/warehouse-shared";
+import type { BankPayment, WarehouseReceipt } from "@/lib/warehouse-shared";
 
 interface ReceiptItemDraft {
   productId: string;
@@ -714,6 +718,186 @@ export function ReceiptForm({
         </ModalPortal>
       )}
     </>
+  );
+}
+
+/**
+ * Карточка поступления: компактный свёрнутый вид (основная информация) +
+ * раскрытие по клику до полных деталей и действий.
+ */
+export function ReceiptCard({
+  receipt: r,
+  paidAmount,
+  products,
+  counterparties,
+  deals,
+  payments,
+}: {
+  receipt: WarehouseReceipt;
+  paidAmount: number;
+  products: PickerProduct[];
+  counterparties: CounterpartyOption[];
+  deals: any[];
+  payments: BankPayment[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isFullyPaid = r.total > 0 && paidAmount >= r.total;
+  const hasDebt = r.status === "posted" && !isFullyPaid;
+
+  return (
+    <div id={`receipt-${r.id}`} className="admin-order">
+      <button
+        type="button"
+        className="receipt-head"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span className="admin-order__id">ПО-{r.number}</span>
+        <span
+          className={`admin-badge ${
+            r.status === "posted" ? "admin-badge--green" : "admin-badge--amber"
+          }`}
+        >
+          {r.status === "posted" ? "На складе" : "Не проведено"}
+        </span>
+        {isFullyPaid ? (
+          <span className="admin-badge admin-badge--green">Оплачен</span>
+        ) : paidAmount > 0 ? (
+          <span className="admin-badge admin-badge--blue">
+            Оплачено {fmt(paidAmount)} из {fmt(r.total)} ₽
+          </span>
+        ) : (
+          <span className="admin-badge admin-badge--amber">Не оплачен</span>
+        )}
+        {hasDebt && (
+          <span className="admin-badge admin-badge--red">
+            <AlertTriangle size={10} /> Долг
+          </span>
+        )}
+        <span className="receipt-head__supplier">{r.supplier || "—"}</span>
+        <span className="receipt-head__date">{fmtDate(r.date)}</span>
+        <span className="receipt-head__total">{fmt(r.total)} ₽</span>
+        <span className="receipt-head__chevron">
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="admin-order__row" style={{ paddingTop: 14 }}>
+          <div className="admin-order__main">
+            <div className="admin-order__grid">
+              <div className="admin-order__meta">
+                <span className="admin-order__meta-label wh-meta-label">
+                  Поставщик:
+                </span>
+                <span className="admin-order__meta-val">{r.supplier || "—"}</span>
+              </div>
+              {r.inn && (
+                <div className="admin-order__meta">
+                  <span className="admin-order__meta-label wh-meta-label">ИНН:</span>
+                  <span className="admin-order__meta-val">
+                    {r.inn}
+                    {r.kpp ? ` · КПП ${r.kpp}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="admin-order__items">
+              <div className="admin-order__items-title">Товары (с НДС)</div>
+              {r.items.map((it, idx) => (
+                <div key={idx} className="admin-order__item">
+                  <span>
+                    {it.name} × {it.quantity}
+                    <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
+                  </span>
+                  <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
+                </div>
+              ))}
+              <div className="admin-order__total">
+                <span>
+                  Итого (с НДС)
+                  <small className="wh-vat-note">
+                    НДС {r.vatRate}%: {fmt(r.vatAmount)} ₽
+                  </small>
+                </span>
+                <span>{fmt(r.total)} ₽</span>
+              </div>
+              {r.linkedDealNumbers && r.linkedDealNumbers.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    borderTop: "1px dashed var(--adm-border)",
+                    paddingTop: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "var(--adm-sand)",
+                      textTransform: "uppercase",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Под заказ для:
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {r.linkedDealNumbers.map((n) => (
+                      <span key={n} className="admin-badge admin-badge--blue">
+                        ЗК-{n}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {r.comment && (
+              <div className="admin-order__comment">
+                <strong>Комментарий</strong>
+                {r.comment}
+              </div>
+            )}
+          </div>
+
+          <div className="admin-order__side">
+            <ReceiptForm
+              products={products}
+              counterparties={counterparties}
+              deals={deals}
+              payments={payments}
+              initialReceipt={{
+                id: r.id,
+                date: r.date,
+                supplier: r.supplier,
+                phone: r.phone ?? null,
+                email: r.email ?? null,
+                inn: r.inn ?? null,
+                kpp: r.kpp ?? null,
+                address: r.address ?? null,
+                contactName: r.contactName ?? null,
+                comment: r.comment ?? null,
+                items: r.items.map((item) => ({
+                  productId: item.productId,
+                  name: item.name,
+                  sku: item.sku ?? null,
+                  quantity: item.quantity,
+                  lineTotal: item.lineTotal,
+                })),
+                vatRate: r.vatRate,
+                linkedDealIds: r.linkedDealIds,
+              }}
+            />
+            {r.status === "draft" && (
+              <ReceiptPostButton receiptId={r.id} paidEnough={isFullyPaid} />
+            )}
+            {r.status === "posted" && <ReceiptCancelButton receiptId={r.id} />}
+            <ReceiptDeleteButton receiptId={r.id} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

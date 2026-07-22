@@ -362,18 +362,11 @@ export default function CabinetPage() {
                 </div>
               )}
               <p className="cab-sidebar__desc">
-                Здесь только ваши заказы, привязанные к аккаунту. Поиск чужих номеров недоступен.
+                Здесь ваши заказы, привязанные к номеру.
               </p>
               <button type="button" onClick={handleLogout} className="cab-sidebar__btn" style={{ background: "var(--ink)" }}>
                 <LogOut size={15} /> Выйти
               </button>
-              <div className="cab-sidebar__hint">
-                <div className="cab-sidebar__hint-icon"><GlyphIcon value="bulb" size={18} /></div>
-                <p>
-                  Оформляйте заказ будучи в аккаунте — он сразу появится здесь. Старые заказы с
-                  тем же телефоном тоже подтянутся.
-                </p>
-              </div>
             </div>
 
             <div className="cab-sidebar__contact">

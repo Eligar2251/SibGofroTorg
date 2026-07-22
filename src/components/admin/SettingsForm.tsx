@@ -22,10 +22,21 @@ const contactFields = [
   { key: "address", label: "Адрес", type: "text" },
   { key: "email", label: "Email", type: "email" },
   { key: "working_hours", label: "Режим работы", type: "text" },
+];
+
+/** Настройки доставки (отображаются в корзине при оформлении) */
+const deliveryFields = [
+  {
+    key: "delivery_price",
+    label: "Стоимость доставки (₽)",
+    type: "number",
+    hint: "Сколько стоит доставка курьером",
+  },
   {
     key: "free_delivery_threshold",
-    label: "Порог бесплатной доставки (₽)",
+    label: "Бесплатная доставка от (₽)",
     type: "number",
+    hint: "При сумме заказа от этого значения доставка бесплатная",
   },
 ];
 
@@ -41,7 +52,10 @@ export function SettingsForm({ settings }: SettingsFormProps) {
   // Цены макулатуры: если в настройках ещё пусто — подставляем дефолты,
   // чтобы админ сразу видел действующие значения, а не пустые поля
   const [values, setValues] = useState<Record<string, string>>(() => {
-    const defaults: Record<string, string> = {};
+    const defaults: Record<string, string> = {
+      delivery_price: "800",
+      free_delivery_threshold: "30000",
+    };
     for (const id of WASTEPAPER_RATE_IDS) {
       defaults[wpRateSettingKey(id)] = String(WASTEPAPER_RATE_DEFAULTS[id]);
     }
@@ -92,6 +106,37 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                 />
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-card">
+        <div className="admin-card__pad">
+          <h2 className="admin-h2">Доставка</h2>
+          <div className="admin-stack">
+            <div className="admin-grid-2">
+              {deliveryFields.map((field) => (
+                <div key={field.key} className="admin-field">
+                  <label className="admin-label">{field.label}</label>
+                  <input
+                    type={field.type}
+                    min={0}
+                    value={values[field.key] || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, [field.key]: e.target.value })
+                    }
+                    className="admin-input"
+                  />
+                  {field.hint && (
+                    <span className="admin-hint">{field.hint}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="admin-hint">
+              Эти значения показываются покупателю в корзине при оформлении
+              заказа.
+            </p>
           </div>
         </div>
       </div>

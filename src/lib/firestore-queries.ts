@@ -6,6 +6,11 @@ import { FieldValue, type Query } from "firebase-admin/firestore";
 import { unstable_cache } from "next/cache";
 import { getAdminDb } from "./firebase-admin";
 import {
+  extractQueryDims,
+  dimensionScore,
+  normalizeDimString,
+} from "./dimension-search";
+import {
   WASTEPAPER_RATE_IDS,
   WASTEPAPER_RATE_DEFAULTS,
   wpRateSettingKey,
@@ -300,6 +305,19 @@ export async function getCategoryBySlug(slug: string): Promise<FirestoreCategory
 
 // ─── Products ─────────────────────────────────────────────
 
+/** Размеры товара: из полей карточки, а если их нет — парсим из названия */
+function getProductDims(p: FirestoreProduct): number[] {
+  const dims: number[] = [];
+  for (const v of [p.dimensionLength, p.dimensionWidth, p.dimensionHeight]) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) dims.push(n);
+  }
+  if (dims.length >= 2) return dims;
+  const fromName = extractQueryDims(p.name || "");
+  if (fromName && fromName.length >= 2) return fromName;
+  return dims;
+}
+
 export async function getProducts(opts?: {
   categoryId?: string;
   search?: string;
@@ -329,11 +347,35 @@ export async function getProducts(opts?: {
   }
 
   if (opts?.search) {
-    const s = opts.search.toLowerCase();
-    filteredResults = filteredResults.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(s) || p.sku?.toLowerCase().includes(s)
-    );
+    const raw = opts.search;
+    const s = raw.toLowerCase();
+    const qDims = extractQueryDims(raw);
+    if (qDims) {
+      // Поиск по размерам: ранжируем по близости габаритов (порядок Д×Ш×В
+      // не важен). Точное текстовое совпадение получает максимальный вес.
+      const ns = normalizeDimString(raw);
+      const scored = filteredResults
+        .map((p) => {
+          const pDims = getProductDims(p);
+          let score = pDims.length >= 2 ? dimensionScore(qDims, pDims) : 0;
+          const name = p.name?.toLowerCase() || "";
+          const sku = p.sku?.toLowerCase() || "";
+          if (name.includes(s) || sku.includes(s)) {
+            score = Math.max(score, 1);
+          } else if (ns.length >= 3 && normalizeDimString(name).includes(ns)) {
+            score = Math.max(score, 1);
+          }
+          return { p, score };
+        })
+        .filter((x) => x.score >= 0.2);
+      scored.sort((a, b) => b.score - a.score);
+      filteredResults = scored.map((x) => x.p);
+    } else {
+      filteredResults = filteredResults.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(s) || p.sku?.toLowerCase().includes(s)
+      );
+    }
   }
 
   switch (opts?.sortBy) {
