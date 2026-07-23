@@ -184,6 +184,11 @@ export function DealForm({
     initialDeal?.deliveryNote || ""
   );
 
+  // ── Способ оплаты ──
+  const [paymentMethod, setPaymentMethod] = useState<string>(
+    initialDeal ? "regular" : "regular"
+  );
+
   // ── Разбиение платежа на части ──
   const existingUnpaid = useMemo(() => {
     if (!initialDeal) return [] as BankPayment[];
@@ -280,6 +285,7 @@ export function DealForm({
     setPaymentCount(1);
     setSplitAmounts([""]);
     setSplitTouched(false);
+    setPaymentMethod("regular");
   }
 
   function pickCustomerAddress(found: CounterpartyOption): string {
@@ -440,6 +446,7 @@ export function DealForm({
           })),
           linkedPaymentIds: selectedPayments,
           paymentSplits: buildPaymentSplits(),
+          paymentMethod,
         }),
       });
       if (!res.ok) {
@@ -778,6 +785,33 @@ export function DealForm({
                   <p className="deal-delivery-block__empty">
                     Включите, если нужна доставка. Адрес подтянется из клиента,
                     стоимость — по тарифу из настроек.
+                  </p>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Способ оплаты</label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    className={`admin-btn ${paymentMethod === 'regular' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => setPaymentMethod('regular')}
+                  >
+                    По счёту (безнал)
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-btn ${paymentMethod === 'cash' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => setPaymentMethod('cash')}
+                  >
+                    Наличные (касса)
+                  </button>
+                </div>
+                {paymentMethod === 'cash' && (
+                  <p className="wh-form-hint" style={{ margin: 0 }}>
+                    Платёж сразу помечается как оплаченный и попадает в кассу.
                   </p>
                 )}
               </div>

@@ -989,6 +989,7 @@ export function WarehouseManager({
                                   style={{ color: "inherit", fontWeight: 650 }}
                                 >
                                   {it.name} × {it.quantity}
+                                  <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
                                 </Link>
                                 <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
                               </div>

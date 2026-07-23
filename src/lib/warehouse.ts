@@ -843,8 +843,35 @@ export async function deleteReceipt(id: string): Promise<void> {
   const { data: existing } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
   if (!existing) throw new Error("Поступление не найдено");
   if (existing.status === "posted") throw new Error("Нельзя удалить проведённое поступление");
+
+  // Удаляем ВСЕ связанные платежи (оплаченные и неоплаченные)
+  try {
+    const { data: allPayments } = await db.from("bank_payments").select("*");
+    const linked = (allPayments || []).filter((p: any) =>
+      Array.isArray(p.receipt_ids) && p.receipt_ids.includes(id)
+    );
+    for (const payment of linked) {
+      // Оплаченные — только отвязываем, неоплаченные — удаляем
+      if (payment.is_paid) {
+        const newIds = (payment.receipt_ids || []).filter((rid: string) => rid !== id);
+        const newNums = (payment.receipt_numbers || []).filter((_: any, i: number) =>
+          (payment.receipt_ids || [])[i] !== id
+        );
+        await db.from("bank_payments").update({
+          receipt_ids: newIds,
+          receipt_numbers: newNums,
+        }).eq("id", payment.id);
+      } else {
+        await db.from("bank_payments").delete().eq("id", payment.id);
+      }
+    }
+  } catch (e) {
+    console.error("deleteReceipt: ошибка удаления платежей:", e);
+  }
+
   await db.from("warehouse_receipts").delete().eq("id", id);
   revalidateTag("warehouse-receipts");
+  revalidateTag("warehouse-payments");
 }
 
 // ─── Deals CRUD ────────────────────────────────────────────
@@ -928,19 +955,27 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
     targets.push(total);
   }
 
+  // Способ оплаты: "cash" = наличные в кассу, иначе — безнал (счёт)
+  const payMethod = String(data.paymentMethod || "regular");
+  const isCash = payMethod === "cash";
+  const now = new Date().toISOString();
+
   for (let i = 0; i < targets.length; i++) {
     const payNum = targets.length > 1 ? await nextNumber("payment") : paymentNumber;
     await db.from("bank_payments").insert({
       number: payNum, date,
-      direction: "incoming", type: "regular",
+      direction: "incoming",
+      type: isCash ? "cash" : "regular",
       counterparty: customerName, counterparty_id: counterpartyId,
       deal_ids: [dealResult.id], deal_numbers: [number],
       receipt_ids: [], receipt_numbers: [],
       amount: targets[i], invoice_number: null,
       vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
-      is_paid: false, paid_at: null,
+      is_paid: isCash, paid_at: isCash ? now : null,
       exclude_from_balance: false,
-      comment: `Счёт покупателю по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
+      comment: isCash
+        ? `Оплата наличными по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
+        : `Счёт покупателю по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
     });
   }
 
@@ -1555,19 +1590,30 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
   }).select("id").single();
   if (dealError) throw dealError;
 
-  // ★ Создаём входящий счёт с привязкой к контрагенту
+  // ★ Создаём входящий платёж — тип зависит от способа оплаты из заявки
   const paymentNumber = await nextNumber("payment");
+  const orderPayMethod = String(order.payment_method || "");
+  const isCash = orderPayMethod === "cash";
+  const isTransfer = orderPayMethod === "transfer";
+  const now = new Date().toISOString();
+  const payComment = isCash
+    ? `Оплата наличными по заказу ЗК-${number} (из заявки с сайта)`
+    : isTransfer
+    ? `Перевод по заказу ЗК-${number} (из заявки с сайта)`
+    : `Счёт покупателю по заказу ЗК-${number} (из заявки с сайта)`;
+
   const { data: paymentResult, error: paymentError } = await db.from("bank_payments").insert({
     number: paymentNumber, date,
-    direction: "incoming", type: "regular",
+    direction: "incoming",
+    type: isCash ? "cash" : "regular",
     counterparty: customerName, counterparty_id: counterpartyId,
     deal_ids: [dealResult.id], deal_numbers: [number],
     receipt_ids: [], receipt_numbers: [],
     amount: total, vat_rate: VAT_RATE, vat_amount: vatAmount,
-    is_paid: false,
-    paid_at: null,
+    is_paid: isCash,
+    paid_at: isCash ? now : null,
     exclude_from_balance: false,
-    comment: `Счёт покупателю по заказу ЗК-${number} (из заявки с сайта)`,
+    comment: payComment,
   }).select("id").single();
   if (paymentError) {
     console.error("Payment creation error:", paymentError);

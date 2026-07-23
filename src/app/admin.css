@@ -3312,8 +3312,6 @@ body:has(.admin-modal-overlay) {
 }
 
 .deal-delivery-block__toggle input {
-  width: 15px;
-  height: 15px;
   flex-shrink: 0;
 }
 
