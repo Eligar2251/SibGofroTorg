@@ -3,7 +3,6 @@ import { getOrders, getWastepaperRequests } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
-import { OrderDeliveryControls } from "@/components/admin/OrderDeliveryControls";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { OrdersAutoRefresh } from "@/components/admin/OrdersAutoRefresh";
 
@@ -155,16 +154,6 @@ export default async function AdminOrdersPage({
             {allOrders.length !== filteredOrders.length ? ` из ${allOrders.length}` : ""}
           </p>
         </div>
-        <div className="admin-page-head__actions">
-          <Link
-            href={`/${ADMIN_PATH}/deliveries`}
-            className="admin-btn admin-btn--outline"
-            prefetch={false}
-          >
-            <GlyphIcon value="truck" size={14} />
-            Доставки
-          </Link>
-        </div>
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
@@ -255,28 +244,6 @@ export default async function AdminOrdersPage({
                             {meta.label}
                           </span>
                           <span className={statusBadge[order.status ?? "new"]}>{statusLabels[order.status ?? "new"]}</span>
-                          {!isWastepaper && order.hasDelivery && (
-                            <span
-                              className={
-                                order.deliveryType === "paid"
-                                  ? "admin-badge admin-badge--amber"
-                                  : "admin-badge admin-badge--green"
-                              }
-                              title={
-                                order.deliveryAddress
-                                  ? `Доставка: ${order.deliveryAddress}`
-                                  : "Есть доставка"
-                              }
-                            >
-                              <GlyphIcon value="truck" size={11} />
-                              {order.deliveryType === "paid"
-                                ? `Доставка ${(order.deliveryCost || 0).toLocaleString("ru-RU")} ₽`
-                                : "Бесплатная доставка"}
-                              {order.deliveryPlannedDate
-                                ? ` · ${String(order.deliveryPlannedDate).split("-").reverse().join(".")}`
-                                : ""}
-                            </span>
-                          )}
                           <span className="admin-order__date">{formatDate(order.createdAt)}</span>
                           <span className="admin-muted" style={{ marginLeft: "auto", fontSize: 12 }}>Нажмите, чтобы раскрыть</span>
                         </div>
@@ -289,8 +256,8 @@ export default async function AdminOrdersPage({
                             : isSiteOrder && order.items?.length
                             ? `${order.items.length} поз. · ${(order.totalSum || 0).toLocaleString("ru-RU")} ₽`
                             : order.productInfo || "Заявка на уточнение"}
-                          {!isWastepaper && order.hasDelivery && order.deliveryAddress && (
-                            <span> · 📍 {order.deliveryAddress}</span>
+                          {!isWastepaper && order.deliveryAddress && (
+                            <span> · {order.deliveryAddress}</span>
                           )}
                         </div>
                       </div>
@@ -408,18 +375,6 @@ export default async function AdminOrdersPage({
                         adminPath={ADMIN_PATH}
                         endpoint={endpoint}
                       />
-                      {!isWastepaper && (
-                        <OrderDeliveryControls
-                          orderId={order.id}
-                          hasDelivery={Boolean(order.hasDelivery)}
-                          deliveryType={order.deliveryType ?? null}
-                          deliveryCost={order.deliveryCost ?? null}
-                          deliveryAddress={order.deliveryAddress ?? null}
-                          deliveryPlannedDate={order.deliveryPlannedDate ?? null}
-                          deliveryReleasedAt={order.deliveryReleasedAt ?? null}
-                          deliveryNote={order.deliveryNote ?? null}
-                        />
-                      )}
                       <OrderDeleteButton orderId={order.id} endpoint={endpoint} />
                     </div>
                   </div>

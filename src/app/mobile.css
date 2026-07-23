@@ -744,6 +744,7 @@ body {
   }
 
   .pcc__badge {
+    /* не поднимать z-index на мобиле — бейдж только на фото */
     font-size: 9px;
     padding: 2px 6px;
   }

@@ -58,7 +58,6 @@ import {
 } from "@/components/admin/WarehouseCounterparties";
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
 import { ClientsManager } from "@/components/admin/ClientsManager";
-import { OrderDeliveryControls } from "@/components/admin/OrderDeliveryControls";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -141,6 +140,8 @@ interface WarehouseManagerProps {
   counterpartyOptions: CounterpartyOption[];
   counterpartyDocuments: Record<string, CounterpartyDocument[]>;
   clients?: any[];
+  deliveryPrice?: number;
+  freeDeliveryThreshold?: number;
 }
 
 export function WarehouseManager({
@@ -162,6 +163,8 @@ export function WarehouseManager({
   counterpartyOptions,
   counterpartyDocuments,
   clients = [],
+  deliveryPrice = 800,
+  freeDeliveryThreshold = 30000,
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<StockSub>(initialSub);
@@ -656,6 +659,8 @@ export function WarehouseManager({
               products={pickerProducts}
               counterparties={counterpartyOptions}
               payments={payments}
+              deliveryPrice={deliveryPrice}
+              freeDeliveryThreshold={freeDeliveryThreshold}
             />
           )}
           {activeTab === "bank" && (
@@ -1054,6 +1059,8 @@ export function WarehouseManager({
                             products={pickerProducts}
                             counterparties={counterpartyOptions}
                             payments={payments}
+                            deliveryPrice={deliveryPrice}
+                            freeDeliveryThreshold={freeDeliveryThreshold}
                             initialDeal={{
                               id: d.id,
                               date: d.date,
@@ -1082,19 +1089,6 @@ export function WarehouseManager({
                                 stockQty: stockById.get(item.productId) ?? 0,
                               })),
                             }}
-                          />
-                          <OrderDeliveryControls
-                            orderId={d.id}
-                            source="deal"
-                            hasDelivery={Boolean(d.hasDelivery)}
-                            deliveryType={d.deliveryType ?? null}
-                            deliveryCost={d.deliveryCost ?? null}
-                            deliveryAddress={
-                              d.deliveryAddress ?? d.address ?? null
-                            }
-                            deliveryPlannedDate={d.deliveryPlannedDate ?? null}
-                            deliveryReleasedAt={d.deliveryReleasedAt ?? null}
-                            deliveryNote={d.deliveryNote ?? null}
                           />
                           <DealActions dealId={d.id} status={d.status} hasShortage={hasShortage} paidEnough={isFullyPaid} />
                         </div>

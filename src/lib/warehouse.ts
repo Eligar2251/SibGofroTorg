@@ -1446,11 +1446,15 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
 
   if (items.length === 0) throw new Error("В заявке нет товаров");
 
-  const total = itemsTotal(items);
+  const linesTotal = itemsTotal(items);
   const number = await nextNumber("deal");
   const date = new Date().toISOString().slice(0, 10);
   const customerName = order.customer_name || "Клиент";
-  const vatAmount = includedVat(total, VAT_RATE);
+  // Адрес из заявки сайта (клиент указал при оформлении)
+  const orderAddress = cleanText(
+    order.delivery_address || order.actual_address || order.legal_address,
+    400
+  );
 
   // ★ Создаём/обновляем контрагента-покупателя
   const counterpartyId = await ensureCounterparty(customerName, "customer", {
@@ -1458,17 +1462,30 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
     email: order.customer_email,
     inn: order.inn,
     kpp: order.kpp,
+    address: orderAddress,
+    legalAddress: cleanText(order.legal_address, 400),
     comment: order.comment,
   });
+
+  // Доставка в заказ учёта не включается автоматически —
+  // менеджер ставит её в форме ЗК. Адрес клиента переносим в address.
+  const total = linesTotal;
+  const vatAmount = includedVat(total, VAT_RATE);
 
   // ★ Создаём заказ покупателя с привязкой к контрагенту
   const { data: dealResult, error: dealError } = await db.from("customer_deals").insert({
     number, date, customer_name: customerName, counterparty_id: counterpartyId,
     customer_phone: order.customer_phone,
+    phone: order.customer_phone,
+    email: order.customer_email || null,
+    inn: order.inn || null,
+    kpp: order.kpp || null,
+    address: orderAddress,
     comment: order.comment ? `Из заявки с сайта. ${String(order.comment).slice(0, 400)}` : "Из заявки с сайта",
     items, total, bank_adjustment: 0,
     vat_rate: VAT_RATE, vat_amount: vatAmount,
     status: "new", source_order_id: orderId,
+    has_delivery: false,
   }).select("id").single();
   if (dealError) throw dealError;
 

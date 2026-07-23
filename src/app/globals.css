@@ -2245,6 +2245,10 @@ select {
   display: block;
   text-decoration: none;
   flex-shrink: 0;
+  /* Изолируем stacking context: бейджи не вылезают поверх модалок/сторис */
+  isolation: isolate;
+  z-index: 0;
+  overflow: hidden;
 }
 
 .pcc__img {
@@ -2255,6 +2259,7 @@ select {
   justify-content: center;
   position: relative;
   overflow: hidden;
+  z-index: 0;
 }
 
 .pcc__img-placeholder {
@@ -2273,11 +2278,13 @@ select {
 .pcc__badge {
   position: absolute;
   top: 6px;
-  z-index: 1;
+  /* Только внутри фото-блока карточки — не выше модалок/сторис (z-index 1000+) */
+  z-index: 2;
   padding: 2px 7px;
   font-size: 10px;
   font-weight: 700;
   border-radius: 4px;
+  pointer-events: none;
 }
 
 .pcc__badge--promo {

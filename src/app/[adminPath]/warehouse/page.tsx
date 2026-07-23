@@ -16,6 +16,7 @@ import {
 } from "@/lib/warehouse";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { getAdminDb } from "@/lib/supabase";
+import { getSettings } from "@/lib/supabase-queries";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import type {
   CounterpartyDocument,
@@ -222,6 +223,18 @@ export default async function AdminWarehousePage({
     ].sort((a, b) => b.date.localeCompare(a.date));
   }
 
+  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  const deliveryPriceRaw = Number(settings.delivery_price);
+  const freeThresholdRaw = Number(settings.free_delivery_threshold);
+  const deliveryPrice =
+    Number.isFinite(deliveryPriceRaw) && deliveryPriceRaw >= 0
+      ? deliveryPriceRaw
+      : 800;
+  const freeDeliveryThreshold =
+    Number.isFinite(freeThresholdRaw) && freeThresholdRaw >= 0
+      ? freeThresholdRaw
+      : 30000;
+
   return (
     <WarehouseManager
       adminPath={ADMIN_PATH}
@@ -242,6 +255,8 @@ export default async function AdminWarehousePage({
       counterpartyOptions={counterpartyOptions}
       counterpartyDocuments={counterpartyDocuments}
       clients={clients}
+      deliveryPrice={deliveryPrice}
+      freeDeliveryThreshold={freeDeliveryThreshold}
     />
   );
 }

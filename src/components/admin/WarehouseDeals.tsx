@@ -85,11 +85,17 @@ export function DealForm({
   counterparties = [],
   payments = [],
   initialDeal,
+  deliveryPrice = 800,
+  freeDeliveryThreshold = 30000,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
   payments?: BankPayment[];
   initialDeal?: EditableDeal & { linkedPaymentIds?: string[] };
+  /** Тариф курьера из настроек (₽) */
+  deliveryPrice?: number;
+  /** Порог бесплатной доставки из настроек (₽) */
+  freeDeliveryThreshold?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -120,13 +126,13 @@ export function DealForm({
   const [hasDelivery, setHasDelivery] = useState(
     Boolean(initialDeal?.hasDelivery)
   );
-  const [deliveryType, setDeliveryType] = useState<"free" | "paid">(
-    initialDeal?.deliveryType === "paid" ? "paid" : "free"
-  );
-  const [deliveryCost, setDeliveryCost] = useState(
-    initialDeal?.deliveryCost != null && initialDeal.deliveryCost > 0
+  // null = считать по тарифу автоматически; иначе ручная сумма
+  const [deliveryCostOverride, setDeliveryCostOverride] = useState<string | null>(
+    initialDeal?.hasDelivery &&
+      initialDeal?.deliveryType === "paid" &&
+      initialDeal?.deliveryCost != null
       ? String(initialDeal.deliveryCost)
-      : ""
+      : null
   );
   const [deliveryAddress, setDeliveryAddress] = useState(
     initialDeal?.deliveryAddress || initialDeal?.address || ""
@@ -142,11 +148,28 @@ export function DealForm({
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
     0
   );
-  const deliveryAmount =
-    hasDelivery && deliveryType === "paid"
-      ? Math.max(0, Number(deliveryCost) || 0)
-      : 0;
+  const tariffCost =
+    freeDeliveryThreshold > 0 && itemsTotal >= freeDeliveryThreshold
+      ? 0
+      : Math.max(0, Number(deliveryPrice) || 0);
+  const deliveryType: "free" | "paid" =
+    hasDelivery &&
+    (deliveryCostOverride != null
+      ? Number(deliveryCostOverride) > 0
+      : tariffCost > 0)
+      ? "paid"
+      : "free";
+  const deliveryAmount = !hasDelivery
+    ? 0
+    : deliveryCostOverride != null
+    ? Math.max(0, Number(deliveryCostOverride) || 0)
+    : tariffCost;
   const total = itemsTotal + deliveryAmount;
+  const isFreeByTariff =
+    hasDelivery &&
+    deliveryCostOverride == null &&
+    freeDeliveryThreshold > 0 &&
+    itemsTotal >= freeDeliveryThreshold;
 
   function resetForm() {
     setDate(initialDeal?.date || todayIso());
@@ -162,11 +185,12 @@ export function DealForm({
     setSelectedPayments(initialDeal?.linkedPaymentIds || []);
     setVatRate(initialDeal?.vatRate ?? VAT_RATE);
     setHasDelivery(Boolean(initialDeal?.hasDelivery));
-    setDeliveryType(initialDeal?.deliveryType === "paid" ? "paid" : "free");
-    setDeliveryCost(
-      initialDeal?.deliveryCost != null && initialDeal.deliveryCost > 0
+    setDeliveryCostOverride(
+      initialDeal?.hasDelivery &&
+        initialDeal?.deliveryType === "paid" &&
+        initialDeal?.deliveryCost != null
         ? String(initialDeal.deliveryCost)
-        : ""
+        : null
     );
     setDeliveryAddress(
       initialDeal?.deliveryAddress || initialDeal?.address || ""
@@ -174,6 +198,14 @@ export function DealForm({
     setDeliveryPlannedDate(initialDeal?.deliveryPlannedDate || "");
     setDeliveryNote(initialDeal?.deliveryNote || "");
     setError("");
+  }
+
+  function pickCustomerAddress(found: CounterpartyOption): string {
+    return (
+      found.address ||
+      found.legalAddress ||
+      ""
+    ).trim();
   }
 
   function selectCustomer(value: string) {
@@ -189,8 +221,13 @@ export function DealForm({
     setEmail(found.email || "");
     setInn(found.inn || "");
     setKpp(found.kpp || "");
-    setAddress(found.address || "");
+    const addr = pickCustomerAddress(found);
+    setAddress(found.address || found.legalAddress || "");
     setContactName(found.contactName || "");
+    // Авто-подстановка адреса доставки из карточки клиента
+    if (addr) {
+      setDeliveryAddress(addr);
+    }
   }
 
   function addItem(p: PickerProduct) {
@@ -284,10 +321,6 @@ export function DealForm({
       setError("Укажите адрес доставки");
       return;
     }
-    if (hasDelivery && deliveryType === "paid" && !(Number(deliveryCost) > 0)) {
-      setError("Укажите сумму платной доставки");
-      return;
-    }
     setSaving(true);
     try {
       const res = await fetch(
@@ -310,10 +343,7 @@ export function DealForm({
           vatRate,
           hasDelivery,
           deliveryType: hasDelivery ? deliveryType : null,
-          deliveryCost:
-            hasDelivery && deliveryType === "paid"
-              ? Number(deliveryCost) || 0
-              : 0,
+          deliveryCost: hasDelivery ? deliveryAmount : 0,
           deliveryAddress: hasDelivery ? deliveryAddress.trim() : null,
           deliveryPlannedDate:
             hasDelivery && deliveryPlannedDate ? deliveryPlannedDate : null,
@@ -438,119 +468,6 @@ export function DealForm({
                 </div>
               </div>
 
-              {/* Доставка */}
-              <div className="deal-delivery-block">
-                <div className="deal-delivery-block__head">
-                  <Truck size={14} />
-                  <span>Доставка</span>
-                  <label className="deal-delivery-block__toggle">
-                    <input
-                      type="checkbox"
-                      checked={hasDelivery}
-                      onChange={(e) => {
-                        setHasDelivery(e.target.checked);
-                        if (
-                          e.target.checked &&
-                          !deliveryAddress &&
-                          address
-                        ) {
-                          setDeliveryAddress(address);
-                        }
-                      }}
-                    />
-                    Нужна доставка
-                  </label>
-                </div>
-                {hasDelivery && (
-                  <div className="wh-form-grid" style={{ marginTop: 10 }}>
-                    <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          className={`admin-btn admin-btn--sm ${
-                            deliveryType === "free"
-                              ? "admin-btn--primary"
-                              : "admin-btn--outline"
-                          }`}
-                          onClick={() => setDeliveryType("free")}
-                        >
-                          <Gift size={13} /> Бесплатная
-                        </button>
-                        <button
-                          type="button"
-                          className={`admin-btn admin-btn--sm ${
-                            deliveryType === "paid"
-                              ? "admin-btn--navy"
-                              : "admin-btn--outline"
-                          }`}
-                          onClick={() => setDeliveryType("paid")}
-                        >
-                          <Banknote size={13} /> Платная
-                        </button>
-                      </div>
-                    </div>
-                    <div
-                      className="admin-field"
-                      style={{ gridColumn: "1 / -1" }}
-                    >
-                      <label className="admin-label">
-                        Адрес доставки{" "}
-                        <span style={{ color: "#ef4444" }}>*</span>
-                      </label>
-                      <input
-                        className="admin-input"
-                        value={deliveryAddress}
-                        onChange={(e) => setDeliveryAddress(e.target.value)}
-                        placeholder="Город, улица, дом, офис/кв."
-                      />
-                    </div>
-                    {deliveryType === "paid" && (
-                      <div className="admin-field">
-                        <label className="admin-label">
-                          Сумма доставки, ₽{" "}
-                          <span style={{ color: "#ef4444" }}>*</span>
-                        </label>
-                        <input
-                          className="admin-input"
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={deliveryCost}
-                          onChange={(e) => setDeliveryCost(e.target.value)}
-                          placeholder="800"
-                        />
-                      </div>
-                    )}
-                    <div className="admin-field">
-                      <label className="admin-label">План. дата</label>
-                      <input
-                        className="admin-input"
-                        type="date"
-                        value={deliveryPlannedDate}
-                        onChange={(e) =>
-                          setDeliveryPlannedDate(e.target.value)
-                        }
-                      />
-                    </div>
-                    <div
-                      className="admin-field"
-                      style={{
-                        gridColumn:
-                          deliveryType === "paid" ? undefined : "1 / -1",
-                      }}
-                    >
-                      <label className="admin-label">Заметка курьеру</label>
-                      <input
-                        className="admin-input"
-                        value={deliveryNote}
-                        onChange={(e) => setDeliveryNote(e.target.value)}
-                        placeholder="Код домофона, этаж..."
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
               <details className="wh-counterparty-details">
                 <summary>Полная информация о покупателе</summary>
                 <div className="wh-form-grid">
@@ -558,28 +475,27 @@ export function DealForm({
                   <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
                   <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={inn} onChange={(e) => setInn(e.target.value)} /></div>
                   <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={kpp} onChange={(e) => setKpp(e.target.value)} /></div>
-                  <div className="admin-field" style={{ gridColumn: "1 / -1" }}><label className="admin-label">Адрес</label><input className="admin-input" value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+                  <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                    <label className="admin-label">Адрес клиента</label>
+                    <input
+                      className="admin-input"
+                      value={address}
+                      onChange={(e) => {
+                        setAddress(e.target.value);
+                        // если доставка включена и адрес доставки совпадал — синхронизируем
+                        if (hasDelivery && (!deliveryAddress || deliveryAddress === address)) {
+                          setDeliveryAddress(e.target.value);
+                        }
+                      }}
+                      placeholder="Подставится в доставку автоматически"
+                    />
+                  </div>
                 </div>
               </details>
 
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
                 <ProductPicker products={products} onPick={addItem} />
-              </div>
-
-              <div className="admin-field" style={{ marginTop: 12 }}>
-                <label className="admin-label">Привязать существующую оплату</label>
-                {availablePayments.length === 0 ? (
-                  <div className="wh-deal-pick__empty">Нет свободных платежей для этого клиента</div>
-                ) : (
-                  <SearchMultiSelect
-                    options={paymentOptions}
-                    selectedIds={selectedPayments}
-                    onToggle={togglePayment}
-                    placeholder="Поиск платежа по номеру или сумме…"
-                    emptyText="Платежи не найдены"
-                  />
-                )}
               </div>
 
               {items.length > 0 && (
@@ -647,6 +563,156 @@ export function DealForm({
                   ))}
                 </div>
               )}
+
+              {/* Доставка — в том же окне оформления заказа */}
+              <div className="deal-delivery-block">
+                <div className="deal-delivery-block__head">
+                  <Truck size={14} />
+                  <span>Доставка</span>
+                  <label className="deal-delivery-block__toggle">
+                    <input
+                      type="checkbox"
+                      checked={hasDelivery}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setHasDelivery(on);
+                        if (on) {
+                          // авто-адрес: поле адреса → контрагент → уже введённый
+                          const fromCp = counterparties.find(
+                            (c) =>
+                              c.roles.includes("customer") &&
+                              c.name.toLocaleLowerCase("ru-RU") ===
+                                customerName.trim().toLocaleLowerCase("ru-RU")
+                          );
+                          const auto =
+                            deliveryAddress ||
+                            address ||
+                            (fromCp ? pickCustomerAddress(fromCp) : "") ||
+                            "";
+                          if (auto) setDeliveryAddress(auto);
+                          setDeliveryCostOverride(null); // тариф по умолчанию
+                        }
+                      }}
+                    />
+                    Нужна доставка
+                  </label>
+                </div>
+
+                {hasDelivery ? (
+                  <div className="deal-delivery-block__body">
+                    <div className="deal-delivery-tariff">
+                      {deliveryType === "free" || isFreeByTariff ? (
+                        <span className="admin-badge admin-badge--green">
+                          <Gift size={11} /> Бесплатная
+                          {isFreeByTariff
+                            ? ` · заказ от ${fmt(freeDeliveryThreshold)} ₽`
+                            : ""}
+                        </span>
+                      ) : (
+                        <span className="admin-badge admin-badge--amber">
+                          <Banknote size={11} /> По тарифу {fmt(tariffCost)} ₽
+                        </span>
+                      )}
+                      <span className="deal-delivery-tariff__hint">
+                        Тариф: {fmt(deliveryPrice)} ₽ · бесплатно от{" "}
+                        {fmt(freeDeliveryThreshold)} ₽
+                      </span>
+                    </div>
+
+                    <div className="wh-form-grid">
+                      <div
+                        className="admin-field"
+                        style={{ gridColumn: "1 / -1" }}
+                      >
+                        <label className="admin-label">
+                          Адрес доставки{" "}
+                          <span style={{ color: "#ef4444" }}>*</span>
+                        </label>
+                        <input
+                          className="admin-input"
+                          value={deliveryAddress}
+                          onChange={(e) => setDeliveryAddress(e.target.value)}
+                          placeholder="Подставится из карточки клиента, можно изменить"
+                        />
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">
+                          Стоимость, ₽
+                          {deliveryCostOverride == null ? " (тариф)" : " (вручную)"}
+                        </label>
+                        <input
+                          className="admin-input"
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={
+                            deliveryCostOverride != null
+                              ? deliveryCostOverride
+                              : String(deliveryAmount)
+                          }
+                          onChange={(e) =>
+                            setDeliveryCostOverride(e.target.value)
+                          }
+                          placeholder={String(tariffCost)}
+                        />
+                        {deliveryCostOverride != null && (
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--ghost admin-btn--sm"
+                            style={{ marginTop: 6 }}
+                            onClick={() => setDeliveryCostOverride(null)}
+                          >
+                            Вернуть тариф
+                          </button>
+                        )}
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">План. дата</label>
+                        <input
+                          className="admin-input"
+                          type="date"
+                          value={deliveryPlannedDate}
+                          onChange={(e) =>
+                            setDeliveryPlannedDate(e.target.value)
+                          }
+                        />
+                      </div>
+                      <div
+                        className="admin-field"
+                        style={{ gridColumn: "1 / -1" }}
+                      >
+                        <label className="admin-label">Заметка курьеру</label>
+                        <input
+                          className="admin-input"
+                          value={deliveryNote}
+                          onChange={(e) => setDeliveryNote(e.target.value)}
+                          placeholder="Код домофона, этаж..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="deal-delivery-block__empty">
+                    Включите, если нужна доставка. Адрес подтянется из клиента,
+                    стоимость — по тарифу из настроек.
+                  </p>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Привязать существующую оплату</label>
+                {availablePayments.length === 0 ? (
+                  <div className="wh-deal-pick__empty">Нет свободных платежей для этого клиента</div>
+                ) : (
+                  <SearchMultiSelect
+                    options={paymentOptions}
+                    selectedIds={selectedPayments}
+                    onToggle={togglePayment}
+                    placeholder="Поиск платежа по номеру или сумме…"
+                    emptyText="Платежи не найдены"
+                  />
+                )}
+              </div>
 
               {error && <div className="wh-form-error">{error}</div>}
 

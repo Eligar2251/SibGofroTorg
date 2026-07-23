@@ -225,7 +225,7 @@ export function DeliveriesManager({
         <div>
           <h1 className="admin-h1">Доставки</h1>
           <p className="admin-sub">
-            Заявки сайта и заказы учёта с доставкой · планирование на день
+            Заказы учёта (ЗК) с доставкой · планирование на день
           </p>
         </div>
       </div>
@@ -391,20 +391,14 @@ export function DeliveriesManager({
             </div>
             <p>
               {orders.length === 0
-                ? "Пока нет заказов с доставкой. Отметьте доставку в заявке или в заказе учёта."
+                ? "Пока нет заказов с доставкой. Включите доставку при оформлении заказа в учёте."
                 : "Нет доставок по выбранному фильтру"}
             </p>
             {orders.length === 0 && (
               <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
                 <a
-                  href={`/${adminPath}/orders`}
-                  className="admin-btn admin-btn--navy"
-                >
-                  К заявкам
-                </a>
-                <a
                   href={`/${adminPath}/warehouse?tab=deals`}
-                  className="admin-btn admin-btn--outline"
+                  className="admin-btn admin-btn--navy"
                 >
                   К заказам учёта
                 </a>
