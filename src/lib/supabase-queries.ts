@@ -343,6 +343,17 @@ export async function getProductBySlug(slug: string): Promise<FirestoreProduct |
   return products.find((p) => p.slug === slug) || null;
 }
 
+export async function getRelatedProducts(
+  categoryId: string,
+  excludeProductId: string,
+  limitCount = 4
+): Promise<FirestoreProduct[]> {
+  const products = await getCachedProducts();
+  return products
+    .filter((p) => p.categoryId === categoryId && p.id !== excludeProductId && p.isVisible !== false)
+    .slice(0, limitCount);
+}
+
 export async function createProduct(data: Record<string, any>): Promise<{ id: string }> {
   const db = getAdminDb();
   const slug = data.slug || slugify(data.name || "product");
