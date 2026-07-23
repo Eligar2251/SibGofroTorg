@@ -908,19 +908,41 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   }).select("id").single();
   if (dealError) throw dealError;
 
-  // ★ Создаём входящий счёт (не проведён — влияет на баланс после оплаты)
-  await db.from("bank_payments").insert({
-    number: paymentNumber, date,
-    direction: "incoming", type: "regular",
-    counterparty: customerName, counterparty_id: counterpartyId,
-    deal_ids: [dealResult.id], deal_numbers: [number],
-    receipt_ids: [], receipt_numbers: [],
-    amount: total, invoice_number: null,
-    vat_rate: vatRate, vat_amount: vatAmount,
-    is_paid: false, paid_at: null,
-    exclude_from_balance: false,
-    comment: `Счёт покупателю по заказу ЗК-${number}`,
-  });
+  // ★ Создаём входящий счёт(ы) — с учётом разбиения на части
+  const paymentSplits = (Array.isArray(data.paymentSplits) ? data.paymentSplits : [])
+    .map((n: any) => round2(Number(n) || 0))
+    .filter((n: number) => n > 0);
+
+  const targets: number[] = [];
+  if (paymentSplits.length > 1) {
+    // Масштабируем части, чтобы их сумма = total
+    const reqSum = paymentSplits.reduce((s: number, n: number) => s + n, 0);
+    const factor = reqSum > 0 ? total / reqSum : 1;
+    for (let i = 0; i < paymentSplits.length; i++) {
+      targets.push(i === paymentSplits.length - 1
+        ? round2(total - targets.reduce((s, v) => round2(s + v), 0))
+        : round2(paymentSplits[i] * factor)
+      );
+    }
+  } else {
+    targets.push(total);
+  }
+
+  for (let i = 0; i < targets.length; i++) {
+    const payNum = targets.length > 1 ? await nextNumber("payment") : paymentNumber;
+    await db.from("bank_payments").insert({
+      number: payNum, date,
+      direction: "incoming", type: "regular",
+      counterparty: customerName, counterparty_id: counterpartyId,
+      deal_ids: [dealResult.id], deal_numbers: [number],
+      receipt_ids: [], receipt_numbers: [],
+      amount: targets[i], invoice_number: null,
+      vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
+      is_paid: false, paid_at: null,
+      exclude_from_balance: false,
+      comment: `Счёт покупателю по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
+    });
+  }
 
   // Привязываем существующие платежи
   for (const payId of linkedPaymentIds) {
@@ -1069,27 +1091,51 @@ export async function updateDeal(id: string, data: any): Promise<void> {
 
   const remaining = Math.max(0, round2(total - paidTotal));
 
-  if (remaining > 0) {
-    if (unpaidSoloPayments.length === 1) {
-      // Обновляем сумму существующего платежа
+  // Разбиение на части (аналогично receipts)
+  const paymentSplits = (Array.isArray(data.paymentSplits) ? data.paymentSplits : [])
+    .map((n: any) => round2(Number(n) || 0))
+    .filter((n: number) => n > 0);
+
+  let targets: number[];
+  if (remaining <= 0) {
+    targets = [];
+  } else if (paymentSplits.length > 1) {
+    const reqSum = paymentSplits.reduce((s: number, n: number) => s + n, 0);
+    const factor = reqSum > 0 ? remaining / reqSum : 1;
+    targets = paymentSplits.map((n: number) => round2(n * factor));
+    const headSum = targets.slice(0, -1).reduce((s: number, n: number) => s + n, 0);
+    targets[targets.length - 1] = round2(remaining - headSum);
+    targets = targets.filter((n: number) => n > 0);
+  } else {
+    targets = [remaining];
+  }
+
+  if (targets.length > 0 && unpaidSoloPayments.length === targets.length) {
+    // Количество совпало — обновляем суммы
+    for (let i = 0; i < unpaidSoloPayments.length; i++) {
       await db.from("bank_payments").update({
         counterparty: customerName, counterparty_id: counterpartyId,
-        amount: remaining, vat_rate: vatRate, vat_amount: includedVat(remaining, vatRate),
-      }).eq("id", unpaidSoloPayments[0].id);
-    } else if (unpaidSoloPayments.length === 0) {
-      // Создаём новый платёж
-      const paymentNumber = await nextNumber("payment");
+        amount: targets[i], vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
+      }).eq("id", unpaidSoloPayments[i].id);
+    }
+  } else {
+    // Количество изменилось — удаляем старые неоплаченные и создаём новые
+    for (const p of unpaidSoloPayments) {
+      await db.from("bank_payments").delete().eq("id", p.id);
+    }
+    for (let i = 0; i < targets.length; i++) {
+      const payNumber = await nextNumber("payment");
       await db.from("bank_payments").insert({
-        number: paymentNumber, date,
+        number: payNumber, date,
         direction: "incoming", type: "regular",
         counterparty: customerName, counterparty_id: counterpartyId,
         deal_ids: [id], deal_numbers: [existing.number],
         receipt_ids: [], receipt_numbers: [],
-        amount: remaining, invoice_number: null,
-        vat_rate: vatRate, vat_amount: includedVat(remaining, vatRate),
+        amount: targets[i], invoice_number: null,
+        vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
         is_paid: false, paid_at: null,
         exclude_from_balance: false,
-        comment: `Счёт покупателю по заказу ЗК-${existing.number}`,
+        comment: `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
       });
     }
   }

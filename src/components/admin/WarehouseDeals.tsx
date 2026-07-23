@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Edit2,
@@ -32,6 +32,33 @@ import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPayment } from "@/lib/warehouse-shared";
+
+/** Округление до копеек */
+function roundKopeck(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Равномерно разбить сумму на count частей: первые (count-1) одинаковые,
+ * остаток добирается в последней. Сумма частей = total до копейки.
+ */
+function splitEvenly(totalSum: number, count: number): string[] {
+  const sum = roundKopeck(totalSum);
+  if (count <= 1) return [String(sum)];
+  if (sum <= 0) return Array.from({ length: count }, () => "0");
+  const base = Math.floor((sum / count) * 100) / 100;
+  const next: string[] = [];
+  let allocated = 0;
+  for (let i = 0; i < count; i++) {
+    if (i === count - 1) {
+      next.push(String(roundKopeck(sum - allocated)));
+    } else {
+      next.push(String(base));
+      allocated = roundKopeck(allocated + base);
+    }
+  }
+  return next;
+}
 
 interface DealItemDraft {
   productId: string;
@@ -144,6 +171,24 @@ export function DealForm({
     initialDeal?.deliveryNote || ""
   );
 
+  // ── Разбиение платежа на части ──
+  const existingUnpaid = useMemo(() => {
+    if (!initialDeal) return [] as BankPayment[];
+    return payments.filter(
+      (p) =>
+        p.direction === "incoming" &&
+        !p.isPaid &&
+        (p.dealIds || []).length === 1 &&
+        (p.receiptIds || []).length === 0
+    );
+  }, [payments, initialDeal]);
+
+  const [paymentCount, setPaymentCount] = useState(
+    initialDeal && existingUnpaid.length > 1 ? existingUnpaid.length : 1
+  );
+  const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
+  const [splitTouched, setSplitTouched] = useState(false);
+
   const itemsTotal = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
     0
@@ -170,6 +215,27 @@ export function DealForm({
     deliveryCostOverride == null &&
     freeDeliveryThreshold > 0 &&
     itemsTotal >= freeDeliveryThreshold;
+
+  // Пересчёт частей при изменении итога
+  useEffect(() => {
+    if (paymentCount > 1 && !splitTouched) {
+      setSplitAmounts(splitEvenly(total, paymentCount));
+    }
+  }, [total, paymentCount, splitTouched]);
+
+  function handleSplitCountChange(count: number) {
+    setPaymentCount(count);
+    setSplitTouched(false);
+    setSplitAmounts(splitEvenly(total, count));
+  }
+
+  function buildPaymentSplits(): number[] {
+    if (paymentCount <= 1) return [roundKopeck(total)];
+    const parts = splitAmounts
+      .map((v) => roundKopeck(Number(v) || 0))
+      .filter((v) => v > 0);
+    return parts.length > 0 ? parts : splitEvenly(total, paymentCount).map(Number);
+  }
 
   function resetForm() {
     setDate(initialDeal?.date || todayIso());
@@ -198,6 +264,9 @@ export function DealForm({
     setDeliveryPlannedDate(initialDeal?.deliveryPlannedDate || "");
     setDeliveryNote(initialDeal?.deliveryNote || "");
     setError("");
+    setPaymentCount(1);
+    setSplitAmounts([""]);
+    setSplitTouched(false);
   }
 
   function pickCustomerAddress(found: CounterpartyOption): string {
@@ -357,6 +426,7 @@ export function DealForm({
             price: Number(it.price) || 0,
           })),
           linkedPaymentIds: selectedPayments,
+          paymentSplits: buildPaymentSplits(),
         }),
       });
       if (!res.ok) {
@@ -696,6 +766,56 @@ export function DealForm({
                     Включите, если нужна доставка. Адрес подтянется из клиента,
                     стоимость — по тарифу из настроек.
                   </p>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Оплата (разбить на части?)</label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  {[1, 2, 3].map(count => (
+                    <button
+                      key={count}
+                      type="button"
+                      className={`admin-btn ${paymentCount === count ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                      style={{ flex: 1 }}
+                      onClick={() => handleSplitCountChange(count)}
+                    >
+                      {count} {count === 1 ? 'платеж' : 'платежа'}
+                    </button>
+                  ))}
+                </div>
+
+                {paymentCount > 1 && (
+                  <>
+                    <div className="wh-form-grid" style={{ marginTop: 8 }}>
+                      {splitAmounts.map((val, idx) => (
+                        <div key={idx} className="admin-field">
+                          <label className="admin-label">Сумма части {idx + 1}, ₽</label>
+                          <input
+                            type="number"
+                            className="admin-input"
+                            min={0}
+                            step={0.01}
+                            value={val}
+                            onChange={(e) => {
+                              const next = [...splitAmounts];
+                              next[idx] = e.target.value;
+                              setSplitAmounts(next);
+                              setSplitTouched(true);
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="wh-form-hint" style={{ margin: "6px 0 0" }}>
+                      Сумма частей:{" "}
+                      <strong>
+                        {fmt(splitAmounts.reduce((s, v) => s + (Number(v) || 0), 0))} ₽
+                      </strong>{" "}
+                      из {fmt(total)} ₽
+                      {Math.abs(splitAmounts.reduce((s, v) => s + (Number(v) || 0), 0) - total) > 0.009 && " — не сходится с итогом!"}
+                    </div>
+                  </>
                 )}
               </div>
 
