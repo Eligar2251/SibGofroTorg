@@ -63,9 +63,9 @@ export async function GET() {
     const accountCreatedMs = user?.createdAt ? new Date(toIso((user as any).createdAt) || 0).getTime() : 0;
 
     const [byUserRes, byPhoneDigitsRes, byPhoneDisplayRes] = await Promise.all([
-      db.from("orders").select("*").eq("user_id", uid),
-      db.from("orders").select("*").eq("customer_phone_digits", phoneDigits),
-      db.from("orders").select("*").eq("customer_phone", phoneDisplay),
+      db.from("orders").select("*").eq("user_id", uid).neq("status", "rejected"),
+      db.from("orders").select("*").eq("customer_phone_digits", phoneDigits).neq("status", "rejected"),
+      db.from("orders").select("*").eq("customer_phone", phoneDisplay).neq("status", "rejected"),
     ]);
 
     const map = new Map<string, ReturnType<typeof serializeOrder>>();
