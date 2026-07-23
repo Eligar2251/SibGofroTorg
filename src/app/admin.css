@@ -2989,18 +2989,41 @@ body:has(.admin-modal-overlay) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px 16px;
   margin-bottom: 18px;
   flex-wrap: wrap;
 }
 
 .admin-tabs-with-actions .admin-filters {
   margin-bottom: 0;
-  flex: 1;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
 }
 
 .admin-tabs-with-actions .admin-page-head__actions {
+  display: flex;
+  align-items: center;
   margin-bottom: 0;
+  margin-top: 0;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+/* Кнопка «Новый …» той же высоты, что и таб-фильтры */
+.admin-tabs-with-actions .admin-page-head__actions > .admin-btn,
+.admin-tabs-with-actions .admin-page-head__actions > button.admin-btn {
+  height: 34px;
+  min-height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+}
+
+.admin-tabs-with-actions .admin-filter {
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
 }
 
 @media (max-width: 640px) {
@@ -3016,6 +3039,52 @@ body:has(.admin-modal-overlay) {
   .admin-tabs-with-actions .admin-page-head__actions {
     width: 100%;
   }
+
+  .admin-tabs-with-actions .admin-page-head__actions > .admin-btn,
+  .admin-tabs-with-actions .admin-page-head__actions > button.admin-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Блок доставки в форме заказа учёта */
+.deal-delivery-block {
+  margin: 12px 0 4px;
+  padding: 12px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+}
+
+.deal-delivery-block__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--adm-steel);
+}
+
+.deal-delivery-block__toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--adm-ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.deal-delivery-block__toggle input {
+  accent-color: var(--adm-kraft);
+  width: 15px;
+  height: 15px;
 }
 
 /* Фикс для бейджей в мобильном */

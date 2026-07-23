@@ -22,6 +22,8 @@ export function OrderDeliveryControls({
   deliveryPlannedDate = null,
   deliveryReleasedAt = null,
   deliveryNote = null,
+  /** site = заявка с сайта; deal = заказ учёта (ЗК) */
+  source = "site",
 }: {
   orderId: string;
   hasDelivery?: boolean;
@@ -31,6 +33,7 @@ export function OrderDeliveryControls({
   deliveryPlannedDate?: string | null;
   deliveryReleasedAt?: string | null;
   deliveryNote?: string | null;
+  source?: "site" | "deal";
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -45,11 +48,16 @@ export function OrderDeliveryControls({
   const [note, setNote] = useState(deliveryNote || "");
   const [plannedDate, setPlannedDate] = useState(deliveryPlannedDate || "");
 
+  const endpoint =
+    source === "deal"
+      ? `/api/admin/warehouse/deals/${orderId}/delivery`
+      : `/api/admin/orders/${orderId}/delivery`;
+
   async function callApi(body: Record<string, unknown>) {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}/delivery`, {
+      const res = await fetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

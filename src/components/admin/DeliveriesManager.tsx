@@ -17,15 +17,37 @@ import {
   CalendarPlus,
   RotateCcw,
 } from "lucide-react";
-import type { FirestoreOrder } from "@/lib/types";
-
 type FilterTab = "unreleased" | "planned" | "released" | "all";
+
+/** Унифицированная строка доставки: заявка сайта или заказ учёта */
+export type DeliveryRow = {
+  id: string;
+  source: "site" | "deal";
+  label: string;
+  customerName: string;
+  customerPhone?: string | null;
+  deliveryType?: "free" | "paid" | null;
+  deliveryCost?: number | null;
+  deliveryAddress?: string | null;
+  deliveryPlannedDate?: string | null;
+  deliveryReleasedAt?: string | null;
+  deliveryNote?: string | null;
+  items?: { name: string; quantity: number }[] | null;
+  totalSum?: number | null;
+  createdAt?: string | null;
+  /** для ссылки на учёт */
+  dealNumber?: number | null;
+};
+
+function rowKey(r: DeliveryRow) {
+  return `${r.source}:${r.id}`;
+}
 
 export function DeliveriesManager({
   orders,
   adminPath,
 }: {
-  orders: FirestoreOrder[];
+  orders: DeliveryRow[];
   adminPath: string;
 }) {
   const router = useRouter();
@@ -37,6 +59,12 @@ export function DeliveriesManager({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const byKey = useMemo(() => {
+    const m = new Map<string, DeliveryRow>();
+    for (const o of orders) m.set(rowKey(o), o);
+    return m;
+  }, [orders]);
 
   const stats = useMemo(() => {
     const unreleased = orders.filter((o) => !o.deliveryReleasedAt);
@@ -54,7 +82,7 @@ export function DeliveriesManager({
 
   /** Группировка по дате для планирования */
   const dayGroups = useMemo(() => {
-    const map = new Map<string, FirestoreOrder[]>();
+    const map = new Map<string, DeliveryRow[]>();
     for (const o of orders) {
       if (o.deliveryReleasedAt) continue;
       const key = o.deliveryPlannedDate || "__none__";
@@ -92,26 +120,28 @@ export function DeliveriesManager({
     return list;
   }, [orders, tab, dayFilter]);
 
-  function toggle(id: string) {
+  function toggle(key: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
 
   function toggleAllVisible() {
-    const ids = filtered.filter((o) => !o.deliveryReleasedAt).map((o) => o.id);
+    const keys = filtered
+      .filter((o) => !o.deliveryReleasedAt)
+      .map((o) => rowKey(o));
     setSelected((prev) => {
-      const allSelected = ids.every((id) => prev.has(id));
+      const allSelected = keys.every((id) => prev.has(id));
       if (allSelected) {
         const next = new Set(prev);
-        ids.forEach((id) => next.delete(id));
+        keys.forEach((id) => next.delete(id));
         return next;
       }
       const next = new Set(prev);
-      ids.forEach((id) => next.add(id));
+      keys.forEach((id) => next.add(id));
       return next;
     });
   }
@@ -129,12 +159,16 @@ export function DeliveriesManager({
     setError(null);
     setMessage(null);
     try {
+      const items = [...selected]
+        .map((k) => byKey.get(k))
+        .filter(Boolean)
+        .map((o) => ({ id: o!.id, source: o!.source }));
       const res = await fetch("/api/admin/deliveries/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: planDate,
-          orderIds: [...selected],
+          items,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -153,15 +187,22 @@ export function DeliveriesManager({
     setSaving(false);
   }
 
+  function endpointFor(row: DeliveryRow) {
+    return row.source === "deal"
+      ? `/api/admin/warehouse/deals/${row.id}/delivery`
+      : `/api/admin/orders/${row.id}/delivery`;
+  }
+
   async function setOrderAction(
-    orderId: string,
+    row: DeliveryRow,
     action: "release" | "unrelease" | "plan",
     extra?: Record<string, unknown>
   ) {
-    setBusyId(orderId);
+    const key = rowKey(row);
+    setBusyId(key);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}/delivery`, {
+      const res = await fetch(endpointFor(row), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ...extra }),
@@ -184,7 +225,7 @@ export function DeliveriesManager({
         <div>
           <h1 className="admin-h1">Доставки</h1>
           <p className="admin-sub">
-            Неотпущенные заказы с доставкой · планирование на день
+            Заявки сайта и заказы учёта с доставкой · планирование на день
           </p>
         </div>
       </div>
@@ -350,17 +391,24 @@ export function DeliveriesManager({
             </div>
             <p>
               {orders.length === 0
-                ? "Пока нет заказов с доставкой. Отметьте доставку в заявке."
+                ? "Пока нет заказов с доставкой. Отметьте доставку в заявке или в заказе учёта."
                 : "Нет доставок по выбранному фильтру"}
             </p>
             {orders.length === 0 && (
-              <a
-                href={`/${adminPath}/orders`}
-                className="admin-btn admin-btn--navy"
-                style={{ marginTop: 12 }}
-              >
-                Перейти к заявкам
-              </a>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
+                <a
+                  href={`/${adminPath}/orders`}
+                  className="admin-btn admin-btn--navy"
+                >
+                  К заявкам
+                </a>
+                <a
+                  href={`/${adminPath}/warehouse?tab=deals`}
+                  className="admin-btn admin-btn--outline"
+                >
+                  К заказам учёта
+                </a>
+              </div>
             )}
           </div>
         ) : (
@@ -373,7 +421,7 @@ export function DeliveriesManager({
                     filtered.filter((o) => !o.deliveryReleasedAt).length > 0 &&
                     filtered
                       .filter((o) => !o.deliveryReleasedAt)
-                      .every((o) => selected.has(o.id))
+                      .every((o) => selected.has(rowKey(o)))
                   }
                   onChange={toggleAllVisible}
                 />
@@ -386,21 +434,22 @@ export function DeliveriesManager({
 
             <div className="deliv-list">
               {filtered.map((order) => {
+                const key = rowKey(order);
                 const released = Boolean(order.deliveryReleasedAt);
-                const busy = busyId === order.id;
+                const busy = busyId === key;
                 return (
                   <div
-                    key={order.id}
+                    key={key}
                     className={`deliv-item${released ? " deliv-item--released" : ""}${
-                      selected.has(order.id) ? " deliv-item--selected" : ""
+                      selected.has(key) ? " deliv-item--selected" : ""
                     }`}
                   >
                     <div className="deliv-item__check">
                       {!released && (
                         <input
                           type="checkbox"
-                          checked={selected.has(order.id)}
-                          onChange={() => toggle(order.id)}
+                          checked={selected.has(key)}
+                          onChange={() => toggle(key)}
                           aria-label="Выбрать для планирования"
                         />
                       )}
@@ -408,8 +457,15 @@ export function DeliveriesManager({
 
                     <div className="deliv-item__main">
                       <div className="deliv-item__top">
-                        <span className="admin-order__id">
-                          #{order.id.slice(0, 8)}
+                        <span className="admin-order__id">{order.label}</span>
+                        <span
+                          className={
+                            order.source === "deal"
+                              ? "admin-badge admin-badge--indigo"
+                              : "admin-badge admin-badge--muted"
+                          }
+                        >
+                          {order.source === "deal" ? "Учёт" : "Сайт"}
                         </span>
                         {order.deliveryType === "paid" ? (
                           <span className="admin-badge admin-badge--amber">
@@ -469,10 +525,7 @@ export function DeliveriesManager({
                           <Package size={12} />
                           {order.items
                             .slice(0, 4)
-                            .map(
-                              (it) =>
-                                `${it.name} × ${it.quantity}`
-                            )
+                            .map((it) => `${it.name} × ${it.quantity}`)
                             .join(" · ")}
                           {order.items.length > 4
                             ? ` · +${order.items.length - 4}`
@@ -499,7 +552,7 @@ export function DeliveriesManager({
                               disabled={busy}
                               onChange={(e) => {
                                 const v = e.target.value || null;
-                                setOrderAction(order.id, "plan", {
+                                setOrderAction(order, "plan", {
                                   deliveryPlannedDate: v,
                                 });
                               }}
@@ -509,8 +562,8 @@ export function DeliveriesManager({
                             type="button"
                             className="admin-btn admin-btn--navy admin-btn--sm"
                             disabled={busy || !order.deliveryAddress}
-                            onClick={() => setOrderAction(order.id, "release")}
-                            title="Отметить доставку выполненной / заказ отпущен"
+                            onClick={() => setOrderAction(order, "release")}
+                            title="Отметить доставку выполненной"
                           >
                             {busy ? (
                               <Loader2 size={13} className="animate-spin" />
@@ -526,7 +579,7 @@ export function DeliveriesManager({
                           type="button"
                           className="admin-btn admin-btn--ghost admin-btn--sm"
                           disabled={busy}
-                          onClick={() => setOrderAction(order.id, "unrelease")}
+                          onClick={() => setOrderAction(order, "unrelease")}
                         >
                           {busy ? (
                             <Loader2 size={13} className="animate-spin" />
@@ -537,10 +590,14 @@ export function DeliveriesManager({
                         </button>
                       )}
                       <a
-                        href={`/${adminPath}/orders?q=${order.id.slice(0, 8)}&status=all`}
+                        href={
+                          order.source === "deal"
+                            ? `/${adminPath}/warehouse?tab=deals&deal=${order.id}`
+                            : `/${adminPath}/orders?q=${order.id.slice(0, 8)}&status=all`
+                        }
                         className="admin-btn admin-btn--ghost admin-btn--sm"
                       >
-                        К заявке
+                        {order.source === "deal" ? "К заказу" : "К заявке"}
                       </a>
                     </div>
                   </div>

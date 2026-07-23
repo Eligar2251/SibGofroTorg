@@ -475,6 +475,14 @@ CREATE TABLE IF NOT EXISTS customer_deals (
   status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'completed', 'cancelled')),
   cancel_reason TEXT,
   source_order_id UUID,
+  -- Доставка заказа учёта
+  has_delivery BOOLEAN DEFAULT FALSE,
+  delivery_type TEXT CHECK (delivery_type IS NULL OR delivery_type IN ('free', 'paid')),
+  delivery_cost NUMERIC DEFAULT 0,
+  delivery_address TEXT,
+  delivery_planned_date DATE,
+  delivery_released_at TIMESTAMPTZ,
+  delivery_note TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -482,6 +490,8 @@ CREATE INDEX IF NOT EXISTS idx_deals_number ON customer_deals(number);
 CREATE INDEX IF NOT EXISTS idx_deals_status ON customer_deals(status);
 CREATE INDEX IF NOT EXISTS idx_deals_date ON customer_deals(date);
 CREATE INDEX IF NOT EXISTS idx_deals_source_order ON customer_deals(source_order_id);
+CREATE INDEX IF NOT EXISTS idx_deals_has_delivery ON customer_deals(has_delivery) WHERE has_delivery = TRUE;
+CREATE INDEX IF NOT EXISTS idx_deals_delivery_planned ON customer_deals(delivery_planned_date) WHERE has_delivery = TRUE;
 CREATE TRIGGER trg_deals_updated BEFORE UPDATE ON customer_deals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================

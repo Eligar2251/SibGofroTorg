@@ -82,6 +82,14 @@ export interface CustomerDeal extends CounterpartyDetails {
   vatAmount: number;
   status: DealStatus;
   cancelReason?: string | null;
+  /** Есть ли доставка у заказа учёта */
+  hasDelivery?: boolean;
+  deliveryType?: "free" | "paid" | null;
+  deliveryCost?: number | null;
+  deliveryAddress?: string | null;
+  deliveryPlannedDate?: string | null;
+  deliveryReleasedAt?: string | null;
+  deliveryNote?: string | null;
   createdAt?: string | null;
 }
 

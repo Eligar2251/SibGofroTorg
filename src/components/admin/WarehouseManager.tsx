@@ -24,6 +24,7 @@ import {
   Send,
   Loader2,
   Save,
+  Gift,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -57,6 +58,7 @@ import {
 } from "@/components/admin/WarehouseCounterparties";
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
 import { ClientsManager } from "@/components/admin/ClientsManager";
+import { OrderDeliveryControls } from "@/components/admin/OrderDeliveryControls";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -937,6 +939,25 @@ export function WarehouseManager({
                       {hasShortage && (
                         <span className="admin-badge admin-badge--red"><AlertTriangle size={10} /> не хватает товара</span>
                       )}
+                      {d.hasDelivery && (
+                        <span
+                          className={
+                            d.deliveryType === "paid"
+                              ? "admin-badge admin-badge--amber"
+                              : "admin-badge admin-badge--green"
+                          }
+                          title={d.deliveryAddress || "Доставка"}
+                        >
+                          {d.deliveryType === "paid" ? (
+                            <Banknote size={10} />
+                          ) : (
+                            <Gift size={10} />
+                          )}
+                          {d.deliveryType === "paid"
+                            ? `Доставка ${fmt(d.deliveryCost || 0)} ₽`
+                            : "Бесплатная доставка"}
+                        </span>
+                      )}
                       <span className="receipt-head__supplier">{d.customerName}</span>
                       <span className="receipt-head__date">{fmtDate(d.date)}</span>
                       <span className="receipt-head__total">{fmt(d.total)} ₽</span>
@@ -967,10 +988,47 @@ export function WarehouseManager({
                                 <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
                               </div>
                             ))}
+                            {d.hasDelivery && (d.deliveryCost || 0) > 0 && (
+                              <div className="admin-order__item admin-order__item--adjustment">
+                                <span>Доставка (платная)</span>
+                                <span className="admin-order__item-sum">
+                                  {fmt(d.deliveryCost || 0)} ₽
+                                </span>
+                              </div>
+                            )}
+                            {d.hasDelivery && d.deliveryType === "free" && (
+                              <div className="admin-order__item admin-order__item--adjustment">
+                                <span>Доставка</span>
+                                <span className="admin-order__item-sum">бесплатно</span>
+                              </div>
+                            )}
                             <div className="admin-order__total">
-                              <span>Итого (с НДС)</span>
+                              <span>
+                                Итого (с НДС
+                                {d.vatRate != null
+                                  ? d.vatRate > 0
+                                    ? ` ${d.vatRate}%`
+                                    : d.vatRate === -1
+                                    ? ", без НДС"
+                                    : " 0%"
+                                  : ""}
+                                )
+                              </span>
                               <span>{fmt(d.total)} ₽</span>
                             </div>
+                            {d.vatAmount > 0 && (
+                              <div style={{ fontSize: 11, color: "var(--adm-pine)", marginTop: 4 }}>
+                                в т.ч. НДС {d.vatRate}%: {fmt(d.vatAmount)} ₽
+                              </div>
+                            )}
+                            {d.hasDelivery && d.deliveryAddress && (
+                              <div style={{ fontSize: 12, marginTop: 8, color: "var(--adm-ink-soft)" }}>
+                                📍 {d.deliveryAddress}
+                                {d.deliveryPlannedDate
+                                  ? ` · план ${d.deliveryPlannedDate.split("-").reverse().join(".")}`
+                                  : ""}
+                              </div>
+                            )}
                           </div>
 
                           {d.status === "new" &&
@@ -1007,6 +1065,14 @@ export function WarehouseManager({
                               address: d.address ?? null,
                               contactName: d.contactName ?? null,
                               comment: d.comment ?? null,
+                              vatRate: d.vatRate,
+                              hasDelivery: Boolean(d.hasDelivery),
+                              deliveryType: d.deliveryType ?? null,
+                              deliveryCost: d.deliveryCost ?? null,
+                              deliveryAddress:
+                                d.deliveryAddress ?? d.address ?? null,
+                              deliveryPlannedDate: d.deliveryPlannedDate ?? null,
+                              deliveryNote: d.deliveryNote ?? null,
                               items: d.items.map((item) => ({
                                 productId: item.productId,
                                 name: item.name,
@@ -1016,6 +1082,19 @@ export function WarehouseManager({
                                 stockQty: stockById.get(item.productId) ?? 0,
                               })),
                             }}
+                          />
+                          <OrderDeliveryControls
+                            orderId={d.id}
+                            source="deal"
+                            hasDelivery={Boolean(d.hasDelivery)}
+                            deliveryType={d.deliveryType ?? null}
+                            deliveryCost={d.deliveryCost ?? null}
+                            deliveryAddress={
+                              d.deliveryAddress ?? d.address ?? null
+                            }
+                            deliveryPlannedDate={d.deliveryPlannedDate ?? null}
+                            deliveryReleasedAt={d.deliveryReleasedAt ?? null}
+                            deliveryNote={d.deliveryNote ?? null}
                           />
                           <DealActions dealId={d.id} status={d.status} hasShortage={hasShortage} paidEnough={isFullyPaid} />
                         </div>

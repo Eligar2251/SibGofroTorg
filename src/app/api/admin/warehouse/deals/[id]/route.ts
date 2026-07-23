@@ -29,6 +29,13 @@ export async function PUT(
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
       linkedPaymentIds: body.linkedPaymentIds,
+      vatRate: body.vatRate,
+      hasDelivery: body.hasDelivery,
+      deliveryType: body.deliveryType,
+      deliveryCost: body.deliveryCost,
+      deliveryAddress: body.deliveryAddress,
+      deliveryPlannedDate: body.deliveryPlannedDate,
+      deliveryNote: body.deliveryNote,
     });
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });

@@ -170,8 +170,51 @@ function mapDealRow(row: any): CustomerDeal {
     vatAmount: Number(row.vat_amount || 0),
     status: row.status,
     cancelReason: row.cancel_reason ?? null,
+    hasDelivery: row.has_delivery ?? false,
+    deliveryType: row.delivery_type || null,
+    deliveryCost: row.delivery_cost != null ? Number(row.delivery_cost) : null,
+    deliveryAddress: row.delivery_address || row.address || null,
+    deliveryPlannedDate: row.delivery_planned_date || null,
+    deliveryReleasedAt: toIso(row.delivery_released_at),
+    deliveryNote: row.delivery_note || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
+  };
+}
+
+function parseDealDelivery(data: any): {
+  has_delivery: boolean;
+  delivery_type: "free" | "paid" | null;
+  delivery_cost: number;
+  delivery_address: string | null;
+  delivery_planned_date: string | null;
+  delivery_note: string | null;
+  delivery_released_at?: string | null;
+} {
+  const hasDelivery = Boolean(data.hasDelivery);
+  let deliveryType: "free" | "paid" | null = null;
+  if (hasDelivery) {
+    deliveryType = data.deliveryType === "paid" ? "paid" : "free";
+  }
+  const deliveryCost =
+    deliveryType === "paid"
+      ? Math.max(0, Number(data.deliveryCost) || 0)
+      : 0;
+  const deliveryAddress = hasDelivery
+    ? cleanText(data.deliveryAddress ?? data.address, 400)
+    : cleanText(data.deliveryAddress, 400);
+  return {
+    has_delivery: hasDelivery,
+    delivery_type: deliveryType,
+    delivery_cost: deliveryCost,
+    delivery_address: deliveryAddress,
+    delivery_planned_date:
+      hasDelivery && data.deliveryPlannedDate
+        ? String(data.deliveryPlannedDate).slice(0, 10)
+        : null,
+    delivery_note: hasDelivery
+      ? cleanText(data.deliveryNote, 1000)
+      : null,
   };
 }
 
@@ -809,8 +852,8 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   if (!data.customerName?.trim()) throw new Error("Укажите покупателя");
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
 
-  const total = itemsTotal(items);
-  if (total <= 0) throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
+  const linesTotal = itemsTotal(items);
+  if (linesTotal <= 0) throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
 
   const db = getAdminDb();
   const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
@@ -819,14 +862,27 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   const paymentNumber = await nextNumber("payment");
   const date = data.date || new Date().toISOString().slice(0, 10);
   const customerName = String(data.customerName).slice(0, 200);
-  const vatAmount = includedVat(total, VAT_RATE);
+  const vatRate =
+    data.vatRate !== undefined && data.vatRate !== null
+      ? Number(data.vatRate)
+      : VAT_RATE;
+  const delivery = parseDealDelivery(data);
+  if (delivery.has_delivery && !delivery.delivery_address) {
+    throw new Error("Укажите адрес доставки");
+  }
+  if (delivery.has_delivery && delivery.delivery_type === "paid" && delivery.delivery_cost <= 0) {
+    throw new Error("Укажите сумму платной доставки");
+  }
+  // Итог заказа = товары + платная доставка
+  const total = round2(linesTotal + (delivery.delivery_cost || 0));
+  const vatAmount = includedVat(total, vatRate);
 
   const details = {
     phone: cleanText(data.customerPhone, 60),
     email: cleanText(data.email, 160),
     inn: cleanText(data.inn, 20),
     kpp: cleanText(data.kpp, 20),
-    address: cleanText(data.address, 400),
+    address: cleanText(data.address, 400) || delivery.delivery_address,
     contactName: cleanText(data.contactName, 160),
   };
 
@@ -843,9 +899,10 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
     inn: details.inn, kpp: details.kpp,
     address: details.address, contact_name: details.contactName,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
-    items, total, bank_adjustment: 0,
-    vat_rate: VAT_RATE, vat_amount: vatAmount,
+    items, total, bank_adjustment: round2(total - linesTotal),
+    vat_rate: vatRate, vat_amount: vatAmount,
     status: "new",
+    ...delivery,
   }).select("id").single();
   if (dealError) throw dealError;
 
@@ -857,7 +914,7 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
     deal_ids: [dealResult.id], deal_numbers: [number],
     receipt_ids: [], receipt_numbers: [],
     amount: total, invoice_number: null,
-    vat_rate: VAT_RATE, vat_amount: vatAmount,
+    vat_rate: vatRate, vat_amount: vatAmount,
     is_paid: false, paid_at: null,
     exclude_from_balance: false,
     comment: `Счёт покупателю по заказу ЗК-${number}`,
@@ -914,10 +971,47 @@ export async function updateDeal(id: string, data: any): Promise<void> {
   const items = cleanItems(data.items);
   if (!data.customerName?.trim()) throw new Error("Укажите покупателя");
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
-  const total = itemsTotal(items);
-  if (total <= 0) throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
+  const linesTotal = itemsTotal(items);
+  if (linesTotal <= 0) throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
 
-  const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : VAT_RATE;
+  const vatRate =
+    data.vatRate !== undefined && data.vatRate !== null
+      ? Number(data.vatRate)
+      : Number(existing.vat_rate ?? VAT_RATE);
+  const delivery = parseDealDelivery({
+    hasDelivery:
+      data.hasDelivery !== undefined
+        ? data.hasDelivery
+        : existing.has_delivery,
+    deliveryType:
+      data.deliveryType !== undefined
+        ? data.deliveryType
+        : existing.delivery_type,
+    deliveryCost:
+      data.deliveryCost !== undefined
+        ? data.deliveryCost
+        : existing.delivery_cost,
+    deliveryAddress:
+      data.deliveryAddress !== undefined
+        ? data.deliveryAddress
+        : existing.delivery_address,
+    deliveryPlannedDate:
+      data.deliveryPlannedDate !== undefined
+        ? data.deliveryPlannedDate
+        : existing.delivery_planned_date,
+    deliveryNote:
+      data.deliveryNote !== undefined
+        ? data.deliveryNote
+        : existing.delivery_note,
+    address: data.address ?? existing.address,
+  });
+  if (delivery.has_delivery && !delivery.delivery_address) {
+    throw new Error("Укажите адрес доставки");
+  }
+  if (delivery.has_delivery && delivery.delivery_type === "paid" && delivery.delivery_cost <= 0) {
+    throw new Error("Укажите сумму платной доставки");
+  }
+  const total = round2(linesTotal + (delivery.delivery_cost || 0));
   const vatAmount = includedVat(total, vatRate);
   const customerName = String(data.customerName).slice(0, 200);
   const date = String(data.date || "").slice(0, 10);
@@ -927,7 +1021,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     email: cleanText(data.email, 160),
     inn: cleanText(data.inn, 20),
     kpp: cleanText(data.kpp, 20),
-    address: cleanText(data.address, 400),
+    address: cleanText(data.address, 400) || delivery.delivery_address,
     contactName: cleanText(data.contactName, 160),
   };
 
@@ -947,7 +1041,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
       ? sum + (Number(p.amount) || 0) / links
       : sum;
   }, 0);
-  const bankAdjustment = round2(total - items.reduce((s, it) => s + it.lineTotal, 0));
+  const bankAdjustment = round2(total - linesTotal);
 
   // Обновляем заказ
   await db.from("customer_deals").update({
@@ -959,6 +1053,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items, total, bank_adjustment: bankAdjustment,
     vat_rate: vatRate, vat_amount: vatAmount,
+    ...delivery,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
@@ -1020,6 +1115,151 @@ export async function deleteDeal(id: string): Promise<void> {
   if (existing.status === "completed") throw new Error("Нельзя удалить проведённый заказ");
   await db.from("customer_deals").delete().eq("id", id);
   revalidateTag("warehouse-deals");
+}
+
+/** Обновить только поля доставки заказа учёта */
+export async function updateDealDelivery(
+  id: string,
+  data: {
+    hasDelivery?: boolean;
+    deliveryType?: "free" | "paid" | null;
+    deliveryCost?: number | null;
+    deliveryAddress?: string | null;
+    deliveryPlannedDate?: string | null;
+    deliveryReleasedAt?: string | null;
+    deliveryNote?: string | null;
+    clearRelease?: boolean;
+  }
+): Promise<CustomerDeal> {
+  const db = getAdminDb();
+  const { data: existing, error: existErr } = await db
+    .from("customer_deals")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (existErr || !existing) throw new Error("Заказ не найден");
+
+  const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+
+  if (data.hasDelivery !== undefined) payload.has_delivery = data.hasDelivery;
+  if (data.deliveryType !== undefined) payload.delivery_type = data.deliveryType;
+  if (data.deliveryCost !== undefined) {
+    payload.delivery_cost =
+      data.deliveryCost == null ? 0 : Math.max(0, Number(data.deliveryCost) || 0);
+  }
+  if (data.deliveryAddress !== undefined) {
+    payload.delivery_address = data.deliveryAddress
+      ? String(data.deliveryAddress).trim().slice(0, 400)
+      : null;
+  }
+  if (data.deliveryPlannedDate !== undefined) {
+    payload.delivery_planned_date = data.deliveryPlannedDate || null;
+  }
+  if (data.clearRelease) {
+    payload.delivery_released_at = null;
+  } else if (data.deliveryReleasedAt !== undefined) {
+    payload.delivery_released_at = data.deliveryReleasedAt;
+  }
+  if (data.deliveryNote !== undefined) {
+    payload.delivery_note = data.deliveryNote
+      ? String(data.deliveryNote).trim().slice(0, 1000)
+      : null;
+  }
+
+  if (data.hasDelivery === false) {
+    payload.delivery_type = null;
+    payload.delivery_cost = 0;
+    payload.delivery_planned_date = null;
+    payload.delivery_released_at = null;
+  }
+
+  // Пересчёт total: позиции + платная доставка
+  const items = Array.isArray(existing.items) ? existing.items : [];
+  const linesTotal = round2(
+    items.reduce((s: number, it: any) => s + (Number(it.lineTotal) || 0), 0)
+  );
+  const willHave =
+    payload.has_delivery !== undefined
+      ? payload.has_delivery
+      : existing.has_delivery;
+  const willType =
+    payload.delivery_type !== undefined
+      ? payload.delivery_type
+      : existing.delivery_type;
+  const willCost =
+    willHave && willType === "paid"
+      ? payload.delivery_cost !== undefined
+        ? Number(payload.delivery_cost) || 0
+        : Number(existing.delivery_cost) || 0
+      : 0;
+  if (willHave) {
+    const addr =
+      payload.delivery_address !== undefined
+        ? payload.delivery_address
+        : existing.delivery_address || existing.address;
+    if (!addr) throw new Error("Адрес доставки обязателен");
+    if (!willType) payload.delivery_type = "free";
+  }
+  const total = round2(linesTotal + willCost);
+  payload.total = total;
+  payload.bank_adjustment = round2(total - linesTotal);
+  payload.vat_amount = includedVat(total, Number(existing.vat_rate ?? VAT_RATE));
+  // синхронизируем address если пуст
+  if (payload.delivery_address && !existing.address) {
+    payload.address = payload.delivery_address;
+  }
+
+  const { data: result, error } = await db
+    .from("customer_deals")
+    .update(payload)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  // Подтянуть сумму неоплаченного входящего счёта (solo)
+  const { data: payments } = await db.from("bank_payments").select("*");
+  const dealPayments = (payments || []).filter(
+    (p: any) => Array.isArray(p.deal_ids) && p.deal_ids.includes(id)
+  );
+  const unpaidSolo = dealPayments.filter((p: any) => {
+    if (p.is_paid) return false;
+    return (p.deal_ids || []).length === 1 && (p.receipt_ids || []).length === 0;
+  });
+  if (unpaidSolo.length === 1) {
+    await db
+      .from("bank_payments")
+      .update({
+        amount: total,
+        vat_amount: includedVat(total, Number(existing.vat_rate ?? VAT_RATE)),
+      })
+      .eq("id", unpaidSolo[0].id);
+  }
+
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("deliveries", { expire: 0 });
+  return mapDealRow(result);
+}
+
+/** Заказы учёта с доставкой */
+export async function getDealDeliveries(opts: {
+  filter?: "unreleased" | "released" | "all";
+  limit?: number;
+} = {}): Promise<CustomerDeal[]> {
+  const db = getAdminDb();
+  let q = db
+    .from("customer_deals")
+    .select("*")
+    .eq("has_delivery", true)
+    .order("delivery_planned_date", { ascending: true, nullsFirst: true })
+    .order("created_at", { ascending: false })
+    .limit(opts.limit || 500);
+  if (opts.filter === "unreleased") q = q.is("delivery_released_at", null);
+  else if (opts.filter === "released") q = q.not("delivery_released_at", "is", null);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data || []).map(mapDealRow);
 }
 
 // ─── Payments CRUD ─────────────────────────────────────────

@@ -15,6 +15,9 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
+  Gift,
+  Banknote,
+  Truck,
 } from "lucide-react";
 import {
   ProductPicker,
@@ -26,7 +29,7 @@ import {
   type PickerOption,
 } from "@/components/admin/SearchPicker";
 import { ModalPortal } from "@/components/admin/ModalPortal";
-import { includedVat, VAT_RATE } from "@/lib/vat";
+import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPayment } from "@/lib/warehouse-shared";
 
@@ -51,6 +54,13 @@ export interface EditableDeal {
   contactName?: string | null;
   comment?: string | null;
   items: DealItemDraft[];
+  vatRate?: number;
+  hasDelivery?: boolean;
+  deliveryType?: "free" | "paid" | null;
+  deliveryCost?: number | null;
+  deliveryAddress?: string | null;
+  deliveryPlannedDate?: string | null;
+  deliveryNote?: string | null;
 }
 
 function todayIso(): string {
@@ -104,11 +114,39 @@ export function DealForm({
   const [selectedPayments, setSelectedPayments] = useState<string[]>(
     initialDeal?.linkedPaymentIds || []
   );
+  const [vatRate, setVatRate] = useState<number>(
+    initialDeal?.vatRate ?? VAT_RATE
+  );
+  const [hasDelivery, setHasDelivery] = useState(
+    Boolean(initialDeal?.hasDelivery)
+  );
+  const [deliveryType, setDeliveryType] = useState<"free" | "paid">(
+    initialDeal?.deliveryType === "paid" ? "paid" : "free"
+  );
+  const [deliveryCost, setDeliveryCost] = useState(
+    initialDeal?.deliveryCost != null && initialDeal.deliveryCost > 0
+      ? String(initialDeal.deliveryCost)
+      : ""
+  );
+  const [deliveryAddress, setDeliveryAddress] = useState(
+    initialDeal?.deliveryAddress || initialDeal?.address || ""
+  );
+  const [deliveryPlannedDate, setDeliveryPlannedDate] = useState(
+    initialDeal?.deliveryPlannedDate || ""
+  );
+  const [deliveryNote, setDeliveryNote] = useState(
+    initialDeal?.deliveryNote || ""
+  );
 
-  const total = items.reduce(
+  const itemsTotal = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
     0
   );
+  const deliveryAmount =
+    hasDelivery && deliveryType === "paid"
+      ? Math.max(0, Number(deliveryCost) || 0)
+      : 0;
+  const total = itemsTotal + deliveryAmount;
 
   function resetForm() {
     setDate(initialDeal?.date || todayIso());
@@ -122,6 +160,19 @@ export function DealForm({
     setComment(initialDeal?.comment || "");
     setItems(initialDeal?.items || []);
     setSelectedPayments(initialDeal?.linkedPaymentIds || []);
+    setVatRate(initialDeal?.vatRate ?? VAT_RATE);
+    setHasDelivery(Boolean(initialDeal?.hasDelivery));
+    setDeliveryType(initialDeal?.deliveryType === "paid" ? "paid" : "free");
+    setDeliveryCost(
+      initialDeal?.deliveryCost != null && initialDeal.deliveryCost > 0
+        ? String(initialDeal.deliveryCost)
+        : ""
+    );
+    setDeliveryAddress(
+      initialDeal?.deliveryAddress || initialDeal?.address || ""
+    );
+    setDeliveryPlannedDate(initialDeal?.deliveryPlannedDate || "");
+    setDeliveryNote(initialDeal?.deliveryNote || "");
     setError("");
   }
 
@@ -229,6 +280,14 @@ export function DealForm({
       setError("Добавьте хотя бы одну позицию");
       return;
     }
+    if (hasDelivery && !deliveryAddress.trim()) {
+      setError("Укажите адрес доставки");
+      return;
+    }
+    if (hasDelivery && deliveryType === "paid" && !(Number(deliveryCost) > 0)) {
+      setError("Укажите сумму платной доставки");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch(
@@ -245,9 +304,21 @@ export function DealForm({
           email: email.trim() || null,
           inn: inn.trim() || null,
           kpp: kpp.trim() || null,
-          address: address.trim() || null,
+          address: address.trim() || deliveryAddress.trim() || null,
           contactName: contactName.trim() || null,
           comment: comment.trim() || null,
+          vatRate,
+          hasDelivery,
+          deliveryType: hasDelivery ? deliveryType : null,
+          deliveryCost:
+            hasDelivery && deliveryType === "paid"
+              ? Number(deliveryCost) || 0
+              : 0,
+          deliveryAddress: hasDelivery ? deliveryAddress.trim() : null,
+          deliveryPlannedDate:
+            hasDelivery && deliveryPlannedDate ? deliveryPlannedDate : null,
+          deliveryNote:
+            hasDelivery && deliveryNote.trim() ? deliveryNote.trim() : null,
           items: items.map((it) => ({
             productId: it.productId,
             name: it.name,
@@ -332,6 +403,20 @@ export function DealForm({
                   />
                 </div>
                 <div className="admin-field">
+                  <label className="admin-label">Ставка НДС</label>
+                  <select
+                    className="admin-select"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                  >
+                    {VAT_RATES.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="admin-field">
                   <label className="admin-label">Телефон</label>
                   <input
                     type="tel"
@@ -351,6 +436,119 @@ export function DealForm({
                     placeholder="Необязательно"
                   />
                 </div>
+              </div>
+
+              {/* Доставка */}
+              <div className="deal-delivery-block">
+                <div className="deal-delivery-block__head">
+                  <Truck size={14} />
+                  <span>Доставка</span>
+                  <label className="deal-delivery-block__toggle">
+                    <input
+                      type="checkbox"
+                      checked={hasDelivery}
+                      onChange={(e) => {
+                        setHasDelivery(e.target.checked);
+                        if (
+                          e.target.checked &&
+                          !deliveryAddress &&
+                          address
+                        ) {
+                          setDeliveryAddress(address);
+                        }
+                      }}
+                    />
+                    Нужна доставка
+                  </label>
+                </div>
+                {hasDelivery && (
+                  <div className="wh-form-grid" style={{ marginTop: 10 }}>
+                    <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className={`admin-btn admin-btn--sm ${
+                            deliveryType === "free"
+                              ? "admin-btn--primary"
+                              : "admin-btn--outline"
+                          }`}
+                          onClick={() => setDeliveryType("free")}
+                        >
+                          <Gift size={13} /> Бесплатная
+                        </button>
+                        <button
+                          type="button"
+                          className={`admin-btn admin-btn--sm ${
+                            deliveryType === "paid"
+                              ? "admin-btn--navy"
+                              : "admin-btn--outline"
+                          }`}
+                          onClick={() => setDeliveryType("paid")}
+                        >
+                          <Banknote size={13} /> Платная
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      className="admin-field"
+                      style={{ gridColumn: "1 / -1" }}
+                    >
+                      <label className="admin-label">
+                        Адрес доставки{" "}
+                        <span style={{ color: "#ef4444" }}>*</span>
+                      </label>
+                      <input
+                        className="admin-input"
+                        value={deliveryAddress}
+                        onChange={(e) => setDeliveryAddress(e.target.value)}
+                        placeholder="Город, улица, дом, офис/кв."
+                      />
+                    </div>
+                    {deliveryType === "paid" && (
+                      <div className="admin-field">
+                        <label className="admin-label">
+                          Сумма доставки, ₽{" "}
+                          <span style={{ color: "#ef4444" }}>*</span>
+                        </label>
+                        <input
+                          className="admin-input"
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={deliveryCost}
+                          onChange={(e) => setDeliveryCost(e.target.value)}
+                          placeholder="800"
+                        />
+                      </div>
+                    )}
+                    <div className="admin-field">
+                      <label className="admin-label">План. дата</label>
+                      <input
+                        className="admin-input"
+                        type="date"
+                        value={deliveryPlannedDate}
+                        onChange={(e) =>
+                          setDeliveryPlannedDate(e.target.value)
+                        }
+                      />
+                    </div>
+                    <div
+                      className="admin-field"
+                      style={{
+                        gridColumn:
+                          deliveryType === "paid" ? undefined : "1 / -1",
+                      }}
+                    >
+                      <label className="admin-label">Заметка курьеру</label>
+                      <input
+                        className="admin-input"
+                        value={deliveryNote}
+                        onChange={(e) => setDeliveryNote(e.target.value)}
+                        placeholder="Код домофона, этаж..."
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <details className="wh-counterparty-details">
@@ -455,8 +653,15 @@ export function DealForm({
               <div className="wh-form-footer">
                 <div className="wh-form-total">
                   Итого (с НДС): <strong>{fmt(total)} ₽</strong>
+                  {deliveryAmount > 0 && (
+                    <span className="wh-form-vat" style={{ display: "block" }}>
+                      товары {fmt(itemsTotal)} ₽ + доставка {fmt(deliveryAmount)} ₽
+                    </span>
+                  )}
                   <span className="wh-form-vat">
-                    в т.ч. НДС {VAT_RATE}% — {fmt(includedVat(total))} ₽
+                    в т.ч. НДС{" "}
+                    {vatRate > 0 ? `${vatRate}%` : vatRate === -1 ? "без НДС" : "0%"}{" "}
+                    — {fmt(includedVat(total, vatRate))} ₽
                   </span>
                 </div>
                 <div className="admin-form-actions">
