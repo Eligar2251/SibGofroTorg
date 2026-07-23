@@ -833,6 +833,7 @@ export async function answerProductQuestion(questionId: string, answer: string, 
     answered_at: new Date().toISOString(),
   }).eq("id", questionId);
   if (error) throw error;
+  revalidateTag("questions");
 }
 
 export async function updateProductQuestion(questionId: string, data: Partial<ProductQuestion>): Promise<void> {

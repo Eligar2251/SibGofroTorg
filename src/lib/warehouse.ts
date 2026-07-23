@@ -967,6 +967,9 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
     updated_at: new Date().toISOString(),
   }).eq("id", orderId);
 
+  revalidateTag("warehouse-deals");
+  revalidateTag("warehouse-payments");
+  revalidateTag("orders");
   return { dealId: dealResult.id, dealNumber: number, paymentId: paymentResult.id, skipped: false };
 }
 
@@ -1094,6 +1097,9 @@ export async function reviseWebsiteOrderByCustomer(
     customer_edited_at: new Date().toISOString(),
   }).eq("id", orderId);
 
+  revalidateTag("orders");
+  revalidateTag("warehouse-deals");
+  revalidateTag("warehouse-payments");
   return { totalSum: total, paidTotal, additionalDue };
 }
 
@@ -1109,6 +1115,8 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
     close_reason: "Клиент отменил заказ из личного кабинета",
     customer_cancelled_at: new Date().toISOString(),
   }).eq("id", orderId);
+  revalidateTag("orders");
+  revalidateTag("warehouse-deals");
 }
 
 // ─── Warehouse stock view ──────────────────────────────────
