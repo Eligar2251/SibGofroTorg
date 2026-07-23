@@ -28,7 +28,8 @@ export function OrderDeleteButton({
         method: "DELETE",
       });
       if (res.ok) {
-        router.refresh();
+        // Принудительная перезагрузка — garantiрует актуальность данных
+        window.location.reload();
       }
     } catch (e) {
       console.error(e);

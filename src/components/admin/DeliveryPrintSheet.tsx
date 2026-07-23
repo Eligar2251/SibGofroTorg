@@ -1,8 +1,8 @@
 // src/components/admin/DeliveryPrintSheet.tsx
-// Бланк доставок для курьера: A4, жирный 14px, полоски ~5–6 см
+// Бланк доставок для курьера: A4, экономичный по тонеру, полоски ~5–6 см
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SITE_ADDRESS, SITE_PHONE, SITE_HOURS_LABEL } from "@/lib/site-config";
 
 export type PrintDeliveryItem = {
@@ -40,16 +40,33 @@ export function DeliveryPrintSheet({
   companyAddress?: string;
   onDone?: () => void;
 }) {
+  const [printing, setPrinting] = useState(false);
+  const printTriggered = useRef(false);
+
   useEffect(() => {
+    if (printTriggered.current) return;
+    printTriggered.current = true;
+
     const prev = document.title;
     document.title = title || "Бланк доставок";
+
+    // Небольшая задержка для рендера, затем печать
     const t = window.setTimeout(() => {
+      setPrinting(true);
       window.print();
+    }, 400);
+
+    // Слушаем событие afterprint — когда пользователь нажал Печать или Отмена
+    function handleAfterPrint() {
+      document.title = prev;
       onDone?.();
-    }, 250);
+    }
+    window.addEventListener("afterprint", handleAfterPrint);
+
     return () => {
       window.clearTimeout(t);
       document.title = prev;
+      window.removeEventListener("afterprint", handleAfterPrint);
     };
   }, [title, onDone]);
 
@@ -64,6 +81,18 @@ export function DeliveryPrintSheet({
   return (
     <div className="deliv-print-root" aria-hidden={false}>
       <style>{PRINT_CSS}</style>
+
+      {/* Кнопка «Закрыть» — видна только на экране, не при печати */}
+      {!printing && (
+        <button
+          type="button"
+          className="deliv-print-close"
+          onClick={() => onDone?.()}
+        >
+          ✕ Закрыть превью
+        </button>
+      )}
+
       <div className="deliv-print-sheet">
         <header className="deliv-print-head">
           <div className="deliv-print-head__brand">СибГофроТорг</div>
@@ -118,13 +147,13 @@ export function DeliveryPrintSheet({
                 </div>
                 <div className="deliv-print-strip__row deliv-print-strip__row--3">
                   <span>
-                    <span className="deliv-print-strip__k">Оплата доставки</span>{" "}
+                    <span className="deliv-print-strip__k">Доставка</span>{" "}
                     {it.deliveryType === "paid"
                       ? `${(it.deliveryCost || 0).toLocaleString("ru-RU")} ₽`
                       : "бесплатно"}
                   </span>
                   <span>
-                    <span className="deliv-print-strip__k">Сумма заказа</span>{" "}
+                    <span className="deliv-print-strip__k">Сумма</span>{" "}
                     {it.totalSum != null
                       ? `${it.totalSum.toLocaleString("ru-RU")} ₽`
                       : "—"}
@@ -161,7 +190,7 @@ export function DeliveryPrintSheet({
         )}
 
         <footer className="deliv-print-foot">
-          Отправитель: СибГофроТорг · {address} · {phone}
+          СибГофроТорг · {address} · {phone}
         </footer>
       </div>
     </div>
@@ -169,16 +198,45 @@ export function DeliveryPrintSheet({
 }
 
 const PRINT_CSS = `
+/* ── Экран: превью ── */
 @media screen {
   .deliv-print-root {
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background: #fff;
+    background: #f5f3ee;
     overflow: auto;
+    padding: 24px;
+  }
+  .deliv-print-sheet {
+    max-width: 210mm;
+    margin: 0 auto;
+    background: #fff;
     padding: 12mm;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.12);
+    border-radius: 4px;
+  }
+  .deliv-print-close {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 100000;
+    padding: 8px 16px;
+    background: #1a1a18;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: system-ui, sans-serif;
+  }
+  .deliv-print-close:hover {
+    background: #333;
   }
 }
+
+/* ── Печать ── */
 @media print {
   @page { size: A4 portrait; margin: 8mm 10mm; }
   html, body {
@@ -186,6 +244,7 @@ const PRINT_CSS = `
     margin: 0 !important;
     padding: 0 !important;
   }
+  /* Скрываем ВСЁ кроме бланка */
   body * { visibility: hidden !important; }
   .deliv-print-root, .deliv-print-root * { visibility: visible !important; }
   .deliv-print-root {
@@ -195,60 +254,81 @@ const PRINT_CSS = `
     padding: 0 !important;
     margin: 0 !important;
   }
+  .deliv-print-sheet {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .deliv-print-close { display: none !important; }
+  /* Скрываем админ-оболочку */
   .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content,
   .admin-page-head, .deliv-plan-card, .deliv-days, .admin-filters,
   .admin-stat-grid, .deliv-table-toolbar, .deliv-list,
   .admin-card:not(.deliv-print-root) {
     display: none !important;
   }
+  /* Не разрывать полоску внутри */
+  .deliv-print-strip {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 }
+
+/* ── Общие стили бланка (экран + печать) ── */
 .deliv-print-sheet {
   font-family: Arial, Helvetica, sans-serif;
-  color: #000;
+  color: #1a1a18;
   max-width: 190mm;
   margin: 0 auto;
 }
+
+/* Шапка — лёгкая, без заливки */
 .deliv-print-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 2px solid #000;
+  border-bottom: 1.5px solid #1a1a18;
   padding-bottom: 6px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 .deliv-print-head__brand {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .deliv-print-head__meta {
   text-align: right;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #555;
 }
+
+/* Полоска доставки — контурная, без заливки */
 .deliv-print-strip {
   display: flex;
-  gap: 8px;
-  border: 2px solid #000;
+  gap: 0;
+  border: 1px solid #888;
   margin: 0 0 6px;
-  min-height: 52mm;
+  min-height: 50mm;
   max-height: 58mm;
-  page-break-inside: avoid;
-  break-inside: avoid;
   overflow: hidden;
 }
+
+/* Номер — лёгкий фон вместо сплошного чёрного */
 .deliv-print-strip__num {
-  width: 12mm;
-  min-width: 12mm;
-  background: #000;
-  color: #fff;
-  font-size: 18px;
+  width: 10mm;
+  min-width: 10mm;
+  background: #eee;
+  border-right: 1px solid #888;
+  font-size: 16px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: #555;
 }
+
 .deliv-print-strip__body {
   flex: 1;
   min-width: 0;
@@ -258,77 +338,95 @@ const PRINT_CSS = `
   gap: 2px;
   justify-content: center;
 }
+
 .deliv-print-strip__row {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.25;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
 }
+
 .deliv-print-strip__row--main {
-  border-bottom: 1px solid #222;
-  padding-bottom: 2px;
-  margin-bottom: 1px;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 3px;
+  margin-bottom: 2px;
 }
+
 .deliv-print-strip__row--3 {
   display: grid;
   grid-template-columns: 1.1fr 1fr 1fr;
   gap: 6px;
 }
+
+/* Метка заказа — рамка вместо заливки */
 .deliv-print-strip__label {
-  background: #000;
-  color: #fff;
+  border: 1px solid #888;
   padding: 1px 6px;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
+  font-weight: 700;
 }
+
 .deliv-print-strip__client {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 15px;
+  font-size: 14px;
 }
+
 .deliv-print-strip__date {
   white-space: nowrap;
+  font-weight: 700;
 }
+
 .deliv-print-strip__k {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  opacity: 0.75;
+  color: #888;
   white-space: nowrap;
 }
+
 .deliv-print-strip__v {
   flex: 1;
   min-width: 0;
 }
+
 .deliv-print-strip__v--items {
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .deliv-print-strip__sign {
-  margin-top: 2px;
-  font-size: 12px;
-  font-weight: 700;
-  border-top: 1px dashed #444;
-  padding-top: 2px;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  border-top: 1px dashed #bbb;
+  padding-top: 3px;
+  color: #555;
 }
+
+/* Подвал — тонкая линия */
 .deliv-print-foot {
   margin-top: 8px;
-  border-top: 1px solid #000;
+  border-top: 1px solid #888;
   padding-top: 4px;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
+  color: #888;
 }
+
 .deliv-print-empty {
   font-size: 14px;
   font-weight: 700;
   padding: 24px;
   text-align: center;
+  color: #888;
 }
 `;
