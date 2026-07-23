@@ -536,55 +536,77 @@ export async function updateOrderStatus(id: string, status: string, closeReason:
 export async function deleteOrder(id: string): Promise<void> {
   const db = getAdminDb();
   
-  // Получаем заказ с информацией о связанных документах
+  // 1. Получаем заказ
   const { data: order, error: orderError } = await db.from("orders").select("*").eq("id", id).single();
-  if (orderError || !order) throw new Error("Заказ не найден");
+  if (orderError || !order) {
+    // Заказ не найден — возможно уже удалён, считаем успехом
+    console.warn("deleteOrder: заказ не найден, возможно уже удалён:", id);
+    return;
+  }
   
-  // Если есть связанный заказ покупателя (deal), удаляем его
+  // 2. Каскадное удаление связанных документов (каждый шаг обёрнут в try/catch,
+  //    чтобы ошибка на одном шаге не блокировала остальные)
+  
   if (order.deal_id) {
     const { data: deal } = await db.from("customer_deals").select("*").eq("id", order.deal_id).maybeSingle();
     if (deal) {
-      // Если заказ был проведён (completed), возвращаем товары на склад
+      // Возвращаем товары на склад, если заказ был проведён
       if (deal.status === "completed" && Array.isArray(deal.items)) {
         for (const item of deal.items) {
-          const { data: product } = await db.from("products").select("stock_qty").eq("id", item.productId).maybeSingle();
-          if (product) {
-            const currentQty = Number(product.stock_qty || 0);
-            const returnQty = Number(item.quantity || 0);
-            await db.from("products").update({ 
-              stock_qty: currentQty + returnQty,
-              in_stock: (currentQty + returnQty) > 0
-            }).eq("id", item.productId);
+          try {
+            const { data: product } = await db.from("products").select("stock_qty").eq("id", item.productId).maybeSingle();
+            if (product) {
+              const currentQty = Number(product.stock_qty || 0);
+              const returnQty = Number(item.quantity || 0);
+              await db.from("products").update({ 
+                stock_qty: currentQty + returnQty,
+                in_stock: (currentQty + returnQty) > 0
+              }).eq("id", item.productId);
+            }
+          } catch (e) {
+            console.error("deleteOrder: ошибка возврата товара на склад:", e);
           }
         }
       }
-      // Удаляем связанные платежи (только неоплаченные)
-      const { data: payments } = await db.from("bank_payments").select("*");
-      const dealPayments = (payments || []).filter((p: any) => 
-        Array.isArray(p.deal_ids) && p.deal_ids.includes(deal.id)
-      );
-      for (const payment of dealPayments) {
-        if (!payment.is_paid) {
-          await db.from("bank_payments").delete().eq("id", payment.id);
+      // Удаляем связанные неоплаченные платежи по deal
+      try {
+        const { data: payments } = await db.from("bank_payments").select("*");
+        const dealPayments = (payments || []).filter((p: any) => 
+          Array.isArray(p.deal_ids) && p.deal_ids.includes(deal.id)
+        );
+        for (const payment of dealPayments) {
+          if (!payment.is_paid) {
+            await db.from("bank_payments").delete().eq("id", payment.id);
+          }
         }
+      } catch (e) {
+        console.error("deleteOrder: ошибка удаления платежей deal:", e);
       }
-      // Удаляем сам заказ покупателя
-      await db.from("customer_deals").delete().eq("id", order.deal_id);
+      // Удаляем заказ покупателя
+      try {
+        await db.from("customer_deals").delete().eq("id", order.deal_id);
+      } catch (e) {
+        console.error("deleteOrder: ошибка удаления deal:", e);
+      }
     }
   }
   
-  // Удаляем платежи, привязанные к заказу (только неоплаченные)
-  const { data: allPayments } = await db.from("bank_payments").select("*");
-  const orderPayments = (allPayments || []).filter((p: any) => 
-    Array.isArray(p.receipt_ids) && p.receipt_ids.includes(id)
-  );
-  for (const payment of orderPayments) {
-    if (!payment.is_paid) {
-      await db.from("bank_payments").delete().eq("id", payment.id);
+  // 3. Удаляем неоплаченные платежи, привязанные к заказу напрямую
+  try {
+    const { data: allPayments } = await db.from("bank_payments").select("*");
+    const orderPayments = (allPayments || []).filter((p: any) => 
+      Array.isArray(p.receipt_ids) && p.receipt_ids.includes(id)
+    );
+    for (const payment of orderPayments) {
+      if (!payment.is_paid) {
+        await db.from("bank_payments").delete().eq("id", payment.id);
+      }
     }
+  } catch (e) {
+    console.error("deleteOrder: ошибка удаления платежей заказа:", e);
   }
   
-  // Удаляем сам заказ
+  // 4. ВСЕГДА удаляем сам заказ (даже если каскад выше упал)
   const { error } = await db.from("orders").delete().eq("id", id);
   if (error) throw error;
   

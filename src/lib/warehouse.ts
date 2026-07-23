@@ -1655,15 +1655,22 @@ export async function reviseWebsiteOrderByCustomer(
 
 export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<void> {
   const db = getAdminDb();
-  const { data: order } = await db.from("orders").select("*").eq("id", orderId).single();
+  const { data: order } = await db.from("orders").select("*").eq("id", orderId).maybeSingle();
   if (!order) throw new Error("Заказ не найден");
+  
+  // Если есть связанный deal — отменяем его
   if (order.deal_id) {
-    await cancelDeal(String(order.deal_id), "Клиент отменил заказ из личного кабинета");
+    try {
+      await cancelDeal(String(order.deal_id), "Клиент отменил заказ из личного кабинета");
+    } catch (e) {
+      console.error("cancelWebsiteOrderByCustomer: ошибка отмены deal:", e);
+    }
   }
-  await db.from("orders").update({
-    status: "rejected", close_reason: "Клиент отменил заказ из личного кабинета",
-    customer_cancelled_at: new Date().toISOString(),
-  }).eq("id", orderId);
+  
+  // Полностью удаляем заказ из БД
+  const { error } = await db.from("orders").delete().eq("id", orderId);
+  if (error) throw error;
+  
   revalidateTag("orders");
   revalidateTag("warehouse-deals");
 }
