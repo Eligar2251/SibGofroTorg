@@ -605,6 +605,9 @@ export async function getPromotions(): Promise<Promotion[]> {
   }));
 }
 
+/** Alias — страницы админки импортируют это имя */
+export const getAllPromotions = getPromotions;
+
 // ─── Popup Campaigns ───────────────────────────────────────
 
 async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
