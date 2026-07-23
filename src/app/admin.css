@@ -2984,6 +2984,73 @@ body:has(.admin-modal-overlay) {
   padding: 5px 11px;
 }
 
+/* Контейнер для табов и кнопок действий в одну линию */
+.admin-tabs-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.admin-tabs-with-actions .admin-filters {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.admin-tabs-with-actions .admin-page-head__actions {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .admin-tabs-with-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .admin-tabs-with-actions .admin-filters {
+    flex-wrap: wrap;
+  }
+  
+  .admin-tabs-with-actions .admin-page-head__actions {
+    width: 100%;
+  }
+}
+
+/* Фикс для бейджей в мобильном */
+@media (max-width: 640px) {
+  .admin-badge {
+    font-size: 9px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+  
+  .bank-pay__badge,
+  .bank-pay__wait,
+  .bank-pay__num {
+    font-size: 9px;
+    padding: 1px 5px;
+  }
+  
+  .bank-pay__row1 {
+    gap: 6px;
+  }
+  
+  .bank-pay__row2 {
+    gap: 6px;
+  }
+  
+  .bank-pay__links {
+    gap: 4px;
+  }
+  
+  .bank-pay__doc {
+    font-size: 9px;
+    padding: 1px 6px;
+  }
+}
+
 /* ══════════════════════════════════════
    БАНК — отдельный инструмент
    ══════════════════════════════════════ */

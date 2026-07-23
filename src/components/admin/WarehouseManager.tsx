@@ -383,15 +383,22 @@ export function WarehouseManager({
 
   const dealLinkOptions: DealLinkOption[] = useMemo(
     () =>
-      deals.map((d) => ({
-        id: d.id,
-        number: d.number,
-        date: d.date,
-        customerName: d.customerName,
-        total: d.total,
-        status: d.status,
-        paidAmount: dealPaidMap.get(d.id) || 0,
-      })),
+      deals
+        .filter((d) => {
+          // Показываем только неоплаченные заказы для привязки к платежу
+          const paid = dealPaidMap.get(d.id) || 0;
+          const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
+          return !isFullyPaid;
+        })
+        .map((d) => ({
+          id: d.id,
+          number: d.number,
+          date: d.date,
+          customerName: d.customerName,
+          total: d.total,
+          status: d.status,
+          paidAmount: dealPaidMap.get(d.id) || 0,
+        })),
     [deals, dealPaidMap]
   );
 
@@ -617,44 +624,46 @@ export function WarehouseManager({
         </div>
       </div>
 
-      <div className="admin-filters">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => {
-              if (t.key === activeTab) return;
-              window.location.href = `/${adminPath}/warehouse?tab=${t.key}`;
-            }}
-            className={`admin-filter${activeTab === t.key ? " admin-filter--active" : ""}`}
-          >
-            {t.icon}
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div className="admin-page-head__actions" style={{ justifyContent: "flex-start", marginTop: -10, marginBottom: 18 }}>
-        {activeTab === "receipts" && receiptSub === "active" && (
-          <ReceiptForm
-            products={pickerProducts}
-            counterparties={counterpartyOptions}
-            deals={deals}
-            payments={payments}
-          />
-        )}
-        {activeTab === "deals" && (
-          <DealForm
-            products={pickerProducts}
-            counterparties={counterpartyOptions}
-            payments={payments}
-          />
-        )}
-        {activeTab === "bank" && (
-          <PaymentForm
-            deals={dealLinkOptions}
-            receipts={receiptLinkOptions}
-            counterparties={counterpartyOptions}
-          />
-        )}
+      <div className="admin-tabs-with-actions">
+        <div className="admin-filters">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => {
+                if (t.key === activeTab) return;
+                window.location.href = `/${adminPath}/warehouse?tab=${t.key}`;
+              }}
+              className={`admin-filter${activeTab === t.key ? " admin-filter--active" : ""}`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="admin-page-head__actions">
+          {activeTab === "receipts" && receiptSub === "active" && (
+            <ReceiptForm
+              products={pickerProducts}
+              counterparties={counterpartyOptions}
+              deals={deals}
+              payments={payments}
+            />
+          )}
+          {activeTab === "deals" && (
+            <DealForm
+              products={pickerProducts}
+              counterparties={counterpartyOptions}
+              payments={payments}
+            />
+          )}
+          {activeTab === "bank" && (
+            <PaymentForm
+              deals={dealLinkOptions}
+              receipts={receiptLinkOptions}
+              counterparties={counterpartyOptions}
+            />
+          )}
+        </div>
       </div>
 
       {/* ════════════ ВКЛАДКА: СКЛАД ════════════ */}
