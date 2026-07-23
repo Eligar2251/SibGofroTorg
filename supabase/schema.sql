@@ -157,6 +157,13 @@ CREATE TABLE IF NOT EXISTS orders (
   bik TEXT,
   correspondent_account TEXT,
   delivery_address TEXT,
+  -- Доставка заказа (админка)
+  has_delivery BOOLEAN DEFAULT FALSE,
+  delivery_type TEXT CHECK (delivery_type IS NULL OR delivery_type IN ('free', 'paid')),
+  delivery_cost NUMERIC DEFAULT 0,
+  delivery_planned_date DATE,
+  delivery_released_at TIMESTAMPTZ,
+  delivery_note TEXT,
   customer_edited_at TIMESTAMPTZ,
   customer_cancelled_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -168,6 +175,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(customer_phone);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_type ON orders(type);
 CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_has_delivery ON orders(has_delivery) WHERE has_delivery = TRUE;
+CREATE INDEX IF NOT EXISTS idx_orders_delivery_planned ON orders(delivery_planned_date) WHERE has_delivery = TRUE;
 CREATE TRIGGER trg_orders_updated BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================

@@ -3,6 +3,7 @@ import { getOrders, getWastepaperRequests } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
+import { OrderDeliveryControls } from "@/components/admin/OrderDeliveryControls";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { OrdersAutoRefresh } from "@/components/admin/OrdersAutoRefresh";
 
@@ -40,9 +41,11 @@ const paymentLabels: Record<string, { token: string; text: string }> = {
   invoice: { token: "receipt", text: "Счет" },
 };
 
-const filterOptions = [
+  const filterOptions = [
   { value: "new", label: "Новые" },
+  { value: "in_progress", label: "В работе" },
   { value: "completed", label: "Отработанные" },
+  { value: "all", label: "Все" },
 ];
 
 const typeOptions = [
@@ -127,6 +130,7 @@ export default async function AdminOrdersPage({
         (order.id && order.id.toLowerCase().includes(query)) ||
         (order.productInfo && order.productInfo.toLowerCase().includes(query)) ||
         (order.wastepaperType && order.wastepaperType.toLowerCase().includes(query)) ||
+        (order.deliveryAddress && order.deliveryAddress.toLowerCase().includes(query)) ||
         itemText.toLowerCase().includes(query)
       );
     })
@@ -150,6 +154,16 @@ export default async function AdminOrdersPage({
             Показано: <strong style={{ color: "var(--adm-navy)" }}>{filteredOrders.length}</strong>
             {allOrders.length !== filteredOrders.length ? ` из ${allOrders.length}` : ""}
           </p>
+        </div>
+        <div className="admin-page-head__actions">
+          <Link
+            href={`/${ADMIN_PATH}/deliveries`}
+            className="admin-btn admin-btn--outline"
+            prefetch={false}
+          >
+            <GlyphIcon value="truck" size={14} />
+            Доставки
+          </Link>
         </div>
       </div>
 
@@ -241,6 +255,28 @@ export default async function AdminOrdersPage({
                             {meta.label}
                           </span>
                           <span className={statusBadge[order.status ?? "new"]}>{statusLabels[order.status ?? "new"]}</span>
+                          {!isWastepaper && order.hasDelivery && (
+                            <span
+                              className={
+                                order.deliveryType === "paid"
+                                  ? "admin-badge admin-badge--amber"
+                                  : "admin-badge admin-badge--green"
+                              }
+                              title={
+                                order.deliveryAddress
+                                  ? `Доставка: ${order.deliveryAddress}`
+                                  : "Есть доставка"
+                              }
+                            >
+                              <GlyphIcon value="truck" size={11} />
+                              {order.deliveryType === "paid"
+                                ? `Доставка ${(order.deliveryCost || 0).toLocaleString("ru-RU")} ₽`
+                                : "Бесплатная доставка"}
+                              {order.deliveryPlannedDate
+                                ? ` · ${String(order.deliveryPlannedDate).split("-").reverse().join(".")}`
+                                : ""}
+                            </span>
+                          )}
                           <span className="admin-order__date">{formatDate(order.createdAt)}</span>
                           <span className="admin-muted" style={{ marginLeft: "auto", fontSize: 12 }}>Нажмите, чтобы раскрыть</span>
                         </div>
@@ -253,6 +289,9 @@ export default async function AdminOrdersPage({
                             : isSiteOrder && order.items?.length
                             ? `${order.items.length} поз. · ${(order.totalSum || 0).toLocaleString("ru-RU")} ₽`
                             : order.productInfo || "Заявка на уточнение"}
+                          {!isWastepaper && order.hasDelivery && order.deliveryAddress && (
+                            <span> · 📍 {order.deliveryAddress}</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -298,6 +337,14 @@ export default async function AdminOrdersPage({
                                 const pm = paymentLabels[order.paymentMethod];
                                 return pm ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}><GlyphIcon value={pm.token} size={13} />{pm.text}</span> : order.paymentMethod;
                               })()}
+                            </span>
+                          </div>
+                        )}
+                        {!isWastepaper && order.deliveryAddress && (
+                          <div className="admin-order__meta" style={{ gridColumn: "1 / -1" }}>
+                            <span className="admin-order__meta-label">Адрес:</span>
+                            <span className="admin-order__meta-val" style={{ whiteSpace: "normal" }}>
+                              {order.deliveryAddress}
                             </span>
                           </div>
                         )}
@@ -361,6 +408,18 @@ export default async function AdminOrdersPage({
                         adminPath={ADMIN_PATH}
                         endpoint={endpoint}
                       />
+                      {!isWastepaper && (
+                        <OrderDeliveryControls
+                          orderId={order.id}
+                          hasDelivery={Boolean(order.hasDelivery)}
+                          deliveryType={order.deliveryType ?? null}
+                          deliveryCost={order.deliveryCost ?? null}
+                          deliveryAddress={order.deliveryAddress ?? null}
+                          deliveryPlannedDate={order.deliveryPlannedDate ?? null}
+                          deliveryReleasedAt={order.deliveryReleasedAt ?? null}
+                          deliveryNote={order.deliveryNote ?? null}
+                        />
+                      )}
                       <OrderDeleteButton orderId={order.id} endpoint={endpoint} />
                     </div>
                   </div>

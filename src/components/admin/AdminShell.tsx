@@ -14,6 +14,7 @@ import {
   Megaphone,
   Star,
   Boxes,
+  Truck,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 
@@ -56,6 +57,11 @@ export function AdminShell({
       href: `/${adminPath}/orders`,
       label: "Заявки",
       icon: <ClipboardList size={18} />,
+    },
+    {
+      href: `/${adminPath}/deliveries`,
+      label: "Доставки",
+      icon: <Truck size={18} />,
     },
     {
       href: `/${adminPath}/warehouse`,

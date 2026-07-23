@@ -428,14 +428,8 @@ export async function deleteProduct(id: string): Promise<void> {
 
 // ─── Orders ────────────────────────────────────────────────
 
-export async function getOrders(opts: { limit?: number; status?: string } = {}): Promise<FirestoreOrder[]> {
-  const db = getAdminDb();
-  let q = db.from("orders").select("*").order("created_at", { ascending: false });
-  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
-  if (opts.limit) q = q.limit(opts.limit);
-  const { data, error } = await q.limit(opts.limit || 500);
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
+function mapOrderRow(row: any): FirestoreOrder {
+  return {
     id: row.id,
     type: row.type,
     customerType: row.customer_type,
@@ -457,9 +451,26 @@ export async function getOrders(opts: { limit?: number; status?: string } = {}):
     dealId: row.deal_id || null,
     dealNumber: row.deal_number != null ? Number(row.deal_number) : null,
     paymentId: row.payment_id || null,
+    deliveryAddress: row.delivery_address || null,
+    hasDelivery: row.has_delivery ?? false,
+    deliveryType: row.delivery_type || null,
+    deliveryCost: row.delivery_cost != null ? Number(row.delivery_cost) : null,
+    deliveryPlannedDate: row.delivery_planned_date || null,
+    deliveryReleasedAt: toIso(row.delivery_released_at),
+    deliveryNote: row.delivery_note || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
-  }));
+  };
+}
+
+export async function getOrders(opts: { limit?: number; status?: string } = {}): Promise<FirestoreOrder[]> {
+  const db = getAdminDb();
+  let q = db.from("orders").select("*").order("created_at", { ascending: false });
+  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
+  if (opts.limit) q = q.limit(opts.limit);
+  const { data, error } = await q.limit(opts.limit || 500);
+  if (error) throw error;
+  return (data || []).map(mapOrderRow);
 }
 
 export async function createOrder(data: Record<string, any>): Promise<{ id: string }> {
@@ -577,31 +588,100 @@ export async function getOrderById(id: string): Promise<FirestoreOrder | null> {
   const db = getAdminDb();
   const { data, error } = await db.from("orders").select("*").eq("id", id).single();
   if (error || !data) return null;
-  return {
-    id: data.id,
-    type: data.type,
-    customerType: data.customer_type,
-    customerName: data.customer_name,
-    customerPhone: data.customer_phone,
-    customerPhoneDigits: data.customer_phone_digits || null,
-    userId: data.user_id || null,
-    customerEmail: data.customer_email || null,
-    communicationChannel: data.communication_channel,
-    paymentMethod: data.payment_method || null,
-    items: data.items || null,
-    totalSum: data.total_sum != null ? Number(data.total_sum) : null,
-    productInfo: data.product_info || null,
-    quantity: data.quantity != null ? Number(data.quantity) : null,
-    comment: data.comment || null,
-    channel: data.channel || null,
-    status: data.status,
-    closeReason: data.close_reason || null,
-    dealId: data.deal_id || null,
-    dealNumber: data.deal_number != null ? Number(data.deal_number) : null,
-    paymentId: data.payment_id || null,
-    createdAt: toIso(data.created_at),
-    updatedAt: toIso(data.updated_at),
-  };
+  return mapOrderRow(data);
+}
+
+/** Заказы с доставкой (для вкладки «Доставки») */
+export async function getDeliveryOrders(opts: {
+  limit?: number;
+  /** unreleased — не отпущенные; released — отпущенные; all — все с доставкой */
+  filter?: "unreleased" | "released" | "all";
+  /** YYYY-MM-DD — фильтр по запланированной дате */
+  plannedDate?: string | null;
+} = {}): Promise<FirestoreOrder[]> {
+  const db = getAdminDb();
+  let q = db
+    .from("orders")
+    .select("*")
+    .eq("has_delivery", true)
+    .order("delivery_planned_date", { ascending: true, nullsFirst: true })
+    .order("created_at", { ascending: false });
+
+  if (opts.filter === "unreleased") {
+    q = q.is("delivery_released_at", null);
+  } else if (opts.filter === "released") {
+    q = q.not("delivery_released_at", "is", null);
+  }
+  if (opts.plannedDate) {
+    q = q.eq("delivery_planned_date", opts.plannedDate);
+  }
+  q = q.limit(opts.limit || 500);
+
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data || []).map(mapOrderRow);
+}
+
+/** Обновить поля доставки заказа */
+export async function updateOrderDelivery(
+  id: string,
+  data: {
+    hasDelivery?: boolean;
+    deliveryType?: "free" | "paid" | null;
+    deliveryCost?: number | null;
+    deliveryAddress?: string | null;
+    deliveryPlannedDate?: string | null;
+    deliveryReleasedAt?: string | null;
+    deliveryNote?: string | null;
+    clearRelease?: boolean;
+  }
+): Promise<FirestoreOrder> {
+  const db = getAdminDb();
+  const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+
+  if (data.hasDelivery !== undefined) payload.has_delivery = data.hasDelivery;
+  if (data.deliveryType !== undefined) payload.delivery_type = data.deliveryType;
+  if (data.deliveryCost !== undefined) {
+    payload.delivery_cost =
+      data.deliveryCost == null ? 0 : Math.max(0, Number(data.deliveryCost) || 0);
+  }
+  if (data.deliveryAddress !== undefined) {
+    payload.delivery_address = data.deliveryAddress
+      ? String(data.deliveryAddress).trim().slice(0, 400)
+      : null;
+  }
+  if (data.deliveryPlannedDate !== undefined) {
+    payload.delivery_planned_date = data.deliveryPlannedDate || null;
+  }
+  if (data.clearRelease) {
+    payload.delivery_released_at = null;
+  } else if (data.deliveryReleasedAt !== undefined) {
+    payload.delivery_released_at = data.deliveryReleasedAt;
+  }
+  if (data.deliveryNote !== undefined) {
+    payload.delivery_note = data.deliveryNote
+      ? String(data.deliveryNote).trim().slice(0, 1000)
+      : null;
+  }
+
+  // Если доставку снимают — обнуляем связанные поля
+  if (data.hasDelivery === false) {
+    payload.delivery_type = null;
+    payload.delivery_cost = 0;
+    payload.delivery_planned_date = null;
+    payload.delivery_released_at = null;
+  }
+
+  const { data: result, error } = await db
+    .from("orders")
+    .update(payload)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  revalidateTag("orders");
+  revalidateTag("deliveries");
+  return mapOrderRow(result);
 }
 
 // ─── Settings ──────────────────────────────────────────────

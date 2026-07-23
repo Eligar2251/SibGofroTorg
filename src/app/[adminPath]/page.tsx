@@ -679,7 +679,11 @@ export default async function AdminDashboard() {
                   label: `Новые заявки (${newOrdersCount})`,
                   icon: <ClipboardList size={14} />,
                 },
-
+                {
+                  href: `/${ADMIN_PATH}/deliveries`,
+                  label: "Доставки и планирование",
+                  icon: <TrendingUp size={14} />,
+                },
                 {
                   href: `/${ADMIN_PATH}/categories`,
                   label: "Управление категориями",
