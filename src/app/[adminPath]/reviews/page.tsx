@@ -1,6 +1,7 @@
 // src/app/[adminPath]/reviews/page.tsx
 import { notFound } from "next/navigation";
 import { ReviewsManager } from "@/components/admin/ReviewsManager";
+import { ReviewsRealtime } from "@/components/admin/ReviewsRealtime";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export default async function AdminReviewsPage({
 
   return (
     <div>
+      <ReviewsRealtime />
       <div
         style={{
           display: "flex",

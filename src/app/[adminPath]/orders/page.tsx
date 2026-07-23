@@ -4,7 +4,7 @@ import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { OrdersAutoRefresh } from "@/components/admin/OrdersAutoRefresh";
+import { OrdersRealtime } from "@/components/admin/OrdersRealtime";
 
 export const dynamic = "force-dynamic";
 
@@ -145,7 +145,7 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
-      <OrdersAutoRefresh intervalMs={10000} />
+      <OrdersRealtime />
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Заявки</h1>

@@ -2079,6 +2079,42 @@
 }
 
 /* ══════════════════════════════════════
+   КОНТЕЙНЕРЫ ДЛЯ РЕНДЕРИНГА (60 FPS)
+   CSS containment изолирует перерисовку —
+   браузер не пересчитывает layout вне контейнера
+   ══════════════════════════════════════ */
+
+/* Каждая карточка — изолированный контейнер для layout + paint */
+[data-admin="true"] .admin-card {
+  contain: layout style;
+}
+
+/* Статические карточки на дашборде — дополнительно paint containment */
+[data-admin="true"] .admin-stat {
+  contain: layout style paint;
+}
+
+/* Модальные окна — полная изоляция от фона */
+[data-admin="true"] .admin-modal {
+  contain: layout style paint;
+}
+
+/* Таблицы — содержимое не влияет на layout снаружи */
+[data-admin="true"] .admin-table-wrap {
+  contain: layout style;
+}
+
+/* Заказы в списке — каждый элемент независим */
+[data-admin="true"] .admin-order {
+  contain: layout style;
+}
+
+/* Боковая панель — не перерисовывается при смене контента */
+[data-admin="true"] .admin-sidebar {
+  contain: layout style size;
+}
+
+/* ══════════════════════════════════════
    СКРЫТИЕ ХРОМА САЙТА В АДМИНКЕ
    ══════════════════════════════════════ */
 body:has([data-admin="true"]) .topbar,
@@ -2114,6 +2150,14 @@ body:has(.admin-login) > main {
 
 @keyframes adm-spin {
   to { transform: rotate(360deg); }
+}
+
+/* Полоска прогресса навигации */
+@keyframes admin-progress-slide {
+  0%   { transform: scaleX(0); opacity: 1; }
+  50%  { transform: scaleX(0.7); opacity: 1; }
+  80%  { transform: scaleX(0.9); opacity: 0.8; }
+  100% { transform: scaleX(1); opacity: 0; }
 }
 
 .animate-spin {

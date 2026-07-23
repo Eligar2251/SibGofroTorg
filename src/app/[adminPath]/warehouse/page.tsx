@@ -15,6 +15,7 @@ import {
   getCounterparties,
 } from "@/lib/warehouse";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
+import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
 import { getAdminDb } from "@/lib/supabase";
 import { getSettings } from "@/lib/supabase-queries";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
@@ -236,7 +237,9 @@ export default async function AdminWarehousePage({
       : 30000;
 
   return (
-    <WarehouseManager
+    <div>
+      <WarehouseRealtime />
+      <WarehouseManager
       adminPath={ADMIN_PATH}
       initialTab={initialTab}
       initialSub={initialSub}
@@ -258,5 +261,6 @@ export default async function AdminWarehousePage({
       deliveryPrice={deliveryPrice}
       freeDeliveryThreshold={freeDeliveryThreshold}
     />
+    </div>
   );
 }

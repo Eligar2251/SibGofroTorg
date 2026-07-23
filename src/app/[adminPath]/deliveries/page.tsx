@@ -7,6 +7,7 @@ import {
   DeliveriesManager,
   type DeliveryRow,
 } from "@/components/admin/DeliveriesManager";
+import { DeliveriesRealtime } from "@/components/admin/DeliveriesRealtime";
 import { SITE_ADDRESS, SITE_PHONE } from "@/lib/site-config";
 
 export const dynamic = "force-dynamic";
@@ -95,12 +96,15 @@ export default async function AdminDeliveriesPage({
   }));
 
   return (
-    <DeliveriesManager
-      orders={rows}
-      adminPath={ADMIN_PATH}
-      drivers={drivers}
-      companyPhone={companyPhone}
-      companyAddress={companyAddress}
-    />
+    <div>
+      <DeliveriesRealtime />
+      <DeliveriesManager
+        orders={rows}
+        adminPath={ADMIN_PATH}
+        drivers={drivers}
+        companyPhone={companyPhone}
+        companyAddress={companyAddress}
+      />
+    </div>
   );
 }

@@ -26,6 +26,7 @@ import Link from "next/link";
 import { getAdminDb } from "@/lib/supabase";
 import { getDeals, getPayments, getReceipts, getSalaries } from "@/lib/warehouse";
 import { getBankSummary, getDealPaidMap, getReceiptPaidMap } from "@/lib/warehouse-shared";
+import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
 
 export const dynamic = "force-dynamic";
 
@@ -146,6 +147,7 @@ export default async function AdminDashboard() {
 
   return (
     <div>
+      <DashboardRealtime />
       <div
         style={{
           display: "flex",
