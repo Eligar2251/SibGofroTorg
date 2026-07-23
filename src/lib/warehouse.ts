@@ -1,7 +1,7 @@
 // =========================================================
 // FILE: src/lib/warehouse.ts
 // Складской учёт — Supabase (PostgreSQL).
-// Замена firestore-версии с тем же бизнес-логикой.
+// Полная версия с созданием контрагентов, связями и кэшем.
 // =========================================================
 
 import { createHash } from "crypto";
@@ -233,7 +233,6 @@ async function nextNumber(key: string): Promise<number> {
   const db = getAdminDb();
   const { data, error } = await db.rpc("fn_next_counter", { p_key: key });
   if (error) {
-    // Fallback: manual increment
     const { data: counter } = await db.from("doc_counters").select("value").eq("key", key).maybeSingle();
     const newVal = (counter?.value || 0) + 1;
     await db.from("doc_counters").upsert({ key, value: newVal });
@@ -292,11 +291,7 @@ async function fetchSupplierPriceRows(): Promise<{ counterpartyId: string; produ
       for (const item of items) {
         const productId = String(item.productId || "");
         if (!counterpartyId || !productId) continue;
-        rows.push({
-          counterpartyId,
-          productId,
-          price: Math.max(0, Number(item.price) || 0),
-        });
+        rows.push({ counterpartyId, productId, price: Math.max(0, Number(item.price) || 0) });
       }
     }
 
@@ -310,14 +305,12 @@ async function fetchSupplierPriceRows(): Promise<{ counterpartyId: string; produ
 }
 
 const getCachedCounterpartyRows = unstable_cache(
-  fetchCounterpartyRows,
-  ["warehouse-counterparties"],
+  fetchCounterpartyRows, ["warehouse-counterparties"],
   { revalidate: 60, tags: ["warehouse-counterparties"] }
 );
 
 const getCachedSupplierPriceRows = unstable_cache(
-  fetchSupplierPriceRows,
-  ["warehouse-supplier-prices"],
+  fetchSupplierPriceRows, ["warehouse-supplier-prices"],
   { revalidate: 60, tags: ["warehouse-supplier-prices"] }
 );
 
@@ -335,19 +328,67 @@ export async function getCounterparties(options?: { includeSupplierPrices?: bool
     getCachedCounterpartyRows(),
     options?.includeSupplierPrices ? getCachedSupplierPriceRows() : Promise.resolve([]),
   ]);
-
   if (!priceRows.length) return baseRows;
-
   const priceMap = new Map<string, Record<string, number>>();
   for (const row of priceRows) {
     if (!priceMap.has(row.counterpartyId)) priceMap.set(row.counterpartyId, {});
     priceMap.get(row.counterpartyId)![row.productId] = row.price;
   }
-
   return baseRows.map((c) => ({
     ...c,
     supplierPrices: priceMap.get(c.id) || c.supplierPrices || {},
   }));
+}
+
+/**
+ * Создаёт или обновляет контрагента. Возвращает ID.
+ * Автоматически добавляет роль (customer/supplier) если её нет.
+ */
+async function ensureCounterparty(
+  name: string,
+  role: CounterpartyRole,
+  details: CounterpartyDetails & { comment?: string | null } = {}
+): Promise<string> {
+  const db = getAdminDb();
+  const id = counterpartyIdForName(name);
+  const normalizedName = normalizeCounterpartyName(name);
+
+  // Проверяем существование
+  const { data: existing } = await db.from("counterparties").select("roles").eq("id", id).maybeSingle();
+
+  let roles: string[] = [];
+  if (existing && Array.isArray(existing.roles)) {
+    roles = existing.roles;
+    if (!roles.includes(role)) roles.push(role);
+  } else {
+    roles = [role];
+  }
+
+  const payload: Record<string, any> = {
+    id,
+    name: name.trim().slice(0, 200),
+    normalized_name: normalizedName,
+    roles,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Заполняем детали
+  const fields: Record<string, string> = {
+    phone: "phone", email: "email", inn: "inn", kpp: "kpp", ogrn: "ogrn",
+    fullName: "full_name", shortName: "short_name", legalAddress: "legal_address",
+    taxSystem: "tax_system", bankAccount: "bank_account", bankName: "bank_name",
+    bik: "bik", correspondentAccount: "correspondent_account",
+    address: "address", contactName: "contact_name",
+  };
+  for (const [jsKey, dbKey] of Object.entries(fields)) {
+    const val = details[jsKey as keyof typeof details];
+    if (val != null && val !== "") payload[dbKey] = String(val).slice(0, dbKey === "address" ? 400 : 160);
+  }
+  if (details.comment) payload.comment = cleanText(details.comment, 1000);
+
+  await db.from("counterparties").upsert(payload);
+  invalidateCounterpartyCache();
+  return id;
 }
 
 export async function saveCounterparty(data: {
@@ -377,25 +418,14 @@ export async function saveCounterparty(data: {
   const normalizedName = normalizeCounterpartyName(name);
 
   const payload: Record<string, any> = {
-    id,
-    name,
-    normalized_name: normalizedName,
-    roles: data.roles,
-    phone: data.phone ?? null,
-    email: data.email ?? null,
-    inn: data.inn ?? null,
-    kpp: data.kpp ?? null,
-    ogrn: data.ogrn ?? null,
-    full_name: data.fullName ?? null,
-    short_name: data.shortName ?? null,
-    legal_address: data.legalAddress ?? null,
-    tax_system: data.taxSystem ?? null,
-    bank_account: data.bankAccount ?? null,
-    bank_name: data.bankName ?? null,
-    bik: data.bik ?? null,
-    correspondent_account: data.correspondentAccount ?? null,
-    address: data.address ?? null,
-    contact_name: data.contactName ?? null,
+    id, name, normalized_name: normalizedName, roles: data.roles,
+    phone: data.phone ?? null, email: data.email ?? null,
+    inn: data.inn ?? null, kpp: data.kpp ?? null, ogrn: data.ogrn ?? null,
+    full_name: data.fullName ?? null, short_name: data.shortName ?? null,
+    legal_address: data.legalAddress ?? null, tax_system: data.taxSystem ?? null,
+    bank_account: data.bankAccount ?? null, bank_name: data.bankName ?? null,
+    bik: data.bik ?? null, correspondent_account: data.correspondentAccount ?? null,
+    address: data.address ?? null, contact_name: data.contactName ?? null,
     comment: data.comment ?? null,
   };
 
@@ -422,9 +452,7 @@ async function applyStockDelta(items: StockDocItem[], direction: 1 | -1): Promis
     const current = Number(product.stock_qty || 0);
     const newQty = Math.max(0, current + direction * item.quantity);
     await db.from("products").update({
-      stock_qty: newQty,
-      in_stock: newQty > 0,
-      updated_at: new Date().toISOString(),
+      stock_qty: newQty, in_stock: newQty > 0, updated_at: new Date().toISOString(),
     }).eq("id", item.productId);
   }
 }
@@ -432,81 +460,57 @@ async function applyStockDelta(items: StockDocItem[], direction: 1 | -1): Promis
 export async function setWarehouseStock(productId: string, quantity: number): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("products").update({
-    stock_qty: Math.floor(quantity),
-    in_stock: Math.floor(quantity) > 0,
+    stock_qty: Math.floor(quantity), in_stock: Math.floor(quantity) > 0,
     updated_at: new Date().toISOString(),
   }).eq("id", productId);
   if (error) throw error;
   revalidateTag("products");
 }
 
-// ─── Receipts CRUD ─────────────────────────────────────────
+// ─── Items helpers ─────────────────────────────────────────
 
-async function itemsTotal(items: StockDocItem[]): number {
+function itemsTotal(items: StockDocItem[]): number {
   return round2(items.reduce((s, i) => s + (i.lineTotal || round2(i.quantity * i.price)), 0));
 }
 
-function buildReceiptPayload(data: any) {
-  const items: StockDocItem[] = (Array.isArray(data.items) ? data.items : []).map((i: any) => {
+function buildItems(data: any): StockDocItem[] {
+  return (Array.isArray(data.items) ? data.items : []).map((i: any) => {
     const qty = Math.max(0, Math.min(100_000, Number(i.quantity) || 0));
     const price = Math.max(0, Number(i.price) || 0);
     return {
       productId: String(i.productId || "").slice(0, 80),
       name: String(i.name || "Товар").slice(0, 200),
       sku: i.sku ? String(i.sku).slice(0, 80) : "—",
-      quantity: qty,
-      price,
-      lineTotal: round2(qty * price),
+      quantity: qty, price, lineTotal: round2(qty * price),
     };
   }).filter((i: StockDocItem) => i.productId);
-
-  const total = itemsTotal(items);
-  const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
-  const vatAmount = includedVat(total, vatRate);
-
-  return {
-    items,
-    total,
-    vatRate,
-    vatAmount,
-    supplier: String(data.supplier || "").slice(0, 200),
-    date: String(data.date || "").slice(0, 10),
-    phone: cleanText(data.phone, 60),
-    email: cleanText(data.email, 120),
-    inn: cleanText(data.inn, 30),
-    kpp: cleanText(data.kpp, 30),
-    address: cleanText(data.address, 400),
-    contactName: cleanText(data.contactName, 160),
-    comment: cleanText(data.comment, 500),
-  };
 }
+
+// ─── Receipts CRUD ─────────────────────────────────────────
 
 export async function createReceipt(data: any): Promise<{ id: string; number: number }> {
   const db = getAdminDb();
   const number = await nextNumber("receipt");
-  const payload = buildReceiptPayload(data);
-  const counterpartyId = data.counterpartyId || counterpartyIdForName(payload.supplier);
+  const items = buildItems(data);
+  const total = itemsTotal(items);
+  const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
+  const vatAmount = includedVat(total, vatRate);
+  const supplier = String(data.supplier || "").slice(0, 200);
+  const counterpartyId = await ensureCounterparty(supplier, "supplier", {
+    phone: data.phone, email: data.email, inn: data.inn, kpp: data.kpp,
+    address: data.address, contactName: data.contactName,
+    comment: data.comment,
+  });
 
   const { data: result, error } = await db.from("warehouse_receipts").insert({
-    number,
-    date: payload.date,
-    supplier: payload.supplier,
-    counterparty_id: counterpartyId,
-    status: "draft",
-    phone: payload.phone,
-    email: payload.email,
-    inn: payload.inn,
-    kpp: payload.kpp,
-    address: payload.address,
-    contact_name: payload.contactName,
-    comment: payload.comment,
-    items: payload.items,
-    total: payload.total,
-    bank_adjustment: 0,
-    vat_rate: payload.vatRate,
-    vat_amount: payload.vatAmount,
-    linked_deal_ids: data.linkedDealIds || [],
-    linked_deal_numbers: [],
+    number, date: String(data.date || "").slice(0, 10),
+    supplier, counterparty_id: counterpartyId, status: "draft",
+    phone: cleanText(data.phone, 60), email: cleanText(data.email, 120),
+    inn: cleanText(data.inn, 30), kpp: cleanText(data.kpp, 30),
+    address: cleanText(data.address, 400), contact_name: cleanText(data.contactName, 160),
+    comment: cleanText(data.comment, 500),
+    items, total, bank_adjustment: 0, vat_rate: vatRate, vat_amount: vatAmount,
+    linked_deal_ids: data.linkedDealIds || [], linked_deal_numbers: [],
   }).select("id").single();
   if (error) throw error;
   revalidateTag("warehouse-receipts");
@@ -518,9 +522,7 @@ export async function postReceipt(id: string): Promise<void> {
   const { data: receipt } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
   if (!receipt) throw new Error("Поступление не найдено");
   if (receipt.status === "posted") throw new Error("Уже проведено");
-
-  const items = (receipt.items || []) as StockDocItem[];
-  await applyStockDelta(items, 1);
+  await applyStockDelta(receipt.items as StockDocItem[], 1);
   await db.from("warehouse_receipts").update({ status: "posted", updated_at: new Date().toISOString() }).eq("id", id);
   revalidateTag("warehouse-receipts");
   revalidateTag("products");
@@ -531,9 +533,7 @@ export async function cancelReceipt(id: string): Promise<void> {
   const { data: receipt } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
   if (!receipt) throw new Error("Поступление не найдено");
   if (receipt.status !== "posted") throw new Error("Можно отменить только проведённое");
-
-  const items = (receipt.items || []) as StockDocItem[];
-  await applyStockDelta(items, -1);
+  await applyStockDelta(receipt.items as StockDocItem[], -1);
   await db.from("warehouse_receipts").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", id);
   revalidateTag("warehouse-receipts");
   revalidateTag("products");
@@ -544,22 +544,17 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   const { data: existing } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
   if (!existing) throw new Error("Поступление не найдено");
   if (existing.status === "posted") throw new Error("Нельзя редактировать проведённое поступление");
-
-  const payload = buildReceiptPayload(data);
+  const items = buildItems(data);
+  const total = itemsTotal(items);
+  const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
   await db.from("warehouse_receipts").update({
-    date: payload.date,
-    supplier: payload.supplier,
-    phone: payload.phone,
-    email: payload.email,
-    inn: payload.inn,
-    kpp: payload.kpp,
-    address: payload.address,
-    contact_name: payload.contactName,
-    comment: payload.comment,
-    items: payload.items,
-    total: payload.total,
-    vat_rate: payload.vatRate,
-    vat_amount: payload.vatAmount,
+    date: String(data.date || "").slice(0, 10),
+    supplier: String(data.supplier || "").slice(0, 200),
+    phone: cleanText(data.phone, 60), email: cleanText(data.email, 120),
+    inn: cleanText(data.inn, 30), kpp: cleanText(data.kpp, 30),
+    address: cleanText(data.address, 400), contact_name: cleanText(data.contactName, 160),
+    comment: cleanText(data.comment, 500),
+    items, total, vat_rate: vatRate, vat_amount: includedVat(total, vatRate),
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   revalidateTag("warehouse-receipts");
@@ -576,66 +571,30 @@ export async function deleteReceipt(id: string): Promise<void> {
 
 // ─── Deals CRUD ────────────────────────────────────────────
 
-function buildDealPayload(data: any) {
-  const items: StockDocItem[] = (Array.isArray(data.items) ? data.items : []).map((i: any) => {
-    const qty = Math.max(0, Math.min(100_000, Number(i.quantity) || 0));
-    const price = Math.max(0, Number(i.price) || 0);
-    return {
-      productId: String(i.productId || "").slice(0, 80),
-      name: String(i.name || "Товар").slice(0, 200),
-      sku: i.sku ? String(i.sku).slice(0, 80) : "—",
-      quantity: qty,
-      price,
-      lineTotal: round2(qty * price),
-    };
-  }).filter((i: StockDocItem) => i.productId);
-
-  const total = itemsTotal(items);
-  const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
-  const vatAmount = includedVat(total, vatRate);
-
-  return {
-    items,
-    total,
-    vatRate,
-    vatAmount,
-    customerName: String(data.customerName || "").slice(0, 200),
-    date: String(data.date || "").slice(0, 10),
-    customerPhone: cleanText(data.customerPhone, 60),
-    phone: cleanText(data.phone, 60),
-    email: cleanText(data.email, 120),
-    inn: cleanText(data.inn, 30),
-    kpp: cleanText(data.kpp, 30),
-    address: cleanText(data.address, 400),
-    contactName: cleanText(data.contactName, 160),
-    comment: cleanText(data.comment, 500),
-  };
-}
-
 export async function createDeal(data: any): Promise<{ id: string; number: number }> {
   const db = getAdminDb();
   const number = await nextNumber("deal");
-  const payload = buildDealPayload(data);
-  const counterpartyId = data.counterpartyId || counterpartyIdForName(payload.customerName);
+  const items = buildItems(data);
+  const total = itemsTotal(items);
+  const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
+  const vatAmount = includedVat(total, vatRate);
+  const customerName = String(data.customerName || "").slice(0, 200);
+
+  // Создаём/обновляем контрагента-покупателя
+  const counterpartyId = await ensureCounterparty(customerName, "customer", {
+    phone: data.customerPhone, email: data.email, inn: data.inn, kpp: data.kpp,
+    address: data.address, contactName: data.contactName, comment: data.comment,
+  });
 
   const { data: result, error } = await db.from("customer_deals").insert({
-    number,
-    date: payload.date,
-    customer_name: payload.customerName,
-    counterparty_id: counterpartyId,
-    customer_phone: payload.customerPhone,
-    phone: payload.phone,
-    email: payload.email,
-    inn: payload.inn,
-    kpp: payload.kpp,
-    address: payload.address,
-    contact_name: payload.contactName,
-    comment: payload.comment,
-    items: payload.items,
-    total: payload.total,
-    bank_adjustment: 0,
-    vat_rate: payload.vatRate,
-    vat_amount: payload.vatAmount,
+    number, date: String(data.date || "").slice(0, 10),
+    customer_name: customerName, counterparty_id: counterpartyId,
+    customer_phone: cleanText(data.customerPhone, 60),
+    phone: cleanText(data.phone, 60), email: cleanText(data.email, 120),
+    inn: cleanText(data.inn, 30), kpp: cleanText(data.kpp, 30),
+    address: cleanText(data.address, 400), contact_name: cleanText(data.contactName, 160),
+    comment: cleanText(data.comment, 500),
+    items, total, bank_adjustment: 0, vat_rate: vatRate, vat_amount: vatAmount,
     status: "new",
   }).select("id").single();
   if (error) throw error;
@@ -648,9 +607,7 @@ export async function postDeal(id: string): Promise<void> {
   const { data: deal } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!deal) throw new Error("Заказ не найден");
   if (deal.status === "completed") throw new Error("Уже проведён");
-
-  const items = (deal.items || []) as StockDocItem[];
-  await applyStockDelta(items, -1);
+  await applyStockDelta(deal.items as StockDocItem[], -1);
   await db.from("customer_deals").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", id);
   revalidateTag("warehouse-deals");
   revalidateTag("products");
@@ -661,15 +618,11 @@ export async function cancelDeal(id: string, reason: string | null = null): Prom
   const { data: deal } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!deal) throw new Error("Заказ не найден");
   if (deal.status === "cancelled") throw new Error("Уже отменён");
-
   if (deal.status === "completed") {
-    const items = (deal.items || []) as StockDocItem[];
-    await applyStockDelta(items, 1);
+    await applyStockDelta(deal.items as StockDocItem[], 1);
   }
   await db.from("customer_deals").update({
-    status: "cancelled",
-    cancel_reason: reason,
-    updated_at: new Date().toISOString(),
+    status: "cancelled", cancel_reason: reason, updated_at: new Date().toISOString(),
   }).eq("id", id);
   revalidateTag("warehouse-deals");
   revalidateTag("products");
@@ -680,23 +633,18 @@ export async function updateDeal(id: string, data: any): Promise<void> {
   const { data: existing } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!existing) throw new Error("Заказ не найден");
   if (existing.status === "completed") throw new Error("Нельзя редактировать проведённый заказ");
-
-  const payload = buildDealPayload(data);
+  const items = buildItems(data);
+  const total = itemsTotal(items);
+  const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
   await db.from("customer_deals").update({
-    date: payload.date,
-    customer_name: payload.customerName,
-    customer_phone: payload.customerPhone,
-    phone: payload.phone,
-    email: payload.email,
-    inn: payload.inn,
-    kpp: payload.kpp,
-    address: payload.address,
-    contact_name: payload.contactName,
-    comment: payload.comment,
-    items: payload.items,
-    total: payload.total,
-    vat_rate: payload.vatRate,
-    vat_amount: payload.vatAmount,
+    date: String(data.date || "").slice(0, 10),
+    customer_name: String(data.customerName || "").slice(0, 200),
+    customer_phone: cleanText(data.customerPhone, 60),
+    phone: cleanText(data.phone, 60), email: cleanText(data.email, 120),
+    inn: cleanText(data.inn, 30), kpp: cleanText(data.kpp, 30),
+    address: cleanText(data.address, 400), contact_name: cleanText(data.contactName, 160),
+    comment: cleanText(data.comment, 500),
+    items, total, vat_rate: vatRate, vat_amount: includedVat(total, vatRate),
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   revalidateTag("warehouse-deals");
@@ -720,20 +668,14 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
   const vatAmount = includedVat(data.amount || 0, vatRate);
 
   const { data: result, error } = await db.from("bank_payments").insert({
-    number,
-    date: String(data.date || "").slice(0, 10),
-    direction: data.direction,
-    type: data.type || "regular",
+    number, date: String(data.date || "").slice(0, 10),
+    direction: data.direction, type: data.type || "regular",
     counterparty: String(data.counterparty || "").slice(0, 200),
     counterparty_id: data.counterpartyId || null,
-    deal_ids: data.dealIds || [],
-    deal_numbers: [],
-    receipt_ids: data.receiptIds || [],
-    receipt_numbers: [],
-    amount: Number(data.amount || 0),
-    invoice_number: data.invoiceNumber ?? null,
-    vat_rate: vatRate,
-    vat_amount: vatAmount,
+    deal_ids: data.dealIds || [], deal_numbers: [],
+    receipt_ids: data.receiptIds || [], receipt_numbers: [],
+    amount: Number(data.amount || 0), invoice_number: data.invoiceNumber ?? null,
+    vat_rate: vatRate, vat_amount: vatAmount,
     is_paid: data.isPaid ?? false,
     paid_at: data.isPaid ? new Date().toISOString().slice(0, 10) : null,
     exclude_from_balance: data.excludeFromBalance ?? false,
@@ -760,7 +702,6 @@ export async function updatePayment(id: string, data: any): Promise<void> {
   if (data.invoiceNumber !== undefined) payload.invoice_number = data.invoiceNumber;
   if (data.dealIds !== undefined) payload.deal_ids = data.dealIds;
   if (data.receiptIds !== undefined) payload.receipt_ids = data.receiptIds;
-
   const { error } = await db.from("bank_payments").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-payments");
@@ -783,28 +724,24 @@ async function fetchReceipts(): Promise<WarehouseReceipt[]> {
   if (error) throw error;
   return (data || []).map(mapReceiptRow);
 }
-
 async function fetchDeals(): Promise<CustomerDeal[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("customer_deals").select("*").order("date", { ascending: false });
   if (error) throw error;
   return (data || []).map(mapDealRow);
 }
-
 async function fetchPayments(): Promise<BankPayment[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("bank_payments").select("*").order("date", { ascending: false });
   if (error) throw error;
   return (data || []).map(mapPaymentRow);
 }
-
 async function fetchEmployees(): Promise<Employee[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("employees").select("*").order("created_at", { ascending: false });
   if (error) throw error;
   return (data || []).map(mapEmployeeRow);
 }
-
 async function fetchSalaries(): Promise<Salary[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("salaries").select("*").order("date", { ascending: false });
@@ -818,7 +755,7 @@ export const getCachedPayments = () => unstable_cache(fetchPayments, ["warehouse
 export const getCachedEmployees = () => unstable_cache(fetchEmployees, ["warehouse-employees"], { revalidate: 60, tags: ["warehouse-employees"] })();
 export const getCachedSalaries = () => unstable_cache(fetchSalaries, ["warehouse-salaries"], { revalidate: 60, tags: ["warehouse-salaries"] })();
 
-// Aliases for backward compatibility (pages import these names)
+// Aliases
 export const getReceipts = getCachedReceipts;
 export const getDeals = getCachedDeals;
 export const getPayments = getCachedPayments;
@@ -831,20 +768,14 @@ export async function saveEmployee(data: { id?: string | null; name: string; pos
   const db = getAdminDb();
   if (data.id) {
     const { error } = await db.from("employees").update({
-      name: data.name,
-      position: data.position ?? null,
-      phone: data.phone ?? null,
-      comment: data.comment ?? null,
+      name: data.name, position: data.position ?? null, phone: data.phone ?? null, comment: data.comment ?? null,
     }).eq("id", data.id);
     if (error) throw error;
     revalidateTag("warehouse-employees");
-  return { id: data.id };
+    return { id: data.id };
   }
   const { data: result, error } = await db.from("employees").insert({
-    name: data.name,
-    position: data.position ?? null,
-    phone: data.phone ?? null,
-    comment: data.comment ?? null,
+    name: data.name, position: data.position ?? null, phone: data.phone ?? null, comment: data.comment ?? null,
   }).select("id").single();
   if (error) throw error;
   revalidateTag("warehouse-employees");
@@ -861,13 +792,9 @@ export async function deleteEmployee(id: string): Promise<void> {
 export async function createSalary(data: { employeeId?: string | null; employeeName: string; amount: number; date: string; source: SalarySource; isPaid?: boolean; comment?: string | null }): Promise<{ id: string }> {
   const db = getAdminDb();
   const { data: result, error } = await db.from("salaries").insert({
-    employee_id: data.employeeId ?? null,
-    employee_name: data.employeeName,
-    amount: data.amount,
-    date: data.date.slice(0, 10),
-    source: data.source,
-    is_paid: data.isPaid ?? false,
-    paid_at: data.isPaid ? data.date.slice(0, 10) : null,
+    employee_id: data.employeeId ?? null, employee_name: data.employeeName,
+    amount: data.amount, date: data.date.slice(0, 10), source: data.source,
+    is_paid: data.isPaid ?? false, paid_at: data.isPaid ? data.date.slice(0, 10) : null,
     comment: data.comment ?? null,
   }).select("id").single();
   if (error) throw error;
@@ -881,10 +808,7 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   if (data.amount !== undefined) payload.amount = data.amount;
   if (data.date) payload.date = data.date.slice(0, 10);
   if (data.source) payload.source = data.source;
-  if (data.isPaid !== undefined) {
-    payload.is_paid = data.isPaid;
-    payload.paid_at = data.isPaid ? (data.paidAt || data.date?.slice(0, 10) || null) : null;
-  }
+  if (data.isPaid !== undefined) { payload.is_paid = data.isPaid; payload.paid_at = data.isPaid ? (data.paidAt || data.date?.slice(0, 10) || null) : null; }
   if (data.comment !== undefined) payload.comment = data.comment;
   const { error } = await db.from("salaries").update(payload).eq("id", id);
   if (error) throw error;
@@ -898,7 +822,7 @@ export async function deleteSalary(id: string): Promise<void> {
   revalidateTag("warehouse-salaries");
 }
 
-// ─── Convert order to deal ─────────────────────────────────
+// ─── Convert order to deal (КЛЮЧЕВАЯ ФУНКЦИЯ) ──────────────
 
 export async function convertOrderToDeal(orderId: string): Promise<{ dealId: string; dealNumber: number; paymentId: string; skipped: boolean }> {
   const db = getAdminDb();
@@ -925,51 +849,50 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
   const customerName = order.customer_name || "Клиент";
   const vatAmount = includedVat(total, VAT_RATE);
 
+  // ★ Создаём/обновляем контрагента-покупателя
+  const counterpartyId = await ensureCounterparty(customerName, "customer", {
+    phone: order.customer_phone,
+    email: order.customer_email,
+    inn: order.inn,
+    kpp: order.kpp,
+    comment: order.comment,
+  });
+
+  // ★ Создаём заказ покупателя с привязкой к контрагенту
   const { data: dealResult, error: dealError } = await db.from("customer_deals").insert({
-    number,
-    date,
-    customer_name: customerName,
+    number, date, customer_name: customerName, counterparty_id: counterpartyId,
     customer_phone: order.customer_phone,
     comment: order.comment ? `Из заявки с сайта. ${String(order.comment).slice(0, 400)}` : "Из заявки с сайта",
-    items,
-    total,
-    bank_adjustment: 0,
-    vat_rate: VAT_RATE,
-    vat_amount: vatAmount,
-    status: "new",
-    source_order_id: orderId,
+    items, total, bank_adjustment: 0,
+    vat_rate: VAT_RATE, vat_amount: vatAmount,
+    status: "new", source_order_id: orderId,
   }).select("id").single();
   if (dealError) throw dealError;
 
+  // ★ Создаём входящий счёт с привязкой к контрагенту
   const paymentNumber = await nextNumber("payment");
   const { data: paymentResult, error: paymentError } = await db.from("bank_payments").insert({
-    number: paymentNumber,
-    date,
-    direction: "incoming",
-    type: "regular",
-    counterparty: customerName,
-    deal_ids: [dealResult.id],
-    deal_numbers: [number],
-    receipt_ids: [],
-    receipt_numbers: [],
-    amount: total,
-    vat_rate: VAT_RATE,
-    vat_amount: vatAmount,
+    number: paymentNumber, date,
+    direction: "incoming", type: "regular",
+    counterparty: customerName, counterparty_id: counterpartyId,
+    deal_ids: [dealResult.id], deal_numbers: [number],
+    receipt_ids: [], receipt_numbers: [],
+    amount: total, vat_rate: VAT_RATE, vat_amount: vatAmount,
     is_paid: false,
     comment: `Счёт покупателю по заказу ЗК-${number} (из заявки с сайта)`,
   }).select("id").single();
   if (paymentError) throw paymentError;
 
+  // ★ Связываем заявку с созданными документами
   await db.from("orders").update({
-    deal_id: dealResult.id,
-    deal_number: number,
-    payment_id: paymentResult.id,
-    updated_at: new Date().toISOString(),
+    deal_id: dealResult.id, deal_number: number,
+    payment_id: paymentResult.id, updated_at: new Date().toISOString(),
   }).eq("id", orderId);
 
   revalidateTag("warehouse-deals");
   revalidateTag("warehouse-payments");
   revalidateTag("orders");
+  revalidateTag("warehouse-counterparties");
   return { dealId: dealResult.id, dealNumber: number, paymentId: paymentResult.id, skipped: false };
 }
 
@@ -982,23 +905,17 @@ export async function updateSupplierPriceList(
   const db = getAdminDb();
   const { data: cp } = await db.from("counterparties").select("roles, supplier_prices").eq("id", counterpartyId).maybeSingle();
   if (!cp) throw new Error("Поставщик не найден");
-
   const roles = Array.isArray(cp.roles) ? cp.roles : [];
   if (!roles.includes("supplier")) {
     await db.from("counterparties").update({ roles: [...roles, "supplier"] }).eq("id", counterpartyId);
   }
-
   const inline: Record<string, number> = { ...(cp.supplier_prices || {}) };
   for (const row of prices) {
     const productId = String(row.productId || "").trim();
     if (!productId) continue;
     const price = Math.max(0, Number(row.price) || 0);
     inline[productId] = price;
-    await db.from("supplier_prices").upsert({
-      counterparty_id: counterpartyId,
-      product_id: productId,
-      price,
-    });
+    await db.from("supplier_prices").upsert({ counterparty_id: counterpartyId, product_id: productId, price });
   }
   await db.from("counterparties").update({ supplier_prices: inline }).eq("id", counterpartyId);
   invalidateCounterpartyCache(true);
@@ -1026,12 +943,9 @@ async function buildOrderItemsFromProducts(rawItems: { productId?: string; quant
     });
     const safePrice = Math.max(0, Number(price) || 0);
     result.push({
-      productId,
-      name: String(product.name || "Товар").slice(0, 200),
+      productId, name: String(product.name || "Товар").slice(0, 200),
       sku: product.sku ? String(product.sku).slice(0, 80) : "—",
-      quantity,
-      price: safePrice,
-      lineTotal: round2(quantity * safePrice),
+      quantity, price: safePrice, lineTotal: round2(quantity * safePrice),
     });
   }
   return result;
@@ -1053,18 +967,13 @@ export async function reviseWebsiteOrderByCustomer(
 
   let paidTotal = 0;
   let additionalDue = total;
-
   const dealId = order.deal_id ? String(order.deal_id) : "";
+
   if (dealId) {
     const { data: deal } = await db.from("customer_deals").select("*").eq("id", dealId).single();
     if (deal) {
-      if (deal.status === "completed") {
-        await applyStockDelta(deal.items as StockDocItem[], 1);
-      }
-      // Calculate paid
-      const { data: payments } = await db.from("bank_payments")
-        .select("*")
-        .contains("deal_ids", [dealId]);
+      if (deal.status === "completed") await applyStockDelta(deal.items as StockDocItem[], 1);
+      const { data: payments } = await db.from("bank_payments").select("*").contains("deal_ids", [dealId]);
       for (const p of payments || []) {
         if (p.is_paid && p.direction === "incoming") {
           const links = Math.max(1, (p.deal_ids || []).length);
@@ -1073,14 +982,9 @@ export async function reviseWebsiteOrderByCustomer(
       }
       paidTotal = round2(paidTotal);
       additionalDue = Math.max(0, round2(total - paidTotal));
-
       await db.from("customer_deals").update({
-        items,
-        total,
-        bank_adjustment: 0,
-        vat_rate: VAT_RATE,
-        vat_amount: includedVat(total, VAT_RATE),
-        status: "new",
+        items, total, bank_adjustment: 0, vat_rate: VAT_RATE,
+        vat_amount: includedVat(total, VAT_RATE), status: "new",
         comment: [deal.comment, "Клиент изменил заказ из личного кабинета"].filter(Boolean).join(". ").slice(0, 500),
       }).eq("id", dealId);
     }
@@ -1090,9 +994,7 @@ export async function reviseWebsiteOrderByCustomer(
 
   await db.from("orders").update({
     items: items.map(({ productId, name, sku, quantity, price }) => ({ productId, name, sku: sku ?? "—", quantity, price })),
-    total_sum: total,
-    status: "new",
-    close_reason: null,
+    total_sum: total, status: "new", close_reason: null,
     comment: comment || order.comment || null,
     customer_edited_at: new Date().toISOString(),
   }).eq("id", orderId);
@@ -1111,8 +1013,7 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
     await cancelDeal(String(order.deal_id), "Клиент отменил заказ из личного кабинета");
   }
   await db.from("orders").update({
-    status: "rejected",
-    close_reason: "Клиент отменил заказ из личного кабинета",
+    status: "rejected", close_reason: "Клиент отменил заказ из личного кабинета",
     customer_cancelled_at: new Date().toISOString(),
   }).eq("id", orderId);
   revalidateTag("orders");
@@ -1123,15 +1024,12 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
 
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   const db = getAdminDb();
-  const { data, error } = await db
-    .from("products")
+  const { data, error } = await db.from("products")
     .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, is_visible")
     .order("name", { ascending: true });
   if (error) throw error;
   return (data || []).map((row: any) => ({
-    id: row.id,
-    name: row.name,
-    sku: row.sku || null,
+    id: row.id, name: row.name, sku: row.sku || null,
     stockQty: Number(row.stock_qty || 0),
     stockWarnQty: row.stock_warn_qty != null ? Number(row.stock_warn_qty) : null,
     inStock: row.in_stock ?? (Number(row.stock_qty || 0) > 0),
@@ -1140,8 +1038,6 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     isVisible: row.is_visible ?? true,
   }));
 }
-
-// ─── Single receipt by ID ──────────────────────────────────
 
 export async function getReceiptById(id: string): Promise<WarehouseReceipt | null> {
   const db = getAdminDb();
