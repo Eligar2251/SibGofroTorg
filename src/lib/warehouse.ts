@@ -1086,3 +1086,34 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
     customer_cancelled_at: new Date().toISOString(),
   }).eq("id", orderId);
 }
+
+// ─── Warehouse stock view ──────────────────────────────────
+
+export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("products")
+    .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, is_visible")
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    name: row.name,
+    sku: row.sku || null,
+    stockQty: Number(row.stock_qty || 0),
+    stockWarnQty: row.stock_warn_qty != null ? Number(row.stock_warn_qty) : null,
+    inStock: row.in_stock ?? (Number(row.stock_qty || 0) > 0),
+    price: row.price != null ? Number(row.price) : null,
+    priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
+    isVisible: row.is_visible ?? true,
+  }));
+}
+
+// ─── Single receipt by ID ──────────────────────────────────
+
+export async function getReceiptById(id: string): Promise<WarehouseReceipt | null> {
+  const db = getAdminDb();
+  const { data, error } = await db.from("warehouse_receipts").select("*").eq("id", id).maybeSingle();
+  if (error || !data) return null;
+  return mapReceiptRow(data);
+}
