@@ -266,8 +266,13 @@ export async function getProducts(opts: {
   limitCount?: number;
   promoOnly?: boolean;
   featuredOnly?: boolean;
+  includeHidden?: boolean;
 } = {}): Promise<FirestoreProduct[]> {
   let products = await getCachedProducts();
+
+  if (!opts.includeHidden) {
+    products = products.filter((p) => p.isVisible !== false);
+  }
 
   if (opts.categoryId) {
     products = products.filter((p) => p.categoryId === opts.categoryId);

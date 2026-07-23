@@ -29,6 +29,16 @@ import { getBankSummary, getDealPaidMap, getReceiptPaidMap } from "@/lib/warehou
 
 export const dynamic = "force-dynamic";
 
+async function countByStatus(table: string, status: string): Promise<number> {
+  const db = getAdminDb();
+  const { count, error } = await db
+    .from(table)
+    .select("id", { count: "exact", head: true })
+    .eq("status", status);
+  if (error) { console.error(`countByStatus ${table} ${status}:`, error.message); return 0; }
+  return count || 0;
+}
+
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 const statusLabels: Record<string, string> = {
@@ -59,10 +69,8 @@ function formatDate(raw: any): string {
 }
 
 export default async function AdminDashboard() {
-  const db = getAdminDb();
-
   // Для дашборда читаем только 50 последних заявок. Общие показатели
-  // получаем агрегатами Firestore: это значительно дешевле, чем загружать
+  // получаем агрегатами Supabase: это значительно дешевле, чем загружать
   // целиком коллекции users и orders при каждом открытии панели.
   const [
     allProducts,
@@ -89,28 +97,24 @@ export default async function AdminDashboard() {
     getOrders({ limit: 50 }),
     getAllCategories(),
     getPromotions(),
-    db.collection("orders").where("status", "==", "new").count().get(),
-    db.collection("wastepaper_requests").where("status", "==", "new").count().get(),
-    db
-      .collection("orders")
-      .where("status", "==", "in_progress")
-      .count()
-      .get(),
-    db.collection("wastepaper_requests").where("status", "==", "in_progress").count().get(),
-    db.collection("orders").where("status", "==", "completed").count().get(),
-    db.collection("wastepaper_requests").where("status", "==", "completed").count().get(),
-    db.collection("orders").where("status", "==", "rejected").count().get(),
-    db.collection("wastepaper_requests").where("status", "==", "rejected").count().get(),
+    countByStatus("orders", "new"),
+    countByStatus("wastepaper_requests", "new"),
+    countByStatus("orders", "in_progress"),
+    countByStatus("wastepaper_requests", "in_progress"),
+    countByStatus("orders", "completed"),
+    countByStatus("wastepaper_requests", "completed"),
+    countByStatus("orders", "rejected"),
+    countByStatus("wastepaper_requests", "rejected"),
     getPayments(),
     getSalaries(),
     getDeals(),
     getReceipts(),
   ]);
 
-  const newOrdersCount = newOrdersAgg.data().count + newWastepaperAgg.data().count;
-  const inProgressOrdersCount = inProgressAgg.data().count + inProgressWastepaperAgg.data().count;
-  const completedOrdersCount = completedAgg.data().count + completedWastepaperAgg.data().count;
-  const rejectedOrdersCount = rejectedAgg.data().count + rejectedWastepaperAgg.data().count;
+  const newOrdersCount = newOrdersAgg + newWastepaperAgg;
+  const inProgressOrdersCount = inProgressAgg + inProgressWastepaperAgg;
+  const completedOrdersCount = completedAgg + completedWastepaperAgg;
+  const rejectedOrdersCount = rejectedAgg + rejectedWastepaperAgg;
   const totalOrdersCount =
     newOrdersCount + inProgressOrdersCount + completedOrdersCount + rejectedOrdersCount;
   // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.

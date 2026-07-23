@@ -37,44 +37,40 @@ function toIso(raw: any): string | null {
 
 async function getClientsForWarehouse() {
   const db = getAdminDb();
-  const [usersSnap, ordersSnap] = await Promise.all([
-    db.collection("users").orderBy("createdAt", "desc").limit(200).get(),
-    db.collection("orders").orderBy("createdAt", "desc").limit(500).get(),
+  const [usersRes, ordersRes] = await Promise.all([
+    db.from("users").select("*").order("created_at", { ascending: false }).limit(200),
+    db.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
   ]);
-  const orders = ordersSnap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      userId: data.userId ?? null,
-      customerPhoneDigits: data.customerPhoneDigits ?? null,
-      customerName: data.customerName ?? null,
-      customerPhone: data.customerPhone ?? null,
-      type: data.type ?? "inquiry",
-      status: data.status ?? "new",
-      totalSum: data.totalSum ?? null,
-      productInfo: data.productInfo ?? null,
-      items: data.items ?? null,
-      createdAt: toIso(data.createdAt),
-    };
-  });
-  return usersSnap.docs.map((d) => {
-    const data = d.data();
+  const orders = (ordersRes.data || []).map((d: any) => ({
+    id: d.id,
+    userId: d.user_id ?? null,
+    customerPhoneDigits: d.customer_phone_digits ?? null,
+    customerName: d.customer_name ?? null,
+    customerPhone: d.customer_phone ?? null,
+    type: d.type ?? "inquiry",
+    status: d.status ?? "new",
+    totalSum: d.total_sum ?? null,
+    productInfo: d.product_info ?? null,
+    items: d.items ?? null,
+    createdAt: toIso(d.created_at),
+  }));
+  return (usersRes.data || []).map((d: any) => {
     const uid = d.id;
     const userOrders = orders.filter(
-      (o) => o.userId === uid || (data.phoneDigits && o.customerPhoneDigits === data.phoneDigits)
+      (o: any) => o.userId === uid || (d.phone_digits && o.customerPhoneDigits === d.phone_digits)
     );
     return {
       id: uid,
-      name: data.name ?? null,
-      phone: data.phone ?? null,
-      email: data.email ?? null,
-      customerType: data.customerType ?? "individual",
-      companyName: data.companyName ?? null,
-      inn: data.inn ?? null,
-      createdAt: toIso(data.createdAt),
+      name: d.name ?? null,
+      phone: d.phone ?? null,
+      email: d.email ?? null,
+      customerType: d.customer_type ?? "individual",
+      companyName: d.company_name ?? null,
+      inn: d.inn ?? null,
+      createdAt: toIso(d.created_at),
       ordersCount: userOrders.length,
-      completedCount: userOrders.filter((o) => o.status === "completed").length,
-      totalSpent: userOrders.filter((o) => o.status === "completed").reduce((s, o) => s + (o.totalSum || 0), 0),
+      completedCount: userOrders.filter((o: any) => o.status === "completed").length,
+      totalSpent: userOrders.filter((o: any) => o.status === "completed").reduce((s: number, o: any) => s + (o.totalSum || 0), 0),
       lastOrderAt: userOrders[0]?.createdAt ?? null,
       orders: userOrders,
     };
