@@ -28,6 +28,7 @@ export async function PUT(request: NextRequest) {
       stockQty: "stock_qty", inStock: "in_stock", isVisible: "is_visible",
       isPromo: "is_promo", isFeatured: "is_featured", categoryId: "category_id",
       sku: "sku", promoLabel: "promo_label",
+      images: "images", imageUrl: "image_url",
     };
 
     for (const p of products) {

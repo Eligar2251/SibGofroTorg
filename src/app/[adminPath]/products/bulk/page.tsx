@@ -42,6 +42,8 @@ export default async function BulkProductsPage({
     isPromo: p.isPromo,
     isFeatured: p.isFeatured,
     promoLabel: p.promoLabel ?? "",
+    images: Array.isArray(p.images) ? p.images : [],
+    imageUrl: p.imageUrl ?? null,
   }));
 
   return (

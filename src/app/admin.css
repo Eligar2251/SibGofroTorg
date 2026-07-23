@@ -3865,7 +3865,7 @@ body:has(.admin-modal-overlay) {
 
 /* Пошаговое массовое редактирование */
 .bulk-wizard { display: flex; flex-direction: column; gap: 14px; }
-.bulk-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bulk-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .bulk-step { display: flex; align-items: center; gap: 10px; padding: 12px 14px; color: var(--adm-sand); background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); }
 .bulk-step > span { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; background: var(--adm-paper-warm); border-radius: 50%; }
 .bulk-step strong, .bulk-step small { display: block; }
@@ -3906,6 +3906,41 @@ body:has(.admin-modal-overlay) {
   .bulk-footer { align-items: stretch; flex-wrap: wrap; bottom: 4px; }
   .bulk-footer__summary { order: -1; width: 100%; }
   .bulk-footer .admin-btn { flex: 1; }
+}
+
+/* ── Массовая загрузка изображений ── */
+.bulk-image-dropzone {
+  border: 2px dashed var(--adm-border-mid);
+  border-radius: var(--adm-r);
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  background: var(--adm-paper);
+}
+
+.bulk-image-dropzone:hover,
+.bulk-image-dropzone--over {
+  border-color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+}
+
+.bulk-image-dropzone--uploading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.bulk-image-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+@media (min-width: 640px) {
+  .bulk-image-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
 }
 
 /* Табличный реестр контрагентов */
