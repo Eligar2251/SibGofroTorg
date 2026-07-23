@@ -1242,9 +1242,17 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
     receipt_ids: [], receipt_numbers: [],
     amount: total, vat_rate: VAT_RATE, vat_amount: vatAmount,
     is_paid: false,
+    paid_at: null,
+    exclude_from_balance: false,
     comment: `Счёт покупателю по заказу ЗК-${number} (из заявки с сайта)`,
   }).select("id").single();
-  if (paymentError) throw paymentError;
+  if (paymentError) {
+    console.error("Payment creation error:", paymentError);
+    throw new Error(`Не удалось создать платёж: ${paymentError.message}`);
+  }
+  if (!paymentResult) {
+    throw new Error("Платёж не был создан (пустой результат)");
+  }
 
   // ★ Связываем заявку с созданными документами
   await db.from("orders").update({

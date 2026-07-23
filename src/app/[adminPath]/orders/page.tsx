@@ -41,11 +41,8 @@ const paymentLabels: Record<string, { token: string; text: string }> = {
 };
 
 const filterOptions = [
-  { value: "all", label: "Все" },
   { value: "new", label: "Новые" },
-  { value: "in_progress", label: "В работе" },
-  { value: "completed", label: "Проведённые" },
-  { value: "rejected", label: "Отклонённые" },
+  { value: "completed", label: "Отработанные" },
 ];
 
 const typeOptions = [
