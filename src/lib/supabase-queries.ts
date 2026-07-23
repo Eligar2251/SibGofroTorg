@@ -431,7 +431,7 @@ export async function deleteProduct(id: string): Promise<void> {
 export async function getOrders(opts: { limit?: number; status?: string } = {}): Promise<FirestoreOrder[]> {
   const db = getAdminDb();
   let q = db.from("orders").select("*").order("created_at", { ascending: false });
-  if (opts.status) q = q.eq("status", opts.status);
+  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
   if (opts.limit) q = q.limit(opts.limit);
   const { data, error } = await q.limit(opts.limit || 500);
   if (error) throw error;
@@ -514,9 +514,63 @@ export async function updateOrderStatus(id: string, status: string, closeReason:
 
 export async function deleteOrder(id: string): Promise<void> {
   const db = getAdminDb();
+  
+  // Получаем заказ с информацией о связанных документах
+  const { data: order, error: orderError } = await db.from("orders").select("*").eq("id", id).single();
+  if (orderError || !order) throw new Error("Заказ не найден");
+  
+  // Если есть связанный заказ покупателя (deal), удаляем его
+  if (order.deal_id) {
+    const { data: deal } = await db.from("customer_deals").select("*").eq("id", order.deal_id).maybeSingle();
+    if (deal) {
+      // Если заказ был проведён (completed), возвращаем товары на склад
+      if (deal.status === "completed" && Array.isArray(deal.items)) {
+        for (const item of deal.items) {
+          const { data: product } = await db.from("products").select("stock_qty").eq("id", item.productId).maybeSingle();
+          if (product) {
+            const currentQty = Number(product.stock_qty || 0);
+            const returnQty = Number(item.quantity || 0);
+            await db.from("products").update({ 
+              stock_qty: currentQty + returnQty,
+              in_stock: (currentQty + returnQty) > 0
+            }).eq("id", item.productId);
+          }
+        }
+      }
+      // Удаляем связанные платежи (только неоплаченные)
+      const { data: payments } = await db.from("bank_payments").select("*");
+      const dealPayments = (payments || []).filter((p: any) => 
+        Array.isArray(p.deal_ids) && p.deal_ids.includes(deal.id)
+      );
+      for (const payment of dealPayments) {
+        if (!payment.is_paid) {
+          await db.from("bank_payments").delete().eq("id", payment.id);
+        }
+      }
+      // Удаляем сам заказ покупателя
+      await db.from("customer_deals").delete().eq("id", order.deal_id);
+    }
+  }
+  
+  // Удаляем платежи, привязанные к заказу (только неоплаченные)
+  const { data: allPayments } = await db.from("bank_payments").select("*");
+  const orderPayments = (allPayments || []).filter((p: any) => 
+    Array.isArray(p.receipt_ids) && p.receipt_ids.includes(id)
+  );
+  for (const payment of orderPayments) {
+    if (!payment.is_paid) {
+      await db.from("bank_payments").delete().eq("id", payment.id);
+    }
+  }
+  
+  // Удаляем сам заказ
   const { error } = await db.from("orders").delete().eq("id", id);
   if (error) throw error;
+  
   revalidateTag("orders");
+  revalidateTag("warehouse-deals");
+  revalidateTag("warehouse-payments");
+  revalidateTag("products");
 }
 
 export async function getOrderById(id: string): Promise<FirestoreOrder | null> {
@@ -940,9 +994,12 @@ export async function getProductViewCount(productId: string): Promise<number> {
 
 // ─── Wastepaper Requests ───────────────────────────────────
 
-export async function getWastepaperRequests(limit = 200): Promise<any[]> {
+export async function getWastepaperRequests(opts: { limit?: number; status?: string } = {}): Promise<any[]> {
   const db = getAdminDb();
-  const { data, error } = await db.from("wastepaper_requests").select("*").order("created_at", { ascending: false }).limit(limit);
+  let q = db.from("wastepaper_requests").select("*").order("created_at", { ascending: false });
+  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
+  if (opts.limit) q = q.limit(opts.limit);
+  const { data, error } = await q.limit(opts.limit || 200);
   if (error) throw error;
   return (data || []).map((row: any) => ({
     id: row.id,

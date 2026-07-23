@@ -104,7 +104,7 @@ export default async function AdminOrdersPage({
     type: typeQuery,
     sort: sortQuery,
   } = await searchParams;
-  const activeFilter = filterStatus || "all";
+  const activeFilter = filterStatus || "new"; // По умолчанию показываем новые заявки
   const activeType = typeQuery || "all";
   const activeSort = sortQuery || "new_first";
   const query = searchQuery ? searchQuery.toLowerCase().trim() : "";

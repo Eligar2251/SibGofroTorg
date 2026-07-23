@@ -254,30 +254,18 @@ export function WarehouseManager({
     );
   }, [stock, q]);
 
-  // Filtered Deals
+  // Filtered Deals - показываем все заказы (новые и отпущенные)
   const filteredDeals = useMemo(() => {
     const query = q.toLowerCase().trim();
     return deals.filter((d) => {
-      const paid = dealPaidMap.get(d.id) || 0;
-      const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
-
-      // В "Новые" попадают: все статуса 'new' + отпущенные ('completed'), но не оплаченные.
-      // В "Архив" попадают: отпущенные ('completed') + оплаченные, а также отмененные.
-      let matchesTab = false;
-      if (dealsSub === "new") {
-        matchesTab = d.status === "new" || (d.status === "completed" && !isFullyPaid);
-      } else {
-        matchesTab = (d.status === "completed" && isFullyPaid) || d.status === "cancelled";
-      }
-
-      if (!matchesTab) return false;
+      // Показываем все статусы: new, completed, cancelled
       if (!query) return true;
       return (
         d.customerName.toLowerCase().includes(query) ||
         String(d.number).includes(query)
       );
     });
-  }, [deals, dealsSub, q, dealPaidMap]);
+  }, [deals, q]);
 
   const bankList = useMemo<BankEntry[]>(() => {
     const query = bq.toLowerCase().trim();
@@ -859,22 +847,6 @@ export function WarehouseManager({
       {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}
       {activeTab === "deals" && (
         <>
-          <div className="admin-filters admin-filters--sub">
-            <button
-              onClick={() => setDealsSub("new")}
-              className={`admin-filter${dealsSub === "new" ? " admin-filter--active" : ""}`}
-            >
-              <ClipboardList size={12} />
-              Новые заказы
-            </button>
-            <button
-              onClick={() => setDealsSub("released")}
-              className={`admin-filter${dealsSub === "released" ? " admin-filter--active" : ""}`}
-            >
-              <PackageCheck size={12} />
-              Архив (отпущенные)
-            </button>
-          </div>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <div style={{ position: "relative", flex: 1 }}>
