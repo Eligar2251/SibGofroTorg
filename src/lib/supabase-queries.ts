@@ -3,7 +3,7 @@
 // Полная замена firestore-queries.ts — все запросы к Supabase (PostgreSQL).
 // =========================================================
 
-import { unstable_cache } from "next/cache";
+import { unstable_cache, revalidateTag } from "next/cache";
 import { getAdminDb } from "./supabase";
 import {
   extractQueryDims,
@@ -380,6 +380,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
   };
   const { data: result, error } = await db.from("products").insert(payload).select("id").single();
   if (error) throw error;
+  revalidateTag("products");
   return { id: result.id };
 }
 
@@ -404,12 +405,14 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   }
   const { error } = await db.from("products").update(payload).eq("id", id);
   if (error) throw error;
+  revalidateTag("products");
 }
 
 export async function deleteProduct(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("products").delete().eq("id", id);
   if (error) throw error;
+  revalidateTag("products");
 }
 
 // ─── Orders ────────────────────────────────────────────────
@@ -483,6 +486,7 @@ export async function createOrder(data: Record<string, any>): Promise<{ id: stri
   };
   const { data: result, error } = await db.from("orders").insert(payload).select("id").single();
   if (error) throw error;
+  revalidateTag("orders");
   return { id: result.id };
 }
 
@@ -494,12 +498,14 @@ export async function updateOrderStatus(id: string, status: string, closeReason:
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   if (error) throw error;
+  revalidateTag("orders");
 }
 
 export async function deleteOrder(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("orders").delete().eq("id", id);
   if (error) throw error;
+  revalidateTag("orders");
 }
 
 export async function getOrderById(id: string): Promise<FirestoreOrder | null> {
@@ -561,6 +567,7 @@ export async function updateSettings(data: Record<string, string>): Promise<void
   for (const [key, value] of Object.entries(data)) {
     const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
     if (error) throw error;
+  revalidateTag("settings");
   }
 }
 
@@ -698,6 +705,8 @@ export async function createProductReview(data: Omit<ProductReview, "id" | "crea
     moderation_status: "pending",
   }).select("id").single();
   if (error) throw error;
+  revalidateTag("reviews");
+  revalidateTag(`reviews:${data.productId}`);
   return result.id;
 }
 
@@ -709,12 +718,16 @@ export async function updateProductReview(id: string, data: Partial<ProductRevie
   if (data.moderationNote !== undefined) payload.moderation_note = data.moderationNote;
   const { error } = await db.from("product_reviews").update(payload).eq("id", id);
   if (error) throw error;
+  revalidateTag("reviews");
+  revalidateTag("products");
 }
 
 export async function deleteProductReview(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("product_reviews").delete().eq("id", id);
   if (error) throw error;
+  revalidateTag("reviews");
+  revalidateTag("products");
 }
 
 export async function incrementReviewHelpful(reviewId: string): Promise<number> {
@@ -807,6 +820,7 @@ export async function createProductQuestion(data: Omit<ProductQuestion, "id" | "
     moderation_status: "pending",
   }).select("id").single();
   if (error) throw error;
+  revalidateTag("questions");
   return result.id;
 }
 
@@ -829,6 +843,7 @@ export async function updateProductQuestion(questionId: string, data: Partial<Pr
   if (data.moderationNote !== undefined) payload.moderation_note = data.moderationNote;
   const { error } = await db.from("product_questions").update(payload).eq("id", questionId);
   if (error) throw error;
+  revalidateTag("products");
 }
 
 export async function incrementQuestionHelpful(questionId: string): Promise<number> {
@@ -935,12 +950,14 @@ export async function updateWastepaperRequestStatus(id: string, status: string):
   const db = getAdminDb();
   const { error } = await db.from("wastepaper_requests").update({ status }).eq("id", id);
   if (error) throw error;
+  revalidateTag("wastepaper");
 }
 
 export async function deleteWastepaperRequest(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("wastepaper_requests").delete().eq("id", id);
   if (error) throw error;
+  revalidateTag("wastepaper");
 }
 
 // ─── User Purchase Check ───────────────────────────────────
@@ -1063,5 +1080,6 @@ export async function createCategory(data: Record<string, any>): Promise<{ id: s
     image_url: data.imageUrl || null,
   }).select("id").single();
   if (error) throw error;
+  revalidateTag("categories");
   return { id: result.id };
 }

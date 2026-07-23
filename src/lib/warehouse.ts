@@ -437,6 +437,7 @@ export async function setWarehouseStock(productId: string, quantity: number): Pr
     updated_at: new Date().toISOString(),
   }).eq("id", productId);
   if (error) throw error;
+  revalidateTag("products");
 }
 
 // ─── Receipts CRUD ─────────────────────────────────────────
@@ -508,6 +509,7 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
     linked_deal_numbers: [],
   }).select("id").single();
   if (error) throw error;
+  revalidateTag("warehouse-receipts");
   return { id: result.id, number };
 }
 
@@ -520,6 +522,8 @@ export async function postReceipt(id: string): Promise<void> {
   const items = (receipt.items || []) as StockDocItem[];
   await applyStockDelta(items, 1);
   await db.from("warehouse_receipts").update({ status: "posted", updated_at: new Date().toISOString() }).eq("id", id);
+  revalidateTag("warehouse-receipts");
+  revalidateTag("products");
 }
 
 export async function cancelReceipt(id: string): Promise<void> {
@@ -531,6 +535,8 @@ export async function cancelReceipt(id: string): Promise<void> {
   const items = (receipt.items || []) as StockDocItem[];
   await applyStockDelta(items, -1);
   await db.from("warehouse_receipts").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", id);
+  revalidateTag("warehouse-receipts");
+  revalidateTag("products");
 }
 
 export async function updateReceipt(id: string, data: any): Promise<void> {
@@ -556,6 +562,7 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
     vat_amount: payload.vatAmount,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
+  revalidateTag("warehouse-receipts");
 }
 
 export async function deleteReceipt(id: string): Promise<void> {
@@ -564,6 +571,7 @@ export async function deleteReceipt(id: string): Promise<void> {
   if (!existing) throw new Error("Поступление не найдено");
   if (existing.status === "posted") throw new Error("Нельзя удалить проведённое поступление");
   await db.from("warehouse_receipts").delete().eq("id", id);
+  revalidateTag("warehouse-receipts");
 }
 
 // ─── Deals CRUD ────────────────────────────────────────────
@@ -631,6 +639,7 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
     status: "new",
   }).select("id").single();
   if (error) throw error;
+  revalidateTag("warehouse-deals");
   return { id: result.id, number };
 }
 
@@ -643,6 +652,8 @@ export async function postDeal(id: string): Promise<void> {
   const items = (deal.items || []) as StockDocItem[];
   await applyStockDelta(items, -1);
   await db.from("customer_deals").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", id);
+  revalidateTag("warehouse-deals");
+  revalidateTag("products");
 }
 
 export async function cancelDeal(id: string, reason: string | null = null): Promise<void> {
@@ -660,6 +671,8 @@ export async function cancelDeal(id: string, reason: string | null = null): Prom
     cancel_reason: reason,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
+  revalidateTag("warehouse-deals");
+  revalidateTag("products");
 }
 
 export async function updateDeal(id: string, data: any): Promise<void> {
@@ -686,6 +699,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     vat_amount: payload.vatAmount,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
+  revalidateTag("warehouse-deals");
 }
 
 export async function deleteDeal(id: string): Promise<void> {
@@ -694,6 +708,7 @@ export async function deleteDeal(id: string): Promise<void> {
   if (!existing) throw new Error("Заказ не найден");
   if (existing.status === "completed") throw new Error("Нельзя удалить проведённый заказ");
   await db.from("customer_deals").delete().eq("id", id);
+  revalidateTag("warehouse-deals");
 }
 
 // ─── Payments CRUD ─────────────────────────────────────────
@@ -725,6 +740,7 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     comment: cleanText(data.comment, 500),
   }).select("id").single();
   if (error) throw error;
+  revalidateTag("warehouse-payments");
   return { id: result.id, number };
 }
 
@@ -747,6 +763,7 @@ export async function updatePayment(id: string, data: any): Promise<void> {
 
   const { error } = await db.from("bank_payments").update(payload).eq("id", id);
   if (error) throw error;
+  revalidateTag("warehouse-payments");
 }
 
 export async function deletePayment(id: string): Promise<void> {
@@ -755,6 +772,7 @@ export async function deletePayment(id: string): Promise<void> {
   if (!existing) throw new Error("Платёж не найден");
   if (existing.is_paid) throw new Error("Нельзя удалить проведённый платёж");
   await db.from("bank_payments").delete().eq("id", id);
+  revalidateTag("warehouse-payments");
 }
 
 // ─── Warehouse data loaders ────────────────────────────────
@@ -819,7 +837,8 @@ export async function saveEmployee(data: { id?: string | null; name: string; pos
       comment: data.comment ?? null,
     }).eq("id", data.id);
     if (error) throw error;
-    return { id: data.id };
+    revalidateTag("warehouse-employees");
+  return { id: data.id };
   }
   const { data: result, error } = await db.from("employees").insert({
     name: data.name,
@@ -828,6 +847,7 @@ export async function saveEmployee(data: { id?: string | null; name: string; pos
     comment: data.comment ?? null,
   }).select("id").single();
   if (error) throw error;
+  revalidateTag("warehouse-employees");
   return { id: result.id };
 }
 
@@ -835,6 +855,7 @@ export async function deleteEmployee(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("employees").delete().eq("id", id);
   if (error) throw error;
+  revalidateTag("warehouse-employees");
 }
 
 export async function createSalary(data: { employeeId?: string | null; employeeName: string; amount: number; date: string; source: SalarySource; isPaid?: boolean; comment?: string | null }): Promise<{ id: string }> {
@@ -850,6 +871,7 @@ export async function createSalary(data: { employeeId?: string | null; employeeN
     comment: data.comment ?? null,
   }).select("id").single();
   if (error) throw error;
+  revalidateTag("warehouse-salaries");
   return { id: result.id };
 }
 
@@ -866,12 +888,14 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   if (data.comment !== undefined) payload.comment = data.comment;
   const { error } = await db.from("salaries").update(payload).eq("id", id);
   if (error) throw error;
+  revalidateTag("warehouse-salaries");
 }
 
 export async function deleteSalary(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("salaries").delete().eq("id", id);
   if (error) throw error;
+  revalidateTag("warehouse-salaries");
 }
 
 // ─── Convert order to deal ─────────────────────────────────
