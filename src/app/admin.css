@@ -86,6 +86,194 @@
   flex: 0 0 auto;
 }
 
+/* ── Универсальное выравнивание иконок и текста ── */
+
+/* Все SVG-иконки внутри flex-контейнеров — базовый кроссбраузерный выравниватель.
+   Добавляет тонкий «optical补偿»: translate-y(-0.5px) визуально центрирует
+   иконку относительно текста, даже если шрифт имеет разный ascent/descent. */
+[data-admin="true"] button svg,
+[data-admin="true"] a svg,
+[data-admin="true"] .admin-badge svg,
+[data-admin="true"] .admin-sidebar__link svg,
+[data-admin="true"] .admin-filter svg,
+[data-admin="true"] .admin-stat__icon svg,
+[data-admin="true"] .admin-status__btn svg,
+[data-admin="true"] .admin-status__label-hint svg,
+[data-admin="true"] .admin-row svg,
+[data-admin="true"] .admin-muted svg,
+[data-admin="true"] .bulk-step > span svg,
+[data-admin="true"] .admin-upload__icon,
+[data-admin="true"] .bulk-image-dropzone svg,
+[data-admin="true"] .wh-direction__btn svg,
+[data-admin="true"] .deliv-msg svg {
+  flex-shrink: 0;
+  vertical-align: middle;
+  position: relative;
+  top: -0.5px;
+}
+
+/* Иконки-кнопки (admin-btn--icon) — точное центрирование */
+[data-admin="true"] .admin-btn--icon svg {
+  display: block;
+  margin: auto;
+}
+
+/* Таблица: вертикальное выравнивание всего содержимого по центру */
+[data-admin="true"] .admin-table td {
+  vertical-align: middle;
+}
+
+/* ══════════════════════════════════════
+   КАСТОМНЫЕ ЧЕКБОКСЫ
+   Замена стандартных квадратов на стилизованные
+   элементы с плавной анимацией
+   ══════════════════════════════════════ */
+
+/* 1. Базовый сброс: скрываем нативный чекбокс,
+      сохраняя доступность (opacity:0 + position:absolute) */
+[data-admin="true"] input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  border: 2px solid var(--adm-border-mid);
+  border-radius: 5px;
+  background: var(--adm-card);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.12s ease;
+}
+
+/* Hover — подсветка крафтовым цветом */
+[data-admin="true"] input[type="checkbox"]:hover {
+  border-color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+  box-shadow: 0 0 0 3px rgba(200,134,10,0.10);
+}
+
+/* Focus — клавиатурная навигация */
+[data-admin="true"] input[type="checkbox"]:focus-visible {
+  outline: none;
+  border-color: var(--adm-kraft);
+  box-shadow: 0 0 0 3px rgba(200,134,10,0.22);
+}
+
+/* 2. Checked — галочка через CSS-clip-path (анимированная) */
+[data-admin="true"] input[type="checkbox"]:checked {
+  background: var(--adm-kraft);
+  border-color: var(--adm-kraft);
+  box-shadow: 0 1px 3px rgba(200,134,10,0.3);
+}
+
+/* Анимированная галочка — чистый CSS без content-символов,
+   одинаково рендерится во всех браузерах */
+[data-admin="true"] input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 5px;
+  width: 5px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Появление галочки с bounce-эффектом */
+[data-admin="true"] input[type="checkbox"]:checked::after {
+  transform: rotate(45deg) scale(1);
+}
+
+/* 3. Микро-анимация «press» при клике */
+[data-admin="true"] input[type="checkbox"]:active {
+  transform: scale(0.88);
+}
+
+/* 4. Неактивное состояние */
+[data-admin="true"] input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--adm-paper-warm);
+}
+
+[data-admin="true"] input[type="checkbox"]:disabled:checked {
+  background: var(--adm-sand);
+  border-color: var(--adm-sand);
+}
+
+/* 5. Чекбоксы в шапке таблицы — чуть крупнее для удобства */
+[data-admin="true"] .admin-table th input[type="checkbox"],
+[data-admin="true"] .bulk-table th input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  min-width: 17px;
+  min-height: 17px;
+  border-radius: 4px;
+}
+
+/* 6. Чекбоксы в зелёном контексте (оплата, активность) */
+[data-admin="true"] .wh-paid-toggle input[type="checkbox"]:checked,
+[data-admin="true"] .deal-delivery-block__toggle input[type="checkbox"]:checked {
+  background: var(--adm-pine);
+  border-color: var(--adm-pine);
+  box-shadow: 0 1px 3px rgba(30,74,45,0.3);
+}
+
+[data-admin="true"] .wh-paid-toggle input[type="checkbox"]:checked::after,
+[data-admin="true"] .deal-delivery-block__toggle input[type="checkbox"]:checked::after {
+  border-color: #fff;
+}
+
+/* 7. Стилизация .admin-check — современный toggle-бейдж */
+.admin-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--adm-ink);
+  user-select: none;
+  padding: 8px 12px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-paper);
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  line-height: 1.35;
+}
+
+.admin-check:hover {
+  border-color: var(--adm-kraft-line);
+  background: var(--adm-kraft-pale);
+  box-shadow: 0 1px 4px rgba(200,134,10,0.08);
+}
+
+/* Активный .admin-check — когда чекбокс внутри отмечен */
+.admin-check:has(input:checked) {
+  border-color: var(--adm-kraft-line);
+  background: linear-gradient(135deg, var(--adm-kraft-pale), rgba(253,243,220,0.5));
+}
+
+.admin-check:has(input:checked):hover {
+  border-color: var(--adm-kraft);
+  box-shadow: 0 2px 6px rgba(200,134,10,0.15);
+}
+
+/* Текст внутри .admin-check — всегда по центру */
+.admin-check span,
+.admin-check > span {
+  line-height: 1.35;
+}
+
 /* ══════════════════════════════════════
    SHELL
    ══════════════════════════════════════ */
@@ -892,9 +1080,6 @@
 }
 
 .admin-check input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--adm-kraft);
   flex-shrink: 0;
 }
 
@@ -2707,9 +2892,6 @@ body:has(.admin-modal-overlay) {
 }
 
 .wh-paid-toggle input {
-  accent-color: var(--adm-pine);
-  width: 16px;
-  height: 16px;
   flex-shrink: 0;
 }
 
@@ -3086,9 +3268,9 @@ body:has(.admin-modal-overlay) {
 }
 
 .deal-delivery-block__toggle input {
-  accent-color: var(--adm-kraft);
   width: 15px;
   height: 15px;
+  flex-shrink: 0;
 }
 
 .deal-delivery-block__body {
@@ -4220,17 +4402,18 @@ body:has(.admin-modal-overlay) {
 .deliv-check {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 12px;
   color: var(--adm-ink-soft);
   cursor: pointer;
   user-select: none;
+  padding: 4px 8px;
+  border-radius: var(--adm-r-sm);
+  transition: background 0.14s ease;
 }
 
-.deliv-check input {
-  accent-color: var(--adm-kraft);
-  width: 15px;
-  height: 15px;
+.deliv-check:hover {
+  background: var(--adm-paper-warm);
 }
 
 .deliv-list {
@@ -4267,13 +4450,9 @@ body:has(.admin-modal-overlay) {
 
 .deliv-item__check {
   padding-top: 4px;
-}
-
-.deliv-item__check input {
-  accent-color: var(--adm-kraft);
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .deliv-item__main {
