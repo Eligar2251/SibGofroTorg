@@ -15,7 +15,7 @@ import {
   getCounterparties,
 } from "@/lib/warehouse";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/supabase";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import type {
   CounterpartyDocument,

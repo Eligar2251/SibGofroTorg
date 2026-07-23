@@ -1,5 +1,6 @@
 // =========================================================
 // FILE: src/lib/auth.ts
+// Админская аутентификация — JWT в cookie (без изменений логики).
 // =========================================================
 
 import { SignJWT, jwtVerify } from "jose";
@@ -16,7 +17,6 @@ function getAdminSecret(): Uint8Array {
       "ADMIN_SESSION_SECRET must be set (≥32 chars) in production"
     );
   }
-  // только local dev
   console.warn(
     "[auth] ADMIN_SESSION_SECRET не задан — используется dev-секрет. Задайте в .env.local"
   );

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getCategories, getProducts } from "@/lib/firestore-queries";
+import { getCategories, getProducts } from "@/lib/supabase-queries";
 import { CatalogShopClient } from "@/components/catalog/CatalogShopClient";
 import { SITE_URL, SITE_NAME } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";

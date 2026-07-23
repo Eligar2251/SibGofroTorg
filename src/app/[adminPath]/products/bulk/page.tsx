@@ -1,5 +1,5 @@
 // src/app/[adminPath]/products/bulk/page.tsx
-import { getProducts, getAllCategories } from "@/lib/firestore-queries";
+import { getProducts, getAllCategories } from "@/lib/supabase-queries";
 import { BulkProductEditor } from "@/components/admin/BulkProductEditor";
 import { notFound } from "next/navigation";
 

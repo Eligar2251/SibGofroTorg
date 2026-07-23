@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   deleteWastepaperRequest,
   updateWastepaperRequestStatus,
-} from "@/lib/firestore-queries";
+} from "@/lib/supabase-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function PATCH(

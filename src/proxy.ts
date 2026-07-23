@@ -1,5 +1,6 @@
 // =========================================================
 // FILE: src/proxy.ts
+// Middleware: CSP + защита админки через JWT.
 // =========================================================
 
 import { NextResponse } from "next/server";
@@ -32,11 +33,6 @@ async function isAdminAuthed(request: NextRequest): Promise<boolean> {
   }
 }
 
-/**
- * CSP, совместимый с Next.js App Router (RSC / Flight inline-скрипты и JSON-LD)
- * и Яндекс Метрикой при сохранении ISR-кэша без необходимости генерации
- * per-request nonce и динамического SSR.
- */
 function buildCsp(): string {
   const isDev = process.env.NODE_ENV === "development";
 
@@ -54,11 +50,10 @@ function buildCsp(): string {
   const directives = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    // style-src остаётся совместимым с React style-атрибутами.
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com https://api.telegram.org https://botapi.max.ru https://*.googleapis.com https://*.cloudinary.com https://res.cloudinary.com https://*.yandex.ru https://yandex.ru",
+    "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com https://api.telegram.org https://botapi.max.ru https://*.googleapis.com https://*.cloudinary.com https://res.cloudinary.com https://*.yandex.ru https://yandex.ru https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in",
     "frame-src 'self' https://yandex.ru https://*.yandex.ru https://yandex.com https://*.yandex.com https://mc.yandex.ru",
     "worker-src 'self' blob:",
     "object-src 'none'",
@@ -87,10 +82,7 @@ function applySecurityHeaders(response: NextResponse) {
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
   );
-  response.headers.set(
-    "Cross-Origin-Opener-Policy",
-    "same-origin-allow-popups"
-  );
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   response.headers.set("Cross-Origin-Resource-Policy", "same-site");
   response.headers.set("X-DNS-Prefetch-Control", "on");
   response.headers.set("X-Permitted-Cross-Domain-Policies", "none");

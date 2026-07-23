@@ -1,5 +1,5 @@
 // src/app/[adminPath]/orders/page.tsx
-import { getOrders, getWastepaperRequests } from "@/lib/firestore-queries";
+import { getOrders, getWastepaperRequests } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";

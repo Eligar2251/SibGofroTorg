@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   recordProductView,
   getProductViewCount,
-} from "@/lib/firestore-queries";
+} from "@/lib/supabase-queries";
 import { verifyUserSession } from "@/lib/user-auth";
 
 export async function POST(

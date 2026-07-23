@@ -2,7 +2,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Megaphone, BellRing } from "lucide-react";
-import { getAllPromotions, getProducts, getAllPopupCampaigns } from "@/lib/firestore-queries";
+import { getAllPromotions, getProducts, getAllPopupCampaigns } from "@/lib/supabase-queries";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
 import { PopupCampaignsManager } from "@/components/admin/PopupCampaignsManager";
 

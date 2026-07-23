@@ -5,7 +5,7 @@ import {
   getPromotions,
   getProductById,
   getWastepaperRates,
-} from "@/lib/firestore-queries";
+} from "@/lib/supabase-queries";
 import { formatRate } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";

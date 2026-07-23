@@ -4,7 +4,7 @@ import {
   getProducts,
   getOrders,
   getPromotions,
-} from "@/lib/firestore-queries";
+} from "@/lib/supabase-queries";
 import {
   Package,
   ClipboardList,
@@ -23,7 +23,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/supabase";
 import { getDeals, getPayments, getReceipts, getSalaries } from "@/lib/warehouse";
 import { getBankSummary, getDealPaidMap, getReceiptPaidMap } from "@/lib/warehouse-shared";
 

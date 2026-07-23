@@ -2,7 +2,7 @@
 // FILE: src/app/[adminPath]/products/new/page.tsx
 // =========================================================
 
-import { getAllCategories } from "@/lib/firestore-queries";
+import { getAllCategories } from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
 import { notFound } from "next/navigation";
 

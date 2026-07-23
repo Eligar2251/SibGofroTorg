@@ -1,6 +1,6 @@
 // src/app/api/admin/orders/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { updateOrderStatus, deleteOrder } from "@/lib/firestore-queries";
+import { updateOrderStatus, deleteOrder } from "@/lib/supabase-queries";
 import { convertOrderToDeal } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
 

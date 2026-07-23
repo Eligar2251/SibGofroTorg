@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllPopupCampaigns } from "@/lib/firestore-queries";
+import { getAllPopupCampaigns } from "@/lib/supabase-queries";
 import { safePopupUrl } from "@/lib/popup-campaign";
 
 export const runtime = "nodejs";

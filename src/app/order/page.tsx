@@ -4,7 +4,7 @@
 // бесплатной — редактируются в админке) и передаёт в клиентскую форму.
 // =========================================================
 
-import { getSettings } from "@/lib/firestore-queries";
+import { getSettings } from "@/lib/supabase-queries";
 import { OrderPageClient } from "./OrderPageClient";
 
 export default async function OrderPage() {

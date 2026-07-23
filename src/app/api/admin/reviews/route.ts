@@ -8,7 +8,7 @@ import {
   getGlobalReviewStats,
   getProducts,
   createProductReview,
-} from "@/lib/firestore-queries";
+} from "@/lib/supabase-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {

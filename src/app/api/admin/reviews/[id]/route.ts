@@ -1,7 +1,7 @@
 // src/app/api/admin/reviews/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { updateProductReview, deleteProductReview, incrementReviewHelpful } from "@/lib/firestore-queries";
+import { updateProductReview, deleteProductReview, incrementReviewHelpful } from "@/lib/supabase-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function PATCH(

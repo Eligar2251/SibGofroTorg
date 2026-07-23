@@ -1,7 +1,7 @@
 // src/app/[adminPath]/clients/page.tsx
 import { notFound } from "next/navigation";
 import { ClientsManager } from "@/components/admin/ClientsManager";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/supabase";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";

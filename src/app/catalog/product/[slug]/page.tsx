@@ -8,7 +8,7 @@ import {
   getAllCategories,
   getProductReviews,
   getProductReviewStats,
-} from "@/lib/firestore-queries";
+} from "@/lib/supabase-queries";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { AddToCartButton } from "@/components/catalog/AddToCartButton";
 import { PriceInquiryButton } from "@/components/catalog/PriceInquiryButton";

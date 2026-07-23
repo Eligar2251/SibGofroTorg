@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createCategory } from "@/lib/firestore-queries";
+import { createCategory } from "@/lib/supabase-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {

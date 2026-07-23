@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { updateProduct, deleteProduct } from "@/lib/firestore-queries";
+import { updateProduct, deleteProduct } from "@/lib/supabase-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function PUT(
