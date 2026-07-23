@@ -483,6 +483,8 @@ CREATE TABLE IF NOT EXISTS customer_deals (
   delivery_planned_date DATE,
   delivery_released_at TIMESTAMPTZ,
   delivery_note TEXT,
+  delivery_driver_id UUID,      -- логическая связь с employees.id
+  delivery_driver_name TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -492,6 +494,7 @@ CREATE INDEX IF NOT EXISTS idx_deals_date ON customer_deals(date);
 CREATE INDEX IF NOT EXISTS idx_deals_source_order ON customer_deals(source_order_id);
 CREATE INDEX IF NOT EXISTS idx_deals_has_delivery ON customer_deals(has_delivery) WHERE has_delivery = TRUE;
 CREATE INDEX IF NOT EXISTS idx_deals_delivery_planned ON customer_deals(delivery_planned_date) WHERE has_delivery = TRUE;
+CREATE INDEX IF NOT EXISTS idx_deals_delivery_driver ON customer_deals(delivery_driver_id) WHERE has_delivery = TRUE;
 CREATE TRIGGER trg_deals_updated BEFORE UPDATE ON customer_deals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================

@@ -1,11 +1,13 @@
 // src/app/[adminPath]/deliveries/page.tsx
-// Доставки только по заказам учёта (ЗК). Заявки сайта → сначала в учёт.
+// Доставки заказов учёта (ЗК): водитель, печать бланка, архив.
 import { notFound } from "next/navigation";
-import { getDealDeliveries } from "@/lib/warehouse";
+import { getDealDeliveries, getEmployees } from "@/lib/warehouse";
+import { getSettings } from "@/lib/supabase-queries";
 import {
   DeliveriesManager,
   type DeliveryRow,
 } from "@/components/admin/DeliveriesManager";
+import { SITE_ADDRESS, SITE_PHONE } from "@/lib/site-config";
 
 export const dynamic = "force-dynamic";
 
@@ -20,20 +22,30 @@ export default async function AdminDeliveriesPage({
   if (adminPath !== ADMIN_PATH) notFound();
 
   let dealOrders: Awaited<ReturnType<typeof getDealDeliveries>> = [];
+  let employees: Awaited<ReturnType<typeof getEmployees>> = [];
   let loadError: string | null = null;
 
   try {
-    dealOrders = await getDealDeliveries({ filter: "all", limit: 500 });
+    const [deals, emps] = await Promise.all([
+      getDealDeliveries({ filter: "all", limit: 500 }),
+      getEmployees().catch(() => []),
+    ]);
+    dealOrders = deals;
+    employees = emps;
   } catch (e) {
     console.error("deliveries page:", e);
     const msg = e instanceof Error ? e.message : String(e);
     if (/column|does not exist|schema cache/i.test(msg)) {
       loadError =
-        "Поля доставки заказов учёта ещё не в БД. Выполните supabase/migration_deal_delivery_vat.sql в SQL Editor Supabase.";
+        "Поля доставки/водителя ещё не в БД. Выполните supabase/migration_deal_delivery_vat.sql и supabase/migration_delivery_driver.sql";
     } else {
       loadError = "Не удалось загрузить доставки. Попробуйте обновить страницу.";
     }
   }
+
+  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  const companyPhone = settings.phone || SITE_PHONE;
+  const companyAddress = settings.address || SITE_ADDRESS;
 
   if (loadError) {
     return (
@@ -41,7 +53,7 @@ export default async function AdminDeliveriesPage({
         <div className="admin-page-head">
           <div>
             <h1 className="admin-h1">Доставки</h1>
-            <p className="admin-sub">Планирование доставок по заказам учёта</p>
+            <p className="admin-sub">Планирование · водитель · бланк курьера</p>
           </div>
         </div>
         <div className="admin-card" style={{ padding: 24 }}>
@@ -51,18 +63,29 @@ export default async function AdminDeliveriesPage({
     );
   }
 
+  // Водители = сотрудники (все; удобно выбирать курьера из штата)
+  const drivers = employees.map((e) => ({
+    id: e.id,
+    name: e.name,
+    phone: e.phone ?? null,
+    position: e.position ?? null,
+  }));
+
   const rows: DeliveryRow[] = dealOrders.map((d) => ({
     id: d.id,
     source: "deal" as const,
     label: `ЗК-${d.number}`,
     customerName: d.customerName || "Без имени",
     customerPhone: d.customerPhone ?? d.phone ?? null,
+    contactName: d.contactName ?? null,
     deliveryType: d.deliveryType ?? null,
     deliveryCost: d.deliveryCost ?? null,
     deliveryAddress: d.deliveryAddress ?? d.address ?? null,
     deliveryPlannedDate: d.deliveryPlannedDate ?? null,
     deliveryReleasedAt: d.deliveryReleasedAt ?? null,
     deliveryNote: d.deliveryNote ?? null,
+    deliveryDriverId: d.deliveryDriverId ?? null,
+    deliveryDriverName: d.deliveryDriverName ?? null,
     items: d.items
       ? d.items.map((it) => ({ name: it.name, quantity: it.quantity }))
       : null,
@@ -71,5 +94,13 @@ export default async function AdminDeliveriesPage({
     dealNumber: d.number,
   }));
 
-  return <DeliveriesManager orders={rows} adminPath={ADMIN_PATH} />;
+  return (
+    <DeliveriesManager
+      orders={rows}
+      adminPath={ADMIN_PATH}
+      drivers={drivers}
+      companyPhone={companyPhone}
+      companyAddress={companyAddress}
+    />
+  );
 }

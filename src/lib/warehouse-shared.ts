@@ -90,6 +90,9 @@ export interface CustomerDeal extends CounterpartyDetails {
   deliveryPlannedDate?: string | null;
   deliveryReleasedAt?: string | null;
   deliveryNote?: string | null;
+  /** Водитель, назначенный на доставку */
+  deliveryDriverId?: string | null;
+  deliveryDriverName?: string | null;
   createdAt?: string | null;
 }
 

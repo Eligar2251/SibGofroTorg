@@ -18,7 +18,9 @@ export async function PATCH(
     const db = getAdminDb();
     const { data: existing } = await db
       .from("customer_deals")
-      .select("id, has_delivery, delivery_address, delivery_type, delivery_cost, delivery_planned_date, delivery_note")
+      .select(
+        "id, has_delivery, delivery_address, delivery_type, delivery_cost, delivery_planned_date, delivery_note, delivery_driver_id, delivery_driver_name"
+      )
       .eq("id", id)
       .maybeSingle();
     if (!existing) {
@@ -137,6 +139,39 @@ export async function PATCH(
       return NextResponse.json({ success: true, deal });
     }
 
+    if (action === "set_driver") {
+      if (!existing.has_delivery) {
+        return NextResponse.json(
+          { error: "Сначала отметьте доставку у заказа" },
+          { status: 400 }
+        );
+      }
+      const driverId =
+        body.deliveryDriverId != null && String(body.deliveryDriverId).trim()
+          ? String(body.deliveryDriverId).trim()
+          : null;
+      if (!driverId) {
+        const deal = await updateDealDelivery(id, { clearDriver: true });
+        return NextResponse.json({ success: true, deal });
+      }
+      const { data: emp } = await db
+        .from("employees")
+        .select("id, name")
+        .eq("id", driverId)
+        .maybeSingle();
+      if (!emp) {
+        return NextResponse.json(
+          { error: "Водитель не найден в списке сотрудников" },
+          { status: 400 }
+        );
+      }
+      const deal = await updateDealDelivery(id, {
+        deliveryDriverId: emp.id,
+        deliveryDriverName: emp.name,
+      });
+      return NextResponse.json({ success: true, deal });
+    }
+
     // Полный патч
     const patch: Parameters<typeof updateDealDelivery>[1] = {};
     if (body.hasDelivery !== undefined) patch.hasDelivery = Boolean(body.hasDelivery);
@@ -185,6 +220,28 @@ export async function PATCH(
       patch.deliveryReleasedAt = body.deliveryReleasedAt
         ? String(body.deliveryReleasedAt)
         : null;
+    }
+    if (body.deliveryDriverId === null) {
+      patch.clearDriver = true;
+    } else if (body.deliveryDriverId !== undefined) {
+      const driverId = String(body.deliveryDriverId || "").trim();
+      if (!driverId) {
+        patch.clearDriver = true;
+      } else {
+        const { data: emp } = await db
+          .from("employees")
+          .select("id, name")
+          .eq("id", driverId)
+          .maybeSingle();
+        if (!emp) {
+          return NextResponse.json(
+            { error: "Водитель не найден" },
+            { status: 400 }
+          );
+        }
+        patch.deliveryDriverId = emp.id;
+        patch.deliveryDriverName = emp.name;
+      }
     }
 
     const deal = await updateDealDelivery(id, patch);

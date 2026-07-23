@@ -16,26 +16,42 @@ import {
   Package,
   CalendarPlus,
   RotateCcw,
+  Printer,
+  User,
 } from "lucide-react";
+import {
+  DeliveryPrintSheet,
+  type PrintDeliveryItem,
+} from "@/components/admin/DeliveryPrintSheet";
+
 type FilterTab = "unreleased" | "planned" | "released" | "all";
 
-/** Унифицированная строка доставки: заявка сайта или заказ учёта */
+export type DeliveryDriverOption = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  position?: string | null;
+};
+
+/** Унифицированная строка доставки: заказ учёта */
 export type DeliveryRow = {
   id: string;
   source: "site" | "deal";
   label: string;
   customerName: string;
   customerPhone?: string | null;
+  contactName?: string | null;
   deliveryType?: "free" | "paid" | null;
   deliveryCost?: number | null;
   deliveryAddress?: string | null;
   deliveryPlannedDate?: string | null;
   deliveryReleasedAt?: string | null;
   deliveryNote?: string | null;
+  deliveryDriverId?: string | null;
+  deliveryDriverName?: string | null;
   items?: { name: string; quantity: number }[] | null;
   totalSum?: number | null;
   createdAt?: string | null;
-  /** для ссылки на учёт */
   dealNumber?: number | null;
 };
 
@@ -46,19 +62,27 @@ function rowKey(r: DeliveryRow) {
 export function DeliveriesManager({
   orders,
   adminPath,
+  drivers = [],
+  companyPhone,
+  companyAddress,
 }: {
   orders: DeliveryRow[];
   adminPath: string;
+  drivers?: DeliveryDriverOption[];
+  companyPhone?: string;
+  companyAddress?: string;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<FilterTab>("unreleased");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [planDate, setPlanDate] = useState(todayIso());
   const [dayFilter, setDayFilter] = useState<string>("");
+  const [driverFilter, setDriverFilter] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [printItems, setPrintItems] = useState<PrintDeliveryItem[] | null>(null);
 
   const byKey = useMemo(() => {
     const m = new Map<string, DeliveryRow>();
@@ -71,16 +95,17 @@ export function DeliveriesManager({
     const released = orders.filter((o) => o.deliveryReleasedAt);
     const planned = unreleased.filter((o) => o.deliveryPlannedDate);
     const noDate = unreleased.filter((o) => !o.deliveryPlannedDate);
+    const withDriver = orders.filter((o) => o.deliveryDriverId).length;
     return {
       total: orders.length,
       unreleased: unreleased.length,
       released: released.length,
       planned: planned.length,
       noDate: noDate.length,
+      withDriver,
     };
   }, [orders]);
 
-  /** Группировка по дате для планирования */
   const dayGroups = useMemo(() => {
     const map = new Map<string, DeliveryRow[]>();
     for (const o of orders) {
@@ -89,28 +114,24 @@ export function DeliveriesManager({
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(o);
     }
-    const entries = [...map.entries()].sort((a, b) => {
+    return [...map.entries()].sort((a, b) => {
       if (a[0] === "__none__") return 1;
       if (b[0] === "__none__") return -1;
       return a[0].localeCompare(b[0]);
     });
-    return entries;
   }, [orders]);
 
   const filtered = useMemo(() => {
     let list = [...orders];
-    if (tab === "unreleased") {
-      list = list.filter((o) => !o.deliveryReleasedAt);
-    } else if (tab === "released") {
-      list = list.filter((o) => o.deliveryReleasedAt);
-    } else if (tab === "planned") {
+    if (tab === "unreleased") list = list.filter((o) => !o.deliveryReleasedAt);
+    else if (tab === "released") list = list.filter((o) => o.deliveryReleasedAt);
+    else if (tab === "planned") {
       list = list.filter((o) => !o.deliveryReleasedAt && o.deliveryPlannedDate);
     }
-    if (dayFilter === "__none__") {
-      list = list.filter((o) => !o.deliveryPlannedDate);
-    } else if (dayFilter) {
-      list = list.filter((o) => o.deliveryPlannedDate === dayFilter);
-    }
+    if (dayFilter === "__none__") list = list.filter((o) => !o.deliveryPlannedDate);
+    else if (dayFilter) list = list.filter((o) => o.deliveryPlannedDate === dayFilter);
+    if (driverFilter === "__none__") list = list.filter((o) => !o.deliveryDriverId);
+    else if (driverFilter) list = list.filter((o) => o.deliveryDriverId === driverFilter);
     list.sort((a, b) => {
       const da = a.deliveryPlannedDate || "9999";
       const db = b.deliveryPlannedDate || "9999";
@@ -118,7 +139,7 @@ export function DeliveriesManager({
       return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
     });
     return list;
-  }, [orders, tab, dayFilter]);
+  }, [orders, tab, dayFilter, driverFilter]);
 
   function toggle(key: string) {
     setSelected((prev) => {
@@ -130,20 +151,47 @@ export function DeliveriesManager({
   }
 
   function toggleAllVisible() {
-    const keys = filtered
-      .filter((o) => !o.deliveryReleasedAt)
-      .map((o) => rowKey(o));
+    const keys = filtered.filter((o) => !o.deliveryReleasedAt).map((o) => rowKey(o));
     setSelected((prev) => {
       const allSelected = keys.every((id) => prev.has(id));
-      if (allSelected) {
-        const next = new Set(prev);
-        keys.forEach((id) => next.delete(id));
-        return next;
-      }
       const next = new Set(prev);
-      keys.forEach((id) => next.add(id));
+      if (allSelected) keys.forEach((id) => next.delete(id));
+      else keys.forEach((id) => next.add(id));
       return next;
     });
+  }
+
+  function toPrintItem(o: DeliveryRow): PrintDeliveryItem {
+    return {
+      label: o.label,
+      customerName: o.customerName,
+      customerPhone: o.customerPhone,
+      contactName: o.contactName,
+      deliveryAddress: o.deliveryAddress,
+      deliveryNote: o.deliveryNote,
+      deliveryType: o.deliveryType,
+      deliveryCost: o.deliveryCost,
+      deliveryPlannedDate: o.deliveryPlannedDate,
+      deliveryDriverName: o.deliveryDriverName,
+      items: o.items,
+      totalSum: o.totalSum,
+    };
+  }
+
+  function printRows(rows: DeliveryRow[]) {
+    if (rows.length === 0) {
+      setError("Нет доставок для печати");
+      return;
+    }
+    setError(null);
+    setPrintItems(rows.map(toPrintItem));
+  }
+
+  function printSelected() {
+    const rows = [...selected]
+      .map((k) => byKey.get(k))
+      .filter(Boolean) as DeliveryRow[];
+    printRows(rows.length ? rows : filtered);
   }
 
   async function planSelected() {
@@ -166,15 +214,11 @@ export function DeliveriesManager({
       const res = await fetch("/api/admin/deliveries/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: planDate,
-          items,
-        }),
+        body: JSON.stringify({ date: planDate, items }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error || "Не удалось запланировать");
-      } else {
+      if (!res.ok) setError(data.error || "Не удалось запланировать");
+      else {
         setMessage(
           `Запланировано ${data.planned} доставок на ${formatRuDate(planDate)}`
         );
@@ -195,7 +239,7 @@ export function DeliveriesManager({
 
   async function setOrderAction(
     row: DeliveryRow,
-    action: "release" | "unrelease" | "plan",
+    action: "release" | "unrelease" | "plan" | "set_driver",
     extra?: Record<string, unknown>
   ) {
     const key = rowKey(row);
@@ -208,11 +252,8 @@ export function DeliveriesManager({
         body: JSON.stringify({ action, ...extra }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error || "Ошибка");
-      } else {
-        router.refresh();
-      }
+      if (!res.ok) setError(data.error || "Ошибка");
+      else router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка сети");
     }
@@ -221,16 +262,52 @@ export function DeliveriesManager({
 
   return (
     <div>
+      {printItems && (
+        <DeliveryPrintSheet
+          items={printItems}
+          title={
+            dayFilter && dayFilter !== "__none__"
+              ? `Доставки на ${formatRuDate(dayFilter)}`
+              : "Бланк доставок для курьера"
+          }
+          companyPhone={companyPhone}
+          companyAddress={companyAddress}
+          onDone={() => setPrintItems(null)}
+        />
+      )}
+
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Доставки</h1>
           <p className="admin-sub">
-            Заказы учёта (ЗК) с доставкой · планирование на день
+            Заказы учёта (ЗК) · водитель · бланк для курьера · архив
           </p>
+        </div>
+        <div className="admin-page-head__actions">
+          <button
+            type="button"
+            className="admin-btn admin-btn--outline"
+            onClick={() => printRows(filtered)}
+            disabled={filtered.length === 0}
+            title="Печать видимого списка"
+          >
+            <Printer size={14} /> Печать списка
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn--navy"
+            onClick={printSelected}
+            disabled={filtered.length === 0}
+            title="Печать выбранных (или всего видимого)"
+          >
+            <Printer size={14} />{" "}
+            {selected.size > 0
+              ? `Печать выбранных (${selected.size})`
+              : "Печать бланка"}
+          </button>
         </div>
       </div>
 
-      {/* Статистика */}
       <div className="admin-stat-grid" style={{ marginBottom: 20 }}>
         {[
           {
@@ -248,18 +325,18 @@ export function DeliveriesManager({
             bg: "rgba(217,119,6,0.12)",
           },
           {
-            label: "Запланированы",
-            value: stats.planned,
-            icon: <Calendar size={18} />,
+            label: "С водителем",
+            value: stats.withDriver,
+            icon: <User size={18} />,
             color: "#3b82f6",
             bg: "#eff6ff",
           },
           {
-            label: "Без даты",
-            value: stats.noDate,
-            icon: <MapPin size={18} />,
-            color: "#ef4444",
-            bg: "#fef2f2",
+            label: "Архив (отпущено)",
+            value: stats.released,
+            icon: <CheckCircle2 size={18} />,
+            color: "#16a34a",
+            bg: "#f0fdf4",
           },
         ].map((s) => (
           <div key={s.label} className="admin-stat" style={{ cursor: "default" }}>
@@ -275,18 +352,15 @@ export function DeliveriesManager({
         ))}
       </div>
 
-      {/* Планирование на день */}
       <div className="admin-card deliv-plan-card">
         <div className="deliv-plan-card__title">
           <CalendarPlus size={16} />
-          Планирование доставок на день
+          Планирование и печать
         </div>
         <p className="deliv-plan-card__hint">
-          Выберите неотпущенные заказы ниже и назначьте им дату — например,{" "}
-          <strong>{formatRuDate(planDate || todayIso())}</strong>
-          {selected.size > 0
-            ? ` · выбрано: ${selected.size}`
-            : " · отметьте заказы чекбоксами"}
+          Выберите доставки чекбоксами → назначьте дату / водителя → распечатайте
+          бланк полосками для курьера (A4, ~5–6 см).
+          {selected.size > 0 ? ` · выбрано: ${selected.size}` : ""}
         </p>
         <div className="deliv-plan-card__row">
           <div className="admin-field" style={{ margin: 0, minWidth: 180 }}>
@@ -310,7 +384,15 @@ export function DeliveriesManager({
             ) : (
               <Calendar size={14} />
             )}
-            Запланировать выбранные ({selected.size})
+            Запланировать ({selected.size})
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn--outline"
+            onClick={printSelected}
+            disabled={filtered.length === 0}
+          >
+            <Printer size={14} /> Печать бланка
           </button>
           {selected.size > 0 && (
             <button
@@ -327,7 +409,6 @@ export function DeliveriesManager({
         {error && <div className="deliv-msg deliv-msg--err">{error}</div>}
       </div>
 
-      {/* Сводка по дням */}
       {dayGroups.length > 0 && (
         <div className="deliv-days">
           <div className="deliv-days__title">По дням (не отпущены)</div>
@@ -362,13 +443,12 @@ export function DeliveriesManager({
         </div>
       )}
 
-      {/* Фильтры */}
-      <div className="admin-filters" style={{ marginBottom: 14 }}>
+      <div className="admin-filters" style={{ marginBottom: 10 }}>
         {(
           [
             { id: "unreleased", label: `Не отпущены (${stats.unreleased})` },
             { id: "planned", label: `С датой (${stats.planned})` },
-            { id: "released", label: `Отпущены (${stats.released})` },
+            { id: "released", label: `Архив (${stats.released})` },
             { id: "all", label: `Все (${stats.total})` },
           ] as { id: FilterTab; label: string }[]
         ).map((f) => (
@@ -383,6 +463,28 @@ export function DeliveriesManager({
         ))}
       </div>
 
+      {drivers.length > 0 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          <div className="admin-field" style={{ margin: 0, minWidth: 220 }}>
+            <label className="admin-label">Фильтр по водителю</label>
+            <select
+              className="admin-select"
+              value={driverFilter}
+              onChange={(e) => setDriverFilter(e.target.value)}
+            >
+              <option value="">Все водители</option>
+              <option value="__none__">Без водителя</option>
+              {drivers.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                  {d.phone ? ` · ${d.phone}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       <div className="admin-card">
         {filtered.length === 0 ? (
           <div className="admin-empty">
@@ -395,7 +497,14 @@ export function DeliveriesManager({
                 : "Нет доставок по выбранному фильтру"}
             </p>
             {orders.length === 0 && (
-              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  justifyContent: "center",
+                  marginTop: 12,
+                }}
+              >
                 <a
                   href={`/${adminPath}/warehouse?tab=deals`}
                   className="admin-btn admin-btn--navy"
@@ -444,7 +553,7 @@ export function DeliveriesManager({
                           type="checkbox"
                           checked={selected.has(key)}
                           onChange={() => toggle(key)}
-                          aria-label="Выбрать для планирования"
+                          aria-label="Выбрать"
                         />
                       )}
                     </div>
@@ -452,15 +561,6 @@ export function DeliveriesManager({
                     <div className="deliv-item__main">
                       <div className="deliv-item__top">
                         <span className="admin-order__id">{order.label}</span>
-                        <span
-                          className={
-                            order.source === "deal"
-                              ? "admin-badge admin-badge--indigo"
-                              : "admin-badge admin-badge--muted"
-                          }
-                        >
-                          {order.source === "deal" ? "Учёт" : "Сайт"}
-                        </span>
                         {order.deliveryType === "paid" ? (
                           <span className="admin-badge admin-badge--amber">
                             <Banknote size={11} />
@@ -474,7 +574,7 @@ export function DeliveriesManager({
                         )}
                         {released ? (
                           <span className="admin-badge admin-badge--muted">
-                            <CheckCircle2 size={11} /> Отпущена
+                            <CheckCircle2 size={11} /> Архив
                           </span>
                         ) : order.deliveryPlannedDate ? (
                           <span className="admin-badge admin-badge--indigo">
@@ -484,6 +584,12 @@ export function DeliveriesManager({
                         ) : (
                           <span className="admin-badge admin-badge--amber">
                             <Clock size={11} /> Без даты
+                          </span>
+                        )}
+                        {order.deliveryDriverName && (
+                          <span className="admin-badge admin-badge--blue">
+                            <User size={11} />
+                            {order.deliveryDriverName}
                           </span>
                         )}
                         <span className="admin-muted" style={{ fontSize: 12 }}>
@@ -535,6 +641,30 @@ export function DeliveriesManager({
                     </div>
 
                     <div className="deliv-item__side">
+                      <div className="admin-field" style={{ margin: 0 }}>
+                        <label className="admin-label">Водитель</label>
+                        <select
+                          className="admin-select"
+                          value={order.deliveryDriverId || ""}
+                          disabled={busy || drivers.length === 0}
+                          onChange={(e) => {
+                            const v = e.target.value || null;
+                            setOrderAction(order, "set_driver", {
+                              deliveryDriverId: v,
+                            });
+                          }}
+                        >
+                          <option value="">
+                            {drivers.length ? "Не назначен" : "Нет сотрудников"}
+                          </option>
+                          {drivers.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
                       {!released && (
                         <>
                           <div className="admin-field" style={{ margin: 0 }}>
@@ -557,14 +687,14 @@ export function DeliveriesManager({
                             className="admin-btn admin-btn--navy admin-btn--sm"
                             disabled={busy || !order.deliveryAddress}
                             onClick={() => setOrderAction(order, "release")}
-                            title="Отметить доставку выполненной"
+                            title="Отметить доставку выполненной (в архив)"
                           >
                             {busy ? (
                               <Loader2 size={13} className="animate-spin" />
                             ) : (
                               <CheckCircle2 size={13} />
                             )}
-                            Отпустить
+                            В архив
                           </button>
                         </>
                       )}
@@ -580,18 +710,22 @@ export function DeliveriesManager({
                           ) : (
                             <RotateCcw size={13} />
                           )}
-                          Вернуть
+                          Из архива
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        onClick={() => printRows([order])}
+                        title="Печать одной полоски"
+                      >
+                        <Printer size={13} /> Бланк
+                      </button>
                       <a
-                        href={
-                          order.source === "deal"
-                            ? `/${adminPath}/warehouse?tab=deals&deal=${order.id}`
-                            : `/${adminPath}/orders?q=${order.id.slice(0, 8)}&status=all`
-                        }
+                        href={`/${adminPath}/warehouse?tab=deals&deal=${order.id}`}
                         className="admin-btn admin-btn--ghost admin-btn--sm"
                       >
-                        {order.source === "deal" ? "К заказу" : "К заявке"}
+                        К заказу
                       </a>
                     </div>
                   </div>

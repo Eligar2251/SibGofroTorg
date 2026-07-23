@@ -177,6 +177,8 @@ function mapDealRow(row: any): CustomerDeal {
     deliveryPlannedDate: row.delivery_planned_date || null,
     deliveryReleasedAt: toIso(row.delivery_released_at),
     deliveryNote: row.delivery_note || null,
+    deliveryDriverId: row.delivery_driver_id || null,
+    deliveryDriverName: row.delivery_driver_name || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -1128,7 +1130,10 @@ export async function updateDealDelivery(
     deliveryPlannedDate?: string | null;
     deliveryReleasedAt?: string | null;
     deliveryNote?: string | null;
+    deliveryDriverId?: string | null;
+    deliveryDriverName?: string | null;
     clearRelease?: boolean;
+    clearDriver?: boolean;
   }
 ): Promise<CustomerDeal> {
   const db = getAdminDb();
@@ -1165,12 +1170,27 @@ export async function updateDealDelivery(
       ? String(data.deliveryNote).trim().slice(0, 1000)
       : null;
   }
+  if (data.clearDriver) {
+    payload.delivery_driver_id = null;
+    payload.delivery_driver_name = null;
+  } else {
+    if (data.deliveryDriverId !== undefined) {
+      payload.delivery_driver_id = data.deliveryDriverId || null;
+    }
+    if (data.deliveryDriverName !== undefined) {
+      payload.delivery_driver_name = data.deliveryDriverName
+        ? String(data.deliveryDriverName).trim().slice(0, 200)
+        : null;
+    }
+  }
 
   if (data.hasDelivery === false) {
     payload.delivery_type = null;
     payload.delivery_cost = 0;
     payload.delivery_planned_date = null;
     payload.delivery_released_at = null;
+    payload.delivery_driver_id = null;
+    payload.delivery_driver_name = null;
   }
 
   // Пересчёт total: позиции + платная доставка
