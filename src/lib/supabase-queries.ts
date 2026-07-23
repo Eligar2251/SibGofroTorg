@@ -209,6 +209,13 @@ async function fetchAllProducts(): Promise<FirestoreProduct[]> {
   }
 }
 
+/** Принудительный сброс memory-кеша товаров.
+ *  Вызывается после любого write (create/update/delete), чтобы
+ *  следующий запрос читал свежие данные из Supabase. */
+export function invalidateProductsCache(): void {
+  memoryProductsCache = null;
+}
+
 const getCachedProducts = unstable_cache(
   fetchAllProducts,
   ["base-products"],
@@ -391,6 +398,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
   };
   const { data: result, error } = await db.from("products").insert(payload).select("id").single();
   if (error) throw error;
+  invalidateProductsCache();
   revalidateTag("products");
   return { id: result.id };
 }
@@ -416,6 +424,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   }
   const { error } = await db.from("products").update(payload).eq("id", id);
   if (error) throw error;
+  invalidateProductsCache();
   revalidateTag("products");
 }
 
@@ -423,6 +432,7 @@ export async function deleteProduct(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("products").delete().eq("id", id);
   if (error) throw error;
+  invalidateProductsCache();
   revalidateTag("products");
 }
 
@@ -578,6 +588,7 @@ export async function deleteOrder(id: string): Promise<void> {
   const { error } = await db.from("orders").delete().eq("id", id);
   if (error) throw error;
   
+  invalidateProductsCache();
   revalidateTag("orders");
   revalidateTag("warehouse-deals");
   revalidateTag("warehouse-payments");

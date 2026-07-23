@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { requireAdminApi } from "@/lib/auth";
 import { getAdminDb } from "@/lib/supabase";
+import { invalidateProductsCache } from "@/lib/supabase-queries";
 
 export async function PUT(request: NextRequest) {
   const auth = await requireAdminApi();
@@ -41,6 +42,7 @@ export async function PUT(request: NextRequest) {
       await db.from("products").update(payload).eq("id", p.id);
     }
 
+    invalidateProductsCache();
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true, updated: products.length });
   } catch (error) {
@@ -67,6 +69,7 @@ export async function DELETE(request: NextRequest) {
       await db.from("products").delete().eq("id", id);
     }
 
+    invalidateProductsCache();
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true, deleted: ids.length });
   } catch (error) {
