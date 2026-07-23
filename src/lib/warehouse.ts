@@ -800,6 +800,13 @@ export const getCachedPayments = () => unstable_cache(fetchPayments, ["warehouse
 export const getCachedEmployees = () => unstable_cache(fetchEmployees, ["warehouse-employees"], { revalidate: 60, tags: ["warehouse-employees"] })();
 export const getCachedSalaries = () => unstable_cache(fetchSalaries, ["warehouse-salaries"], { revalidate: 60, tags: ["warehouse-salaries"] })();
 
+// Aliases for backward compatibility (pages import these names)
+export const getReceipts = getCachedReceipts;
+export const getDeals = getCachedDeals;
+export const getPayments = getCachedPayments;
+export const getEmployees = getCachedEmployees;
+export const getSalaries = getCachedSalaries;
+
 // ─── Employees & Salaries ──────────────────────────────────
 
 export async function saveEmployee(data: { id?: string | null; name: string; position?: string | null; phone?: string | null; comment?: string | null }): Promise<{ id: string }> {
