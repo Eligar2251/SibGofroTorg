@@ -85,10 +85,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const rawSubtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
 
-  // Скидки рассчитываются вручную в админке, автоматических скидок нет
-  const discountPercent = 0;
-  const discountAmount = 0;
-  const totalSum = rawSubtotal;
+  // Автоматическая скидка за объём заказа (информирование клиента):
+  // От 25,000 ₽ -> 10%
+  // От 20,000 ₽ до 24,999 ₽ -> 5%
+  let discountPercent = 0;
+  if (rawSubtotal >= 25000) {
+    discountPercent = 10;
+  } else if (rawSubtotal >= 20000) {
+    discountPercent = 5;
+  }
+
+  const discountAmount = Math.round((rawSubtotal * discountPercent) / 100);
+  const totalSum = Math.max(0, rawSubtotal - discountAmount);
 
   return (
     <CartContext.Provider
