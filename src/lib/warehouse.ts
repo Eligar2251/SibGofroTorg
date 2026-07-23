@@ -470,51 +470,147 @@ export async function setWarehouseStock(productId: string, quantity: number): Pr
 // ─── Items helpers ─────────────────────────────────────────
 
 function itemsTotal(items: StockDocItem[]): number {
-  return round2(items.reduce((s, i) => s + (i.lineTotal || round2(i.quantity * i.price)), 0));
+  return round2(items.reduce((s, it) => s + it.lineTotal, 0));
 }
 
-function buildItems(data: any): StockDocItem[] {
-  return (Array.isArray(data.items) ? data.items : []).map((i: any) => {
-    const qty = Math.max(0, Math.min(100_000, Number(i.quantity) || 0));
-    const price = Math.max(0, Number(i.price) || 0);
-    return {
-      productId: String(i.productId || "").slice(0, 80),
-      name: String(i.name || "Товар").slice(0, 200),
-      sku: i.sku ? String(i.sku).slice(0, 80) : "—",
-      quantity: qty, price, lineTotal: round2(qty * price),
-    };
-  }).filter((i: StockDocItem) => i.productId);
+function cleanItems(rawItems: any[]): StockDocItem[] {
+  return (Array.isArray(rawItems) ? rawItems : [])
+    .map((it: any) => {
+      const quantity = Math.max(0, Math.min(100_000, Number(it.quantity) || 0));
+      let lineTotal = Math.max(0, Number(it.lineTotal) || 0);
+      let price = Math.max(0, Number(it.price) || 0);
+      if (lineTotal > 0 && quantity > 0) {
+        price = round2(lineTotal / quantity);
+      } else {
+        lineTotal = round2(price * quantity);
+      }
+      return {
+        productId: String(it.productId || ""),
+        name: String(it.name || "").slice(0, 300),
+        sku: it.sku ? String(it.sku).slice(0, 60) : null,
+        quantity,
+        price,
+        lineTotal: round2(lineTotal),
+      };
+    })
+    .filter((it) => it.productId && it.quantity > 0);
 }
 
 // ─── Receipts CRUD ─────────────────────────────────────────
 
 export async function createReceipt(data: any): Promise<{ id: string; number: number }> {
-  const db = getAdminDb();
-  const number = await nextNumber("receipt");
-  const items = buildItems(data);
+  const items = cleanItems(data.items);
+  if (!data.supplier?.trim()) throw new Error("Укажите поставщика");
+  if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
+
   const total = itemsTotal(items);
-  const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
-  const vatAmount = includedVat(total, vatRate);
+  if (total <= 0) throw new Error("Укажите сумму поступления больше нуля");
+
+  const db = getAdminDb();
+
+  const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [];
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
+
+  // Разбивка оплаты на части
+  const paymentSplits = (Array.isArray(data.paymentSplits) ? data.paymentSplits : [])
+    .map((n: any) => round2(Number(n) || 0))
+    .filter((n: number) => n > 0);
+  if (paymentSplits.length === 0) paymentSplits.push(total);
+
+  // Номера связанных заказов
+  const linkedDealNumbers: number[] = [];
+  for (const dealId of linkedDealIds) {
+    const { data: deal } = await db.from("customer_deals").select("number").eq("id", dealId).maybeSingle();
+    if (deal) linkedDealNumbers.push(Number(deal.number) || 0);
+  }
+
+  const number = await nextNumber("receipt");
+  const date = data.date || new Date().toISOString().slice(0, 10);
   const supplier = String(data.supplier || "").slice(0, 200);
+  const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : VAT_RATE;
+  const vatAmount = includedVat(total, vatRate);
+
+  // ★ Создаём контрагента-поставщика И сохраняем цены поставки
+  const supplierPrices: Record<string, number> = {};
+  for (const item of items) {
+    if (item.productId && item.price > 0) {
+      supplierPrices[item.productId] = item.price;
+    }
+  }
   const counterpartyId = await ensureCounterparty(supplier, "supplier", {
-    phone: data.phone, email: data.email, inn: data.inn, kpp: data.kpp,
-    address: data.address, contactName: data.contactName,
+    phone: cleanText(data.phone, 60),
+    email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20),
+    kpp: cleanText(data.kpp, 20),
+    address: cleanText(data.address, 400),
+    contactName: cleanText(data.contactName, 160),
     comment: data.comment,
   });
 
-  const { data: result, error } = await db.from("warehouse_receipts").insert({
-    number, date: String(data.date || "").slice(0, 10),
-    supplier, counterparty_id: counterpartyId, status: "draft",
-    phone: cleanText(data.phone, 60), email: cleanText(data.email, 120),
-    inn: cleanText(data.inn, 30), kpp: cleanText(data.kpp, 30),
+  // Сохраняем цены поставщика
+  if (Object.keys(supplierPrices).length > 0) {
+    // Обновляем supplier_prices в таблице counterparties
+    const { data: cp } = await db.from("counterparties").select("supplier_prices").eq("id", counterpartyId).maybeSingle();
+    const existingPrices = cp?.supplier_prices || {};
+    const mergedPrices = { ...existingPrices, ...supplierPrices };
+    await db.from("counterparties").update({ supplier_prices: mergedPrices }).eq("id", counterpartyId);
+
+    // Также записываем в таблицу supplier_prices
+    for (const [productId, price] of Object.entries(supplierPrices)) {
+      await db.from("supplier_prices").upsert({
+        counterparty_id: counterpartyId, product_id: productId, price,
+      });
+    }
+    invalidateCounterpartyCache(true);
+  }
+
+  // ★ Создаём поступление
+  const { data: receiptResult, error: receiptError } = await db.from("warehouse_receipts").insert({
+    number, date, supplier, counterparty_id: counterpartyId, status: "draft",
+    phone: cleanText(data.phone, 60), email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20), kpp: cleanText(data.kpp, 20),
     address: cleanText(data.address, 400), contact_name: cleanText(data.contactName, 160),
-    comment: cleanText(data.comment, 500),
+    comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items, total, bank_adjustment: 0, vat_rate: vatRate, vat_amount: vatAmount,
-    linked_deal_ids: data.linkedDealIds || [], linked_deal_numbers: [],
+    linked_deal_ids: linkedDealIds, linked_deal_numbers: linkedDealNumbers,
   }).select("id").single();
-  if (error) throw error;
+  if (receiptError) throw receiptError;
+  const receiptId = receiptResult.id;
+
+  // ★ Создаём исходящие платежи (по разбивке)
+  for (let i = 0; i < paymentSplits.length; i++) {
+    const splitAmount = paymentSplits[i];
+    if (splitAmount <= 0) continue;
+    const payNumber = await nextNumber("payment");
+    await db.from("bank_payments").insert({
+      number: payNumber, date,
+      direction: "outgoing", type: "regular",
+      counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
+      deal_ids: [], deal_numbers: [],
+      receipt_ids: [receiptId], receipt_numbers: [number],
+      amount: splitAmount, invoice_number: null,
+      vat_rate: vatRate, vat_amount: includedVat(splitAmount, vatRate),
+      is_paid: false, paid_at: null,
+      exclude_from_balance: false,
+      comment: `Оплата поставщику по приходному ордеру ПО-${number}${paymentSplits.length > 1 ? ` (часть ${i+1})` : ""}`,
+    });
+  }
+
+  // Привязываем существующие платежи к поступлению
+  for (const payId of linkedPaymentIds) {
+    const { data: pay } = await db.from("bank_payments").select("receipt_ids, receipt_numbers").eq("id", payId).maybeSingle();
+    if (pay) {
+      const receiptIds = Array.isArray(pay.receipt_ids) ? [...pay.receipt_ids, receiptId] : [receiptId];
+      const receiptNumbers = Array.isArray(pay.receipt_numbers) ? [...pay.receipt_numbers, number] : [number];
+      await db.from("bank_payments").update({ receipt_ids: receiptIds, receipt_numbers: receiptNumbers }).eq("id", payId);
+    }
+  }
+
   revalidateTag("warehouse-receipts");
-  return { id: result.id, number };
+  revalidateTag("warehouse-payments");
+  revalidateTag("warehouse-counterparties");
+  revalidateTag("products");
+  return { id: receiptId, number };
 }
 
 export async function postReceipt(id: string): Promise<void> {
@@ -544,7 +640,7 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   const { data: existing } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
   if (!existing) throw new Error("Поступление не найдено");
   if (existing.status === "posted") throw new Error("Нельзя редактировать проведённое поступление");
-  const items = buildItems(data);
+  const items = cleanItems(data.items);
   const total = itemsTotal(items);
   const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
   await db.from("warehouse_receipts").update({
@@ -572,34 +668,78 @@ export async function deleteReceipt(id: string): Promise<void> {
 // ─── Deals CRUD ────────────────────────────────────────────
 
 export async function createDeal(data: any): Promise<{ id: string; number: number }> {
-  const db = getAdminDb();
-  const number = await nextNumber("deal");
-  const items = buildItems(data);
-  const total = itemsTotal(items);
-  const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
-  const vatAmount = includedVat(total, vatRate);
-  const customerName = String(data.customerName || "").slice(0, 200);
+  const items = cleanItems(data.items);
+  if (!data.customerName?.trim()) throw new Error("Укажите покупателя");
+  if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
 
-  // Создаём/обновляем контрагента-покупателя
+  const total = itemsTotal(items);
+  if (total <= 0) throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
+
+  const db = getAdminDb();
+  const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
+
+  const number = await nextNumber("deal");
+  const paymentNumber = await nextNumber("payment");
+  const date = data.date || new Date().toISOString().slice(0, 10);
+  const customerName = String(data.customerName).slice(0, 200);
+  const vatAmount = includedVat(total, VAT_RATE);
+
+  const details = {
+    phone: cleanText(data.customerPhone, 60),
+    email: cleanText(data.email, 160),
+    inn: cleanText(data.inn, 20),
+    kpp: cleanText(data.kpp, 20),
+    address: cleanText(data.address, 400),
+    contactName: cleanText(data.contactName, 160),
+  };
+
+  // ★ Создаём контрагента-покупателя
   const counterpartyId = await ensureCounterparty(customerName, "customer", {
-    phone: data.customerPhone, email: data.email, inn: data.inn, kpp: data.kpp,
-    address: data.address, contactName: data.contactName, comment: data.comment,
+    ...details, comment: data.comment,
   });
 
-  const { data: result, error } = await db.from("customer_deals").insert({
-    number, date: String(data.date || "").slice(0, 10),
-    customer_name: customerName, counterparty_id: counterpartyId,
-    customer_phone: cleanText(data.customerPhone, 60),
-    phone: cleanText(data.phone, 60), email: cleanText(data.email, 120),
-    inn: cleanText(data.inn, 30), kpp: cleanText(data.kpp, 30),
-    address: cleanText(data.address, 400), contact_name: cleanText(data.contactName, 160),
-    comment: cleanText(data.comment, 500),
-    items, total, bank_adjustment: 0, vat_rate: vatRate, vat_amount: vatAmount,
+  // ★ Создаём заказ покупателя
+  const { data: dealResult, error: dealError } = await db.from("customer_deals").insert({
+    number, date, customer_name: customerName, counterparty_id: counterpartyId,
+    customer_phone: details.phone,
+    phone: details.phone, email: details.email,
+    inn: details.inn, kpp: details.kpp,
+    address: details.address, contact_name: details.contactName,
+    comment: data.comment ? String(data.comment).slice(0, 500) : null,
+    items, total, bank_adjustment: 0,
+    vat_rate: VAT_RATE, vat_amount: vatAmount,
     status: "new",
   }).select("id").single();
-  if (error) throw error;
+  if (dealError) throw dealError;
+
+  // ★ Создаём входящий счёт (не проведён — влияет на баланс после оплаты)
+  await db.from("bank_payments").insert({
+    number: paymentNumber, date,
+    direction: "incoming", type: "regular",
+    counterparty: customerName, counterparty_id: counterpartyId,
+    deal_ids: [dealResult.id], deal_numbers: [number],
+    receipt_ids: [], receipt_numbers: [],
+    amount: total, invoice_number: null,
+    vat_rate: VAT_RATE, vat_amount: vatAmount,
+    is_paid: false, paid_at: null,
+    exclude_from_balance: false,
+    comment: `Счёт покупателю по заказу ЗК-${number}`,
+  });
+
+  // Привязываем существующие платежи
+  for (const payId of linkedPaymentIds) {
+    const { data: pay } = await db.from("bank_payments").select("deal_ids, deal_numbers").eq("id", payId).maybeSingle();
+    if (pay) {
+      const dealIds = Array.isArray(pay.deal_ids) ? [...pay.deal_ids, dealResult.id] : [dealResult.id];
+      const dealNumbers = Array.isArray(pay.deal_numbers) ? [...pay.deal_numbers, number] : [number];
+      await db.from("bank_payments").update({ deal_ids: dealIds, deal_numbers: dealNumbers }).eq("id", payId);
+    }
+  }
+
   revalidateTag("warehouse-deals");
-  return { id: result.id, number };
+  revalidateTag("warehouse-payments");
+  revalidateTag("warehouse-counterparties");
+  return { id: dealResult.id, number };
 }
 
 export async function postDeal(id: string): Promise<void> {
@@ -633,7 +773,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
   const { data: existing } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!existing) throw new Error("Заказ не найден");
   if (existing.status === "completed") throw new Error("Нельзя редактировать проведённый заказ");
-  const items = buildItems(data);
+  const items = cleanItems(data.items);
   const total = itemsTotal(items);
   const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
   await db.from("customer_deals").update({
