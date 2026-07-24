@@ -252,8 +252,11 @@ const PRINT_CSS = `
 @media print {
   @page { size: A4 portrait; margin: 8mm 10mm; }
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-  .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content,
-  .admin-main, .NavigationProgress { display: none !important; }
+  /* Бланк находится внутри .admin-main. Нельзя скрывать его предков через
+     display:none — иначе браузер отправит в печать пустой лист. */
+  .admin-sidebar, .admin-mobile-bar, .NavigationProgress { display: none !important; }
+  .admin-content, .admin-main { visibility: hidden !important; }
+  .deliv-print-root, .deliv-print-root * { visibility: visible !important; }
   .deliv-print-root { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; padding: 0 !important; margin: 0 !important; z-index: 999999 !important; }
   .deliv-print-sheet { padding: 0 !important; max-width: none !important; }
   .deliv-print-close { display: none !important; }
