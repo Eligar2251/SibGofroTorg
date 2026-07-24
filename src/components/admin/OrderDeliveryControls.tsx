@@ -19,7 +19,6 @@ export function OrderDeliveryControls({
   deliveryType = null,
   deliveryCost = null,
   deliveryAddress = null,
-  deliveryPlannedDate = null,
   deliveryReleasedAt = null,
   deliveryNote = null,
   /** site = заявка с сайта; deal = заказ учёта (ЗК) */
@@ -30,7 +29,6 @@ export function OrderDeliveryControls({
   deliveryType?: "free" | "paid" | null;
   deliveryCost?: number | null;
   deliveryAddress?: string | null;
-  deliveryPlannedDate?: string | null;
   deliveryReleasedAt?: string | null;
   deliveryNote?: string | null;
   source?: "site" | "deal";
@@ -46,8 +44,6 @@ export function OrderDeliveryControls({
     deliveryCost != null && deliveryCost > 0 ? String(deliveryCost) : ""
   );
   const [note, setNote] = useState(deliveryNote || "");
-  const [plannedDate, setPlannedDate] = useState(deliveryPlannedDate || "");
-
   const endpoint =
     source === "deal"
       ? `/api/admin/warehouse/deals/${orderId}/delivery`
@@ -88,7 +84,6 @@ export function OrderDeliveryControls({
       action: "set_free",
       deliveryAddress: address.trim(),
       deliveryNote: note.trim() || null,
-      deliveryPlannedDate: plannedDate || null,
     });
   }
 
@@ -107,7 +102,6 @@ export function OrderDeliveryControls({
       deliveryCost: num,
       deliveryAddress: address.trim(),
       deliveryNote: note.trim() || null,
-      deliveryPlannedDate: plannedDate || null,
     });
   }
 
@@ -127,7 +121,6 @@ export function OrderDeliveryControls({
       deliveryType: type,
       deliveryAddress: address.trim(),
       deliveryNote: note.trim() || null,
-      deliveryPlannedDate: plannedDate || null,
     };
     if (type === "paid") {
       const num = Number(cost);
@@ -149,7 +142,6 @@ export function OrderDeliveryControls({
       deliveryCost != null && deliveryCost > 0 ? String(deliveryCost) : ""
     );
     setNote(deliveryNote || "");
-    setPlannedDate(deliveryPlannedDate || "");
     setMode(next);
   }
 
@@ -184,11 +176,6 @@ export function OrderDeliveryControls({
             ) : (
               <span className="admin-badge admin-badge--blue">Не отпущена</span>
             )}
-            {deliveryPlannedDate && (
-              <span className="admin-badge admin-badge--indigo">
-                {formatRuDate(deliveryPlannedDate)}
-              </span>
-            )}
           </div>
 
           {deliveryAddress && (
@@ -209,8 +196,6 @@ export function OrderDeliveryControls({
               setCost={setCost}
               note={note}
               setNote={setNote}
-              plannedDate={plannedDate}
-              setPlannedDate={setPlannedDate}
               showCost={deliveryType === "paid"}
               saving={saving}
               error={error}
@@ -271,8 +256,6 @@ export function OrderDeliveryControls({
           setCost={setCost}
           note={note}
           setNote={setNote}
-          plannedDate={plannedDate}
-          setPlannedDate={setPlannedDate}
           showCost={mode === "paid"}
           saving={saving}
           error={error}
@@ -298,8 +281,6 @@ function DeliveryForm({
   setCost,
   note,
   setNote,
-  plannedDate,
-  setPlannedDate,
   showCost,
   saving,
   error,
@@ -313,8 +294,6 @@ function DeliveryForm({
   setCost: (v: string) => void;
   note: string;
   setNote: (v: string) => void;
-  plannedDate: string;
-  setPlannedDate: (v: string) => void;
   showCost: boolean;
   saving: boolean;
   error: string | null;
@@ -353,16 +332,6 @@ function DeliveryForm({
           />
         </div>
       )}
-      <div className="admin-field">
-        <label className="admin-label">План. дата (необяз.)</label>
-        <input
-          className="admin-input"
-          type="date"
-          value={plannedDate}
-          onChange={(e) => setPlannedDate(e.target.value)}
-          disabled={saving}
-        />
-      </div>
       <div className="admin-field">
         <label className="admin-label">Заметка курьеру</label>
         <input

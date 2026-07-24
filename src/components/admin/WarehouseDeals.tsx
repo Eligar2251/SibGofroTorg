@@ -100,8 +100,9 @@ export interface EditableDeal {
   deliveryType?: "free" | "paid" | null;
   deliveryCost?: number | null;
   deliveryAddress?: string | null;
-  deliveryPlannedDate?: string | null;
   deliveryNote?: string | null;
+  deliveryContact?: string | null;
+  deliveryPhone?: string | null;
 }
 
 function todayIso(): string {
@@ -178,11 +179,14 @@ export function DealForm({
   const [deliveryAddress, setDeliveryAddress] = useState(
     initialDeal?.deliveryAddress || initialDeal?.address || ""
   );
-  const [deliveryPlannedDate, setDeliveryPlannedDate] = useState(
-    initialDeal?.deliveryPlannedDate || ""
-  );
   const [deliveryNote, setDeliveryNote] = useState(
     initialDeal?.deliveryNote || ""
+  );
+  const [deliveryContact, setDeliveryContact] = useState(
+    initialDeal?.contactName || initialDeal?.deliveryContact || ""
+  );
+  const [deliveryPhone, setDeliveryPhone] = useState(
+    initialDeal?.customerPhone || initialDeal?.deliveryPhone || ""
   );
 
   // ── Способ оплаты ──
@@ -280,8 +284,9 @@ export function DealForm({
     setDeliveryAddress(
       initialDeal?.deliveryAddress || initialDeal?.address || ""
     );
-    setDeliveryPlannedDate(initialDeal?.deliveryPlannedDate || "");
     setDeliveryNote(initialDeal?.deliveryNote || "");
+    setDeliveryContact(initialDeal?.contactName || initialDeal?.deliveryContact || "");
+    setDeliveryPhone(initialDeal?.customerPhone || initialDeal?.deliveryPhone || "");
     setError("");
     setPaymentCount(1);
     setSplitAmounts([""]);
@@ -434,10 +439,10 @@ export function DealForm({
           deliveryType: hasDelivery ? deliveryType : null,
           deliveryCost: hasDelivery ? deliveryAmount : 0,
           deliveryAddress: hasDelivery ? deliveryAddress.trim() : null,
-          deliveryPlannedDate:
-            hasDelivery && deliveryPlannedDate ? deliveryPlannedDate : null,
           deliveryNote:
             hasDelivery && deliveryNote.trim() ? deliveryNote.trim() : null,
+          deliveryContact: hasDelivery ? deliveryContact.trim() || null : null,
+          deliveryPhone: hasDelivery ? deliveryPhone.trim() || null : null,
           items: items.map((it) => ({
             productId: it.productId,
             name: it.name,
@@ -757,17 +762,6 @@ export function DealForm({
                           </button>
                         )}
                       </div>
-                      <div className="admin-field">
-                        <label className="admin-label">План. дата</label>
-                        <input
-                          className="admin-input"
-                          type="date"
-                          value={deliveryPlannedDate}
-                          onChange={(e) =>
-                            setDeliveryPlannedDate(e.target.value)
-                          }
-                        />
-                      </div>
                       <div
                         className="admin-field"
                         style={{ gridColumn: "1 / -1" }}
@@ -778,6 +772,25 @@ export function DealForm({
                           value={deliveryNote}
                           onChange={(e) => setDeliveryNote(e.target.value)}
                           placeholder="Код домофона, этаж..."
+                        />
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">Контактное лицо</label>
+                        <input
+                          className="admin-input"
+                          value={deliveryContact}
+                          onChange={(e) => setDeliveryContact(e.target.value)}
+                          placeholder="Имя для связи"
+                        />
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">Телефон доставки</label>
+                        <input
+                          className="admin-input"
+                          type="tel"
+                          value={deliveryPhone}
+                          onChange={(e) => setDeliveryPhone(e.target.value)}
+                          placeholder="+7 ..."
                         />
                       </div>
                     </div>

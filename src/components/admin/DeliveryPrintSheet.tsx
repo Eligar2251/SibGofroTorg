@@ -64,9 +64,9 @@ export function DeliveryPrintSheet({
 
   function doPrint() {
     setPrinting(true);
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       window.print();
-    });
+    }, 300);
   }
 
   const phone = companyPhone || SITE_PHONE;
@@ -168,14 +168,18 @@ export function DeliveryPrintSheet({
                   </span>
                 </div>
                 {it.items && it.items.length > 0 && (
-                  <div className="deliv-print-strip__row">
+                  <div className="deliv-print-strip__row" style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 8 }}>
                     <span className="deliv-print-strip__k">Товар</span>
-                    <span className="deliv-print-strip__v deliv-print-strip__v--items">
+                    <span className="deliv-print-strip__v deliv-print-strip__v--items" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {it.items
                         .slice(0, 6)
-                        .map((x) => `${x.name} × ${x.quantity}`)
+                        .map((x) => `${x.name}`)
                         .join(" · ")}
                       {it.items.length > 6 ? ` · +${it.items.length - 6}` : ""}
+                    </span>
+                    <span className="deliv-print-strip__k" style={{ gridColumn: 2 }}>Кол-во</span>
+                    <span style={{ gridColumn: 2, fontWeight: 700 }}>
+                      {it.items.map((x) => x.quantity).join(", ")}
                     </span>
                   </div>
                 )}
