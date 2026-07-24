@@ -100,6 +100,8 @@ export interface EditableDeal {
   deliveryType?: "free" | "paid" | null;
   deliveryCost?: number | null;
   deliveryAddress?: string | null;
+  /** Дата планируемой доставки в формате YYYY-MM-DD. */
+  deliveryPlannedDate?: string | null;
   deliveryNote?: string | null;
   deliveryContact?: string | null;
   deliveryPhone?: string | null;
