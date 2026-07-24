@@ -125,12 +125,10 @@ export function PaymentForm({
   );
 
   // Варианты для переиспользуемых контролов выбора с поиском
+  // Для расхода — все контрагенты (не только поставщики: может быть возврат, оплата любому)
   const counterpartyOptions: PickerOption[] = useMemo(
     () =>
       counterparties
-        .filter((item) =>
-          item.roles.includes(direction === "incoming" ? "customer" : "supplier")
-        )
         .map((item) => ({
           id: item.id,
           title: item.name,
@@ -138,7 +136,7 @@ export function PaymentForm({
             .filter(Boolean)
             .join(" · "),
         })),
-    [counterparties, direction]
+    [counterparties]
   );
 
   const dealOptions: PickerOption[] = useMemo(
@@ -522,7 +520,7 @@ export function PaymentForm({
                     placeholder={
                       direction === "incoming"
                         ? "От кого платёж"
-                        : "Поставщик"
+                        : "Кому платёж"
                     }
                     emptyText="Не найдено — можно вписать вручную"
                   />
@@ -703,15 +701,10 @@ export function PaymentControls({
     [receipts, editCounterparty]
   );
 
-  // Варианты для переиспользуемых контролов выбора с поиском
+  // Все контрагенты (не только по роли)
   const editCounterpartyOptions: PickerOption[] = useMemo(
     () =>
       counterparties
-        .filter((item) =>
-          item.roles.includes(
-            edit.direction === "incoming" ? "customer" : "supplier"
-          )
-        )
         .map((item) => ({
           id: item.id,
           title: item.name,
@@ -719,7 +712,7 @@ export function PaymentControls({
             .filter(Boolean)
             .join(" · "),
         })),
-    [counterparties, edit.direction]
+    [counterparties]
   );
 
   const editDealOptions: PickerOption[] = useMemo(
@@ -903,25 +896,21 @@ export function PaymentControls({
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleEditSubmit}>
-              <div className="admin-field" style={{ marginBottom: 12 }}>
+            <form onSubmit={handleEditSubmit} className="admin-stack">
+              <div className="admin-field">
                 <label className="admin-label">Тип платежа</label>
                 <div className="wh-linkmode">
-                  {(
-                    [
-                      { value: "regular", label: "Оплата", icon: CheckCircle },
-                      { value: "refund", label: "Возврат", icon: RotateCcw },
-                      { value: "cash", label: "Наличные", icon: Banknote },
-                      { value: "transfer", label: "Перевод", icon: UserRound },
-                      { value: "deposit", label: "Внесение", icon: Download },
-                    ] as const
-                  ).map((t) => (
+                  {([
+                    { value: "regular", label: "Оплата", icon: CheckCircle },
+                    { value: "refund", label: "Возврат", icon: RotateCcw },
+                    { value: "cash", label: "Наличные", icon: Banknote },
+                    { value: "transfer", label: "Перевод", icon: UserRound },
+                    { value: "deposit", label: "Внесение", icon: Download },
+                  ] as const).map((t) => (
                     <button
                       key={t.value}
                       type="button"
-                      className={`wh-linkmode__btn${
-                        editType === t.value ? " wh-linkmode__btn--active" : ""
-                      }`}
+                      className={`wh-linkmode__btn${editType === t.value ? " wh-linkmode__btn--active" : ""}`}
                       onClick={() => setEditType(t.value)}
                     >
                       <t.icon size={12} style={{ marginRight: 4 }} />
@@ -937,13 +926,7 @@ export function PaymentControls({
                   <SearchMultiSelect
                     options={editDealOptions}
                     selectedIds={editDealIds}
-                    onToggle={(id) =>
-                      setEditDealIds((prev) =>
-                        prev.includes(id)
-                          ? prev.filter((x) => x !== id)
-                          : [...prev, id]
-                      )
-                    }
+                    onToggle={(id) => setEditDealIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
                     placeholder="Поиск заказа…"
                     emptyText="Заказы не найдены"
                     maxHeight={160}
@@ -952,13 +935,7 @@ export function PaymentControls({
                   <SearchMultiSelect
                     options={editReceiptOptions}
                     selectedIds={editReceiptIds}
-                    onToggle={(id) =>
-                      setEditReceiptIds((prev) =>
-                        prev.includes(id)
-                          ? prev.filter((x) => x !== id)
-                          : [...prev, id]
-                      )
-                    }
+                    onToggle={(id) => setEditReceiptIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
                     placeholder="Поиск поступления…"
                     emptyText="Поступления не найдены"
                     maxHeight={160}
@@ -966,16 +943,17 @@ export function PaymentControls({
                 )}
               </div>
 
-              <div className="admin-field">
-                <label className="admin-label">Дата</label>
-                <input
-                  type="date"
-                  className="admin-input"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  required
-                />
+              <div className="wh-form-grid">
+                <div className="admin-field">
+                  <label className="admin-label">Дата</label>
+                  <input type="date" className="admin-input" value={editDate} onChange={(e) => setEditDate(e.target.value)} required />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Сумма, ₽ *</label>
+                  <input type="number" className="admin-input" min={0} step={0.01} value={editAmount} onChange={(e) => setEditAmount(e.target.value)} required />
+                </div>
               </div>
+
               <div className="admin-field">
                 <label className="admin-label">Контрагент *</label>
                 <SearchCombobox
@@ -986,63 +964,27 @@ export function PaymentControls({
                   emptyText="Не найдено — можно вписать вручную"
                 />
               </div>
-              <div className="admin-field">
-                <label className="admin-label">Сумма, ₽ *</label>
-                <input
-                  type="number"
-                  className="admin-input"
-                  min={0}
-                  step={0.01}
-                  value={editAmount}
-                  onChange={(e) => setEditAmount(e.target.value)}
-                  required
-                />
+
+              <div className="wh-form-grid">
+                <div className="admin-field">
+                  <label className="admin-label">Номер счёта</label>
+                  <input type="text" className="admin-input" value={editInvoiceNumber} onChange={(e) => setEditInvoiceNumber(e.target.value)} placeholder="Номер из вашей программы" />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Комментарий</label>
+                  <input type="text" className="admin-input" value={editComment} onChange={(e) => setEditComment(e.target.value)} placeholder="Необязательно" />
+                </div>
               </div>
-              <div className="admin-field">
-                <label className="admin-label">Номер счёта</label>
-                <input
-                  type="text"
-                  className="admin-input"
-                  value={editInvoiceNumber}
-                  onChange={(e) => setEditInvoiceNumber(e.target.value)}
-                  placeholder="Номер из вашей программы"
-                />
-              </div>
-              <div className="admin-field">
-                <label className="admin-label">Комментарий</label>
-                <input
-                  type="text"
-                  className="admin-input"
-                  value={editComment}
-                  onChange={(e) => setEditComment(e.target.value)}
-                  placeholder="Необязательно"
-                />
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <label className="admin-check">
-                  <input
-                    type="checkbox"
-                    checked={editExclude}
-                    onChange={(e) => setEditExclude(e.target.checked)}
-                  />
-                  <span>Исключить из баланса (старый платеж)</span>
-                </label>
-              </div>
+
+              <label className="admin-check">
+                <input type="checkbox" checked={editExclude} onChange={(e) => setEditExclude(e.target.checked)} />
+                <span>Исключить из баланса (старый платеж)</span>
+              </label>
+
               {error && <div className="wh-form-error">{error}</div>}
-              <div className="admin-modal__actions" style={{ marginTop: 14 }}>
-                <button
-                  type="button"
-                  onClick={() => setShowEdit(false)}
-                  className="admin-btn admin-btn--ghost"
-                  disabled={saving}
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="admin-btn admin-btn--primary"
-                  disabled={saving}
-                >
+              <div className="admin-modal__actions">
+                <button type="button" onClick={() => setShowEdit(false)} className="admin-btn admin-btn--ghost" disabled={saving}>Отмена</button>
+                <button type="submit" className="admin-btn admin-btn--primary" disabled={saving}>
                   {saving && <Loader2 size={14} className="animate-spin" />}
                   Сохранить
                 </button>
