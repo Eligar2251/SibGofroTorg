@@ -111,12 +111,11 @@ const PRINT_CSS = `
 @media print {
   @page { size: A4 portrait; margin: 8mm 10mm; }
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-  body * { visibility: hidden !important; }
-  .deliv-print-root, .deliv-print-root * { visibility: visible !important; }
-  .deliv-print-root { position: absolute; left: 0; top: 0; width: 100%; background: #fff; padding: 0; margin: 0; }
-  .transport-sheet { padding: 0; max-width: none; }
+  .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content,
+  .admin-main, .NavigationProgress { display: none !important; }
+  .deliv-print-root { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; padding: 0 !important; margin: 0 !important; z-index: 999999 !important; }
+  .transport-sheet { padding: 0 !important; max-width: none !important; }
   .deliv-print-close { display: none !important; }
-  .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content { display: none !important; }
   .transport-deal { page-break-inside: avoid; }
 }
 .transport-sheet { font-family: Arial, Helvetica, sans-serif; color: #1a1a18; }

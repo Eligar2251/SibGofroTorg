@@ -245,38 +245,13 @@ const PRINT_CSS = `
 /* ── Печать ── */
 @media print {
   @page { size: A4 portrait; margin: 8mm 10mm; }
-  html, body {
-    background: #fff !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  /* Скрываем ВСЁ кроме бланка */
-  body * { visibility: hidden !important; }
-  .deliv-print-root, .deliv-print-root * { visibility: visible !important; }
-  .deliv-print-root {
-    position: absolute !important;
-    left: 0; top: 0; width: 100%;
-    background: #fff !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-  .deliv-print-sheet {
-    padding: 0 !important;
-    max-width: none !important;
-  }
-  .deliv-print-close { display: none !important; }
-  /* Скрываем админ-оболочку */
+  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
   .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content,
-  .admin-page-head, .deliv-plan-card, .deliv-days, .admin-filters,
-  .admin-stat-grid, .deliv-table-toolbar, .deliv-list,
-  .admin-card:not(.deliv-print-root) {
-    display: none !important;
-  }
-  /* Не разрывать полоску внутри */
-  .deliv-print-strip {
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
+  .admin-main, .NavigationProgress { display: none !important; }
+  .deliv-print-root { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; padding: 0 !important; margin: 0 !important; z-index: 999999 !important; }
+  .deliv-print-sheet { padding: 0 !important; max-width: none !important; }
+  .deliv-print-close { display: none !important; }
+  .deliv-print-strip { page-break-inside: avoid; break-inside: avoid; }
 }
 
 /* ── Общие стили бланка (экран + печать) ── */

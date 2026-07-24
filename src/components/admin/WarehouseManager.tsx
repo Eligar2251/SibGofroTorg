@@ -100,7 +100,7 @@ const paymentTypeLabels: Record<string, string> = {
   deposit: "Внесение",
 };
 
-type TabKey = "stock" | "deals" | "bank" | "salaries" | "counterparties" | "supplies" | "deliveries";
+type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries";
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers";
 type ReceiptSub = "active" | "archive";
@@ -180,8 +180,8 @@ export function WarehouseManager({
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<StockSub>(initialSub);
-  const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [suppliesSub, setSuppliesSub] = useState<SuppliesSub>("receipts");
+  const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
   const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
@@ -313,7 +313,9 @@ export function WarehouseManager({
       salary,
     }));
     let list: BankEntry[] = [
-      ...payments.map((payment) => ({ ...payment, entryKind: "payment" as const })),
+      ...payments
+        .filter((payment) => !payment.excludeFromBalance)
+        .map((payment) => ({ ...payment, entryKind: "payment" as const })),
       ...salaryEntries,
     ].filter((p) => {
       const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
@@ -386,12 +388,16 @@ export function WarehouseManager({
 
   const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
-    { key: "supplies", label: "Поставки", icon: <Truck size={13} /> },
+    { key: "receipts", label: "Поставки", icon: <Truck size={13} /> },
     { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
     { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
     { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
-    { key: "counterparties", label: "Контрагенты", icon: <UsersRound size={13} /> },
+    {
+      key: "counterparties",
+      label: "Контрагенты",
+      icon: <UsersRound size={13} />,
+    },
   ];
 
   const dealLinkOptions: DealLinkOption[] = useMemo(
@@ -809,7 +815,7 @@ export function WarehouseManager({
       )}
 
       {/* ════════════ ВКЛАДКА: ПОСТАВКИ (Поступления + Поставщики) ════════════ */}
-      {activeTab === "supplies" && (
+      {activeTab === "receipts" && (
         <>
           <div className="admin-filters admin-filters--sub">
             <button onClick={() => setSuppliesSub("receipts")} className={`admin-filter${suppliesSub === "receipts" ? " admin-filter--active" : ""}`}>
@@ -823,12 +829,8 @@ export function WarehouseManager({
           {suppliesSub === "receipts" && (
             <>
               <div className="admin-filters admin-filters--sub" style={{ marginTop: 0 }}>
-                <button onClick={() => setReceiptSub("active")} className={`admin-filter${receiptSub === "active" ? " admin-filter--active" : ""}`}>
-                  Активные
-                </button>
-                <button onClick={() => setReceiptSub("archive")} className={`admin-filter${receiptSub === "archive" ? " admin-filter--active" : ""}`}>
-                  Архив
-                </button>
+                <button onClick={() => setReceiptSub("active")} className={`admin-filter${receiptSub === "active" ? " admin-filter--active" : ""}`}>Активные</button>
+                <button onClick={() => setReceiptSub("archive")} className={`admin-filter${receiptSub === "archive" ? " admin-filter--active" : ""}`}>Архив</button>
               </div>
               <div className="admin-card">
                 {receiptSub === "active" ? (
@@ -855,40 +857,183 @@ export function WarehouseManager({
                   <h3 className="admin-card__title">Корзина заказа поставщикам</h3>
                   <button type="button" className="admin-btn admin-btn--primary" disabled={procurementSaving || procurementCart.length === 0} onClick={sendProcurementToReceipts}>
                     {procurementSaving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    Оформить поступление
+                    Отправить в поставки
                   </button>
                 </div>
-                <div className="admin-card__pad">
-                  {procurementCart.length === 0 ? (
-                    <p className="admin-muted">Добавьте товары из таблицы ниже</p>
-                  ) : (
-                    <div className="wh-items wh-items--receipt">
-                      {procurementCart.map((item) => (
-                        <div key={item.productId} className="wh-item-row">
-                          <span className="wh-item-row__name">{item.name}<span className="wh-item-row__sku">{item.sku}</span></span>
-                          <input type="number" className="admin-input" min={1} value={item.quantity} onChange={(e) => setProcurementCart((prev) => prev.map((c) => c.productId === item.productId ? { ...c, quantity: Number(e.target.value) || 1 } : c))} />
-                          <span className="wh-item-row__sum">{(item.price * item.quantity).toLocaleString("ru-RU")} ₽</span>
-                          <button type="button" className="wh-item-row__del" onClick={() => setProcurementCart((prev) => prev.filter((c) => c.productId !== item.productId))}><Trash2 size={14} /></button>
+                <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
+                  <div style={{ position: "relative" }}>
+                    <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
+                    <input className="admin-input" value={procurementQuery} onChange={(e) => setProcurementQuery(e.target.value)} placeholder="Поиск товара для заказа у поставщика..." style={{ paddingLeft: 36 }} />
+                  </div>
+                  {procurementQuery && (
+                    <div className="admin-table-wrap" style={{ maxHeight: 280, overflow: "auto" }}>
+                      <table className="admin-table">
+                        <thead><tr><th>Товар</th><th>Остаток</th><th>Поставщики</th><th></th></tr></thead>
+                        <tbody>
+                          {procurementProducts.map((product) => {
+                            const rows = suppliersByProduct.get(product.id) || [];
+                            return (
+                              <tr key={product.id}>
+                                <td><strong>{product.name}</strong>{product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}</td>
+                                <td>{product.stockQty} шт.</td>
+                                <td>{rows.map((row) => `${row.supplier.name} — ${fmt(row.price)} ₽`).join(" · ")}</td>
+                                <td style={{ textAlign: "right" }}>
+                                  <button type="button" className="admin-btn admin-btn--sm admin-btn--primary" onClick={() => addProcurementProduct(product.id)}><Plus size={13} /> Добавить</button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {procurementGroups.length > 0 ? (
+                    <div style={{ display: "grid", gap: 12 }}>
+                      {procurementGroups.map((group) => (
+                        <div key={group.supplier.id} style={{ border: "1px solid var(--adm-border)", borderRadius: 12, overflow: "hidden" }}>
+                          <div style={{ padding: "10px 14px", background: "var(--adm-paper)", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <strong>{group.supplier.name}</strong>
+                            <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>Итого: {fmt(group.items.reduce((sum, item) => sum + item.quantity * item.price, 0))} ₽</span>
+                          </div>
+                          <div className="admin-table-wrap">
+                            <table className="admin-table">
+                              <thead><tr><th>Товар</th><th>Кол-во</th><th>Цена</th><th>НДС %</th><th>Сумма</th><th></th></tr></thead>
+                              <tbody>
+                                {group.items.map((item) => {
+                                  const index = procurementCart.findIndex((c) => c.productId === item.productId && c.supplierId === item.supplierId);
+                                  const product = productById.get(item.productId);
+                                  return (
+                                    <tr key={`${item.supplierId}-${item.productId}`}>
+                                      <td>{product?.name || "Товар"}</td>
+                                      <td><input className="admin-input" type="number" min={1} value={item.quantity} onChange={(e) => patchProcurementItem(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} style={{ width: 90 }} /></td>
+                                      <td><input className="admin-input" type="number" min={0} step="0.01" value={item.price} onChange={(e) => patchProcurementItem(index, { price: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 120 }} /></td>
+                                      <td><input className="admin-input" type="number" min={0} step="1" value={item.vatRate} onChange={(e) => patchProcurementItem(index, { vatRate: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 80 }} /></td>
+                                      <td><strong>{fmt(item.quantity * item.price)} ₽</strong></td>
+                                      <td><button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setProcurementCart((prev) => prev.filter((_, idx) => idx !== index))}>Убрать</button></td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <div className="admin-empty" style={{ padding: 20 }}><p>Добавьте товары через поиск — они автоматически разложатся по поставщикам.</p></div>
                   )}
                 </div>
               </div>
+
               <div className="admin-card">
-                <div className="admin-card__head">
-                  <h3 className="admin-card__title">Поставщики</h3>
-                </div>
-                <div className="admin-card__pad">
-                  <p className="admin-muted">Управление поставщиками и ценами — в разделе «Контрагенты».</p>
-                </div>
+                {!selectedSupplier ? (
+                  supplierCards.length > 0 ? (
+                    <div className="admin-card__pad" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+                      {supplierCards.map(({ supplier, products, needCount }) => (
+                        <button key={supplier.id} type="button" onClick={() => setSelectedSupplierId(supplier.id)} className="admin-card" style={{ padding: 16, textAlign: "left", cursor: "pointer", border: "1px solid var(--adm-border)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                            <strong style={{ color: "var(--adm-navy)", fontSize: 15 }}>{supplier.name}</strong>
+                            {needCount > 0 && <span className="admin-badge admin-badge--amber">заказать {needCount}</span>}
+                          </div>
+                          <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 6 }}>{products.length} товаров в закупочном прайсе</div>
+                          <div style={{ display: "grid", gap: 2, marginTop: 10, fontSize: 12 }}>
+                            {supplier.inn && <span>ИНН {supplier.inn}</span>}
+                            {supplier.phone && <span>{supplier.phone}</span>}
+                            {supplier.email && <span>{supplier.email}</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : <div className="admin-empty"><p>Поставщики пока не заведены в контрагентах</p></div>
+                ) : (
+                  <div>
+                    <div className="admin-card__head" style={{ alignItems: "flex-start", gap: 12 }}>
+                      <div>
+                        <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSelectedSupplierId(null)} style={{ marginBottom: 10 }}>← Все поставщики</button>
+                        <h3 className="admin-card__title" style={{ margin: 0 }}>{selectedSupplier.supplier.name}</h3>
+                        <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 6 }}>
+                          {[selectedSupplier.supplier.contactName, selectedSupplier.supplier.phone, selectedSupplier.supplier.email, selectedSupplier.supplier.inn ? `ИНН ${selectedSupplier.supplier.inn}` : ""].filter(Boolean).join(" · ")}
+                        </div>
+                        {selectedSupplier.supplier.address && <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 4 }}>{selectedSupplier.supplier.address}</div>}
+                      </div>
+                      <Link href={`/${adminPath}/warehouse?tab=counterparties`} className="admin-btn admin-btn--ghost" prefetch={false}>Открыть контрагентов</Link>
+                    </div>
+                    <div className="admin-card__pad" style={{ display: "grid", gap: 12, borderTop: "1px solid var(--adm-border)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                        <div>
+                          <strong style={{ color: "var(--adm-navy)" }}>Товары и прайс-лист</strong>
+                          <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>Один список: товар, остаток, цена поставщика и добавление в корзину заказа.</div>
+                        </div>
+                        <button type="button" className="admin-btn admin-btn--primary" disabled={supplierPriceSaving} onClick={saveSupplierPrices}>
+                          {supplierPriceSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                          Сохранить прайс
+                        </button>
+                      </div>
+                      <div style={{ position: "relative" }}>
+                        <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
+                        <input className="admin-input" value={supplierPriceQuery} onChange={(e) => setSupplierPriceQuery(e.target.value)} placeholder="Найти товар, добавить в прайс или в корзину..." style={{ paddingLeft: 36 }} />
+                      </div>
+                      <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
+                        <table className="admin-table">
+                          <thead><tr><th>Товар</th><th>Остаток</th><th>Порог</th><th style={{ width: 170 }}>Цена поставщика</th><th>Статус</th><th style={{ width: 190 }}>Действия</th></tr></thead>
+                          <tbody>
+                            {supplierPriceProducts.map((product) => {
+                              const inPrice = supplierPriceDrafts[product.id] !== undefined;
+                              const stockProduct = productById.get(product.id);
+                              const warn = stockProduct?.stockWarnQty ?? 10;
+                              const need = (product.stockQty || 0) <= warn;
+                              return (
+                                <tr key={product.id}>
+                                  <td>
+                                    <Link href={`/${adminPath}/products/${product.id}`} prefetch={false} style={{ fontWeight: 700 }}>{product.name}</Link>
+                                    {product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}
+                                  </td>
+                                  <td>{product.stockQty ?? 0} шт.</td>
+                                  <td>{warn} шт.</td>
+                                  <td><input className="admin-input" type="number" min={0} step="0.01" value={supplierPriceDrafts[product.id] ?? ""} onChange={(e) => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: e.target.value }))} placeholder="0" /></td>
+                                  <td>{need ? <span className="admin-badge admin-badge--amber">заказать</span> : <span className="admin-badge admin-badge--green">достаточно</span>}</td>
+                                  <td>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      {!inPrice && <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: "0" }))}>В прайс</button>}
+                                      {inPrice && <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => { const next = { ...prev }; delete next[product.id]; return next; })}>Убрать</button>}
+                                      <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => {
+                                        const price = Math.max(0, Number(String(supplierPriceDrafts[product.id] ?? "0").replace(",", ".")) || 0);
+                                        setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: String(price) }));
+                                        setProcurementCart((prev) => {
+                                          const found = prev.find((item) => item.productId === product.id && item.supplierId === selectedSupplier!.supplier.id);
+                                          if (found) return prev.map((item) => item.productId === product.id && item.supplierId === selectedSupplier!.supplier.id ? { ...item, quantity: item.quantity + 1, price } : item);
+                                          return [...prev, { productId: product.id, supplierId: selectedSupplier!.supplier.id, quantity: 1, price, vatRate: VAT_RATE }];
+                                        });
+                                      }}>В корзину</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
         </>
       )}
 
-      {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}
+      {/* ════════════ ВКЛАДКА: ДОСТАВКИ ════════════ */}
+      {activeTab === "deliveries" && (
+        <TransportManager
+          transports={transports}
+          pendingDeals={pendingDeals}
+          drivers={drivers}
+          companyPhone={companyPhone}
+          companyAddress={companyAddress}
+        />
+      )}
+
+      {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}      {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}
       {activeTab === "deals" && (
         <>
           <div className="admin-filters admin-filters--sub">
@@ -1173,7 +1318,7 @@ export function WarehouseManager({
         <WarehouseSalaries employees={employees} salaries={salaries} />
       )}
 
-      {/* ════════════ ВКЛАДКА: КОНТРАГЕНТЫ (включая клиентов) ════════════ */}
+      {/* ════════════ ВКЛАДКА: КОНТРАГЕНТЫ ════════════ */}
       {activeTab === "counterparties" && (
         <CounterpartiesManager
           initialCounterparties={counterpartyOptions}
@@ -1181,15 +1326,235 @@ export function WarehouseManager({
         />
       )}
 
-      {/* ════════════ ВКЛАДКА: ДОСТАВКИ ════════════ */}
-      {activeTab === "deliveries" && (
-        <TransportManager
-          transports={transports}
-          pendingDeals={pendingDeals}
-          drivers={drivers}
-          companyPhone={companyPhone}
-          companyAddress={companyAddress}
-        />
+      {/* ════════════ ВКЛАДКА: КЛИЕНТЫ ════════════ */}
+      {activeTab === "clients" && <ClientsManager clients={clients} />}
+
+      {/* ════════════ ВКЛАДКА: ПОСТАВЩИКИ ════════════ */}
+      {activeTab === "suppliers" && (
+        <div style={{ display: "grid", gap: 16 }}>
+          <div className="admin-card">
+            <div className="admin-card__head">
+              <h3 className="admin-card__title">Корзина заказа поставщикам</h3>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                disabled={procurementSaving || procurementCart.length === 0}
+                onClick={sendProcurementToReceipts}
+              >
+                {procurementSaving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                Отправить в поставки
+              </button>
+            </div>
+            <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
+              <div style={{ position: "relative" }}>
+                <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
+                <input
+                  className="admin-input"
+                  value={procurementQuery}
+                  onChange={(e) => setProcurementQuery(e.target.value)}
+                  placeholder="Поиск товара для заказа у поставщика..."
+                  style={{ paddingLeft: 36 }}
+                />
+              </div>
+
+              {procurementQuery && (
+                <div className="admin-table-wrap" style={{ maxHeight: 280, overflow: "auto" }}>
+                  <table className="admin-table">
+                    <thead><tr><th>Товар</th><th>Остаток</th><th>Поставщики</th><th></th></tr></thead>
+                    <tbody>
+                      {procurementProducts.map((product) => {
+                        const rows = suppliersByProduct.get(product.id) || [];
+                        return (
+                          <tr key={product.id}>
+                            <td><strong>{product.name}</strong>{product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}</td>
+                            <td>{product.stockQty} шт.</td>
+                            <td>{rows.map((row) => `${row.supplier.name} — ${fmt(row.price)} ₽`).join(" · ")}</td>
+                            <td style={{ textAlign: "right" }}>
+                              <button type="button" className="admin-btn admin-btn--sm admin-btn--primary" onClick={() => addProcurementProduct(product.id)}>
+                                <Plus size={13} /> Добавить
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {procurementGroups.length > 0 ? (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {procurementGroups.map((group) => (
+                    <div key={group.supplier.id} style={{ border: "1px solid var(--adm-border)", borderRadius: 12, overflow: "hidden" }}>
+                      <div style={{ padding: "10px 14px", background: "var(--adm-paper)", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <strong>{group.supplier.name}</strong>
+                        <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>Итого: {fmt(group.items.reduce((sum, item) => sum + item.quantity * item.price, 0))} ₽</span>
+                      </div>
+                      <div className="admin-table-wrap">
+                        <table className="admin-table">
+                          <thead><tr><th>Товар</th><th>Кол-во</th><th>Цена</th><th>НДС %</th><th>Сумма</th><th></th></tr></thead>
+                          <tbody>
+                            {group.items.map((item) => {
+                              const index = procurementCart.findIndex((cartItem) => cartItem.productId === item.productId && cartItem.supplierId === item.supplierId);
+                              const product = productById.get(item.productId);
+                              return (
+                                <tr key={`${item.supplierId}-${item.productId}`}>
+                                  <td>{product?.name || "Товар"}</td>
+                                  <td><input className="admin-input" type="number" min={1} value={item.quantity} onChange={(e) => patchProcurementItem(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} style={{ width: 90 }} /></td>
+                                  <td><input className="admin-input" type="number" min={0} step="0.01" value={item.price} onChange={(e) => patchProcurementItem(index, { price: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 120 }} /></td>
+                                  <td><input className="admin-input" type="number" min={0} step="1" value={item.vatRate} onChange={(e) => patchProcurementItem(index, { vatRate: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 80 }} /></td>
+                                  <td><strong>{fmt(item.quantity * item.price)} ₽</strong></td>
+                                  <td><button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setProcurementCart((prev) => prev.filter((_, idx) => idx !== index))}>Убрать</button></td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="admin-empty" style={{ padding: 20 }}><p>Добавьте товары через поиск — они автоматически разложатся по поставщикам.</p></div>
+              )}
+            </div>
+          </div>
+
+          <div className="admin-card">
+            {!selectedSupplier ? (
+              supplierCards.length > 0 ? (
+                <div className="admin-card__pad" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+                  {supplierCards.map(({ supplier, products, needCount }) => (
+                    <button key={supplier.id} type="button" onClick={() => setSelectedSupplierId(supplier.id)} className="admin-card" style={{ padding: 16, textAlign: "left", cursor: "pointer", border: "1px solid var(--adm-border)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                        <strong style={{ color: "var(--adm-navy)", fontSize: 15 }}>{supplier.name}</strong>
+                        {needCount > 0 && <span className="admin-badge admin-badge--amber">заказать {needCount}</span>}
+                      </div>
+                      <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 6 }}>{products.length} товаров в закупочном прайсе</div>
+                      <div style={{ display: "grid", gap: 2, marginTop: 10, fontSize: 12 }}>
+                        {supplier.inn && <span>ИНН {supplier.inn}</span>}
+                        {supplier.phone && <span>{supplier.phone}</span>}
+                        {supplier.email && <span>{supplier.email}</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : <div className="admin-empty"><p>Поставщики пока не заведены в контрагентах</p></div>
+            ) : (
+              <div>
+                <div className="admin-card__head" style={{ alignItems: "flex-start", gap: 12 }}>
+                  <div>
+                    <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSelectedSupplierId(null)} style={{ marginBottom: 10 }}>← Все поставщики</button>
+                    <h3 className="admin-card__title" style={{ margin: 0 }}>{selectedSupplier.supplier.name}</h3>
+                    <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 6 }}>
+                      {[selectedSupplier.supplier.contactName, selectedSupplier.supplier.phone, selectedSupplier.supplier.email, selectedSupplier.supplier.inn ? `ИНН ${selectedSupplier.supplier.inn}` : ""].filter(Boolean).join(" · ")}
+                    </div>
+                    {selectedSupplier.supplier.address && <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 4 }}>{selectedSupplier.supplier.address}</div>}
+                  </div>
+                  <Link href={`/${adminPath}/warehouse?tab=counterparties`} className="admin-btn admin-btn--ghost" prefetch={false}>Открыть контрагентов</Link>
+                </div>
+
+                <div className="admin-card__pad" style={{ display: "grid", gap: 12, borderTop: "1px solid var(--adm-border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <div>
+                      <strong style={{ color: "var(--adm-navy)" }}>Товары и прайс-лист</strong>
+                      <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>
+                        Один список: товар, остаток, цена поставщика и добавление в корзину заказа. Если цены нет — поставьте 0 или свою цену и сохраните.
+                      </div>
+                    </div>
+                    <button type="button" className="admin-btn admin-btn--primary" disabled={supplierPriceSaving} onClick={saveSupplierPrices}>
+                      {supplierPriceSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      Сохранить прайс
+                    </button>
+                  </div>
+                  <div style={{ position: "relative" }}>
+                    <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
+                    <input
+                      className="admin-input"
+                      value={supplierPriceQuery}
+                      onChange={(e) => setSupplierPriceQuery(e.target.value)}
+                      placeholder="Найти товар, добавить в прайс или в корзину..."
+                      style={{ paddingLeft: 36 }}
+                    />
+                  </div>
+                  <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Товар</th>
+                          <th>Остаток</th>
+                          <th>Порог</th>
+                          <th style={{ width: 170 }}>Цена поставщика</th>
+                          <th>Статус</th>
+                          <th style={{ width: 190 }}>Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {supplierPriceProducts.map((product) => {
+                          const inPrice = supplierPriceDrafts[product.id] !== undefined;
+                          const stockProduct = productById.get(product.id);
+                          const warn = stockProduct?.stockWarnQty ?? 10;
+                          const need = (product.stockQty || 0) <= warn;
+                          return (
+                            <tr key={product.id}>
+                              <td>
+                                <Link href={`/${adminPath}/products/${product.id}`} prefetch={false} style={{ fontWeight: 700 }}>
+                                  {product.name}
+                                </Link>
+                                {product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}
+                              </td>
+                              <td>{product.stockQty ?? 0} шт.</td>
+                              <td>{warn} шт.</td>
+                              <td>
+                                <input
+                                  className="admin-input"
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={supplierPriceDrafts[product.id] ?? ""}
+                                  onChange={(e) => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: e.target.value }))}
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td>{need ? <span className="admin-badge admin-badge--amber">заказать</span> : <span className="admin-badge admin-badge--green">достаточно</span>}</td>
+                              <td>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  {!inPrice && (
+                                    <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: "0" }))}>В прайс</button>
+                                  )}
+                                  {inPrice && (
+                                    <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => { const next = { ...prev }; delete next[product.id]; return next; })}>Убрать</button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                                    onClick={() => {
+                                      const price = Math.max(0, Number(String(supplierPriceDrafts[product.id] ?? "0").replace(",", ".")) || 0);
+                                      setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: String(price) }));
+                                      setProcurementCart((prev) => {
+                                        const found = prev.find((item) => item.productId === product.id && item.supplierId === selectedSupplier.supplier.id);
+                                        if (found) {
+                                          return prev.map((item) => item.productId === product.id && item.supplierId === selectedSupplier.supplier.id ? { ...item, quantity: item.quantity + 1, price } : item);
+                                        }
+                                        return [...prev, { productId: product.id, supplierId: selectedSupplier.supplier.id, quantity: 1, price, vatRate: VAT_RATE }];
+                                      });
+                                    }}
+                                  >
+                                    В корзину
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ════════════ ВКЛАДКА: БАНК ════════════ */}
