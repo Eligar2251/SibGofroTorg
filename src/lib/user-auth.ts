@@ -1,13 +1,14 @@
 // =========================================================
 // FILE: src/lib/user-auth.ts
+// Аутентификация пользователей — Supabase (PostgreSQL).
+// JWT-сессии (как раньше), хранение данных в таблице users.
 // =========================================================
 
 import { createHash, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/supabase";
 
 function getUserSecret(): Uint8Array {
   const fromEnv =
@@ -73,11 +74,6 @@ export function formatPhoneDisplay(digits: string): string {
   return `+${d[0]} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9, 11)}`;
 }
 
-/**
- * Новые аккаунты получают стабильный id, зависящий только от
- * нормализованного телефона. Поэтому два параллельных запроса регистрации
- * одного номера не смогут создать две разные записи Firestore.
- */
 function userIdForPhone(phoneDigits: string): string {
   return `phone_${createHash("sha256").update(phoneDigits).digest("hex").slice(0, 40)}`;
 }
@@ -155,26 +151,44 @@ export async function requireUserApi(): Promise<UserSession | NextResponse> {
   return session;
 }
 
-export async function findUserByPhone(
-  phoneDigits: string
-): Promise<AppUser | null> {
+function mapUserRow(row: any): AppUser {
+  return {
+    id: row.id,
+    phone: row.phone,
+    phoneDigits: row.phone_digits,
+    passwordHash: row.password_hash,
+    name: row.name || null,
+    email: row.email || null,
+    customerType: row.customer_type || null,
+    companyName: row.company_name || null,
+    inn: row.inn || null,
+    kpp: row.kpp || null,
+    ogrn: row.ogrn || null,
+    legalAddress: row.legal_address || null,
+    actualAddress: row.actual_address || null,
+    deliveryAddress: row.delivery_address || null,
+    createdAt: row.created_at,
+  };
+}
+
+export async function findUserByPhone(phoneDigits: string): Promise<AppUser | null> {
   const db = getAdminDb();
   const normalized = normalizePhone(phoneDigits);
-  const snap = await db
-    .collection("users")
-    .where("phoneDigits", "==", normalized)
+  const { data, error } = await db
+    .from("users")
+    .select("*")
+    .eq("phone_digits", normalized)
     .limit(1)
-    .get();
-  if (snap.empty) return null;
-  const d = snap.docs[0];
-  return { id: d.id, ...(d.data() as Omit<AppUser, "id">) };
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapUserRow(data);
 }
 
 export async function getUserById(id: string): Promise<AppUser | null> {
   const db = getAdminDb();
-  const snap = await db.collection("users").doc(id).get();
-  if (!snap.exists) return null;
-  return { id: snap.id, ...(snap.data() as Omit<AppUser, "id">) };
+  const { data, error } = await db.from("users").select("*").eq("id", id).maybeSingle();
+  if (error || !data) return null;
+  return mapUserRow(data);
 }
 
 export async function createUser(data: {
@@ -190,8 +204,6 @@ export async function createUser(data: {
     return { error: "Пароль минимум 8 символов" };
   }
 
-  // Сначала учитываем старые аккаунты со случайными id. Ошибка чтения БД
-  // должна останавливать регистрацию, иначе можно создать дубль номера.
   try {
     const existing = await findUserByPhone(phoneDigits);
     if (existing) {
@@ -204,29 +216,28 @@ export async function createUser(data: {
 
   const passwordHash = hashPassword(data.password);
   const name = data.name?.trim().slice(0, 120) || null;
+  const id = userIdForPhone(phoneDigits);
   const db = getAdminDb();
-  const docRef = db.collection("users").doc(userIdForPhone(phoneDigits));
 
   try {
-    const created = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(docRef);
-      if (snap.exists) return false;
-      tx.set(docRef, {
-        phone: formatPhoneDisplay(phoneDigits),
-        phoneDigits,
-        passwordHash,
-        name,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      return true;
+    // INSERT с проверкой на дубликат через UNIQUE constraint
+    const { error } = await db.from("users").insert({
+      id,
+      phone: formatPhoneDisplay(phoneDigits),
+      phone_digits: phoneDigits,
+      password_hash: passwordHash,
+      name,
     });
-    if (!created) {
-      return { error: "Пользователь с таким телефоном уже зарегистрирован" };
+
+    if (error) {
+      if (error.code === "23505") { // unique_violation
+        return { error: "Пользователь с таким телефоном уже зарегистрирован" };
+      }
+      throw error;
     }
-    return { id: docRef.id, name };
+    return { id, name };
   } catch (e: unknown) {
-    console.error("createUser Firestore error:", e);
+    console.error("createUser Supabase error:", e);
     const msg = e instanceof Error ? e.message : String(e);
     return { error: `Не удалось создать пользователя: ${msg}` };
   }
@@ -248,11 +259,18 @@ export async function updateUserProfile(
   }>
 ) {
   const db = getAdminDb();
-  const payload: Record<string, unknown> = {
-    updatedAt: FieldValue.serverTimestamp(),
+  const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const fieldMap: Record<string, string> = {
+    name: "name", email: "email", customerType: "customer_type",
+    companyName: "company_name", inn: "inn", kpp: "kpp", ogrn: "ogrn",
+    legalAddress: "legal_address", actualAddress: "actual_address",
+    deliveryAddress: "delivery_address",
   };
-  for (const [k, v] of Object.entries(data)) {
-    if (v !== undefined) payload[k] = v;
+  for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
+    if (data[jsKey as keyof typeof data] !== undefined) {
+      payload[dbKey] = data[jsKey as keyof typeof data];
+    }
   }
-  await db.collection("users").doc(uid).update(payload);
+  const { error } = await db.from("users").update(payload).eq("id", uid);
+  if (error) throw error;
 }

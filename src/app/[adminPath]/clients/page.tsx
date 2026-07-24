@@ -1,17 +1,15 @@
 // src/app/[adminPath]/clients/page.tsx
 import { notFound } from "next/navigation";
 import { ClientsManager } from "@/components/admin/ClientsManager";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/supabase";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";
 
 function toIso(raw: any): string | null {
   if (!raw) return null;
-  if (typeof raw?.toDate === "function") return raw.toDate().toISOString();
-  if (raw._seconds != null) return new Date(raw._seconds * 1000).toISOString();
-  if (raw.seconds != null) return new Date(raw.seconds * 1000).toISOString();
   if (typeof raw === "string") return raw;
+  if (raw instanceof Date) return raw.toISOString();
   return null;
 }
 
@@ -24,55 +22,48 @@ export default async function AdminClientsPage({
   if (adminPath !== ADMIN_PATH) notFound();
 
   const db = getAdminDb();
-  // Ограничиваем рабочий набор: раньше страница при каждом переходе читала
-  // целиком обе коллекции. Точные общее количество получаем агрегатом.
-  const [usersSnap, ordersSnap, usersCountAgg] = await Promise.all([
-    db.collection("users").orderBy("createdAt", "desc").limit(200).get(),
-    db.collection("orders").orderBy("createdAt", "desc").limit(500).get(),
-    db.collection("users").count().get(),
+  const [usersRes, ordersRes, usersCountRes] = await Promise.all([
+    db.from("users").select("*").order("created_at", { ascending: false }).limit(200),
+    db.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
+    db.from("users").select("id", { count: "exact", head: true }),
   ]);
 
-  const orders = ordersSnap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      userId: data.userId ?? null,
-      customerPhoneDigits: data.customerPhoneDigits ?? null,
-      customerName: data.customerName ?? null,
-      customerPhone: data.customerPhone ?? null,
-      type: data.type ?? "inquiry",
-      status: data.status ?? "new",
-      totalSum: data.totalSum ?? null,
-      productInfo: data.productInfo ?? null,
-      items: data.items ?? null,
-      createdAt: toIso(data.createdAt),
-    };
-  });
+  const orders = (ordersRes.data || []).map((d: any) => ({
+    id: d.id,
+    userId: d.user_id ?? null,
+    customerPhoneDigits: d.customer_phone_digits ?? null,
+    customerName: d.customer_name ?? null,
+    customerPhone: d.customer_phone ?? null,
+    type: d.type ?? "inquiry",
+    status: d.status ?? "new",
+    totalSum: d.total_sum ?? null,
+    productInfo: d.product_info ?? null,
+    items: d.items ?? null,
+    createdAt: toIso(d.created_at),
+  }));
 
-  const clients = usersSnap.docs.map((d) => {
-    const data = d.data();
+  const clients = (usersRes.data || []).map((d: any) => {
     const uid = d.id;
     const userOrders = orders.filter(
-      (o) =>
+      (o: any) =>
         o.userId === uid ||
-        (data.phoneDigits && o.customerPhoneDigits === data.phoneDigits)
+        (d.phone_digits && o.customerPhoneDigits === d.phone_digits)
     );
     return {
       id: uid,
-      name: data.name ?? null,
-      phone: data.phone ?? null,
-      phoneDigits: data.phoneDigits ?? null,
-      email: data.email ?? null,
-      customerType: data.customerType ?? "individual",
-      companyName: data.companyName ?? null,
-      inn: data.inn ?? null,
-      createdAt: toIso(data.createdAt),
+      name: d.name ?? null,
+      phone: d.phone ?? null,
+      phoneDigits: d.phone_digits ?? null,
+      email: d.email ?? null,
+      customerType: d.customer_type ?? "individual",
+      companyName: d.company_name ?? null,
+      inn: d.inn ?? null,
+      createdAt: toIso(d.created_at),
       ordersCount: userOrders.length,
-      completedCount: userOrders.filter((o) => o.status === "completed")
-        .length,
+      completedCount: userOrders.filter((o: any) => o.status === "completed").length,
       totalSpent: userOrders
-        .filter((o) => o.status === "completed")
-        .reduce((s, o) => s + (o.totalSum || 0), 0),
+        .filter((o: any) => o.status === "completed")
+        .reduce((s: number, o: any) => s + (o.totalSum || 0), 0),
       lastOrderAt: userOrders[0]?.createdAt ?? null,
       orders: userOrders,
     };
@@ -86,7 +77,7 @@ export default async function AdminClientsPage({
           <p className="admin-sub">
             Всего:{" "}
             <strong style={{ color: "var(--adm-navy)" }}>
-              {usersCountAgg.data().count}
+              {usersCountRes.count || 0}
             </strong>{" "}
             пользователей · показаны последние {clients.length}
           </p>

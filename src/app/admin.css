@@ -86,6 +86,192 @@
   flex: 0 0 auto;
 }
 
+/* ── Универсальное выравнивание иконок и текста ── */
+
+/* Все SVG-иконки — базовый кроссбраузерный выравниватель.
+   flex-shrink: 0 предотвращает сжатие иконки, vertical-align: middle
+   выравнивает по базовой линии текста. */
+[data-admin="true"] svg {
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* Optical补偿 для иконок внутри flex-контейнеров с текстом */
+[data-admin="true"] button svg,
+[data-admin="true"] a svg,
+[data-admin="true"] .admin-badge svg,
+[data-admin="true"] .admin-filter svg,
+[data-admin="true"] .admin-row svg,
+[data-admin="true"] .deliv-item__top svg,
+[data-admin="true"] .deliv-item__client svg,
+[data-admin="true"] .deliv-item__addr svg,
+[data-admin="true"] .deliv-item__items svg {
+  position: relative;
+  top: -0.5px;
+}
+
+/* Иконки-кнопки (admin-btn--icon) — точное центрирование */
+[data-admin="true"] .admin-btn--icon svg {
+  display: block;
+  margin: auto;
+}
+
+/* Таблица: вертикальное выравнивание всего содержимого по центру */
+[data-admin="true"] .admin-table td {
+  vertical-align: middle;
+}
+
+/* ══════════════════════════════════════
+   КАСТОМНЫЕ ЧЕКБОКСЫ
+   Замена стандартных квадратов на стилизованные
+   элементы с плавной анимацией
+   ══════════════════════════════════════ */
+
+/* 1. Базовый сброс: скрываем нативный чекбокс,
+      сохраняя доступность (opacity:0 + position:absolute) */
+[data-admin="true"] input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  border: 2px solid var(--adm-border-mid);
+  border-radius: 5px;
+  background: var(--adm-card);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.12s ease;
+}
+
+/* Hover — подсветка крафтовым цветом */
+[data-admin="true"] input[type="checkbox"]:hover {
+  border-color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+  box-shadow: 0 0 0 3px rgba(200,134,10,0.10);
+}
+
+/* Focus — клавиатурная навигация */
+[data-admin="true"] input[type="checkbox"]:focus-visible {
+  outline: none;
+  border-color: var(--adm-kraft);
+  box-shadow: 0 0 0 3px rgba(200,134,10,0.22);
+}
+
+/* 2. Checked — галочка через CSS-clip-path (анимированная) */
+[data-admin="true"] input[type="checkbox"]:checked {
+  background: var(--adm-kraft);
+  border-color: var(--adm-kraft);
+  box-shadow: 0 1px 3px rgba(200,134,10,0.3);
+}
+
+/* Анимированная галочка — чистый CSS без content-символов,
+   одинаково рендерится во всех браузерах */
+[data-admin="true"] input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 5px;
+  width: 5px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Появление галочки с bounce-эффектом */
+[data-admin="true"] input[type="checkbox"]:checked::after {
+  transform: rotate(45deg) scale(1);
+}
+
+/* 3. Микро-анимация «press» при клике */
+[data-admin="true"] input[type="checkbox"]:active {
+  transform: scale(0.88);
+}
+
+/* 4. Неактивное состояние */
+[data-admin="true"] input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--adm-paper-warm);
+}
+
+[data-admin="true"] input[type="checkbox"]:disabled:checked {
+  background: var(--adm-sand);
+  border-color: var(--adm-sand);
+}
+
+/* 5. Чекбоксы в шапке таблицы — чуть крупнее для удобства */
+[data-admin="true"] .admin-table th input[type="checkbox"],
+[data-admin="true"] .bulk-table th input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  min-width: 17px;
+  min-height: 17px;
+  border-radius: 4px;
+}
+
+/* 6. Чекбоксы в зелёном контексте (оплата, активность) */
+[data-admin="true"] .wh-paid-toggle input[type="checkbox"]:checked,
+[data-admin="true"] .deal-delivery-block__toggle input[type="checkbox"]:checked {
+  background: var(--adm-pine);
+  border-color: var(--adm-pine);
+  box-shadow: 0 1px 3px rgba(30,74,45,0.3);
+}
+
+[data-admin="true"] .wh-paid-toggle input[type="checkbox"]:checked::after,
+[data-admin="true"] .deal-delivery-block__toggle input[type="checkbox"]:checked::after {
+  border-color: #fff;
+}
+
+/* 7. Стилизация .admin-check — современный toggle-бейдж */
+.admin-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--adm-ink);
+  user-select: none;
+  padding: 8px 12px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-paper);
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  line-height: 1.35;
+}
+
+.admin-check:hover {
+  border-color: var(--adm-kraft-line);
+  background: var(--adm-kraft-pale);
+  box-shadow: 0 1px 4px rgba(200,134,10,0.08);
+}
+
+/* Активный .admin-check — когда чекбокс внутри отмечен */
+.admin-check:has(input:checked) {
+  border-color: var(--adm-kraft-line);
+  background: linear-gradient(135deg, var(--adm-kraft-pale), rgba(253,243,220,0.5));
+}
+
+.admin-check:has(input:checked):hover {
+  border-color: var(--adm-kraft);
+  box-shadow: 0 2px 6px rgba(200,134,10,0.15);
+}
+
+/* Текст внутри .admin-check — всегда по центру */
+.admin-check span,
+.admin-check > span {
+  line-height: 1.35;
+}
+
 /* ══════════════════════════════════════
    SHELL
    ══════════════════════════════════════ */
@@ -346,7 +532,7 @@
 
 .admin-mobile-bar__nav {
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   align-items: center;
   width: min(100%, 520px);
   min-width: 0;
@@ -892,9 +1078,6 @@
 }
 
 .admin-check input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--adm-kraft);
   flex-shrink: 0;
 }
 
@@ -1894,6 +2077,42 @@
 }
 
 /* ══════════════════════════════════════
+   КОНТЕЙНЕРЫ ДЛЯ РЕНДЕРИНГА (60 FPS)
+   CSS containment изолирует перерисовку —
+   браузер не пересчитывает layout вне контейнера
+   ══════════════════════════════════════ */
+
+/* Каждая карточка — изолированный контейнер для layout + paint */
+[data-admin="true"] .admin-card {
+  contain: layout style;
+}
+
+/* Статические карточки на дашборде — дополнительно paint containment */
+[data-admin="true"] .admin-stat {
+  contain: layout style paint;
+}
+
+/* Модальные окна — полная изоляция от фона */
+[data-admin="true"] .admin-modal {
+  contain: layout style paint;
+}
+
+/* Таблицы — содержимое не влияет на layout снаружи */
+[data-admin="true"] .admin-table-wrap {
+  contain: layout style;
+}
+
+/* Заказы в списке — каждый элемент независим */
+[data-admin="true"] .admin-order {
+  contain: layout style;
+}
+
+/* Боковая панель — не перерисовывается при смене контента */
+[data-admin="true"] .admin-sidebar {
+  contain: layout style size;
+}
+
+/* ══════════════════════════════════════
    СКРЫТИЕ ХРОМА САЙТА В АДМИНКЕ
    ══════════════════════════════════════ */
 body:has([data-admin="true"]) .topbar,
@@ -1929,6 +2148,14 @@ body:has(.admin-login) > main {
 
 @keyframes adm-spin {
   to { transform: rotate(360deg); }
+}
+
+/* Полоска прогресса навигации */
+@keyframes admin-progress-slide {
+  0%   { transform: scaleX(0); opacity: 1; }
+  50%  { transform: scaleX(0.7); opacity: 1; }
+  80%  { transform: scaleX(0.9); opacity: 0.8; }
+  100% { transform: scaleX(1); opacity: 0; }
 }
 
 .animate-spin {
@@ -2707,9 +2934,6 @@ body:has(.admin-modal-overlay) {
 }
 
 .wh-paid-toggle input {
-  accent-color: var(--adm-pine);
-  width: 16px;
-  height: 16px;
   flex-shrink: 0;
 }
 
@@ -2982,6 +3206,170 @@ body:has(.admin-modal-overlay) {
 .admin-filters--sub .admin-filter {
   font-size: 11px;
   padding: 5px 11px;
+}
+
+/* Контейнер для табов и кнопок действий в одну линию */
+.admin-tabs-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.admin-tabs-with-actions .admin-filters {
+  margin-bottom: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+}
+
+.admin-tabs-with-actions .admin-page-head__actions {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0;
+  margin-top: 0;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+/* Кнопка «Новый …» той же высоты, что и таб-фильтры */
+.admin-tabs-with-actions .admin-page-head__actions > .admin-btn,
+.admin-tabs-with-actions .admin-page-head__actions > button.admin-btn {
+  height: 34px;
+  min-height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+}
+
+.admin-tabs-with-actions .admin-filter {
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .admin-tabs-with-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .admin-tabs-with-actions .admin-filters {
+    flex-wrap: wrap;
+  }
+  
+  .admin-tabs-with-actions .admin-page-head__actions {
+    width: 100%;
+  }
+
+  .admin-tabs-with-actions .admin-page-head__actions > .admin-btn,
+  .admin-tabs-with-actions .admin-page-head__actions > button.admin-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Блок доставки в форме заказа учёта */
+.deal-delivery-block {
+  margin: 14px 0 4px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, var(--adm-steel-pale), var(--adm-paper));
+  border: 1px solid var(--adm-steel-line);
+  border-radius: var(--adm-r);
+}
+
+.deal-delivery-block__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--adm-steel);
+}
+
+.deal-delivery-block__toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--adm-ink);
+  cursor: pointer;
+  user-select: none;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+
+.deal-delivery-block__toggle input {
+  flex-shrink: 0;
+}
+
+.deal-delivery-block__body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.deal-delivery-block__empty {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--adm-ink-muted);
+  line-height: 1.45;
+}
+
+.deal-delivery-tariff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.deal-delivery-tariff__hint {
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+/* Фикс для бейджей в мобильном */
+@media (max-width: 640px) {
+  .admin-badge {
+    font-size: 9px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+  
+  .bank-pay__badge,
+  .bank-pay__wait,
+  .bank-pay__num {
+    font-size: 9px;
+    padding: 1px 5px;
+  }
+  
+  .bank-pay__row1 {
+    gap: 6px;
+  }
+  
+  .bank-pay__row2 {
+    gap: 6px;
+  }
+  
+  .bank-pay__links {
+    gap: 4px;
+  }
+  
+  .bank-pay__doc {
+    font-size: 9px;
+    padding: 1px 6px;
+  }
 }
 
 /* ══════════════════════════════════════
@@ -3699,7 +4087,7 @@ body:has(.admin-modal-overlay) {
 
 /* Пошаговое массовое редактирование */
 .bulk-wizard { display: flex; flex-direction: column; gap: 14px; }
-.bulk-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bulk-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .bulk-step { display: flex; align-items: center; gap: 10px; padding: 12px 14px; color: var(--adm-sand); background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); }
 .bulk-step > span { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; background: var(--adm-paper-warm); border-radius: 50%; }
 .bulk-step strong, .bulk-step small { display: block; }
@@ -3742,6 +4130,111 @@ body:has(.admin-modal-overlay) {
   .bulk-footer .admin-btn { flex: 1; }
 }
 
+/* ── Массовая загрузка изображений (по товару) ── */
+.bulk-images-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bulk-img-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(219,216,208,0.5);
+  transition: background 0.12s ease;
+}
+
+.bulk-img-row:hover {
+  background: var(--adm-sand-pale);
+}
+
+.bulk-img-row--drag {
+  background: var(--adm-kraft-pale);
+  box-shadow: inset 0 0 0 2px var(--adm-kraft);
+}
+
+.bulk-img-row:last-child {
+  border-bottom: none;
+}
+
+.bulk-img-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bulk-img-row__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-img-row__meta {
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.bulk-img-row__preview {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bulk-img-row__thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--adm-border);
+  flex-shrink: 0;
+}
+
+.bulk-img-row__thumb-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  background: var(--adm-rust);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+  padding: 0;
+  line-height: 0;
+}
+
+.bulk-img-row__thumb:hover .bulk-img-row__thumb-del {
+  opacity: 1;
+}
+
+.bulk-img-row__actions {
+  flex-shrink: 0;
+}
+
+@media (max-width: 700px) {
+  .bulk-img-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .bulk-img-row__actions {
+    justify-self: start;
+  }
+}
+
 /* Табличный реестр контрагентов */
 .cp-table { min-width: 980px; }
 .cp-table th button { padding: 0; color: inherit; background: none; border: 0; font: inherit; text-transform: inherit; letter-spacing: inherit; }
@@ -3765,6 +4258,15 @@ body:has(.admin-modal-overlay) {
 .cp-table__documents { min-width: 0; }
 .cp-table__documents > span { color: var(--adm-sand); font-size: 11px; }
 .admin-order__item--adjustment { margin-top: 6px; padding-top: 6px; color: var(--adm-steel); border-top: 1px dashed var(--adm-border-mid); }
+
+/* Частично отгруженная позиция — левый акцент */
+.admin-order__item--partial {
+  border-left: 3px solid var(--adm-kraft);
+  padding-left: 8px;
+  margin-left: -4px;
+  background: linear-gradient(90deg, rgba(200,134,10,0.04) 0%, transparent 60%);
+  border-radius: 0 4px 4px 0;
+}
 
 @media (max-width: 700px) {
   .cp-table__details { grid-template-columns: 1fr; }
@@ -3806,3 +4308,523 @@ body:has(.admin-modal-overlay) {
 @keyframes admin-loading-in { from { opacity: 0; } }
 @media (max-width: 700px) { .admin-loading__stats { grid-template-columns: 1fr 1fr; } }
 @media (prefers-reduced-motion: reduce) { .admin-loading span { animation: none; } }
+
+
+/* ══════════════════════════════════════
+   ДОСТАВКА ЗАКАЗОВ
+   ══════════════════════════════════════ */
+.order-delivery {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+}
+
+.order-delivery__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--adm-steel);
+}
+
+.order-delivery__active {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.order-delivery__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.order-delivery__addr {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--adm-ink);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.order-delivery__addr svg {
+  margin-top: 2px;
+  color: var(--adm-kraft);
+  flex-shrink: 0;
+}
+
+.order-delivery__note {
+  font-size: 11px;
+  color: var(--adm-ink-muted);
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.order-delivery__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.order-delivery__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.order-delivery__form .admin-field {
+  margin: 0;
+}
+
+.order-delivery__error {
+  font-size: 11px;
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+  border-radius: 5px;
+  padding: 6px 8px;
+  line-height: 1.35;
+}
+
+/* Планирование доставок */
+.deliv-plan-card {
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+
+.deliv-plan-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--adm-font-head);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--adm-ink);
+  margin-bottom: 6px;
+}
+
+.deliv-plan-card__hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--adm-ink-muted);
+  line-height: 1.45;
+}
+
+.deliv-plan-card__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.deliv-msg {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: var(--adm-r-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.deliv-msg--ok {
+  color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+  border: 1px solid var(--adm-pine-line);
+}
+
+.deliv-msg--err {
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+}
+
+.deliv-days {
+  margin-bottom: 16px;
+}
+
+.deliv-days__title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--adm-sand);
+  margin-bottom: 8px;
+}
+
+.deliv-days__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.deliv-day {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--adm-ink-muted);
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+  min-width: 110px;
+  text-align: left;
+}
+
+.deliv-day strong {
+  color: var(--adm-ink);
+  font-size: 13px;
+}
+
+.deliv-day:hover {
+  border-color: var(--adm-steel-line);
+  background: var(--adm-steel-pale);
+}
+
+.deliv-day--active {
+  background: var(--adm-ink);
+  border-color: var(--adm-ink);
+  color: rgba(255, 255, 255, 0.7);
+  box-shadow: var(--adm-sh-sm);
+}
+
+.deliv-day--active strong {
+  color: #fff;
+}
+
+.deliv-table-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--adm-border);
+  background: var(--adm-paper);
+}
+
+@media (max-width: 640px) {
+  .deliv-table-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+.deliv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: var(--adm-r-sm);
+  transition: background 0.14s ease;
+}
+
+.deliv-check:hover {
+  background: var(--adm-paper-warm);
+}
+
+.deliv-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.deliv-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 180px;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(219, 216, 208, 0.45);
+  align-items: start;
+  transition: background 0.1s;
+}
+
+.deliv-item:last-child {
+  border-bottom: none;
+}
+
+.deliv-item:hover {
+  background: var(--adm-sand-pale);
+}
+
+.deliv-item--selected {
+  background: var(--adm-steel-pale);
+  box-shadow: inset 3px 0 0 var(--adm-steel);
+}
+
+.deliv-item--released {
+  opacity: 0.72;
+}
+
+.deliv-item__check {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 6px;
+}
+
+.deliv-item__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deliv-item__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.deliv-item__client {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--adm-ink);
+}
+
+.deliv-item__client a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--adm-steel);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.deliv-item__client a:hover {
+  color: var(--adm-kraft);
+}
+
+.deliv-item__addr {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink);
+  line-height: 1.35;
+}
+
+.deliv-item__addr svg {
+  margin-top: 2px;
+  color: var(--adm-kraft);
+  flex-shrink: 0;
+}
+
+.deliv-item__note {
+  font-size: 12px;
+  color: var(--adm-ink-muted);
+  font-style: italic;
+}
+
+.deliv-item__items {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  line-height: 1.4;
+}
+
+.deliv-item__items svg {
+  margin-top: 2px;
+  color: var(--adm-sand);
+  flex-shrink: 0;
+}
+
+.deliv-item__side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.deliv-item__side .admin-field {
+  width: 100%;
+}
+
+@media (max-width: 860px) {
+  .deliv-item {
+    grid-template-columns: 24px 1fr;
+  }
+
+  .deliv-item__side {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    border-top: 1px dashed var(--adm-border);
+    padding-top: 10px;
+  }
+
+  .deliv-item__side .admin-field {
+    flex: 1 1 140px;
+  }
+
+  .deliv-item__side .admin-btn {
+    flex: 1 1 auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-order__side {
+    width: 220px;
+  }
+}
+
+/* ══════════════════════════════════════
+   EXCEL ИМПОРТ / ЭКСПОРТ
+   ══════════════════════════════════════ */
+.excel-io-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 700px) {
+  .excel-io-grid { grid-template-columns: 1fr; }
+}
+
+.excel-io-block {
+  padding: 14px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+}
+
+.excel-io-block__title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--adm-sand);
+  margin-bottom: 10px;
+}
+
+.excel-io-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.excel-io-help {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+  border-radius: var(--adm-r-sm);
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  line-height: 1.45;
+}
+
+.excel-io-help svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--adm-steel);
+}
+
+.excel-io-help ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.excel-io-help li {
+  margin-bottom: 3px;
+}
+
+.excel-io-report {
+  margin-top: 16px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  overflow: hidden;
+}
+
+.excel-io-report__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.excel-io-report__head--ok {
+  background: var(--adm-pine-pale);
+  color: var(--adm-pine);
+}
+
+.excel-io-report__head--warn {
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+}
+
+.excel-io-report__sheets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1px;
+  background: var(--adm-border);
+}
+
+.excel-io-report__sheet {
+  background: var(--adm-card);
+  padding: 10px 12px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.excel-io-report__sheet strong {
+  color: var(--adm-ink);
+  font-size: 12px;
+}
+
+.excel-io-report__sheet > span {
+  color: var(--adm-ink-muted);
+}
+
+.excel-io-report__err {
+  color: var(--adm-rust);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.excel-io-report__warns {
+  padding: 12px 14px;
+  background: var(--adm-kraft-pale);
+  border-top: 1px solid var(--adm-kraft-line);
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.excel-io-report__warns strong {
+  color: var(--adm-kraft);
+  margin-bottom: 4px;
+}

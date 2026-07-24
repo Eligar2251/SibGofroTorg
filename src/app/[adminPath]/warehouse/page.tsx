@@ -13,9 +13,12 @@ import {
   getEmployees,
   getSalaries,
   getCounterparties,
+  getTransports,
 } from "@/lib/warehouse";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
+import { getAdminDb } from "@/lib/supabase";
+import { getSettings } from "@/lib/supabase-queries";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import type {
   CounterpartyDocument,
@@ -37,44 +40,40 @@ function toIso(raw: any): string | null {
 
 async function getClientsForWarehouse() {
   const db = getAdminDb();
-  const [usersSnap, ordersSnap] = await Promise.all([
-    db.collection("users").orderBy("createdAt", "desc").limit(200).get(),
-    db.collection("orders").orderBy("createdAt", "desc").limit(500).get(),
+  const [usersRes, ordersRes] = await Promise.all([
+    db.from("users").select("*").order("created_at", { ascending: false }).limit(200),
+    db.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
   ]);
-  const orders = ordersSnap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      userId: data.userId ?? null,
-      customerPhoneDigits: data.customerPhoneDigits ?? null,
-      customerName: data.customerName ?? null,
-      customerPhone: data.customerPhone ?? null,
-      type: data.type ?? "inquiry",
-      status: data.status ?? "new",
-      totalSum: data.totalSum ?? null,
-      productInfo: data.productInfo ?? null,
-      items: data.items ?? null,
-      createdAt: toIso(data.createdAt),
-    };
-  });
-  return usersSnap.docs.map((d) => {
-    const data = d.data();
+  const orders = (ordersRes.data || []).map((d: any) => ({
+    id: d.id,
+    userId: d.user_id ?? null,
+    customerPhoneDigits: d.customer_phone_digits ?? null,
+    customerName: d.customer_name ?? null,
+    customerPhone: d.customer_phone ?? null,
+    type: d.type ?? "inquiry",
+    status: d.status ?? "new",
+    totalSum: d.total_sum ?? null,
+    productInfo: d.product_info ?? null,
+    items: d.items ?? null,
+    createdAt: toIso(d.created_at),
+  }));
+  return (usersRes.data || []).map((d: any) => {
     const uid = d.id;
     const userOrders = orders.filter(
-      (o) => o.userId === uid || (data.phoneDigits && o.customerPhoneDigits === data.phoneDigits)
+      (o: any) => o.userId === uid || (d.phone_digits && o.customerPhoneDigits === d.phone_digits)
     );
     return {
       id: uid,
-      name: data.name ?? null,
-      phone: data.phone ?? null,
-      email: data.email ?? null,
-      customerType: data.customerType ?? "individual",
-      companyName: data.companyName ?? null,
-      inn: data.inn ?? null,
-      createdAt: toIso(data.createdAt),
+      name: d.name ?? null,
+      phone: d.phone ?? null,
+      email: d.email ?? null,
+      customerType: d.customer_type ?? "individual",
+      companyName: d.company_name ?? null,
+      inn: d.inn ?? null,
+      createdAt: toIso(d.created_at),
       ordersCount: userOrders.length,
-      completedCount: userOrders.filter((o) => o.status === "completed").length,
-      totalSpent: userOrders.filter((o) => o.status === "completed").reduce((s, o) => s + (o.totalSum || 0), 0),
+      completedCount: userOrders.filter((o: any) => o.status === "completed").length,
+      totalSpent: userOrders.filter((o: any) => o.status === "completed").reduce((s: number, o: any) => s + (o.totalSum || 0), 0),
       lastOrderAt: userOrders[0]?.createdAt ?? null,
       orders: userOrders,
     };
@@ -106,14 +105,15 @@ export default async function AdminWarehousePage({
   // Раньше при открытии «Склад» читались сразу поставки, заказы, банк,
   // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
   // только необходимые ей коллекции.
-  const needStock = ["stock", "receipts", "deals", "suppliers"].includes(initialTab) || !!sp.product;
-  const needReceipts = ["receipts", "bank", "counterparties"].includes(initialTab) || !!sp.receipt;
-  const needDeals = ["deals", "bank", "counterparties", "receipts"].includes(initialTab) || !!sp.deal;
-  const needPayments = ["bank", "deals", "receipts"].includes(initialTab) || !!sp.payment;
-  const needEmployees = initialTab === "salaries";
+  const needStock = ["stock", "deals", "supplies", "receipts"].includes(initialTab) || !!sp.product;
+  const needReceipts = ["supplies", "receipts", "bank", "counterparties"].includes(initialTab) || !!sp.receipt;
+  const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries"].includes(initialTab) || !!sp.deal;
+  const needPayments = ["bank", "deals", "supplies"].includes(initialTab) || !!sp.payment;
+  const needEmployees = initialTab === "salaries" || initialTab === "deliveries";
   const needSalaries = initialTab === "salaries" || initialTab === "bank";
-  const needCounterparties = ["counterparties", "suppliers", "deals", "receipts", "bank"].includes(initialTab);
-  const needClients = initialTab === "clients";
+  const needCounterparties = ["counterparties", "supplies", "deals", "receipts", "bank"].includes(initialTab);
+  const needClients = initialTab === "counterparties";
+  const needTransports = initialTab === "deliveries";
 
   const [
     stock,
@@ -125,6 +125,7 @@ export default async function AdminWarehousePage({
     counterpartyRows,
     focusedReceipt,
     clients,
+    transportsData,
   ] = await Promise.all([
     needStock ? getWarehouseStock() : Promise.resolve([]),
     needReceipts ? getReceipts() : Promise.resolve([]),
@@ -135,6 +136,7 @@ export default async function AdminWarehousePage({
     needCounterparties ? getCounterparties({ includeSupplierPrices: initialTab === "suppliers" || initialTab === "receipts" || initialTab === "deals" || initialTab === "bank" }) : Promise.resolve([]),
     sp.receipt ? getReceiptById(sp.receipt) : Promise.resolve(null),
     needClients ? getClientsForWarehouse() : Promise.resolve([]),
+    needTransports ? getTransports({ limit: 200 }) : Promise.resolve([]),
   ]);
 
   const receipts =
@@ -226,8 +228,47 @@ export default async function AdminWarehousePage({
     ].sort((a, b) => b.date.localeCompare(a.date));
   }
 
+  // Подготовка данных для перевозок
+  const activeTransportDealIds = new Set(
+    (transportsData || [])
+      .filter((t: any) => t.status === "draft" || t.status === "active")
+      .flatMap((t: any) => (t.items || []).map((it: any) => it.dealId))
+  );
+
+  const pendingDeals = deals
+    .filter((d) => d.hasDelivery && !activeTransportDealIds.has(d.id))
+    .map((d) => ({
+      id: d.id,
+      number: d.number,
+      customerName: d.customerName || "Без имени",
+      customerPhone: d.customerPhone ?? d.phone ?? null,
+      deliveryAddress: d.deliveryAddress ?? d.address ?? null,
+      deliveryType: d.deliveryType ?? null,
+      deliveryCost: d.deliveryCost ?? null,
+      items: (d.items || []).map((it: any) => ({ productId: it.productId, name: it.name, quantity: it.quantity })),
+      totalSum: d.total ?? null,
+      shippedItems: Array.isArray(d.shippedItems) ? d.shippedItems : [],
+      deliveryItems: Array.isArray(d.deliveryItems) ? d.deliveryItems : [],
+    }));
+
+  const drivers = employees.map((e) => ({ id: e.id, name: e.name, phone: e.phone ?? null }));
+
+  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  const deliveryPriceRaw = Number(settings.delivery_price);
+  const freeThresholdRaw = Number(settings.free_delivery_threshold);
+  const deliveryPrice =
+    Number.isFinite(deliveryPriceRaw) && deliveryPriceRaw >= 0
+      ? deliveryPriceRaw
+      : 800;
+  const freeDeliveryThreshold =
+    Number.isFinite(freeThresholdRaw) && freeThresholdRaw >= 0
+      ? freeThresholdRaw
+      : 30000;
+
   return (
-    <WarehouseManager
+    <div>
+      <WarehouseRealtime />
+      <WarehouseManager
       adminPath={ADMIN_PATH}
       initialTab={initialTab}
       initialSub={initialSub}
@@ -246,6 +287,14 @@ export default async function AdminWarehousePage({
       counterpartyOptions={counterpartyOptions}
       counterpartyDocuments={counterpartyDocuments}
       clients={clients}
+      deliveryPrice={deliveryPrice}
+      freeDeliveryThreshold={freeDeliveryThreshold}
+      transports={transportsData}
+      pendingDeals={pendingDeals}
+      drivers={drivers}
+      companyPhone={settings.phone || undefined}
+      companyAddress={settings.address || undefined}
     />
+    </div>
   );
 }

@@ -82,6 +82,21 @@ export interface CustomerDeal extends CounterpartyDetails {
   vatAmount: number;
   status: DealStatus;
   cancelReason?: string | null;
+  /** Есть ли доставка у заказа учёта */
+  hasDelivery?: boolean;
+  deliveryType?: "free" | "paid" | null;
+  deliveryCost?: number | null;
+  deliveryAddress?: string | null;
+  deliveryPlannedDate?: string | null;
+  deliveryReleasedAt?: string | null;
+  deliveryNote?: string | null;
+  /** Водитель, назначенный на доставку */
+  deliveryDriverId?: string | null;
+  deliveryDriverName?: string | null;
+  /** Частично отгруженные товары: [{productId, name, shippedQty}] */
+  shippedItems?: { productId: string; name?: string; shippedQty: number }[];
+  /** Количество товара, запланированное к доставке: [{productId, name, quantity}] */
+  deliveryItems?: { productId: string; name: string; quantity: number }[];
   createdAt?: string | null;
 }
 

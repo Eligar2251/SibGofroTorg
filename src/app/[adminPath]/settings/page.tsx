@@ -2,8 +2,10 @@
 // FILE: src/app/[adminPath]/settings/page.tsx
 // =========================================================
 
-import { getSettings } from "@/lib/firestore-queries";
+import { getSettings } from "@/lib/supabase-queries";
 import { SettingsForm } from "@/components/admin/SettingsForm";
+import { ExcelDataManager } from "@/components/admin/ExcelDataManager";
+import { ActivityLogs } from "@/components/admin/ActivityLogs";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,21 @@ export default async function AdminSettingsPage() {
     <div>
       <h1 className="admin-h1">Настройки</h1>
       <SettingsForm settings={settingsMap} />
+
+      <div style={{ marginTop: "2.5rem" }}>
+        <ExcelDataManager />
+      </div>
+
+      <div style={{ marginTop: "3rem", borderTop: "2px solid #e5e7eb", paddingTop: "2rem" }}>
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
+          📋 Журнал действий
+        </h2>
+        <p style={{ color: "#6b7280", marginBottom: "1rem", fontSize: "0.875rem" }}>
+          Кто, когда и что сделал в админ-панели. Видно только главному администратору.
+        </p>
+        <ActivityLogs />
+      </div>
+
     </div>
   );
 }

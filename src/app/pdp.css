@@ -189,6 +189,9 @@
   background: #f7f8f8;
   border: 1px solid var(--border);
   width: 100%;
+  /* Бейджи наличия/акции остаются внутри фото, не перекрывают модалки */
+  isolation: isolate;
+  z-index: 0;
 }
 
 .gallery-main__img {
@@ -251,6 +254,7 @@
   position: absolute;
   top: 12px;
   right: 12px;
+  /* Только поверх фото галереи, не выше popup/story (z-index 1200) */
   z-index: 2;
   display: inline-flex;
   flex-direction: column;
@@ -266,6 +270,7 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
+  pointer-events: none;
 }
 
 .badge-stock__label {

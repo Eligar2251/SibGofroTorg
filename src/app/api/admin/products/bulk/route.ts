@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { requireAdminApi } from "@/lib/auth";
-import { getAdminDb } from "@/lib/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { getAdminDb } from "@/lib/supabase";
+import { invalidateProductsCache } from "@/lib/supabase-queries";
 
 export async function PUT(request: NextRequest) {
   const auth = await requireAdminApi();
@@ -12,30 +12,7 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const { products } = body as {
-      products: {
-        id: string;
-        name?: string;
-        price?: number | null;
-        priceWholesale?: number | null;
-        minWholesaleQty?: number | null;
-        dimensionLength?: number | null;
-        dimensionWidth?: number | null;
-        dimensionHeight?: number | null;
-        dimensionUnit?: string;
-        weight?: number | null;
-        material?: string;
-        packQty?: number | null;
-        volume?: number | null;
-        note?: string | null;
-        stockQty?: number | null;
-        inStock?: boolean;
-        isVisible?: boolean;
-        isPromo?: boolean;
-        isFeatured?: boolean;
-        categoryId?: string | null;
-        sku?: string | null;
-        promoLabel?: string | null;
-      }[];
+      products: { id: string; [key: string]: any }[];
     };
 
     if (!Array.isArray(products) || products.length === 0) {
@@ -43,19 +20,29 @@ export async function PUT(request: NextRequest) {
     }
 
     const db = getAdminDb();
-    const batch = db.batch();
+    const fieldMap: Record<string, string> = {
+      name: "name", price: "price", priceWholesale: "price_wholesale",
+      minWholesaleQty: "min_wholesale_qty", dimensionLength: "dimension_length",
+      dimensionWidth: "dimension_width", dimensionHeight: "dimension_height",
+      dimensionUnit: "dimension_unit", weight: "weight", material: "material",
+      packQty: "pack_qty", volume: "volume", note: "note",
+      stockQty: "stock_qty", inStock: "in_stock", isVisible: "is_visible",
+      isPromo: "is_promo", isFeatured: "is_featured", categoryId: "category_id",
+      sku: "sku", promoLabel: "promo_label",
+      images: "images", imageUrl: "image_url",
+    };
 
     for (const p of products) {
       if (!p.id) continue;
-      const ref = db.collection("products").doc(p.id);
       const { id: _id, ...rest } = p;
-      batch.update(ref, {
-        ...rest,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+      for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
+        if (rest[jsKey] !== undefined) payload[dbKey] = rest[jsKey];
+      }
+      await db.from("products").update(payload).eq("id", p.id);
     }
 
-    await batch.commit();
+    invalidateProductsCache();
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true, updated: products.length });
   } catch (error) {
@@ -77,15 +64,12 @@ export async function DELETE(request: NextRequest) {
     }
 
     const db = getAdminDb();
-    const batch = db.batch();
-
     for (const id of ids) {
       if (!id) continue;
-      const ref = db.collection("products").doc(id);
-      batch.delete(ref);
+      await db.from("products").delete().eq("id", id);
     }
 
-    await batch.commit();
+    invalidateProductsCache();
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true, deleted: ids.length });
   } catch (error) {

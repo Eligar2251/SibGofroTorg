@@ -1,7 +1,7 @@
 // src/app/api/products/[productId]/reviews/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { getProductReviews, getProductReviewStats, createProductReview, markReviewHelpful, hasUserPurchasedProduct, getUserOrderWithProduct } from "@/lib/firestore-queries";
+import { getProductReviews, getProductReviewStats, createProductReview, markReviewHelpful, hasUserPurchasedProduct, getUserOrderWithProduct } from "@/lib/supabase-queries";
 import { requireUserApi, verifyUserSession } from "@/lib/user-auth";
 
 export async function GET(

@@ -3,7 +3,7 @@
 // =========================================================
 
 import type { MetadataRoute } from "next";
-import { getCategories, getProducts } from "@/lib/firestore-queries";
+import { getCategories, getProducts } from "@/lib/supabase-queries";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||

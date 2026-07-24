@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createOrder, getSettings } from "@/lib/firestore-queries";
+import { createOrder, getSettings } from "@/lib/supabase-queries";
 import {
   formatPhoneDisplay,
   getUserById,

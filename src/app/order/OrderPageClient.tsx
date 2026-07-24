@@ -47,7 +47,7 @@ export function OrderPageClient({
   freeDeliveryThreshold: number;
 }) {
   const router = useRouter();
-  const { cart, updateQty, removeFromCart, totalSum, clearCart } = useCart();
+  const { cart, updateQty, removeFromCart, rawSubtotal, discountPercent, discountAmount, totalSum, clearCart } = useCart();
 
   const [step, setStep] = useState(1);
   const [delivery, setDelivery] = useState<DeliveryMethod>("courier");
@@ -1157,8 +1157,26 @@ export function OrderPageClient({
               <div className="checkout-summary__rows">
                 <div className="checkout-summary__row">
                   <span>Товары</span>
-                  <span>{totalSum.toLocaleString("ru-RU")} ₽</span>
+                  <span>{rawSubtotal.toLocaleString("ru-RU")} ₽</span>
                 </div>
+                {discountPercent > 0 && (
+                  <>
+                    <div className="checkout-summary__row" style={{ color: '#16a34a' }}>
+                      <span>🎉 Скидка за объём ({discountPercent}%)</span>
+                      <span>−{discountAmount.toLocaleString("ru-RU")} ₽</span>
+                    </div>
+                    <div className="checkout-summary__row" style={{ fontWeight: 600 }}>
+                      <span>Итого за товары</span>
+                      <span>{totalSum.toLocaleString("ru-RU")} ₽</span>
+                    </div>
+                  </>
+                )}
+                {discountPercent === 0 && (
+                  <div className="checkout-summary__row">
+                    <span>Итого за товары</span>
+                    <span>{totalSum.toLocaleString("ru-RU")} ₽</span>
+                  </div>
+                )}
                 <div className="checkout-summary__row">
                   <span>Доставка</span>
                   <span>

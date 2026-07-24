@@ -3,7 +3,7 @@ import {
   getCategoryBySlug,
   getProducts,
   getCategories,
-} from "@/lib/firestore-queries";
+} from "@/lib/supabase-queries";
 import { CatalogShopClient } from "@/components/catalog/CatalogShopClient";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";

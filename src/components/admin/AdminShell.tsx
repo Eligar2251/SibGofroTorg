@@ -14,8 +14,10 @@ import {
   Megaphone,
   Star,
   Boxes,
+  Truck,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
+import { NavigationProgress } from "./NavigationProgress";
 
 export function AdminShell({
   children,
@@ -71,6 +73,7 @@ export function AdminShell({
 
   return (
     <div className="admin-shell" data-admin="true">
+      <NavigationProgress />
       <aside className="admin-sidebar">
         <div className="admin-sidebar__brand">
           <SiteLogo variant="light" className="admin-sidebar__logo-svg" />
@@ -87,7 +90,6 @@ export function AdminShell({
               <Link
                 key={link.href}
                 href={link.href}
-                prefetch={false}
                 className={`admin-sidebar__link${active ? " admin-sidebar__link--active" : ""}`}
               >
                 {link.icon}

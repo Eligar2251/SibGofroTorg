@@ -1,10 +1,10 @@
 // src/app/[adminPath]/orders/page.tsx
-import { getOrders, getWastepaperRequests } from "@/lib/firestore-queries";
+import { getOrders, getWastepaperRequests } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { OrdersAutoRefresh } from "@/components/admin/OrdersAutoRefresh";
+import { OrdersRealtime } from "@/components/admin/OrdersRealtime";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +40,11 @@ const paymentLabels: Record<string, { token: string; text: string }> = {
   invoice: { token: "receipt", text: "Счет" },
 };
 
-const filterOptions = [
-  { value: "all", label: "Все" },
+  const filterOptions = [
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
-  { value: "completed", label: "Проведённые" },
-  { value: "rejected", label: "Отклонённые" },
+  { value: "completed", label: "Отработанные" },
+  { value: "all", label: "Все" },
 ];
 
 const typeOptions = [
@@ -104,7 +103,7 @@ export default async function AdminOrdersPage({
     type: typeQuery,
     sort: sortQuery,
   } = await searchParams;
-  const activeFilter = filterStatus || "all";
+  const activeFilter = filterStatus || "new"; // По умолчанию показываем новые заявки
   const activeType = typeQuery || "all";
   const activeSort = sortQuery || "new_first";
   const query = searchQuery ? searchQuery.toLowerCase().trim() : "";
@@ -130,6 +129,7 @@ export default async function AdminOrdersPage({
         (order.id && order.id.toLowerCase().includes(query)) ||
         (order.productInfo && order.productInfo.toLowerCase().includes(query)) ||
         (order.wastepaperType && order.wastepaperType.toLowerCase().includes(query)) ||
+        (order.deliveryAddress && order.deliveryAddress.toLowerCase().includes(query)) ||
         itemText.toLowerCase().includes(query)
       );
     })
@@ -145,7 +145,7 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
-      <OrdersAutoRefresh intervalMs={10000} />
+      <OrdersRealtime />
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Заявки</h1>
@@ -256,6 +256,9 @@ export default async function AdminOrdersPage({
                             : isSiteOrder && order.items?.length
                             ? `${order.items.length} поз. · ${(order.totalSum || 0).toLocaleString("ru-RU")} ₽`
                             : order.productInfo || "Заявка на уточнение"}
+                          {!isWastepaper && order.deliveryAddress && (
+                            <span> · {order.deliveryAddress}</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -301,6 +304,14 @@ export default async function AdminOrdersPage({
                                 const pm = paymentLabels[order.paymentMethod];
                                 return pm ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}><GlyphIcon value={pm.token} size={13} />{pm.text}</span> : order.paymentMethod;
                               })()}
+                            </span>
+                          </div>
+                        )}
+                        {!isWastepaper && order.deliveryAddress && (
+                          <div className="admin-order__meta" style={{ gridColumn: "1 / -1" }}>
+                            <span className="admin-order__meta-label">Адрес:</span>
+                            <span className="admin-order__meta-val" style={{ whiteSpace: "normal" }}>
+                              {order.deliveryAddress}
                             </span>
                           </div>
                         )}

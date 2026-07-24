@@ -5,7 +5,7 @@ import {
   getPromotions,
   getProductById,
   getWastepaperRates,
-} from "@/lib/firestore-queries";
+} from "@/lib/supabase-queries";
 import { formatRate } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
@@ -221,6 +221,11 @@ export default async function HomePage() {
               <span>Вывоз от 150 кг — 0 ₽</span>
               <span>Оплата на месте</span>
               <span>Работаем с юрлицами</span>
+            </div>
+
+            <div className="hero__wp-phone">
+              <Phone size={14} />
+              <span>Отдел макулатуры: <strong>291-08-20</strong></span>
             </div>
 
             <span className="hero__wp-label">

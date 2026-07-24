@@ -83,15 +83,22 @@ function roundKopeck(n: number): number {
 }
 
 /**
- * Равномерно разбить сумму на count частей так, чтобы сумма частей
- * совпала с итогом до копейки: первые (count-1) частей одинаковые,
- * остаток добирается в последней части.
+ * Разбить сумму на count частей с разницей:
+ * - Для 2 частей: первая округлена до чётного рубля (без копеек),
+ *   вторая добирает остаток. Пример: 278638.80 → 139318 + 139320.80
+ * - Для 3+: первые (count-1) одинаковые, остаток в последней.
  */
 function splitEvenly(totalSum: number, count: number): string[] {
   const sum = roundKopeck(totalSum);
   if (count <= 1) return [String(sum)];
-  // Итог ещё не введён — показываем нужное количество нулевых полей
   if (sum <= 0) return Array.from({ length: count }, () => "0");
+
+  if (count === 2) {
+    const p1 = Math.floor(sum / 4) * 2;
+    const p2 = roundKopeck(sum - p1);
+    return [String(p1), String(p2)];
+  }
+
   const base = Math.floor((sum / count) * 100) / 100;
   const next: string[] = [];
   let allocated = 0;

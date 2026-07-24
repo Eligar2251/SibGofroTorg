@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Edit2,
@@ -15,6 +15,10 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
+  Gift,
+  Banknote,
+  Truck,
+  RotateCcw,
 } from "lucide-react";
 import {
   ProductPicker,
@@ -26,9 +30,49 @@ import {
   type PickerOption,
 } from "@/components/admin/SearchPicker";
 import { ModalPortal } from "@/components/admin/ModalPortal";
-import { includedVat, VAT_RATE } from "@/lib/vat";
+import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPayment } from "@/lib/warehouse-shared";
+
+/** Округление до копеек */
+function roundKopeck(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Разбить сумму на count частей с разницей:
+ * - Первая часть округлена вниз до чётного числа рублей (нет копеек)
+ * - Последняя часть добирает остаток (с копейками)
+ * - Сумма частей = total до копейки
+ *
+ * Пример: 278 638,80 → 139 318,00 + 139 320,80
+ */
+function splitEvenly(totalSum: number, count: number): string[] {
+  const sum = roundKopeck(totalSum);
+  if (count <= 1) return [String(sum)];
+  if (sum <= 0) return Array.from({ length: count }, () => "0");
+
+  if (count === 2) {
+    // Первая часть — до чётного рубля (нет копеек, чётное число)
+    const p1 = Math.floor(sum / 4) * 2;
+    const p2 = roundKopeck(sum - p1);
+    return [String(p1), String(p2)];
+  }
+
+  // 3+ частей: первые (count-1) одинаковые до копейки, остаток в последней
+  const base = Math.floor((sum / count) * 100) / 100;
+  const next: string[] = [];
+  let allocated = 0;
+  for (let i = 0; i < count; i++) {
+    if (i === count - 1) {
+      next.push(String(roundKopeck(sum - allocated)));
+    } else {
+      next.push(String(base));
+      allocated = roundKopeck(allocated + base);
+    }
+  }
+  return next;
+}
 
 interface DealItemDraft {
   productId: string;
@@ -51,6 +95,13 @@ export interface EditableDeal {
   contactName?: string | null;
   comment?: string | null;
   items: DealItemDraft[];
+  vatRate?: number;
+  hasDelivery?: boolean;
+  deliveryType?: "free" | "paid" | null;
+  deliveryCost?: number | null;
+  deliveryAddress?: string | null;
+  deliveryPlannedDate?: string | null;
+  deliveryNote?: string | null;
 }
 
 function todayIso(): string {
@@ -75,11 +126,17 @@ export function DealForm({
   counterparties = [],
   payments = [],
   initialDeal,
+  deliveryPrice = 800,
+  freeDeliveryThreshold = 30000,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
   payments?: BankPayment[];
   initialDeal?: EditableDeal & { linkedPaymentIds?: string[] };
+  /** Тариф курьера из настроек (₽) */
+  deliveryPrice?: number;
+  /** Порог бесплатной доставки из настроек (₽) */
+  freeDeliveryThreshold?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -104,11 +161,100 @@ export function DealForm({
   const [selectedPayments, setSelectedPayments] = useState<string[]>(
     initialDeal?.linkedPaymentIds || []
   );
+  const [vatRate, setVatRate] = useState<number>(
+    initialDeal?.vatRate ?? VAT_RATE
+  );
+  const [hasDelivery, setHasDelivery] = useState(
+    Boolean(initialDeal?.hasDelivery)
+  );
+  // null = считать по тарифу автоматически; иначе ручная сумма
+  const [deliveryCostOverride, setDeliveryCostOverride] = useState<string | null>(
+    initialDeal?.hasDelivery &&
+      initialDeal?.deliveryType === "paid" &&
+      initialDeal?.deliveryCost != null
+      ? String(initialDeal.deliveryCost)
+      : null
+  );
+  const [deliveryAddress, setDeliveryAddress] = useState(
+    initialDeal?.deliveryAddress || initialDeal?.address || ""
+  );
+  const [deliveryPlannedDate, setDeliveryPlannedDate] = useState(
+    initialDeal?.deliveryPlannedDate || ""
+  );
+  const [deliveryNote, setDeliveryNote] = useState(
+    initialDeal?.deliveryNote || ""
+  );
 
-  const total = items.reduce(
+  // ── Способ оплаты ──
+  const [paymentMethod, setPaymentMethod] = useState<string>(
+    initialDeal ? "regular" : "regular"
+  );
+
+  // ── Разбиение платежа на части ──
+  const existingUnpaid = useMemo(() => {
+    if (!initialDeal) return [] as BankPayment[];
+    return payments.filter(
+      (p) =>
+        p.direction === "incoming" &&
+        !p.isPaid &&
+        (p.dealIds || []).length === 1 &&
+        (p.receiptIds || []).length === 0
+    );
+  }, [payments, initialDeal]);
+
+  const [paymentCount, setPaymentCount] = useState(
+    initialDeal && existingUnpaid.length > 1 ? existingUnpaid.length : 1
+  );
+  const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
+  const [splitTouched, setSplitTouched] = useState(false);
+
+  const itemsTotal = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
     0
   );
+  const tariffCost =
+    freeDeliveryThreshold > 0 && itemsTotal >= freeDeliveryThreshold
+      ? 0
+      : Math.max(0, Number(deliveryPrice) || 0);
+  const deliveryType: "free" | "paid" =
+    hasDelivery &&
+    (deliveryCostOverride != null
+      ? Number(deliveryCostOverride) > 0
+      : tariffCost > 0)
+      ? "paid"
+      : "free";
+  const deliveryAmount = !hasDelivery
+    ? 0
+    : deliveryCostOverride != null
+    ? Math.max(0, Number(deliveryCostOverride) || 0)
+    : tariffCost;
+  const total = itemsTotal + deliveryAmount;
+  const isFreeByTariff =
+    hasDelivery &&
+    deliveryCostOverride == null &&
+    freeDeliveryThreshold > 0 &&
+    itemsTotal >= freeDeliveryThreshold;
+
+  // Пересчёт частей при изменении итога
+  useEffect(() => {
+    if (paymentCount > 1 && !splitTouched) {
+      setSplitAmounts(splitEvenly(total, paymentCount));
+    }
+  }, [total, paymentCount, splitTouched]);
+
+  function handleSplitCountChange(count: number) {
+    setPaymentCount(count);
+    setSplitTouched(false);
+    setSplitAmounts(splitEvenly(total, count));
+  }
+
+  function buildPaymentSplits(): number[] {
+    if (paymentCount <= 1) return [roundKopeck(total)];
+    const parts = splitAmounts
+      .map((v) => roundKopeck(Number(v) || 0))
+      .filter((v) => v > 0);
+    return parts.length > 0 ? parts : splitEvenly(total, paymentCount).map(Number);
+  }
 
   function resetForm() {
     setDate(initialDeal?.date || todayIso());
@@ -122,7 +268,33 @@ export function DealForm({
     setComment(initialDeal?.comment || "");
     setItems(initialDeal?.items || []);
     setSelectedPayments(initialDeal?.linkedPaymentIds || []);
+    setVatRate(initialDeal?.vatRate ?? VAT_RATE);
+    setHasDelivery(Boolean(initialDeal?.hasDelivery));
+    setDeliveryCostOverride(
+      initialDeal?.hasDelivery &&
+        initialDeal?.deliveryType === "paid" &&
+        initialDeal?.deliveryCost != null
+        ? String(initialDeal.deliveryCost)
+        : null
+    );
+    setDeliveryAddress(
+      initialDeal?.deliveryAddress || initialDeal?.address || ""
+    );
+    setDeliveryPlannedDate(initialDeal?.deliveryPlannedDate || "");
+    setDeliveryNote(initialDeal?.deliveryNote || "");
     setError("");
+    setPaymentCount(1);
+    setSplitAmounts([""]);
+    setSplitTouched(false);
+    setPaymentMethod("regular");
+  }
+
+  function pickCustomerAddress(found: CounterpartyOption): string {
+    return (
+      found.address ||
+      found.legalAddress ||
+      ""
+    ).trim();
   }
 
   function selectCustomer(value: string) {
@@ -138,8 +310,13 @@ export function DealForm({
     setEmail(found.email || "");
     setInn(found.inn || "");
     setKpp(found.kpp || "");
-    setAddress(found.address || "");
+    const addr = pickCustomerAddress(found);
+    setAddress(found.address || found.legalAddress || "");
     setContactName(found.contactName || "");
+    // Авто-подстановка адреса доставки из карточки клиента
+    if (addr) {
+      setDeliveryAddress(addr);
+    }
   }
 
   function addItem(p: PickerProduct) {
@@ -229,6 +406,10 @@ export function DealForm({
       setError("Добавьте хотя бы одну позицию");
       return;
     }
+    if (hasDelivery && !deliveryAddress.trim()) {
+      setError("Укажите адрес доставки");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch(
@@ -245,9 +426,18 @@ export function DealForm({
           email: email.trim() || null,
           inn: inn.trim() || null,
           kpp: kpp.trim() || null,
-          address: address.trim() || null,
+          address: address.trim() || deliveryAddress.trim() || null,
           contactName: contactName.trim() || null,
           comment: comment.trim() || null,
+          vatRate,
+          hasDelivery,
+          deliveryType: hasDelivery ? deliveryType : null,
+          deliveryCost: hasDelivery ? deliveryAmount : 0,
+          deliveryAddress: hasDelivery ? deliveryAddress.trim() : null,
+          deliveryPlannedDate:
+            hasDelivery && deliveryPlannedDate ? deliveryPlannedDate : null,
+          deliveryNote:
+            hasDelivery && deliveryNote.trim() ? deliveryNote.trim() : null,
           items: items.map((it) => ({
             productId: it.productId,
             name: it.name,
@@ -256,6 +446,8 @@ export function DealForm({
             price: Number(it.price) || 0,
           })),
           linkedPaymentIds: selectedPayments,
+          paymentSplits: buildPaymentSplits(),
+          paymentMethod,
         }),
       });
       if (!res.ok) {
@@ -332,6 +524,20 @@ export function DealForm({
                   />
                 </div>
                 <div className="admin-field">
+                  <label className="admin-label">Ставка НДС</label>
+                  <select
+                    className="admin-select"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                  >
+                    {VAT_RATES.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="admin-field">
                   <label className="admin-label">Телефон</label>
                   <input
                     type="tel"
@@ -360,28 +566,27 @@ export function DealForm({
                   <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
                   <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={inn} onChange={(e) => setInn(e.target.value)} /></div>
                   <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={kpp} onChange={(e) => setKpp(e.target.value)} /></div>
-                  <div className="admin-field" style={{ gridColumn: "1 / -1" }}><label className="admin-label">Адрес</label><input className="admin-input" value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+                  <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                    <label className="admin-label">Адрес клиента</label>
+                    <input
+                      className="admin-input"
+                      value={address}
+                      onChange={(e) => {
+                        setAddress(e.target.value);
+                        // если доставка включена и адрес доставки совпадал — синхронизируем
+                        if (hasDelivery && (!deliveryAddress || deliveryAddress === address)) {
+                          setDeliveryAddress(e.target.value);
+                        }
+                      }}
+                      placeholder="Подставится в доставку автоматически"
+                    />
+                  </div>
                 </div>
               </details>
 
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
                 <ProductPicker products={products} onPick={addItem} />
-              </div>
-
-              <div className="admin-field" style={{ marginTop: 12 }}>
-                <label className="admin-label">Привязать существующую оплату</label>
-                {availablePayments.length === 0 ? (
-                  <div className="wh-deal-pick__empty">Нет свободных платежей для этого клиента</div>
-                ) : (
-                  <SearchMultiSelect
-                    options={paymentOptions}
-                    selectedIds={selectedPayments}
-                    onToggle={togglePayment}
-                    placeholder="Поиск платежа по номеру или сумме…"
-                    emptyText="Платежи не найдены"
-                  />
-                )}
               </div>
 
               {items.length > 0 && (
@@ -450,13 +655,247 @@ export function DealForm({
                 </div>
               )}
 
+              {/* Доставка — в том же окне оформления заказа */}
+              <div className="deal-delivery-block">
+                <div className="deal-delivery-block__head">
+                  <Truck size={14} />
+                  <span>Доставка</span>
+                  <label className="deal-delivery-block__toggle">
+                    <input
+                      type="checkbox"
+                      checked={hasDelivery}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setHasDelivery(on);
+                        if (on) {
+                          // авто-адрес: поле адреса → контрагент → уже введённый
+                          const fromCp = counterparties.find(
+                            (c) =>
+                              c.roles.includes("customer") &&
+                              c.name.toLocaleLowerCase("ru-RU") ===
+                                customerName.trim().toLocaleLowerCase("ru-RU")
+                          );
+                          const auto =
+                            deliveryAddress ||
+                            address ||
+                            (fromCp ? pickCustomerAddress(fromCp) : "") ||
+                            "";
+                          if (auto) setDeliveryAddress(auto);
+                          setDeliveryCostOverride(null); // тариф по умолчанию
+                        }
+                      }}
+                    />
+                    Нужна доставка
+                  </label>
+                </div>
+
+                {hasDelivery ? (
+                  <div className="deal-delivery-block__body">
+                    <div className="deal-delivery-tariff">
+                      {deliveryType === "free" || isFreeByTariff ? (
+                        <span className="admin-badge admin-badge--green">
+                          <Gift size={11} /> Бесплатная
+                          {isFreeByTariff
+                            ? ` · заказ от ${fmt(freeDeliveryThreshold)} ₽`
+                            : ""}
+                        </span>
+                      ) : (
+                        <span className="admin-badge admin-badge--amber">
+                          <Banknote size={11} /> По тарифу {fmt(tariffCost)} ₽
+                        </span>
+                      )}
+                      <span className="deal-delivery-tariff__hint">
+                        Тариф: {fmt(deliveryPrice)} ₽ · бесплатно от{" "}
+                        {fmt(freeDeliveryThreshold)} ₽
+                      </span>
+                    </div>
+
+                    <div className="wh-form-grid">
+                      <div
+                        className="admin-field"
+                        style={{ gridColumn: "1 / -1" }}
+                      >
+                        <label className="admin-label">
+                          Адрес доставки{" "}
+                          <span style={{ color: "#ef4444" }}>*</span>
+                        </label>
+                        <input
+                          className="admin-input"
+                          value={deliveryAddress}
+                          onChange={(e) => setDeliveryAddress(e.target.value)}
+                          placeholder="Подставится из карточки клиента, можно изменить"
+                        />
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">
+                          Стоимость, ₽
+                          {deliveryCostOverride == null ? " (тариф)" : " (вручную)"}
+                        </label>
+                        <input
+                          className="admin-input"
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={
+                            deliveryCostOverride != null
+                              ? deliveryCostOverride
+                              : String(deliveryAmount)
+                          }
+                          onChange={(e) =>
+                            setDeliveryCostOverride(e.target.value)
+                          }
+                          placeholder={String(tariffCost)}
+                        />
+                        {deliveryCostOverride != null && (
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--ghost admin-btn--sm"
+                            style={{ marginTop: 6 }}
+                            onClick={() => setDeliveryCostOverride(null)}
+                          >
+                            Вернуть тариф
+                          </button>
+                        )}
+                      </div>
+                      <div className="admin-field">
+                        <label className="admin-label">План. дата</label>
+                        <input
+                          className="admin-input"
+                          type="date"
+                          value={deliveryPlannedDate}
+                          onChange={(e) =>
+                            setDeliveryPlannedDate(e.target.value)
+                          }
+                        />
+                      </div>
+                      <div
+                        className="admin-field"
+                        style={{ gridColumn: "1 / -1" }}
+                      >
+                        <label className="admin-label">Заметка курьеру</label>
+                        <input
+                          className="admin-input"
+                          value={deliveryNote}
+                          onChange={(e) => setDeliveryNote(e.target.value)}
+                          placeholder="Код домофона, этаж..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="deal-delivery-block__empty">
+                    Включите, если нужна доставка. Адрес подтянется из клиента,
+                    стоимость — по тарифу из настроек.
+                  </p>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Способ оплаты</label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    className={`admin-btn ${paymentMethod === 'regular' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => setPaymentMethod('regular')}
+                  >
+                    По счёту (безнал)
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-btn ${paymentMethod === 'cash' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => setPaymentMethod('cash')}
+                  >
+                    Наличные (касса)
+                  </button>
+                </div>
+                {paymentMethod === 'cash' && (
+                  <p className="wh-form-hint" style={{ margin: 0 }}>
+                    Платёж сразу помечается как оплаченный и попадает в кассу.
+                  </p>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Оплата (разбить на части?)</label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  {[1, 2, 3].map(count => (
+                    <button
+                      key={count}
+                      type="button"
+                      className={`admin-btn ${paymentCount === count ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                      style={{ flex: 1 }}
+                      onClick={() => handleSplitCountChange(count)}
+                    >
+                      {count} {count === 1 ? 'платеж' : 'платежа'}
+                    </button>
+                  ))}
+                </div>
+
+                {paymentCount > 1 && (
+                  <>
+                    <div className="wh-form-grid" style={{ marginTop: 8 }}>
+                      {splitAmounts.map((val, idx) => (
+                        <div key={idx} className="admin-field">
+                          <label className="admin-label">Сумма части {idx + 1}, ₽</label>
+                          <input
+                            type="number"
+                            className="admin-input"
+                            min={0}
+                            step={0.01}
+                            value={val}
+                            onChange={(e) => {
+                              const next = [...splitAmounts];
+                              next[idx] = e.target.value;
+                              setSplitAmounts(next);
+                              setSplitTouched(true);
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="wh-form-hint" style={{ margin: "6px 0 0" }}>
+                      Сумма частей:{" "}
+                      <strong>
+                        {fmt(splitAmounts.reduce((s, v) => s + (Number(v) || 0), 0))} ₽
+                      </strong>{" "}
+                      из {fmt(total)} ₽
+                      {Math.abs(splitAmounts.reduce((s, v) => s + (Number(v) || 0), 0) - total) > 0.009 && " — не сходится с итогом!"}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Привязать существующую оплату</label>
+                {availablePayments.length === 0 ? (
+                  <div className="wh-deal-pick__empty">Нет свободных платежей для этого клиента</div>
+                ) : (
+                  <SearchMultiSelect
+                    options={paymentOptions}
+                    selectedIds={selectedPayments}
+                    onToggle={togglePayment}
+                    placeholder="Поиск платежа по номеру или сумме…"
+                    emptyText="Платежи не найдены"
+                  />
+                )}
+              </div>
+
               {error && <div className="wh-form-error">{error}</div>}
 
               <div className="wh-form-footer">
                 <div className="wh-form-total">
                   Итого (с НДС): <strong>{fmt(total)} ₽</strong>
+                  {deliveryAmount > 0 && (
+                    <span className="wh-form-vat" style={{ display: "block" }}>
+                      товары {fmt(itemsTotal)} ₽ + доставка {fmt(deliveryAmount)} ₽
+                    </span>
+                  )}
                   <span className="wh-form-vat">
-                    в т.ч. НДС {VAT_RATE}% — {fmt(includedVat(total))} ₽
+                    в т.ч. НДС{" "}
+                    {vatRate > 0 ? `${vatRate}%` : vatRate === -1 ? "без НДС" : "0%"}{" "}
+                    — {fmt(includedVat(total, vatRate))} ₽
                   </span>
                 </div>
                 <div className="admin-form-actions">
@@ -501,22 +940,46 @@ const CANCEL_REASONS = [
   "Другая причина",
 ];
 
+interface ShippedItem {
+  productId: string;
+  name?: string;
+  shippedQty: number;
+}
+
 export function DealActions({
   dealId,
   status,
   hasShortage = false,
   paidEnough = false,
+  dealItems = [],
+  shippedItems = [],
 }: {
   dealId: string;
   status: "new" | "completed" | "cancelled";
   hasShortage?: boolean;
   paidEnough?: boolean;
+  dealItems?: { productId: string; name: string; quantity: number }[];
+  shippedItems?: ShippedItem[];
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showShipModal, setShowShipModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [customReason, setCustomReason] = useState("");
+  // Количества для частичной отгрузки (productId → qty)
+  const [shipQtys, setShipQtys] = useState<Record<string, number>>({});
+
+  const hasPartialShip = shippedItems.some((s) => s.shippedQty > 0);
+
+  function initShipQtys() {
+    const qtys: Record<string, number> = {};
+    for (const item of dealItems) {
+      const shipped = shippedItems.find((s) => s.productId === item.productId)?.shippedQty || 0;
+      qtys[item.productId] = item.quantity - shipped;
+    }
+    setShipQtys(qtys);
+  }
 
   async function callApi(payload: Record<string, unknown>, method = "PATCH") {
     setSaving(true);
@@ -528,6 +991,7 @@ export function DealActions({
       });
       if (res.ok) {
         setShowCancelModal(false);
+        setShowShipModal(false);
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -540,19 +1004,31 @@ export function DealActions({
   }
 
   function handleCancelSubmit() {
-    const reason =
-      cancelReason === "Другая причина" ? customReason : cancelReason;
+    const reason = cancelReason === "Другая причина" ? customReason : cancelReason;
     callApi({ action: "cancel", reason: reason || null });
   }
 
   function handleDelete() {
-    if (
-      !confirm(
-        "Удалить заказ? Если товар уже отпущен, он вернётся на склад (сторно)."
-      )
-    )
+    if (!confirm("Удалить заказ? Если товар уже отпущен, он вернётся на склад (сторно)."))
       return;
     callApi({}, "DELETE");
+  }
+
+  function handlePartialShip() {
+    const items = Object.entries(shipQtys)
+      .filter(([, qty]) => qty > 0)
+      .map(([productId, quantity]) => ({ productId, quantity }));
+    if (items.length === 0) {
+      alert("Укажите количество хотя бы для одного товара");
+      return;
+    }
+    callApi({ action: "post", shippedItems: items });
+  }
+
+  function handleUnship() {
+    if (!confirm("Отменить отгрузку? Все отгруженные товары вернутся на склад."))
+      return;
+    callApi({ action: "unship" });
   }
 
   return (
@@ -562,43 +1038,40 @@ export function DealActions({
           <button
             type="button"
             onClick={() => {
-              if (
-                hasShortage &&
-                !confirm(
-                  "Товара на складе не хватает — остаток уйдёт в минус. Отпустить всё равно?"
-                )
-              ) {
-                return;
+              if (dealItems.length > 0) {
+                initShipQtys();
+                setShowShipModal(true);
+              } else {
+                if (hasShortage && !confirm("Товара на складе не хватает — остаток уйдёт в минус. Отпустить всё равно?"))
+                  return;
+                callApi({ action: "post" });
               }
-              callApi({ action: "post" });
             }}
             disabled={saving}
-            className={`admin-status__btn ${
-              paidEnough
-                ? "admin-status__btn--primary"
-                : "admin-status__btn--outline"
-            }`}
-            title={
-              paidEnough
-                ? "Списать товар со склада и отметить заказ отпущенным"
-                : "Отпустить товар до подтверждения оплаты в банке"
-            }
+            className={`admin-status__btn ${paidEnough ? "admin-status__btn--primary" : "admin-status__btn--outline"}`}
+            title={paidEnough ? "Списать товар со склада" : "Отпустить товар до оплаты"}
           >
-            {saving ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <CheckCircle size={14} />
-            )}
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
             {paidEnough ? "Отпустить товар" : "Отпустить без оплаты"}
           </button>
+          {hasPartialShip && (
+            <button
+              type="button"
+              onClick={handleUnship}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--outline"
+              title="Отменить отгрузку, вернуть товары на склад"
+            >
+              <RotateCcw size={14} /> Отменить отгрузку
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowCancelModal(true)}
             disabled={saving}
             className="admin-status__btn admin-status__btn--outline-red"
           >
-            <XCircle size={14} />
-            Отменить
+            <XCircle size={14} /> Отменить
           </button>
           <button
             type="button"
@@ -607,8 +1080,7 @@ export function DealActions({
             className="admin-status__btn admin-status__btn--delete"
             title="Удалить заказ"
           >
-            <Trash2 size={14} />
-            Удалить
+            <Trash2 size={14} /> Удалить
           </button>
         </div>
       )}
@@ -617,12 +1089,20 @@ export function DealActions({
         <div className="admin-status__btns">
           <button
             type="button"
+            onClick={handleUnship}
+            disabled={saving}
+            className="admin-status__btn admin-status__btn--outline"
+            title="Отменить отгрузку, вернуть товары на склад"
+          >
+            <RotateCcw size={14} /> Отменить отгрузку
+          </button>
+          <button
+            type="button"
             onClick={() => setShowCancelModal(true)}
             disabled={saving}
             className="admin-status__btn admin-status__btn--outline-red"
           >
-            <XCircle size={14} />
-            Отменить
+            <XCircle size={14} /> Отменить
           </button>
           <button
             type="button"
@@ -631,8 +1111,7 @@ export function DealActions({
             className="admin-status__btn admin-status__btn--delete"
             title="Удалить заказ"
           >
-            <Trash2 size={14} />
-            Удалить
+            <Trash2 size={14} /> Удалить
           </button>
         </div>
       )}
@@ -646,80 +1125,106 @@ export function DealActions({
             className="admin-status__btn admin-status__btn--delete"
             title="Удалить заказ"
           >
-            <Trash2 size={14} />
-            Удалить
+            <Trash2 size={14} /> Удалить
           </button>
         </div>
       )}
 
-      {showCancelModal && (
+      {/* ── Модалка частичной отгрузки ── */}
+      {showShipModal && (
         <ModalPortal>
-        <div className="admin-modal-overlay">
-          <div className="admin-modal">
-            <div className="admin-modal__head">
-              <h3 className="admin-modal__title">Отменить заказ</h3>
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(false)}
-                className="admin-modal__close"
-                aria-label="Закрыть"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <p className="admin-modal__desc">
-              {status === "completed"
-                ? "Заказ был отпущен: товар вернётся на остатки склада (сторно)."
-                : "Заказ не проводился, остатки не изменятся."}
-            </p>
-            <div className="admin-radio-list">
-              {CANCEL_REASONS.map((reason) => (
-                <label key={reason} className="admin-radio-item">
-                  <input
-                    type="radio"
-                    name="deal-cancel-reason"
-                    value={reason}
-                    checked={cancelReason === reason}
-                    onChange={(e) => setCancelReason(e.target.value)}
-                  />
-                  <span>{reason}</span>
-                </label>
-              ))}
-            </div>
-            {cancelReason === "Другая причина" && (
-              <textarea
-                className="admin-textarea"
-                placeholder="Укажите причину..."
-                value={customReason}
-                onChange={(e) => setCustomReason(e.target.value)}
-                rows={3}
-              />
-            )}
-            <div className="admin-modal__actions">
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(false)}
-                className="admin-btn admin-btn--ghost"
-                disabled={saving}
-              >
-                Назад
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelSubmit}
-                className="admin-btn admin-btn--danger"
-                disabled={
-                  saving ||
-                  !cancelReason ||
-                  (cancelReason === "Другая причина" && !customReason.trim())
-                }
-              >
-                {saving && <Loader2 size={14} className="animate-spin" />}
-                Отменить заказ
-              </button>
+          <div className="admin-modal-overlay">
+            <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="admin-modal__head">
+                <h3 className="admin-modal__title">Отгрузка товара</h3>
+                <button type="button" onClick={() => setShowShipModal(false)} className="admin-modal__close" aria-label="Закрыть">
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="admin-modal__desc">
+                Укажите количество для отгрузки. Оставшиеся позиции останутся в заказе.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+                {dealItems.map((item) => {
+                  const shipped = shippedItems.find((s) => s.productId === item.productId)?.shippedQty || 0;
+                  const remaining = item.quantity - shipped;
+                  return (
+                    <div key={item.productId} className="admin-field" style={{ margin: 0 }}>
+                      <label className="admin-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>{item.name}</span>
+                        <span style={{ fontWeight: 400, color: "var(--adm-sand)" }}>
+                          заказано: {item.quantity} {shipped > 0 && `· уже отгружено: ${shipped}`}
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        className="admin-input"
+                        min={0}
+                        max={remaining}
+                        value={shipQtys[item.productId] ?? remaining}
+                        onChange={(e) => setShipQtys((prev) => ({ ...prev, [item.productId]: Math.min(Number(e.target.value) || 0, remaining) }))}
+                      />
+                      <span className="admin-hint">Останется: {remaining - (shipQtys[item.productId] ?? remaining)} шт.</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="admin-modal__actions">
+                <button type="button" onClick={() => setShowShipModal(false)} className="admin-btn admin-btn--ghost" disabled={saving}>
+                  Отмена
+                </button>
+                <button type="button" onClick={handlePartialShip} className="admin-btn admin-btn--primary" disabled={saving}>
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                  Отгрузить
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
+      )}
+
+      {/* ── Модалка отмены заказа ── */}
+      {showCancelModal && (
+        <ModalPortal>
+          <div className="admin-modal-overlay">
+            <div className="admin-modal">
+              <div className="admin-modal__head">
+                <h3 className="admin-modal__title">Отменить заказ</h3>
+                <button type="button" onClick={() => setShowCancelModal(false)} className="admin-modal__close" aria-label="Закрыть">
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="admin-modal__desc">
+                {status === "completed" || hasPartialShip
+                  ? "Заказ был отпущен (полностью или частично): товар вернётся на остатки склада (сторно)."
+                  : "Заказ не проводился, остатки не изменятся."}
+              </p>
+              <div className="admin-radio-list">
+                {CANCEL_REASONS.map((reason) => (
+                  <label key={reason} className="admin-radio-item">
+                    <input type="radio" name="deal-cancel-reason" value={reason}
+                      checked={cancelReason === reason}
+                      onChange={(e) => setCancelReason(e.target.value)} />
+                    <span>{reason}</span>
+                  </label>
+                ))}
+              </div>
+              {cancelReason === "Другая причина" && (
+                <textarea className="admin-textarea" placeholder="Укажите причину..."
+                  value={customReason} onChange={(e) => setCustomReason(e.target.value)} rows={3} />
+              )}
+              <div className="admin-modal__actions">
+                <button type="button" onClick={() => setShowCancelModal(false)} className="admin-btn admin-btn--ghost" disabled={saving}>
+                  Назад
+                </button>
+                <button type="button" onClick={handleCancelSubmit} className="admin-btn admin-btn--danger"
+                  disabled={saving || !cancelReason || (cancelReason === "Другая причина" && !customReason.trim())}>
+                  {saving && <Loader2 size={14} className="animate-spin" />}
+                  Отменить заказ
+                </button>
+              </div>
+            </div>
+          </div>
         </ModalPortal>
       )}
     </div>

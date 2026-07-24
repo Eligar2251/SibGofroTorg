@@ -2,7 +2,7 @@
 // FILE: src/app/[adminPath]/products/page.tsx
 // =========================================================
 
-import { getProducts, getAllCategories } from "@/lib/firestore-queries";
+import { getProducts, getAllCategories } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { Plus, Pencil, Package, FolderOpen } from "lucide-react";
 import { notFound } from "next/navigation";

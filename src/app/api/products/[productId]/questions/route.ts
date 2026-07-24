@@ -1,6 +1,6 @@
 // src/app/api/products/[productId]/questions/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getProductQuestions, createProductQuestion, incrementQuestionHelpful } from "@/lib/firestore-queries";
+import { getProductQuestions, createProductQuestion, incrementQuestionHelpful } from "@/lib/supabase-queries";
 import { verifyUserSession } from "@/lib/user-auth";
 
 export async function GET(

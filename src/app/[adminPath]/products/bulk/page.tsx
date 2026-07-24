@@ -1,5 +1,5 @@
 // src/app/[adminPath]/products/bulk/page.tsx
-import { getProducts, getAllCategories } from "@/lib/firestore-queries";
+import { getProducts, getAllCategories } from "@/lib/supabase-queries";
 import { BulkProductEditor } from "@/components/admin/BulkProductEditor";
 import { notFound } from "next/navigation";
 
@@ -42,6 +42,8 @@ export default async function BulkProductsPage({
     isPromo: p.isPromo,
     isFeatured: p.isFeatured,
     promoLabel: p.promoLabel ?? "",
+    images: Array.isArray(p.images) ? p.images : [],
+    imageUrl: p.imageUrl ?? null,
   }));
 
   return (

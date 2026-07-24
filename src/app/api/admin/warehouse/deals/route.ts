@@ -20,6 +20,15 @@ export async function POST(request: NextRequest) {
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
       linkedPaymentIds: body.linkedPaymentIds,
+      paymentMethod: body.paymentMethod,
+      paymentSplits: body.paymentSplits,
+      vatRate: body.vatRate,
+      hasDelivery: body.hasDelivery,
+      deliveryType: body.deliveryType,
+      deliveryCost: body.deliveryCost,
+      deliveryAddress: body.deliveryAddress,
+      deliveryPlannedDate: body.deliveryPlannedDate,
+      deliveryNote: body.deliveryNote,
     });
     return NextResponse.json(result);
   } catch (error: any) {

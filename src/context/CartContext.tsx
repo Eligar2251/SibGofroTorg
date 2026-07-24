@@ -85,7 +85,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const rawSubtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
 
-  // Автоматическая скидка за объем заказа:
+  // Автоматическая скидка за объём заказа (информирование клиента):
   // От 25,000 ₽ -> 10%
   // От 20,000 ₽ до 24,999 ₽ -> 5%
   let discountPercent = 0;

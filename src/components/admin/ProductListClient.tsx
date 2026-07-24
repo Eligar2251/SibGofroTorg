@@ -190,7 +190,7 @@ export function ProductListClient({
                       selectedIds.size === filtered.length
                     }
                     onChange={toggleSelectAll}
-                    style={{ cursor: "pointer", accentColor: "var(--adm-kraft)" }}
+                    style={{ cursor: "pointer" }}
                   />
                 </th>
                 <th>Товар</th>
@@ -221,7 +221,7 @@ export function ProductListClient({
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleSelect(product.id)}
-                        style={{ cursor: "pointer", accentColor: "var(--adm-kraft)" }}
+                        style={{ cursor: "pointer" }}
                       />
                     </td>
                     <td>

@@ -1,17 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ImageIcon,
   Loader2,
   PackageCheck,
   RotateCcw,
   Search,
   Trash2,
+  Upload,
+  X,
   WalletCards,
 } from "lucide-react";
+import Image from "next/image";
+
+interface ImageEntry {
+  url: string;
+  publicId: string;
+}
 
 interface BulkProduct {
   id: string;
@@ -36,6 +45,8 @@ interface BulkProduct {
   isPromo: boolean;
   isFeatured: boolean;
   promoLabel: string;
+  images: ImageEntry[];
+  imageUrl: string | null;
 }
 
 interface Category {
@@ -43,12 +54,19 @@ interface Category {
   name: string;
 }
 
-type Step = 1 | 2 | 3;
+/* Порядок шагов:
+   1. Товар и склад
+   2. Цены
+   3. Изображения  ← теперь ДО публикации
+   4. Публикация
+*/
+type Step = 1 | 2 | 3 | 4;
 
 const STEPS = [
   { step: 1 as const, title: "Товар и склад", hint: "Название, остаток и пачка", icon: PackageCheck },
   { step: 2 as const, title: "Цены", hint: "Розница и оптовые условия", icon: WalletCards },
-  { step: 3 as const, title: "Публикация", hint: "Видимость, наличие и акции", icon: Check },
+  { step: 3 as const, title: "Изображения", hint: "Фото для каждого товара", icon: ImageIcon },
+  { step: 4 as const, title: "Публикация", hint: "Видимость, наличие и акции", icon: Check },
 ];
 
 function numeric(value: string): number | null {
@@ -71,6 +89,8 @@ export function BulkProductEditor({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [finished, setFinished] = useState(false);
+  // ID товара, для которого сейчас идёт загрузка
+  const [uploadingProductId, setUploadingProductId] = useState<string | null>(null);
 
   const visibleProducts = useMemo(() => {
     if (step > 1) return products.filter((product) => workingIds.has(product.id));
@@ -104,6 +124,43 @@ export function BulkProductEditor({
     setWorkingIds((ids) => new Set(ids).add(id));
     setDirtyIds((ids) => new Set(ids).add(id));
     setFinished(false);
+  }
+
+  /* ── Загрузка изображения для конкретного товара ── */
+  async function uploadImageForProduct(productId: string, file: File) {
+    setUploadingProductId(productId);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/upload", { method: "POST", body: formData });
+      if (!res.ok) throw new Error("Ошибка загрузки");
+      const data = await res.json();
+      const newImage: ImageEntry = { url: data.url, publicId: data.publicId };
+
+      setProducts((items) =>
+        items.map((item) => {
+          if (item.id !== productId) return item;
+          const merged = [...(item.images || []), newImage];
+          return { ...item, images: merged, imageUrl: merged[0]?.url || item.imageUrl || null };
+        })
+      );
+      setDirtyIds((ids) => new Set(ids).add(productId));
+      setFinished(false);
+    } catch {
+      alert("Не удалось загрузить фото");
+    }
+    setUploadingProductId(null);
+  }
+
+  function removeImageFromProduct(productId: string, publicId: string) {
+    setProducts((items) =>
+      items.map((item) => {
+        if (item.id !== productId) return item;
+        const filtered = (item.images || []).filter((img) => img.publicId !== publicId);
+        return { ...item, images: filtered, imageUrl: filtered[0]?.url || null };
+      })
+    );
+    setDirtyIds((ids) => new Set(ids).add(productId));
   }
 
   function toggle(id: string) {
@@ -172,7 +229,6 @@ export function BulkProductEditor({
     setSaving(true);
     setError("");
     try {
-      // В API отправляются только товары рабочей выборки, а не весь каталог.
       const selected = products.filter((product) => workingIds.has(product.id));
       const response = await fetch("/api/admin/products/bulk", {
         method: "PUT",
@@ -182,7 +238,7 @@ export function BulkProductEditor({
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Не удалось сохранить товары");
       setDirtyIds(new Set());
-      if (step < 3) {
+      if (step < 4) {
         setStep((step + 1) as Step);
         window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
@@ -260,6 +316,7 @@ export function BulkProductEditor({
 
       <div className="admin-card">
         <div className="admin-table-wrap">
+          {/* ── Шаг 1: Товар и склад ── */}
           {step === 1 && (
             <table className="admin-table bulk-table bulk-table--stock">
               <thead><tr>
@@ -280,6 +337,7 @@ export function BulkProductEditor({
             </table>
           )}
 
+          {/* ── Шаг 2: Цены ── */}
           {step === 2 && (
             <table className="admin-table bulk-table bulk-table--prices">
               <thead><tr><th>Товар</th><th>Цена, ₽</th><th>Оптовая цена, ₽</th><th>Опт от, шт.</th><th>Остаток</th><th>Пачка</th></tr></thead>
@@ -296,7 +354,23 @@ export function BulkProductEditor({
             </table>
           )}
 
+          {/* ── Шаг 3: Изображения (для каждого товара отдельно) ── */}
           {step === 3 && (
+            <div className="bulk-images-list">
+              {visibleProducts.map((product) => (
+                <ProductImageRow
+                  key={product.id}
+                  product={product}
+                  isUploading={uploadingProductId === product.id}
+                  onUpload={(file) => uploadImageForProduct(product.id, file)}
+                  onRemove={(publicId) => removeImageFromProduct(product.id, publicId)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* ── Шаг 4: Публикация ── */}
+          {step === 4 && (
             <table className="admin-table bulk-table bulk-table--publish">
               <thead><tr><th>Товар</th><th>Примечание</th><th>Метка акции</th><th>В наличии</th><th>Виден</th><th>Акция</th><th>На главной</th></tr></thead>
               <tbody>{visibleProducts.map((product) => (
@@ -327,8 +401,91 @@ export function BulkProductEditor({
         ) : <span />}
         <div className="bulk-footer__summary">В работе: <strong>{workingIds.size}</strong> товаров</div>
         <button className="admin-btn admin-btn--primary" disabled={saving || workingIds.size === 0} onClick={saveAndContinue}>
-          {saving ? <Loader2 size={15} className="animate-spin" /> : step === 3 ? <Check size={15} /> : <ArrowRight size={15} />}
-          {step === 3 ? "Сохранить и завершить" : step === 1 ? "Сохранить и перейти к ценам" : "Сохранить и перейти к публикации"}
+          {saving ? <Loader2 size={15} className="animate-spin" /> : step === 4 ? <Check size={15} /> : <ArrowRight size={15} />}
+          {step === 4 ? "Сохранить и завершить" : step === 1 ? "Сохранить и перейти к ценам" : step === 2 ? "Сохранить и перейти к фото" : "Сохранить и перейти к публикации"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Компонент: строка товара с загрузкой изображений ── */
+function ProductImageRow({
+  product,
+  isUploading,
+  onUpload,
+  onRemove,
+}: {
+  product: BulkProduct;
+  isUploading: boolean;
+  onUpload: (file: File) => void;
+  onRemove: (publicId: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  function handleFiles(files: FileList | null) {
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      if (file.type.startsWith("image/")) onUpload(file);
+    });
+  }
+
+  const existingCount = (product.images || []).length;
+
+  return (
+    <div
+      className={`bulk-img-row${dragOver ? " bulk-img-row--drag" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
+    >
+      <div className="bulk-img-row__info">
+        <strong className="bulk-img-row__name">{product.name}</strong>
+        <small className="bulk-img-row__meta">
+          {product.sku || "без артикула"} · {existingCount} фото{existingCount === 0 && " — добавьте фото"}
+        </small>
+      </div>
+
+      <div className="bulk-img-row__preview">
+        {(product.images || []).map((img) => (
+          <div key={img.publicId} className="bulk-img-row__thumb">
+            <Image
+              src={img.url}
+              alt=""
+              width={56}
+              height={56}
+              style={{ objectFit: "cover", borderRadius: 4 }}
+            />
+            <button
+              type="button"
+              className="bulk-img-row__thumb-del"
+              onClick={() => onRemove(img.publicId)}
+              aria-label="Удалить"
+            >
+              <X size={10} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="bulk-img-row__actions">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        <button
+          type="button"
+          className="admin-btn admin-btn--outline admin-btn--sm"
+          disabled={isUploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          {isUploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+          {isUploading ? "Загрузка..." : "Добавить фото"}
         </button>
       </div>
     </div>

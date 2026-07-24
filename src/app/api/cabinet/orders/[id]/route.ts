@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/supabase";
 import { requireUserApi, normalizePhone } from "@/lib/user-auth";
 import { cancelWebsiteOrderByCustomer, reviseWebsiteOrderByCustomer } from "@/lib/warehouse";
 
@@ -8,13 +8,12 @@ export const dynamic = "force-dynamic";
 
 async function assertOrderOwner(orderId: string, uid: string, phone: string) {
   const db = getAdminDb();
-  const snap = await db.collection("orders").doc(orderId).get();
-  if (!snap.exists) return { error: "Заказ не найден", status: 404 as const };
-  const order = snap.data() as any;
+  const { data: order, error } = await db.from("orders").select("*").eq("id", orderId).maybeSingle();
+  if (error || !order) return { error: "Заказ не найден", status: 404 as const };
   const phoneDigits = normalizePhone(phone);
-  const orderPhone = normalizePhone(order.customerPhoneDigits || order.customerPhone || "");
-  if (order.userId && order.userId !== uid) return { error: "Нет доступа", status: 403 as const };
-  if (!order.userId && orderPhone !== phoneDigits) return { error: "Нет доступа", status: 403 as const };
+  const orderPhone = normalizePhone(order.customer_phone_digits || order.customer_phone || "");
+  if (order.user_id && order.user_id !== uid) return { error: "Нет доступа", status: 403 as const };
+  if (!order.user_id && orderPhone !== phoneDigits) return { error: "Нет доступа", status: 403 as const };
   return { order };
 }
 

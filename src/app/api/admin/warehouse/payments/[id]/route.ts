@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updatePayment, deletePayment } from "@/lib/warehouse";
-import { requireAdminApi } from "@/lib/auth";
+import { requireAdminApi, hasPermission } from "@/lib/auth";
+import { logAdminAction } from "@/lib/activity-log";
 
 export async function PATCH(
   request: NextRequest,
@@ -23,6 +24,13 @@ export async function PATCH(
       dealIds: body.dealIds,
       receiptIds: body.receiptIds,
     });
+
+    await logAdminAction(
+      auth.displayName, auth.role, "update", "payment", id,
+      `Платёж ПЛ-${body.number || id.slice(0, 8)}`,
+      { isPaid: body.isPaid, amount: body.amount }
+    );
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Update payment error:", error);
@@ -39,9 +47,20 @@ export async function DELETE(
 ) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
+
+  if (!hasPermission(auth, "delete")) {
+    return NextResponse.json({ error: "Нет прав на удаление" }, { status: 403 });
+  }
+
   try {
     const { id } = await params;
     await deletePayment(id);
+
+    await logAdminAction(
+      auth.displayName, auth.role, "delete", "payment", id,
+      `Удалён платёж #${id.slice(0, 8)}`
+    );
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete payment error:", error);

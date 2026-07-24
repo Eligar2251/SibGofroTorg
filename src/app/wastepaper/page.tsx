@@ -2,7 +2,7 @@ import Link from "next/link";
 import { WastepaperCalculator } from "@/components/wastepaper/WastepaperCalculator";
 import { CheckCircle, Truck, Coins, ShieldCheck, ArrowRight } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { getWastepaperRates } from "@/lib/firestore-queries";
+import { getWastepaperRates } from "@/lib/supabase-queries";
 import { formatRate, WASTEPAPER_SELF_BONUS } from "@/lib/wastepaper";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";

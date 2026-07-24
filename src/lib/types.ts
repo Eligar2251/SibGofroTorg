@@ -133,6 +133,8 @@ export interface OrderItem {
   price: number;
 }
 
+export type OrderDeliveryType = "free" | "paid";
+
 export interface FirestoreOrder {
   id: string;
   type: "order" | "inquiry";
@@ -158,6 +160,20 @@ export interface FirestoreOrder {
   dealId?: string | null;
   dealNumber?: number | null;
   paymentId?: string | null;
+  /** Адрес доставки (от клиента или из админки) */
+  deliveryAddress?: string | null;
+  /** Есть ли доставка у заказа */
+  hasDelivery?: boolean;
+  /** Бесплатная или платная */
+  deliveryType?: OrderDeliveryType | null;
+  /** Стоимость платной доставки, ₽ */
+  deliveryCost?: number | null;
+  /** Запланированная дата доставки YYYY-MM-DD */
+  deliveryPlannedDate?: string | null;
+  /** Когда заказ отпущен/доставлен */
+  deliveryReleasedAt?: string | null;
+  /** Заметка курьеру / по доставке */
+  deliveryNote?: string | null;
   createdAt?: any;
   updatedAt?: any;
 }

@@ -3,7 +3,7 @@
 // =========================================================
 
 import { notFound } from "next/navigation";
-import { getProductById, getAllCategories } from "@/lib/firestore-queries";
+import { getProductById, getAllCategories } from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";

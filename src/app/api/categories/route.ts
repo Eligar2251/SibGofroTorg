@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCategories } from "@/lib/firestore-queries";
+import { getCategories } from "@/lib/supabase-queries";
 
 export const dynamic = "force-dynamic";
 

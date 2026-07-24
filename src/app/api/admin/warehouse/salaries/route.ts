@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSalary } from "@/lib/warehouse";
+import { createSalary, saveEmployee } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
@@ -7,9 +7,28 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   try {
     const body = await request.json();
+    let employeeId = body.employeeId ?? null;
+    const employeeName = String(body.employeeName || "").trim();
+
+    // Если указан ID сотрудника, но он не выбран (пустой или "new"),
+    // и есть имя — создаём сотрудника автоматически
+    if (!employeeId && employeeName) {
+      try {
+        const emp = await saveEmployee({
+          name: employeeName,
+          position: body.employeePosition ?? null,
+          phone: body.employeePhone ?? null,
+          comment: null,
+        });
+        employeeId = emp.id;
+      } catch (e) {
+        console.error("Auto-create employee error:", e);
+      }
+    }
+
     const result = await createSalary({
-      employeeId: body.employeeId ?? null,
-      employeeName: String(body.employeeName || ""),
+      employeeId,
+      employeeName,
       amount: Number(body.amount) || 0,
       date: String(body.date || ""),
       source: body.source === "cash" ? "cash" : "bank",

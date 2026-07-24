@@ -3,7 +3,7 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCategoryBySlug, getProducts } from "@/lib/firestore-queries";
+import { getCategoryBySlug, getProducts } from "@/lib/supabase-queries";
 
 export const dynamic = "force-dynamic";
 

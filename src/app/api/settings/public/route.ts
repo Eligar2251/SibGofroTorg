@@ -1,6 +1,6 @@
 // src/app/api/settings/public/route.ts
 import { NextResponse } from "next/server";
-import { getSettings } from "@/lib/firestore-queries";
+import { getSettings } from "@/lib/supabase-queries";
 
 export async function GET() {
   try {

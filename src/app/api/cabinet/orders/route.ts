@@ -1,40 +1,32 @@
 // =========================================================
 // FILE: src/app/api/cabinet/orders/route.ts
 // =========================================================
-
 import { NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
-import {
-  requireUserApi,
-  formatPhoneDisplay,
-  normalizePhone,
-  getUserById,
-} from "@/lib/user-auth";
+import { getAdminDb } from "@/lib/supabase";
+import { requireUserApi, formatPhoneDisplay, normalizePhone, getUserById } from "@/lib/user-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function toIso(raw: any): string | null {
   if (!raw) return null;
-  if (typeof raw?.toDate === "function") return raw.toDate().toISOString();
-  if (raw._seconds != null) return new Date(raw._seconds * 1000).toISOString();
-  if (raw.seconds != null) return new Date(raw.seconds * 1000).toISOString();
   if (typeof raw === "string") return raw;
+  if (raw instanceof Date) return raw.toISOString();
   return null;
 }
 
-function serializeOrder(id: string, data: Record<string, any>) {
+function serializeOrder(row: any) {
   return {
-    id,
-    type: data.type,
-    status: data.status,
-    customerName: data.customerName,
-    customerPhone: data.customerPhone,
-    customerEmail: data.customerEmail ?? null,
-    communicationChannel: data.communicationChannel,
-    paymentMethod: data.paymentMethod ?? null,
-    items: Array.isArray(data.items)
-      ? data.items.map((item: any) => ({
+    id: row.id,
+    type: row.type,
+    status: row.status,
+    customerName: row.customer_name,
+    customerPhone: row.customer_phone,
+    customerEmail: row.customer_email ?? null,
+    communicationChannel: row.communication_channel,
+    paymentMethod: row.payment_method ?? null,
+    items: Array.isArray(row.items)
+      ? row.items.map((item: any) => ({
           productId: item.productId ?? null,
           name: item.name,
           sku: item.sku ?? null,
@@ -42,18 +34,18 @@ function serializeOrder(id: string, data: Record<string, any>) {
           price: item.price,
         }))
       : null,
-    totalSum: data.totalSum ?? null,
-    productInfo: data.productInfo ?? null,
-    quantity: data.quantity ?? null,
-    comment: data.comment ?? null,
-    companyName: data.companyName ?? null,
-    inn: data.inn ?? null,
-    kpp: data.kpp ?? null,
-    ogrn: data.ogrn ?? null,
-    legalAddress: data.legalAddress ?? null,
-    actualAddress: data.actualAddress ?? null,
-    createdAt: toIso(data.createdAt),
-    updatedAt: toIso(data.updatedAt),
+    totalSum: row.total_sum ?? null,
+    productInfo: row.product_info ?? null,
+    quantity: row.quantity ?? null,
+    comment: row.comment ?? null,
+    companyName: row.company_name ?? null,
+    inn: row.inn ?? null,
+    kpp: row.kpp ?? null,
+    ogrn: row.ogrn ?? null,
+    legalAddress: row.legal_address ?? null,
+    actualAddress: row.actual_address ?? null,
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
   };
 }
 
@@ -68,51 +60,26 @@ export async function GET() {
     const db = getAdminDb();
 
     const user = await getUserById(uid);
-    const accountCreatedMs = user?.createdAt
-      ? new Date(toIso(user.createdAt) || 0).getTime()
-      : 0;
+    const accountCreatedMs = user?.createdAt ? new Date(toIso((user as any).createdAt) || 0).getTime() : 0;
 
-    const [byUserSnap, byPhoneDigitsSnap, byPhoneDisplaySnap] =
-      await Promise.all([
-        db.collection("orders").where("userId", "==", uid).get(),
-        db
-          .collection("orders")
-          .where("customerPhoneDigits", "==", phoneDigits)
-          .get(),
-        db
-          .collection("orders")
-          .where("customerPhone", "==", phoneDisplay)
-          .get(),
-      ]);
+    const [byUserRes, byPhoneDigitsRes, byPhoneDisplayRes] = await Promise.all([
+      db.from("orders").select("*").eq("user_id", uid).neq("status", "rejected"),
+      db.from("orders").select("*").eq("customer_phone_digits", phoneDigits).neq("status", "rejected"),
+      db.from("orders").select("*").eq("customer_phone", phoneDisplay).neq("status", "rejected"),
+    ]);
 
     const map = new Map<string, ReturnType<typeof serializeOrder>>();
 
-    // 1) Всегда: заказы, явно привязанные к аккаунту
-    for (const d of byUserSnap.docs) {
-      map.set(d.id, serializeOrder(d.id, d.data()));
-    }
+    for (const d of byUserRes.data || []) map.set(d.id, serializeOrder(d));
 
-    // 2) Legacy по телефону — только при известной дате регистрации
     if (accountCreatedMs > 0) {
-      for (const d of [...byPhoneDigitsSnap.docs, ...byPhoneDisplaySnap.docs]) {
-        const data = d.data();
-
-        if (data.userId && data.userId !== uid) continue;
-
-        if (data.userId === uid) {
-          map.set(d.id, serializeOrder(d.id, data));
-          continue;
-        }
-
-        // нет userId
-        if (data.userId) continue;
-
-        const orderMs = new Date(toIso(data.createdAt) || 0).getTime();
+      for (const d of [...(byPhoneDigitsRes.data || []), ...(byPhoneDisplayRes.data || [])]) {
+        if (d.user_id && d.user_id !== uid) continue;
+        if (d.user_id === uid) { map.set(d.id, serializeOrder(d)); continue; }
+        if (d.user_id) continue;
+        const orderMs = new Date(toIso(d.created_at) || 0).getTime();
         if (orderMs + 60_000 < accountCreatedMs) continue;
-
-        if (!map.has(d.id)) {
-          map.set(d.id, serializeOrder(d.id, data));
-        }
+        if (!map.has(d.id)) map.set(d.id, serializeOrder(d));
       }
     }
 

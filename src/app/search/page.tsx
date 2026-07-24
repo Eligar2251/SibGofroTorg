@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getProducts } from "@/lib/firestore-queries";
+import { getProducts } from "@/lib/supabase-queries";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { SearchBar } from "@/components/layout/SearchBar";
 import { GlyphIcon } from "@/components/ui/Glyph";
