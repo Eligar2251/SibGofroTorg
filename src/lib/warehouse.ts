@@ -179,6 +179,7 @@ function mapDealRow(row: any): CustomerDeal {
     deliveryNote: row.delivery_note || null,
     deliveryDriverId: row.delivery_driver_id || null,
     deliveryDriverName: row.delivery_driver_name || null,
+    shippedItems: Array.isArray(row.shipped_items) ? row.shipped_items : [],
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -995,13 +996,111 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   return { id: dealResult.id, number };
 }
 
-export async function postDeal(id: string): Promise<void> {
+export async function postDeal(id: string, shippedItems?: { productId: string; quantity: number }[]): Promise<{ fullyShipped: boolean }> {
   const db = getAdminDb();
   const { data: deal } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!deal) throw new Error("Заказ не найден");
   if (deal.status === "completed") throw new Error("Уже проведён");
-  await applyStockDelta(deal.items as StockDocItem[], -1);
-  await db.from("customer_deals").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", id);
+  if (deal.status === "cancelled") throw new Error("Заказ отменён");
+
+  const dealItems = (deal.items || []) as StockDocItem[];
+  const existingShipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as { productId: string; name?: string; shippedQty: number }[];
+
+  if (!shippedItems || shippedItems.length === 0) {
+    // Полная отгрузка (старое поведение) — отгружаем всё
+    await applyStockDelta(dealItems, -1);
+    await db.from("customer_deals").update({
+      status: "completed",
+      shipped_items: dealItems.map((it) => ({ productId: it.productId, name: it.name, shippedQty: it.quantity })),
+      delivery_released_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", id);
+    revalidateTag("warehouse-deals");
+    revalidateTag("products");
+    return { fullyShipped: true };
+  }
+
+  // Частичная отгрузка — обновляем shipped_items
+  const shippedMap = new Map<string, number>();
+  for (const s of existingShipped) shippedMap.set(s.productId, (shippedMap.get(s.productId) || 0) + (s.shippedQty || 0));
+
+  for (const si of shippedItems) {
+    const qty = Math.max(0, Number(si.quantity) || 0);
+    if (qty <= 0) continue;
+    shippedMap.set(si.productId, (shippedMap.get(si.productId) || 0) + qty);
+  }
+
+  // Списываем со склада только отгруженное количество
+  for (const si of shippedItems) {
+    const qty = Math.max(0, Number(si.quantity) || 0);
+    if (qty <= 0) continue;
+    const item = dealItems.find((it) => it.productId === si.productId);
+    if (!item) continue;
+    const { data: product } = await db.from("products").select("stock_qty").eq("id", si.productId).maybeSingle();
+    if (product) {
+      const current = Number(product.stock_qty || 0);
+      await db.from("products").update({
+        stock_qty: current - qty,
+        in_stock: (current - qty) > 0,
+      }).eq("id", si.productId);
+    }
+  }
+
+  // Формируем обновлённый массив shipped_items
+  const newShipped = dealItems.map((it) => ({
+    productId: it.productId,
+    name: it.name,
+    shippedQty: shippedMap.get(it.productId) || 0,
+  }));
+
+  // Проверяем: всё отгружено?
+  const fullyShipped = dealItems.every((it) => (shippedMap.get(it.productId) || 0) >= it.quantity);
+
+  const updatePayload: any = {
+    shipped_items: newShipped,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (fullyShipped) {
+    updatePayload.status = "completed";
+    updatePayload.delivery_released_at = new Date().toISOString();
+  }
+
+  await db.from("customer_deals").update(updatePayload).eq("id", id);
+  revalidateTag("warehouse-deals");
+  revalidateTag("products");
+  return { fullyShipped };
+}
+
+/** Отменить отгрузку (вернуть товары на склад, очистить shipped_items) */
+export async function unshipDeal(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { data: deal } = await db.from("customer_deals").select("*").eq("id", id).single();
+  if (!deal) throw new Error("Заказ не найден");
+
+  const shipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as { productId: string; shippedQty: number }[];
+
+  // Возвращаем отгруженные товары на склад
+  for (const s of shipped) {
+    const qty = Number(s.shippedQty) || 0;
+    if (qty <= 0) continue;
+    const { data: product } = await db.from("products").select("stock_qty").eq("id", s.productId).maybeSingle();
+    if (product) {
+      const current = Number(product.stock_qty || 0);
+      await db.from("products").update({
+        stock_qty: current + qty,
+        in_stock: true,
+      }).eq("id", s.productId);
+    }
+  }
+
+  await db.from("customer_deals").update({
+    shipped_items: [],
+    status: deal.source_order_id ? deal.status : "new", // оставляем статус если из заявки
+    delivery_released_at: null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+
   revalidateTag("warehouse-deals");
   revalidateTag("products");
 }
@@ -1011,11 +1110,29 @@ export async function cancelDeal(id: string, reason: string | null = null): Prom
   const { data: deal } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!deal) throw new Error("Заказ не найден");
   if (deal.status === "cancelled") throw new Error("Уже отменён");
-  if (deal.status === "completed") {
+
+  // Если были отгрузки — возвращаем товары на склад
+  const shipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as { productId: string; shippedQty: number }[];
+  if (shipped.length > 0) {
+    for (const s of shipped) {
+      const qty = Number(s.shippedQty) || 0;
+      if (qty <= 0) continue;
+      const { data: product } = await db.from("products").select("stock_qty").eq("id", s.productId).maybeSingle();
+      if (product) {
+        const current = Number(product.stock_qty || 0);
+        await db.from("products").update({ stock_qty: current + qty, in_stock: true }).eq("id", s.productId);
+      }
+    }
+  } else if (deal.status === "completed") {
+    // Старое поведение: если completed без shipped_items — полный возврат
     await applyStockDelta(deal.items as StockDocItem[], 1);
   }
+
   await db.from("customer_deals").update({
-    status: "cancelled", cancel_reason: reason, updated_at: new Date().toISOString(),
+    status: "cancelled", cancel_reason: reason,
+    shipped_items: [],
+    delivery_released_at: null,
+    updated_at: new Date().toISOString(),
   }).eq("id", id);
   revalidateTag("warehouse-deals");
   revalidateTag("products");
@@ -1195,9 +1312,27 @@ export async function deleteDeal(id: string): Promise<void> {
   const db = getAdminDb();
   const { data: existing } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!existing) throw new Error("Заказ не найден");
-  if (existing.status === "completed") throw new Error("Нельзя удалить проведённый заказ");
+
+  // Если были отгрузки — возвращаем товары на склад перед удалением
+  const shipped = (Array.isArray(existing.shipped_items) ? existing.shipped_items : []) as { productId: string; shippedQty: number }[];
+  if (shipped.length > 0) {
+    for (const s of shipped) {
+      const qty = Number(s.shippedQty) || 0;
+      if (qty <= 0) continue;
+      const { data: product } = await db.from("products").select("stock_qty").eq("id", s.productId).maybeSingle();
+      if (product) {
+        const current = Number(product.stock_qty || 0);
+        await db.from("products").update({ stock_qty: current + qty, in_stock: true }).eq("id", s.productId);
+      }
+    }
+  } else if (existing.status === "completed") {
+    // Старое поведение: полный возврат для полностью проведённых
+    await applyStockDelta(existing.items as StockDocItem[], 1);
+  }
+
   await db.from("customer_deals").delete().eq("id", id);
   revalidateTag("warehouse-deals");
+  revalidateTag("products");
 }
 
 /** Обновить только поля доставки заказа учёта */

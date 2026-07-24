@@ -93,6 +93,8 @@ export interface CustomerDeal extends CounterpartyDetails {
   /** Водитель, назначенный на доставку */
   deliveryDriverId?: string | null;
   deliveryDriverName?: string | null;
+  /** Частично отгруженные товары: [{productId, name, shippedQty}] */
+  shippedItems?: { productId: string; name?: string; shippedQty: number }[];
   createdAt?: string | null;
 }
 

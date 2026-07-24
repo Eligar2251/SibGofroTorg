@@ -944,6 +944,19 @@ export function WarehouseManager({
                       {hasShortage && (
                         <span className="admin-badge admin-badge--red"><AlertTriangle size={10} /> не хватает товара</span>
                       )}
+                      {(() => {
+                        const shippedArr = Array.isArray(d.shippedItems) ? d.shippedItems : [];
+                        const totalOrdered = d.items.reduce((s: number, it: any) => s + it.quantity, 0);
+                        const totalShipped = shippedArr.reduce((s: number, it: any) => s + (it.shippedQty || 0), 0);
+                        if (totalShipped > 0 && totalShipped < totalOrdered) {
+                          return (
+                            <span className="admin-badge admin-badge--indigo" title={`Отгружено ${totalShipped} из ${totalOrdered}`}>
+                              <Truck size={10} /> Частично отгружено: {totalShipped}/{totalOrdered}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                       {d.hasDelivery && (
                         <span
                           className={
@@ -981,19 +994,33 @@ export function WarehouseManager({
 
                           <div className="admin-order__items">
                             <div className="admin-order__items-title">Товары</div>
-                            {d.items.map((it, idx) => (
-                              <div key={idx} className="admin-order__item">
-                                <Link
-                                  href={`/${adminPath}/products/${it.productId}`}
-                                  prefetch={false}
-                                  style={{ color: "inherit", fontWeight: 650 }}
-                                >
-                                  {it.name} × {it.quantity}
-                                  <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
-                                </Link>
-                                <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
-                              </div>
-                            ))}
+                            {d.items.map((it, idx) => {
+                              const shipped = (Array.isArray(d.shippedItems) ? d.shippedItems : []).find((s: any) => s.productId === it.productId)?.shippedQty || 0;
+                              const remaining = it.quantity - shipped;
+                              return (
+                                <div key={idx} className={`admin-order__item${shipped > 0 && remaining > 0 ? " admin-order__item--partial" : ""}`}>
+                                  <Link
+                                    href={`/${adminPath}/products/${it.productId}`}
+                                    prefetch={false}
+                                    style={{ color: "inherit", fontWeight: 650 }}
+                                  >
+                                    {it.name} × {it.quantity}
+                                    <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
+                                    {shipped > 0 && remaining > 0 && (
+                                      <span className="wh-item-row__warn" style={{ marginLeft: 8, whiteSpace: "nowrap" }}>
+                                        отгружено: {shipped} · осталось: {remaining}
+                                      </span>
+                                    )}
+                                    {shipped > 0 && remaining <= 0 && (
+                                      <span style={{ marginLeft: 8, color: "var(--adm-pine)", fontSize: 11, fontWeight: 600 }}>
+                                        ✓ отгружено
+                                      </span>
+                                    )}
+                                  </Link>
+                                  <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
+                                </div>
+                              );
+                            })}
                             {d.hasDelivery && (d.deliveryCost || 0) > 0 && (
                               <div className="admin-order__item admin-order__item--adjustment">
                                 <span>Доставка (платная)</span>
@@ -1091,7 +1118,18 @@ export function WarehouseManager({
                               })),
                             }}
                           />
-                          <DealActions dealId={d.id} status={d.status} hasShortage={hasShortage} paidEnough={isFullyPaid} />
+                          <DealActions
+                            dealId={d.id}
+                            status={d.status}
+                            hasShortage={hasShortage}
+                            paidEnough={isFullyPaid}
+                            dealItems={d.items.map((item) => ({
+                              productId: item.productId,
+                              name: item.name,
+                              quantity: item.quantity,
+                            }))}
+                            shippedItems={Array.isArray(d.shippedItems) ? d.shippedItems : []}
+                          />
                         </div>
                       </div>
                     )}

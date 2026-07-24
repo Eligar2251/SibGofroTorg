@@ -5,6 +5,7 @@ import {
   cancelDeal,
   deleteDeal,
   updateDeal,
+  unshipDeal,
 } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
 
@@ -57,7 +58,9 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     if (body.action === "post") {
-      await postDeal(id);
+      await postDeal(id, Array.isArray(body.shippedItems) ? body.shippedItems : undefined);
+    } else if (body.action === "unship") {
+      await unshipDeal(id);
     } else if (body.action === "cancel") {
       await cancelDeal(id, body.reason ?? null);
     } else {

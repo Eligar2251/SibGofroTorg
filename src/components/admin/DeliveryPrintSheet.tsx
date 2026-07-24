@@ -95,14 +95,20 @@ export function DeliveryPrintSheet({
 
       <div className="deliv-print-sheet">
         <header className="deliv-print-head">
-          <div className="deliv-print-head__brand">СибГофроТорг</div>
+          <div className="deliv-print-head__brand">
+            СибГофроТорг
+            <div className="deliv-print-head__hours">{SITE_HOURS_LABEL}</div>
+          </div>
           <div className="deliv-print-head__meta">
             <div>{title || "Бланк доставок для курьера"}</div>
             <div>
-              {address} · {phone}
+              {address}
             </div>
             <div>
-              {SITE_HOURS_LABEL} · печать {today}
+              Контактный тел.: {phone}
+            </div>
+            <div>
+              Печать: {today}
             </div>
           </div>
         </header>
@@ -296,6 +302,14 @@ const PRINT_CSS = `
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+.deliv-print-head__hours {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #888;
+  margin-top: 2px;
+}
 .deliv-print-head__meta {
   text-align: right;
   font-size: 10px;
@@ -315,18 +329,19 @@ const PRINT_CSS = `
   overflow: hidden;
 }
 
-/* Номер — лёгкий фон вместо сплошного чёрного */
+/* Номер — крупный, легко читается курьером */
 .deliv-print-strip__num {
-  width: 10mm;
-  min-width: 10mm;
+  width: 12mm;
+  min-width: 12mm;
   background: #eee;
   border-right: 1px solid #888;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #555;
+  color: #333;
+  letter-spacing: -0.02em;
 }
 
 .deliv-print-strip__body {

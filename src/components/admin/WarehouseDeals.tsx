@@ -18,6 +18,7 @@ import {
   Gift,
   Banknote,
   Truck,
+  RotateCcw,
 } from "lucide-react";
 import {
   ProductPicker,
@@ -939,22 +940,46 @@ const CANCEL_REASONS = [
   "Другая причина",
 ];
 
+interface ShippedItem {
+  productId: string;
+  name?: string;
+  shippedQty: number;
+}
+
 export function DealActions({
   dealId,
   status,
   hasShortage = false,
   paidEnough = false,
+  dealItems = [],
+  shippedItems = [],
 }: {
   dealId: string;
   status: "new" | "completed" | "cancelled";
   hasShortage?: boolean;
   paidEnough?: boolean;
+  dealItems?: { productId: string; name: string; quantity: number }[];
+  shippedItems?: ShippedItem[];
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showShipModal, setShowShipModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [customReason, setCustomReason] = useState("");
+  // Количества для частичной отгрузки (productId → qty)
+  const [shipQtys, setShipQtys] = useState<Record<string, number>>({});
+
+  const hasPartialShip = shippedItems.some((s) => s.shippedQty > 0);
+
+  function initShipQtys() {
+    const qtys: Record<string, number> = {};
+    for (const item of dealItems) {
+      const shipped = shippedItems.find((s) => s.productId === item.productId)?.shippedQty || 0;
+      qtys[item.productId] = item.quantity - shipped;
+    }
+    setShipQtys(qtys);
+  }
 
   async function callApi(payload: Record<string, unknown>, method = "PATCH") {
     setSaving(true);
@@ -966,6 +991,7 @@ export function DealActions({
       });
       if (res.ok) {
         setShowCancelModal(false);
+        setShowShipModal(false);
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -978,19 +1004,31 @@ export function DealActions({
   }
 
   function handleCancelSubmit() {
-    const reason =
-      cancelReason === "Другая причина" ? customReason : cancelReason;
+    const reason = cancelReason === "Другая причина" ? customReason : cancelReason;
     callApi({ action: "cancel", reason: reason || null });
   }
 
   function handleDelete() {
-    if (
-      !confirm(
-        "Удалить заказ? Если товар уже отпущен, он вернётся на склад (сторно)."
-      )
-    )
+    if (!confirm("Удалить заказ? Если товар уже отпущен, он вернётся на склад (сторно)."))
       return;
     callApi({}, "DELETE");
+  }
+
+  function handlePartialShip() {
+    const items = Object.entries(shipQtys)
+      .filter(([, qty]) => qty > 0)
+      .map(([productId, quantity]) => ({ productId, quantity }));
+    if (items.length === 0) {
+      alert("Укажите количество хотя бы для одного товара");
+      return;
+    }
+    callApi({ action: "post", shippedItems: items });
+  }
+
+  function handleUnship() {
+    if (!confirm("Отменить отгрузку? Все отгруженные товары вернутся на склад."))
+      return;
+    callApi({ action: "unship" });
   }
 
   return (
@@ -1000,43 +1038,40 @@ export function DealActions({
           <button
             type="button"
             onClick={() => {
-              if (
-                hasShortage &&
-                !confirm(
-                  "Товара на складе не хватает — остаток уйдёт в минус. Отпустить всё равно?"
-                )
-              ) {
-                return;
+              if (dealItems.length > 0) {
+                initShipQtys();
+                setShowShipModal(true);
+              } else {
+                if (hasShortage && !confirm("Товара на складе не хватает — остаток уйдёт в минус. Отпустить всё равно?"))
+                  return;
+                callApi({ action: "post" });
               }
-              callApi({ action: "post" });
             }}
             disabled={saving}
-            className={`admin-status__btn ${
-              paidEnough
-                ? "admin-status__btn--primary"
-                : "admin-status__btn--outline"
-            }`}
-            title={
-              paidEnough
-                ? "Списать товар со склада и отметить заказ отпущенным"
-                : "Отпустить товар до подтверждения оплаты в банке"
-            }
+            className={`admin-status__btn ${paidEnough ? "admin-status__btn--primary" : "admin-status__btn--outline"}`}
+            title={paidEnough ? "Списать товар со склада" : "Отпустить товар до оплаты"}
           >
-            {saving ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <CheckCircle size={14} />
-            )}
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
             {paidEnough ? "Отпустить товар" : "Отпустить без оплаты"}
           </button>
+          {hasPartialShip && (
+            <button
+              type="button"
+              onClick={handleUnship}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--outline"
+              title="Отменить отгрузку, вернуть товары на склад"
+            >
+              <RotateCcw size={14} /> Отменить отгрузку
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowCancelModal(true)}
             disabled={saving}
             className="admin-status__btn admin-status__btn--outline-red"
           >
-            <XCircle size={14} />
-            Отменить
+            <XCircle size={14} /> Отменить
           </button>
           <button
             type="button"
@@ -1045,8 +1080,7 @@ export function DealActions({
             className="admin-status__btn admin-status__btn--delete"
             title="Удалить заказ"
           >
-            <Trash2 size={14} />
-            Удалить
+            <Trash2 size={14} /> Удалить
           </button>
         </div>
       )}
@@ -1055,12 +1089,20 @@ export function DealActions({
         <div className="admin-status__btns">
           <button
             type="button"
+            onClick={handleUnship}
+            disabled={saving}
+            className="admin-status__btn admin-status__btn--outline"
+            title="Отменить отгрузку, вернуть товары на склад"
+          >
+            <RotateCcw size={14} /> Отменить отгрузку
+          </button>
+          <button
+            type="button"
             onClick={() => setShowCancelModal(true)}
             disabled={saving}
             className="admin-status__btn admin-status__btn--outline-red"
           >
-            <XCircle size={14} />
-            Отменить
+            <XCircle size={14} /> Отменить
           </button>
           <button
             type="button"
@@ -1069,8 +1111,7 @@ export function DealActions({
             className="admin-status__btn admin-status__btn--delete"
             title="Удалить заказ"
           >
-            <Trash2 size={14} />
-            Удалить
+            <Trash2 size={14} /> Удалить
           </button>
         </div>
       )}
@@ -1084,80 +1125,106 @@ export function DealActions({
             className="admin-status__btn admin-status__btn--delete"
             title="Удалить заказ"
           >
-            <Trash2 size={14} />
-            Удалить
+            <Trash2 size={14} /> Удалить
           </button>
         </div>
       )}
 
-      {showCancelModal && (
+      {/* ── Модалка частичной отгрузки ── */}
+      {showShipModal && (
         <ModalPortal>
-        <div className="admin-modal-overlay">
-          <div className="admin-modal">
-            <div className="admin-modal__head">
-              <h3 className="admin-modal__title">Отменить заказ</h3>
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(false)}
-                className="admin-modal__close"
-                aria-label="Закрыть"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <p className="admin-modal__desc">
-              {status === "completed"
-                ? "Заказ был отпущен: товар вернётся на остатки склада (сторно)."
-                : "Заказ не проводился, остатки не изменятся."}
-            </p>
-            <div className="admin-radio-list">
-              {CANCEL_REASONS.map((reason) => (
-                <label key={reason} className="admin-radio-item">
-                  <input
-                    type="radio"
-                    name="deal-cancel-reason"
-                    value={reason}
-                    checked={cancelReason === reason}
-                    onChange={(e) => setCancelReason(e.target.value)}
-                  />
-                  <span>{reason}</span>
-                </label>
-              ))}
-            </div>
-            {cancelReason === "Другая причина" && (
-              <textarea
-                className="admin-textarea"
-                placeholder="Укажите причину..."
-                value={customReason}
-                onChange={(e) => setCustomReason(e.target.value)}
-                rows={3}
-              />
-            )}
-            <div className="admin-modal__actions">
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(false)}
-                className="admin-btn admin-btn--ghost"
-                disabled={saving}
-              >
-                Назад
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelSubmit}
-                className="admin-btn admin-btn--danger"
-                disabled={
-                  saving ||
-                  !cancelReason ||
-                  (cancelReason === "Другая причина" && !customReason.trim())
-                }
-              >
-                {saving && <Loader2 size={14} className="animate-spin" />}
-                Отменить заказ
-              </button>
+          <div className="admin-modal-overlay">
+            <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="admin-modal__head">
+                <h3 className="admin-modal__title">Отгрузка товара</h3>
+                <button type="button" onClick={() => setShowShipModal(false)} className="admin-modal__close" aria-label="Закрыть">
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="admin-modal__desc">
+                Укажите количество для отгрузки. Оставшиеся позиции останутся в заказе.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+                {dealItems.map((item) => {
+                  const shipped = shippedItems.find((s) => s.productId === item.productId)?.shippedQty || 0;
+                  const remaining = item.quantity - shipped;
+                  return (
+                    <div key={item.productId} className="admin-field" style={{ margin: 0 }}>
+                      <label className="admin-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>{item.name}</span>
+                        <span style={{ fontWeight: 400, color: "var(--adm-sand)" }}>
+                          заказано: {item.quantity} {shipped > 0 && `· уже отгружено: ${shipped}`}
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        className="admin-input"
+                        min={0}
+                        max={remaining}
+                        value={shipQtys[item.productId] ?? remaining}
+                        onChange={(e) => setShipQtys((prev) => ({ ...prev, [item.productId]: Math.min(Number(e.target.value) || 0, remaining) }))}
+                      />
+                      <span className="admin-hint">Останется: {remaining - (shipQtys[item.productId] ?? remaining)} шт.</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="admin-modal__actions">
+                <button type="button" onClick={() => setShowShipModal(false)} className="admin-btn admin-btn--ghost" disabled={saving}>
+                  Отмена
+                </button>
+                <button type="button" onClick={handlePartialShip} className="admin-btn admin-btn--primary" disabled={saving}>
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                  Отгрузить
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
+      )}
+
+      {/* ── Модалка отмены заказа ── */}
+      {showCancelModal && (
+        <ModalPortal>
+          <div className="admin-modal-overlay">
+            <div className="admin-modal">
+              <div className="admin-modal__head">
+                <h3 className="admin-modal__title">Отменить заказ</h3>
+                <button type="button" onClick={() => setShowCancelModal(false)} className="admin-modal__close" aria-label="Закрыть">
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="admin-modal__desc">
+                {status === "completed" || hasPartialShip
+                  ? "Заказ был отпущен (полностью или частично): товар вернётся на остатки склада (сторно)."
+                  : "Заказ не проводился, остатки не изменятся."}
+              </p>
+              <div className="admin-radio-list">
+                {CANCEL_REASONS.map((reason) => (
+                  <label key={reason} className="admin-radio-item">
+                    <input type="radio" name="deal-cancel-reason" value={reason}
+                      checked={cancelReason === reason}
+                      onChange={(e) => setCancelReason(e.target.value)} />
+                    <span>{reason}</span>
+                  </label>
+                ))}
+              </div>
+              {cancelReason === "Другая причина" && (
+                <textarea className="admin-textarea" placeholder="Укажите причину..."
+                  value={customReason} onChange={(e) => setCustomReason(e.target.value)} rows={3} />
+              )}
+              <div className="admin-modal__actions">
+                <button type="button" onClick={() => setShowCancelModal(false)} className="admin-btn admin-btn--ghost" disabled={saving}>
+                  Назад
+                </button>
+                <button type="button" onClick={handleCancelSubmit} className="admin-btn admin-btn--danger"
+                  disabled={saving || !cancelReason || (cancelReason === "Другая причина" && !customReason.trim())}>
+                  {saving && <Loader2 size={14} className="animate-spin" />}
+                  Отменить заказ
+                </button>
+              </div>
+            </div>
+          </div>
         </ModalPortal>
       )}
     </div>

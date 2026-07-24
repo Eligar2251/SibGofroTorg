@@ -4261,6 +4261,15 @@ body:has(.admin-modal-overlay) {
 .cp-table__documents > span { color: var(--adm-sand); font-size: 11px; }
 .admin-order__item--adjustment { margin-top: 6px; padding-top: 6px; color: var(--adm-steel); border-top: 1px dashed var(--adm-border-mid); }
 
+/* Частично отгруженная позиция — левый акцент */
+.admin-order__item--partial {
+  border-left: 3px solid var(--adm-kraft);
+  padding-left: 8px;
+  margin-left: -4px;
+  background: linear-gradient(90deg, rgba(200,134,10,0.04) 0%, transparent 60%);
+  border-radius: 0 4px 4px 0;
+}
+
 @media (max-width: 700px) {
   .cp-table__details { grid-template-columns: 1fr; }
 }
