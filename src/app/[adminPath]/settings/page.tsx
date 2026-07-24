@@ -4,7 +4,6 @@
 
 import { getSettings } from "@/lib/supabase-queries";
 import { SettingsForm } from "@/components/admin/SettingsForm";
-import { MigrationButton } from "@/components/admin/MigrationButton";
 import { ExcelDataManager } from "@/components/admin/ExcelDataManager";
 import { ActivityLogs } from "@/components/admin/ActivityLogs";
 
@@ -37,16 +36,6 @@ export default async function AdminSettingsPage() {
         <ActivityLogs />
       </div>
 
-      <div style={{ marginTop: "3rem", borderTop: "2px solid #e5e7eb", paddingTop: "2rem" }}>
-        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-          Миграция данных
-        </h2>
-        <p style={{ color: "#6b7280", marginBottom: "1rem", fontSize: "0.875rem" }}>
-          Перенос всех данных из Firestore в Supabase (PostgreSQL).
-          Используйте при первичном переходе или для синхронизации.
-        </p>
-        <MigrationButton />
-      </div>
     </div>
   );
 }
