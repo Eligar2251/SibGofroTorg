@@ -36,11 +36,17 @@ export function TransportPrintSheet({ data, onDone }: { data: TransportPrintData
     triggered.current = true;
     const prev = document.title;
     document.title = `Перевозка ПЕР-${data.transportNumber}`;
-    const t = window.setTimeout(() => { setPrinting(true); window.print(); }, 400);
     function onAfter() { document.title = prev; onDone?.(); }
     window.addEventListener("afterprint", onAfter);
-    return () => { window.clearTimeout(t); document.title = prev; window.removeEventListener("afterprint", onAfter); };
+    return () => { document.title = prev; window.removeEventListener("afterprint", onAfter); };
   }, [data.transportNumber, onDone]);
+
+  function doPrint() {
+    setPrinting(true);
+    requestAnimationFrame(() => {
+      window.print();
+    });
+  }
 
   const totalQty = data.items.reduce((s, d) => s + d.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
 
@@ -48,7 +54,12 @@ export function TransportPrintSheet({ data, onDone }: { data: TransportPrintData
     <div className="deliv-print-root">
       <style>{PRINT_CSS}</style>
       {!printing && (
-        <button type="button" className="deliv-print-close" onClick={() => onDone?.()}>✕ Закрыть превью</button>
+        <div className="deliv-print-close" style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={doPrint} style={{ padding: "8px 16px", background: "var(--adm-kraft)", color: "#fff", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            🖨 Печать
+          </button>
+          <button type="button" onClick={() => onDone?.()}>✕ Закрыть</button>
+        </div>
       )}
       <div className="transport-sheet">
         <header className="transport-head">
@@ -105,8 +116,28 @@ const PRINT_CSS = `
 @media screen {
   .deliv-print-root { position: fixed; inset: 0; z-index: 99999; background: #f5f3ee; overflow: auto; padding: 24px; }
   .transport-sheet { max-width: 210mm; margin: 0 auto; background: #fff; padding: 14mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); border-radius: 4px; }
-  .deliv-print-close { position: fixed; top: 12px; right: 12px; z-index: 100000; padding: 8px 16px; background: #1a1a18; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: system-ui; }
-  .deliv-print-close:hover { background: #333; }
+  .deliv-print-close {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 100000;
+    display: flex;
+    gap: 8px;
+  }
+  .deliv-print-close button {
+    padding: 8px 16px;
+    background: #1a1a18;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: system-ui, sans-serif;
+  }
+  .deliv-print-close button:hover {
+    background: #333;
+  }
 }
 @media print {
   @page { size: A4 portrait; margin: 8mm 10mm; }

@@ -222,20 +222,20 @@ export function TransportManager({
                   </div>
 
                   <div className="deliv-item__main">
-                    <button className="deliv-item__top" style={{ cursor: "pointer", background: "none", border: "none", padding: 0, width: "100%", textAlign: "left" }}
+                    <button className="deliv-item__top" style={{ cursor: "pointer", background: "none", border: "none", padding: 0, width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
                       onClick={() => setExpandedId(expanded ? null : t.id)}>
                       <span className="admin-order__id">ПЕР-{t.number}</span>
                       <span className={`admin-badge ${t.status === "completed" ? "admin-badge--green" : t.status === "archived" ? "admin-badge--muted" : "admin-badge--blue"}`}>
                         {t.status === "draft" ? "Черновик" : t.status === "active" ? "В пути" : t.status === "completed" ? "Завершена" : "Архив"}
                       </span>
                       {t.plannedDate && (
-                        <span className="admin-badge admin-badge--indigo">
-                          <Calendar size={10} /> {fmtDate(t.plannedDate)}
+                        <span className="admin-badge admin-badge--indigo" style={{ display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                          <Calendar size={10} style={{ flexShrink: 0 }} /> {fmtDate(t.plannedDate)}
                         </span>
                       )}
                       {t.driverName && (
-                        <span className="admin-badge admin-badge--blue">
-                          <User size={10} /> {t.driverName}
+                        <span className="admin-badge admin-badge--blue" style={{ display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                          <User size={10} style={{ flexShrink: 0 }} /> {t.driverName}
                         </span>
                       )}
                       <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--adm-sand)" }}>
@@ -253,8 +253,16 @@ export function TransportManager({
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                               <span className="admin-order__id">ЗК-{deal.dealNumber}</span>
                               <strong style={{ fontSize: 13 }}>{deal.customerName}</strong>
-                              {deal.phone && <a href={`tel:${deal.phone}`} style={{ fontSize: 12, color: "var(--adm-steel)" }}><Phone size={11} /> {deal.phone}</a>}
-                              {deal.address && <span style={{ fontSize: 12, color: "var(--adm-sand)", marginLeft: "auto" }}><MapPin size={11} /> {deal.address}</span>}
+                      {deal.phone && (
+                        <a href={`tel:${deal.phone}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--adm-steel)", whiteSpace: "nowrap" }}>
+                          <Phone size={11} style={{ flexShrink: 0 }} /> {deal.phone}
+                        </a>
+                      )}
+                      {deal.address && (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
+                          <MapPin size={11} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.address}</span>
+                        </span>
+                      )}
                             </div>
                             {deal.items.map((item) => (
                               <div key={item.productId} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", color: "var(--adm-ink-soft)" }}>
@@ -446,7 +454,11 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
                     <input type="checkbox" checked={sel} onChange={() => toggleDeal(deal.id)} />
                     <strong style={{ fontSize: 13 }}>ЗК-{deal.number}</strong>
                     <span style={{ fontSize: 13 }}>{deal.customerName}</span>
-                    {deal.deliveryAddress && <span style={{ fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto" }}><MapPin size={10} /> {deal.deliveryAddress}</span>}
+                    {deal.deliveryAddress && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
+                        <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.deliveryAddress}</span>
+                      </span>
+                    )}
                   </label>
                   {sel && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 26 }}>

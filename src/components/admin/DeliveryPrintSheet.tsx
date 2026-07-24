@@ -50,13 +50,6 @@ export function DeliveryPrintSheet({
     const prev = document.title;
     document.title = title || "Бланк доставок";
 
-    // Небольшая задержка для рендера, затем печать
-    const t = window.setTimeout(() => {
-      setPrinting(true);
-      window.print();
-    }, 400);
-
-    // Слушаем событие afterprint — когда пользователь нажал Печать или Отмена
     function handleAfterPrint() {
       document.title = prev;
       onDone?.();
@@ -64,11 +57,17 @@ export function DeliveryPrintSheet({
     window.addEventListener("afterprint", handleAfterPrint);
 
     return () => {
-      window.clearTimeout(t);
       document.title = prev;
       window.removeEventListener("afterprint", handleAfterPrint);
     };
   }, [title, onDone]);
+
+  function doPrint() {
+    setPrinting(true);
+    requestAnimationFrame(() => {
+      window.print();
+    });
+  }
 
   const phone = companyPhone || SITE_PHONE;
   const address = companyAddress || SITE_ADDRESS;
@@ -82,15 +81,14 @@ export function DeliveryPrintSheet({
     <div className="deliv-print-root" aria-hidden={false}>
       <style>{PRINT_CSS}</style>
 
-      {/* Кнопка «Закрыть» — видна только на экране, не при печати */}
+      {/* Кнопки «Печать» и «Закрыть» — видны только на экране, не при печати */}
       {!printing && (
-        <button
-          type="button"
-          className="deliv-print-close"
-          onClick={() => onDone?.()}
-        >
-          ✕ Закрыть превью
-        </button>
+        <div className="deliv-print-close" style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={doPrint} style={{ padding: "8px 16px", background: "var(--adm-kraft)", color: "#fff", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            🖨 Печать
+          </button>
+          <button type="button" onClick={() => onDone?.()}>✕ Закрыть</button>
+        </div>
       )}
 
       <div className="deliv-print-sheet">
@@ -227,6 +225,10 @@ const PRINT_CSS = `
     top: 12px;
     right: 12px;
     z-index: 100000;
+    display: flex;
+    gap: 8px;
+  }
+  .deliv-print-close button {
     padding: 8px 16px;
     background: #1a1a18;
     color: #fff;
@@ -237,7 +239,7 @@ const PRINT_CSS = `
     cursor: pointer;
     font-family: system-ui, sans-serif;
   }
-  .deliv-print-close:hover {
+  .deliv-print-close button:hover {
     background: #333;
   }
 }
