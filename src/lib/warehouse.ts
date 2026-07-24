@@ -1934,3 +1934,204 @@ export async function getReceiptById(id: string): Promise<WarehouseReceipt | nul
   if (error || !data) return null;
   return mapReceiptRow(data);
 }
+
+// ══════════════════════════════════════
+//   ПЕРЕВОЗКИ (TRANSPORTS)
+// ══════════════════════════════════════
+
+export interface TransportItem {
+  dealId: string;
+  dealNumber: number;
+  customerName: string;
+  address: string | null;
+  phone: string | null;
+  items: { productId: string; name: string; orderedQty: number; transportQty: number }[];
+  totalSum: number | null;
+}
+
+export interface Transport {
+  id: string;
+  number: number;
+  date: string;
+  plannedDate: string | null;
+  driverId: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  status: "draft" | "active" | "completed" | "archived";
+  note: string | null;
+  items: TransportItem[];
+  totalItems: number;
+  completedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+function mapTransportRow(row: any): Transport {
+  return {
+    id: row.id,
+    number: Number(row.number),
+    date: row.date || "",
+    plannedDate: row.planned_date || null,
+    driverId: row.driver_id || null,
+    driverName: row.driver_name || null,
+    driverPhone: row.driver_phone || null,
+    status: row.status || "draft",
+    note: row.note || null,
+    items: Array.isArray(row.items) ? row.items : [],
+    totalItems: Number(row.total_items || 0),
+    completedAt: toIso(row.completed_at),
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+export async function getTransports(opts: { status?: string; limit?: number } = {}): Promise<Transport[]> {
+  const db = getAdminDb();
+  let q = db.from("transports").select("*").order("created_at", { ascending: false });
+  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
+  q = q.limit(opts.limit || 200);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data || []).map(mapTransportRow);
+}
+
+export async function getTransportById(id: string): Promise<Transport | null> {
+  const db = getAdminDb();
+  const { data, error } = await db.from("transports").select("*").eq("id", id).maybeSingle();
+  if (error || !data) return null;
+  return mapTransportRow(data);
+}
+
+export async function createTransport(data: {
+  date: string;
+  plannedDate?: string;
+  driverId?: string;
+  driverName?: string;
+  driverPhone?: string;
+  note?: string;
+  items: TransportItem[];
+}): Promise<{ id: string; number: number }> {
+  const db = getAdminDb();
+  if (!data.items || data.items.length === 0) throw new Error("Добавьте хотя бы один заказ");
+
+  const number = await nextNumber("deal"); // Используем тот же счётчик
+  const totalItems = data.items.reduce((s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
+
+  const { data: result, error } = await db.from("transports").insert({
+    number,
+    date: data.date,
+    planned_date: data.plannedDate || null,
+    driver_id: data.driverId || null,
+    driver_name: data.driverName || null,
+    driver_phone: data.driverPhone || null,
+    status: "draft",
+    note: data.note || null,
+    items: data.items,
+    total_items: totalItems,
+  }).select("id, number").single();
+  if (error) throw error;
+
+  revalidateTag("warehouse-deals");
+  return { id: result.id, number };
+}
+
+export async function updateTransport(id: string, data: {
+  date?: string;
+  plannedDate?: string;
+  driverId?: string;
+  driverName?: string;
+  driverPhone?: string;
+  note?: string;
+  items?: TransportItem[];
+  status?: string;
+}): Promise<void> {
+  const db = getAdminDb();
+  const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+  if (data.date !== undefined) payload.date = data.date;
+  if (data.plannedDate !== undefined) payload.planned_date = data.plannedDate || null;
+  if (data.driverId !== undefined) payload.driver_id = data.driverId || null;
+  if (data.driverName !== undefined) payload.driver_name = data.driverName || null;
+  if (data.driverPhone !== undefined) payload.driver_phone = data.driverPhone || null;
+  if (data.note !== undefined) payload.note = data.note || null;
+  if (data.items !== undefined) {
+    payload.items = data.items;
+    payload.total_items = data.items.reduce((s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
+  }
+  if (data.status !== undefined) payload.status = data.status;
+  const { error } = await db.from("transports").update(payload).eq("id", id);
+  if (error) throw error;
+  revalidateTag("warehouse-deals");
+}
+
+/** Завершить перевозку: списать отгруженные количества, обновить shipped_items заказов */
+export async function completeTransport(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { data: transport } = await db.from("transports").select("*").eq("id", id).single();
+  if (!transport) throw new Error("Перевозка не найдена");
+  if (transport.status === "completed" || transport.status === "archived") throw new Error("Перевозка уже завершена");
+
+  const items = (transport.items || []) as TransportItem[];
+
+  // Обновляем shipped_items для каждого заказа
+  for (const ti of items) {
+    const { data: deal } = await db.from("customer_deals").select("shipped_items, items").eq("id", ti.dealId).maybeSingle();
+    if (!deal) continue;
+
+    const existingShipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as { productId: string; name?: string; shippedQty: number }[];
+    const shippedMap = new Map<string, number>();
+    for (const s of existingShipped) shippedMap.set(s.productId, (shippedMap.get(s.productId) || 0) + (s.shippedQty || 0));
+
+    for (const item of ti.items) {
+      if (item.transportQty <= 0) continue;
+      shippedMap.set(item.productId, (shippedMap.get(item.productId) || 0) + item.transportQty);
+
+      // Списываем со склада
+      const { data: product } = await db.from("products").select("stock_qty").eq("id", item.productId).maybeSingle();
+      if (product) {
+        const current = Number(product.stock_qty || 0);
+        await db.from("products").update({ stock_qty: Math.max(0, current - item.transportQty), in_stock: (current - item.transportQty) > 0 }).eq("id", item.productId);
+      }
+    }
+
+    const dealItems = (deal.items || []) as any[];
+    const newShipped = dealItems.map((it: any) => ({
+      productId: it.productId, name: it.name,
+      shippedQty: shippedMap.get(it.productId) || 0,
+    }));
+
+    const fullyShipped = dealItems.every((it: any) => (shippedMap.get(it.productId) || 0) >= it.quantity);
+
+    const updatePayload: any = { shipped_items: newShipped, updated_at: new Date().toISOString() };
+    if (fullyShipped) {
+      updatePayload.status = "completed";
+      updatePayload.delivery_released_at = new Date().toISOString();
+    }
+    await db.from("customer_deals").update(updatePayload).eq("id", ti.dealId);
+  }
+
+  await db.from("transports").update({
+    status: "completed",
+    completed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+
+  revalidateTag("warehouse-deals");
+  revalidateTag("products");
+}
+
+/** Удалить перевозку (только draft/active) */
+export async function deleteTransport(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { data: transport } = await db.from("transports").select("status").eq("id", id).maybeSingle();
+  if (!transport) throw new Error("Перевозка не найдена");
+  if (transport.status === "completed") throw new Error("Нельзя удалить завершённую перевозку");
+  await db.from("transports").delete().eq("id", id);
+  revalidateTag("warehouse-deals");
+}
+
+/** Архивировать перевозку */
+export async function archiveTransport(id: string): Promise<void> {
+  const db = getAdminDb();
+  await db.from("transports").update({ status: "archived", updated_at: new Date().toISOString() }).eq("id", id);
+  revalidateTag("warehouse-deals");
+}
