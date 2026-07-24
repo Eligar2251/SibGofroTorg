@@ -511,7 +511,7 @@ export async function setWarehouseStock(productId: string, quantity: number): Pr
     updated_at: new Date().toISOString(),
   }).eq("id", productId);
   if (error) throw error;
-  revalidateTag("products");
+  revalidateTag("products", { expire: 0 });
 }
 
 // ─── Items helpers ─────────────────────────────────────────
@@ -653,10 +653,10 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
     }
   }
 
-  revalidateTag("warehouse-receipts");
-  revalidateTag("warehouse-payments");
-  revalidateTag("warehouse-counterparties");
-  revalidateTag("products");
+  revalidateTag("warehouse-receipts", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-counterparties", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
   return { id: receiptId, number };
 }
 
@@ -667,8 +667,8 @@ export async function postReceipt(id: string): Promise<void> {
   if (receipt.status === "posted") throw new Error("Уже проведено");
   await applyStockDelta(receipt.items as StockDocItem[], 1);
   await db.from("warehouse_receipts").update({ status: "posted", updated_at: new Date().toISOString() }).eq("id", id);
-  revalidateTag("warehouse-receipts");
-  revalidateTag("products");
+  revalidateTag("warehouse-receipts", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function cancelReceipt(id: string): Promise<void> {
@@ -678,8 +678,8 @@ export async function cancelReceipt(id: string): Promise<void> {
   if (receipt.status !== "posted") throw new Error("Можно отменить только проведённое");
   await applyStockDelta(receipt.items as StockDocItem[], -1);
   await db.from("warehouse_receipts").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", id);
-  revalidateTag("warehouse-receipts");
-  revalidateTag("products");
+  revalidateTag("warehouse-receipts", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function updateReceipt(id: string, data: any): Promise<void> {
@@ -835,9 +835,9 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   }
 
   invalidateCounterpartyCache(true);
-  revalidateTag("warehouse-receipts");
-  revalidateTag("warehouse-payments");
-  revalidateTag("products");
+  revalidateTag("warehouse-receipts", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function deleteReceipt(id: string): Promise<void> {
@@ -872,8 +872,8 @@ export async function deleteReceipt(id: string): Promise<void> {
   }
 
   await db.from("warehouse_receipts").delete().eq("id", id);
-  revalidateTag("warehouse-receipts");
-  revalidateTag("warehouse-payments");
+  revalidateTag("warehouse-receipts", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
 }
 
 // ─── Deals CRUD ────────────────────────────────────────────
@@ -991,9 +991,9 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
     }
   }
 
-  revalidateTag("warehouse-deals");
-  revalidateTag("warehouse-payments");
-  revalidateTag("warehouse-counterparties");
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-counterparties", { expire: 0 });
   return { id: dealResult.id, number };
 }
 
@@ -1016,8 +1016,8 @@ export async function postDeal(id: string, shippedItems?: { productId: string; q
       delivery_released_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", id);
-    revalidateTag("warehouse-deals");
-    revalidateTag("products");
+    revalidateTag("warehouse-deals", { expire: 0 });
+    revalidateTag("products", { expire: 0 });
     return { fullyShipped: true };
   }
 
@@ -1068,8 +1068,8 @@ export async function postDeal(id: string, shippedItems?: { productId: string; q
   }
 
   await db.from("customer_deals").update(updatePayload).eq("id", id);
-  revalidateTag("warehouse-deals");
-  revalidateTag("products");
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
   return { fullyShipped };
 }
 
@@ -1102,8 +1102,8 @@ export async function unshipDeal(id: string): Promise<void> {
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
-  revalidateTag("warehouse-deals");
-  revalidateTag("products");
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function cancelDeal(id: string, reason: string | null = null): Promise<void> {
@@ -1135,8 +1135,8 @@ export async function cancelDeal(id: string, reason: string | null = null): Prom
     delivery_released_at: null,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
-  revalidateTag("warehouse-deals");
-  revalidateTag("products");
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function updateDeal(id: string, data: any): Promise<void> {
@@ -1305,8 +1305,8 @@ export async function updateDeal(id: string, data: any): Promise<void> {
   }
 
   invalidateCounterpartyCache();
-  revalidateTag("warehouse-deals");
-  revalidateTag("warehouse-payments");
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
 }
 
 export async function deleteDeal(id: string): Promise<void> {
@@ -1332,8 +1332,8 @@ export async function deleteDeal(id: string): Promise<void> {
   }
 
   await db.from("customer_deals").delete().eq("id", id);
-  revalidateTag("warehouse-deals");
-  revalidateTag("products");
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 /** Обновить только поля доставки заказа учёта */
@@ -1528,7 +1528,7 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     comment: cleanText(data.comment, 500),
   }).select("id").single();
   if (error) throw error;
-  revalidateTag("warehouse-payments");
+  revalidateTag("warehouse-payments", { expire: 0 });
   return { id: result.id, number };
 }
 
@@ -1550,7 +1550,7 @@ export async function updatePayment(id: string, data: any): Promise<void> {
   if (data.receiptIds !== undefined) payload.receipt_ids = data.receiptIds;
   const { error } = await db.from("bank_payments").update(payload).eq("id", id);
   if (error) throw error;
-  revalidateTag("warehouse-payments");
+  revalidateTag("warehouse-payments", { expire: 0 });
 }
 
 export async function deletePayment(id: string): Promise<void> {
@@ -1559,7 +1559,7 @@ export async function deletePayment(id: string): Promise<void> {
   if (!existing) throw new Error("Платёж не найден");
   if (existing.is_paid) throw new Error("Нельзя удалить проведённый платёж");
   await db.from("bank_payments").delete().eq("id", id);
-  revalidateTag("warehouse-payments");
+  revalidateTag("warehouse-payments", { expire: 0 });
 }
 
 // ─── Warehouse data loaders ────────────────────────────────
@@ -1617,14 +1617,14 @@ export async function saveEmployee(data: { id?: string | null; name: string; pos
       name: data.name, position: data.position ?? null, phone: data.phone ?? null, comment: data.comment ?? null,
     }).eq("id", data.id);
     if (error) throw error;
-    revalidateTag("warehouse-employees");
+    revalidateTag("warehouse-employees", { expire: 0 });
     return { id: data.id };
   }
   const { data: result, error } = await db.from("employees").insert({
     name: data.name, position: data.position ?? null, phone: data.phone ?? null, comment: data.comment ?? null,
   }).select("id").single();
   if (error) throw error;
-  revalidateTag("warehouse-employees");
+  revalidateTag("warehouse-employees", { expire: 0 });
   return { id: result.id };
 }
 
@@ -1632,7 +1632,7 @@ export async function deleteEmployee(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("employees").delete().eq("id", id);
   if (error) throw error;
-  revalidateTag("warehouse-employees");
+  revalidateTag("warehouse-employees", { expire: 0 });
 }
 
 export async function createSalary(data: { employeeId?: string | null; employeeName: string; amount: number; date: string; source: SalarySource; isPaid?: boolean; comment?: string | null }): Promise<{ id: string }> {
@@ -1644,7 +1644,7 @@ export async function createSalary(data: { employeeId?: string | null; employeeN
     comment: data.comment ?? null,
   }).select("id").single();
   if (error) throw error;
-  revalidateTag("warehouse-salaries");
+  revalidateTag("warehouse-salaries", { expire: 0 });
   return { id: result.id };
 }
 
@@ -1658,14 +1658,14 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   if (data.comment !== undefined) payload.comment = data.comment;
   const { error } = await db.from("salaries").update(payload).eq("id", id);
   if (error) throw error;
-  revalidateTag("warehouse-salaries");
+  revalidateTag("warehouse-salaries", { expire: 0 });
 }
 
 export async function deleteSalary(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("salaries").delete().eq("id", id);
   if (error) throw error;
-  revalidateTag("warehouse-salaries");
+  revalidateTag("warehouse-salaries", { expire: 0 });
 }
 
 // ─── Convert order to deal (КЛЮЧЕВАЯ ФУНКЦИЯ) ──────────────
@@ -1771,10 +1771,10 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
     payment_id: paymentResult.id, updated_at: new Date().toISOString(),
   }).eq("id", orderId);
 
-  revalidateTag("warehouse-deals");
-  revalidateTag("warehouse-payments");
-  revalidateTag("orders");
-  revalidateTag("warehouse-counterparties");
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("orders", { expire: 0 });
+  revalidateTag("warehouse-counterparties", { expire: 0 });
   return { dealId: dealResult.id, dealNumber: number, paymentId: paymentResult.id, skipped: false };
 }
 
@@ -1881,9 +1881,9 @@ export async function reviseWebsiteOrderByCustomer(
     customer_edited_at: new Date().toISOString(),
   }).eq("id", orderId);
 
-  revalidateTag("orders");
-  revalidateTag("warehouse-deals");
-  revalidateTag("warehouse-payments");
+  revalidateTag("orders", { expire: 0 });
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
   return { totalSum: total, paidTotal, additionalDue };
 }
 
@@ -1905,8 +1905,8 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
   const { error } = await db.from("orders").delete().eq("id", orderId);
   if (error) throw error;
   
-  revalidateTag("orders");
-  revalidateTag("warehouse-deals");
+  revalidateTag("orders", { expire: 0 });
+  revalidateTag("warehouse-deals", { expire: 0 });
 }
 
 // ─── Warehouse stock view ──────────────────────────────────
@@ -2031,7 +2031,7 @@ export async function createTransport(data: {
   }).select("id, number").single();
   if (error) throw error;
 
-  revalidateTag("warehouse-deals");
+  revalidateTag("warehouse-deals", { expire: 0 });
   return { id: result.id, number };
 }
 
@@ -2060,7 +2060,7 @@ export async function updateTransport(id: string, data: {
   if (data.status !== undefined) payload.status = data.status;
   const { error } = await db.from("transports").update(payload).eq("id", id);
   if (error) throw error;
-  revalidateTag("warehouse-deals");
+  revalidateTag("warehouse-deals", { expire: 0 });
 }
 
 /** Завершить перевозку: списать отгруженные количества, обновить shipped_items заказов */
@@ -2115,8 +2115,8 @@ export async function completeTransport(id: string): Promise<void> {
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
-  revalidateTag("warehouse-deals");
-  revalidateTag("products");
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 /** Удалить перевозку (только draft/active) */
@@ -2126,12 +2126,12 @@ export async function deleteTransport(id: string): Promise<void> {
   if (!transport) throw new Error("Перевозка не найдена");
   if (transport.status === "completed") throw new Error("Нельзя удалить завершённую перевозку");
   await db.from("transports").delete().eq("id", id);
-  revalidateTag("warehouse-deals");
+  revalidateTag("warehouse-deals", { expire: 0 });
 }
 
 /** Архивировать перевозку */
 export async function archiveTransport(id: string): Promise<void> {
   const db = getAdminDb();
   await db.from("transports").update({ status: "archived", updated_at: new Date().toISOString() }).eq("id", id);
-  revalidateTag("warehouse-deals");
+  revalidateTag("warehouse-deals", { expire: 0 });
 }

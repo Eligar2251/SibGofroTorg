@@ -10,12 +10,26 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const promotions = [
+interface PromoInsert {
+  title: string;
+  subtitle?: string | null;
+  badge?: string | null;
+  link_type: string;
+  link_url?: string | null;
+  sort_order: number;
+  is_visible: boolean;
+  icon?: string | null;
+  color?: string | null;
+  light?: string | null;
+}
+
+const promotions: PromoInsert[] = [
   {
     title: "Скидка 20% на гофрокоробки",
     subtitle: "При заказе от 100 шт.",
     badge: "-20%",
     link_type: "none",
+    link_url: null,
     sort_order: 1,
     is_visible: true,
     icon: "percent",
@@ -27,6 +41,7 @@ const promotions = [
     subtitle: "При заказе от 30 000 ₽",
     badge: "FREE",
     link_type: "none",
+    link_url: null,
     sort_order: 2,
     is_visible: true,
     icon: "truck",
@@ -36,6 +51,7 @@ const promotions = [
   {
     title: "Индивидуальные размеры",
     subtitle: "Изготовим под ваш продукт",
+    badge: null,
     link_type: "url",
     link_url: "/contacts",
     sort_order: 3,

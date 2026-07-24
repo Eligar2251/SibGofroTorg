@@ -399,7 +399,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
   const { data: result, error } = await db.from("products").insert(payload).select("id").single();
   if (error) throw error;
   invalidateProductsCache();
-  revalidateTag("products");
+  revalidateTag("products", { expire: 0 });
   return { id: result.id };
 }
 
@@ -425,7 +425,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   const { error } = await db.from("products").update(payload).eq("id", id);
   if (error) throw error;
   invalidateProductsCache();
-  revalidateTag("products");
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function deleteProduct(id: string): Promise<void> {
@@ -433,7 +433,7 @@ export async function deleteProduct(id: string): Promise<void> {
   const { error } = await db.from("products").delete().eq("id", id);
   if (error) throw error;
   invalidateProductsCache();
-  revalidateTag("products");
+  revalidateTag("products", { expire: 0 });
 }
 
 // ─── Orders ────────────────────────────────────────────────
@@ -518,7 +518,7 @@ export async function createOrder(data: Record<string, any>): Promise<{ id: stri
   };
   const { data: result, error } = await db.from("orders").insert(payload).select("id").single();
   if (error) throw error;
-  revalidateTag("orders");
+  revalidateTag("orders", { expire: 0 });
   return { id: result.id };
 }
 
@@ -530,7 +530,7 @@ export async function updateOrderStatus(id: string, status: string, closeReason:
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   if (error) throw error;
-  revalidateTag("orders");
+  revalidateTag("orders", { expire: 0 });
 }
 
 export async function deleteOrder(id: string): Promise<void> {
@@ -611,10 +611,10 @@ export async function deleteOrder(id: string): Promise<void> {
   if (error) throw error;
   
   invalidateProductsCache();
-  revalidateTag("orders");
-  revalidateTag("warehouse-deals");
-  revalidateTag("warehouse-payments");
-  revalidateTag("products");
+  revalidateTag("orders", { expire: 0 });
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function getOrderById(id: string): Promise<FirestoreOrder | null> {
@@ -712,8 +712,8 @@ export async function updateOrderDelivery(
     .select("*")
     .single();
   if (error) throw error;
-  revalidateTag("orders");
-  revalidateTag("deliveries");
+  revalidateTag("orders", { expire: 0 });
+  revalidateTag("deliveries", { expire: 0 });
   return mapOrderRow(result);
 }
 
@@ -745,7 +745,7 @@ export async function updateSettings(data: Record<string, string>): Promise<void
   for (const [key, value] of Object.entries(data)) {
     const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
     if (error) throw error;
-  revalidateTag("settings");
+  revalidateTag("settings", { expire: 0 });
   }
 }
 
@@ -836,9 +836,9 @@ export async function getAllPopupCampaigns(): Promise<PopupCampaign[]> {
 
 export async function getProductReviews(
   productId: string,
-  opts: { limitCount?: number; sortBy?: string; onlyApproved?: boolean } = {}
+  opts: { limitCount?: number; offset?: number; sortBy?: string; onlyApproved?: boolean } = {}
 ): Promise<ProductReview[]> {
-  const { limitCount = 20, onlyApproved = true } = opts;
+  const { limitCount = 20, offset = 0, onlyApproved = true } = opts;
   let reviews = await getCachedProductReviews(productId);
   if (onlyApproved) {
     reviews = reviews.filter((r) => r.isApproved && r.moderationStatus === "approved");
@@ -861,7 +861,7 @@ export async function getProductReviews(
         return tb - ta;
       });
   }
-  return reviews.slice(0, limitCount);
+  return reviews.slice(offset, offset + limitCount);
 }
 
 export async function createProductReview(data: Omit<ProductReview, "id" | "createdAt" | "updatedAt" | "helpfulCount" | "isApproved" | "moderationStatus">): Promise<string> {
@@ -883,8 +883,8 @@ export async function createProductReview(data: Omit<ProductReview, "id" | "crea
     moderation_status: "pending",
   }).select("id").single();
   if (error) throw error;
-  revalidateTag("reviews");
-  revalidateTag(`reviews:${data.productId}`);
+  revalidateTag("reviews", { expire: 0 });
+  revalidateTag(`reviews:${data.productId}`, { expire: 0 });
   return result.id;
 }
 
@@ -896,16 +896,16 @@ export async function updateProductReview(id: string, data: Partial<ProductRevie
   if (data.moderationNote !== undefined) payload.moderation_note = data.moderationNote;
   const { error } = await db.from("product_reviews").update(payload).eq("id", id);
   if (error) throw error;
-  revalidateTag("reviews");
-  revalidateTag("products");
+  revalidateTag("reviews", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function deleteProductReview(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("product_reviews").delete().eq("id", id);
   if (error) throw error;
-  revalidateTag("reviews");
-  revalidateTag("products");
+  revalidateTag("reviews", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function incrementReviewHelpful(reviewId: string): Promise<number> {
@@ -998,7 +998,7 @@ export async function createProductQuestion(data: Omit<ProductQuestion, "id" | "
     moderation_status: "pending",
   }).select("id").single();
   if (error) throw error;
-  revalidateTag("questions");
+  revalidateTag("questions", { expire: 0 });
   return result.id;
 }
 
@@ -1011,7 +1011,7 @@ export async function answerProductQuestion(questionId: string, answer: string, 
     answered_at: new Date().toISOString(),
   }).eq("id", questionId);
   if (error) throw error;
-  revalidateTag("questions");
+  revalidateTag("questions", { expire: 0 });
 }
 
 export async function updateProductQuestion(questionId: string, data: Partial<ProductQuestion>): Promise<void> {
@@ -1022,7 +1022,7 @@ export async function updateProductQuestion(questionId: string, data: Partial<Pr
   if (data.moderationNote !== undefined) payload.moderation_note = data.moderationNote;
   const { error } = await db.from("product_questions").update(payload).eq("id", questionId);
   if (error) throw error;
-  revalidateTag("products");
+  revalidateTag("products", { expire: 0 });
 }
 
 export async function incrementQuestionHelpful(questionId: string): Promise<number> {
@@ -1132,14 +1132,14 @@ export async function updateWastepaperRequestStatus(id: string, status: string):
   const db = getAdminDb();
   const { error } = await db.from("wastepaper_requests").update({ status }).eq("id", id);
   if (error) throw error;
-  revalidateTag("wastepaper");
+  revalidateTag("wastepaper", { expire: 0 });
 }
 
 export async function deleteWastepaperRequest(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("wastepaper_requests").delete().eq("id", id);
   if (error) throw error;
-  revalidateTag("wastepaper");
+  revalidateTag("wastepaper", { expire: 0 });
 }
 
 // ─── User Purchase Check ───────────────────────────────────
@@ -1262,6 +1262,6 @@ export async function createCategory(data: Record<string, any>): Promise<{ id: s
     image_url: data.imageUrl || null,
   }).select("id").single();
   if (error) throw error;
-  revalidateTag("categories");
+  revalidateTag("categories", { expire: 0 });
   return { id: result.id };
 }

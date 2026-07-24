@@ -17,7 +17,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     } else {
       await updateTransport(id, body);
     }
-    revalidateTag("warehouse-deals");
+    revalidateTag("warehouse-deals", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Transport PATCH error:", error);
@@ -31,7 +31,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   try {
     const { id } = await params;
     await deleteTransport(id);
-    revalidateTag("warehouse-deals");
+    revalidateTag("warehouse-deals", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Transport DELETE error:", error);

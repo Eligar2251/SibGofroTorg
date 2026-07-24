@@ -149,7 +149,7 @@ export interface FirestoreOrder {
   communicationChannel: "telegram" | "whatsapp" | "max" | "call" | "email";
   paymentMethod?: "transfer" | "cash" | "invoice";
   items?: OrderItem[];
-  totalSum?: number;
+  totalSum?: number | null;
   productInfo?: string | null;
   quantity?: number | null;
   comment?: string | null;

@@ -63,6 +63,7 @@ export interface WarehouseReceipt extends CounterpartyDetails {
   linkedDealIds?: string[];
   linkedDealNumbers?: number[];
   createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export type DealStatus = "new" | "completed" | "cancelled";
@@ -98,6 +99,7 @@ export interface CustomerDeal extends CounterpartyDetails {
   /** Количество товара, запланированное к доставке: [{productId, name, quantity}] */
   deliveryItems?: { productId: string; name: string; quantity: number }[];
   createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export type BankPaymentType =
@@ -129,6 +131,7 @@ export interface BankPayment {
   paidAt?: string | null;
   comment?: string | null;
   createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface WarehouseStockRow {
