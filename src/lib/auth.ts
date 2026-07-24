@@ -1,6 +1,6 @@
 // =========================================================
 // FILE: src/lib/auth.ts
-// Админская аутентификация — JWT в cookie (без изменений логики).
+// Админская аутентификация — JWT в cookie с поддержкой ролей.
 // =========================================================
 
 import { SignJWT, jwtVerify } from "jose";
@@ -27,9 +27,23 @@ function getAdminSecret(): Uint8Array {
 
 const COOKIE = "admin-session";
 
-export async function createSession(username: string) {
+export interface AdminSession {
+  username: string;
+  role: string;
+  displayName: string;
+}
+
+export async function createSession(data: {
+  username: string;
+  role: string;
+  displayName?: string;
+}) {
   const secret = getAdminSecret();
-  const token = await new SignJWT({ username, role: "admin" })
+  const token = await new SignJWT({
+    username: data.username,
+    role: data.role || "admin",
+    displayName: data.displayName || data.username,
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
@@ -45,15 +59,18 @@ export async function createSession(username: string) {
   });
 }
 
-export async function verifySession(): Promise<string | null> {
+export async function verifySession(): Promise<AdminSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE)?.value;
   if (!token) return null;
 
   try {
     const { payload } = await jwtVerify(token, getAdminSecret());
-    if (payload.role !== "admin") return null;
-    return (payload.username as string) || null;
+    return {
+      username: (payload.username as string) || "",
+      role: (payload.role as string) || "admin",
+      displayName: (payload.displayName as string) || (payload.username as string) || "",
+    };
   } catch {
     return null;
   }
@@ -65,11 +82,21 @@ export async function deleteSession() {
 }
 
 export async function requireAdminApi(): Promise<
-  { username: string } | NextResponse
+  AdminSession | NextResponse
 > {
-  const username = await verifySession();
-  if (!username) {
+  const session = await verifySession();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return { username };
+  return session;
+}
+
+/** Проверка роли: менеджер не может удалять и видеть логи */
+export function hasPermission(session: AdminSession, action: string): boolean {
+  if (session.role === "admin") return true;
+  // Менеджер: может всё кроме удаления и просмотра логов
+  if (session.role === "manager") {
+    return !["delete", "view_logs", "manage_users"].includes(action);
+  }
+  return false;
 }

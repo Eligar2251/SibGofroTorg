@@ -7,6 +7,7 @@ import { createSession } from "@/lib/auth";
 import { getAdminDb } from "@/lib/supabase";
 import { hashPassword, verifyPassword } from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { logActivity } from "@/lib/activity-log";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
@@ -57,6 +58,13 @@ export async function POST(
       );
     }
 
+    if (admin.is_active === false) {
+      return NextResponse.json(
+        { error: "Аккаунт деактивирован. Обратитесь к администратору." },
+        { status: 403 }
+      );
+    }
+
     let valid = false;
 
     // Новый формат: passwordHash (scrypt salt:hash)
@@ -87,8 +95,23 @@ export async function POST(
       );
     }
 
-    await createSession(username);
-    return NextResponse.json({ success: true });
+    await createSession({
+      username,
+      role: admin.role || "admin",
+      displayName: admin.display_name || username,
+    });
+
+    await logActivity({
+      adminName: admin.display_name || username,
+      adminRole: admin.role || "admin",
+      action: "login",
+      entityType: "settings",
+      entityId: admin.id,
+      entityLabel: `Вход: ${username}`,
+      ipAddress: clientIp(request),
+    });
+
+    return NextResponse.json({ success: true, role: admin.role || "admin" });
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });

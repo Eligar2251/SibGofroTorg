@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateOrderStatus, deleteOrder } from "@/lib/supabase-queries";
 import { convertOrderToDeal } from "@/lib/warehouse";
-import { requireAdminApi } from "@/lib/auth";
+import { requireAdminApi, hasPermission } from "@/lib/auth";
+import { logAdminAction } from "@/lib/activity-log";
 
 export async function PATCH(
   request: NextRequest,
@@ -16,9 +17,9 @@ export async function PATCH(
     if (!body.status) {
       return NextResponse.json({ error: "Статус обязателен" }, { status: 400 });
     }
+    const oldStatus = body.oldStatus || "";
     await updateOrderStatus(id, body.status, body.closeReason ?? null);
 
-    // «Передать в работу»: автоматически создаём заказ в учёте и счёт в банке
     let deal: Awaited<ReturnType<typeof convertOrderToDeal>> | undefined;
     if (body.status === "in_progress") {
       try {
@@ -27,13 +28,16 @@ export async function PATCH(
         console.error("Convert order to deal error:", convertError);
         return NextResponse.json({
           success: true,
-          dealError:
-            convertError instanceof Error
-              ? convertError.message
-              : "Не удалось передать в учёт",
+          dealError: convertError instanceof Error ? convertError.message : "Не удалось передать в учёт",
         });
       }
     }
+
+    await logAdminAction(
+      auth.displayName, auth.role, "status_change", "order", id,
+      `Заявка #${id.slice(0, 8)}: ${oldStatus} → ${body.status}`,
+      { oldStatus, newStatus: body.status, dealCreated: !!deal }
+    );
 
     return NextResponse.json({ success: true, deal });
   } catch (error) {
@@ -48,9 +52,20 @@ export async function DELETE(
 ) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
+
+  if (!hasPermission(auth, "delete")) {
+    return NextResponse.json({ error: "Нет прав на удаление" }, { status: 403 });
+  }
+
   try {
     const { id } = await params;
     await deleteOrder(id);
+
+    await logAdminAction(
+      auth.displayName, auth.role, "delete", "order", id,
+      `Удалена заявка #${id.slice(0, 8)}`
+    );
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete order error:", error);
