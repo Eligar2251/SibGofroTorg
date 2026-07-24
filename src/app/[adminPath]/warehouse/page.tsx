@@ -13,6 +13,7 @@ import {
   getEmployees,
   getSalaries,
   getCounterparties,
+  getTransports,
 } from "@/lib/warehouse";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
@@ -111,7 +112,8 @@ export default async function AdminWarehousePage({
   const needEmployees = initialTab === "salaries" || initialTab === "deliveries";
   const needSalaries = initialTab === "salaries" || initialTab === "bank";
   const needCounterparties = ["counterparties", "supplies", "deals", "receipts", "bank"].includes(initialTab);
-  const needClients = initialTab === "counterparties"; // Клиенты загружаются для Контрагентов
+  const needClients = initialTab === "counterparties";
+  const needTransports = initialTab === "deliveries";
 
   const [
     stock,
@@ -123,6 +125,7 @@ export default async function AdminWarehousePage({
     counterpartyRows,
     focusedReceipt,
     clients,
+    transportsData,
   ] = await Promise.all([
     needStock ? getWarehouseStock() : Promise.resolve([]),
     needReceipts ? getReceipts() : Promise.resolve([]),
@@ -133,6 +136,7 @@ export default async function AdminWarehousePage({
     needCounterparties ? getCounterparties({ includeSupplierPrices: initialTab === "suppliers" || initialTab === "receipts" || initialTab === "deals" || initialTab === "bank" }) : Promise.resolve([]),
     sp.receipt ? getReceiptById(sp.receipt) : Promise.resolve(null),
     needClients ? getClientsForWarehouse() : Promise.resolve([]),
+    needTransports ? getTransports({ limit: 200 }) : Promise.resolve([]),
   ]);
 
   const receipts =
@@ -224,6 +228,31 @@ export default async function AdminWarehousePage({
     ].sort((a, b) => b.date.localeCompare(a.date));
   }
 
+  // Подготовка данных для перевозок
+  const activeTransportDealIds = new Set(
+    (transportsData || [])
+      .filter((t: any) => t.status === "draft" || t.status === "active")
+      .flatMap((t: any) => (t.items || []).map((it: any) => it.dealId))
+  );
+
+  const pendingDeals = deals
+    .filter((d) => d.hasDelivery && !activeTransportDealIds.has(d.id))
+    .map((d) => ({
+      id: d.id,
+      number: d.number,
+      customerName: d.customerName || "Без имени",
+      customerPhone: d.customerPhone ?? d.phone ?? null,
+      deliveryAddress: d.deliveryAddress ?? d.address ?? null,
+      deliveryType: d.deliveryType ?? null,
+      deliveryCost: d.deliveryCost ?? null,
+      items: (d.items || []).map((it: any) => ({ productId: it.productId, name: it.name, quantity: it.quantity })),
+      totalSum: d.total ?? null,
+      shippedItems: Array.isArray(d.shippedItems) ? d.shippedItems : [],
+      deliveryItems: Array.isArray(d.deliveryItems) ? d.deliveryItems : [],
+    }));
+
+  const drivers = employees.map((e) => ({ id: e.id, name: e.name, phone: e.phone ?? null }));
+
   const settings = await getSettings().catch(() => ({} as Record<string, string>));
   const deliveryPriceRaw = Number(settings.delivery_price);
   const freeThresholdRaw = Number(settings.free_delivery_threshold);
@@ -260,6 +289,11 @@ export default async function AdminWarehousePage({
       clients={clients}
       deliveryPrice={deliveryPrice}
       freeDeliveryThreshold={freeDeliveryThreshold}
+      transports={transportsData}
+      pendingDeals={pendingDeals}
+      drivers={drivers}
+      companyPhone={settings.phone || undefined}
+      companyAddress={settings.address || undefined}
     />
     </div>
   );

@@ -58,6 +58,7 @@ import {
 } from "@/components/admin/WarehouseCounterparties";
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
 import { ClientsManager } from "@/components/admin/ClientsManager";
+import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -143,6 +144,11 @@ interface WarehouseManagerProps {
   clients?: any[];
   deliveryPrice?: number;
   freeDeliveryThreshold?: number;
+  transports?: TransportRow[];
+  pendingDeals?: TransportDeal[];
+  drivers?: DriverOption[];
+  companyPhone?: string;
+  companyAddress?: string;
 }
 
 export function WarehouseManager({
@@ -166,6 +172,11 @@ export function WarehouseManager({
   clients = [],
   deliveryPrice = 800,
   freeDeliveryThreshold = 30000,
+  transports = [],
+  pendingDeals = [],
+  drivers = [],
+  companyPhone,
+  companyAddress,
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<StockSub>(initialSub);
@@ -864,7 +875,14 @@ export function WarehouseManager({
                   )}
                 </div>
               </div>
-              <SupplierPriceEditor counterparties={counterpartyOptions} products={pickerProducts} onAddToCart={(item) => setProcurementCart((prev) => { const found = prev.find((c) => c.productId === item.productId); if (found) return prev.map((c) => c.productId === item.productId ? { ...c, quantity: c.quantity + 1 } : c); return [...prev, { ...item, quantity: 1 }]; })} />
+              <div className="admin-card">
+                <div className="admin-card__head">
+                  <h3 className="admin-card__title">Поставщики</h3>
+                </div>
+                <div className="admin-card__pad">
+                  <p className="admin-muted">Управление поставщиками и ценами — в разделе «Контрагенты».</p>
+                </div>
+              </div>
             </div>
           )}
         </>
@@ -1165,11 +1183,13 @@ export function WarehouseManager({
 
       {/* ════════════ ВКЛАДКА: ДОСТАВКИ ════════════ */}
       {activeTab === "deliveries" && (
-        <div className="admin-empty">
-          <Truck size={40} style={{ color: "var(--adm-sand)" }} />
-          <p>Перевозки и доставки</p>
-          <p className="admin-empty__hint">Формирование перевозок, печать бланков, отгрузка и архив. Откройте <a href={`/${adminPath}/deliveries`} style={{ color: "var(--adm-kraft)", fontWeight: 600 }}>полную страницу доставок</a> для управления.</p>
-        </div>
+        <TransportManager
+          transports={transports}
+          pendingDeals={pendingDeals}
+          drivers={drivers}
+          companyPhone={companyPhone}
+          companyAddress={companyAddress}
+        />
       )}
 
       {/* ════════════ ВКЛАДКА: БАНК ════════════ */}
