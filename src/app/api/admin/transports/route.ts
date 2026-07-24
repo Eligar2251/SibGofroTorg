@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const result = await createTransport(body);
-    revalidateTag("warehouse-deals");
+    revalidateTag("warehouse-deals", { expire: 0 });
     return NextResponse.json(result);
   } catch (error) {
     console.error("Create transport error:", error);
