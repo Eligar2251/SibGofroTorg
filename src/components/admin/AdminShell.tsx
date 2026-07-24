@@ -60,11 +60,6 @@ export function AdminShell({
       icon: <ClipboardList size={18} />,
     },
     {
-      href: `/${adminPath}/deliveries`,
-      label: "Доставки",
-      icon: <Truck size={18} />,
-    },
-    {
       href: `/${adminPath}/warehouse`,
       label: "Учёт",
       icon: <Boxes size={18} />,

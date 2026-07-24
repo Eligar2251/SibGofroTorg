@@ -88,26 +88,24 @@
 
 /* ── Универсальное выравнивание иконок и текста ── */
 
-/* Все SVG-иконки внутри flex-контейнеров — базовый кроссбраузерный выравниватель.
-   Добавляет тонкий «optical补偿»: translate-y(-0.5px) визуально центрирует
-   иконку относительно текста, даже если шрифт имеет разный ascent/descent. */
+/* Все SVG-иконки — базовый кроссбраузерный выравниватель.
+   flex-shrink: 0 предотвращает сжатие иконки, vertical-align: middle
+   выравнивает по базовой линии текста. */
+[data-admin="true"] svg {
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* Optical补偿 для иконок внутри flex-контейнеров с текстом */
 [data-admin="true"] button svg,
 [data-admin="true"] a svg,
 [data-admin="true"] .admin-badge svg,
-[data-admin="true"] .admin-sidebar__link svg,
 [data-admin="true"] .admin-filter svg,
-[data-admin="true"] .admin-stat__icon svg,
-[data-admin="true"] .admin-status__btn svg,
-[data-admin="true"] .admin-status__label-hint svg,
 [data-admin="true"] .admin-row svg,
-[data-admin="true"] .admin-muted svg,
-[data-admin="true"] .bulk-step > span svg,
-[data-admin="true"] .admin-upload__icon,
-[data-admin="true"] .bulk-image-dropzone svg,
-[data-admin="true"] .wh-direction__btn svg,
-[data-admin="true"] .deliv-msg svg {
-  flex-shrink: 0;
-  vertical-align: middle;
+[data-admin="true"] .deliv-item__top svg,
+[data-admin="true"] .deliv-item__client svg,
+[data-admin="true"] .deliv-item__addr svg,
+[data-admin="true"] .deliv-item__items svg {
   position: relative;
   top: -0.5px;
 }

@@ -104,14 +104,14 @@ export default async function AdminWarehousePage({
   // Раньше при открытии «Склад» читались сразу поставки, заказы, банк,
   // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
   // только необходимые ей коллекции.
-  const needStock = ["stock", "receipts", "deals", "suppliers"].includes(initialTab) || !!sp.product;
-  const needReceipts = ["receipts", "bank", "counterparties"].includes(initialTab) || !!sp.receipt;
-  const needDeals = ["deals", "bank", "counterparties", "receipts"].includes(initialTab) || !!sp.deal;
-  const needPayments = ["bank", "deals", "receipts"].includes(initialTab) || !!sp.payment;
-  const needEmployees = initialTab === "salaries";
+  const needStock = ["stock", "deals", "supplies", "receipts"].includes(initialTab) || !!sp.product;
+  const needReceipts = ["supplies", "receipts", "bank", "counterparties"].includes(initialTab) || !!sp.receipt;
+  const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries"].includes(initialTab) || !!sp.deal;
+  const needPayments = ["bank", "deals", "supplies"].includes(initialTab) || !!sp.payment;
+  const needEmployees = initialTab === "salaries" || initialTab === "deliveries";
   const needSalaries = initialTab === "salaries" || initialTab === "bank";
-  const needCounterparties = ["counterparties", "suppliers", "deals", "receipts", "bank"].includes(initialTab);
-  const needClients = initialTab === "clients";
+  const needCounterparties = ["counterparties", "supplies", "deals", "receipts", "bank"].includes(initialTab);
+  const needClients = initialTab === "counterparties"; // Клиенты загружаются для Контрагентов
 
   const [
     stock,
