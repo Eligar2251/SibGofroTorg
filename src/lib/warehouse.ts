@@ -180,6 +180,7 @@ function mapDealRow(row: any): CustomerDeal {
     deliveryDriverId: row.delivery_driver_id || null,
     deliveryDriverName: row.delivery_driver_name || null,
     shippedItems: Array.isArray(row.shipped_items) ? row.shipped_items : [],
+    deliveryItems: Array.isArray(row.delivery_items) ? row.delivery_items : [],
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -1348,6 +1349,7 @@ export async function updateDealDelivery(
     deliveryNote?: string | null;
     deliveryDriverId?: string | null;
     deliveryDriverName?: string | null;
+    deliveryItems?: { productId: string; name: string; quantity: number }[];
     clearRelease?: boolean;
     clearDriver?: boolean;
   }
@@ -1400,6 +1402,10 @@ export async function updateDealDelivery(
     }
   }
 
+  if (data.deliveryItems !== undefined) {
+    payload.delivery_items = data.deliveryItems;
+  }
+
   if (data.hasDelivery === false) {
     payload.delivery_type = null;
     payload.delivery_cost = 0;
@@ -1407,6 +1413,7 @@ export async function updateDealDelivery(
     payload.delivery_released_at = null;
     payload.delivery_driver_id = null;
     payload.delivery_driver_name = null;
+    payload.delivery_items = [];
   }
 
   // Пересчёт total: позиции + платная доставка

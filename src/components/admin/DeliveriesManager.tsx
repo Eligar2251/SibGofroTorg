@@ -18,11 +18,14 @@ import {
   RotateCcw,
   Printer,
   User,
+  X,
+  Trash2,
 } from "lucide-react";
 import {
   DeliveryPrintSheet,
   type PrintDeliveryItem,
 } from "@/components/admin/DeliveryPrintSheet";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 
 type FilterTab = "unreleased" | "planned" | "released" | "all";
 
@@ -49,7 +52,8 @@ export type DeliveryRow = {
   deliveryNote?: string | null;
   deliveryDriverId?: string | null;
   deliveryDriverName?: string | null;
-  items?: { name: string; quantity: number }[] | null;
+  items?: { productId?: string; name: string; quantity: number }[] | null;
+  deliveryItems?: { productId: string; name: string; quantity: number }[] | null;
   totalSum?: number | null;
   createdAt?: string | null;
   dealNumber?: number | null;
@@ -83,6 +87,10 @@ export function DeliveriesManager({
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [printItems, setPrintItems] = useState<PrintDeliveryItem[] | null>(null);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  // {orderId: {productId: qty}} — количество для отгрузки
+  const [planQtys, setPlanQtys] = useState<Record<string, Record<string, number>>>({});
+  const [unplanning, setUnplanning] = useState(false);
 
   const byKey = useMemo(() => {
     const m = new Map<string, DeliveryRow>();
@@ -194,7 +202,7 @@ export function DeliveriesManager({
     printRows(rows.length ? rows : filtered);
   }
 
-  async function planSelected() {
+  function openPlanModal() {
     if (selected.size === 0) {
       setError("Выберите заказы для планирования");
       return;
@@ -203,6 +211,24 @@ export function DeliveriesManager({
       setError("Укажите дату планирования");
       return;
     }
+    // Инициализируем количества — по умолчанию полное количество
+    const qtys: Record<string, Record<string, number>> = {};
+    for (const key of selected) {
+      const row = byKey.get(key);
+      if (!row || !row.items) continue;
+      qtys[row.id] = {};
+      for (const item of row.items) {
+        const pid = item.productId || item.name;
+        const existingDeliveryQty = (row.deliveryItems || []).find((d) => d.productId === pid)?.quantity || 0;
+        qtys[row.id][pid] = item.quantity - existingDeliveryQty;
+      }
+    }
+    setPlanQtys(qtys);
+    setShowPlanModal(true);
+    setError(null);
+  }
+
+  async function submitPlan() {
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -210,7 +236,16 @@ export function DeliveriesManager({
       const items = [...selected]
         .map((k) => byKey.get(k))
         .filter(Boolean)
-        .map((o) => ({ id: o!.id, source: o!.source }));
+        .map((o) => {
+          const rowQtys = planQtys[o!.id] || {};
+          const deliveryItems = Object.entries(rowQtys)
+            .filter(([, qty]) => qty > 0)
+            .map(([productId, quantity]) => {
+              const item = o!.items?.find((it) => (it.productId || it.name) === productId);
+              return { productId, name: item?.name || "", quantity };
+            });
+          return { id: o!.id, source: o!.source, deliveryItems };
+        });
       const res = await fetch("/api/admin/deliveries/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -219,16 +254,40 @@ export function DeliveriesManager({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) setError(data.error || "Не удалось запланировать");
       else {
-        setMessage(
-          `Запланировано ${data.planned} доставок на ${formatRuDate(planDate)}`
-        );
+        setMessage(`Запланировано ${data.planned} доставок на ${formatRuDate(planDate)}`);
         setSelected(new Set());
+        setShowPlanModal(false);
         router.refresh();
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка сети");
     }
     setSaving(false);
+  }
+
+  /** Расформировать группу доставок на дату — сбросить дату у всех заказов группы */
+  async function unplanDay(dateKey: string) {
+    const dayOrders = orders.filter((o) => o.deliveryPlannedDate === dateKey && !o.deliveryReleasedAt);
+    if (dayOrders.length === 0) return;
+    if (!confirm(`Расформировать доставку на ${formatRuDate(dateKey)}? ${dayOrders.length} заказ(ов) вернутся в «Без даты».`))
+      return;
+    setUnplanning(true);
+    setError(null);
+    try {
+      for (const row of dayOrders) {
+        await fetch(endpointFor(row), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "plan", deliveryPlannedDate: null, deliveryItems: [] }),
+        });
+      }
+      setMessage(`Доставка на ${formatRuDate(dateKey)} расформирована`);
+      setDayFilter("");
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сети");
+    }
+    setUnplanning(false);
   }
 
   function endpointFor(row: DeliveryRow) {
@@ -376,7 +435,7 @@ export function DeliveriesManager({
           <button
             type="button"
             className="admin-btn admin-btn--navy"
-            onClick={planSelected}
+            onClick={openPlanModal}
             disabled={saving || selected.size === 0}
           >
             {saving ? (
@@ -425,18 +484,31 @@ export function DeliveriesManager({
               const filterKey = key === "__none__" ? "__none__" : key;
               const active = dayFilter === filterKey;
               return (
-                <button
-                  key={key}
-                  type="button"
-                  className={`deliv-day${active ? " deliv-day--active" : ""}`}
-                  onClick={() => setDayFilter(active ? "" : filterKey)}
-                >
-                  {key === "__none__" ? "Без даты" : formatRuDate(key)}
-                  <strong>
-                    {list.length}{" "}
-                    {plural(list.length, "доставка", "доставки", "доставок")}
-                  </strong>
-                </button>
+                <div key={key} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <button
+                    type="button"
+                    className={`deliv-day${active ? " deliv-day--active" : ""}`}
+                    onClick={() => setDayFilter(active ? "" : filterKey)}
+                  >
+                    {key === "__none__" ? "Без даты" : formatRuDate(key)}
+                    <strong>
+                      {list.length}{" "}
+                      {plural(list.length, "доставка", "доставки", "доставок")}
+                    </strong>
+                  </button>
+                  {key !== "__none__" && (
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--danger admin-btn--sm"
+                      style={{ padding: "4px 8px", fontSize: 10 }}
+                      disabled={unplanning}
+                      onClick={() => unplanDay(key)}
+                      title="Расформировать группу — все заказы вернутся в «Без даты»"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -623,13 +695,20 @@ export function DeliveriesManager({
                       {order.items && order.items.length > 0 && (
                         <div className="deliv-item__items">
                           <Package size={12} />
-                          {order.items
-                            .slice(0, 4)
-                            .map((it) => `${it.name} × ${it.quantity}`)
-                            .join(" · ")}
-                          {order.items.length > 4
-                            ? ` · +${order.items.length - 4}`
-                            : ""}
+                          <span>
+                            {order.items
+                              .slice(0, 4)
+                              .map((it) => {
+                                const pid = it.productId || it.name;
+                                const delQty = (order.deliveryItems || []).find((d) => d.productId === pid)?.quantity || 0;
+                                const remaining = it.quantity - delQty;
+                                if (delQty > 0 && remaining > 0) {
+                                  return <span key={pid} style={{ marginRight: 8 }}><del style={{ color: "#999" }}>{it.quantity}</del> <strong style={{ color: "var(--adm-kraft)" }}>{remaining}</strong> {it.name}</span>;
+                                }
+                                return <span key={pid} style={{ marginRight: 8 }}>{it.name} × {it.quantity}</span>;
+                              })}
+                            {order.items.length > 4 ? ` · +${order.items.length - 4}` : ""}
+                          </span>
                           {order.totalSum != null && (
                             <strong>
                               {" "}
@@ -733,6 +812,72 @@ export function DeliveriesManager({
               })}
             </div>
           </>
+        )}
+
+        {/* ── Модалка планирования с указанием количества ── */}
+        {showPlanModal && (
+          <ModalPortal>
+            <div className="admin-modal-overlay">
+              <div className="admin-modal wh-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="admin-modal__head">
+                  <h3 className="admin-modal__title">Планирование доставки на {formatRuDate(planDate)}</h3>
+                  <button type="button" onClick={() => setShowPlanModal(false)} className="admin-modal__close" aria-label="Закрыть">
+                    <X size={14} />
+                  </button>
+                </div>
+                <p className="admin-modal__desc">
+                  Укажите количество товара для отгрузки. Остаток останется в заказе.
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: "60vh", overflowY: "auto", paddingRight: 4 }}>
+                  {[...selected].map((key) => {
+                    const row = byKey.get(key);
+                    if (!row || !row.items || row.items.length === 0) return null;
+                    return (
+                      <div key={key} style={{ border: "1px solid var(--adm-border)", borderRadius: 8, padding: 12 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
+                          {row.label} — {row.customerName}
+                        </div>
+                        {row.items.map((item) => {
+                          const pid = item.productId || item.name;
+                          const existingDelQty = (row.deliveryItems || []).find((d: any) => d.productId === pid)?.quantity || 0;
+                          const maxQty = item.quantity - existingDelQty;
+                          const curQty = planQtys[row.id]?.[pid] ?? maxQty;
+                          return (
+                            <div key={pid} style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                              <span style={{ fontSize: 12, color: "var(--adm-ink-soft)" }}>
+                                {item.name}{" "}
+                                <span style={{ color: "var(--adm-sand)" }}>
+                                  (заказано: {item.quantity}{existingDelQty > 0 ? `, в доставке: ${existingDelQty}` : ""})
+                                </span>
+                              </span>
+                              <input
+                                type="number" className="admin-input" min={0} max={maxQty}
+                                value={curQty}
+                                onChange={(e) => {
+                                  const v = Math.min(Math.max(0, Number(e.target.value) || 0), maxQty);
+                                  setPlanQtys((prev) => ({ ...prev, [row.id]: { ...(prev[row.id] || {}), [pid]: v } }));
+                                }}
+                                style={{ textAlign: "right" }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="admin-modal__actions" style={{ marginTop: 14 }}>
+                  <button type="button" onClick={() => setShowPlanModal(false)} className="admin-btn admin-btn--ghost" disabled={saving}>Отмена</button>
+                  <button type="button" onClick={submitPlan} className="admin-btn admin-btn--primary" disabled={saving}>
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />}
+                    Запланировать
+                  </button>
+                </div>
+              </div>
+            </div>
+          </ModalPortal>
         )}
       </div>
     </div>

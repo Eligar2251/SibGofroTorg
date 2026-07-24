@@ -18,13 +18,14 @@ export async function POST(request: NextRequest) {
     const date =
       body.date != null ? String(body.date).trim() : "";
 
-    type Item = { id: string; source: "site" | "deal" };
+    type Item = { id: string; source: "site" | "deal"; deliveryItems?: { productId: string; name: string; quantity: number }[] };
     let items: Item[] = [];
     if (Array.isArray(body.items)) {
       items = body.items
         .map((x: any) => ({
           id: String(x?.id || ""),
           source: x?.source === "deal" ? ("deal" as const) : ("site" as const),
+          deliveryItems: Array.isArray(x?.deliveryItems) ? x.deliveryItems : [],
         }))
         .filter((x: Item) => x.id);
     } else if (Array.isArray(body.orderIds)) {
@@ -76,7 +77,10 @@ export async function POST(request: NextRequest) {
             results.push({ id: item.id, ok: false, error: "Нет адреса" });
             continue;
           }
-          await updateDealDelivery(item.id, { deliveryPlannedDate: date });
+          await updateDealDelivery(item.id, {
+            deliveryPlannedDate: date,
+            deliveryItems: item.deliveryItems && item.deliveryItems.length > 0 ? item.deliveryItems : undefined,
+          });
           results.push({ id: item.id, ok: true });
         } else {
           const existing = await getOrderById(item.id);

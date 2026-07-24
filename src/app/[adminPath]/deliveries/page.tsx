@@ -88,8 +88,9 @@ export default async function AdminDeliveriesPage({
     deliveryDriverId: d.deliveryDriverId ?? null,
     deliveryDriverName: d.deliveryDriverName ?? null,
     items: d.items
-      ? d.items.map((it) => ({ name: it.name, quantity: it.quantity }))
+      ? d.items.map((it) => ({ productId: it.productId, name: it.name, quantity: it.quantity }))
       : null,
+    deliveryItems: Array.isArray(d.deliveryItems) ? d.deliveryItems : null,
     totalSum: d.total ?? null,
     createdAt: d.createdAt ?? null,
     dealNumber: d.number,
