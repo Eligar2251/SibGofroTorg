@@ -145,6 +145,15 @@ export default async function AdminDashboard() {
     return paid + 0.009 < receipt.total;
   });
 
+  // Независимые неоплаченные платежи (без привязки к поступлению/заказу, не "вне баланса")
+  const unpaidIndependentPayments = payments.filter((p) =>
+    !p.isPaid &&
+    p.direction === "outgoing" &&
+    !p.excludeFromBalance &&
+    (!p.receiptIds || p.receiptIds.length === 0) &&
+    (!p.dealIds || p.dealIds.length === 0)
+  );
+
   return (
     <div>
       <DashboardRealtime />
@@ -231,7 +240,7 @@ export default async function AdminDashboard() {
             href: `/${ADMIN_PATH}/warehouse?tab=bank`,
             iconBg: "#fef2f2",
             iconColor: "#ef4444",
-            sub: `${unpaidReceipts.length} поставок + зарплаты`,
+            sub: `${unpaidReceipts.length} поставок + ${unpaidIndependentPayments.length} платежей`,
           },
           {
             label: "Склад в ценах",

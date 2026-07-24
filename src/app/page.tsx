@@ -223,6 +223,11 @@ export default async function HomePage() {
               <span>Работаем с юрлицами</span>
             </div>
 
+            <div className="hero__wp-phone">
+              <Phone size={14} />
+              <span>Отдел макулатуры: <strong>291-08-20</strong></span>
+            </div>
+
             <span className="hero__wp-label">
               Рассчитать выплату <ChevronRight size={15} />
             </span>
