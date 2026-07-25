@@ -564,6 +564,20 @@ CREATE INDEX IF NOT EXISTS idx_salaries_paid ON salaries(is_paid);
 CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
+-- 22.1. СДАЧА КАССЫ (инкассация)
+-- Списание всего остатка наличных (кассы) в банк.
+-- Каждая запись = одна сданная смена (дата + сумма).
+-- =========================================================
+CREATE TABLE IF NOT EXISTS cash_collections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date TEXT NOT NULL DEFAULT '',
+  amount NUMERIC NOT NULL DEFAULT 0,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_cash_collections_date ON cash_collections(date);
+
+-- =========================================================
 -- ROW LEVEL SECURITY
 -- service_role ключ обходит RLS автоматически.
 -- Эти политики — для публичного доступа (anon key).
@@ -591,6 +605,7 @@ ALTER TABLE customer_deals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE salaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cash_collections ENABLE ROW LEVEL SECURITY;
 
 -- Публичное чтение
 DROP POLICY IF EXISTS "cat_sel" ON categories;

@@ -4828,3 +4828,21 @@ body:has(.admin-modal-overlay) {
   color: var(--adm-kraft);
   margin-bottom: 4px;
 }
+
+/* ── Сдача кассы (инкассация) ── */
+.wh-cashcollect { margin-bottom: 16px; }
+.wh-cashcollect__action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+}
+.wh-cashcollect__total td {
+  background: var(--adm-paper);
+  border-top: 2px solid var(--adm-border);
+}

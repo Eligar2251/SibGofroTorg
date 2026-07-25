@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminDb } from "@/lib/supabase";
-import { getDeals, getPayments, getReceipts, getSalaries } from "@/lib/warehouse";
+import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections } from "@/lib/warehouse";
 import { getBankSummary, getDealPaidMap, getReceiptPaidMap } from "@/lib/warehouse-shared";
 import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
 
@@ -90,6 +90,7 @@ export default async function AdminDashboard() {
     salaries,
     deals,
     receipts,
+    cashCollections,
   ] = await Promise.all([
     // includeHidden: считаем ВСЕ товары, как и «Учёт → Остатки»
     // (getWarehouseStock), чтобы число позиций на дашборде и в учёте
@@ -110,6 +111,7 @@ export default async function AdminDashboard() {
     getSalaries(),
     getDeals(),
     getReceipts(),
+    getCashCollections(),
   ]);
 
   const newOrdersCount = newOrdersAgg + newWastepaperAgg;
@@ -119,7 +121,7 @@ export default async function AdminDashboard() {
   const totalOrdersCount =
     newOrdersCount + inProgressOrdersCount + completedOrdersCount + rejectedOrdersCount;
   // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
-  const bankSummary = getBankSummary(payments, salaries);
+  const bankSummary = getBankSummary(payments, salaries, cashCollections);
   const totalRevenue = bankSummary.balance;
   const recentOrders = recentOrderPool.slice(0, 8);
   const dealPaidMap = getDealPaidMap(payments);

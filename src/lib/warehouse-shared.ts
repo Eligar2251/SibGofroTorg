@@ -184,6 +184,17 @@ export interface Salary {
   createdAt?: string | null;
 }
 
+/** Сдача кассы (инкассация): списание всего остатка наличных в банк */
+export interface CashCollection {
+  id: string;
+  /** Дата сдачи (YYYY-MM-DD) */
+  date: string;
+  /** Сумма, сданная из наличной кассы */
+  amount: number;
+  note?: string | null;
+  createdAt?: string | null;
+}
+
 function normalizeName(name: string): string {
   return (name || "")
     .trim()
@@ -194,7 +205,11 @@ function normalizeName(name: string): string {
 
 /** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
  *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
-export function getBankSummary(payments: BankPayment[], salaries: Salary[] = []) {
+export function getBankSummary(
+  payments: BankPayment[],
+  salaries: Salary[] = [],
+  collections: CashCollection[] = []
+) {
   let bankBalance = 0;
   let cashBalance = 0;
   let expectedIn = 0;
@@ -219,6 +234,11 @@ export function getBankSummary(payments: BankPayment[], salaries: Salary[] = [])
     } else {
       expectedOut += s.amount;
     }
+  }
+  // Инкассация: весь остаток наличных уходит в банк.
+  for (const c of collections) {
+    cashBalance -= c.amount;
+    bankBalance += c.amount;
   }
   return {
     balance: bankBalance + cashBalance,
@@ -302,25 +322,28 @@ export function getCounterpartyBalances(
     }
   }
 
-  // 2. Process ALL paid payments for debt balance
+  // 2. Process ALL paid payments for debt balance.
+  // В долг контрагента идут ВСЕ проведённые платежи, в том числе не
+  // привязанные к документам (расходы, прочие выплаты). Платежи с пометкой
+  // «вне баланса» (excludeFromBalance) исключаем — это старый/архивный учёт,
+  // который не должен влиять на текущий долг.
   for (const p of payments) {
     if (!p.isPaid) continue;
-    // Note: we include excludeFromBalance payments here because they still 
-    // represent money that was paid towards a document, even if they don't 
-    // affect the "current" bank balance.
-    
+    if (p.excludeFromBalance) continue;
+
     const hasDealLink = p.dealIds && p.dealIds.length > 0;
     const hasReceiptLink = p.receiptIds && p.receiptIds.length > 0;
-    
-    // User requirement: Unlinked payments (third-party) do not affect counterparty debt
-    if (!hasDealLink && !hasReceiptLink) continue;
 
-    const payDate = p.paidAt || p.date;
     const normName = normalizeName(p.counterparty);
     if (!normName) continue;
 
-    // Detect role based on link
-    let type: "customer" | "supplier" = hasDealLink ? "customer" : "supplier";
+    // Роль контрагента: по привязке, иначе по направлению платежа.
+    // Исходящий без привязки — это расход у поставщика;
+    // входящий без привязки — поступление от покупателя.
+    let type: "customer" | "supplier";
+    if (hasDealLink) type = "customer";
+    else if (hasReceiptLink) type = "supplier";
+    else type = p.direction === "outgoing" ? "supplier" : "customer";
 
     const row = getRow(p.counterparty, type);
     if (!row) continue;
@@ -332,6 +355,7 @@ export function getCounterpartyBalances(
       row.paidTotal += (p.direction === "outgoing" ? amount : -amount);
     }
 
+    const payDate = p.paidAt || p.date;
     if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
       row.lastPaymentDate = payDate;
     }

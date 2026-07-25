@@ -1668,6 +1668,92 @@ export async function deleteSalary(id: string): Promise<void> {
   revalidateTag("warehouse-salaries", { expire: 0 });
 }
 
+// ─── Cash collections (сдача кассы / инкассация) ──────────
+
+export interface CashCollectionRow {
+  id: string;
+  date: string;
+  amount: number;
+  note?: string | null;
+  createdAt?: string | null;
+}
+
+async function fetchCashCollections(): Promise<CashCollectionRow[]> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("cash_collections")
+    .select("*")
+    .order("date", { ascending: false });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    date: row.date,
+    amount: Number(row.amount) || 0,
+    note: row.note ?? null,
+    createdAt: toIso(row.created_at),
+  }));
+}
+
+export const getCashCollections = () =>
+  unstable_cache(fetchCashCollections, ["warehouse-cash-collections"], {
+    revalidate: 60,
+    tags: ["warehouse-cash-collections"],
+  })();
+
+/**
+ * Сдача кассы: списываем ВЕСЬ текущий остаток наличных (кассы) в банк.
+ * Сумма берётся с сервера (актуальный баланс по платежам/зарплатам/прошлым
+ * инкассациям), чтобы исключить состояние гонки на клиенте.
+ */
+export async function collectCash(
+  note?: string | null
+): Promise<{ amount: number }> {
+  const db = getAdminDb();
+  const [payments, salaries, collections] = await Promise.all([
+    fetchPayments(),
+    fetchSalaries(),
+    fetchCashCollections(),
+  ]);
+
+  // Текущий остаток наличных — тем же правилом, что и getBankSummary.
+  let cashBalance = 0;
+  for (const p of payments) {
+    if (!p.isPaid || p.excludeFromBalance) continue;
+    const amt = p.direction === "incoming" ? p.amount : -p.amount;
+    if (p.type === "cash") cashBalance += amt;
+  }
+  for (const s of salaries) {
+    if (s.isPaid && s.source === "cash") cashBalance -= s.amount;
+  }
+  for (const c of collections) cashBalance -= c.amount;
+
+  if (cashBalance <= 0.009) {
+    throw new Error("Касса пуста — нечего сдавать");
+  }
+
+  const amount = Math.round(cashBalance * 100) / 100;
+  const date = new Date().toISOString().slice(0, 10);
+  const { error } = await db.from("cash_collections").insert({
+    date,
+    amount,
+    note: note ? cleanText(note, 500) : null,
+  });
+  if (error) throw error;
+  revalidateTag("warehouse-cash-collections", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-salaries", { expire: 0 });
+  return { amount };
+}
+
+export async function deleteCashCollection(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { error } = await db.from("cash_collections").delete().eq("id", id);
+  if (error) throw error;
+  revalidateTag("warehouse-cash-collections", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-salaries", { expire: 0 });
+}
+
 // ─── Convert order to deal (КЛЮЧЕВАЯ ФУНКЦИЯ) ──────────────
 
 export async function convertOrderToDeal(orderId: string): Promise<{ dealId: string; dealNumber: number; paymentId: string; skipped: boolean }> {

@@ -14,6 +14,7 @@ import {
   getSalaries,
   getCounterparties,
   getTransports,
+  getCashCollections,
 } from "@/lib/warehouse";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
@@ -114,6 +115,7 @@ export default async function AdminWarehousePage({
   const needCounterparties = ["counterparties", "supplies", "deals", "receipts", "bank"].includes(initialTab);
   const needClients = initialTab === "counterparties";
   const needTransports = initialTab === "deliveries";
+  const needCashCollections = initialTab === "bank";
 
   const [
     stock,
@@ -126,6 +128,7 @@ export default async function AdminWarehousePage({
     focusedReceipt,
     clients,
     transportsData,
+    cashCollections,
   ] = await Promise.all([
     needStock ? getWarehouseStock() : Promise.resolve([]),
     needReceipts ? getReceipts() : Promise.resolve([]),
@@ -137,6 +140,7 @@ export default async function AdminWarehousePage({
     sp.receipt ? getReceiptById(sp.receipt) : Promise.resolve(null),
     needClients ? getClientsForWarehouse() : Promise.resolve([]),
     needTransports ? getTransports({ limit: 200 }) : Promise.resolve([]),
+    needCashCollections ? getCashCollections() : Promise.resolve([]),
   ]);
 
   const receipts =
@@ -292,6 +296,7 @@ export default async function AdminWarehousePage({
       transports={transportsData}
       pendingDeals={pendingDeals}
       drivers={drivers}
+      cashCollections={cashCollections}
       companyPhone={settings.phone || undefined}
       companyAddress={settings.address || undefined}
     />

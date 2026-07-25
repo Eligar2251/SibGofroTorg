@@ -5,7 +5,7 @@
 "use client";
 
 import { useState } from "react";
-import { Save, Loader2, CheckCircle } from "lucide-react";
+import { Save, Loader2, CheckCircle, Send } from "lucide-react";
 import {
   WASTEPAPER_RATE_IDS,
   WASTEPAPER_RATE_DEFAULTS,
@@ -63,6 +63,29 @@ export function SettingsForm({ settings }: SettingsFormProps) {
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testingTg, setTestingTg] = useState(false);
+  const [tgResult, setTgResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  async function testTelegram() {
+    setTestingTg(true);
+    setTgResult(null);
+    try {
+      const res = await fetch("/api/admin/settings/test-telegram", {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.ok) setTgResult({ ok: true });
+      else
+        setTgResult({
+          ok: false,
+          error: body.error || "Не удалось отправить тестовое сообщение",
+        });
+    } catch {
+      setTgResult({ ok: false, error: "Сетевая ошибка" });
+    } finally {
+      setTestingTg(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -170,6 +193,42 @@ export function SettingsForm({ settings }: SettingsFormProps) {
               макулатуры» (в тарифах и калькуляторе). Изменения применяются
               сразу после сохранения.
             </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-card" style={{ marginTop: 16 }}>
+        <div className="admin-card__head">
+          <h3 className="admin-card__title">Уведомления в Telegram</h3>
+        </div>
+        <div className="admin-card__pad" style={{ display: "grid", gap: 10 }}>
+          <div style={{ color: "var(--adm-muted)", fontSize: 13 }}>
+            Бот берёт токен и chat_id из переменных окружения
+            <code style={{ margin: "0 4px" }}>TELEGRAM_BOT_TOKEN</code> и
+            <code style={{ margin: "0 4px" }}>TELEGRAM_ADMIN_CHAT_ID</code>.
+            Если уведомления перестали приходить — нажмите кнопку, чтобы
+            проверить подключение и увидеть точную ошибку.
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="admin-btn admin-btn--primary"
+              disabled={testingTg}
+              onClick={testTelegram}
+            >
+              {testingTg ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              Проверить Telegram
+            </button>
+            {tgResult?.ok && (
+              <span className="admin-success">
+                <CheckCircle size={16} /> Отправлено! Проверьте чат.
+              </span>
+            )}
+            {tgResult && !tgResult.ok && (
+              <span className="wh-form-error" style={{ marginTop: 0 }}>
+                {tgResult.error}
+              </span>
+            )}
           </div>
         </div>
       </div>
