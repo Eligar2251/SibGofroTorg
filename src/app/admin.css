@@ -5043,3 +5043,790 @@ body:has(.admin-modal-overlay) {
   color: var(--adm-rust);
   background: var(--adm-rust-pale);
 }
+
+/* ══════════════════════════════════════
+   ЗАРПЛАТЫ: EXCEL-ТАБЛИЦА ВЗАИМОРАСЧЁТОВ
+   (whsal-*)
+   ══════════════════════════════════════ */
+
+/* ── Верхняя панель вкладки ── */
+.whsal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 12px 14px;
+  box-shadow: var(--adm-sh-xs);
+  margin-bottom: 14px;
+}
+
+.whsal-toolbar__title {
+  font-family: var(--adm-font-head);
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--adm-navy);
+  letter-spacing: 0.02em;
+  margin-right: auto;
+  text-transform: uppercase;
+}
+
+.whsal-monthnav {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.whsal-monthnav__btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  border-radius: var(--adm-r-sm);
+  color: var(--adm-ink-soft);
+  cursor: pointer;
+  transition: all 0.13s ease;
+  flex-shrink: 0;
+}
+
+.whsal-monthnav__btn:hover {
+  border-color: var(--adm-kraft);
+  color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+}
+
+.whsal-toolbar__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+@media (max-width: 900px) {
+  .whsal-toolbar__title { margin-right: 0; flex-basis: 100%; }
+  .whsal-toolbar__actions { margin-left: 0; }
+}
+
+/* ── Сводные карточки ── */
+.whsal-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 1100px) {
+  .whsal-cards { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .whsal-cards { grid-template-columns: 1fr; }
+}
+
+.whsal-card {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 15px 17px;
+  box-shadow: var(--adm-sh-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow 0.14s, transform 0.14s;
+}
+
+.whsal-card:hover {
+  box-shadow: var(--adm-sh-sm);
+  transform: translateY(-1px);
+}
+
+.whsal-card--accent {
+  border-color: var(--adm-kraft-line);
+  background: linear-gradient(180deg, var(--adm-kraft-pale), var(--adm-card) 70%);
+}
+
+.whsal-card__top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.whsal-card__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--adm-r-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.whsal-card__icon--plan  { background: var(--adm-steel-pale); color: var(--adm-steel); }
+.whsal-card__icon--paid  { background: var(--adm-pine-pale); color: var(--adm-pine); }
+.whsal-card__icon--rest  { background: var(--adm-kraft-pale); color: var(--adm-kraft); }
+.whsal-card__icon--users { background: var(--adm-paper-warm); color: var(--adm-sand); }
+
+.whsal-card__label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.whsal-card__value {
+  font-family: var(--adm-font-head);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.whsal-card__sub {
+  font-size: 11.5px;
+  color: var(--adm-muted);
+  line-height: 1.45;
+}
+
+.whsal-progress {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--adm-paper-warm);
+  overflow: hidden;
+}
+
+.whsal-progress__bar {
+  height: 100%;
+  background: var(--adm-pine);
+  border-radius: 3px;
+  transition: width 0.35s ease;
+}
+
+/* ── Контейнер таблицы ── */
+.whsal-grid-scroll {
+  overflow: auto;
+  max-height: 68vh;
+  background: var(--adm-card);
+}
+
+.whsal-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-size: 12px;
+}
+
+.whsal-th,
+.whsal-td {
+  border-right: 1px solid var(--adm-border);
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.whsal-th {
+  background: var(--adm-paper-warm);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--adm-ink-soft);
+  text-align: center;
+  padding: 7px 5px;
+  height: 30px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.whsal-th--dow {
+  top: 30px;
+  height: 20px;
+  font-weight: 500;
+  font-size: 9px;
+  color: var(--adm-sand);
+  padding: 2px 4px 4px;
+}
+
+.whsal-th--weekend {
+  background: #f7e9bf;
+  color: var(--adm-kraft);
+}
+
+.whsal-td {
+  background: var(--adm-card);
+  vertical-align: middle;
+}
+
+/* ── Липкие колонки: ФИО / За месяц / Получено / Остаток ── */
+.whsal-th--name,
+.whsal-td--name {
+  position: sticky;
+  left: 0;
+  min-width: 172px;
+  max-width: 172px;
+  z-index: 4;
+}
+
+.whsal-th--accrued,
+.whsal-td--accrued {
+  position: sticky;
+  left: 172px;
+  min-width: 96px;
+  max-width: 96px;
+  z-index: 4;
+}
+
+.whsal-th--received,
+.whsal-td--received {
+  position: sticky;
+  left: 268px;
+  min-width: 100px;
+  max-width: 100px;
+  z-index: 4;
+  box-shadow: 6px 0 8px -6px rgba(26, 26, 24, 0.22);
+}
+
+.whsal-th--rest,
+.whsal-td--rest {
+  position: sticky;
+  right: 0;
+  min-width: 106px;
+  max-width: 106px;
+  z-index: 4;
+  box-shadow: -6px 0 8px -6px rgba(26, 26, 24, 0.22);
+}
+
+.whsal-th--name,
+.whsal-th--accrued,
+.whsal-th--received,
+.whsal-th--rest {
+  z-index: 7;
+}
+
+.whsal-td--name,
+.whsal-td--accrued,
+.whsal-td--received,
+.whsal-td--rest {
+  background: var(--adm-card);
+}
+
+.whsal-row:hover .whsal-td {
+  background: #faf8f2;
+}
+
+.whsal-total-row .whsal-td {
+  background: var(--adm-paper-warm) !important;
+  border-top: 2px solid var(--adm-border-mid);
+}
+
+/* ── Ячейка ФИО ── */
+.whsal-td--name {
+  text-align: left;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.whsal-td--name:hover .whsal-name-text strong {
+  color: var(--adm-kraft);
+}
+
+.whsal-avatar {
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: var(--adm-steel-pale);
+  color: var(--adm-steel);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.whsal-name-text {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.25;
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+.whsal-name-text strong {
+  font-size: 12.5px;
+  color: var(--adm-ink);
+  transition: color 0.12s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.whsal-name-text small {
+  color: var(--adm-sand);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Суммовые ячейки ── */
+.whsal-td--accrued,
+.whsal-td--received,
+.whsal-td--rest {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 6px 4px;
+  white-space: nowrap;
+}
+
+.whsal-td--accrued {
+  position: sticky;
+  cursor: pointer;
+}
+
+.whsal-td--accrued:hover {
+  background: var(--adm-kraft-pale) !important;
+  color: var(--adm-kraft);
+}
+
+.whsal-from-records {
+  display: block;
+  font-size: 8.5px;
+  font-weight: 500;
+  color: var(--adm-sand);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.whsal-td--rest {
+  font-weight: 800;
+}
+
+.whsal-rest--zero { color: var(--adm-pine); }
+.whsal-rest--debt { color: var(--adm-kraft); }
+.whsal-rest--over { color: var(--adm-rust); }
+
+/* ── Ячейки дней ── */
+.whsal-day {
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  height: 42px;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  font-variant-numeric: tabular-nums;
+  padding: 2px;
+  transition: box-shadow 0.1s ease;
+}
+
+@media (max-width: 640px) {
+  .whsal-day {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    height: 38px;
+  }
+}
+
+.whsal-day:hover {
+  box-shadow: inset 0 0 0 2px var(--adm-kraft);
+}
+
+.whsal-day--weekend {
+  background: #fdf3d3;
+}
+
+.whsal-row:hover .whsal-day--weekend {
+  background: #f9ecbf;
+}
+
+.whsal-day--paid {
+  background: var(--adm-rust-pale);
+  box-shadow: inset 0 0 0 1px var(--adm-rust-line);
+}
+
+.whsal-day--paid:hover {
+  box-shadow: inset 0 0 0 2px var(--adm-rust);
+}
+
+.whsal-day--paid .whsal-day-sum {
+  color: var(--adm-rust);
+  font-weight: 700;
+}
+
+.whsal-day--rent {
+  background: var(--adm-steel-pale);
+  box-shadow: inset 0 0 0 1px var(--adm-steel-line);
+}
+
+.whsal-day--rent:hover {
+  box-shadow: inset 0 0 0 2px var(--adm-steel);
+}
+
+.whsal-day--rent .whsal-day-sum {
+  color: var(--adm-steel);
+  font-weight: 700;
+}
+
+.whsal-day-sum {
+  font-size: 9.5px;
+  line-height: 1.1;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.whsal-day-mark {
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--adm-steel);
+  line-height: 1;
+}
+
+.whsal-day-count {
+  position: absolute;
+  bottom: 1px;
+  left: 3px;
+  font-size: 8px;
+  color: var(--adm-muted);
+  line-height: 1;
+}
+
+.whsal-day--total {
+  cursor: default;
+  height: 34px;
+}
+
+.whsal-day--total:hover {
+  box-shadow: none;
+}
+
+.whsal-day-total {
+  font-size: 8.5px;
+  color: var(--adm-ink-soft);
+  font-weight: 600;
+}
+
+.whsal-day--flash {
+  animation: whsalFlash 0.9s ease;
+}
+
+@keyframes whsalFlash {
+  0%   { box-shadow: inset 0 0 0 3px var(--adm-kraft); background: var(--adm-kraft-pale); }
+  100% { box-shadow: inset 0 0 0 1px var(--adm-border); }
+}
+
+.whsal-spacer td {
+  border: none;
+  height: 8px;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.whsal-empty {
+  padding: 34px 18px;
+  text-align: center;
+  color: var(--adm-muted);
+  font-size: 13px;
+}
+
+/* ── Легенда ── */
+.whsal-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 10px 16px;
+  border-top: 1px solid var(--adm-border);
+  background: var(--adm-paper);
+}
+
+.whsal-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--adm-ink-soft);
+}
+
+.whsal-legend__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+}
+
+.whsal-legend__swatch--paid    { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
+.whsal-legend__swatch--weekend { background: #fdf3d3; border-color: var(--adm-kraft-line); }
+.whsal-legend__swatch--rent    { background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
+
+.whsal-hint {
+  font-size: 11.5px;
+  color: var(--adm-sand);
+}
+
+/* ── Popover ячейки ── */
+.whsal-pop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: transparent;
+}
+
+.whsal-pop {
+  position: fixed;
+  z-index: 91;
+  width: 330px;
+  max-width: calc(100vw - 16px);
+  max-height: min(460px, calc(100vh - 16px));
+  overflow: auto;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r);
+  box-shadow: var(--adm-sh-md);
+  padding: 12px 14px 14px;
+}
+
+.whsal-pop__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.whsal-pop__title {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--adm-navy);
+  line-height: 1.3;
+}
+
+.whsal-pop__sub {
+  font-size: 11px;
+  color: var(--adm-sand);
+  margin-top: 1px;
+}
+
+.whsal-pop__subtitle {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--adm-sand);
+  margin: 4px 0 7px;
+}
+
+.whsal-pop__list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.whsal-pop__item {
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  padding: 7px 9px;
+  background: var(--adm-paper);
+}
+
+.whsal-pop__item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.whsal-pop__amount {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.whsal-pop__date {
+  font-size: 11px;
+  color: var(--adm-muted);
+}
+
+.whsal-pop__comment {
+  font-size: 11px;
+  color: var(--adm-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.whsal-pop__actions {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.whsal-pop__actions .admin-btn--icon {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+.whsal-pop__sep {
+  border-top: 1px dashed var(--adm-border-mid);
+  margin: 10px 0 8px;
+}
+
+/* ── Быстрая форма в popover ── */
+.whsal-qform {
+  display: grid;
+  gap: 8px;
+}
+
+.whsal-qform__row {
+  display: flex;
+  gap: 7px;
+}
+
+.whsal-qform__amount {
+  flex: 1;
+  min-width: 0;
+}
+
+.whsal-qform__submit {
+  flex-shrink: 0;
+}
+
+.whsal-seg {
+  display: flex;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  overflow: hidden;
+  background: var(--adm-card);
+}
+
+.whsal-seg__btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--adm-border);
+  cursor: pointer;
+  color: var(--adm-ink-muted);
+  transition: all 0.12s ease;
+  font-family: var(--adm-font-body);
+}
+
+.whsal-seg__btn:last-child {
+  border-right: none;
+}
+
+.whsal-seg__btn:hover {
+  background: var(--adm-paper-warm);
+  color: var(--adm-ink);
+}
+
+.whsal-seg__btn--cash { background: var(--adm-pine-pale); color: var(--adm-pine); }
+.whsal-seg__btn--bank { background: var(--adm-steel-pale); color: var(--adm-steel); }
+.whsal-seg__btn--rent { background: #f0f0ff; color: #4338ca; }
+
+.whsal-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+
+.whsal-check input[type="checkbox"] {
+  accent-color: var(--adm-pine);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ── Модалка календаря выходных ── */
+.whsal-cal-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+}
+
+.whsal-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin: 6px 0 12px;
+}
+
+.whsal-cal-day {
+  aspect-ratio: 1;
+  min-height: 40px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12.5px;
+  font-family: var(--adm-font-body);
+  color: var(--adm-ink-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  transition: all 0.12s ease;
+  padding: 2px;
+}
+
+.whsal-cal-day small {
+  font-size: 8.5px;
+  font-weight: 500;
+  color: var(--adm-sand);
+  text-transform: lowercase;
+}
+
+.whsal-cal-day:hover {
+  border-color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+}
+
+.whsal-cal-day--off {
+  background: #fdf3d3;
+  border-color: var(--adm-kraft);
+  color: var(--adm-kraft);
+  font-weight: 800;
+}
+
+.whsal-cal-day--off small {
+  color: var(--adm-kraft);
+}
