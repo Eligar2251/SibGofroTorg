@@ -5240,8 +5240,8 @@ body:has(.admin-modal-overlay) {
   letter-spacing: 0.03em;
   color: var(--adm-ink-soft);
   text-align: center;
-  padding: 7px 5px;
-  height: 30px;
+  padding: 5px 5px;
+  height: 36px;
   white-space: nowrap;
   position: sticky;
   top: 0;
@@ -5249,12 +5249,24 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-th--dow {
-  top: 30px;
+  top: 36px;
   height: 20px;
   font-weight: 500;
   font-size: 9px;
   color: var(--adm-sand);
   padding: 2px 4px 4px;
+}
+
+/* маленький подзаголовок в шапке колонки (план / факт / к выплате) */
+.whsal-th-sub {
+  display: block;
+  font-size: 8px;
+  font-weight: 500;
+  color: var(--adm-sand);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  margin-top: 1px;
 }
 
 .whsal-th--weekend {
@@ -5286,10 +5298,19 @@ body:has(.admin-modal-overlay) {
   z-index: 4;
 }
 
+.whsal-th--debt,
+.whsal-td--debt {
+  position: sticky;
+  left: 268px;
+  min-width: 92px;
+  max-width: 92px;
+  z-index: 4;
+}
+
 .whsal-th--received,
 .whsal-td--received {
   position: sticky;
-  left: 268px;
+  left: 360px;
   min-width: 100px;
   max-width: 100px;
   z-index: 4;
@@ -5300,14 +5321,15 @@ body:has(.admin-modal-overlay) {
 .whsal-td--rest {
   position: sticky;
   right: 0;
-  min-width: 106px;
-  max-width: 106px;
+  min-width: 110px;
+  max-width: 110px;
   z-index: 4;
   box-shadow: -6px 0 8px -6px rgba(26, 26, 24, 0.22);
 }
 
 .whsal-th--name,
 .whsal-th--accrued,
+.whsal-th--debt,
 .whsal-th--received,
 .whsal-th--rest {
   z-index: 7;
@@ -5315,6 +5337,7 @@ body:has(.admin-modal-overlay) {
 
 .whsal-td--name,
 .whsal-td--accrued,
+.whsal-td--debt,
 .whsal-td--received,
 .whsal-td--rest {
   background: var(--adm-card);
@@ -5419,6 +5442,36 @@ body:has(.admin-modal-overlay) {
 .whsal-rest--zero { color: var(--adm-pine); }
 .whsal-rest--debt { color: var(--adm-kraft); }
 .whsal-rest--over { color: var(--adm-rust); }
+
+.whsal-rest-sub {
+  display: block;
+  font-size: 8.5px;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+  line-height: 1.2;
+  margin-top: 1px;
+}
+
+/* ── Ячейка «Долг» ── */
+.whsal-td--debt {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 6px 4px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.whsal-td--debt:hover {
+  background: var(--adm-kraft-pale) !important;
+}
+
+.whsal-debt--pos { color: var(--adm-kraft); }
+.whsal-debt--neg { color: var(--adm-steel); }
+.whsal-debt--zero { color: var(--adm-border-mid); font-weight: 600; }
 
 /* ── Ячейки дней ── */
 .whsal-day {
@@ -5691,6 +5744,13 @@ body:has(.admin-modal-overlay) {
   margin: 10px 0 8px;
 }
 
+.whsal-pop__quick-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
 /* ── Быстрая форма в popover ── */
 .whsal-qform {
   display: grid;
@@ -5829,4 +5889,81 @@ body:has(.admin-modal-overlay) {
 
 .whsal-cal-day--off small {
   color: var(--adm-kraft);
+}
+
+/* ── Модалка «Установка зарплат» ── */
+.whsal-setup {
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  padding: 2px 12px;
+  margin: 10px 0 4px;
+  max-height: 340px;
+  overflow: auto;
+  background: var(--adm-paper);
+}
+
+.whsal-setup__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--adm-border);
+  flex-wrap: wrap;
+}
+
+.whsal-setup__row:last-child {
+  border-bottom: none;
+}
+
+.whsal-setup__row--head {
+  position: sticky;
+  top: -2px;
+  background: var(--adm-paper);
+  padding: 6px 0;
+  z-index: 2;
+  border-bottom: 1px solid var(--adm-border-mid);
+}
+
+.whsal-setup__row--head .whsal-setup__name,
+.whsal-setup__row--head .whsal-setup__col {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+}
+
+.whsal-setup__name {
+  flex: 1 1 150px;
+  min-width: 140px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.whsal-setup__inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.whsal-setup__col {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.whsal-setup__col input {
+  width: 128px;
+}
+
+.whsal-setup__col--btn {
+  width: 28px;
+  min-height: 1px;
+}
+
+@media (max-width: 560px) {
+  .whsal-setup__inputs { flex-wrap: wrap; }
+  .whsal-setup__col input { width: 104px; }
 }

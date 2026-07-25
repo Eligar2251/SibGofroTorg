@@ -47,6 +47,8 @@ import {
   Hourglass,
   Copy,
   RotateCcw,
+  SlidersHorizontal,
+  TrendingUp,
 } from "lucide-react";
 import {
   SearchCombobox,
@@ -150,6 +152,10 @@ function defaultWeekendDays(key: string): number[] {
 
 const planSettingKey = (month: string, employeeId: string) =>
   `salary_plan_${month}_${employeeId}`;
+/** Ручной долг/доплата: плюс — компания должна сотруднику (остаток с
+ *  прошлого месяца и т.п.), минус — сотрудник должен компании (аванс). */
+const debtSettingKey = (month: string, employeeId: string) =>
+  `salary_debt_${month}_${employeeId}`;
 const calendarSettingKey = (month: string) => `salary_calendar_${month}`;
 
 function initialsOf(name: string): string {
@@ -805,6 +811,210 @@ function MonthDaysModal({
   );
 }
 
+// ─── Модалка установки зарплат (и долгов) на месяц ─
+
+function SalariesSetupModal({
+  employees,
+  month,
+  prevMonth,
+  planFor,
+  debtFor,
+  prevPlanFor,
+  onClose,
+  onSave,
+}: {
+  employees: Employee[];
+  month: string;
+  prevMonth: string;
+  planFor: (employeeId: string) => number;
+  debtFor: (employeeId: string) => number;
+  prevPlanFor: (employeeId: string) => number;
+  onClose: () => void;
+  onSave: (entries: { employeeId: string; plan: number | null; debt: number | null }[]) => Promise<boolean>;
+}) {
+  const [plans, setPlans] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const e of employees) {
+      const p = planFor(e.id);
+      init[e.id] = p ? String(p) : "";
+    }
+    return init;
+  });
+  const [debts, setDebts] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const e of employees) {
+      const d = debtFor(e.id);
+      init[e.id] = d ? String(d) : "";
+    }
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+  const prevShort = monthLabel(prevMonth).split(" ")[0].toLowerCase();
+
+  function parseNum(raw: string | undefined): number | null {
+    const v = (raw ?? "").trim().replace(",", ".");
+    if (v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function copyAllFromPrev() {
+    setPlans((prev) => {
+      const next = { ...prev };
+      for (const e of employees) {
+        const p = prevPlanFor(e.id);
+        if (p > 0) next[e.id] = String(p);
+      }
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const entries = employees.map((e) => ({
+        employeeId: e.id,
+        plan: parseNum(plans[e.id]),
+        debt: parseNum(debts[e.id]),
+      }));
+      const ok = await onSave(entries);
+      if (ok) onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalPortal>
+      <div className="admin-modal-overlay" onClick={onClose}>
+        <div
+          className="admin-modal wh-modal"
+          style={{ maxWidth: 640 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="admin-modal__head">
+            <h3 className="admin-modal__title">
+              Установка зарплат — {monthLabel(month)}
+            </h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="admin-modal__close"
+              aria-label="Закрыть"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <p className="wh-form-hint" style={{ marginTop: 0 }}>
+            Задайте зарплату (план на месяц) и, при необходимости, долг. Долг:
+            <strong> плюс</strong> — компания должна сотруднику (остаток с
+            прошлого месяца, доплата), <strong>минус</strong> — сотрудник должен
+            компании (аванс, удержание). Пустое поле — значение не меняется.
+          </p>
+
+          <div style={{ marginBottom: 10 }}>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={copyAllFromPrev}
+            >
+              <Copy size={13} /> Скопировать зарплаты из {prevShort} всем
+            </button>
+          </div>
+
+          <div className="whsal-setup">
+            <div className="whsal-setup__row whsal-setup__row--head">
+              <span className="whsal-setup__name">Сотрудник</span>
+              <span className="whsal-setup__inputs">
+                <span className="whsal-setup__col">Зарплата, ₽</span>
+                <span className="whsal-setup__col">Долг ±, ₽</span>
+                <span className="whsal-setup__col whsal-setup__col--btn" />
+              </span>
+            </div>
+            {employees.map((e) => {
+              const prevPlan = prevPlanFor(e.id);
+              return (
+                <div key={e.id} className="whsal-setup__row">
+                  <span className="whsal-setup__name">
+                    <span className="whsal-avatar">{initialsOf(e.name)}</span>
+                    <span className="whsal-name-text">
+                      <strong>{e.name}</strong>
+                      {e.position && <small>{e.position}</small>}
+                    </span>
+                  </span>
+                  <span className="whsal-setup__inputs">
+                    <span className="whsal-setup__col">
+                      <input
+                        type="number"
+                        className="admin-input"
+                        placeholder={prevPlan ? `из ${prevShort}: ${fmt(prevPlan)}` : "Например: 50 000"}
+                        min={0}
+                        step="0.01"
+                        value={plans[e.id] ?? ""}
+                        onChange={(ev) =>
+                          setPlans((prev) => ({ ...prev, [e.id]: ev.target.value }))
+                        }
+                      />
+                    </span>
+                    <span className="whsal-setup__col">
+                      <input
+                        type="number"
+                        className="admin-input"
+                        placeholder="0"
+                        step="0.01"
+                        value={debts[e.id] ?? ""}
+                        onChange={(ev) =>
+                          setDebts((prev) => ({ ...prev, [e.id]: ev.target.value }))
+                        }
+                        title="Плюс — должны сотруднику, минус — сотрудник должен"
+                      />
+                    </span>
+                    <span className="whsal-setup__col whsal-setup__col--btn">
+                      {prevPlan > 0 && (
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--icon"
+                          title={`Поставить зарплату из ${prevShort}: ${fmt(prevPlan)} ₽`}
+                          onClick={() =>
+                            setPlans((prev) => ({ ...prev, [e.id]: String(prevPlan) }))
+                          }
+                        >
+                          <Copy size={13} />
+                        </button>
+                      )}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="admin-form-actions" style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn--primary"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              Сохранить зарплаты
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
 // ─── Основной раздел «Зарплаты» ────────────────────
 
 type PopoverState =
@@ -819,6 +1029,11 @@ type PopoverState =
       employeeId: string;
       rect: { top: number; left: number; bottom: number };
     }
+  | {
+      kind: "debt";
+      employeeId: string;
+      rect: { top: number; left: number; bottom: number };
+    }
   | null;
 
 interface GridRow {
@@ -829,7 +1044,12 @@ interface GridRow {
   accruedRecords: number;
   plan: number;
   effectivePlan: number;
-  debt: number;
+  /** ручной долг/доплата из настроек (+ должны сотруднику, − сотрудник должен) */
+  manualDebt: number;
+  /** всего к выплате = план + долг */
+  totalDue: number;
+  /** остаток к выплате = всего к выплате − получено */
+  rest: number;
   cells: Record<number, Salary[]>;
 }
 
@@ -864,6 +1084,8 @@ export function WarehouseSalaries({
   const [flashKey, setFlashKey] = useState<string | null>(null);
   const [quickBusy, setQuickBusy] = useState(false);
   const [accruedValue, setAccruedValue] = useState("");
+  const [debtValue, setDebtValue] = useState("");
+  const [setupOpen, setSetupOpen] = useState(false);
   const popRef = useRef<HTMLDivElement | null>(null);
 
   // Синхронизируем локальное состояние после router.refresh()
@@ -963,6 +1185,9 @@ export function WarehouseSalaries({
         const planRaw = settingsRaw[planSettingKey(activeMonth, employee.id)];
         const plan = planRaw !== undefined ? Number(planRaw) || 0 : 0;
         const effectivePlan = plan > 0 ? plan : accruedRecords;
+        const debtRaw = settingsRaw[debtSettingKey(activeMonth, employee.id)];
+        const manualDebt = debtRaw !== undefined ? Number(debtRaw) || 0 : 0;
+        const totalDue = effectivePlan + manualDebt;
         const cells: Record<number, Salary[]> = {};
         for (const r of paidRows) {
           const d = dayOfMonth(r.date);
@@ -976,7 +1201,9 @@ export function WarehouseSalaries({
           accruedRecords,
           plan,
           effectivePlan,
-          debt: effectivePlan - received,
+          manualDebt,
+          totalDue,
+          rest: totalDue - received,
           cells,
         };
       })
@@ -984,15 +1211,17 @@ export function WarehouseSalaries({
         (row) =>
           row.rows.length > 0 ||
           row.plan > 0 ||
+          row.manualDebt !== 0 ||
           activeEmployee === row.employee.id
       )
       .filter((row) => activeEmployee === "all" || row.employee.id === activeEmployee);
   }, [employees, monthSalaries, settingsRaw, activeMonth, activeEmployee]);
 
   const totalPlan = gridRows.reduce((s, r) => s + r.effectivePlan, 0);
+  const totalManualDebt = gridRows.reduce((s, r) => s + r.manualDebt, 0);
   const totalReceived = gridRows.reduce((s, r) => s + r.received, 0);
-  const totalDebt = totalPlan - totalReceived;
-  const debtCount = gridRows.filter((r) => r.debt > 0).length;
+  const totalRest = totalPlan + totalManualDebt - totalReceived;
+  const restCount = gridRows.filter((r) => r.rest > 0).length;
   const dayCount = daysInMonth(activeMonth);
   const dayTotals = useMemo(() => {
     const totals: Record<number, number> = {};
@@ -1156,6 +1385,76 @@ export function WarehouseSalaries({
     savePlan(employeeId, val);
   }
 
+  // ── Чтение плана/долга/остатка за произвольный месяц ──
+  function planNumFor(month: string, employeeId: string): number {
+    const raw = settingsRaw[planSettingKey(month, employeeId)];
+    return raw !== undefined ? Number(raw) || 0 : 0;
+  }
+
+  function debtNumFor(month: string, employeeId: string): number {
+    const raw = settingsRaw[debtSettingKey(month, employeeId)];
+    return raw !== undefined ? Number(raw) || 0 : 0;
+  }
+
+  /** Остаток к выплате сотруднику за произвольный месяц
+   *  (используется для переноса долга с прошлого месяца). */
+  function restForMonth(employee: Employee, mkey: string): number {
+    const rows = salaries.filter(
+      (s) =>
+        monthKey(s.date) === mkey &&
+        (s.employeeId === employee.id ||
+          (!s.employeeId && s.employeeName === employee.name))
+    );
+    const received = rows
+      .filter((r) => r.isPaid)
+      .reduce((s, r) => s + r.amount, 0);
+    const accrued = rows.reduce((s, r) => s + r.amount, 0);
+    const plan = planNumFor(mkey, employee.id);
+    return (plan > 0 ? plan : accrued) + debtNumFor(mkey, employee.id) - received;
+  }
+
+  async function saveDebt(employeeId: string, value: number): Promise<boolean> {
+    const key = debtSettingKey(activeMonth, employeeId);
+    const res = await fetch("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: String(value) }),
+    });
+    if (!res.ok) {
+      alert("Не удалось сохранить долг");
+      return false;
+    }
+    setSettingsRaw((prev) => ({ ...prev, [key]: String(value) }));
+    return true;
+  }
+
+  /** Сохранение планов и долгов из модалки «Установка зарплат» (одним запросом). */
+  async function saveSetupEntries(
+    entries: { employeeId: string; plan: number | null; debt: number | null }[]
+  ): Promise<boolean> {
+    const payload: Record<string, string> = {};
+    for (const en of entries) {
+      if (en.plan !== null && en.plan >= 0) {
+        payload[planSettingKey(activeMonth, en.employeeId)] = String(en.plan);
+      }
+      if (en.debt !== null) {
+        payload[debtSettingKey(activeMonth, en.employeeId)] = String(en.debt);
+      }
+    }
+    if (!Object.keys(payload).length) return true;
+    const res = await fetch("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      alert("Не удалось сохранить зарплаты");
+      return false;
+    }
+    setSettingsRaw((prev) => ({ ...prev, ...payload }));
+    return true;
+  }
+
   async function saveWeekends(days: number[]) {
     const key = calendarSettingKey(activeMonth);
     const value = JSON.stringify(days);
@@ -1195,6 +1494,17 @@ export function WarehouseSalaries({
     });
   }
 
+  function openDebtPopover(row: GridRow, el: HTMLElement) {
+    const r = el.getBoundingClientRect();
+    setDebtValue(row.manualDebt ? String(row.manualDebt) : "");
+    setPopPos(null);
+    setPopover({
+      kind: "debt",
+      employeeId: row.employee.id,
+      rect: { top: r.top, left: r.left, bottom: r.bottom },
+    });
+  }
+
   // ── Экспорт в Excel (HTML-таблица с заливками, открывается в Excel) ──
   function exportToExcel() {
     const esc = (s: string) =>
@@ -1207,10 +1517,10 @@ export function WarehouseSalaries({
     const th = (t: string, extra = "") =>
       `<th style="background:#ECE9E1;border:1px solid #B7B3A9;padding:5px 7px;font-size:11px;${extra}">${t}</th>`;
 
-    let head = `<tr>${th("ФИО")}${th(`За ${ml}`)}${th("Получено")}`;
+    let head = `<tr>${th("ФИО")}${th(`За ${ml}`)}${th("Долг ±")}${th("Получено")}`;
     for (let d = 1; d <= dayCount; d++) head += th(String(d), weekendSet.has(d) ? "background:#FFF3C4;" : "");
-    head += `${th("Остаток")}</tr>`;
-    head += `<tr>${th("")}${th("")}${th("")}`;
+    head += `${th("Остаток<br/>к выплате")}</tr>`;
+    head += `<tr>${th("")}${th("")}${th("")}${th("")}`;
     for (let d = 1; d <= dayCount; d++)
       head += th(weekdayShort(activeMonth, d), `font-size:9px;color:#8C8070;${weekendSet.has(d) ? "background:#FFF3C4;" : ""}`);
     head += `${th("")}</tr>`;
@@ -1223,6 +1533,11 @@ export function WarehouseSalaries({
       body += `<tr>`;
       body += `<td style="border:1px solid #D5D2C9;padding:4px 8px;font-size:11px;font-weight:bold;background:#FFFFFF;white-space:nowrap;">${esc(row.employee.name)}</td>`;
       body += num(row.effectivePlan, "background:#F7F5F0;font-weight:bold;");
+      const debtColor =
+        row.manualDebt > 0 ? "#C8860A" : row.manualDebt < 0 ? "#1E3A5A" : "#B7B3A9";
+      body += `<td align="right" style="border:1px solid #D5D2C9;padding:4px 6px;font-size:11px;font-weight:bold;color:${debtColor};background:#F7F5F0;">${
+        row.manualDebt || ""
+      }</td>`;
       body += num(row.received, "background:#F7F5F0;");
       for (let d = 1; d <= dayCount; d++) {
         const items = row.cells[d] || [];
@@ -1235,22 +1550,25 @@ export function WarehouseSalaries({
         else style += "background:#FFFFFF;";
         body += `<td style="${style}">${sum ? fmt(sum) : ""}</td>`;
       }
-      const restColor = row.debt === 0 ? "#1E4A2D" : row.debt < 0 ? "#B83A1E" : "#C8860A";
-      body += `<td align="right" style="border:1px solid #D5D2C9;padding:4px 6px;font-size:11px;font-weight:bold;color:${restColor};background:#F7F5F0;">${row.debt}</td>`;
+      const restColor = row.rest === 0 ? "#1E4A2D" : row.rest < 0 ? "#B83A1E" : "#C8860A";
+      body += `<td align="right" style="border:1px solid #D5D2C9;padding:4px 6px;font-size:11px;font-weight:bold;color:${restColor};background:#F7F5F0;">${row.rest}</td>`;
       body += `</tr>`;
     }
 
     // Разделитель + ИТОГО
-    body += `<tr><td colspan="${dayCount + 4}" style="border:none;height:8px;"></td></tr>`;
+    body += `<tr><td colspan="${dayCount + 5}" style="border:none;height:8px;"></td></tr>`;
     body += `<tr>`;
     body += `<td style="border:1px solid #B7B3A9;padding:5px 8px;font-size:11px;font-weight:bold;background:#ECE9E1;">ИТОГО</td>`;
     body += num(totalPlan, "background:#ECE9E1;font-weight:bold;");
+    body += `<td align="right" style="border:1px solid #B7B3A9;padding:5px 6px;font-size:11px;font-weight:bold;background:#ECE9E1;">${
+      totalManualDebt || ""
+    }</td>`;
     body += num(totalReceived, "background:#ECE9E1;font-weight:bold;");
     for (let d = 1; d <= dayCount; d++) {
       const v = dayTotals[d] || 0;
       body += `<td align="right" style="border:1px solid #D5D2C9;padding:4px 3px;font-size:9px;color:#6B6B60;background:#ECE9E1;">${v ? fmt(v) : ""}</td>`;
     }
-    body += `<td align="right" style="border:1px solid #B7B3A9;padding:5px 6px;font-size:11px;font-weight:bold;background:#ECE9E1;">${totalDebt}</td>`;
+    body += `<td align="right" style="border:1px solid #B7B3A9;padding:5px 6px;font-size:11px;font-weight:bold;background:#ECE9E1;">${totalRest}</td>`;
     body += `</tr>`;
 
     const html =
@@ -1265,7 +1583,7 @@ export function WarehouseSalaries({
       `<div style="font-family:Arial;font-size:14px;font-weight:bold;margin-bottom:8px;">Таблица взаиморасчётов за ${esc(ml)}</div>` +
       `<table>${head}${body}</table>` +
       `<div style="font-family:Arial;font-size:10px;color:#6B6B60;margin-top:10px;">` +
-      `Красный — выплата получена · Жёлтый — выходной/праздник · Синий — оплачено с аренды на карту</div>` +
+      `Красный — выплата получена · Жёлтый — выходной/праздник · Синий — оплачено с аренды на карту · Остаток = За месяц + Долг − Получено</div>` +
       `</body></html>`;
 
     const blob = new Blob(["\ufeff", html], {
@@ -1349,6 +1667,13 @@ export function WarehouseSalaries({
         </div>
 
         <div className="whsal-toolbar__actions">
+          <button
+            className="admin-btn admin-btn--ghost"
+            onClick={() => setSetupOpen(true)}
+            title="Установить зарплаты и долги всем сотрудникам на месяц"
+          >
+            <SlidersHorizontal size={15} /> Установить зарплаты
+          </button>
           <button className="admin-btn admin-btn--ghost" onClick={exportToExcel} title="Скачать таблицу в формате Excel">
             <Download size={15} /> Excel
           </button>
@@ -1412,9 +1737,12 @@ export function WarehouseSalaries({
             <span className="whsal-card__label">Остаток к выплате</span>
           </div>
           <div className="whsal-card__value" style={{ color: "var(--adm-kraft)" }}>
-            {fmt(totalPlan - paidTotal)} ₽
+            {fmt(totalRest)} ₽
           </div>
           <div className="whsal-card__sub">
+            {totalManualDebt !== 0 && (
+              <>в т.ч. долг {totalManualDebt > 0 ? "+" : ""}{fmt(totalManualDebt)} ₽ · </>
+            )}
             к выплате сейчас: {pending.length} · {fmt(pendingTotal)} ₽
           </div>
         </div>
@@ -1428,7 +1756,7 @@ export function WarehouseSalaries({
           </div>
           <div className="whsal-card__value">{gridRows.length}</div>
           <div className="whsal-card__sub">
-            в т.ч. {debtCount} с остатком к выплате
+            в т.ч. {restCount} с остатком к выплате
           </div>
         </div>
       </div>
@@ -1453,9 +1781,19 @@ export function WarehouseSalaries({
                 </th>
                 <th rowSpan={2} className="whsal-th whsal-th--accrued">
                   За {monthLabel(activeMonth).split(" ")[0]}
+                  <span className="whsal-th-sub">план</span>
+                </th>
+                <th
+                  rowSpan={2}
+                  className="whsal-th whsal-th--debt"
+                  title="Долг/доплата: плюс — компания должна сотруднику, минус — сотрудник должен компании. Клик по ячейке — изменить."
+                >
+                  Долг
+                  <span className="whsal-th-sub">± к плану</span>
                 </th>
                 <th rowSpan={2} className="whsal-th whsal-th--received">
                   Получено
+                  <span className="whsal-th-sub">факт</span>
                 </th>
                 {Array.from({ length: dayCount }).map((_, i) => {
                   const d = i + 1;
@@ -1471,8 +1809,13 @@ export function WarehouseSalaries({
                     </th>
                   );
                 })}
-                <th rowSpan={2} className="whsal-th whsal-th--rest">
+                <th
+                  rowSpan={2}
+                  className="whsal-th whsal-th--rest"
+                  title="Сколько осталось выплатить: «За месяц» + «Долг» − «Получено»"
+                >
                   Остаток
+                  <span className="whsal-th-sub">к выплате</span>
                 </th>
               </tr>
               <tr>
@@ -1494,7 +1837,7 @@ export function WarehouseSalaries({
             <tbody>
               {gridRows.length === 0 && (
                 <tr>
-                  <td colSpan={dayCount + 4} className="whsal-empty">
+                  <td colSpan={dayCount + 5} className="whsal-empty">
                     За {monthLabel(activeMonth)} записей нет. Нажмите «Начислить
                     зарплату» или выберите другой месяц.
                   </td>
@@ -1535,6 +1878,25 @@ export function WarehouseSalaries({
                       </span>
                     )}
                   </td>
+                  <td
+                    className={`whsal-td whsal-td--debt whsal-clickable${
+                      flashKey === `${row.employee.id}:debt` ? " whsal-day--flash" : ""
+                    }${
+                      row.manualDebt > 0
+                        ? " whsal-debt--pos"
+                        : row.manualDebt < 0
+                        ? " whsal-debt--neg"
+                        : " whsal-debt--zero"
+                    }`}
+                    title={
+                      row.manualDebt
+                        ? `Долг ${row.manualDebt > 0 ? "(компания должна сотруднику)" : "(сотрудник должен компании)"}: ${fmt(row.manualDebt)} ₽. Клик — изменить`
+                        : "Долг/доплата сверх плана. Клик — указать"
+                    }
+                    onClick={(e) => openDebtPopover(row, e.currentTarget)}
+                  >
+                    {row.manualDebt ? `${row.manualDebt > 0 ? "+" : ""}${fmt(row.manualDebt)}` : "—"}
+                  </td>
                   <td className="whsal-td whsal-td--received">{fmt(row.received)}</td>
                   {Array.from({ length: dayCount }).map((_, i) => {
                     const d = i + 1;
@@ -1572,21 +1934,24 @@ export function WarehouseSalaries({
                   })}
                   <td
                     className={`whsal-td whsal-td--rest ${
-                      row.debt === 0
+                      row.rest === 0
                         ? "whsal-rest--zero"
-                        : row.debt < 0
+                        : row.rest < 0
                         ? "whsal-rest--over"
                         : "whsal-rest--debt"
                     }`}
                     title={
-                      row.debt < 0
-                        ? "Переплата: выплачено больше плана"
-                        : row.debt === 0
+                      row.rest < 0
+                        ? `Переплата ${fmt(-row.rest)} ₽: выплачено больше, чем начислено`
+                        : row.rest === 0
                         ? "Выплачено полностью"
-                        : "Осталось выплатить"
+                        : `Осталось выплатить: ${fmt(row.rest)} ₽`
                     }
                   >
-                    {fmt(row.debt)}
+                    {fmt(row.rest)}
+                    <span className="whsal-rest-sub">
+                      {row.rest > 0 ? "к выплате" : row.rest < 0 ? "переплата" : "выплачено"}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -1594,7 +1959,7 @@ export function WarehouseSalaries({
               {gridRows.length > 0 && (
                 <>
                   <tr className="whsal-spacer" aria-hidden="true">
-                    <td colSpan={dayCount + 4} />
+                    <td colSpan={dayCount + 5} />
                   </tr>
                   <tr className="whsal-total-row">
                     <td
@@ -1606,6 +1971,22 @@ export function WarehouseSalaries({
                     </td>
                     <td className="whsal-td whsal-td--accrued">
                       <strong>{fmt(totalPlan)}</strong>
+                    </td>
+                    <td
+                      className={`whsal-td whsal-td--debt${
+                        totalManualDebt > 0
+                          ? " whsal-debt--pos"
+                          : totalManualDebt < 0
+                          ? " whsal-debt--neg"
+                          : " whsal-debt--zero"
+                      }`}
+                      style={{ cursor: "default" }}
+                    >
+                      <strong>
+                        {totalManualDebt
+                          ? `${totalManualDebt > 0 ? "+" : ""}${fmt(totalManualDebt)}`
+                          : "—"}
+                      </strong>
                     </td>
                     <td className="whsal-td whsal-td--received">
                       <strong>{fmt(totalReceived)}</strong>
@@ -1627,14 +2008,15 @@ export function WarehouseSalaries({
                     })}
                     <td
                       className={`whsal-td whsal-td--rest ${
-                        totalDebt === 0
+                        totalRest === 0
                           ? "whsal-rest--zero"
-                          : totalDebt < 0
+                          : totalRest < 0
                           ? "whsal-rest--over"
                           : "whsal-rest--debt"
                       }`}
+                      title={`Всего осталось выплатить всем: ${fmt(totalRest)} ₽`}
                     >
-                      <strong>{fmt(totalDebt)}</strong>
+                      <strong>{fmt(totalRest)}</strong>
                     </td>
                   </tr>
                 </>
@@ -1658,7 +2040,12 @@ export function WarehouseSalaries({
             Оплачено с аренды на карту
           </span>
           <span className="whsal-legend__item whsal-hint">
-            «Остаток» = «За месяц» − «Получено»; зелёный — выплачено полностью
+            «Остаток» (к выплате) = «За месяц» + «Долг» − «Получено» · зелёный —
+            выплачено полностью
+          </span>
+          <span className="whsal-legend__item whsal-hint">
+            «Долг»: + должны сотруднику (остаток с прошлого месяца), − сотрудник
+            должен (аванс)
           </span>
         </div>
       </div>
@@ -2030,6 +2417,92 @@ export function WarehouseSalaries({
                   )}
                 </>
               )}
+
+              {popover.kind === "debt" && (
+                <>
+                  <div className="whsal-pop__subtitle">Долг за месяц, ₽ (±)</div>
+                  <form
+                    className="whsal-qform"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const v = Number(debtValue.replace(",", "."));
+                      if (!Number.isFinite(v)) return;
+                      const ok = await saveDebt(popRow.employee.id, v);
+                      if (ok) {
+                        flashCell(`${popRow.employee.id}:debt`);
+                        setPopover(null);
+                      }
+                    }}
+                  >
+                    <div className="whsal-qform__row">
+                      <input
+                        type="number"
+                        className="admin-input whsal-qform__amount"
+                        placeholder="Например: 5000 или -3000"
+                        step="0.01"
+                        value={debtValue}
+                        autoFocus
+                        onChange={(e) => setDebtValue(e.target.value)}
+                      />
+                      <button type="submit" className="admin-btn admin-btn--primary whsal-qform__submit">
+                        Сохранить
+                      </button>
+                    </div>
+                    <p className="whsal-pop__comment" style={{ marginTop: 0 }}>
+                      <strong>Плюс</strong> — компания должна сотруднику
+                      (недовыплаченный остаток, доплата). <strong>Минус</strong> —
+                      сотрудник должен компании (аванс, удержание). Долг
+                      прибавляется к «За месяц» при расчёте остатка к выплате.
+                    </p>
+                    <div className="whsal-pop__quick-actions">
+                      {(() => {
+                        const prevKey = shiftMonth(activeMonth, -1);
+                        const prevShort = monthLabel(prevKey).split(" ")[0].toLowerCase();
+                        const prevRest = restForMonth(popRow.employee, prevKey);
+                        const prevDebt = debtNumFor(prevKey, popRow.employee.id);
+                        return (
+                          <>
+                            {prevRest !== 0 && (
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--ghost admin-btn--sm"
+                                title={`Остаток к выплате за ${monthLabel(prevKey)}: ${fmt(prevRest)} ₽`}
+                                onClick={() => setDebtValue(String(prevRest))}
+                              >
+                                <TrendingUp size={13} /> Перенести остаток {prevShort}а ({fmt(prevRest)} ₽)
+                              </button>
+                            )}
+                            {prevDebt !== 0 && (
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--ghost admin-btn--sm"
+                                onClick={() => setDebtValue(String(prevDebt))}
+                              >
+                                <Copy size={13} /> Долг из {prevShort}а ({fmt(prevDebt)} ₽)
+                              </button>
+                            )}
+                            {popRow.manualDebt !== 0 && (
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--ghost admin-btn--sm"
+                                onClick={async () => {
+                                  const ok = await saveDebt(popRow.employee.id, 0);
+                                  if (ok) {
+                                    flashCell(`${popRow.employee.id}:debt`);
+                                    setPopover(null);
+                                  }
+                                }}
+                              >
+                                <X size={13} /> Обнулить долг
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </form>
+                </>
+              )}
             </div>
           </>,
           document.body
@@ -2041,6 +2514,19 @@ export function WarehouseSalaries({
           initialDays={weekendDays}
           onClose={() => setDaysModalOpen(false)}
           onSave={saveWeekends}
+        />
+      )}
+
+      {setupOpen && (
+        <SalariesSetupModal
+          employees={employees}
+          month={activeMonth}
+          prevMonth={shiftMonth(activeMonth, -1)}
+          planFor={(id) => planNumFor(activeMonth, id)}
+          debtFor={(id) => debtNumFor(activeMonth, id)}
+          prevPlanFor={(id) => planNumFor(shiftMonth(activeMonth, -1), id)}
+          onClose={() => setSetupOpen(false)}
+          onSave={saveSetupEntries}
         />
       )}
 
