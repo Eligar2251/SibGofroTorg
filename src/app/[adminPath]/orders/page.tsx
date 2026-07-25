@@ -85,21 +85,22 @@ function typeMeta(order: any) {
   return { label: "На уточнение", icon: "chat", cls: "admin-badge admin-badge--teal" };
 }
 
+function firstParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] || "" : value || "";
+}
+
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; type?: string; sort?: string }>;
+  searchParams: Promise<{ status?: string | string[]; q?: string | string[] }>;
 }) {
-  const {
-    status: filterStatus,
-    q: searchQuery,
-    type: typeQuery,
-    sort: sortQuery,
-  } = await searchParams;
-  const activeFilter = filterStatus || "new"; // По умолчанию показываем новые заявки
-  const activeType = typeQuery || "all";
-  const activeSort = sortQuery || "new_first";
-  const query = searchQuery ? searchQuery.toLowerCase().trim() : "";
+  const params = await searchParams;
+  const requestedStatus = firstParam(params.status);
+  const activeFilter = ["new", "in_progress", "rejected", "all"].includes(requestedStatus)
+    ? requestedStatus
+    : "new";
+  const searchQuery = firstParam(params.q);
+  const query = searchQuery.toLowerCase().trim();
 
   const [siteOrders, wastepaperRequests] = await Promise.all([
     getOrders({ status: activeFilter, limit: 200 }),
@@ -110,7 +111,6 @@ export default async function AdminOrdersPage({
 
   const filteredOrders = allOrders
     .filter((order: any) => {
-      if (activeType !== "all" && order.type !== activeType) return false;
       if (!query) return true;
       const itemText = Array.isArray(order.items)
         ? order.items.map((it: any) => `${it.name || ""} ${it.sku || ""}`).join(" ")
@@ -126,12 +126,7 @@ export default async function AdminOrdersPage({
         itemText.toLowerCase().includes(query)
       );
     })
-    .sort((a: any, b: any) => {
-      if (activeSort === "old_first") return createdMs(a.createdAt) - createdMs(b.createdAt);
-      if (activeSort === "status") return String(a.status || "").localeCompare(String(b.status || ""), "ru");
-      if (activeSort === "type") return String(a.type || "").localeCompare(String(b.type || ""), "ru");
-      return createdMs(b.createdAt) - createdMs(a.createdAt);
-    });
+    .sort((a: any, b: any) => createdMs(b.createdAt) - createdMs(a.createdAt));
 
   const hrefBase = `/${ADMIN_PATH}/orders`;
   const qSuffix = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
@@ -152,11 +147,11 @@ export default async function AdminOrdersPage({
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 260 }}>
           <form method="GET" action={hrefBase} style={{ display: "flex", gap: 8 }}>
-            <input type="hidden" name="status" value={activeFilter} />
+            <input type="hidden" name="status" defaultValue={activeFilter} />
             <input
               type="text"
               name="q"
-              defaultValue={searchQuery || ""}
+              defaultValue={searchQuery}
               placeholder="Поиск по имени, телефону, почте, ID, товару..."
               className="admin-input"
             />
