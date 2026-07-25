@@ -537,15 +537,47 @@ export async function updateOrderStatus(id: string, status: string, closeReason:
   revalidateTag("orders", { expire: 0 });
 }
 
-export async function deleteOrder(id: string): Promise<void> {
+export async function deleteOrder(id: string): Promise<{ table: "orders" | "wastepaper_requests" | null; deleted: boolean }> {
   const db = getAdminDb();
-  
-  // 1. Получаем заказ
-  const { data: order, error: orderError } = await db.from("orders").select("*").eq("id", id).single();
+  const cleanId = String(id || "").trim();
+  if (!cleanId) throw new Error("Не указан ID заявки");
+
+  // 1. Получаем заявку из основной таблицы заказов/уточнений.
+  const { data: order, error: orderError } = await db
+    .from("orders")
+    .select("*")
+    .eq("id", cleanId)
+    .maybeSingle();
+
+  // Если это не orders, пробуем таблицу макулатуры. Раньше такие заявки из-за
+  // отсутствующего поля type могли отображаться как «На уточнение», а кнопка
+  // удаления била не в тот endpoint.
   if (orderError || !order) {
-    // Заказ не найден — возможно уже удалён, считаем успехом
-    console.warn("deleteOrder: заказ не найден, возможно уже удалён:", id);
-    return;
+    const { data: wastepaper } = await db
+      .from("wastepaper_requests")
+      .select("id")
+      .eq("id", cleanId)
+      .maybeSingle();
+    if (wastepaper) {
+      const { data: deletedRows, error: deleteWasteError } = await db
+        .from("wastepaper_requests")
+        .delete()
+        .eq("id", cleanId)
+        .select("id");
+      if (deleteWasteError) throw deleteWasteError;
+      if (!deletedRows || deletedRows.length === 0) {
+        throw new Error("Заявка найдена в макулатуре, но не была удалена");
+      }
+      revalidateTag("wastepaper", { expire: 0 });
+      revalidateTag("orders", { expire: 0 });
+      return { table: "wastepaper_requests", deleted: true };
+    }
+
+    // Заявка уже отсутствует в обеих таблицах — считаем удаление идемпотентным.
+    console.warn("deleteOrder: заявка не найдена, возможно уже удалена:", cleanId);
+    revalidateTag("orders", { expire: 0 });
+    revalidateTag("wastepaper", { expire: 0 });
+    return { table: null, deleted: false };
   }
   
   // 2. Каскадное удаление связанных документов (каждый шаг обёрнут в try/catch,
@@ -576,7 +608,7 @@ export async function deleteOrder(id: string): Promise<void> {
       try {
         const { data: payments } = await db.from("bank_payments").select("*");
         const dealPayments = (payments || []).filter((p: any) => 
-          Array.isArray(p.deal_ids) && p.deal_ids.includes(deal.id)
+          Array.isArray(p.deal_ids) && p.deal_ids.map(String).includes(String(deal.id))
         );
         for (const payment of dealPayments) {
           const isAutoOrderPayment =
@@ -606,30 +638,45 @@ export async function deleteOrder(id: string): Promise<void> {
     }
   }
   
-  // 3. Удаляем неоплаченные платежи, привязанные к заказу напрямую
-  try {
-    const { data: allPayments } = await db.from("bank_payments").select("*");
-    const orderPayments = (allPayments || []).filter((p: any) => 
-      Array.isArray(p.receipt_ids) && p.receipt_ids.includes(id)
-    );
-    for (const payment of orderPayments) {
-      if (!payment.is_paid) {
-        await db.from("bank_payments").delete().eq("id", payment.id);
+  // 3. Удаляем автоматический платёж заявки, если он ещё существует без deal.
+  if (order.payment_id) {
+    try {
+      const { data: payment } = await db
+        .from("bank_payments")
+        .select("*")
+        .eq("id", order.payment_id)
+        .maybeSingle();
+      if (payment) {
+        const dealLinks = Array.isArray(payment.deal_ids) ? payment.deal_ids : [];
+        const receiptLinks = Array.isArray(payment.receipt_ids) ? payment.receipt_ids : [];
+        if (dealLinks.length === 0 && receiptLinks.length === 0) {
+          await db.from("bank_payments").delete().eq("id", payment.id);
+        }
       }
+    } catch (e) {
+      console.error("deleteOrder: ошибка удаления прямого платежа заявки:", e);
     }
-  } catch (e) {
-    console.error("deleteOrder: ошибка удаления платежей заказа:", e);
   }
-  
-  // 4. ВСЕГДА удаляем сам заказ (даже если каскад выше упал)
-  const { error } = await db.from("orders").delete().eq("id", id);
+
+  // 4. ВСЕГДА удаляем саму заявку и проверяем факт удаления.
+  const { data: deletedRows, error } = await db
+    .from("orders")
+    .delete()
+    .eq("id", cleanId)
+    .select("id");
   if (error) throw error;
+  if (!deletedRows || deletedRows.length === 0) {
+    const { data: stillExists } = await db.from("orders").select("id").eq("id", cleanId).maybeSingle();
+    if (stillExists) throw new Error("Заявка найдена, но не была удалена");
+    return { table: "orders", deleted: false };
+  }
   
   invalidateProductsCache();
   revalidateTag("orders", { expire: 0 });
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("products", { expire: 0 });
+  return { table: "orders", deleted: true };
 }
 
 export async function getOrderById(id: string): Promise<FirestoreOrder | null> {
@@ -1131,6 +1178,7 @@ export async function getWastepaperRequests(opts: { limit?: number; status?: str
   if (error) throw error;
   return (data || []).map((row: any) => ({
     id: row.id,
+    type: "wastepaper",
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
     wastepaperType: row.wastepaper_type,

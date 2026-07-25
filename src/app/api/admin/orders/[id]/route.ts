@@ -82,14 +82,17 @@ export async function DELETE(
 
   try {
     const { id } = await params;
-    await deleteOrder(id);
+    const result = await deleteOrder(id);
 
     await logAdminAction(
       auth.displayName, auth.role, "delete", "order", id,
-      `Удалена заявка #${id.slice(0, 8)}`
+      result.deleted
+        ? `Удалена заявка #${id.slice(0, 8)} (${result.table || "unknown"})`
+        : `Заявка #${id.slice(0, 8)} уже отсутствовала в базе`,
+      result
     );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error("Delete order error:", error);
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
