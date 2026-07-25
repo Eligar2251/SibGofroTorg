@@ -331,15 +331,24 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
         </div>
       ) : (
         <div className="admin-card">
-          <div className="admin-table-wrap">
-            <table className="admin-table">
+          <div className="admin-table-wrap" style={{ overflowX: "auto" }}>
+            <table className="admin-table" style={{ minWidth: 1120, tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: 142 }} />
+                <col style={{ width: 150 }} />
+                <col style={{ width: 118 }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 170 }} />
+                <col />
+                <col style={{ width: 112 }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Дата и время</th>
                   <th>Пользователь</th>
                   <th>Действие</th>
                   <th>Объект</th>
-                  <th>ID</th>
+                  <th>ID / перейти</th>
                   <th>Описание и детали</th>
                   <th>IP</th>
                 </tr>
@@ -359,8 +368,8 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
                           {log.adminRole || "—"}
                         </div>
                       </td>
-                      <td>
-                        <span className={`admin-badge ${meta.color}`}>
+                      <td style={{ overflow: "hidden" }}>
+                        <span className={`admin-badge ${meta.color}`} style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           <Icon size={10} /> {meta.label}
                         </span>
                       </td>
@@ -369,17 +378,25 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
                           {entityLabels[log.entityType] || log.entityType || "—"}
                         </div>
                       </td>
-                      <td style={{ fontSize: 11, maxWidth: 170, overflowWrap: "anywhere" }}>
+                      <td style={{ fontSize: 11, overflow: "hidden" }}>
                         {entityHref ? (
-                          <Link href={entityHref} prefetch={false} className="bank-pay__doc">
+                          <Link
+                            href={entityHref}
+                            prefetch={false}
+                            className="bank-pay__doc"
+                            title={log.entityId || "Открыть"}
+                            style={{ display: "block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                          >
                             {log.entityId || "Открыть"}
                           </Link>
                         ) : (
-                          log.entityId || "—"
+                          <span title={log.entityId || ""} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {log.entityId || "—"}
+                          </span>
                         )}
                       </td>
-                      <td style={{ minWidth: 260 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{log.entityLabel || "—"}</div>
+                      <td style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "anywhere" }}>{log.entityLabel || "—"}</div>
                         {details && (
                           <div
                             style={{
@@ -391,6 +408,7 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
                               color: "var(--adm-ink)",
                               fontSize: 12,
                               lineHeight: 1.45,
+                              overflowWrap: "anywhere",
                             }}
                           >
                             {details}

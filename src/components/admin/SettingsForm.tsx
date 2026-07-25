@@ -110,65 +110,51 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     setSaving(false);
   }
 
+  const cardStyle = { height: "100%", minWidth: 0 } as const;
+  const cardPadStyle = {
+    height: "100%",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 14,
+    minWidth: 0,
+  };
+
   return (
     <form onSubmit={handleSubmit} className="admin-form admin-stack--lg">
-      <div className="admin-card">
-        <div className="admin-card__pad">
-          <h2 className="admin-h2">Контактная информация</h2>
-          <div className="admin-stack">
-            {contactFields.map((field) => (
-              <div key={field.key} className="admin-field">
-                <label className="admin-label">{field.label}</label>
-                <input
-                  type={field.type}
-                  value={values[field.key] || ""}
-                  onChange={(e) =>
-                    setValues({ ...values, [field.key]: e.target.value })
-                  }
-                  className="admin-input"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="admin-card">
-        <div className="admin-card__pad">
-          <h2 className="admin-h2">Доставка</h2>
-          <div className="admin-stack">
-            <div className="admin-grid-2">
-              {deliveryFields.map((field) => (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: 16,
+          alignItems: "stretch",
+        }}
+        className="settings-main-grid"
+      >
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Контактная информация</h2>
+            <div className="admin-stack" style={{ minWidth: 0 }}>
+              {contactFields.map((field) => (
                 <div key={field.key} className="admin-field">
                   <label className="admin-label">{field.label}</label>
                   <input
                     type={field.type}
-                    min={0}
                     value={values[field.key] || ""}
                     onChange={(e) =>
                       setValues({ ...values, [field.key]: e.target.value })
                     }
                     className="admin-input"
                   />
-                  {field.hint && (
-                    <span className="admin-hint">{field.hint}</span>
-                  )}
                 </div>
               ))}
             </div>
-            <p className="admin-hint">
-              Эти значения показываются покупателю в корзине при оформлении
-              заказа.
-            </p>
           </div>
         </div>
-      </div>
 
-      <div className="admin-card">
-        <div className="admin-card__pad">
-          <h2 className="admin-h2">Цены на макулатуру (₽/кг)</h2>
-          <div className="admin-stack">
-            <div className="admin-grid-2">
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Цены на макулатуру (₽/кг)</h2>
+            <div className="admin-grid-2" style={{ minWidth: 0 }}>
               {wastepaperFields.map((field) => {
                 const key = wpRateSettingKey(field.id);
                 return (
@@ -188,47 +174,72 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                 );
               })}
             </div>
-            <p className="admin-hint">
+            <p className="admin-hint" style={{ marginTop: "auto" }}>
               Эти цены показываются на главной странице и на странице «Приём
-              макулатуры» (в тарифах и калькуляторе). Изменения применяются
-              сразу после сохранения.
+              макулатуры» (в тарифах и калькуляторе).
             </p>
           </div>
         </div>
-      </div>
 
-      <div className="admin-card" style={{ marginTop: 16 }}>
-        <div className="admin-card__head">
-          <h3 className="admin-card__title">Уведомления в Telegram</h3>
-        </div>
-        <div className="admin-card__pad" style={{ display: "grid", gap: 10 }}>
-          <div style={{ color: "var(--adm-muted)", fontSize: 13 }}>
-            Бот берёт токен и chat_id из переменных окружения
-            <code style={{ margin: "0 4px" }}>TELEGRAM_BOT_TOKEN</code> и
-            <code style={{ margin: "0 4px" }}>TELEGRAM_ADMIN_CHAT_ID</code>.
-            Если уведомления перестали приходить — нажмите кнопку, чтобы
-            проверить подключение и увидеть точную ошибку.
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Доставка</h2>
+            <div className="admin-grid-2" style={{ minWidth: 0 }}>
+              {deliveryFields.map((field) => (
+                <div key={field.key} className="admin-field">
+                  <label className="admin-label">{field.label}</label>
+                  <input
+                    type={field.type}
+                    min={0}
+                    value={values[field.key] || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, [field.key]: e.target.value })
+                    }
+                    className="admin-input"
+                  />
+                  {field.hint && (
+                    <span className="admin-hint">{field.hint}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="admin-hint" style={{ marginTop: "auto" }}>
+              Эти значения показываются покупателю в корзине при оформлении
+              заказа.
+            </p>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="admin-btn admin-btn--primary"
-              disabled={testingTg}
-              onClick={testTelegram}
-            >
-              {testingTg ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              Проверить Telegram
-            </button>
-            {tgResult?.ok && (
-              <span className="admin-success">
-                <CheckCircle size={16} /> Отправлено! Проверьте чат.
-              </span>
-            )}
-            {tgResult && !tgResult.ok && (
-              <span className="wh-form-error" style={{ marginTop: 0 }}>
-                {tgResult.error}
-              </span>
-            )}
+        </div>
+
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Проверка уведомлений</h2>
+            <div style={{ color: "var(--adm-muted)", fontSize: 13, overflowWrap: "anywhere" }}>
+              Бот берёт токен и chat_id из переменных окружения{" "}
+              <code>TELEGRAM_BOT_TOKEN</code> и{" "}
+              <code>TELEGRAM_ADMIN_CHAT_ID</code>. Если уведомления перестали
+              приходить — нажмите кнопку, чтобы проверить подключение.
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: "auto" }}>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                disabled={testingTg}
+                onClick={testTelegram}
+              >
+                {testingTg ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                Проверить Telegram
+              </button>
+              {tgResult?.ok && (
+                <span className="admin-success">
+                  <CheckCircle size={16} /> Отправлено! Проверьте чат.
+                </span>
+              )}
+              {tgResult && !tgResult.ok && (
+                <span className="wh-form-error" style={{ marginTop: 0, maxWidth: "100%", overflowWrap: "anywhere" }}>
+                  {tgResult.error}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -255,6 +266,14 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           </span>
         )}
       </div>
+
+      <style jsx>{`
+        @media (max-width: 900px) {
+          .settings-main-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </form>
   );
 }
