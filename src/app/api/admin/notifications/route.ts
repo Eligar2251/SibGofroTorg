@@ -118,7 +118,8 @@ export async function GET() {
 
     const paidByDeal = new Map<string, number>();
     for (const payment of paymentsRes.data || []) {
-      if (payment.exclude_from_balance) continue;
+      // Платёж «вне баланса» не влияет на банк, но закрывает документ.
+      // Поэтому для уведомления «отпущено без оплаты» учитываем его как оплату.
       const dealIds = Array.isArray(payment.deal_ids) ? payment.deal_ids.map(String) : [];
       if (dealIds.length === 0) continue;
       const share = (Number(payment.amount) || 0) / dealIds.length;

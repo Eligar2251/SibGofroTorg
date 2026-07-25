@@ -120,7 +120,11 @@ export function SettingsForm({ settings }: SettingsFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="admin-form admin-stack--lg">
+    <form
+      onSubmit={handleSubmit}
+      className="admin-form admin-stack--lg"
+      style={{ width: "100%", maxWidth: "none" }}
+    >
       <div
         style={{
           display: "grid",

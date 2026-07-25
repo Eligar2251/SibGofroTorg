@@ -255,12 +255,16 @@ export function getBankSummary(
   };
 }
 
-/** Оплачено по каждому заказу (id → сумма оплаченных входящих платежей) */
+/**
+ * Оплачено по каждому заказу (id → сумма проведённых входящих платежей).
+ * Платежи «вне баланса» тоже закрывают документ, но не влияют на банк/кассу
+ * в getBankSummary. Так старые/архивные оплаты не создают ложный долг и
+ * экстренные уведомления «отпущено без оплаты».
+ */
 export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const p of payments) {
     if (!p.isPaid || p.direction !== "incoming") continue;
-    if (p.excludeFromBalance) continue;
     if (!p.dealIds || p.dealIds.length === 0) continue;
     
     const share = p.amount / p.dealIds.length;
@@ -271,12 +275,14 @@ export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
   return map;
 }
 
-/** Оплачено по каждому поступлению (id → сумма оплаченных исходящих) */
+/**
+ * Оплачено по каждому поступлению (id → сумма проведённых исходящих).
+ * «Вне баланса» закрывает документ, но не меняет текущий банк/кассу.
+ */
 export function getReceiptPaidMap(payments: BankPayment[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const p of payments) {
     if (!p.isPaid || p.direction !== "outgoing") continue;
-    if (p.excludeFromBalance) continue;
     if (!p.receiptIds || p.receiptIds.length === 0) continue;
     
     const share = p.amount / p.receiptIds.length;

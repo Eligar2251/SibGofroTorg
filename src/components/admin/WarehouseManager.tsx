@@ -2048,9 +2048,13 @@ export function WarehouseManager({
                         {!p.isPaid && (
                           <span className="bank-pay__wait">ожидается</span>
                         )}
-                        {p.entryKind === "payment" && p.isPaid && p.excludeFromBalance && (
-                          <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>
-                            архив (вне баланса)
+                        {p.entryKind === "payment" && p.excludeFromBalance && (
+                          <span
+                            className="admin-badge admin-badge--muted"
+                            style={{ marginLeft: 6 }}
+                            title="Платёж закрывает документ, но не влияет на текущий банк/кассу"
+                          >
+                            вне баланса
                           </span>
                         )}
                       </div>

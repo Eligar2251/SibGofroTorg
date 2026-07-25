@@ -573,7 +573,7 @@ export function PaymentForm({
                     checked={excludeFromBalance}
                     onChange={(e) => setExcludeFromBalance(e.target.checked)}
                   />
-                  <span>Не учитывать в балансе (старый архивный платеж)</span>
+                  <span>Вне баланса: закрывает документ, но не влияет на банк/кассу</span>
                 </label>
               </div>
 
@@ -978,7 +978,7 @@ export function PaymentControls({
 
               <label className="admin-check">
                 <input type="checkbox" checked={editExclude} onChange={(e) => setEditExclude(e.target.checked)} />
-                <span>Исключить из баланса (старый платеж)</span>
+                <span>Вне баланса: закрывает документ, но не влияет на банк/кассу</span>
               </label>
 
               {error && <div className="wh-form-error">{error}</div>}

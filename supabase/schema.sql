@@ -518,6 +518,8 @@ CREATE TABLE IF NOT EXISTS bank_payments (
   vat_amount NUMERIC DEFAULT 0,
   is_paid BOOLEAN DEFAULT FALSE,
   paid_at TEXT,
+  -- TRUE = платёж закрывает связанный документ, но не влияет на текущий банк/кассу
+  -- (архивная/старая оплата, чтобы не было ложных долгов и уведомлений).
   exclude_from_balance BOOLEAN DEFAULT FALSE,
   comment TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -526,6 +528,7 @@ CREATE TABLE IF NOT EXISTS bank_payments (
 CREATE INDEX IF NOT EXISTS idx_payments_direction ON bank_payments(direction);
 CREATE INDEX IF NOT EXISTS idx_payments_paid ON bank_payments(is_paid);
 CREATE INDEX IF NOT EXISTS idx_payments_date ON bank_payments(date);
+CREATE INDEX IF NOT EXISTS idx_payments_exclude_from_balance ON bank_payments(exclude_from_balance);
 CREATE TRIGGER trg_payments_updated BEFORE UPDATE ON bank_payments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
