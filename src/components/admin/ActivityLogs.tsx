@@ -3,6 +3,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Clock,
   Search,
@@ -109,6 +110,10 @@ const detailKeyText: Record<string, string> = {
   isPaid: "Проведён",
   excludeFromBalance: "Вне баланса",
   shippedItems: "Отгруженные позиции",
+  quantity: "Количество",
+  productId: "Товар",
+  name: "Название",
+  sku: "Артикул",
 };
 
 function fmtMoney(value: unknown): string {
@@ -156,6 +161,19 @@ function fmtDetailValue(key: string, value: any): string {
   return String(value);
 }
 
+function formatShippedItems(value: any): string {
+  if (!Array.isArray(value) || value.length === 0) return "нет";
+  return value
+    .map((item, idx) => {
+      if (!item || typeof item !== "object") return String(item);
+      const qty = item.quantity ?? item.shippedQty ?? item.qty ?? 0;
+      const name = item.name || item.productName || item.sku || "товар";
+      const productId = item.productId ? ` (ID товара: ${item.productId})` : "";
+      return `${idx + 1}) ${name}${productId} — ${Number(qty) || 0} шт.`;
+    })
+    .join(" ");
+}
+
 function formatDetails(details: Record<string, any>): string {
   if (!details || Object.keys(details).length === 0) return "";
   const parts: string[] = [];
@@ -178,13 +196,32 @@ function formatDetails(details: Record<string, any>): string {
   for (const [key, value] of Object.entries(details)) {
     if (skip.has(key)) continue;
     const label = detailKeyText[key] || key;
+    if (key === "shippedItems") {
+      parts.push(`${label}: ${formatShippedItems(value)}`);
+      continue;
+    }
     parts.push(`${label}: ${fmtDetailValue(key, value)}.`);
   }
 
   return parts.join(" ");
 }
 
-export function ActivityLogs() {
+function getEntityHref(log: LogEntry, adminPath: string): string | null {
+  const id = String(log.entityId || "").trim();
+  if (!id) return null;
+  if (log.entityType === "order") return `/${adminPath}/orders?status=all&q=${encodeURIComponent(id)}`;
+  if (log.entityType === "deal") return `/${adminPath}/warehouse?tab=deals&deal=${encodeURIComponent(id)}`;
+  if (log.entityType === "payment") return `/${adminPath}/warehouse?tab=bank&payment=${encodeURIComponent(id)}`;
+  if (log.entityType === "receipt") return `/${adminPath}/warehouse?tab=receipts&receipt=${encodeURIComponent(id)}`;
+  if (log.entityType === "product") return `/${adminPath}/products/${encodeURIComponent(id)}`;
+  if (log.entityType === "delivery" || log.entityType === "transport") return `/${adminPath}/deliveries`;
+  if (log.entityType === "counterparty") return `/${adminPath}/warehouse?tab=counterparties`;
+  if (log.entityType === "salary") return `/${adminPath}/warehouse?tab=salaries`;
+  if (log.entityType === "cash-collection") return `/${adminPath}/warehouse?tab=bank`;
+  return null;
+}
+
+export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -249,35 +286,35 @@ export function ActivityLogs() {
 
   return (
     <div className="admin-stack">
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap", overflowX: "auto", paddingBottom: 4 }}>
+        <div style={{ position: "relative", flex: "1 1 360px", minWidth: 260 }}>
           <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
           <input
             className="admin-input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск: пользователь, действие, объект, ID, детали..."
+            placeholder="Поиск: пользователь, действие, ID операции..."
             style={{ paddingLeft: 32 }}
           />
         </div>
-        <select className="admin-select" value={filterAdmin} onChange={(e) => setFilterAdmin(e.target.value)} style={{ minWidth: 150 }}>
-          <option value="">Все пользователи</option>
+        <select className="admin-select" value={filterAdmin} onChange={(e) => setFilterAdmin(e.target.value)} style={{ width: 150, flex: "0 0 150px" }}>
+          <option value="">Пользователь: все</option>
           {admins.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
-        <select className="admin-select" value={filterAction} onChange={(e) => setFilterAction(e.target.value)} style={{ minWidth: 150 }}>
-          <option value="">Все действия</option>
+        <select className="admin-select" value={filterAction} onChange={(e) => setFilterAction(e.target.value)} style={{ width: 145, flex: "0 0 145px" }}>
+          <option value="">Действие: все</option>
           {Object.entries(actionLabels).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
-        <select className="admin-select" value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)} style={{ minWidth: 150 }}>
-          <option value="">Все объекты</option>
+        <select className="admin-select" value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)} style={{ width: 145, flex: "0 0 145px" }}>
+          <option value="">Объект: все</option>
           {Object.entries(entityLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <button className="admin-btn admin-btn--ghost" onClick={() => loadLogs(true)} disabled={refreshing}>
+        <button className="admin-btn admin-btn--ghost" onClick={() => loadLogs(true)} disabled={refreshing} style={{ flex: "0 0 auto" }}>
           {refreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           Обновить
         </button>
-        <span className="admin-muted" style={{ fontSize: 12 }}>
-          Автообновление каждые 5 сек.
+        <span className="admin-muted" style={{ fontSize: 12, flex: "0 0 auto" }}>
+          авто 5 сек.
         </span>
       </div>
 
@@ -312,6 +349,7 @@ export function ActivityLogs() {
                   const meta = actionLabels[log.action] || { label: log.action || "Действие", color: "admin-badge--muted", icon: Edit2 };
                   const Icon = meta.icon;
                   const details = formatDetails(log.details);
+                  const entityHref = getEntityHref(log, adminPath);
                   return (
                     <tr key={log.id}>
                       <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{fmtDateTime(log.createdAt)}</td>
@@ -331,8 +369,14 @@ export function ActivityLogs() {
                           {entityLabels[log.entityType] || log.entityType || "—"}
                         </div>
                       </td>
-                      <td style={{ fontSize: 11, maxWidth: 160, overflowWrap: "anywhere" }}>
-                        {log.entityId || "—"}
+                      <td style={{ fontSize: 11, maxWidth: 170, overflowWrap: "anywhere" }}>
+                        {entityHref ? (
+                          <Link href={entityHref} prefetch={false} className="bank-pay__doc">
+                            {log.entityId || "Открыть"}
+                          </Link>
+                        ) : (
+                          log.entityId || "—"
+                        )}
                       </td>
                       <td style={{ minWidth: 260 }}>
                         <div style={{ fontSize: 13, fontWeight: 600 }}>{log.entityLabel || "—"}</div>
