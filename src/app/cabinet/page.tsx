@@ -322,16 +322,19 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
             </div>
           )}
 
-          {isOrder && (
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+          {/* Редактирование состава — только для заявок-заказов (есть позиции).
+              Отмена/удаление доступна для ЛЮБОЙ заявки (заказ или запрос на уточнение)
+              по единой логике. */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+            {isOrder && (
               <button type="button" className="btn-primary" onClick={startEdit} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
                 <Package size={14} /> <span>Изменить / добавить товар</span>
               </button>
-              <button type="button" className="btn-back" onClick={cancelOrder} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", border: "1.5px solid #ef4444", color: "#dc2626", background: "#fff", borderRadius: 8, fontWeight: 700 }}>
-                <X size={14} /> <span>Отменить заказ</span>
-              </button>
-            </div>
-          )}
+            )}
+            <button type="button" className="btn-back" onClick={cancelOrder} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", border: "1.5px solid #ef4444", color: "#dc2626", background: "#fff", borderRadius: 8, fontWeight: 700 }}>
+              <X size={14} /> <span>Отменить заявку</span>
+            </button>
+          </div>
 
           {editing && (
             <div style={{ marginTop: 16, border: "1px solid var(--border)", borderRadius: 14, padding: 14, background: "var(--bg-card)" }}>

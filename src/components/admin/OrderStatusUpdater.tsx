@@ -109,6 +109,18 @@ export function OrderStatusUpdater({
             )}
             В работу
           </button>
+          {/* Отклонить — единая логика для любой заявки
+              (заказ или запрос на уточнение): просто меняет статус. */}
+          <button
+            type="button"
+            onClick={() => updateStatus("rejected")}
+            disabled={saving}
+            className="admin-status__btn admin-status__btn--outline-red"
+            title="Отклонить заявку"
+          >
+            <XCircle size={14} />
+            Отклонить
+          </button>
         </div>
       )}
 

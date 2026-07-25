@@ -4,6 +4,7 @@ import { updateOrderStatus, deleteOrder } from "@/lib/supabase-queries";
 import { convertOrderToDeal } from "@/lib/warehouse";
 import { requireAdminApi, hasPermission } from "@/lib/auth";
 import { logAdminAction } from "@/lib/activity-log";
+import { getAdminDb } from "@/lib/supabase";
 
 export async function PATCH(
   request: NextRequest,
@@ -18,10 +19,26 @@ export async function PATCH(
       return NextResponse.json({ error: "Статус обязателен" }, { status: 400 });
     }
     const oldStatus = body.oldStatus || "";
+
+    // Определяем тип заявки, чтобы «В работу» работал единообразно:
+    // заявка-заказ (есть позиции) → создаётся сделка в учёте,
+    // запрос на уточнение (без позиций) → просто меняет статус.
+    const db = getAdminDb();
+    const { data: orderRow } = await db
+      .from("orders")
+      .select("type, items")
+      .eq("id", id)
+      .maybeSingle();
+
+    const isOrderWithItems =
+      orderRow?.type === "order" &&
+      Array.isArray(orderRow.items) &&
+      orderRow.items.length > 0;
+
     await updateOrderStatus(id, body.status, body.closeReason ?? null);
 
     let deal: Awaited<ReturnType<typeof convertOrderToDeal>> | undefined;
-    if (body.status === "in_progress") {
+    if (body.status === "in_progress" && isOrderWithItems) {
       try {
         deal = await convertOrderToDeal(id);
       } catch (convertError) {
