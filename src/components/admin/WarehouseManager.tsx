@@ -261,23 +261,37 @@ export function WarehouseManager({
     [allCounterparties]
   );
 
-  // Непроведённые исходящие платежи: именно они попадают в уведомление
-  // «Нужно оплатить поставщикам». Платежи «вне баланса» исключаем полностью:
-  // они не относятся к текущему банку/кассе.
-  const pendingSupplierPayments = useMemo(
-    () =>
-      payments
-        .filter(
-          (p) =>
-            !p.isPaid &&
-            p.direction === "outgoing" &&
-            (!p.dealIds || p.dealIds.length === 0) &&
-            !p.excludeFromBalance &&
-            p.amount > 0
+  // Непроведённые исходящие платежи поставщикам показываем только как
+  // срочное напоминание, когда они связаны с уже отпущенным заказом.
+  // Обычные долги поставщикам остаются в списке платежей, но не всплывают
+  // отдельным красным блоком.
+  const pendingSupplierPayments = useMemo(() => {
+    const releasedDealIds = new Set(
+      deals.filter((d) => d.status === "completed").map((d) => d.id)
+    );
+    const receiptIdsForReleasedDeals = new Set(
+      receipts
+        .filter((r) =>
+          (r.linkedDealIds || []).some((dealId) => releasedDealIds.has(String(dealId)))
         )
-        .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number),
-    [payments]
-  );
+        .map((r) => r.id)
+    );
+
+    return payments
+      .filter((p) => {
+        if (p.isPaid || p.direction !== "outgoing" || p.excludeFromBalance || p.amount <= 0) {
+          return false;
+        }
+        const linkedToReleasedDeal = (p.dealIds || []).some((dealId) =>
+          releasedDealIds.has(String(dealId))
+        );
+        const linkedToReceiptForReleasedDeal = (p.receiptIds || []).some((receiptId) =>
+          receiptIdsForReleasedDeals.has(String(receiptId))
+        );
+        return linkedToReleasedDeal || linkedToReceiptForReleasedDeal;
+      })
+      .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
+  }, [deals, payments, receipts]);
 
   // Сданная касса — отчёт (по дате убывания) и итог
   const collectionsSorted = useMemo(

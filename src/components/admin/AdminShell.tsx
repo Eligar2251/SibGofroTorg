@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
+import { AdminNotifications } from "./AdminNotifications";
 
 export function AdminShell({
   children,
@@ -143,6 +144,7 @@ export function AdminShell({
       </div>
 
       <div className="admin-content">
+        <AdminNotifications adminPath={adminPath} />
         <main className="admin-main">{children}</main>
       </div>
     </div>
