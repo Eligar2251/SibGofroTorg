@@ -40,19 +40,11 @@ const paymentLabels: Record<string, { token: string; text: string }> = {
   invoice: { token: "receipt", text: "Счет" },
 };
 
-  const filterOptions = [
+const filterOptions = [
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
-  { value: "completed", label: "Отработанные" },
   { value: "rejected", label: "Отменённые" },
   { value: "all", label: "Все" },
-];
-
-const typeOptions = [
-  { value: "all", label: "Все заявки", token: "clipboard" },
-  { value: "order", label: "Заявки-заказы", token: "box" },
-  { value: "inquiry", label: "На уточнение", token: "chat" },
-  { value: "wastepaper", label: "За макулатуру", token: "recycle" },
 ];
 
 function formatDate(raw: any): string {
@@ -157,12 +149,10 @@ export default async function AdminOrdersPage({
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 260 }}>
           <form method="GET" action={hrefBase} style={{ display: "flex", gap: 8 }}>
             <input type="hidden" name="status" value={activeFilter} />
-            <input type="hidden" name="type" value={activeType} />
-            <input type="hidden" name="sort" value={activeSort} />
             <input
               type="text"
               name="q"
@@ -172,51 +162,19 @@ export default async function AdminOrdersPage({
             />
             <button type="submit" className="admin-btn admin-btn--navy">Найти</button>
             {searchQuery && (
-              <Link href={`${hrefBase}?status=${activeFilter}&type=${activeType}&sort=${activeSort}`} className="admin-btn admin-btn--ghost" prefetch={false}>
+              <Link href={`${hrefBase}?status=${activeFilter}`} className="admin-btn admin-btn--ghost" prefetch={false}>
                 Сбросить
               </Link>
             )}
           </form>
         </div>
-
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[
-            { value: "new_first", label: "Новые сверху" },
-            { value: "old_first", label: "Старые сверху" },
-            { value: "status", label: "По статусу" },
-            { value: "type", label: "По типу" },
-          ].map((s) => (
-            <Link
-              key={s.value}
-              href={`${hrefBase}?status=${activeFilter}&type=${activeType}&sort=${s.value}${qSuffix}`}
-              className={`admin-filter${activeSort === s.value ? " admin-filter--active" : ""}`}
-              prefetch={false}
-            >
-              {s.label}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      <div className="admin-filters" style={{ marginBottom: 10 }}>
-        {typeOptions.map((t) => (
-          <Link
-            key={t.value}
-            href={`${hrefBase}?status=${activeFilter}&type=${t.value}&sort=${activeSort}${qSuffix}`}
-            className={`admin-filter${activeType === t.value ? " admin-filter--active" : ""}`}
-            prefetch={false}
-          >
-            <GlyphIcon value={t.token} size={13} />
-            {t.label}
-          </Link>
-        ))}
       </div>
 
       <div className="admin-filters">
         {filterOptions.map((opt) => (
           <Link
             key={opt.value}
-            href={`${hrefBase}?status=${opt.value}&type=${activeType}&sort=${activeSort}${qSuffix}`}
+            href={`${hrefBase}?status=${opt.value}${qSuffix}`}
             className={`admin-filter${activeFilter === opt.value ? " admin-filter--active" : ""}`}
             prefetch={false}
           >

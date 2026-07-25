@@ -238,15 +238,18 @@ export function getBankSummary(
       expectedOut += s.amount;
     }
   }
-  // Инкассация: весь остаток наличных уходит в банк.
+  // Сдача кассы: деньги уходят из текущей кассы в отдельный журнал сдач.
+  // В безналичный банковский счёт их НЕ прибавляем.
+  let collectedCash = 0;
   for (const c of collections) {
     cashBalance -= c.amount;
-    bankBalance += c.amount;
+    collectedCash += c.amount;
   }
   return {
     balance: bankBalance + cashBalance,
     bankBalance,
     cashBalance,
+    collectedCash,
     expectedIn,
     expectedOut,
   };

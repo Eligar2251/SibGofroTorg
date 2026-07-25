@@ -298,14 +298,15 @@ export function WarehouseManager({
       return;
     }
     const amount = Math.round(bankSummary.cashBalance);
-    if (!confirm(`Сдать кассу и списать ${fmt(amount)} ₽ наличными в банк?`)) return;
+    if (!confirm(`Сдать кассу и списать ${fmt(amount)} ₽ из текущей кассы в журнал сдач?`)) return;
+    const note = window.prompt("Комментарий к сдаче кассы (необязательно)", "") || "";
     setCollecting(true);
     setCollectError("");
     try {
       const res = await fetch("/api/admin/warehouse/cash-collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: null }),
+        body: JSON.stringify({ note: note.trim() || null }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Не удалось сдать кассу");
@@ -1855,7 +1856,7 @@ export function WarehouseManager({
               <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
                 <div className="admin-muted" style={{ fontSize: 13 }}>
                   Кнопка «Сдать кассу» находится в верхнем блоке банка рядом с остатком наличных.
-                  При сдаче весь остаток наличных списывается из кассы и добавляется на расчётный счёт.
+                  При сдаче весь остаток наличных списывается из текущей кассы и фиксируется здесь отдельной записью с датой и комментарием. В безналичный счёт сумма не прибавляется.
                 </div>
                 {collectionsSorted.length === 0 ? (
                   <div className="admin-empty" style={{ padding: 16 }}>

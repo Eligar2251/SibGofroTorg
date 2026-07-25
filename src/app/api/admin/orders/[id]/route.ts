@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateOrderStatus, deleteOrder } from "@/lib/supabase-queries";
 import { convertOrderToDeal, returnOrderFromWork } from "@/lib/warehouse";
-import { requireAdminApi, hasPermission } from "@/lib/auth";
+import { requireAdminApi } from "@/lib/auth";
 import { logAdminAction } from "@/lib/activity-log";
 import { getAdminDb } from "@/lib/supabase";
 
@@ -79,10 +79,6 @@ export async function DELETE(
 ) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
-
-  if (!hasPermission(auth, "delete")) {
-    return NextResponse.json({ error: "Нет прав на удаление" }, { status: 403 });
-  }
 
   try {
     const { id } = await params;

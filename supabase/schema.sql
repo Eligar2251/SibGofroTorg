@@ -564,9 +564,10 @@ CREATE INDEX IF NOT EXISTS idx_salaries_paid ON salaries(is_paid);
 CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
--- 22.1. СДАЧА КАССЫ (инкассация)
--- Списание всего остатка наличных (кассы) в банк.
--- Каждая запись = одна сданная смена (дата + сумма).
+-- 22.1. СДАЧА КАССЫ
+-- Списание всего остатка наличных из кассы в отдельный журнал сдач.
+-- В безналичный банковский счёт эти суммы не прибавляются.
+-- Каждая запись = одна сданная смена (дата + сумма + примечание).
 -- =========================================================
 CREATE TABLE IF NOT EXISTS cash_collections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
