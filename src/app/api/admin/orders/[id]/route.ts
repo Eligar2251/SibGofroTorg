@@ -1,7 +1,7 @@
 // src/app/api/admin/orders/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { updateOrderStatus, deleteOrder } from "@/lib/supabase-queries";
-import { convertOrderToDeal } from "@/lib/warehouse";
+import { convertOrderToDeal, returnOrderFromWork } from "@/lib/warehouse";
 import { requireAdminApi, hasPermission } from "@/lib/auth";
 import { logAdminAction } from "@/lib/activity-log";
 import { getAdminDb } from "@/lib/supabase";
@@ -21,12 +21,12 @@ export async function PATCH(
     const oldStatus = body.oldStatus || "";
 
     // Определяем тип заявки, чтобы «В работу» работал единообразно:
-    // заявка-заказ (есть позиции) → создаётся сделка в учёте,
+    // заявка-заказ (есть позиции) → создаётся сделка в учёте и платёж,
     // запрос на уточнение (без позиций) → просто меняет статус.
     const db = getAdminDb();
     const { data: orderRow } = await db
       .from("orders")
-      .select("type, items")
+      .select("type, items, status, deal_id")
       .eq("id", id)
       .maybeSingle();
 
@@ -35,7 +35,15 @@ export async function PATCH(
       Array.isArray(orderRow.items) &&
       orderRow.items.length > 0;
 
-    await updateOrderStatus(id, body.status, body.closeReason ?? null);
+    if (body.status === "new" && body.removeFromWork) {
+      const rollback = await returnOrderFromWork(id);
+      await logAdminAction(
+        auth.displayName, auth.role, "status_change", "order", id,
+        `Заявка #${id.slice(0, 8)}: убрана из работы`,
+        { oldStatus, newStatus: "new", rollback }
+      );
+      return NextResponse.json({ success: true, rollback });
+    }
 
     let deal: Awaited<ReturnType<typeof convertOrderToDeal>> | undefined;
     if (body.status === "in_progress" && isOrderWithItems) {
@@ -43,12 +51,14 @@ export async function PATCH(
         deal = await convertOrderToDeal(id);
       } catch (convertError) {
         console.error("Convert order to deal error:", convertError);
-        return NextResponse.json({
-          success: true,
-          dealError: convertError instanceof Error ? convertError.message : "Не удалось передать в учёт",
-        });
+        return NextResponse.json(
+          { error: convertError instanceof Error ? convertError.message : "Не удалось передать в учёт" },
+          { status: 500 }
+        );
       }
     }
+
+    await updateOrderStatus(id, body.status, body.closeReason ?? null);
 
     await logAdminAction(
       auth.displayName, auth.role, "status_change", "order", id,

@@ -14,7 +14,7 @@ const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
   completed: "Проведена",
-  rejected: "Отклонена",
+  rejected: "Отменена",
 };
 
 const statusBadge: Record<string, string> = {
@@ -44,6 +44,7 @@ const paymentLabels: Record<string, { token: string; text: string }> = {
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
   { value: "completed", label: "Отработанные" },
+  { value: "rejected", label: "Отменённые" },
   { value: "all", label: "Все" },
 ];
 
@@ -360,7 +361,7 @@ export default async function AdminOrdersPage({
 
                       {order.closeReason && (
                         <div className="admin-order__close-reason">
-                          <strong style={{ display: "block", marginBottom: 4 }}>Причина закрытия / отклонения:</strong>
+                          <strong style={{ display: "block", marginBottom: 4 }}>Причина закрытия / отмены:</strong>
                           {order.closeReason}
                         </div>
                       )}

@@ -98,6 +98,16 @@ export async function POST(request: NextRequest) {
     const deliveryAddress = body.deliveryAddress
       ? clip(body.deliveryAddress, 300)
       : null;
+    const hasDelivery = Boolean(body.hasDelivery);
+    const deliveryCost = hasDelivery
+      ? Math.max(0, Number(body.deliveryCost) || 0)
+      : 0;
+    const deliveryType = hasDelivery
+      ? body.deliveryType === "paid" || deliveryCost > 0
+        ? "paid"
+        : "free"
+      : null;
+    const deliveryNote = body.deliveryNote ? clip(body.deliveryNote, 300) : null;
 
     if (isLegal) {
       if (!companyName) {
@@ -199,6 +209,10 @@ export async function POST(request: NextRequest) {
       bik,
       correspondentAccount,
       deliveryAddress,
+      hasDelivery,
+      deliveryType,
+      deliveryCost,
+      deliveryNote,
     };
 
     if (typeRaw === "order" && Array.isArray(body.items)) {

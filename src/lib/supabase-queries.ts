@@ -515,6 +515,10 @@ export async function createOrder(data: Record<string, any>): Promise<{ id: stri
     bik: data.bik || null,
     correspondent_account: data.correspondentAccount || null,
     delivery_address: data.deliveryAddress || null,
+    has_delivery: data.hasDelivery ?? false,
+    delivery_type: data.deliveryType || null,
+    delivery_cost: data.deliveryCost ?? 0,
+    delivery_note: data.deliveryNote || null,
   };
   const { data: result, error } = await db.from("orders").insert(payload).select("id").single();
   if (error) throw error;
@@ -575,7 +579,18 @@ export async function deleteOrder(id: string): Promise<void> {
           Array.isArray(p.deal_ids) && p.deal_ids.includes(deal.id)
         );
         for (const payment of dealPayments) {
-          if (!payment.is_paid) {
+          const isAutoOrderPayment =
+            order.payment_id && String(payment.id) === String(order.payment_id);
+          const dealLinks = Array.isArray(payment.deal_ids) ? payment.deal_ids : [];
+          const receiptLinks = Array.isArray(payment.receipt_ids) ? payment.receipt_ids : [];
+          const onlyThisDeal =
+            dealLinks.length === 1 &&
+            String(dealLinks[0]) === String(deal.id) &&
+            receiptLinks.length === 0;
+          // Автоматический платёж из заявки (в т.ч. наличный, уже отмеченный
+          // оплаченным) удаляем вместе с заявкой. Ручные оплаченные платежи
+          // не трогаем.
+          if (!payment.is_paid || (isAutoOrderPayment && onlyThisDeal)) {
             await db.from("bank_payments").delete().eq("id", payment.id);
           }
         }

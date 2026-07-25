@@ -46,7 +46,7 @@ const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
   completed: "Проведена",
-  rejected: "Отклонена",
+  rejected: "Отменена",
 };
 
 const statusColors: Record<string, string> = {
@@ -348,7 +348,7 @@ export default async function AdminDashboard() {
               status: "completed",
             },
             {
-              label: "Отклонены",
+              label: "Отменены",
               count: rejectedOrdersCount,
               icon: <XCircle size={16} />,
               color: "#ef4444",

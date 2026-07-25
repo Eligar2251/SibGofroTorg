@@ -31,7 +31,7 @@ import {
 import {
   type BankPayment,
   getBankSummary,
-  getCounterpartyBalances,
+  getPendingPaymentCounterpartyBalances,
   getDealPaidMap,
   getReceiptPaidMap,
   type WarehouseStockRow,
@@ -251,8 +251,8 @@ export function WarehouseManager({
   );
   
   const allCounterparties = useMemo(
-    () => getCounterpartyBalances(deals, receipts, payments),
-    [deals, receipts, payments]
+    () => getPendingPaymentCounterpartyBalances(payments),
+    [payments]
   );
 
   // Filter counterparties to only show those with positive debt (what is owed)
@@ -412,6 +412,7 @@ export function WarehouseManager({
     let inSum = 0;
     let outSum = 0;
     for (const p of bankList) {
+      if (p.entryKind === "payment" && p.excludeFromBalance) continue;
       if (p.direction === "incoming") inSum += p.amount;
       else outSum += p.amount;
     }
@@ -1729,7 +1730,7 @@ export function WarehouseManager({
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
-                          {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
+                          {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
                       <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
@@ -1754,7 +1755,7 @@ export function WarehouseManager({
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
-                          {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
+                          {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
                       <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
