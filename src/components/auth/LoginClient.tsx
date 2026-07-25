@@ -91,6 +91,8 @@ export function LoginClient() {
             <div>
               <label className="checkout-label">Телефон *</label>
               <input
+                id="login-phone"
+                name="phone"
                 type="tel"
                 className="form-input"
                 value={phone}
@@ -104,6 +106,8 @@ export function LoginClient() {
             <div>
               <label className="checkout-label">Пароль *</label>
               <input
+                id="login-password"
+                name="password"
                 type="password"
                 className="form-input"
                 value={password}

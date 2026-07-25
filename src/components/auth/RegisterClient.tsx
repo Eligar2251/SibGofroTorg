@@ -103,6 +103,8 @@ export function RegisterClient() {
             <div>
               <label className="checkout-label">Имя</label>
               <input
+                id="reg-name"
+                name="name"
                 type="text"
                 className="form-input"
                 value={name}
@@ -114,6 +116,8 @@ export function RegisterClient() {
             <div>
               <label className="checkout-label">Телефон *</label>
               <input
+                id="reg-phone"
+                name="phone"
                 type="tel"
                 className="form-input"
                 value={phone}
@@ -127,6 +131,8 @@ export function RegisterClient() {
             <div>
               <label className="checkout-label">Пароль *</label>
               <input
+                id="reg-password"
+                name="password"
                 type="password"
                 className="form-input"
                 value={password}
@@ -140,6 +146,8 @@ export function RegisterClient() {
             <div>
               <label className="checkout-label">Повторите пароль *</label>
               <input
+                id="reg-password2"
+                name="password2"
                 type="password"
                 className="form-input"
                 value={password2}

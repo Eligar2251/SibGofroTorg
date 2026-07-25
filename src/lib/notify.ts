@@ -5,12 +5,40 @@
 //   символов), иначе длинные заявки молча не доходят;
 // — не падает при ошибке сети, но подробно логирует причину,
 //   чтобы «пропавшие» уведомления было легко диагностировать.
+// — ключи берутся ПРЕЖДЕ всего из переменных окружения
+//   (process.env), а getSettings() используется только как
+//   необязательный fallback. Это критично: getSettings()
+//   использует unstable_cache и при вызове вне контекста
+//   запроса (fire-and-forget уведомления) может упасть, из-за
+//   чего сообщение молча не отправлялось бы.
 // =========================================================
 
 import { getSettings } from "./supabase-queries";
 
 const TELEGRAM_LIMIT = 4000; // с запасом меньше лимита 4096
 const MAX_LIMIT = 4000;
+
+/**
+ * Чтение переменной окружения через скобочную нотацию.
+ * Это гарантирует runtime-доступ к process.env даже если сборщик
+ * (Next.js) попытался бы статически подставить/inline значение.
+ */
+function env(key: string): string | undefined {
+  const v = process.env[key];
+  return v && v.trim() ? v.trim() : undefined;
+}
+
+/** Безопасное чтение настройки из БД. Никогда не бросает. */
+async function setting(key: string): Promise<string | undefined> {
+  try {
+    const settings = await getSettings();
+    const v = settings?.[key];
+    return typeof v === "string" && v.trim() ? v.trim() : undefined;
+  } catch (err) {
+    console.error(`[notify] getSettings() не доступен (${key}):`, err);
+    return undefined;
+  }
+}
 
 export function escapeHtml(s: string): string {
   return String(s)
@@ -43,14 +71,13 @@ export async function sendTelegramNotification(
   text: string
 ): Promise<NotifyResult> {
   try {
-    const settings = await getSettings();
-    const token =
-      settings.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
+    const token = env("TELEGRAM_BOT_TOKEN") || (await setting("telegram_bot_token"));
     const chatId =
-      settings.telegram_admin_chat_id || process.env.TELEGRAM_ADMIN_CHAT_ID;
+      env("TELEGRAM_ADMIN_CHAT_ID") ||
+      (await setting("telegram_admin_chat_id"));
     if (!token || !chatId) {
       console.warn(
-        "[notify] Telegram не настроен: нет TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID"
+        "[notify] Telegram не настроен: нет TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID (ни в env, ни в settings)"
       );
       return {
         ok: false,
@@ -103,9 +130,9 @@ export async function sendTelegramNotification(
 
 export async function sendMaxNotification(text: string): Promise<NotifyResult> {
   try {
-    const settings = await getSettings();
-    const token = settings.max_bot_token || process.env.MAX_BOT_TOKEN;
-    const chatId = settings.max_admin_chat_id || process.env.MAX_ADMIN_CHAT_ID;
+    const token = env("MAX_BOT_TOKEN") || (await setting("max_bot_token"));
+    const chatId =
+      env("MAX_ADMIN_CHAT_ID") || (await setting("max_admin_chat_id"));
     if (!token || !chatId) {
       console.warn("[notify] MAX не настроен");
       return { ok: false, error: "MAX не настроен" };
