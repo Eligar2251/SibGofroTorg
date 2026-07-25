@@ -74,13 +74,114 @@ function fmtDateTime(raw: string | null): string {
       });
 }
 
-function prettyJson(value: Record<string, any>): string {
-  if (!value || Object.keys(value).length === 0) return "";
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
+const statusText: Record<string, string> = {
+  new: "Новая",
+  in_progress: "В работе",
+  completed: "Проведена",
+  rejected: "Отменена",
+  cancelled: "Отменён",
+  draft: "Черновик",
+  posted: "Проведено",
+};
+
+const tableText: Record<string, string> = {
+  orders: "заявки сайта",
+  wastepaper_requests: "заявки на макулатуру",
+  customer_deals: "заказы учёта",
+  bank_payments: "банк / платежи",
+  warehouse_receipts: "поступления",
+  cash_collections: "журнал сдачи кассы",
+};
+
+const detailKeyText: Record<string, string> = {
+  table: "Таблица",
+  deleted: "Запись удалена",
+  reason: "Причина",
+  amount: "Сумма",
+  newStatus: "Новый статус",
+  oldStatus: "Старый статус",
+  dealCreated: "Заказ в учёте",
+  dealId: "ID заказа учёта",
+  dealNumber: "Номер заказа учёта",
+  paymentId: "ID платежа",
+  paymentIds: "Платежи",
+  rollback: "Убрано из работы",
+  isPaid: "Проведён",
+  excludeFromBalance: "Вне баланса",
+  shippedItems: "Отгруженные позиции",
+};
+
+function fmtMoney(value: unknown): string {
+  const num = Number(value) || 0;
+  return `${num.toLocaleString("ru-RU")} ₽`;
+}
+
+function fmtBool(value: unknown): string {
+  return value ? "да" : "нет";
+}
+
+function fmtStatus(value: unknown): string {
+  const key = String(value || "");
+  return statusText[key] || key || "не указан";
+}
+
+function isMoneyKey(key: string): boolean {
+  return /amount|sum|total|cost|price/i.test(key);
+}
+
+function fmtDetailValue(key: string, value: any): string {
+  if (value == null || value === "") return "не указано";
+  if (key === "table") return tableText[String(value)] || String(value);
+  if (key.toLowerCase().includes("status")) return fmtStatus(value);
+  if (typeof value === "boolean") return fmtBool(value);
+  if (isMoneyKey(key) && typeof value !== "object") return fmtMoney(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "нет";
+    return value
+      .map((item) => {
+        if (item && typeof item === "object") {
+          return Object.entries(item)
+            .map(([k, v]) => `${detailKeyText[k] || k}: ${fmtDetailValue(k, v)}`)
+            .join(", ");
+        }
+        return String(item);
+      })
+      .join("; ");
   }
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .map(([k, v]) => `${detailKeyText[k] || k}: ${fmtDetailValue(k, v)}`)
+      .join("; ");
+  }
+  return String(value);
+}
+
+function formatDetails(details: Record<string, any>): string {
+  if (!details || Object.keys(details).length === 0) return "";
+  const parts: string[] = [];
+
+  if ("oldStatus" in details || "newStatus" in details) {
+    parts.push(
+      `Статус изменён: ${fmtStatus(details.oldStatus)} → ${fmtStatus(details.newStatus)}.`
+    );
+  }
+
+  if ("dealCreated" in details) {
+    parts.push(
+      details.dealCreated
+        ? "Заказ в учёте создан."
+        : "Заказ в учёте не создавался."
+    );
+  }
+
+  const skip = new Set(["oldStatus", "newStatus", "dealCreated"]);
+  for (const [key, value] of Object.entries(details)) {
+    if (skip.has(key)) continue;
+    const label = detailKeyText[key] || key;
+    parts.push(`${label}: ${fmtDetailValue(key, value)}.`);
+  }
+
+  return parts.join(" ");
 }
 
 export function ActivityLogs() {
@@ -140,7 +241,7 @@ export function ActivityLogs() {
         log.entityId,
         log.entityLabel,
         log.ipAddress,
-        prettyJson(log.details),
+        formatDetails(log.details),
       ].join(" ").toLowerCase();
       return hay.includes(q);
     });
@@ -210,7 +311,7 @@ export function ActivityLogs() {
                 {filtered.map((log) => {
                   const meta = actionLabels[log.action] || { label: log.action || "Действие", color: "admin-badge--muted", icon: Edit2 };
                   const Icon = meta.icon;
-                  const details = prettyJson(log.details);
+                  const details = formatDetails(log.details);
                   return (
                     <tr key={log.id}>
                       <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{fmtDateTime(log.createdAt)}</td>
@@ -224,16 +325,10 @@ export function ActivityLogs() {
                         <span className={`admin-badge ${meta.color}`}>
                           <Icon size={10} /> {meta.label}
                         </span>
-                        <div className="admin-muted" style={{ fontSize: 11, marginTop: 3 }}>
-                          {log.action}
-                        </div>
                       </td>
                       <td>
                         <div style={{ fontSize: 12, fontWeight: 700 }}>
                           {entityLabels[log.entityType] || log.entityType || "—"}
-                        </div>
-                        <div className="admin-muted" style={{ fontSize: 11 }}>
-                          {log.entityType || "—"}
                         </div>
                       </td>
                       <td style={{ fontSize: 11, maxWidth: 160, overflowWrap: "anywhere" }}>
@@ -242,22 +337,20 @@ export function ActivityLogs() {
                       <td style={{ minWidth: 260 }}>
                         <div style={{ fontSize: 13, fontWeight: 600 }}>{log.entityLabel || "—"}</div>
                         {details && (
-                          <pre
+                          <div
                             style={{
-                              margin: "6px 0 0",
+                              marginTop: 6,
                               padding: 8,
                               borderRadius: 8,
                               background: "rgba(27,43,75,0.04)",
                               border: "1px solid rgba(200,196,188,0.5)",
                               color: "var(--adm-ink)",
-                              fontSize: 11,
-                              whiteSpace: "pre-wrap",
-                              maxHeight: 220,
-                              overflow: "auto",
+                              fontSize: 12,
+                              lineHeight: 1.45,
                             }}
                           >
                             {details}
-                          </pre>
+                          </div>
                         )}
                       </td>
                       <td style={{ fontSize: 11, whiteSpace: "nowrap" }}>{log.ipAddress || "—"}</td>
