@@ -1333,8 +1333,74 @@ export async function deleteDeal(id: string): Promise<void> {
     await applyStockDelta(existing.items as StockDocItem[], 1);
   }
 
+  // ★ Удаляем связанные НЕПРОВЕДЁННЫЕ платежи, чтобы не приходилось
+  //   чистить их руками в банке. Проведённые (is_paid) не трогаем —
+  //   они уже повлияли на баланс; только отвязываем удаляемый заказ.
+  try {
+    const { data: payments } = await db
+      .from("bank_payments")
+      .select("*")
+      .contains("deal_ids", [id]);
+
+    for (const payment of payments || []) {
+      const dealIds = Array.isArray(payment.deal_ids)
+        ? payment.deal_ids.map((d: unknown) => String(d))
+        : [];
+      const dealNumbers = Array.isArray(payment.deal_numbers)
+        ? payment.deal_numbers
+        : [];
+      const receiptLinks = Array.isArray(payment.receipt_ids) ? payment.receipt_ids : [];
+      const onlyThisDeal = dealIds.length === 1 && dealIds[0] === String(id) && receiptLinks.length === 0;
+
+      if (!payment.is_paid && onlyThisDeal) {
+        // Непроведённый платёж, привязанный только к этому заказу — удаляем.
+        await db.from("bank_payments").delete().eq("id", payment.id);
+        continue;
+      }
+
+      // Остальные (проведённые или общие) — отвязываем заказ, платёж живёт.
+      const newDealIds: string[] = [];
+      const newDealNumbers: unknown[] = [];
+      for (let i = 0; i < dealIds.length; i++) {
+        if (dealIds[i] === String(id)) continue;
+        newDealIds.push(dealIds[i]);
+        if (i < dealNumbers.length) newDealNumbers.push(dealNumbers[i]);
+      }
+      await db
+        .from("bank_payments")
+        .update({ deal_ids: newDealIds, deal_numbers: newDealNumbers })
+        .eq("id", payment.id);
+    }
+  } catch (e) {
+    console.error("deleteDeal: ошибка удаления/отвязки платежей:", e);
+  }
+
+  // ★ Если заказ был создан из заявки с сайта — отвязываем заявку,
+  //   чтобы не остался битый бейдж «В учёте: ЗК-…» и заявку можно было
+  //   снова передать в работу.
+  try {
+    const sourceOrderId = existing.source_order_id ? String(existing.source_order_id) : null;
+    if (sourceOrderId) {
+      await db
+        .from("orders")
+        .update({
+          deal_id: null,
+          deal_number: null,
+          payment_id: null,
+          status: "new",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sourceOrderId)
+        .eq("deal_id", id);
+    }
+  } catch (e) {
+    console.error("deleteDeal: ошибка отвязки исходной заявки:", e);
+  }
+
   await db.from("customer_deals").delete().eq("id", id);
   revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("orders", { expire: 0 });
   revalidateTag("products", { expire: 0 });
 }
 
@@ -1781,21 +1847,38 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
   const linesTotal = itemsTotal(items);
   const number = await nextNumber("deal");
   const date = new Date().toISOString().slice(0, 10);
-  const customerName = order.customer_name || "Клиент";
+  const personName = order.customer_name || "Клиент";
+  // Для юрлиц главный идентификатор в учёте — карточка предприятия
+  // (наименование организации из заявки), а не имя контакта из ЛК.
+  const isLegalEntity = order.customer_type === "legal";
+  const companyName = cleanText(order.company_name, 200);
+  const customerName = isLegalEntity && companyName ? companyName : personName;
   // Адрес из заявки сайта (клиент указал при оформлении)
   const orderAddress = cleanText(
     order.delivery_address || order.actual_address || order.legal_address,
     400
   );
 
-  // ★ Создаём/обновляем контрагента-покупателя
+  // ★ Создаём/обновляем контрагента-покупателя.
+  //   Юрлицо → контрагент с наименованием организации и полными
+  //   реквизитами из карточки предприятия (ИНН/КПП/ОГРН/адреса/банк),
+  //   контактное лицо сохраняется отдельно.
   const counterpartyId = await ensureCounterparty(customerName, "customer", {
     phone: order.customer_phone,
     email: order.customer_email,
     inn: order.inn,
     kpp: order.kpp,
-    address: orderAddress,
+    ogrn: order.ogrn,
+    fullName: isLegalEntity ? companyName ?? undefined : undefined,
+    shortName: cleanText(order.short_name, 200) ?? undefined,
     legalAddress: cleanText(order.legal_address, 400),
+    taxSystem: order.tax_system,
+    bankAccount: order.bank_account,
+    bankName: order.bank_name,
+    bik: order.bik,
+    correspondentAccount: order.correspondent_account,
+    address: orderAddress,
+    contactName: isLegalEntity ? personName : undefined,
     comment: order.comment,
   });
 
@@ -1832,6 +1915,7 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
     inn: order.inn || null,
     kpp: order.kpp || null,
     address: orderAddress,
+    contact_name: isLegalEntity ? personName : null,
     comment: order.comment ? `Из заявки с сайта. ${String(order.comment).slice(0, 400)}` : "Из заявки с сайта",
     items, total, bank_adjustment: bankAdjustment,
     vat_rate: VAT_RATE, vat_amount: vatAmount,
