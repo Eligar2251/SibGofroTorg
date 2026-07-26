@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, BellRing, CircleAlert, Gift, X } from "lucide-react";
-import type { PopupCampaign } from "@/lib/types";
+import type { PublicPopupCampaign } from "@/lib/popup-campaign";
 
 const STORAGE_PREFIX = "sib-info-window:";
 
@@ -14,7 +14,7 @@ function asTime(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function storageKey(campaign: PopupCampaign): string {
+function storageKey(campaign: PublicPopupCampaign): string {
   const base = `${STORAGE_PREFIX}${campaign.id}`;
   if (campaign.frequency === "day") {
     return `${base}:${new Date().toISOString().slice(0, 10)}`;
@@ -22,7 +22,7 @@ function storageKey(campaign: PopupCampaign): string {
   return base;
 }
 
-function wasShown(campaign: PopupCampaign): boolean {
+function wasShown(campaign: PublicPopupCampaign): boolean {
   if (campaign.frequency === "always") return false;
   try {
     const storage = campaign.frequency === "session" ? sessionStorage : localStorage;
@@ -32,7 +32,7 @@ function wasShown(campaign: PopupCampaign): boolean {
   }
 }
 
-function markShown(campaign: PopupCampaign) {
+function markShown(campaign: PublicPopupCampaign) {
   if (campaign.frequency === "always") return;
   try {
     const storage = campaign.frequency === "session" ? sessionStorage : localStorage;
@@ -42,19 +42,31 @@ function markShown(campaign: PopupCampaign) {
   }
 }
 
-export function PromotionPopups() {
-  const [pending, setPending] = useState<PopupCampaign[]>([]);
-  const [current, setCurrent] = useState<PopupCampaign | null>(null);
+export function PromotionPopups({
+  initialCampaigns,
+}: {
+  /** Кампании из серверного layout. Когда переданы — клиентский
+      fetch /api/popups не выполняется (минус запрос из критического
+      пути на мобильных сетях). */
+  initialCampaigns?: PublicPopupCampaign[];
+}) {
+  const [pending, setPending] = useState<PublicPopupCampaign[]>([]);
+  const [current, setCurrent] = useState<PublicPopupCampaign | null>(null);
   const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
+    // Данные уже пришли с сервера — используем их без сетевого запроса.
+    if (initialCampaigns !== undefined) {
+      setPending(initialCampaigns.filter((item) => !wasShown(item)));
+      return;
+    }
     let cancelled = false;
     fetch("/api/popups")
       .then((response) => response.json())
       .then((data) => {
         if (cancelled) return;
         const campaigns = Array.isArray(data?.campaigns)
-          ? (data.campaigns as PopupCampaign[])
+          ? (data.campaigns as PublicPopupCampaign[])
           : [];
         setPending(campaigns.filter((item) => !wasShown(item)));
       })
@@ -62,7 +74,7 @@ export function PromotionPopups() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialCampaigns]);
 
   const closePopup = useCallback(() => {
     setIsClosing(true);

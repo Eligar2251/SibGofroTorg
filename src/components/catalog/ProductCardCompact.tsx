@@ -137,7 +137,7 @@ export function ProductCardCompact({
               src={product.imageUrl}
               alt={product.name}
               fill
-              sizes="220px"
+              sizes="(max-width: 640px) 44vw, (max-width: 1100px) 30vw, 260px"
               priority={!!highlight}
               loading={highlight ? "eager" : "lazy"}
               style={{ objectFit: "cover" }}
