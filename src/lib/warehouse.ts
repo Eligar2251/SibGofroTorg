@@ -2283,6 +2283,34 @@ function mapTransportRow(row: any): Transport {
   };
 }
 
+/**
+ * Дотягивает контактное лицо из сделки (customer_deals.contact_name)
+ * для позиций перевозки, у которых оно не сохранено (старые перевозки,
+ * созданные до появления contactName). Пакетный запрос на весь список.
+ */
+async function enrichTransportContactNames(transports: Transport[]): Promise<void> {
+  const dealIds = [
+    ...new Set(
+      transports.flatMap((t) => t.items.map((i) => String(i.dealId))).filter(Boolean)
+    ),
+  ];
+  if (dealIds.length === 0) return;
+  const db = getAdminDb();
+  const { data: deals } = await db
+    .from("customer_deals")
+    .select("id, contact_name")
+    .in("id", dealIds);
+  if (!deals || deals.length === 0) return;
+  const contactMap = new Map<string, string | null>(
+    deals.map((d: any) => [String(d.id), d.contact_name ?? null])
+  );
+  for (const t of transports) {
+    t.items = t.items.map((i) =>
+      i.contactName ? i : { ...i, contactName: contactMap.get(String(i.dealId)) ?? null }
+    );
+  }
+}
+
 export async function getTransports(opts: { status?: string; limit?: number } = {}): Promise<Transport[]> {
   const db = getAdminDb();
   let q = db.from("transports").select("*").order("created_at", { ascending: false });
@@ -2290,14 +2318,18 @@ export async function getTransports(opts: { status?: string; limit?: number } = 
   q = q.limit(opts.limit || 200);
   const { data, error } = await q;
   if (error) throw error;
-  return (data || []).map(mapTransportRow);
+  const transports = (data || []).map(mapTransportRow);
+  await enrichTransportContactNames(transports);
+  return transports;
 }
 
 export async function getTransportById(id: string): Promise<Transport | null> {
   const db = getAdminDb();
   const { data, error } = await db.from("transports").select("*").eq("id", id).maybeSingle();
   if (error || !data) return null;
-  return mapTransportRow(data);
+  const transport = mapTransportRow(data);
+  await enrichTransportContactNames([transport]);
+  return transport;
 }
 
 export async function createTransport(data: {
