@@ -1,9 +1,17 @@
 // src/components/admin/TransportPrintSheet.tsx
-// Бланк перевозки для водителя: A4, чистый дизайн
+// Бланк перевозки: A4, 4 отрывных полоски на лист.
+// Каждая полоска = один заказ (ЗК): номер, товары с количеством
+// коробок и полная инфа для доставки (телефон, контактное лицо,
+// адрес) + реквизиты компании. Между полосками — линия отрыва.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SITE_HOURS_LABEL } from "@/lib/site-config";
+import {
+  SITE_PHONE,
+  SITE_ADDRESS,
+  SITE_HOURS_LABEL,
+} from "@/lib/site-config";
+import { SITE_NAME } from "@/lib/seo";
 
 export interface TransportPrintData {
   transportNumber: number;
@@ -13,6 +21,7 @@ export interface TransportPrintData {
   items: {
     dealNumber: number;
     customerName: string;
+    contactName?: string | null;
     address: string | null;
     phone: string | null;
     items: { name: string; transportQty: number }[];
@@ -27,7 +36,20 @@ function fmtDate(iso?: string | null): string {
   return d && m && y ? `${d}.${m}.${y}` : iso;
 }
 
-export function TransportPrintSheet({ data, onDone }: { data: TransportPrintData; onDone?: () => void }) {
+/** Разбить массив на страницы по 4 полоски. */
+function chunk4<T>(arr: T[]): T[][] {
+  const pages: T[][] = [];
+  for (let i = 0; i < arr.length; i += 4) pages.push(arr.slice(i, i + 4));
+  return pages;
+}
+
+export function TransportPrintSheet({
+  data,
+  onDone,
+}: {
+  data: TransportPrintData;
+  onDone?: () => void;
+}) {
   const [printing, setPrinting] = useState(false);
   const triggered = useRef(false);
 
@@ -36,9 +58,15 @@ export function TransportPrintSheet({ data, onDone }: { data: TransportPrintData
     triggered.current = true;
     const prev = document.title;
     document.title = `Перевозка ПЕР-${data.transportNumber}`;
-    function onAfter() { document.title = prev; onDone?.(); }
+    function onAfter() {
+      document.title = prev;
+      onDone?.();
+    }
     window.addEventListener("afterprint", onAfter);
-    return () => { document.title = prev; window.removeEventListener("afterprint", onAfter); };
+    return () => {
+      document.title = prev;
+      window.removeEventListener("afterprint", onAfter);
+    };
   }, [data.transportNumber, onDone]);
 
   function doPrint() {
@@ -48,65 +76,145 @@ export function TransportPrintSheet({ data, onDone }: { data: TransportPrintData
     });
   }
 
-  const totalQty = data.items.reduce((s, d) => s + d.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
+  const companyName = SITE_NAME;
+  const officePhone = data.companyPhone || SITE_PHONE;
+  const officeAddress = data.companyAddress || SITE_ADDRESS;
+  const pages = chunk4(data.items);
 
   return (
     <div className="deliv-print-root">
       <style>{PRINT_CSS}</style>
       {!printing && (
         <div className="deliv-print-close" style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={doPrint} style={{ padding: "8px 16px", background: "var(--adm-kraft)", color: "#fff", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <button
+            type="button"
+            onClick={doPrint}
+            style={{
+              padding: "8px 16px",
+              background: "var(--adm-kraft)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
             🖨 Печать
           </button>
-          <button type="button" onClick={() => onDone?.()}>✕ Закрыть</button>
+          <button type="button" onClick={() => onDone?.()}>
+            ✕ Закрыть
+          </button>
         </div>
       )}
+
       <div className="transport-sheet">
-        <header className="transport-head">
-          <div className="transport-head__left">
-            <div className="transport-head__title">ПЕРЕВОЗКА ПЕР-{data.transportNumber}</div>
-            <div className="transport-head__date">{fmtDate(data.date)}</div>
-          </div>
-          <div className="transport-head__right">
-            {data.driverName && <div><strong>Водитель:</strong> {data.driverName}</div>}
-            {data.driverPhone && <div><strong>Тел. водителя:</strong> {data.driverPhone}</div>}
-            <div><strong>Контакт офиса:</strong> {data.companyPhone || "—"}</div>
-            <div>{SITE_HOURS_LABEL}</div>
-          </div>
-        </header>
+        {pages.map((pageDeals, pi) => (
+          <div
+            key={pi}
+            className="transport-page"
+            style={pi < pages.length - 1 ? { breakAfter: "page" } : undefined}
+          >
+            {pageDeals.map((deal, idx) => {
+              const boxes = deal.items.reduce(
+                (s, i) => s + (Number(i.transportQty) || 0),
+                0
+              );
+              const contact =
+                deal.contactName && deal.contactName !== deal.customerName
+                  ? deal.contactName
+                  : null;
+              const isLastOnPage = idx === pageDeals.length - 1;
+              return (
+                <div
+                  key={deal.dealNumber}
+                  className={`transport-strip${
+                    isLastOnPage ? "" : " transport-strip--tear"
+                  }`}
+                >
+                  {/* Шапка: номер заказа + количество коробок */}
+                  <div className="strip-top">
+                    <div className="strip-top__left">
+                      <span className="strip-deal">ЗК-{deal.dealNumber}</span>
+                      <span className="strip-per">
+                        ПЕР-{data.transportNumber} · {fmtDate(data.date)}
+                      </span>
+                    </div>
+                    <div className="strip-top__right">
+                      <span className="strip-boxes">{boxes}</span>
+                      <span className="strip-boxes-label">коробок всего</span>
+                    </div>
+                  </div>
 
-        <div className="transport-summary">
-          Заказов: <strong>{data.items.length}</strong> · Позиций: <strong>{totalQty}</strong>
-        </div>
+                  {/* Компания */}
+                  <div className="strip-company">
+                    <strong>{companyName}</strong>
+                    <span>офис: {officePhone}</span>
+                    <span>{officeAddress}</span>
+                    <span>{SITE_HOURS_LABEL}</span>
+                  </div>
 
-        {data.items.map((deal, idx) => (
-          <div key={deal.dealNumber} className="transport-deal">
-            <div className="transport-deal__head">
-              <span className="transport-deal__num">{idx + 1}</span>
-              <span className="transport-deal__label">ЗК-{deal.dealNumber}</span>
-              <span className="transport-deal__client">{deal.customerName}</span>
-              {deal.phone && <span className="transport-deal__phone">тел: {deal.phone}</span>}
-            </div>
-            <div className="transport-deal__addr">{deal.address || "Адрес не указан"}</div>
-            <table className="transport-deal__table">
-              <thead><tr><th>Товар</th><th>Кол-во</th><th>Принял</th></tr></thead>
-              <tbody>
-                {deal.items.map((item, i) => (
-                  <tr key={i}>
-                    <td>{item.name}</td>
-                    <td className="transport-deal__qty">{item.transportQty} шт.</td>
-                    <td className="transport-deal__sign">__________</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  {/* Доставка — главная информация */}
+                  <div className="strip-delivery">
+                    <div className="strip-delivery__row">
+                      <span className="strip-delivery__label">ТЕЛ</span>
+                      <span className="strip-phone">
+                        {deal.phone || "—"}
+                      </span>
+                    </div>
+                    <div className="strip-delivery__row">
+                      <span className="strip-delivery__label">КОНТАКТ</span>
+                      <span className="strip-contact">
+                        {deal.customerName}
+                        {contact ? ` · ${contact}` : ""}
+                      </span>
+                    </div>
+                    <div className="strip-delivery__row">
+                      <span className="strip-delivery__label">АДРЕС</span>
+                      <span className="strip-address">
+                        {deal.address || "Адрес не указан"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Товары (гибкая зона — при избытке позиций обрезается,
+                      линия отрыва всегда остаётся внизу полоски) */}
+                  <div className="strip-items-wrap">
+                    <table className="strip-items">
+                      <thead>
+                        <tr>
+                          <th>Товар</th>
+                          <th className="strip-items__qty-head">Кол-во</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deal.items.map((item, i) => (
+                          <tr key={i}>
+                            <td className="strip-items__name">{item.name}</td>
+                            <td className="strip-items__qty">
+                              <span className="strip-items__num">
+                                {item.transportQty}
+                              </span>
+                              <span className="strip-items__unit">коробок</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Линия отрыва */}
+                  {!isLastOnPage && (
+                    <div className="strip-tear">
+                      <span className="strip-tear__scissors">✂</span>
+                      <span className="strip-tear__text">линия отрыва</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
-
-        <footer className="transport-foot">
-          <div>Водитель: ________________ / ________________</div>
-          <div>Дата и время выезда: ________  Возврат: ________</div>
-        </footer>
       </div>
     </div>
   );
@@ -115,60 +223,103 @@ export function TransportPrintSheet({ data, onDone }: { data: TransportPrintData
 const PRINT_CSS = `
 @media screen {
   .deliv-print-root { position: fixed; inset: 0; z-index: 99999; background: #f5f3ee; overflow: auto; padding: 24px; }
-  .transport-sheet { max-width: 210mm; margin: 0 auto; background: #fff; padding: 14mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); border-radius: 4px; }
-  .deliv-print-close {
-    position: fixed;
-    top: 12px;
-    right: 12px;
-    z-index: 100000;
-    display: flex;
-    gap: 8px;
-  }
-  .deliv-print-close button {
-    padding: 8px 16px;
-    background: #1a1a18;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: system-ui, sans-serif;
-  }
-  .deliv-print-close button:hover {
-    background: #333;
-  }
+  .transport-sheet { max-width: 210mm; margin: 0 auto; background: #fff; padding: 6mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); border-radius: 4px; }
+  .deliv-print-close { position: fixed; top: 12px; right: 12px; z-index: 100000; display: flex; gap: 8px; }
+  .deliv-print-close button { padding: 8px 16px; background: #1a1a18; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: system-ui, sans-serif; }
+  .deliv-print-close button:hover { background: #333; }
 }
 @media print {
-  @page { size: A4 portrait; margin: 8mm 10mm; }
+  /* Очень маленькие поля — полоски отрываются от края листа. */
+  @page { size: A4 portrait; margin: 4mm 5mm; }
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-  /* Бланк вложен в .admin-main: display:none на предке даёт белый лист. */
   .admin-sidebar, .admin-mobile-bar, .NavigationProgress { display: none !important; }
   .admin-content, .admin-main { visibility: hidden !important; }
   .deliv-print-root, .deliv-print-root * { visibility: visible !important; }
   .deliv-print-root { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; padding: 0 !important; margin: 0 !important; z-index: 999999 !important; }
-  .transport-sheet { padding: 0 !important; max-width: none !important; }
+  .transport-sheet { padding: 0 !important; max-width: none !important; box-shadow: none !important; }
   .deliv-print-close { display: none !important; }
-  .transport-deal { page-break-inside: avoid; }
+  .transport-strip { break-inside: avoid; }
+  .transport-page { break-inside: avoid; }
 }
+
 .transport-sheet { font-family: Arial, Helvetica, sans-serif; color: #1a1a18; }
-.transport-head { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #1a1a18; padding-bottom: 8px; margin-bottom: 12px; }
-.transport-head__title { font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
-.transport-head__date { font-size: 13px; color: #555; margin-top: 2px; }
-.transport-head__right { text-align: right; font-size: 11px; line-height: 1.6; color: #555; }
-.transport-head__right strong { color: #1a1a18; }
-.transport-summary { font-size: 12px; font-weight: 700; color: #555; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.05em; }
-.transport-deal { border: 1px solid #888; margin-bottom: 10px; border-radius: 4px; overflow: hidden; }
-.transport-deal__head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #f5f5f5; border-bottom: 1px solid #ddd; }
-.transport-deal__num { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: #eee; border-radius: 50%; font-size: 14px; font-weight: 800; color: #555; }
-.transport-deal__label { font-size: 13px; font-weight: 800; border: 1px solid #888; padding: 1px 6px; border-radius: 3px; }
-.transport-deal__client { font-size: 14px; font-weight: 700; }
-.transport-deal__phone { font-size: 11px; color: #555; margin-left: auto; }
-.transport-deal__addr { padding: 6px 12px; font-size: 12px; color: #555; border-bottom: 1px solid #eee; }
-.transport-deal__table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.transport-deal__table th { text-align: left; padding: 6px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; border-bottom: 1px solid #eee; }
-.transport-deal__table td { padding: 6px 12px; border-bottom: 1px solid #f0f0f0; }
-.transport-deal__qty { font-weight: 700; text-align: right; white-space: nowrap; }
-.transport-deal__sign { width: 120px; color: #aaa; }
-.transport-foot { margin-top: 20px; border-top: 2px solid #1a1a18; padding-top: 10px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.transport-page { display: flex; flex-direction: column; }
+
+/* ── Полоска ── */
+.transport-strip {
+  box-sizing: border-box;
+  height: 68mm;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 2.5mm 3mm;
+  border: 1px solid #cfcabf;
+  border-radius: 2mm;
+  margin-bottom: 1mm;
+}
+/* Полоска с линией отрыва снизу */
+.transport-strip--tear {
+  border-bottom: none;
+  position: relative;
+}
+
+/* Шапка: номер заказа + коробки */
+.strip-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.strip-top__left { display: flex; flex-direction: column; gap: 1px; }
+.strip-deal { font-size: 20px; font-weight: 900; letter-spacing: 0.02em; line-height: 1; }
+.strip-per { font-size: 9px; color: #777; font-weight: 600; }
+.strip-top__right { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
+.strip-boxes { font-size: 24px; font-weight: 900; line-height: 1; }
+.strip-boxes-label { font-size: 8px; color: #777; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+/* Компания */
+.strip-company {
+  display: flex; flex-wrap: wrap; gap: 3px 10px;
+  font-size: 8.5px; color: #555; margin-top: 2px;
+  padding-bottom: 2px; border-bottom: 1px solid #e7e3da;
+}
+.strip-company strong { color: #1a1a18; }
+
+/* Доставка — главное */
+.strip-delivery { margin-top: 2.5mm; display: flex; flex-direction: column; gap: 1.5mm; }
+.strip-delivery__row { display: flex; align-items: baseline; gap: 8px; }
+.strip-delivery__label {
+  flex-shrink: 0; width: 52px; font-size: 9px; font-weight: 800;
+  color: #fff; background: #1a1a18; padding: 1px 5px; border-radius: 2px;
+  text-align: center; letter-spacing: 0.04em;
+}
+.strip-phone { font-size: 18px; font-weight: 900; letter-spacing: 0.01em; }
+.strip-contact { font-size: 12px; font-weight: 700; }
+.strip-address { font-size: 14px; font-weight: 900; line-height: 1.15; }
+
+/* Товары */
+.strip-items-wrap { flex: 1; min-height: 0; overflow: hidden; margin-top: 2.5mm; }
+.strip-items { width: 100%; border-collapse: collapse; font-size: 11px; }
+.strip-items th {
+  text-align: left; font-size: 8.5px; text-transform: uppercase;
+  letter-spacing: 0.05em; color: #999; padding: 0 4px 2px; border-bottom: 1px solid #e7e3da;
+}
+.strip-items__qty-head { text-align: right; }
+.strip-items td { padding: 2px 4px; border-bottom: 1px solid #f2efe8; vertical-align: middle; }
+.strip-items__name { font-size: 11px; }
+.strip-items__qty { text-align: right; white-space: nowrap; width: 64px; }
+.strip-items__num { font-size: 15px; font-weight: 900; }
+.strip-items__unit { display: block; font-size: 7.5px; color: #888; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Линия отрыва — всегда внизу полоски */
+.strip-tear {
+  flex-shrink: 0;
+  margin-top: 2mm;
+  border-top: 2px dashed #999;
+  position: relative;
+  height: 0;
+}
+.strip-tear__scissors {
+  position: absolute; left: 4px; top: -9px; font-size: 13px; color: #888;
+  background: #fff; padding: 0 2px;
+}
+.strip-tear__text {
+  position: absolute; right: 6px; top: -8px; font-size: 7.5px; color: #aaa;
+  text-transform: uppercase; letter-spacing: 0.06em; background: #fff; padding: 0 3px;
+}
 `;

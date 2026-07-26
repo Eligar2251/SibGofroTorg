@@ -245,6 +245,7 @@ export default async function AdminWarehousePage({
       id: d.id,
       number: d.number,
       customerName: d.customerName || "Без имени",
+      contactName: d.contactName ?? null,
       customerPhone: d.customerPhone ?? d.phone ?? null,
       deliveryAddress: d.deliveryAddress ?? d.address ?? null,
       deliveryType: d.deliveryType ?? null,

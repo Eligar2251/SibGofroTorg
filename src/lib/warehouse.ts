@@ -2240,6 +2240,7 @@ export interface TransportItem {
   dealId: string;
   dealNumber: number;
   customerName: string;
+  contactName?: string | null;
   address: string | null;
   phone: string | null;
   items: { productId: string; name: string; orderedQty: number; transportQty: number }[];
