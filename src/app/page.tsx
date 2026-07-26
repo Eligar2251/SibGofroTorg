@@ -32,6 +32,7 @@ import {
   SITE_MAP_LINK,
 } from "@/lib/site-config";
 
+import { YandexMapEmbed } from "@/components/layout/YandexMapEmbed";
 import type { Metadata } from "next";
 import { SITE_URL, SITE_NAME, DEFAULT_DESCRIPTION } from "@/lib/seo";
 
@@ -349,13 +350,10 @@ export default async function HomePage() {
               </a>
             </div>
             <div className="map-embed">
-              <iframe
+              <YandexMapEmbed
                 src={SITE_MAP_EMBED_URL}
                 title="Карта — СибГофроТорг"
-                className="contacts-map__iframe"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                allowFullScreen
+                address={SITE_ADDRESS}
               />
             </div>
           </div>

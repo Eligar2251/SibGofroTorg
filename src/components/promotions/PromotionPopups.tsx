@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, BellRing, CircleAlert, Gift, X } from "lucide-react";
 import type { PopupCampaign } from "@/lib/types";
 
@@ -121,10 +122,24 @@ export function PromotionPopups() {
         <div className="story-v2" onClick={(e) => e.stopPropagation()}>
           {current.buttonUrl ? (
             <Link href={current.buttonUrl} className="story-v2__link" onClick={closePopup}>
-              <img src={current.imageUrl} alt={current.title} className="story-v2__img" />
+              <Image
+                src={current.imageUrl}
+                alt={current.title}
+                fill
+                priority
+                sizes="min(460px, 92vw, calc(90vh * 9 / 16))"
+                className="story-v2__img"
+              />
             </Link>
           ) : (
-            <img src={current.imageUrl} alt={current.title} className="story-v2__img" />
+            <Image
+              src={current.imageUrl}
+              alt={current.title}
+              fill
+              priority
+              sizes="min(460px, 92vw, calc(90vh * 9 / 16))"
+              className="story-v2__img"
+            />
           )}
           <button type="button" className="story-v2__close" onClick={closePopup} aria-label="Закрыть">
             <X size={24} />

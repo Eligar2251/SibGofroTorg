@@ -59,6 +59,23 @@ export default async function RootLayout({
   return (
     <html lang="ru" data-scroll-behavior="smooth">
       <head>
+        {/* Ранние подключения: убираем цепочку критических запросов
+            (CSS-бандл → @import шрифтов). Шрифты теперь обнаруживаются
+            браузером сразу из HTML, соединения — через preconnect. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link rel="preconnect" href="https://res.cloudinary.com" />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font --
+            корневой layout применяется ко всему сайту (app router),
+            правило написано для pages/_document.js */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@800;900&display=swap"
+        />
         <JsonLd
           data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}
         />

@@ -17,6 +17,7 @@ import {
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { YandexMapEmbed } from "@/components/layout/YandexMapEmbed";
 import { buildLocalBusinessJsonLd, buildBreadcrumbJsonLd } from "@/lib/seo";
 
 export const metadata: Metadata = {
@@ -141,13 +142,10 @@ export default function ContactsPage() {
             </div>
 
             <div className="contacts-map__frame">
-              <iframe
+              <YandexMapEmbed
                 src={SITE_MAP_EMBED_URL}
                 title="Карта — СибГофроТорг"
-                className="contacts-map__iframe" // или ваш класс
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                allowFullScreen
+                address={SITE_ADDRESS}
               />
             </div>
           </div>
