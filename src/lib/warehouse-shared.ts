@@ -184,13 +184,31 @@ export interface Salary {
   createdAt?: string | null;
 }
 
-/** Сдача кассы (инкассация): списание всего остатка наличных в банк */
+/** Как поступили деньги в кассу: физическая наличка или перевод. */
+export type CashKind = "cash" | "transfer";
+
+/** Платёж, вошедший в сдачу кассы, с пометкой «нал / перевод». */
+export interface CashCollectionItem {
+  paymentId: string;
+  number?: number | null;
+  counterparty?: string | null;
+  amount: number;
+  kind: CashKind;
+}
+
+/** Сдача кассы (инкассация): списание остатка наличных из кассы */
 export interface CashCollection {
   id: string;
   /** Дата сдачи (YYYY-MM-DD) */
   date: string;
-  /** Сумма, сданная из наличной кассы */
+  /** Общая сумма, сданная из кассы (наличные + перевод) */
   amount: number;
+  /** Часть, сданная физическими наличными */
+  cashAmount?: number;
+  /** Часть, полученная переводом (к основному банковскому счёту не относится) */
+  transferAmount?: number;
+  /** Разметка платежей, вошедших в сдачу */
+  items?: CashCollectionItem[];
   note?: string | null;
   createdAt?: string | null;
 }
@@ -353,19 +371,59 @@ export function getBankSummary(
     }
   }
   // Сдача кассы: деньги уходят из текущей кассы в отдельный журнал сдач.
-  // В безналичный банковский счёт их НЕ прибавляем.
+  // В безналичный банковский счёт их НЕ прибавляем — ни наличную часть,
+  // ни переводы: переводы в кассе это отдельный «карманный» поток.
   let collectedCash = 0;
+  let collectedCashOnly = 0;
+  let collectedTransfer = 0;
   for (const c of collections) {
     cashBalance -= c.amount;
     collectedCash += c.amount;
+    // Старые записи без разбивки считаем полностью наличными.
+    const transfer = Number(c.transferAmount) || 0;
+    const cashPart =
+      c.cashAmount != null ? Number(c.cashAmount) || 0 : c.amount - transfer;
+    collectedCashOnly += cashPart;
+    collectedTransfer += transfer;
   }
   return {
     balance: bankBalance + cashBalance,
     bankBalance,
     cashBalance,
     collectedCash,
+    /** Из сданного — физическими наличными */
+    collectedCashOnly,
+    /** Из сданного — переводом (вне основного банковского счёта) */
+    collectedTransfer,
     expectedIn,
     expectedOut,
+  };
+}
+
+/**
+ * Сводка по уже сданной кассе: сколько ушло наличными, сколько переводом.
+ *
+ * Важно: вид денег (нал/перевод) проставляется вручную в момент сдачи
+ * кассы, а не берётся из типа платежа. Тип "transfer" в банке означает
+ * другое — исходящий перевод физлицу, он относится к расчётному счёту.
+ */
+export function getCollectedBreakdown(
+  collections: CashCollection[] = []
+): { cash: number; transfer: number; total: number } {
+  let cash = 0;
+  let transfer = 0;
+  for (const c of collections) {
+    const t = Number(c.transferAmount) || 0;
+    // Старые сдачи без разбивки считаем полностью наличными.
+    const cashPart =
+      c.cashAmount != null ? Number(c.cashAmount) || 0 : (c.amount || 0) - t;
+    cash += cashPart;
+    transfer += t;
+  }
+  return {
+    cash: Math.round(cash * 100) / 100,
+    transfer: Math.round(transfer * 100) / 100,
+    total: Math.round((cash + transfer) * 100) / 100,
   };
 }
 

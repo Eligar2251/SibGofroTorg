@@ -32,6 +32,7 @@ import {
   type BankPayment,
   getBankSummary,
   getPendingPaymentCounterpartyBalances,
+  getCollectedBreakdown,
   getDealPaidMap,
   getReceiptPaidMap,
   type WarehouseStockRow,
@@ -55,6 +56,7 @@ import {
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
 import { StockRevision } from "@/components/admin/StockRevision";
+import { CashCollectModal } from "@/components/admin/CashCollectModal";
 import {
   CounterpartiesManager,
   type CounterpartyDocument,
@@ -200,6 +202,7 @@ export function WarehouseManager({
   const [bankSub, setBankSub] = useState<BankSub>("pending");
   const router = useRouter();
   const [collecting, setCollecting] = useState(false);
+  const [showCollect, setShowCollect] = useState(false);
   const [collectError, setCollectError] = useState("");
 
   useEffect(() => {
@@ -319,31 +322,21 @@ export function WarehouseManager({
     () => collectionsSorted.reduce((sum, c) => sum + (c.amount || 0), 0),
     [collectionsSorted]
   );
+  // Раскладка сданного: сколько ушло наличными, сколько переводом.
+  const collectedBreakdown = useMemo(
+    () => getCollectedBreakdown(collectionsSorted),
+    [collectionsSorted]
+  );
 
-  async function handleCollectCash() {
+  // Сдача кассы идёт через модалку: там каждый платёж помечается
+  // «наличные / перевод», чтобы в отчёте было видно, сколько куда ушло.
+  function handleCollectCash() {
     if (bankSummary.cashBalance <= 0.009) {
       setCollectError("Касса пуста — нечего сдавать");
       return;
     }
-    const amount = Math.round(bankSummary.cashBalance);
-    if (!confirm(`Сдать кассу и списать ${fmt(amount)} ₽ из текущей кассы в журнал сдач?`)) return;
-    const note = window.prompt("Комментарий к сдаче кассы (необязательно)", "") || "";
-    setCollecting(true);
     setCollectError("");
-    try {
-      const res = await fetch("/api/admin/warehouse/cash-collections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: note.trim() || null }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Не удалось сдать кассу");
-      router.refresh();
-    } catch (err) {
-      setCollectError(err instanceof Error ? err.message : "Не удалось сдать кассу");
-    } finally {
-      setCollecting(false);
-    }
+    setShowCollect(true);
   }
 
   async function handleDeleteCollection(id: string) {
@@ -1783,6 +1776,13 @@ export function WarehouseManager({
 
           {collectError && <div className="wh-form-error" style={{ marginBottom: 12 }}>{collectError}</div>}
 
+          {showCollect && (
+            <CashCollectModal
+              cashBalance={bankSummary.cashBalance}
+              onClose={() => setShowCollect(false)}
+            />
+          )}
+
           {/* Непроведённые исходящие платежи поставщикам/получателям */}
           {bankSub !== "cash" && pendingSupplierPayments.length > 0 && (
             <div className="admin-card" style={{ border: "1px solid var(--adm-rust-line)", background: "var(--adm-rust-pale)", marginBottom: 16 }}>
@@ -1934,6 +1934,12 @@ export function WarehouseManager({
                     В кассе: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
+                    <Banknote size={10} /> Наличными: {fmt(collectedBreakdown.cash)} ₽
+                  </span>
+                  <span className="admin-badge admin-badge--blue">
+                    <CreditCard size={10} /> Переводом: {fmt(collectedBreakdown.transfer)} ₽
+                  </span>
+                  <span className="admin-badge admin-badge--green">
                     Сдано всего: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
                   </span>
                 </div>
@@ -1941,7 +1947,9 @@ export function WarehouseManager({
               <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
                 <div className="admin-muted" style={{ fontSize: 13 }}>
                   Кнопка «Сдать кассу» находится в верхнем блоке банка рядом с остатком наличных.
-                  При сдаче весь остаток наличных списывается из текущей кассы и фиксируется здесь отдельной записью с датой и комментарием. В безналичный счёт сумма не прибавляется.
+                  При сдаче каждый платёж помечается как <b>наличные</b> или <b>перевод</b> —
+                  в отчёте видно, сколько денег ушло каждым способом. Обе части списываются
+                  из кассы и не прибавляются к основному безналичному счёту.
                 </div>
                 {collectionsSorted.length === 0 ? (
                   <div className="admin-empty" style={{ padding: 16 }}>
@@ -1953,33 +1961,69 @@ export function WarehouseManager({
                       <thead>
                         <tr>
                           <th>Дата</th>
-                          <th style={{ textAlign: "right" }}>Сумма</th>
+                          <th style={{ textAlign: "right" }}>Наличными</th>
+                          <th style={{ textAlign: "right" }}>Переводом</th>
+                          <th style={{ textAlign: "right" }}>Всего</th>
                           <th>Комментарий</th>
                           <th></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {collectionsSorted.map((c) => (
-                          <tr key={c.id}>
-                            <td>{fmtDate(c.date)}</td>
-                            <td style={{ textAlign: "right", fontWeight: 700, color: "var(--adm-pine)" }}>
-                              +{fmt(Math.round(c.amount * 100) / 100)} ₽
-                            </td>
-                            <td>{c.note || "—"}</td>
-                            <td style={{ textAlign: "right" }}>
-                              <button
-                                type="button"
-                                className="admin-btn admin-btn--ghost admin-btn--sm"
-                                disabled={collecting}
-                                onClick={() => handleDeleteCollection(c.id)}
-                              >
-                                <Trash2 size={13} /> Удалить
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {collectionsSorted.map((c) => {
+                          const transfer = Math.round((c.transferAmount || 0) * 100) / 100;
+                          // Старые записи без разбивки — полностью наличные.
+                          const cashPart =
+                            Math.round(
+                              (c.cashAmount != null
+                                ? c.cashAmount
+                                : (c.amount || 0) - transfer) * 100
+                            ) / 100;
+                          const marked = (c.items || []).length;
+                          return (
+                            <tr key={c.id}>
+                              <td>
+                                {fmtDate(c.date)}
+                                {marked > 0 && (
+                                  <span
+                                    className="admin-badge admin-badge--muted"
+                                    style={{ marginLeft: 6 }}
+                                    title="Платежей размечено в этой сдаче"
+                                  >
+                                    {marked} плат.
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: "right", fontWeight: 600 }}>
+                                {cashPart > 0 ? `${fmt(cashPart)} ₽` : "—"}
+                              </td>
+                              <td style={{ textAlign: "right", fontWeight: 600, color: "var(--adm-steel)" }}>
+                                {transfer > 0 ? `${fmt(transfer)} ₽` : "—"}
+                              </td>
+                              <td style={{ textAlign: "right", fontWeight: 700, color: "var(--adm-pine)" }}>
+                                +{fmt(Math.round(c.amount * 100) / 100)} ₽
+                              </td>
+                              <td>{c.note || "—"}</td>
+                              <td style={{ textAlign: "right" }}>
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                                  disabled={collecting}
+                                  onClick={() => handleDeleteCollection(c.id)}
+                                >
+                                  <Trash2 size={13} /> Удалить
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                         <tr className="wh-cashcollect__total">
                           <td style={{ fontWeight: 800 }}>Итого сдано</td>
+                          <td style={{ textAlign: "right", fontWeight: 800 }}>
+                            {fmt(collectedBreakdown.cash)} ₽
+                          </td>
+                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-steel)" }}>
+                            {fmt(collectedBreakdown.transfer)} ₽
+                          </td>
                           <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-pine)" }}>
                             +{fmt(Math.round(collectionsTotal * 100) / 100)} ₽
                           </td>

@@ -5969,6 +5969,160 @@ body:has(.admin-modal-overlay) {
 }
 
 /* ══════════════════════════════════════
+   СДАЧА КАССЫ: разметка нал / перевод
+   ══════════════════════════════════════ */
+.cashc-modal { max-width: 46rem; }
+
+.cashc-totals {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cashc-total {
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--adm-paper);
+}
+
+.cashc-total__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--adm-sand);
+}
+
+.cashc-total strong {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: var(--adm-ink-soft);
+}
+
+.cashc-total--cash { border-color: var(--adm-pine-line); background: var(--adm-pine-pale); }
+.cashc-total--cash strong { color: var(--adm-pine); }
+.cashc-total--transfer { border-color: var(--adm-steel-line); background: var(--adm-steel-pale); }
+.cashc-total--transfer strong { color: var(--adm-steel); }
+.cashc-total--sum { border-color: var(--adm-border-mid); }
+
+.cashc-bulk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.cashc-list {
+  max-height: 44vh;
+  overflow-y: auto;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card, #fff);
+}
+
+.cashc-row {
+  display: grid;
+  grid-template-columns: 18px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.cashc-row:last-child { border-bottom: 0; }
+.cashc-row--off { opacity: 0.45; }
+
+.cashc-row__main { display: flex; flex-direction: column; min-width: 0; }
+
+.cashc-row__cp {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--adm-ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cashc-row__meta { font-size: 11px; color: var(--adm-sand); }
+
+.cashc-row__amount {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Переключатель «Нал / Перевод» */
+.cashc-seg {
+  display: inline-flex;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  overflow: hidden;
+}
+
+.cashc-seg__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  font-weight: 650;
+  background: var(--adm-card, #fff);
+  color: var(--adm-sand);
+  border: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+
+.cashc-seg__btn + .cashc-seg__btn { border-left: 1px solid var(--adm-border-mid); }
+.cashc-seg__btn:hover { background: var(--adm-paper); }
+
+.cashc-seg__btn--cash {
+  background: var(--adm-pine);
+  color: #fff;
+}
+.cashc-seg__btn--cash:hover { background: var(--adm-pine); }
+
+.cashc-seg__btn--transfer {
+  background: var(--adm-steel);
+  color: #fff;
+}
+.cashc-seg__btn--transfer:hover { background: var(--adm-steel); }
+
+.cashc-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 11px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--adm-kraft-pale);
+  border: 1px solid var(--adm-kraft-line);
+  border-radius: var(--adm-r-sm);
+  color: var(--adm-ink-soft);
+}
+
+@media (max-width: 640px) {
+  .cashc-totals { grid-template-columns: 1fr; gap: 6px; }
+  .cashc-row {
+    grid-template-columns: 18px 1fr auto;
+    row-gap: 6px;
+  }
+  .cashc-seg { grid-column: 2 / -1; justify-self: start; }
+}
+
+/* ══════════════════════════════════════
    РЕВИЗИЯ СКЛАДА
    ══════════════════════════════════════ */
 .rev-modal {

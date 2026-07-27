@@ -27,6 +27,8 @@ import type {
   Employee,
   Salary,
   SalarySource,
+  CashKind,
+  CashCollectionItem,
 } from "./warehouse-shared";
 import {
   includedVat,
@@ -62,6 +64,9 @@ export {
   type Employee,
   type Salary,
   type SalarySource,
+  type CashKind,
+  type CashCollectionItem,
+  getCollectedBreakdown,
   getBankSummary,
   getDealPaidMap,
   getReceiptPaidMap,
@@ -1919,6 +1924,12 @@ export interface CashCollectionRow {
   id: string;
   date: string;
   amount: number;
+  /** Часть, сданная физическими наличными */
+  cashAmount: number;
+  /** Часть, полученная переводом (вне основного расчётного счёта) */
+  transferAmount: number;
+  /** Разметка платежей, вошедших в сдачу */
+  items: CashCollectionItem[];
   note?: string | null;
   createdAt?: string | null;
 }
@@ -1930,13 +1941,25 @@ async function fetchCashCollections(): Promise<CashCollectionRow[]> {
     .select("*")
     .order("date", { ascending: false });
   if (error) throw error;
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    date: row.date,
-    amount: Number(row.amount) || 0,
-    note: row.note ?? null,
-    createdAt: toIso(row.created_at),
-  }));
+  return (data || []).map((row: any) => {
+    const amount = Number(row.amount) || 0;
+    const transferAmount = Number(row.transfer_amount) || 0;
+    // Старые записи (до разделения) считаем полностью наличными.
+    const cashAmount =
+      row.cash_amount != null
+        ? Number(row.cash_amount) || 0
+        : amount - transferAmount;
+    return {
+      id: row.id,
+      date: row.date,
+      amount,
+      cashAmount,
+      transferAmount,
+      items: Array.isArray(row.items) ? row.items : [],
+      note: row.note ?? null,
+      createdAt: toIso(row.created_at),
+    };
+  });
 }
 
 export const getCashCollections = () =>
@@ -1945,23 +1968,12 @@ export const getCashCollections = () =>
     tags: ["warehouse-cash-collections"],
   })();
 
-/**
- * Сдача кассы: списываем ВЕСЬ текущий остаток наличных из кассы
- * в отдельный журнал сдач. В безналичный банковский счёт сумма не попадает.
- * Сумма берётся с сервера (актуальный баланс по платежам/зарплатам/прошлым
- * сдачам), чтобы исключить состояние гонки на клиенте.
- */
-export async function collectCash(
-  note?: string | null
-): Promise<{ amount: number }> {
-  const db = getAdminDb();
-  const [payments, salaries, collections] = await Promise.all([
-    fetchPayments(),
-    fetchSalaries(),
-    fetchCashCollections(),
-  ]);
-
-  // Текущий остаток наличных — тем же правилом, что и getBankSummary.
+/** Текущий остаток кассы по серверным данным (правило getBankSummary). */
+function computeCashBalance(
+  payments: BankPayment[],
+  salaries: Salary[],
+  collections: CashCollectionRow[]
+): number {
   let cashBalance = 0;
   for (const p of payments) {
     if (!p.isPaid || p.excludeFromBalance) continue;
@@ -1972,23 +1984,160 @@ export async function collectCash(
     if (s.isPaid && s.source === "cash") cashBalance -= s.amount;
   }
   for (const c of collections) cashBalance -= c.amount;
+  return Math.round(cashBalance * 100) / 100;
+}
 
+/**
+ * Наличные поступления, ещё не вошедшие ни в одну сдачу кассы.
+ * Их менеджер размечает при сдаче: какие деньги пришли физической
+ * наличкой, а какие переводом на карту/СБП.
+ */
+export async function getPendingCashPayments(): Promise<
+  { paymentId: string; number: number; date: string; counterparty: string; amount: number; comment: string | null }[]
+> {
+  const [payments, collections] = await Promise.all([
+    fetchPayments(),
+    fetchCashCollections(),
+  ]);
+  const collected = new Set<string>();
+  for (const c of collections) {
+    for (const it of c.items || []) {
+      if (it?.paymentId) collected.add(String(it.paymentId));
+    }
+  }
+  return payments
+    .filter(
+      (p) =>
+        p.isPaid &&
+        !p.excludeFromBalance &&
+        p.type === "cash" &&
+        p.direction === "incoming" &&
+        !collected.has(String(p.id))
+    )
+    .map((p) => ({
+      paymentId: String(p.id),
+      number: p.number,
+      date: p.date,
+      counterparty: p.counterparty,
+      amount: p.amount,
+      comment: p.comment ?? null,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
+}
+
+/**
+ * Сдача кассы. Списывает остаток кассы в отдельный журнал сдач;
+ * в безналичный расчётный счёт сумма НЕ попадает — ни наличная часть,
+ * ни переводы (переводы в кассе это отдельный «карманный» поток).
+ *
+ * `items` — разметка платежей: какие деньги ушли наличными, какие
+ * переводом. Если разметка не передана, сдаётся весь остаток кассы
+ * как наличные (прежнее поведение).
+ *
+ * Суммы считаются на сервере, чтобы исключить гонку с клиентом.
+ */
+export async function collectCash(
+  note?: string | null,
+  items?: { paymentId: string; kind: "cash" | "transfer" }[]
+): Promise<{ amount: number; cashAmount: number; transferAmount: number }> {
+  const db = getAdminDb();
+  const [payments, salaries, collections] = await Promise.all([
+    fetchPayments(),
+    fetchSalaries(),
+    fetchCashCollections(),
+  ]);
+
+  const cashBalance = computeCashBalance(payments, salaries, collections);
   if (cashBalance <= 0.009) {
     throw new Error("Касса пуста — нечего сдавать");
   }
 
-  const amount = Math.round(cashBalance * 100) / 100;
   const date = new Date().toISOString().slice(0, 10);
+  const cleanNote = note ? cleanText(note, 500) : null;
+
+  // ── Без разметки: сдаём весь остаток как наличные (старое поведение) ──
+  if (!items || items.length === 0) {
+    const amount = cashBalance;
+    const { error } = await db.from("cash_collections").insert({
+      date,
+      amount,
+      cash_amount: amount,
+      transfer_amount: 0,
+      items: [],
+      note: cleanNote,
+    });
+    if (error) throw error;
+    revalidateTag("warehouse-cash-collections", { expire: 0 });
+    revalidateTag("warehouse-payments", { expire: 0 });
+    revalidateTag("warehouse-salaries", { expire: 0 });
+    return { amount, cashAmount: amount, transferAmount: 0 };
+  }
+
+  // ── С разметкой: суммы берём из самих платежей, а не с клиента ──
+  const alreadyCollected = new Set<string>();
+  for (const c of collections) {
+    for (const it of c.items || []) {
+      if (it?.paymentId) alreadyCollected.add(String(it.paymentId));
+    }
+  }
+  const payById = new Map(payments.map((p) => [String(p.id), p]));
+
+  const rows: CashCollectionItem[] = [];
+  const seen = new Set<string>();
+  let cashAmount = 0;
+  let transferAmount = 0;
+
+  for (const raw of items) {
+    const id = String(raw?.paymentId || "");
+    if (!id || seen.has(id)) continue;
+    if (alreadyCollected.has(id)) {
+      throw new Error("Один из платежей уже вошёл в предыдущую сдачу кассы");
+    }
+    const p = payById.get(id);
+    if (!p) throw new Error("Платёж не найден");
+    if (!p.isPaid || p.excludeFromBalance || p.type !== "cash" || p.direction !== "incoming") {
+      throw new Error(`Платёж ПЛ-${p.number} нельзя сдать: это не наличное поступление`);
+    }
+    seen.add(id);
+    const kind = raw?.kind === "transfer" ? "transfer" : "cash";
+    if (kind === "transfer") transferAmount += p.amount;
+    else cashAmount += p.amount;
+    rows.push({
+      paymentId: id,
+      number: p.number,
+      counterparty: p.counterparty,
+      amount: p.amount,
+      kind,
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new Error("Выберите хотя бы один платёж для сдачи");
+  }
+
+  cashAmount = Math.round(cashAmount * 100) / 100;
+  transferAmount = Math.round(transferAmount * 100) / 100;
+  const amount = Math.round((cashAmount + transferAmount) * 100) / 100;
+
+  if (amount > cashBalance + 0.009) {
+    throw new Error(
+      `Сумма сдачи (${amount} ₽) больше остатка кассы (${cashBalance} ₽)`
+    );
+  }
+
   const { error } = await db.from("cash_collections").insert({
     date,
     amount,
-    note: note ? cleanText(note, 500) : null,
+    cash_amount: cashAmount,
+    transfer_amount: transferAmount,
+    items: rows,
+    note: cleanNote,
   });
   if (error) throw error;
   revalidateTag("warehouse-cash-collections", { expire: 0 });
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-salaries", { expire: 0 });
-  return { amount };
+  return { amount, cashAmount, transferAmount };
 }
 
 export async function deleteCashCollection(id: string): Promise<void> {
