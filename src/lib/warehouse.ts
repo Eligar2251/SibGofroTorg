@@ -2154,7 +2154,16 @@ function listPendingCashPayments(
  */
 export async function collectCash(
   note?: string | null,
-  items?: { paymentId: string; kind: CashKind | "transfer" }[]
+  items?: {
+    paymentId: string;
+    kind?: CashKind | "transfer";
+    /** Ручная разбивка: сколько оставить наличными */
+    cashAmount?: number;
+    /** Ручная разбивка: сколько инкассировать на карту */
+    cardAmount?: number;
+    /** Ручная разбивка: сколько забрать на расходы (ЗП и прочее) */
+    expenseAmount?: number;
+  }[]
 ): Promise<{ amount: number; cashAmount: number; transferAmount: number }> {
   const db = getAdminDb();
   const [payments, salaries, collections] = await Promise.all([
@@ -2183,7 +2192,14 @@ export async function collectCash(
   // Раньше здесь списывался весь остаток кассы одной суммой без привязки
   // к платежам — из-за этого сдача могла «съесть» деньги, к наличке
   // отношения не имеющие. Теперь сдаются строго конкретные платежи.
-  const requested =
+  type RequestedItem = {
+    paymentId: string;
+    kind?: CashKind | "transfer";
+    cashAmount?: number;
+    cardAmount?: number;
+    expenseAmount?: number;
+  };
+  const requested: RequestedItem[] =
     items && items.length > 0
       ? items
       : pending.map((p) => ({ paymentId: String(p.id), kind: "cash" as const }));
@@ -2206,6 +2222,8 @@ export async function collectCash(
   const seen = new Set<string>();
   let cashAmount = 0;
   let cardAmount = 0;
+  // Сколько денег забрали на расходы прямо с платежей (ручная разбивка).
+  let coveredByItems = 0;
 
   for (const raw of requested) {
     const id = String(raw?.paymentId || "");
@@ -2223,17 +2241,53 @@ export async function collectCash(
       );
     }
     seen.add(id);
-    const kind = normalizeCashKind(raw?.kind);
-    if (kind === "card") cardAmount += p.amount;
-    else cashAmount += p.amount;
+
+    // Ручная разбивка платежа: сколько наличными, сколько на карту,
+    // сколько забрали на расходы (например, 1000 из 1500 в счёт ЗП).
+    // Если разбивки нет — работает старое правило «весь платёж одним видом».
+    const hasSplit =
+      raw?.cashAmount != null ||
+      raw?.cardAmount != null ||
+      raw?.expenseAmount != null;
+
+    let itemCash: number;
+    let itemCard: number;
+    let itemExpense: number;
+
+    if (hasSplit) {
+      itemCash = round2(Math.max(0, Number(raw?.cashAmount) || 0));
+      itemCard = round2(Math.max(0, Number(raw?.cardAmount) || 0));
+      itemExpense = round2(Math.max(0, Number(raw?.expenseAmount) || 0));
+      const sum = round2(itemCash + itemCard + itemExpense);
+      if (Math.abs(sum - p.amount) > 0.01) {
+        throw new Error(
+          `ПЛ-${p.number}: разбивка ${sum} ₽ не совпадает с суммой платежа ${p.amount} ₽`
+        );
+      }
+    } else {
+      const kind = normalizeCashKind(raw?.kind);
+      itemCash = kind === "cash" ? p.amount : 0;
+      itemCard = kind === "card" ? p.amount : 0;
+      itemExpense = 0;
+    }
+
+    cashAmount += itemCash;
+    cardAmount += itemCard;
+    coveredByItems += itemExpense;
+
     rows.push({
       paymentId: id,
       number: p.number,
       counterparty: p.counterparty,
       amount: p.amount,
-      kind,
+      // Преобладающее направление — для совместимости со старым чтением.
+      kind: itemCard > itemCash ? "card" : "cash",
+      cashAmount: itemCash,
+      cardAmount: itemCard,
+      expenseAmount: itemExpense,
     });
   }
+  coveredByItems = round2(coveredByItems);
 
   if (rows.length === 0) {
     throw new Error("Выберите хотя бы один платёж для сдачи");
@@ -2264,12 +2318,17 @@ export async function collectCash(
   const expensesTotal =
     Math.round(expensesOfDay.reduce((sum, e) => sum + e.amount, 0) * 100) / 100;
 
-  // Траты покрываются физической наличкой; если её не хватило —
-  // остаток списывается с инкассируемой на карту части.
-  let cashPart = Math.round((cashAmount - expensesTotal) * 100) / 100;
+  // Часть трат кассир мог расписать вручную прямо по платежам
+  // (например, 1000 из ПЛ-5 в счёт ЗП). Эти деньги уже вычтены из
+  // cashAmount/cardAmount, поэтому второй раз их вычитать нельзя.
+  const remainingExpenses = Math.max(0, round2(expensesTotal - coveredByItems));
+
+  // Остаток трат покрывается физической наличкой; если её не хватило —
+  // списывается с инкассируемой на карту части.
+  let cashPart = round2(cashAmount - remainingExpenses);
   let cardPart = cardAmount;
   if (cashPart < 0) {
-    cardPart = Math.round((cardPart + cashPart) * 100) / 100;
+    cardPart = round2(cardPart + cashPart);
     cashPart = 0;
   }
   if (cardPart < 0) cardPart = 0;
@@ -2309,7 +2368,7 @@ export async function collectCash(
     transfer_amount: cardAmount,
     items: rows,
     expenses: expenseRows,
-    income_amount: Math.round((cashPart + cardPart + expensesTotal) * 100) / 100,
+    income_amount: round2(cashPart + cardPart + expensesTotal),
     expenses_amount: expensesTotal,
     note: cleanNote,
   });
@@ -2318,6 +2377,52 @@ export async function collectCash(
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-salaries", { expire: 0 });
   return { amount, cashAmount, transferAmount: cardAmount };
+}
+
+/**
+ * Закрыть старые наличные платежи без инкассации.
+ *
+ * Инкассация ведётся с определённой даты, а в кассе висят более ранние
+ * платежи — их не нужно сдавать, нужно просто убрать из списка и из
+ * остатка кассы. Помечаем их exclude_from_balance: документ остаётся
+ * в истории, но на баланс не влияет.
+ *
+ * Затрагиваются ТОЛЬКО наличные приходы (type='cash'). Безналичный
+ * расчётный счёт не трогается.
+ */
+export async function closeOldCashPayments(
+  paymentIds: string[]
+): Promise<{ closed: number; amount: number }> {
+  const db = getAdminDb();
+  const ids = [...new Set(paymentIds.map((x) => String(x || "").trim()))].filter(
+    Boolean
+  );
+  if (ids.length === 0) throw new Error("Не выбрано ни одного платежа");
+
+  const payments = await fetchPayments();
+  const byId = new Map(payments.map((p) => [String(p.id), p]));
+
+  let amount = 0;
+  for (const id of ids) {
+    const p = byId.get(id);
+    if (!p) throw new Error("Платёж не найден");
+    if (!isCashDeskIncome(p)) {
+      throw new Error(
+        `ПЛ-${p.number} нельзя закрыть: это не наличное поступление в кассу`
+      );
+    }
+    amount += p.amount;
+  }
+
+  const { error } = await db
+    .from("bank_payments")
+    .update({ exclude_from_balance: true })
+    .in("id", ids);
+  if (error) throw error;
+
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-cash-collections", { expire: 0 });
+  return { closed: ids.length, amount: round2(amount) };
 }
 
 export async function deleteCashCollection(id: string): Promise<void> {

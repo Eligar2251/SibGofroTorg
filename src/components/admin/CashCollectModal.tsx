@@ -11,7 +11,7 @@
 // не участвует: его платежи в список не попадают и остаток не меняется.
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Banknote,
@@ -22,6 +22,8 @@ import {
   Check,
   CalendarDays,
   Wallet,
+  Scissors,
+  Archive,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
@@ -49,6 +51,7 @@ interface CashExpense {
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+const r2 = (n: number) => Math.round(n * 100) / 100;
 
 const todayIso = () => {
   const d = new Date();
@@ -75,6 +78,12 @@ export function CashCollectModal({
   const [error, setError] = useState("");
   const [pending, setPending] = useState<PendingCashPayment[]>([]);
   const [expenses, setExpenses] = useState<CashExpense[]>([]);
+  /** Ручная разбивка платежа: paymentId -> сколько наличкой и сколько на расход. */
+  const [splits, setSplits] = useState<
+    Record<string, { cash: string; expense: string }>
+  >({});
+  /** Какие платежи раскрыты для ручного ввода сумм. */
+  const [splitOpen, setSplitOpen] = useState<Set<string>>(new Set());
   const [kinds, setKinds] = useState<Record<string, CashKind>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
@@ -167,24 +176,58 @@ export function CashCollectModal({
     [dayExpenses]
   );
 
+  /** Разбивка одного платежа: наличка / карта / расход. */
+  const splitOf = useCallback(
+    (p: PendingCashPayment) => {
+      const raw = splits[p.paymentId];
+      if (!raw) {
+        // Без ручной разбивки — весь платёж одним направлением.
+        const kind = kinds[p.paymentId] || "card";
+        return kind === "cash"
+          ? { cash: p.amount, card: 0, expense: 0, manual: false }
+          : { cash: 0, card: p.amount, expense: 0, manual: false };
+      }
+      const cash = Math.max(0, Number(raw.cash.replace(",", ".")) || 0);
+      const expense = Math.max(0, Number(raw.expense.replace(",", ".")) || 0);
+      const card = r2(p.amount - cash - expense);
+      return { cash: r2(cash), card, expense: r2(expense), manual: true };
+    },
+    [splits, kinds]
+  );
+
   const totals = useMemo(() => {
     let cash = 0;
     let card = 0;
+    let covered = 0;
     for (const p of dayItems) {
       if (!selected.has(p.paymentId)) continue;
-      if (kinds[p.paymentId] === "cash") cash += p.amount;
-      else card += p.amount;
+      const sp = splitOf(p);
+      cash += sp.cash;
+      card += sp.card;
+      covered += sp.expense;
     }
-    const income = Math.round((cash + card) * 100) / 100;
+    covered = r2(covered);
+    // Траты, расписанные вручную по платежам, уже вычтены из cash/card —
+    // второй раз их вычитать нельзя.
+    const rest = Math.max(0, r2(expensesTotal - covered));
+    let c = r2(cash - rest);
+    let k = r2(card);
+    if (c < 0) {
+      k = r2(k + c);
+      c = 0;
+    }
+    if (k < 0) k = 0;
     return {
-      cash: Math.round(cash * 100) / 100,
-      card: Math.round(card * 100) / 100,
+      cash: c,
+      card: k,
       /** Приход за день до вычета трат */
-      income,
-      /** Фактически к сдаче: приход минус наличные траты */
-      total: Math.round((income - expensesTotal) * 100) / 100,
+      income: r2(c + k + expensesTotal),
+      /** Фактически к сдаче */
+      total: r2(c + k),
+      /** Сколько трат расписано вручную по платежам */
+      covered,
     };
-  }, [dayItems, selected, kinds, expensesTotal]);
+  }, [dayItems, selected, splitOf, expensesTotal]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -209,13 +252,67 @@ export function CashCollectModal({
     setKinds(next);
   }
 
+  /** Закрыть все платежи выбранного дня без инкассации (старые долги). */
+  async function closeDay() {
+    const ids = dayItems.map((p) => p.paymentId);
+    if (ids.length === 0) return;
+    const sum = r2(dayItems.reduce((s2, p) => s2 + p.amount, 0));
+    if (
+      !confirm(
+        `Закрыть ${ids.length} платеж(ей) за ${fmtDate(activeDate)} на ${fmt(
+          sum
+        )} ₽ без инкассации?\n\n` +
+          "Они уйдут из списка сдачи и перестанут влиять на остаток кассы. " +
+          "Сами платежи останутся в истории банка."
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/warehouse/cash-collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "close", paymentIds: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Не удалось закрыть платежи");
+      router.refresh();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сети");
+      setSaving(false);
+    }
+  }
+
   async function submit() {
+    // Проверяем ручную разбивку до отправки: сумма частей должна
+    // совпадать с суммой платежа, иначе сервер вернёт ошибку.
+    for (const p of dayItems) {
+      if (!selected.has(p.paymentId)) continue;
+      const sp = splitOf(p);
+      if (!sp.manual) continue;
+      if (sp.card < -0.009) {
+        setError(
+          `ПЛ-${p.number}: наличка + расход больше суммы платежа (${fmt(p.amount)} ₽)`
+        );
+        return;
+      }
+    }
+
     const items = dayItems
       .filter((p) => selected.has(p.paymentId))
-      .map((p) => ({
-        paymentId: p.paymentId,
-        kind: kinds[p.paymentId] === "cash" ? "cash" : "card",
-      }));
+      .map((p) => {
+        const sp = splitOf(p);
+        return {
+          paymentId: p.paymentId,
+          kind: sp.card > sp.cash ? "card" : "cash",
+          cashAmount: sp.cash,
+          cardAmount: sp.card,
+          expenseAmount: sp.expense,
+        };
+      });
 
     if (items.length === 0) {
       setError("Выберите хотя бы один платёж");
@@ -395,16 +492,29 @@ export function CashCollectModal({
                     >
                       Все — наличные
                     </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm cashc-close-day"
+                      onClick={closeDay}
+                      disabled={saving}
+                      title="Убрать платежи этого дня из кассы без инкассации. Нужно для старых платежей до начала инкассации."
+                    >
+                      <Archive size={12} /> Закрыть день без сдачи
+                    </button>
                   </div>
 
                   <div className="cashc-list">
                     {dayItems.map((p) => {
                       const on = selected.has(p.paymentId);
                       const kind = kinds[p.paymentId] || "card";
+                      const sp = splitOf(p);
+                      const isSplit = splitOpen.has(p.paymentId);
                       return (
                         <div
                           key={p.paymentId}
-                          className={`cashc-row${on ? "" : " cashc-row--off"}`}
+                          className={`cashc-row${on ? "" : " cashc-row--off"}${
+                            isSplit ? " cashc-row--split" : ""
+                          }`}
                         >
                           <input
                             type="checkbox"
@@ -446,7 +556,99 @@ export function CashCollectModal({
                             >
                               <Banknote size={12} /> Наличка
                             </button>
+                            <button
+                              type="button"
+                              className={`cashc-seg__btn${
+                                isSplit ? " cashc-seg__btn--split" : ""
+                              }`}
+                              onClick={() =>
+                                setSplitOpen((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(p.paymentId)) {
+                                    next.delete(p.paymentId);
+                                    setSplits((sp2) => {
+                                      const n = { ...sp2 };
+                                      delete n[p.paymentId];
+                                      return n;
+                                    });
+                                  } else {
+                                    next.add(p.paymentId);
+                                    setSplits((sp2) => ({
+                                      ...sp2,
+                                      [p.paymentId]: { cash: "", expense: "" },
+                                    }));
+                                    setSelected((s2) =>
+                                      new Set(s2).add(p.paymentId)
+                                    );
+                                  }
+                                  return next;
+                                })
+                              }
+                              title="Разбить платёж вручную: наличка / расход / карта"
+                            >
+                              <Scissors size={12} /> Разбить
+                            </button>
                           </div>
+
+                          {/* ── Ручная разбивка суммы платежа ── */}
+                          {isSplit && (
+                            <div className="cashc-split">
+                              <label className="cashc-split__field">
+                                <span>
+                                  <Banknote size={11} /> Наличкой в кассу
+                                </span>
+                                <input
+                                  className="admin-input"
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  placeholder="0"
+                                  value={splits[p.paymentId]?.cash ?? ""}
+                                  onChange={(e) =>
+                                    setSplits((prev) => ({
+                                      ...prev,
+                                      [p.paymentId]: {
+                                        cash: e.target.value,
+                                        expense:
+                                          prev[p.paymentId]?.expense ?? "",
+                                      },
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <label className="cashc-split__field">
+                                <span>
+                                  <Wallet size={11} /> На расход (ЗП и пр.)
+                                </span>
+                                <input
+                                  className="admin-input"
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  placeholder="0"
+                                  value={splits[p.paymentId]?.expense ?? ""}
+                                  onChange={(e) =>
+                                    setSplits((prev) => ({
+                                      ...prev,
+                                      [p.paymentId]: {
+                                        cash: prev[p.paymentId]?.cash ?? "",
+                                        expense: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <div
+                                className={`cashc-split__rest${
+                                  sp.card < -0.009 ? " cashc-split__rest--bad" : ""
+                                }`}
+                              >
+                                <CreditCard size={11} /> Остаток на карту:{" "}
+                                <b>{fmt(sp.card)} ₽</b>
+                                {sp.card < -0.009 && " — превышена сумма платежа"}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

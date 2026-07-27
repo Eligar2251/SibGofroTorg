@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   collectCash,
+  closeOldCashPayments,
   getCashCollections,
   getPendingCashPayments,
   normalizeCashKind,
@@ -54,6 +55,24 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
 
+    // action=close — закрыть старые наличные платежи без инкассации.
+    // Нужно, когда инкассация ведётся с определённой даты, а в кассе
+    // висят более ранние платежи: сдавать их не надо, надо убрать.
+    if (body.action === "close") {
+      const ids = Array.isArray(body.paymentIds) ? body.paymentIds : [];
+      const res = await closeOldCashPayments(ids);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "cash-collection",
+        "cash-close",
+        `Закрыто ${res.closed} наличных платежей на ${res.amount} ₽ без инкассации`,
+        { closed: res.closed, amount: res.amount }
+      );
+      return NextResponse.json({ success: true, ...res });
+    }
+
     // Разметка платежей: [{ paymentId, kind: "card" | "cash" }]
     // "card" — инкассация на карту, "cash" — наличные (виртуальная карта).
     const items = Array.isArray(body.items)
@@ -61,6 +80,14 @@ export async function POST(request: NextRequest) {
           .map((it: any) => ({
             paymentId: String(it?.paymentId || "").trim(),
             kind: normalizeCashKind(it?.kind),
+            // Ручная разбивка платежа: наличка / карта / расход.
+            // Суммы проверяются на сервере против суммы платежа.
+            cashAmount:
+              it?.cashAmount != null ? Number(it.cashAmount) : undefined,
+            cardAmount:
+              it?.cardAmount != null ? Number(it.cardAmount) : undefined,
+            expenseAmount:
+              it?.expenseAmount != null ? Number(it.expenseAmount) : undefined,
           }))
           .filter((it: { paymentId: string }) => it.paymentId)
       : undefined;

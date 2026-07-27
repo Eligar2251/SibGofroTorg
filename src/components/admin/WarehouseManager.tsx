@@ -2113,21 +2113,46 @@ export function WarehouseManager({
                                             </span>
                                             <span className="wh-cc-line__val">
                                               {fmt(it.amount)} ₽
-                                              <span
-                                                className={`wh-cc-dest wh-cc-dest--${
-                                                  it.kind === "cash" ? "cash" : "card"
-                                                }`}
-                                              >
-                                                {it.kind === "cash" ? (
-                                                  <>
-                                                    <Banknote size={10} /> наличка
-                                                  </>
-                                                ) : (
-                                                  <>
-                                                    <CreditCard size={10} /> на карту
-                                                  </>
-                                                )}
-                                              </span>
+                                              {/* Разбитый платёж: показываем все части */}
+                                              {(it.cashAmount != null ||
+                                                it.cardAmount != null ||
+                                                it.expenseAmount != null) &&
+                                              (it.expenseAmount || 0) > 0 ? (
+                                                <>
+                                                  {(it.cashAmount || 0) > 0 && (
+                                                    <span className="wh-cc-dest wh-cc-dest--cash">
+                                                      <Banknote size={10} />{" "}
+                                                      {fmt(it.cashAmount || 0)} нал
+                                                    </span>
+                                                  )}
+                                                  {(it.cardAmount || 0) > 0 && (
+                                                    <span className="wh-cc-dest wh-cc-dest--card">
+                                                      <CreditCard size={10} />{" "}
+                                                      {fmt(it.cardAmount || 0)} карта
+                                                    </span>
+                                                  )}
+                                                  <span className="wh-cc-dest wh-cc-dest--exp">
+                                                    <Wallet size={10} />{" "}
+                                                    {fmt(it.expenseAmount || 0)} расход
+                                                  </span>
+                                                </>
+                                              ) : (
+                                                <span
+                                                  className={`wh-cc-dest wh-cc-dest--${
+                                                    it.kind === "cash" ? "cash" : "card"
+                                                  }`}
+                                                >
+                                                  {it.kind === "cash" ? (
+                                                    <>
+                                                      <Banknote size={10} /> наличка
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <CreditCard size={10} /> на карту
+                                                    </>
+                                                  )}
+                                                </span>
+                                              )}
                                             </span>
                                           </div>
                                         ))

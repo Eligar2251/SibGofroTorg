@@ -211,8 +211,16 @@ export interface CashCollectionItem {
   paymentId: string;
   number?: number | null;
   counterparty?: string | null;
+  /** Полная сумма платежа */
   amount: number;
+  /** Преобладающее направление (для совместимости со старыми записями) */
   kind: CashKind;
+  /** Сколько из платежа осталось наличными */
+  cashAmount?: number;
+  /** Сколько из платежа ушло инкассацией на карту */
+  cardAmount?: number;
+  /** Сколько из платежа забрали на расходы (ЗП и прочее) */
+  expenseAmount?: number;
 }
 
 /** Наличный расход, вычтенный при сдаче кассы (ЗП или платёж налом). */
