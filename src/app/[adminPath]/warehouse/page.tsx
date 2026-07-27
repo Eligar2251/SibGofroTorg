@@ -248,6 +248,7 @@ export default async function AdminWarehousePage({
       contactName: d.contactName ?? null,
       customerPhone: d.customerPhone ?? d.phone ?? null,
       deliveryAddress: d.deliveryAddress ?? d.address ?? null,
+      deliveryNote: d.deliveryNote ?? null,
       deliveryType: d.deliveryType ?? null,
       deliveryCost: d.deliveryCost ?? null,
       items: (d.items || []).map((it: any) => ({ productId: it.productId, name: it.name, quantity: it.quantity })),

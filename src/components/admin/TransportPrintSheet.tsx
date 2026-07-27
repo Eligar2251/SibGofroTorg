@@ -26,6 +26,7 @@ export interface TransportPrintData {
     contactName?: string | null;
     address: string | null;
     phone: string | null;
+    deliveryNote?: string | null;
     items: { name: string; transportQty: number }[];
   }[];
   companyPhone?: string;
@@ -115,6 +116,11 @@ export function TransportPrintSheet({
             deal.contactName && deal.contactName.trim()
               ? deal.contactName.trim()
               : null;
+          // Заметка курьеру (пишется в заказе) — важная инфа для доставки.
+          const note =
+            deal.deliveryNote && deal.deliveryNote.trim()
+              ? deal.deliveryNote.trim()
+              : null;
           const isLast = idx === lastIdx;
           return (
             <Fragment key={`${deal.dealNumber}-${idx}`}>
@@ -159,6 +165,14 @@ export function TransportPrintSheet({
                     <span className="strip-info__v">{contact || "—"}</span>
                   </div>
                 </div>
+
+                {/* Заметка курьеру — важная информация из заказа */}
+                {note && (
+                  <div className="strip-note">
+                    <span className="strip-note__k">Заметка курьеру</span>
+                    <span className="strip-note__v">{note}</span>
+                  </div>
+                )}
 
                 {/* Товары */}
                 <table className="strip-items">
@@ -259,6 +273,22 @@ const PRINT_CSS = `
 .strip-info__v { font-weight: 700; color: #2b2b28; font-size: 11px; line-height: 1.2; }
 .strip-info__v--phone { font-size: 16px; letter-spacing: 0.01em; }
 .strip-info__v--addr { font-size: 13px; }
+
+/* Заметка курьеру — светлый акцентный блок (важная инфа) */
+.strip-note {
+  margin-top: 2.5mm;
+  padding: 2mm 3mm;
+  background: #fdf8ec;
+  border: 1px solid #eeddb4;
+  border-left: 1.2mm solid #e0b84f;
+  border-radius: 1.5mm;
+}
+.strip-note__k {
+  display: block;
+  font-size: 8px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: #a97c14; margin-bottom: 1mm;
+}
+.strip-note__v { font-size: 11.5px; font-weight: 700; color: #2b2b28; line-height: 1.25; white-space: pre-line; }
 
 /* Товары */
 .strip-items { width: 100%; border-collapse: collapse; margin-top: 2.5mm; }

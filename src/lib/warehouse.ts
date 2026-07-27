@@ -2243,6 +2243,7 @@ export interface TransportItem {
   contactName?: string | null;
   address: string | null;
   phone: string | null;
+  deliveryNote?: string | null;
   items: { productId: string; name: string; orderedQty: number; transportQty: number }[];
   totalSum: number | null;
 }
@@ -2284,11 +2285,11 @@ function mapTransportRow(row: any): Transport {
 }
 
 /**
- * Дотягивает контактное лицо из сделки (customer_deals.contact_name)
- * для позиций перевозки, у которых оно не сохранено (старые перевозки,
- * созданные до появления contactName). Пакетный запрос на весь список.
+ * Дотягивает из сделки (customer_deals) контактное лицо и заметку
+ * курьеру для позиций перевозки, у которых они не сохранены (старые
+ * перевозки, созданные до появления этих полей). Пакетный запрос.
  */
-async function enrichTransportContactNames(transports: Transport[]): Promise<void> {
+async function enrichTransportItems(transports: Transport[]): Promise<void> {
   const dealIds = [
     ...new Set(
       transports.flatMap((t) => t.items.map((i) => String(i.dealId))).filter(Boolean)
@@ -2298,16 +2299,21 @@ async function enrichTransportContactNames(transports: Transport[]): Promise<voi
   const db = getAdminDb();
   const { data: deals } = await db
     .from("customer_deals")
-    .select("id, contact_name")
+    .select("id, contact_name, delivery_note")
     .in("id", dealIds);
   if (!deals || deals.length === 0) return;
   const contactMap = new Map<string, string | null>(
     deals.map((d: any) => [String(d.id), d.contact_name ?? null])
   );
+  const noteMap = new Map<string, string | null>(
+    deals.map((d: any) => [String(d.id), d.delivery_note ?? null])
+  );
   for (const t of transports) {
-    t.items = t.items.map((i) =>
-      i.contactName ? i : { ...i, contactName: contactMap.get(String(i.dealId)) ?? null }
-    );
+    t.items = t.items.map((i) => ({
+      ...i,
+      contactName: i.contactName ?? contactMap.get(String(i.dealId)) ?? null,
+      deliveryNote: i.deliveryNote ?? noteMap.get(String(i.dealId)) ?? null,
+    }));
   }
 }
 
@@ -2319,7 +2325,7 @@ export async function getTransports(opts: { status?: string; limit?: number } = 
   const { data, error } = await q;
   if (error) throw error;
   const transports = (data || []).map(mapTransportRow);
-  await enrichTransportContactNames(transports);
+  await enrichTransportItems(transports);
   return transports;
 }
 
@@ -2328,7 +2334,7 @@ export async function getTransportById(id: string): Promise<Transport | null> {
   const { data, error } = await db.from("transports").select("*").eq("id", id).maybeSingle();
   if (error || !data) return null;
   const transport = mapTransportRow(data);
-  await enrichTransportContactNames([transport]);
+  await enrichTransportItems([transport]);
   return transport;
 }
 

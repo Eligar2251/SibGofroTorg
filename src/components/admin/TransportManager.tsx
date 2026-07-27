@@ -21,6 +21,7 @@ export interface TransportDeal {
   contactName?: string | null;
   customerPhone?: string | null;
   deliveryAddress?: string | null;
+  deliveryNote?: string | null;
   deliveryType?: "free" | "paid" | null;
   deliveryCost?: number | null;
   items: { productId: string; name: string; quantity: number }[];
@@ -45,6 +46,7 @@ export interface TransportRow {
     contactName?: string | null;
     address: string | null;
     phone: string | null;
+    deliveryNote?: string | null;
     items: { productId: string; name: string; orderedQty: number; transportQty: number }[];
     totalSum: number | null;
   }[];
@@ -383,6 +385,7 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
         contactName: deal.contactName || null,
         address: deal.deliveryAddress || null,
         phone: deal.customerPhone || null,
+        deliveryNote: deal.deliveryNote || null,
         items: deal.items.map((item) => ({
           productId: item.productId,
           name: item.name,
