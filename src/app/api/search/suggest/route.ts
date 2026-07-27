@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
       slug: p.slug,
       sku: p.sku ?? null,
       price: p.price,
+      // Наличие нужно подсказкам, чтобы не показывать цену отсутствующего
+      // товара (единое правило витрины).
+      inStock: p.inStock,
+      stockQty: p.stockQty ?? null,
       imageUrl: p.imageUrl ?? null,
       dimensions:
         p.dimensionLength && p.dimensionWidth && p.dimensionHeight

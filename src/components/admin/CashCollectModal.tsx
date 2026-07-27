@@ -1,9 +1,14 @@
 // src/components/admin/CashCollectModal.tsx
-// Сдача кассы с разметкой: какой платёж пришёл наличными, а какой переводом.
+// Сдача кассы: касса показывает ТОЛЬКО наличные платежи, а менеджер
+// размечает, куда каждый из них ушёл.
 //
-// В кассе лежат два потока денег: физическая наличка и переводы на карту/СБП.
-// Оба НЕ относятся к основному расчётному счёту, поэтому учитываются здесь,
-// а не в безналичном балансе.
+// Направления сдачи:
+//   • «На карту» — инкассация на карту (по умолчанию Юлия Марковна,
+//     имя настраивается в «Настройках»);
+//   • «Наличные» — виртуальная карта «наличка», куда уходит сданная касса.
+//
+// Основной безналичный счёт в банке к кассе не относится и здесь
+// не участвует: его платежи в список не попадают и остаток не меняется.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -17,7 +22,10 @@ import {
   Check,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
-import type { CashKind } from "@/lib/warehouse-shared";
+import {
+  DEFAULT_CASH_CARD_HOLDER,
+  type CashKind,
+} from "@/lib/warehouse-shared";
 
 interface PendingCashPayment {
   paymentId: string;
@@ -51,6 +59,7 @@ export function CashCollectModal({
   const [kinds, setKinds] = useState<Record<string, CashKind>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
+  const [cardHolder, setCardHolder] = useState(DEFAULT_CASH_CARD_HOLDER);
 
   // Загружаем наличные поступления, ещё не вошедшие в сдачу
   useEffect(() => {
@@ -65,10 +74,11 @@ export function CashCollectModal({
         if (cancelled) return;
         const list: PendingCashPayment[] = data.pending || [];
         setPending(list);
-        // По умолчанию всё выбрано и помечено как наличные
+        if (data.cardHolder) setCardHolder(String(data.cardHolder));
+        // По умолчанию всё выбрано и уходит на карту (инкассация)
         setSelected(new Set(list.map((p) => p.paymentId)));
         const initial: Record<string, CashKind> = {};
-        for (const p of list) initial[p.paymentId] = "cash";
+        for (const p of list) initial[p.paymentId] = "card";
         setKinds(initial);
       } catch (e) {
         if (!cancelled) {
@@ -85,16 +95,16 @@ export function CashCollectModal({
 
   const totals = useMemo(() => {
     let cash = 0;
-    let transfer = 0;
+    let card = 0;
     for (const p of pending) {
       if (!selected.has(p.paymentId)) continue;
-      if (kinds[p.paymentId] === "transfer") transfer += p.amount;
-      else cash += p.amount;
+      if (kinds[p.paymentId] === "cash") cash += p.amount;
+      else card += p.amount;
     }
     return {
       cash: Math.round(cash * 100) / 100,
-      transfer: Math.round(transfer * 100) / 100,
-      total: Math.round((cash + transfer) * 100) / 100,
+      card: Math.round(card * 100) / 100,
+      total: Math.round((cash + card) * 100) / 100,
     };
   }, [pending, selected, kinds]);
 
@@ -109,7 +119,7 @@ export function CashCollectModal({
 
   function setKind(id: string, kind: CashKind) {
     setKinds((prev) => ({ ...prev, [id]: kind }));
-    // Отметка вида автоматически включает платёж в сдачу
+    // Отметка направления автоматически включает платёж в сдачу
     setSelected((prev) => new Set(prev).add(id));
   }
 
@@ -126,7 +136,7 @@ export function CashCollectModal({
       .filter((p) => selected.has(p.paymentId))
       .map((p) => ({
         paymentId: p.paymentId,
-        kind: kinds[p.paymentId] === "transfer" ? "transfer" : "cash",
+        kind: kinds[p.paymentId] === "cash" ? "cash" : "card",
       }));
 
     if (items.length === 0) {
@@ -135,9 +145,9 @@ export function CashCollectModal({
     }
     if (
       !confirm(
-        `Сдать кассу: наличными ${fmt(totals.cash)} ₽, переводом ${fmt(
-          totals.transfer
-        )} ₽. Итого ${fmt(totals.total)} ₽?`
+        `Сдать кассу: на карту (${cardHolder}) ${fmt(
+          totals.card
+        )} ₽, наличными ${fmt(totals.cash)} ₽. Итого ${fmt(totals.total)} ₽?`
       )
     ) {
       return;
@@ -161,33 +171,8 @@ export function CashCollectModal({
     }
   }
 
-  /** Сдать весь остаток кассы как наличные, без поимённой разметки. */
-  async function submitWhole() {
-    if (
-      !confirm(
-        `Сдать весь остаток кассы (${fmt(cashBalance)} ₽) как наличные, без разметки платежей?`
-      )
-    ) {
-      return;
-    }
-    setSaving(true);
-    setError("");
-    try {
-      const res = await fetch("/api/admin/warehouse/cash-collections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: note.trim() || null }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Не удалось сдать кассу");
-      router.refresh();
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сети");
-      setSaving(false);
-    }
-  }
-
+  // Часть остатка кассы, не покрытая размеченными платежами: старые наличные
+  // поступления без разметки или снятые галочки.
   const uncovered = Math.round((cashBalance - totals.total) * 100) / 100;
 
   return (
@@ -210,8 +195,9 @@ export function CashCollectModal({
           </div>
 
           <p className="admin-modal__desc">
-            Отметьте, как пришли деньги: наличными или переводом. Обе части
-            уходят из кассы и не попадают на основной безналичный счёт.
+            В списке только наличные платежи кассы. Отметьте, куда уходят
+            деньги: инкассацией на карту ({cardHolder}) или наличными.
+            Основной безналичный счёт в банке не затрагивается.
           </p>
 
           {loading ? (
@@ -223,17 +209,17 @@ export function CashCollectModal({
             <>
               {/* ── Итоги ── */}
               <div className="cashc-totals">
+                <div className="cashc-total cashc-total--transfer">
+                  <span className="cashc-total__label">
+                    <CreditCard size={13} /> На карту ({cardHolder})
+                  </span>
+                  <strong>{fmt(totals.card)} ₽</strong>
+                </div>
                 <div className="cashc-total cashc-total--cash">
                   <span className="cashc-total__label">
                     <Banknote size={13} /> Наличными
                   </span>
                   <strong>{fmt(totals.cash)} ₽</strong>
-                </div>
-                <div className="cashc-total cashc-total--transfer">
-                  <span className="cashc-total__label">
-                    <CreditCard size={13} /> Переводом
-                  </span>
-                  <strong>{fmt(totals.transfer)} ₽</strong>
                 </div>
                 <div className="cashc-total cashc-total--sum">
                   <span className="cashc-total__label">Итого к сдаче</span>
@@ -244,12 +230,13 @@ export function CashCollectModal({
               {pending.length === 0 ? (
                 <div className="admin-empty" style={{ padding: 20 }}>
                   <p>
-                    Нет неразмеченных наличных поступлений.
+                    Нет наличных поступлений к сдаче — все наличные платежи
+                    уже сданы.
                     {cashBalance > 0.009 && (
                       <>
                         {" "}
-                        В кассе {fmt(cashBalance)} ₽ — можно сдать всё как
-                        наличные кнопкой ниже.
+                        Остаток кассы {fmt(cashBalance)} ₽ — это движения без
+                        привязки к платежам (например, ручные корректировки).
                       </>
                     )}
                   </p>
@@ -263,23 +250,23 @@ export function CashCollectModal({
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
-                      onClick={() => markAll("cash")}
+                      onClick={() => markAll("card")}
                     >
-                      Все — наличные
+                      Все — на карту
                     </button>
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
-                      onClick={() => markAll("transfer")}
+                      onClick={() => markAll("cash")}
                     >
-                      Все — перевод
+                      Все — наличные
                     </button>
                   </div>
 
                   <div className="cashc-list">
                     {pending.map((p) => {
                       const on = selected.has(p.paymentId);
-                      const kind = kinds[p.paymentId] || "cash";
+                      const kind = kinds[p.paymentId] || "card";
                       return (
                         <div
                           key={p.paymentId}
@@ -306,24 +293,24 @@ export function CashCollectModal({
                             <button
                               type="button"
                               className={`cashc-seg__btn${
-                                kind === "cash" ? " cashc-seg__btn--cash" : ""
+                                kind === "card"
+                                  ? " cashc-seg__btn--transfer"
+                                  : ""
                               }`}
-                              onClick={() => setKind(p.paymentId, "cash")}
-                              title="Пришло физическими наличными"
+                              onClick={() => setKind(p.paymentId, "card")}
+                              title={`Инкассация на карту (${cardHolder})`}
                             >
-                              <Banknote size={12} /> Нал
+                              <CreditCard size={12} /> На карту
                             </button>
                             <button
                               type="button"
                               className={`cashc-seg__btn${
-                                kind === "transfer"
-                                  ? " cashc-seg__btn--transfer"
-                                  : ""
+                                kind === "cash" ? " cashc-seg__btn--cash" : ""
                               }`}
-                              onClick={() => setKind(p.paymentId, "transfer")}
-                              title="Пришло переводом на карту / СБП"
+                              onClick={() => setKind(p.paymentId, "cash")}
+                              title="Наличные (виртуальная карта «наличка»)"
                             >
-                              <CreditCard size={12} /> Перевод
+                              <Banknote size={12} /> Наличка
                             </button>
                           </div>
                         </div>
@@ -337,8 +324,8 @@ export function CashCollectModal({
                       {uncovered > 0 ? (
                         <>
                           В кассе останется <b>{fmt(uncovered)} ₽</b> — это
-                          старые поступления без разметки или невыбранные
-                          платежи.
+                          невыбранные платежи или движения кассы без привязки
+                          к платежам.
                         </>
                       ) : (
                         <>
@@ -379,21 +366,6 @@ export function CashCollectModal({
             >
               Отмена
             </button>
-            {pending.length === 0 && cashBalance > 0.009 && (
-              <button
-                type="button"
-                className="admin-btn admin-btn--outline"
-                onClick={submitWhole}
-                disabled={saving || loading}
-              >
-                {saving ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Banknote size={14} />
-                )}
-                Сдать всё как наличные ({fmt(cashBalance)} ₽)
-              </button>
-            )}
             <button
               type="button"
               className="admin-btn admin-btn--primary"

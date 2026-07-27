@@ -572,10 +572,19 @@ CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECU
 -- В безналичный банковский счёт эти суммы не прибавляются.
 -- Каждая запись = одна сданная смена (дата + сумма + примечание).
 -- =========================================================
+-- В сдачу попадают ТОЛЬКО наличные платежи кассы. Основной безналичный
+-- расчётный счёт к кассе не относится и здесь не участвует.
+-- items[].kind = 'card' (инкассация на карту) | 'cash' (наличные).
 CREATE TABLE IF NOT EXISTS cash_collections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   date TEXT NOT NULL DEFAULT '',
   amount NUMERIC NOT NULL DEFAULT 0,
+  -- Часть, оставшаяся наличными (виртуальная карта «наличка»)
+  cash_amount NUMERIC NOT NULL DEFAULT 0,
+  -- Часть, ушедшая инкассацией на карту (НЕ расчётный счёт)
+  transfer_amount NUMERIC NOT NULL DEFAULT 0,
+  -- [{paymentId, number, counterparty, amount, kind}]
+  items JSONB DEFAULT '[]'::jsonb,
   note TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

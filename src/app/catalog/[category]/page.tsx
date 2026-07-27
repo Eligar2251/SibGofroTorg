@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { isProductAvailable } from "@/lib/stock-availability";
 import {
   getCategoryBySlug,
   getProducts,
@@ -52,7 +53,8 @@ export default async function CategoryPage({
     sortBy: sort || "default",
     search: q || undefined,
   });
-  if (stock === "yes") products = products.filter((p) => p.inStock);
+  // Единое правило наличия: флаг in_stock + положительный остаток.
+  if (stock === "yes") products = products.filter((p) => isProductAvailable(p));
 
   return (
     <>

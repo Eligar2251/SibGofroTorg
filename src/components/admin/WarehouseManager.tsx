@@ -1933,11 +1933,11 @@ export function WarehouseManager({
                   <span className="admin-badge admin-badge--muted">
                     В кассе: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
                   </span>
+                  <span className="admin-badge admin-badge--blue">
+                    <CreditCard size={10} /> На карту: {fmt(collectedBreakdown.transfer)} ₽
+                  </span>
                   <span className="admin-badge admin-badge--green">
                     <Banknote size={10} /> Наличными: {fmt(collectedBreakdown.cash)} ₽
-                  </span>
-                  <span className="admin-badge admin-badge--blue">
-                    <CreditCard size={10} /> Переводом: {fmt(collectedBreakdown.transfer)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
                     Сдано всего: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
@@ -1947,9 +1947,10 @@ export function WarehouseManager({
               <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
                 <div className="admin-muted" style={{ fontSize: 13 }}>
                   Кнопка «Сдать кассу» находится в верхнем блоке банка рядом с остатком наличных.
-                  При сдаче каждый платёж помечается как <b>наличные</b> или <b>перевод</b> —
-                  в отчёте видно, сколько денег ушло каждым способом. Обе части списываются
-                  из кассы и не прибавляются к основному безналичному счёту.
+                  В сдачу попадают <b>только наличные платежи</b> — безналичный счёт в банке
+                  к кассе не относится и не затрагивается. При сдаче каждый платёж помечается:
+                  <b> инкассация на карту</b> или <b>наличные</b> (виртуальная карта). Обе части
+                  списываются из кассы.
                 </div>
                 {collectionsSorted.length === 0 ? (
                   <div className="admin-empty" style={{ padding: 16 }}>
@@ -1961,8 +1962,8 @@ export function WarehouseManager({
                       <thead>
                         <tr>
                           <th>Дата</th>
+                          <th style={{ textAlign: "right" }}>На карту</th>
                           <th style={{ textAlign: "right" }}>Наличными</th>
-                          <th style={{ textAlign: "right" }}>Переводом</th>
                           <th style={{ textAlign: "right" }}>Всего</th>
                           <th>Комментарий</th>
                           <th></th>
@@ -1993,11 +1994,11 @@ export function WarehouseManager({
                                   </span>
                                 )}
                               </td>
-                              <td style={{ textAlign: "right", fontWeight: 600 }}>
-                                {cashPart > 0 ? `${fmt(cashPart)} ₽` : "—"}
-                              </td>
                               <td style={{ textAlign: "right", fontWeight: 600, color: "var(--adm-steel)" }}>
                                 {transfer > 0 ? `${fmt(transfer)} ₽` : "—"}
+                              </td>
+                              <td style={{ textAlign: "right", fontWeight: 600 }}>
+                                {cashPart > 0 ? `${fmt(cashPart)} ₽` : "—"}
                               </td>
                               <td style={{ textAlign: "right", fontWeight: 700, color: "var(--adm-pine)" }}>
                                 +{fmt(Math.round(c.amount * 100) / 100)} ₽
@@ -2018,11 +2019,11 @@ export function WarehouseManager({
                         })}
                         <tr className="wh-cashcollect__total">
                           <td style={{ fontWeight: 800 }}>Итого сдано</td>
-                          <td style={{ textAlign: "right", fontWeight: 800 }}>
-                            {fmt(collectedBreakdown.cash)} ₽
-                          </td>
                           <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-steel)" }}>
                             {fmt(collectedBreakdown.transfer)} ₽
+                          </td>
+                          <td style={{ textAlign: "right", fontWeight: 800 }}>
+                            {fmt(collectedBreakdown.cash)} ₽
                           </td>
                           <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-pine)" }}>
                             +{fmt(Math.round(collectionsTotal * 100) / 100)} ₽

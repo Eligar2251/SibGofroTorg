@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Search, Loader2 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { isOutOfStock, OUT_OF_STOCK_LABEL } from "@/lib/stock-availability";
 
 interface Suggestion {
   id: string;
@@ -12,6 +13,8 @@ interface Suggestion {
   slug: string;
   sku?: string | null;
   price: number | null;
+  inStock?: boolean;
+  stockQty?: number | null;
   imageUrl?: string | null;
   dimensions?: string | null;
 }
@@ -141,7 +144,11 @@ export function SearchBar({
                 {s.dimensions && <div className="search-suggestion-sku">Размер: {s.dimensions}</div>}
               </div>
               <div className="search-suggestion-price">
-                {s.price != null ? `${s.price.toLocaleString("ru-RU")} ₽` : "—"}
+                {isOutOfStock(s)
+                  ? OUT_OF_STOCK_LABEL
+                  : s.price != null
+                  ? `${s.price.toLocaleString("ru-RU")} ₽`
+                  : "—"}
               </div>
             </Link>
           ))}

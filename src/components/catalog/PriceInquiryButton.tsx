@@ -41,6 +41,7 @@ export function PriceInquiryButton({
   className,
   label = "Узнать цену",
   defaultOpen = false,
+  kind = "price",
 }: {
   productName: string;
   productSku?: string | null;
@@ -48,6 +49,14 @@ export function PriceInquiryButton({
   label?: string;
   /** Используется только в превью компонентов. */
   defaultOpen?: boolean;
+  /**
+   * Что уточняет клиент:
+   *  - "price" — цену (товар без цены / под заказ);
+   *  - "restock" — сроки поступления (товара нет на складе).
+   * Обе ветки создают одну и ту же автозаявку с номером — разница лишь
+   * в тексте, который увидит менеджер.
+   */
+  kind?: "price" | "restock";
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [me, setMe] = useState<MeUser | null>(null);
@@ -57,7 +66,9 @@ export function PriceInquiryButton({
   const [comment, setComment] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const productInfo = `Узнать цену: ${productName}${
+  const isRestock = kind === "restock";
+  const topic = isRestock ? "Уточнить поступление" : "Узнать цену";
+  const productInfo = `${topic}: ${productName}${
     productSku ? ` (арт. ${productSku})` : ""
   }`;
 
@@ -209,11 +220,12 @@ export function PriceInquiryButton({
             {(phase === "form" || phase === "error") && (
               <form className="pi-form" onSubmit={handleSubmit}>
                 <div className="pi-title" id="price-inquiry-title">
-                  Узнать цену
+                  {topic}
                 </div>
                 <p className="pi-text">
-                  Выберите, где вам удобнее получить ответ. Менеджер свяжется
-                  с вами в течение 15 минут и уточнит цену и сроки.
+                  {isRestock
+                    ? "Товара сейчас нет на складе. Выберите, где вам удобнее получить ответ — менеджер сообщит срок поступления и актуальную цену."
+                    : "Выберите, где вам удобнее получить ответ. Менеджер свяжется с вами в течение 15 минут и уточнит цену и сроки."}
                 </p>
 
                 <label className="pi-field">

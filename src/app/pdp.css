@@ -611,6 +611,12 @@
   color: var(--ink-light);
 }
 
+/* Товара нет на складе — вместо цены выводим статус */
+.pdp-price-current--out {
+  color: var(--red, #dc2626);
+  font-size: 22px;
+}
+
 .pdp-made-to-order {
   display: flex;
   flex-direction: column;

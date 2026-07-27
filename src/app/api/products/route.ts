@@ -3,6 +3,7 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { isProductAvailable } from "@/lib/stock-availability";
 import { getCategoryBySlug, getProducts } from "@/lib/supabase-queries";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,8 @@ export async function GET(request: NextRequest) {
     });
 
     if (stock === "yes") {
-      products = products.filter((p) => p.inStock);
+      // Единое правило наличия: флаг in_stock + положительный остаток.
+      products = products.filter((p) => isProductAvailable(p));
     }
 
     // Страховка: никогда не отдаём безразмерный ответ через public API
