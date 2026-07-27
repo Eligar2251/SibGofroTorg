@@ -409,6 +409,13 @@ export function getBankSummary(
     balance: bankBalance + cashBalance,
     bankBalance,
     cashBalance,
+    /**
+     * Касса ушла в минус — так быть не должно. Обычно это значит, что
+     * приход, который покрывала старая сдача кассы, сменил тип на
+     * безналичный: сдача продолжает вычитать сумму, а прихода в кассе
+     * уже нет. Показываем предупреждение вместо тихой поломки цифр.
+     */
+    cashBalanceNegative: cashBalance < -0.009,
     collectedCash,
     /** Из сданного — наличными (виртуальная карта «наличка») */
     collectedCashOnly,

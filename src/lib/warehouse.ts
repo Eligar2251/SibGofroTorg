@@ -2104,6 +2104,14 @@ export async function collectCash(
   ]);
 
   const cashBalance = computeCashBalance(payments, salaries, collections);
+  if (cashBalance < -0.009) {
+    // Отрицательная касса = учёт разошёлся (обычно приход, покрытый старой
+    // сдачей, стал безналичным). Новая сдача только усугубит расхождение.
+    throw new Error(
+      `Остаток кассы отрицательный (${cashBalance} ₽) — учёт разошёлся. ` +
+        "Сдача заблокирована: сначала проверьте типы платежей и суммы прошлых сдач."
+    );
+  }
   if (cashBalance <= 0.009) {
     throw new Error("Касса пуста — нечего сдавать");
   }

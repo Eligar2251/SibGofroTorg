@@ -1728,9 +1728,32 @@ export function WarehouseManager({
                 <div className="bank-hero__label">
                   <Banknote size={14} /> Касса (наличные)
                 </div>
-                <div className="bank-hero__value" style={{ color: '#fff' }}>
+                <div
+                  className="bank-hero__value"
+                  style={{ color: bankSummary.cashBalanceNegative ? '#ef8f76' : '#fff' }}
+                >
                   {fmt(bankSummary.cashBalance)} ₽
                 </div>
+                {bankSummary.cashBalanceNegative && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 6,
+                      marginTop: 6,
+                      fontSize: 12,
+                      color: '#ef8f76',
+                      maxWidth: 280,
+                    }}
+                  >
+                    <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <span>
+                      Касса в минусе. Обычно это значит, что приход, покрытый
+                      прошлой сдачей, стал безналичным. Проверьте типы платежей
+                      и суммы сдач — цифры разошлись.
+                    </span>
+                  </div>
+                )}
                 <button
                   type="button"
                   className="admin-btn admin-btn--primary admin-btn--sm"
