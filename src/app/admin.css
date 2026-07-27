@@ -5973,6 +5973,63 @@ body:has(.admin-modal-overlay) {
    ══════════════════════════════════════ */
 .cashc-modal { max-width: 46rem; }
 
+/* ── Дни в сдаче кассы: платежи за наличку сгруппированы по числам ── */
+.cashc-days {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 10px;
+}
+
+.cashc-day {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cashc-day:hover { background: var(--adm-paper); }
+
+.cashc-day--active {
+  border-color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+}
+
+.cashc-day__date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  white-space: nowrap;
+}
+
+.cashc-day__today {
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--adm-pine);
+}
+
+.cashc-day__sum {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--adm-pine);
+}
+
+.cashc-day__count { font-size: 11px; color: var(--adm-sand); }
+
 .cashc-totals {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

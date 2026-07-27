@@ -2017,8 +2017,6 @@ export async function getPendingCashPayments(): Promise<
     counterparty: string;
     amount: number;
     comment: string | null;
-    /** Похоже, что платёж на самом деле безналичный (см. suspectsNonCash). */
-    suspectNonCash: boolean;
   }[]
 > {
   const [payments, collections] = await Promise.all([
@@ -2032,25 +2030,7 @@ export async function getPendingCashPayments(): Promise<
     counterparty: p.counterparty,
     amount: p.amount,
     comment: p.comment ?? null,
-    suspectNonCash: suspectsNonCash(p),
   }));
-}
-
-/**
- * Платёж помечен наличным (type='cash'), но по комментарию похож на
- * безналичный расчёт. Такие записи появились из-за старого импорта из
- * Excel: регулярка /нал|cash|касс/ ловила слово «безнал».
- *
- * Мы их НЕ прячем автоматически (вдруг это правда наличные с неудачным
- * комментарием), но подсвечиваем в модалке сдачи, чтобы кассир не сдал
- * деньги с расчётного счёта по ошибке.
- */
-function suspectsNonCash(p: BankPayment): boolean {
-  const c = String(p.comment || "").toLowerCase();
-  if (!c) return false;
-  return /безнал|б\/нал|расчетный счет|расчётный счёт|счёт покупателю|счет покупателю|п\/п/.test(
-    c
-  );
 }
 
 /** Платёж относится к кассе: наличное поступление, влияющее на остаток. */
@@ -2116,7 +2096,6 @@ export async function collectCash(
     throw new Error("Касса пуста — нечего сдавать");
   }
 
-  const date = new Date().toISOString().slice(0, 10);
   const cleanNote = note ? cleanText(note, 500) : null;
   const pending = listPendingCashPayments(payments, collections);
 
@@ -2179,6 +2158,18 @@ export async function collectCash(
   if (rows.length === 0) {
     throw new Error("Выберите хотя бы один платёж для сдачи");
   }
+
+  // Сдача кассы идёт за конкретный день, поэтому дата записи — это дата
+  // самих платежей, а не «сегодня». Иначе отчёт за 27.07 попадал бы в 28.07.
+  const payDates = [
+    ...new Set(rows.map((r) => payById.get(String(r.paymentId))?.date || "")),
+  ].filter(Boolean);
+  if (payDates.length > 1) {
+    throw new Error(
+      "В одну сдачу можно включать платежи только за один день. Сдайте каждый день отдельно."
+    );
+  }
+  const date = payDates[0] || new Date().toISOString().slice(0, 10);
 
   cashAmount = Math.round(cashAmount * 100) / 100;
   cardAmount = Math.round(cardAmount * 100) / 100;

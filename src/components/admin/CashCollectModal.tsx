@@ -20,6 +20,7 @@ import {
   X,
   AlertTriangle,
   Check,
+  CalendarDays,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
@@ -34,11 +35,15 @@ interface PendingCashPayment {
   counterparty: string;
   amount: number;
   comment: string | null;
-  /** Похоже на безналичный платёж, ошибочно помеченный наличным. */
-  suspectNonCash?: boolean;
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+
+const todayIso = () => {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
 function fmtDate(raw: string): string {
   if (!raw) return "—";
@@ -62,6 +67,8 @@ export function CashCollectModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
   const [cardHolder, setCardHolder] = useState(DEFAULT_CASH_CARD_HOLDER);
+  /** Выбранная дата (YYYY-MM-DD). Работаем с платежами одного дня. */
+  const [activeDate, setActiveDate] = useState<string>("");
 
   // Загружаем наличные поступления, ещё не вошедшие в сдачу
   useEffect(() => {
@@ -77,11 +84,16 @@ export function CashCollectModal({
         const list: PendingCashPayment[] = data.pending || [];
         setPending(list);
         if (data.cardHolder) setCardHolder(String(data.cardHolder));
-        // По умолчанию отмечаем всё, КРОМЕ подозрительных записей, которые
-        // выглядят как безналичный расчёт: их кассир должен включить сам.
+        // Открываем на самой свежей дате: обычно сдают кассу за сегодня.
+        const latest = list.reduce(
+          (max, p) => (p.date > max ? p.date : max),
+          list[0]?.date || ""
+        );
+        setActiveDate(latest);
+        // Отмечены только платежи выбранного дня.
         setSelected(
           new Set(
-            list.filter((p) => !p.suspectNonCash).map((p) => p.paymentId)
+            list.filter((p) => p.date === latest).map((p) => p.paymentId)
           )
         );
         const initial: Record<string, CashKind> = {};
@@ -100,10 +112,41 @@ export function CashCollectModal({
     };
   }, []);
 
+  /** Платежи, сгруппированные по дате: [{date, items, total}], свежие сверху. */
+  const days = useMemo(() => {
+    const map = new Map<string, PendingCashPayment[]>();
+    for (const p of pending) {
+      const arr = map.get(p.date);
+      if (arr) arr.push(p);
+      else map.set(p.date, [p]);
+    }
+    return [...map.entries()]
+      .map(([date, items]) => ({
+        date,
+        items: items.sort((a, b) => a.number - b.number),
+        total: Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [pending]);
+
+  /** Платежи выбранного дня — с ними и работает кассир. */
+  const dayItems = useMemo(
+    () => days.find((d) => d.date === activeDate)?.items || [],
+    [days, activeDate]
+  );
+
+  /** Переключение дня: выделяем все платежи нового дня, прочие снимаем. */
+  function pickDate(date: string) {
+    setActiveDate(date);
+    const ids = pending.filter((p) => p.date === date).map((p) => p.paymentId);
+    setSelected(new Set(ids));
+    setError("");
+  }
+
   const totals = useMemo(() => {
     let cash = 0;
     let card = 0;
-    for (const p of pending) {
+    for (const p of dayItems) {
       if (!selected.has(p.paymentId)) continue;
       if (kinds[p.paymentId] === "cash") cash += p.amount;
       else card += p.amount;
@@ -113,7 +156,7 @@ export function CashCollectModal({
       card: Math.round(card * 100) / 100,
       total: Math.round((cash + card) * 100) / 100,
     };
-  }, [pending, selected, kinds]);
+  }, [dayItems, selected, kinds]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -132,14 +175,14 @@ export function CashCollectModal({
 
   function markAll(kind: CashKind) {
     const next: Record<string, CashKind> = { ...kinds };
-    for (const p of pending) {
+    for (const p of dayItems) {
       if (selected.has(p.paymentId)) next[p.paymentId] = kind;
     }
     setKinds(next);
   }
 
   async function submit() {
-    const items = pending
+    const items = dayItems
       .filter((p) => selected.has(p.paymentId))
       .map((p) => ({
         paymentId: p.paymentId,
@@ -152,7 +195,7 @@ export function CashCollectModal({
     }
     if (
       !confirm(
-        `Сдать кассу: на карту (${cardHolder}) ${fmt(
+        `Сдать кассу за ${fmtDate(activeDate)}: на карту (${cardHolder}) ${fmt(
           totals.card
         )} ₽, наличными ${fmt(totals.cash)} ₽. Итого ${fmt(totals.total)} ₽?`
       )
@@ -181,6 +224,16 @@ export function CashCollectModal({
   // Часть остатка кассы, не покрытая размеченными платежами: старые наличные
   // поступления без разметки или снятые галочки.
   const uncovered = Math.round((cashBalance - totals.total) * 100) / 100;
+  /** Сколько наличных ждёт сдачи за другие дни — останется в кассе. */
+  const otherDaysTotal = useMemo(
+    () =>
+      Math.round(
+        days
+          .filter((d) => d.date !== activeDate)
+          .reduce((s, d) => s + d.total, 0) * 100
+      ) / 100,
+    [days, activeDate]
+  );
 
   return (
     <ModalPortal>
@@ -202,9 +255,9 @@ export function CashCollectModal({
           </div>
 
           <p className="admin-modal__desc">
-            В списке только наличные платежи кассы. Отметьте, куда уходят
-            деньги: инкассацией на карту ({cardHolder}) или наличными.
-            Основной безналичный счёт в банке не затрагивается.
+            Платежи за наличку сгруппированы по дням. Выберите день и
+            отметьте, куда уходят деньги: инкассацией на карту ({cardHolder})
+            или наличными. Безналичный счёт в банке не затрагивается.
           </p>
 
           {loading ? (
@@ -214,6 +267,37 @@ export function CashCollectModal({
             </div>
           ) : (
             <>
+              {/* ── Дни: выбираем, за какое число сдаём кассу ── */}
+              {days.length > 0 && (
+                <div className="cashc-days">
+                  {days.map((d) => {
+                    const on = d.date === activeDate;
+                    const isToday = d.date === todayIso();
+                    return (
+                      <button
+                        key={d.date}
+                        type="button"
+                        className={`cashc-day${on ? " cashc-day--active" : ""}`}
+                        onClick={() => pickDate(d.date)}
+                        title={`${d.items.length} платеж(ей) на ${fmt(d.total)} ₽`}
+                      >
+                        <span className="cashc-day__date">
+                          <CalendarDays size={12} />
+                          {fmtDate(d.date)}
+                          {isToday && (
+                            <span className="cashc-day__today">сегодня</span>
+                          )}
+                        </span>
+                        <span className="cashc-day__sum">{fmt(d.total)} ₽</span>
+                        <span className="cashc-day__count">
+                          {d.items.length} плат.
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* ── Итоги ── */}
               <div className="cashc-totals">
                 <div className="cashc-total cashc-total--transfer">
@@ -237,7 +321,7 @@ export function CashCollectModal({
               {pending.length === 0 ? (
                 <div className="admin-empty" style={{ padding: 20 }}>
                   <p>
-                    Нет наличных поступлений к сдаче — все наличные платежи
+                    Нет наличных поступлений к сдаче — все платежи за наличку
                     уже сданы.
                     {cashBalance > 0.009 && (
                       <>
@@ -252,7 +336,11 @@ export function CashCollectModal({
                 <>
                   <div className="cashc-bulk">
                     <span className="admin-muted" style={{ fontSize: 12 }}>
-                      Выбрано: <b>{selected.size}</b> из {pending.length}
+                      За {fmtDate(activeDate)}: выбрано{" "}
+                      <b>
+                        {dayItems.filter((p) => selected.has(p.paymentId)).length}
+                      </b>{" "}
+                      из {dayItems.length}
                     </span>
                     <button
                       type="button"
@@ -271,7 +359,7 @@ export function CashCollectModal({
                   </div>
 
                   <div className="cashc-list">
-                    {pending.map((p) => {
+                    {dayItems.map((p) => {
                       const on = selected.has(p.paymentId);
                       const kind = kinds[p.paymentId] || "card";
                       return (
@@ -291,14 +379,6 @@ export function CashCollectModal({
                             </span>
                             <span className="cashc-row__meta">
                               ПЛ-{p.number} · {fmtDate(p.date)}
-                              {p.suspectNonCash && (
-                                <span
-                                  className="cashc-row__warn"
-                                  title="По комментарию похоже на безналичный расчёт. Проверьте тип платежа — возможно, он ошибочно помечен наличным."
-                                >
-                                  <AlertTriangle size={11} /> похоже на безнал
-                                </span>
-                              )}
                             </span>
                           </div>
                           <span className="cashc-row__amount">
@@ -333,19 +413,19 @@ export function CashCollectModal({
                     })}
                   </div>
 
-                  {Math.abs(uncovered) > 0.009 && (
+                  {(otherDaysTotal > 0.009 || uncovered < -0.009) && (
                     <div className="cashc-hint">
                       <AlertTriangle size={13} />
-                      {uncovered > 0 ? (
-                        <>
-                          В кассе останется <b>{fmt(uncovered)} ₽</b> — это
-                          невыбранные платежи или движения кассы без привязки
-                          к платежам.
-                        </>
-                      ) : (
+                      {uncovered < -0.009 ? (
                         <>
                           Сумма сдачи превышает остаток кассы на{" "}
                           <b>{fmt(Math.abs(uncovered))} ₽</b>.
+                        </>
+                      ) : (
+                        <>
+                          За другие дни ждёт сдачи ещё{" "}
+                          <b>{fmt(otherDaysTotal)} ₽</b> — они останутся
+                          в кассе, сдать их можно отдельно.
                         </>
                       )}
                     </div>
@@ -392,7 +472,7 @@ export function CashCollectModal({
               ) : (
                 <Check size={14} />
               )}
-              Сдать {fmt(totals.total)} ₽
+              Сдать за {fmtDate(activeDate)} — {fmt(totals.total)} ₽
             </button>
           </div>
         </div>
