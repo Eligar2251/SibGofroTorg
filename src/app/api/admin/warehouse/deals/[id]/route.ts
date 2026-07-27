@@ -31,6 +31,10 @@ export async function PUT(
       comment: body.comment ?? null,
       items: Array.isArray(body.items) ? body.items : [],
       linkedPaymentIds: body.linkedPaymentIds,
+      // Способ оплаты и разбиение на части: без них редактирование
+      // наличного заказа превращало оплату в обычный неоплаченный счёт.
+      paymentMethod: body.paymentMethod,
+      paymentSplits: body.paymentSplits,
       vatRate: body.vatRate,
       hasDelivery: body.hasDelivery,
       deliveryType: body.deliveryType,

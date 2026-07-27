@@ -184,13 +184,31 @@ export interface Salary {
   createdAt?: string | null;
 }
 
-/** Сдача кассы (инкассация): списание всего остатка наличных в банк */
+/** Как поступили деньги в кассу: физическая наличка или перевод. */
+export type CashKind = "cash" | "transfer";
+
+/** Платёж, вошедший в сдачу кассы, с пометкой «нал / перевод». */
+export interface CashCollectionItem {
+  paymentId: string;
+  number?: number | null;
+  counterparty?: string | null;
+  amount: number;
+  kind: CashKind;
+}
+
+/** Сдача кассы (инкассация): списание остатка наличных из кассы */
 export interface CashCollection {
   id: string;
   /** Дата сдачи (YYYY-MM-DD) */
   date: string;
-  /** Сумма, сданная из наличной кассы */
+  /** Общая сумма, сданная из кассы (наличные + перевод) */
   amount: number;
+  /** Часть, сданная физическими наличными */
+  cashAmount?: number;
+  /** Часть, полученная переводом (к основному банковскому счёту не относится) */
+  transferAmount?: number;
+  /** Разметка платежей, вошедших в сдачу */
+  items?: CashCollectionItem[];
   note?: string | null;
   createdAt?: string | null;
 }
@@ -201,6 +219,120 @@ function normalizeName(name: string): string {
     .toLocaleLowerCase("ru-RU")
     .replace(/[«»"']/g, "")
     .replace(/\s+/g, " ");
+}
+
+// ─── Отгрузка: единые расчёты «заказано / отгружено / остаток» ──────
+// Используются и на сервере (списание склада, синхронизация перевозок),
+// и на клиенте (списки доставок, модалка перевозки), чтобы цифры везде
+// совпадали.
+
+export interface ShippedEntry {
+  productId: string;
+  name?: string;
+  shippedQty: number;
+}
+
+/** productId → сколько всего уже отгружено по заказу (кумулятивно). */
+export function shippedQtyMap(
+  shippedItems: ShippedEntry[] | null | undefined
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const s of Array.isArray(shippedItems) ? shippedItems : []) {
+    const id = String(s?.productId || "");
+    if (!id) continue;
+    map.set(id, (map.get(id) || 0) + (Number(s?.shippedQty) || 0));
+  }
+  return map;
+}
+
+/** productId → сколько всего заказано (дубли строк складываются). */
+export function orderedQtyMap(
+  items: { productId: string; quantity: number }[] | null | undefined
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const it of Array.isArray(items) ? items : []) {
+    const id = String(it?.productId || "");
+    if (!id) continue;
+    map.set(id, (map.get(id) || 0) + (Number(it?.quantity) || 0));
+  }
+  return map;
+}
+
+/** Остаток к отгрузке по каждой позиции заказа. */
+export function dealRemainingItems(
+  items: { productId: string; name?: string; quantity: number }[] | null | undefined,
+  shippedItems: ShippedEntry[] | null | undefined
+): { productId: string; name: string; ordered: number; shipped: number; remaining: number }[] {
+  const ordered = orderedQtyMap(items);
+  const shipped = shippedQtyMap(shippedItems);
+  const names = new Map<string, string>();
+  for (const it of Array.isArray(items) ? items : []) {
+    const id = String(it?.productId || "");
+    if (id && !names.has(id)) names.set(id, String(it?.name || ""));
+  }
+  return [...ordered.entries()].map(([productId, orderedQty]) => {
+    const shippedQty = shipped.get(productId) || 0;
+    return {
+      productId,
+      name: names.get(productId) || "",
+      ordered: orderedQty,
+      shipped: shippedQty,
+      remaining: Math.max(0, orderedQty - shippedQty),
+    };
+  });
+}
+
+/** Сколько единиц товара по заказу ещё не отгружено (долг перед клиентом). */
+export function dealRemainingQty(
+  items: { productId: string; quantity: number }[] | null | undefined,
+  shippedItems: ShippedEntry[] | null | undefined
+): number {
+  return dealRemainingItems(items, shippedItems).reduce(
+    (sum, row) => sum + row.remaining,
+    0
+  );
+}
+
+/**
+ * Заказ отгружен полностью — долга перед клиентом нет.
+ * Заказ без позиций полностью отгруженным не считается.
+ */
+export function isDealFullyShipped(
+  items: { productId: string; quantity: number }[] | null | undefined,
+  shippedItems: ShippedEntry[] | null | undefined
+): boolean {
+  const rows = dealRemainingItems(items, shippedItems);
+  if (rows.length === 0) return false;
+  return rows.every((row) => row.remaining <= 0);
+}
+
+/**
+ * Нужно ли ещё везти заказ — единый критерий для всех списков доставки.
+ *
+ * Показываем, только пока есть долг по товару:
+ *   • полностью отгружен (остатков нет) → заказ закрыт, в доставке не нужен;
+ *   • отгружен частично                 → остаётся, надо довезти остаток;
+ *   • отменён                           → не нужен.
+ *
+ * Важно: этим предикатом обязаны пользоваться ВСЕ места, где строится
+ * список доставок. Раньше вкладка «Учёт → Доставки» фильтровала заказы
+ * сама (`d.hasDelivery && …`) и показывала уже отпущенные.
+ */
+export function dealNeedsDelivery(deal: {
+  hasDelivery?: boolean | null;
+  status?: string | null;
+  items?: { productId: string; quantity: number }[] | null;
+  shippedItems?: ShippedEntry[] | null;
+}): boolean {
+  if (!deal.hasDelivery) return false;
+  if (deal.status === "cancelled") return false;
+
+  const items = Array.isArray(deal.items) ? deal.items : [];
+  // Заказ без позиций (например, только услуга доставки): ориентируемся
+  // на статус — проведённый считаем закрытым.
+  if (items.length === 0) return deal.status !== "completed";
+
+  return dealRemainingQty(items, deal.shippedItems) > 0;
 }
 
 /** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
@@ -239,19 +371,59 @@ export function getBankSummary(
     }
   }
   // Сдача кассы: деньги уходят из текущей кассы в отдельный журнал сдач.
-  // В безналичный банковский счёт их НЕ прибавляем.
+  // В безналичный банковский счёт их НЕ прибавляем — ни наличную часть,
+  // ни переводы: переводы в кассе это отдельный «карманный» поток.
   let collectedCash = 0;
+  let collectedCashOnly = 0;
+  let collectedTransfer = 0;
   for (const c of collections) {
     cashBalance -= c.amount;
     collectedCash += c.amount;
+    // Старые записи без разбивки считаем полностью наличными.
+    const transfer = Number(c.transferAmount) || 0;
+    const cashPart =
+      c.cashAmount != null ? Number(c.cashAmount) || 0 : c.amount - transfer;
+    collectedCashOnly += cashPart;
+    collectedTransfer += transfer;
   }
   return {
     balance: bankBalance + cashBalance,
     bankBalance,
     cashBalance,
     collectedCash,
+    /** Из сданного — физическими наличными */
+    collectedCashOnly,
+    /** Из сданного — переводом (вне основного банковского счёта) */
+    collectedTransfer,
     expectedIn,
     expectedOut,
+  };
+}
+
+/**
+ * Сводка по уже сданной кассе: сколько ушло наличными, сколько переводом.
+ *
+ * Важно: вид денег (нал/перевод) проставляется вручную в момент сдачи
+ * кассы, а не берётся из типа платежа. Тип "transfer" в банке означает
+ * другое — исходящий перевод физлицу, он относится к расчётному счёту.
+ */
+export function getCollectedBreakdown(
+  collections: CashCollection[] = []
+): { cash: number; transfer: number; total: number } {
+  let cash = 0;
+  let transfer = 0;
+  for (const c of collections) {
+    const t = Number(c.transferAmount) || 0;
+    // Старые сдачи без разбивки считаем полностью наличными.
+    const cashPart =
+      c.cashAmount != null ? Number(c.cashAmount) || 0 : (c.amount || 0) - t;
+    cash += cashPart;
+    transfer += t;
+  }
+  return {
+    cash: Math.round(cash * 100) / 100,
+    transfer: Math.round(transfer * 100) / 100,
+    total: Math.round((cash + transfer) * 100) / 100,
   };
 }
 

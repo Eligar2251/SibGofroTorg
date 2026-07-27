@@ -8,6 +8,9 @@ import { createHash } from "crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getAdminDb } from "./supabase";
 import { getProductEffectivePrice } from "./types";
+// Ревизия пишет остатки напрямую — нужно сбросить memory-кеш товаров,
+// иначе витрина ещё до двух минут отдаёт старые значения.
+import { invalidateProductsCache } from "./supabase-queries";
 import type {
   StockDocItem,
   CounterpartyRole,
@@ -24,6 +27,8 @@ import type {
   Employee,
   Salary,
   SalarySource,
+  CashKind,
+  CashCollectionItem,
 } from "./warehouse-shared";
 import {
   includedVat,
@@ -33,6 +38,12 @@ import {
   getReceiptPaidMap,
   getCounterpartyBalances,
   getPendingPaymentCounterpartyBalances,
+  shippedQtyMap,
+  orderedQtyMap,
+  dealRemainingItems,
+  dealRemainingQty,
+  isDealFullyShipped,
+  dealNeedsDelivery,
 } from "./warehouse-shared";
 
 export {
@@ -53,11 +64,20 @@ export {
   type Employee,
   type Salary,
   type SalarySource,
+  type CashKind,
+  type CashCollectionItem,
+  getCollectedBreakdown,
   getBankSummary,
   getDealPaidMap,
   getReceiptPaidMap,
   getCounterpartyBalances,
   getPendingPaymentCounterpartyBalances,
+  shippedQtyMap,
+  orderedQtyMap,
+  dealRemainingItems,
+  dealRemainingQty,
+  isDealFullyShipped,
+  dealNeedsDelivery,
 } from "./warehouse-shared";
 
 // ─── Утилиты ───────────────────────────────────────────────
@@ -188,6 +208,22 @@ function mapDealRow(row: any): CustomerDeal {
   };
 }
 
+/**
+ * Нормализует тариф доставки: сумма — единственный источник правды.
+ *
+ * 0 ₽ (или пусто) → доставка бесплатная, даже если тип пришёл как "paid".
+ * Это позволяет вручную поставить 0 конкретному клиенту, когда заказ ниже
+ * порога бесплатной доставки, и такой «нулевой тариф» корректно сохранится.
+ */
+export function normalizeDeliveryTariff(
+  hasDelivery: boolean,
+  rawCost: unknown
+): { type: "free" | "paid" | null; cost: number } {
+  if (!hasDelivery) return { type: null, cost: 0 };
+  const cost = Math.max(0, Number(rawCost) || 0);
+  return cost > 0 ? { type: "paid", cost: round2(cost) } : { type: "free", cost: 0 };
+}
+
 function parseDealDelivery(data: any): {
   has_delivery: boolean;
   delivery_type: "free" | "paid" | null;
@@ -198,14 +234,10 @@ function parseDealDelivery(data: any): {
   delivery_released_at?: string | null;
 } {
   const hasDelivery = Boolean(data.hasDelivery);
-  let deliveryType: "free" | "paid" | null = null;
-  if (hasDelivery) {
-    deliveryType = data.deliveryType === "paid" ? "paid" : "free";
-  }
-  const deliveryCost =
-    deliveryType === "paid"
-      ? Math.max(0, Number(data.deliveryCost) || 0)
-      : 0;
+  // Тип доставки выводим из суммы: 0 ₽ = бесплатная, >0 ₽ = платная.
+  const tariff = normalizeDeliveryTariff(hasDelivery, data.deliveryCost);
+  const deliveryType = tariff.type;
+  const deliveryCost = tariff.cost;
   const deliveryAddress = hasDelivery
     ? cleanText(data.deliveryAddress ?? data.address, 400)
     : cleanText(data.deliveryAddress, 400);
@@ -493,16 +525,72 @@ export async function deleteCounterparty(id: string): Promise<void> {
 
 // ─── Stock operations ──────────────────────────────────────
 
-async function applyStockDelta(items: StockDocItem[], direction: 1 | -1): Promise<void> {
+/**
+ * Единая точка изменения остатка товара.
+ *
+ * Важно: остаток НЕ обрезается по нулю. Раньше списание обрезалось
+ * (`Math.max(0, …)`), из-за чего при отгрузке «в минус» часть количества
+ * просто терялась, и при отмене/возврате на склад возвращалось меньше,
+ * чем было списано. Теперь склад может уйти в минус — это честно
+ * показывает нехватку и гарантирует, что возврат восстановит остаток
+ * ровно до исходного значения.
+ */
+async function adjustStock(productId: string, delta: number): Promise<void> {
+  const id = String(productId || "");
+  const qty = Number(delta) || 0;
+  if (!id || qty === 0) return;
   const db = getAdminDb();
-  for (const item of items) {
-    const { data: product } = await db.from("products").select("stock_qty, in_stock").eq("id", item.productId).maybeSingle();
-    if (!product) continue;
-    const current = Number(product.stock_qty || 0);
-    const newQty = Math.max(0, current + direction * item.quantity);
-    await db.from("products").update({
-      stock_qty: newQty, in_stock: newQty > 0, updated_at: new Date().toISOString(),
-    }).eq("id", item.productId);
+  const { data: product } = await db
+    .from("products")
+    .select("stock_qty")
+    .eq("id", id)
+    .maybeSingle();
+  if (!product) return;
+  const newQty = Number(product.stock_qty || 0) + qty;
+  await db
+    .from("products")
+    .update({
+      stock_qty: newQty,
+      in_stock: newQty > 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+}
+
+async function applyStockDelta(items: StockDocItem[], direction: 1 | -1): Promise<void> {
+  for (const item of Array.isArray(items) ? items : []) {
+    await adjustStock(item.productId, direction * (Number(item.quantity) || 0));
+  }
+}
+
+/**
+ * Вернуть на склад всё, что было отгружено по заказу (сторно отгрузки).
+ * Возвращает ровно те количества, которые были списаны, — по shipped_items.
+ * Для старых заказов (проведён, но shipped_items пуст) — по позициям заказа.
+ */
+async function returnShippedToStock(deal: {
+  items?: unknown;
+  shipped_items?: unknown;
+  status?: string | null;
+}): Promise<void> {
+  const shipped = shippedQtyMap(
+    (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as {
+      productId: string;
+      shippedQty: number;
+    }[]
+  );
+  const shippedTotal = [...shipped.values()].reduce((s, q) => s + q, 0);
+
+  if (shippedTotal > 0) {
+    for (const [productId, qty] of shipped) {
+      if (qty > 0) await adjustStock(productId, qty);
+    }
+    return;
+  }
+
+  // Старое поведение: проведённый заказ без shipped_items — возвращаем всё.
+  if (deal.status === "completed") {
+    await applyStockDelta((deal.items || []) as StockDocItem[], 1);
   }
 }
 
@@ -514,6 +602,80 @@ export async function setWarehouseStock(productId: string, quantity: number): Pr
   }).eq("id", productId);
   if (error) throw error;
   revalidateTag("products", { expire: 0 });
+}
+
+export interface StockRevisionItem {
+  productId: string;
+  name?: string;
+  /** Остаток по учёту на момент печати бланка */
+  accountedQty: number;
+  /** Фактический остаток, посчитанный на складе */
+  actualQty: number;
+}
+
+/**
+ * Применить ревизию: записать фактические остатки.
+ *
+ * Пишем именно факт (а не дельту): пересчёт на складе — это истина в
+ * последней инстанции. Возвращаем список реальных изменений для журнала
+ * действий, сравнивая с текущим значением в БД, а не с тем, что было
+ * напечатано в бланке (остаток мог измениться, пока шёл пересчёт).
+ */
+export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
+  updated: number;
+  skipped: number;
+  changes: { productId: string; name: string; from: number; to: number; diff: number }[];
+}> {
+  const db = getAdminDb();
+  const changes: { productId: string; name: string; from: number; to: number; diff: number }[] = [];
+  let skipped = 0;
+
+  for (const item of items) {
+    const productId = String(item.productId || "").trim();
+    if (!productId) {
+      skipped += 1;
+      continue;
+    }
+    const actual = Math.max(0, Math.floor(Number(item.actualQty) || 0));
+
+    const { data: product } = await db
+      .from("products")
+      .select("id, name, stock_qty")
+      .eq("id", productId)
+      .maybeSingle();
+    if (!product) {
+      skipped += 1;
+      continue;
+    }
+
+    const current = Number(product.stock_qty || 0);
+    if (current === actual) {
+      skipped += 1;
+      continue;
+    }
+
+    const { error } = await db
+      .from("products")
+      .update({
+        stock_qty: actual,
+        in_stock: actual > 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", productId);
+    if (error) throw error;
+
+    changes.push({
+      productId,
+      name: product.name || item.name || "",
+      from: current,
+      to: actual,
+      diff: actual - current,
+    });
+  }
+
+  invalidateProductsCache();
+  revalidateTag("products", { expire: 0 });
+  return { updated: changes.length, skipped, changes };
 }
 
 // ─── Items helpers ─────────────────────────────────────────
@@ -962,11 +1124,16 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   // Способ оплаты: "cash" = наличные в кассу, иначе — безнал (счёт)
   const payMethod = String(data.paymentMethod || "regular");
   const isCash = payMethod === "cash";
-  const now = new Date().toISOString();
+  // paid_at — текстовая дата YYYY-MM-DD (как во всех остальных местах).
+  // Раньше сюда писался полный ISO-таймстамп, из-за чего дата оплаты
+  // выпадала из общего формата.
+  const paidDate = date || new Date().toISOString().slice(0, 10);
 
   for (let i = 0; i < targets.length; i++) {
     const payNum = targets.length > 1 ? await nextNumber("payment") : paymentNumber;
-    await db.from("bank_payments").insert({
+    // Ошибку вставки не глотаем: иначе заказ создавался бы без платежа,
+    // и оплата «пропадала» бы молча.
+    const { error: payError } = await db.from("bank_payments").insert({
       number: payNum, date,
       direction: "incoming",
       type: isCash ? "cash" : "regular",
@@ -975,12 +1142,16 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
       receipt_ids: [], receipt_numbers: [],
       amount: targets[i], invoice_number: null,
       vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
-      is_paid: isCash, paid_at: isCash ? now : null,
+      is_paid: isCash, paid_at: isCash ? paidDate : null,
       exclude_from_balance: false,
       comment: isCash
         ? `Оплата наличными по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
         : `Счёт покупателю по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
     });
+    if (payError) {
+      console.error("createDeal: не удалось создать платёж:", payError);
+      throw new Error(`Не удалось создать платёж: ${payError.message}`);
+    }
   }
 
   // Привязываем существующие платежи
@@ -1007,57 +1178,60 @@ export async function postDeal(id: string, shippedItems?: { productId: string; q
   if (deal.status === "cancelled") throw new Error("Заказ отменён");
 
   const dealItems = (deal.items || []) as StockDocItem[];
-  const existingShipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as { productId: string; name?: string; shippedQty: number }[];
+  // Остаток к отгрузке с учётом уже отгруженного (в т.ч. перевозками).
+  const remainingRows = dealRemainingItems(dealItems, deal.shipped_items);
+  const remainingMap = new Map(remainingRows.map((r) => [r.productId, r.remaining]));
 
+  // ★ Считаем, сколько списываем ИМЕННО СЕЙЧАС.
+  //   Раньше «полная отгрузка» списывала весь заказ повторно, даже если часть
+  //   уже ушла перевозкой, — склад уходил в минус на величину дубля, а при
+  //   отмене возвращалось только количество из shipped_items. Отсюда и
+  //   пропадавшие ящики. Теперь списываем строго остаток.
+  let toShip: { productId: string; quantity: number }[];
   if (!shippedItems || shippedItems.length === 0) {
-    // Полная отгрузка (старое поведение) — отгружаем всё
-    await applyStockDelta(dealItems, -1);
-    await db.from("customer_deals").update({
-      status: "completed",
-      shipped_items: dealItems.map((it) => ({ productId: it.productId, name: it.name, shippedQty: it.quantity })),
-      delivery_released_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq("id", id);
-    revalidateTag("warehouse-deals", { expire: 0 });
-    revalidateTag("products", { expire: 0 });
-    return { fullyShipped: true };
-  }
-
-  // Частичная отгрузка — обновляем shipped_items
-  const shippedMap = new Map<string, number>();
-  for (const s of existingShipped) shippedMap.set(s.productId, (shippedMap.get(s.productId) || 0) + (s.shippedQty || 0));
-
-  for (const si of shippedItems) {
-    const qty = Math.max(0, Number(si.quantity) || 0);
-    if (qty <= 0) continue;
-    shippedMap.set(si.productId, (shippedMap.get(si.productId) || 0) + qty);
-  }
-
-  // Списываем со склада только отгруженное количество
-  for (const si of shippedItems) {
-    const qty = Math.max(0, Number(si.quantity) || 0);
-    if (qty <= 0) continue;
-    const item = dealItems.find((it) => it.productId === si.productId);
-    if (!item) continue;
-    const { data: product } = await db.from("products").select("stock_qty").eq("id", si.productId).maybeSingle();
-    if (product) {
-      const current = Number(product.stock_qty || 0);
-      await db.from("products").update({
-        stock_qty: current - qty,
-        in_stock: (current - qty) > 0,
-      }).eq("id", si.productId);
+    toShip = remainingRows
+      .filter((r) => r.remaining > 0)
+      .map((r) => ({ productId: r.productId, quantity: r.remaining }));
+  } else {
+    const requested = new Map<string, number>();
+    for (const si of shippedItems) {
+      const pid = String(si?.productId || "");
+      const qty = Math.max(0, Number(si?.quantity) || 0);
+      if (!pid || qty <= 0) continue;
+      requested.set(pid, (requested.get(pid) || 0) + qty);
+    }
+    toShip = [];
+    for (const [pid, qty] of requested) {
+      // Больше остатка отгрузить нельзя — иначе shipped_items разойдётся
+      // со складом и возврат при отмене будет неполным.
+      const capped = Math.min(qty, remainingMap.get(pid) ?? 0);
+      if (capped > 0) toShip.push({ productId: pid, quantity: capped });
     }
   }
 
-  // Формируем обновлённый массив shipped_items
-  const newShipped = dealItems.map((it) => ({
-    productId: it.productId,
-    name: it.name,
-    shippedQty: shippedMap.get(it.productId) || 0,
+  // Списываем со склада ровно то, что отгружаем
+  for (const s of toShip) await adjustStock(s.productId, -s.quantity);
+
+  // Обновляем кумулятивный shipped_items (по одной строке на товар)
+  const shippedMap = shippedQtyMap(deal.shipped_items);
+  for (const s of toShip) {
+    shippedMap.set(s.productId, (shippedMap.get(s.productId) || 0) + s.quantity);
+  }
+  const orderedIds = orderedQtyMap(dealItems);
+  const names = new Map<string, string>();
+  for (const it of dealItems) {
+    const pid = String(it.productId || "");
+    if (pid && !names.has(pid)) names.set(pid, String(it.name || ""));
+  }
+  const newShipped = [...orderedIds.keys()].map((productId) => ({
+    productId,
+    name: names.get(productId) || "",
+    shippedQty: shippedMap.get(productId) || 0,
   }));
 
-  // Проверяем: всё отгружено?
-  const fullyShipped = dealItems.every((it) => (shippedMap.get(it.productId) || 0) >= it.quantity);
+  // Заказ без позиций закрываем сразу — списывать нечего.
+  const fullyShipped =
+    dealItems.length === 0 ? true : isDealFullyShipped(dealItems, newShipped);
 
   const updatePayload: any = {
     shipped_items: newShipped,
@@ -1070,8 +1244,12 @@ export async function postDeal(id: string, shippedItems?: { productId: string; q
   }
 
   await db.from("customer_deals").update(updatePayload).eq("id", id);
+  // Перевозки должны видеть новый остаток: уменьшаем плановые количества,
+  // а полностью отгруженный заказ убираем из активных перевозок.
+  await syncDealTransportState(id);
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("products", { expire: 0 });
+  revalidateTag("deliveries", { expire: 0 });
   return { fullyShipped };
 }
 
@@ -1081,31 +1259,22 @@ export async function unshipDeal(id: string): Promise<void> {
   const { data: deal } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!deal) throw new Error("Заказ не найден");
 
-  const shipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as { productId: string; shippedQty: number }[];
-
-  // Возвращаем отгруженные товары на склад
-  for (const s of shipped) {
-    const qty = Number(s.shippedQty) || 0;
-    if (qty <= 0) continue;
-    const { data: product } = await db.from("products").select("stock_qty").eq("id", s.productId).maybeSingle();
-    if (product) {
-      const current = Number(product.stock_qty || 0);
-      await db.from("products").update({
-        stock_qty: current + qty,
-        in_stock: true,
-      }).eq("id", s.productId);
-    }
-  }
+  // Возвращаем на склад ровно то, что было списано (по shipped_items,
+  // а для старых проведённых заказов без них — все позиции заказа).
+  await returnShippedToStock(deal);
 
   await db.from("customer_deals").update({
     shipped_items: [],
-    status: deal.source_order_id ? deal.status : "new", // оставляем статус если из заявки
+    // Отгрузка отменена — заказ снова активен и должен вернуться в доставки.
+    status: "new",
     delivery_released_at: null,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
+  await syncDealTransportState(id);
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("products", { expire: 0 });
+  revalidateTag("deliveries", { expire: 0 });
 }
 
 export async function cancelDeal(id: string, reason: string | null = null): Promise<void> {
@@ -1114,22 +1283,8 @@ export async function cancelDeal(id: string, reason: string | null = null): Prom
   if (!deal) throw new Error("Заказ не найден");
   if (deal.status === "cancelled") throw new Error("Уже отменён");
 
-  // Если были отгрузки — возвращаем товары на склад
-  const shipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as { productId: string; shippedQty: number }[];
-  if (shipped.length > 0) {
-    for (const s of shipped) {
-      const qty = Number(s.shippedQty) || 0;
-      if (qty <= 0) continue;
-      const { data: product } = await db.from("products").select("stock_qty").eq("id", s.productId).maybeSingle();
-      if (product) {
-        const current = Number(product.stock_qty || 0);
-        await db.from("products").update({ stock_qty: current + qty, in_stock: true }).eq("id", s.productId);
-      }
-    }
-  } else if (deal.status === "completed") {
-    // Старое поведение: если completed без shipped_items — полный возврат
-    await applyStockDelta(deal.items as StockDocItem[], 1);
-  }
+  // Если были отгрузки — возвращаем на склад ровно списанные количества.
+  await returnShippedToStock(deal);
 
   await db.from("customer_deals").update({
     status: "cancelled", cancel_reason: reason,
@@ -1137,8 +1292,11 @@ export async function cancelDeal(id: string, reason: string | null = null): Prom
     delivery_released_at: null,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
+  // Отменённый заказ убираем из активных перевозок.
+  await removeDealFromActiveTransports(id);
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("products", { expire: 0 });
+  revalidateTag("deliveries", { expire: 0 });
 }
 
 export async function updateDeal(id: string, data: any): Promise<void> {
@@ -1244,6 +1402,19 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     return dealLinks === 1 && receiptLinks === 0;
   });
 
+  // Способ оплаты заказа. Если явно не передан — наследуем от уже
+  // существующих платежей: наличный заказ должен остаться наличным,
+  // иначе при любом редактировании оплата превращалась в обычный счёт
+  // и слетала отметка «оплачено».
+  const inheritedCash = dealPayments.some(
+    (p: any) => p.type === "cash" && p.direction === "incoming"
+  );
+  const dealIsCash =
+    data.paymentMethod !== undefined
+      ? String(data.paymentMethod) === "cash"
+      : inheritedCash;
+  const payType = dealIsCash ? "cash" : "regular";
+
   const remaining = Math.max(0, round2(total - paidTotal));
 
   // Разбиение на части (аналогично receipts)
@@ -1265,12 +1436,18 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     targets = [remaining];
   }
 
+  const payDate = date || new Date().toISOString().slice(0, 10);
+
   if (targets.length > 0 && unpaidSoloPayments.length === targets.length) {
-    // Количество совпало — обновляем суммы
+    // Количество совпало — обновляем суммы (и тип, если заказ наличный)
     for (let i = 0; i < unpaidSoloPayments.length; i++) {
       await db.from("bank_payments").update({
         counterparty: customerName, counterparty_id: counterpartyId,
+        type: payType,
         amount: targets[i], vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
+        // Наличные считаются полученными сразу — деньги уже в кассе.
+        is_paid: dealIsCash,
+        paid_at: dealIsCash ? payDate : null,
       }).eq("id", unpaidSoloPayments[i].id);
     }
   } else {
@@ -1282,15 +1459,19 @@ export async function updateDeal(id: string, data: any): Promise<void> {
       const payNumber = await nextNumber("payment");
       await db.from("bank_payments").insert({
         number: payNumber, date,
-        direction: "incoming", type: "regular",
+        direction: "incoming", type: payType,
         counterparty: customerName, counterparty_id: counterpartyId,
         deal_ids: [id], deal_numbers: [existing.number],
         receipt_ids: [], receipt_numbers: [],
         amount: targets[i], invoice_number: null,
         vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
-        is_paid: false, paid_at: null,
+        // Наличные сразу помечаем оплаченными, безнал ждёт поступления.
+        is_paid: dealIsCash,
+        paid_at: dealIsCash ? payDate : null,
         exclude_from_balance: false,
-        comment: `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
+        comment: dealIsCash
+          ? `Оплата наличными по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
+          : `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
       });
     }
   }
@@ -1316,22 +1497,10 @@ export async function deleteDeal(id: string): Promise<void> {
   const { data: existing } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!existing) throw new Error("Заказ не найден");
 
-  // Если были отгрузки — возвращаем товары на склад перед удалением
-  const shipped = (Array.isArray(existing.shipped_items) ? existing.shipped_items : []) as { productId: string; shippedQty: number }[];
-  if (shipped.length > 0) {
-    for (const s of shipped) {
-      const qty = Number(s.shippedQty) || 0;
-      if (qty <= 0) continue;
-      const { data: product } = await db.from("products").select("stock_qty").eq("id", s.productId).maybeSingle();
-      if (product) {
-        const current = Number(product.stock_qty || 0);
-        await db.from("products").update({ stock_qty: current + qty, in_stock: true }).eq("id", s.productId);
-      }
-    }
-  } else if (existing.status === "completed") {
-    // Старое поведение: полный возврат для полностью проведённых
-    await applyStockDelta(existing.items as StockDocItem[], 1);
-  }
+  // Если были отгрузки — возвращаем на склад ровно списанные количества.
+  await returnShippedToStock(existing);
+  // Заказа больше нет — убираем его из активных перевозок.
+  await removeDealFromActiveTransports(id);
 
   // ★ Удаляем связанные НЕПРОВЕДЁННЫЕ платежи, чтобы не приходилось
   //   чистить их руками в банке. Проведённые (is_paid) не трогаем —
@@ -1435,8 +1604,14 @@ export async function updateDealDelivery(
   if (data.hasDelivery !== undefined) payload.has_delivery = data.hasDelivery;
   if (data.deliveryType !== undefined) payload.delivery_type = data.deliveryType;
   if (data.deliveryCost !== undefined) {
-    payload.delivery_cost =
-      data.deliveryCost == null ? 0 : Math.max(0, Number(data.deliveryCost) || 0);
+    // ★ Сумма — источник правды для тарифа. Указали 0 (например, доставка
+    //   бесплатна именно для этого клиента, хотя заказ ниже порога) —
+    //   доставка становится бесплатной, а не «платной за 0 ₽».
+    const willHaveDelivery =
+      data.hasDelivery !== undefined ? data.hasDelivery : Boolean(existing.has_delivery);
+    const tariff = normalizeDeliveryTariff(willHaveDelivery, data.deliveryCost);
+    payload.delivery_cost = tariff.cost;
+    payload.delivery_type = tariff.type;
   }
   if (data.deliveryAddress !== undefined) {
     payload.delivery_address = data.deliveryAddress
@@ -1493,24 +1668,22 @@ export async function updateDealDelivery(
     payload.has_delivery !== undefined
       ? payload.has_delivery
       : existing.has_delivery;
-  const willType =
-    payload.delivery_type !== undefined
-      ? payload.delivery_type
-      : existing.delivery_type;
-  const willCost =
-    willHave && willType === "paid"
-      ? payload.delivery_cost !== undefined
-        ? Number(payload.delivery_cost) || 0
-        : Number(existing.delivery_cost) || 0
-      : 0;
+  const rawCost =
+    payload.delivery_cost !== undefined
+      ? payload.delivery_cost
+      : existing.delivery_cost;
+  // Тип и сумма всегда согласованы: 0 ₽ → бесплатная, > 0 ₽ → платная.
+  const tariff = normalizeDeliveryTariff(Boolean(willHave), rawCost);
+  const willCost = tariff.cost;
   if (willHave) {
     const addr =
       payload.delivery_address !== undefined
         ? payload.delivery_address
         : existing.delivery_address || existing.address;
     if (!addr) throw new Error("Адрес доставки обязателен");
-    if (!willType) payload.delivery_type = "free";
   }
+  payload.delivery_type = tariff.type;
+  payload.delivery_cost = willCost;
   const total = round2(linesTotal + willCost);
   payload.total = total;
   payload.bank_adjustment = round2(total - linesTotal);
@@ -1557,6 +1730,12 @@ export async function updateDealDelivery(
 export async function getDealDeliveries(opts: {
   filter?: "unreleased" | "released" | "all";
   limit?: number;
+  /**
+   * true (по умолчанию) — отдавать только заказы, по которым остался долг.
+   * Полностью отгруженные и отменённые заказы в доставке не нужны:
+   * везти нечего, заказ закрыт.
+   */
+  onlyPending?: boolean;
 } = {}): Promise<CustomerDeal[]> {
   const db = getAdminDb();
   let q = db
@@ -1570,7 +1749,10 @@ export async function getDealDeliveries(opts: {
   else if (opts.filter === "released") q = q.not("delivery_released_at", "is", null);
   const { data, error } = await q;
   if (error) throw error;
-  return (data || []).map(mapDealRow);
+  const deals = (data || []).map(mapDealRow);
+  if (opts.onlyPending === false) return deals;
+  // Тот же предикат, что и на вкладке «Учёт → Доставки», — списки не расходятся.
+  return deals.filter(dealNeedsDelivery);
 }
 
 // ─── Payments CRUD ─────────────────────────────────────────
@@ -1742,6 +1924,12 @@ export interface CashCollectionRow {
   id: string;
   date: string;
   amount: number;
+  /** Часть, сданная физическими наличными */
+  cashAmount: number;
+  /** Часть, полученная переводом (вне основного расчётного счёта) */
+  transferAmount: number;
+  /** Разметка платежей, вошедших в сдачу */
+  items: CashCollectionItem[];
   note?: string | null;
   createdAt?: string | null;
 }
@@ -1753,13 +1941,25 @@ async function fetchCashCollections(): Promise<CashCollectionRow[]> {
     .select("*")
     .order("date", { ascending: false });
   if (error) throw error;
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    date: row.date,
-    amount: Number(row.amount) || 0,
-    note: row.note ?? null,
-    createdAt: toIso(row.created_at),
-  }));
+  return (data || []).map((row: any) => {
+    const amount = Number(row.amount) || 0;
+    const transferAmount = Number(row.transfer_amount) || 0;
+    // Старые записи (до разделения) считаем полностью наличными.
+    const cashAmount =
+      row.cash_amount != null
+        ? Number(row.cash_amount) || 0
+        : amount - transferAmount;
+    return {
+      id: row.id,
+      date: row.date,
+      amount,
+      cashAmount,
+      transferAmount,
+      items: Array.isArray(row.items) ? row.items : [],
+      note: row.note ?? null,
+      createdAt: toIso(row.created_at),
+    };
+  });
 }
 
 export const getCashCollections = () =>
@@ -1768,23 +1968,12 @@ export const getCashCollections = () =>
     tags: ["warehouse-cash-collections"],
   })();
 
-/**
- * Сдача кассы: списываем ВЕСЬ текущий остаток наличных из кассы
- * в отдельный журнал сдач. В безналичный банковский счёт сумма не попадает.
- * Сумма берётся с сервера (актуальный баланс по платежам/зарплатам/прошлым
- * сдачам), чтобы исключить состояние гонки на клиенте.
- */
-export async function collectCash(
-  note?: string | null
-): Promise<{ amount: number }> {
-  const db = getAdminDb();
-  const [payments, salaries, collections] = await Promise.all([
-    fetchPayments(),
-    fetchSalaries(),
-    fetchCashCollections(),
-  ]);
-
-  // Текущий остаток наличных — тем же правилом, что и getBankSummary.
+/** Текущий остаток кассы по серверным данным (правило getBankSummary). */
+function computeCashBalance(
+  payments: BankPayment[],
+  salaries: Salary[],
+  collections: CashCollectionRow[]
+): number {
   let cashBalance = 0;
   for (const p of payments) {
     if (!p.isPaid || p.excludeFromBalance) continue;
@@ -1795,23 +1984,160 @@ export async function collectCash(
     if (s.isPaid && s.source === "cash") cashBalance -= s.amount;
   }
   for (const c of collections) cashBalance -= c.amount;
+  return Math.round(cashBalance * 100) / 100;
+}
 
+/**
+ * Наличные поступления, ещё не вошедшие ни в одну сдачу кассы.
+ * Их менеджер размечает при сдаче: какие деньги пришли физической
+ * наличкой, а какие переводом на карту/СБП.
+ */
+export async function getPendingCashPayments(): Promise<
+  { paymentId: string; number: number; date: string; counterparty: string; amount: number; comment: string | null }[]
+> {
+  const [payments, collections] = await Promise.all([
+    fetchPayments(),
+    fetchCashCollections(),
+  ]);
+  const collected = new Set<string>();
+  for (const c of collections) {
+    for (const it of c.items || []) {
+      if (it?.paymentId) collected.add(String(it.paymentId));
+    }
+  }
+  return payments
+    .filter(
+      (p) =>
+        p.isPaid &&
+        !p.excludeFromBalance &&
+        p.type === "cash" &&
+        p.direction === "incoming" &&
+        !collected.has(String(p.id))
+    )
+    .map((p) => ({
+      paymentId: String(p.id),
+      number: p.number,
+      date: p.date,
+      counterparty: p.counterparty,
+      amount: p.amount,
+      comment: p.comment ?? null,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
+}
+
+/**
+ * Сдача кассы. Списывает остаток кассы в отдельный журнал сдач;
+ * в безналичный расчётный счёт сумма НЕ попадает — ни наличная часть,
+ * ни переводы (переводы в кассе это отдельный «карманный» поток).
+ *
+ * `items` — разметка платежей: какие деньги ушли наличными, какие
+ * переводом. Если разметка не передана, сдаётся весь остаток кассы
+ * как наличные (прежнее поведение).
+ *
+ * Суммы считаются на сервере, чтобы исключить гонку с клиентом.
+ */
+export async function collectCash(
+  note?: string | null,
+  items?: { paymentId: string; kind: "cash" | "transfer" }[]
+): Promise<{ amount: number; cashAmount: number; transferAmount: number }> {
+  const db = getAdminDb();
+  const [payments, salaries, collections] = await Promise.all([
+    fetchPayments(),
+    fetchSalaries(),
+    fetchCashCollections(),
+  ]);
+
+  const cashBalance = computeCashBalance(payments, salaries, collections);
   if (cashBalance <= 0.009) {
     throw new Error("Касса пуста — нечего сдавать");
   }
 
-  const amount = Math.round(cashBalance * 100) / 100;
   const date = new Date().toISOString().slice(0, 10);
+  const cleanNote = note ? cleanText(note, 500) : null;
+
+  // ── Без разметки: сдаём весь остаток как наличные (старое поведение) ──
+  if (!items || items.length === 0) {
+    const amount = cashBalance;
+    const { error } = await db.from("cash_collections").insert({
+      date,
+      amount,
+      cash_amount: amount,
+      transfer_amount: 0,
+      items: [],
+      note: cleanNote,
+    });
+    if (error) throw error;
+    revalidateTag("warehouse-cash-collections", { expire: 0 });
+    revalidateTag("warehouse-payments", { expire: 0 });
+    revalidateTag("warehouse-salaries", { expire: 0 });
+    return { amount, cashAmount: amount, transferAmount: 0 };
+  }
+
+  // ── С разметкой: суммы берём из самих платежей, а не с клиента ──
+  const alreadyCollected = new Set<string>();
+  for (const c of collections) {
+    for (const it of c.items || []) {
+      if (it?.paymentId) alreadyCollected.add(String(it.paymentId));
+    }
+  }
+  const payById = new Map(payments.map((p) => [String(p.id), p]));
+
+  const rows: CashCollectionItem[] = [];
+  const seen = new Set<string>();
+  let cashAmount = 0;
+  let transferAmount = 0;
+
+  for (const raw of items) {
+    const id = String(raw?.paymentId || "");
+    if (!id || seen.has(id)) continue;
+    if (alreadyCollected.has(id)) {
+      throw new Error("Один из платежей уже вошёл в предыдущую сдачу кассы");
+    }
+    const p = payById.get(id);
+    if (!p) throw new Error("Платёж не найден");
+    if (!p.isPaid || p.excludeFromBalance || p.type !== "cash" || p.direction !== "incoming") {
+      throw new Error(`Платёж ПЛ-${p.number} нельзя сдать: это не наличное поступление`);
+    }
+    seen.add(id);
+    const kind = raw?.kind === "transfer" ? "transfer" : "cash";
+    if (kind === "transfer") transferAmount += p.amount;
+    else cashAmount += p.amount;
+    rows.push({
+      paymentId: id,
+      number: p.number,
+      counterparty: p.counterparty,
+      amount: p.amount,
+      kind,
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new Error("Выберите хотя бы один платёж для сдачи");
+  }
+
+  cashAmount = Math.round(cashAmount * 100) / 100;
+  transferAmount = Math.round(transferAmount * 100) / 100;
+  const amount = Math.round((cashAmount + transferAmount) * 100) / 100;
+
+  if (amount > cashBalance + 0.009) {
+    throw new Error(
+      `Сумма сдачи (${amount} ₽) больше остатка кассы (${cashBalance} ₽)`
+    );
+  }
+
   const { error } = await db.from("cash_collections").insert({
     date,
     amount,
-    note: note ? cleanText(note, 500) : null,
+    cash_amount: cashAmount,
+    transfer_amount: transferAmount,
+    items: rows,
+    note: cleanNote,
   });
   if (error) throw error;
   revalidateTag("warehouse-cash-collections", { expire: 0 });
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-salaries", { expire: 0 });
-  return { amount };
+  return { amount, cashAmount, transferAmount };
 }
 
 export async function deleteCashCollection(id: string): Promise<void> {
@@ -1933,7 +2259,8 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
   const orderPayMethod = String(order.payment_method || "");
   const isCash = orderPayMethod === "cash";
   const isTransfer = orderPayMethod === "transfer";
-  const now = new Date().toISOString();
+  // paid_at — текстовая дата YYYY-MM-DD, как и в остальных местах учёта.
+  const paidDate = date || new Date().toISOString().slice(0, 10);
   const payComment = isCash
     ? `Оплата наличными по заказу ЗК-${number} (из заявки с сайта)`
     : isTransfer
@@ -1949,7 +2276,7 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
     receipt_ids: [], receipt_numbers: [],
     amount: total, vat_rate: VAT_RATE, vat_amount: vatAmount,
     is_paid: isCash,
-    paid_at: isCash ? now : null,
+    paid_at: isCash ? paidDate : null,
     exclude_from_balance: false,
     comment: payComment,
   }).select("id").single();
@@ -2284,10 +2611,144 @@ function mapTransportRow(row: any): Transport {
   };
 }
 
+const ACTIVE_TRANSPORT_STATUSES = ["draft", "active"];
+
+/** Остаток к отгрузке по заказу: productId → сколько ещё не отгружено. */
+async function dealRemainingMap(dealId: string): Promise<Map<string, number> | null> {
+  const db = getAdminDb();
+  const { data: deal } = await db
+    .from("customer_deals")
+    .select("id, items, shipped_items, status")
+    .eq("id", dealId)
+    .maybeSingle();
+  if (!deal) return null;
+  // Отменённый заказ везти нечего.
+  if (deal.status === "cancelled") return new Map();
+  return new Map(
+    dealRemainingItems(deal.items as any[], deal.shipped_items as any[]).map((r) => [
+      r.productId,
+      r.remaining,
+    ])
+  );
+}
+
+/**
+ * Приводит позиции перевозки к фактическому остатку заказа.
+ * Возвращает обновлённую позицию либо null, если везти уже нечего
+ * (заказ полностью отгружен / отменён / удалён).
+ */
+function capTransportItem(
+  item: TransportItem,
+  remaining: Map<string, number> | null
+): TransportItem | null {
+  if (!remaining) return null;
+  const left = new Map(remaining);
+  const items = item.items.map((line) => {
+    const available = left.get(line.productId) ?? 0;
+    const transportQty = Math.max(0, Math.min(Number(line.transportQty) || 0, available));
+    left.set(line.productId, available - transportQty);
+    return {
+      ...line,
+      // «Заказано» показываем как актуальный долг по заказу: то, что уже
+      // отпущено вручную, из перевозки уходит.
+      orderedQty: available,
+      transportQty,
+    };
+  });
+  const total = items.reduce((s, l) => s + l.transportQty, 0);
+  if (total <= 0) return null;
+  return { ...item, items };
+}
+
+/**
+ * Синхронизирует активные перевозки с фактическим состоянием заказа:
+ * плановые количества урезаются до реального остатка, а полностью
+ * отгруженный (или отменённый) заказ убирается из перевозки.
+ */
+async function syncDealTransportState(dealId: string): Promise<void> {
+  const db = getAdminDb();
+  try {
+    const { data: rows } = await db
+      .from("transports")
+      .select("*")
+      .in("status", ACTIVE_TRANSPORT_STATUSES);
+    const affected = (rows || []).filter((row: any) =>
+      (Array.isArray(row.items) ? row.items : []).some(
+        (it: any) => String(it?.dealId) === String(dealId)
+      )
+    );
+    if (affected.length === 0) return;
+
+    const remaining = await dealRemainingMap(dealId);
+
+    for (const row of affected) {
+      const items = (Array.isArray(row.items) ? row.items : []) as TransportItem[];
+      const next: TransportItem[] = [];
+      for (const item of items) {
+        if (String(item.dealId) !== String(dealId)) {
+          next.push(item);
+          continue;
+        }
+        const capped = capTransportItem(item, remaining);
+        if (capped) next.push(capped);
+      }
+      await writeTransportItems(row, next);
+    }
+  } catch (e) {
+    console.error("syncDealTransportState:", e);
+  }
+}
+
+/** Убрать заказ из всех активных перевозок (отмена/удаление заказа). */
+async function removeDealFromActiveTransports(dealId: string): Promise<void> {
+  const db = getAdminDb();
+  try {
+    const { data: rows } = await db
+      .from("transports")
+      .select("*")
+      .in("status", ACTIVE_TRANSPORT_STATUSES);
+    for (const row of rows || []) {
+      const items = (Array.isArray(row.items) ? row.items : []) as TransportItem[];
+      const next = items.filter((it) => String(it.dealId) !== String(dealId));
+      if (next.length === items.length) continue;
+      await writeTransportItems(row, next);
+    }
+  } catch (e) {
+    console.error("removeDealFromActiveTransports:", e);
+  }
+}
+
+/**
+ * Записывает пересчитанный состав перевозки. Опустевшая перевозка больше
+ * не висит в активных: всё, что в ней было, уже отпущено (или отменено),
+ * поэтому помечаем её завершённой.
+ */
+async function writeTransportItems(row: any, items: TransportItem[]): Promise<void> {
+  const db = getAdminDb();
+  const totalItems = items.reduce(
+    (s, it) => s + it.items.reduce((s2, i) => s2 + (Number(i.transportQty) || 0), 0),
+    0
+  );
+  const payload: Record<string, any> = {
+    items,
+    total_items: totalItems,
+    updated_at: new Date().toISOString(),
+  };
+  if (items.length === 0) {
+    payload.status = "completed";
+    payload.completed_at = row.completed_at || new Date().toISOString();
+  }
+  await db.from("transports").update(payload).eq("id", row.id);
+}
+
 /**
  * Дотягивает из сделки (customer_deals) контактное лицо и заметку
  * курьеру для позиций перевозки, у которых они не сохранены (старые
  * перевозки, созданные до появления этих полей). Пакетный запрос.
+ *
+ * Здесь же активные перевозки показываются с актуальными количествами:
+ * если товар отпустили вручную в «Заказах», в перевозке остаётся только
+ * реальный долг, а закрытые заказы из неё исчезают.
  */
 async function enrichTransportItems(transports: Transport[]): Promise<void> {
   const dealIds = [
@@ -2299,21 +2760,44 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
   const db = getAdminDb();
   const { data: deals } = await db
     .from("customer_deals")
-    .select("id, contact_name, delivery_note")
+    .select("id, contact_name, delivery_note, items, shipped_items, status")
     .in("id", dealIds);
   if (!deals || deals.length === 0) return;
-  const contactMap = new Map<string, string | null>(
-    deals.map((d: any) => [String(d.id), d.contact_name ?? null])
-  );
-  const noteMap = new Map<string, string | null>(
-    deals.map((d: any) => [String(d.id), d.delivery_note ?? null])
-  );
+  const dealMap = new Map<string, any>(deals.map((d: any) => [String(d.id), d]));
+
   for (const t of transports) {
-    t.items = t.items.map((i) => ({
-      ...i,
-      contactName: i.contactName ?? contactMap.get(String(i.dealId)) ?? null,
-      deliveryNote: i.deliveryNote ?? noteMap.get(String(i.dealId)) ?? null,
-    }));
+    // Завершённые и архивные перевозки — исторические документы,
+    // их состав не пересчитываем.
+    const isActive = t.status === "draft" || t.status === "active";
+    const items: TransportItem[] = [];
+    for (const i of t.items) {
+      const deal = dealMap.get(String(i.dealId));
+      const enriched: TransportItem = {
+        ...i,
+        contactName: i.contactName ?? deal?.contact_name ?? null,
+        deliveryNote: i.deliveryNote ?? deal?.delivery_note ?? null,
+      };
+      if (!isActive) {
+        items.push(enriched);
+        continue;
+      }
+      if (!deal || deal.status === "cancelled") continue;
+      const remaining = new Map(
+        dealRemainingItems(deal.items, deal.shipped_items).map((r) => [
+          r.productId,
+          r.remaining,
+        ])
+      );
+      const capped = capTransportItem(enriched, remaining);
+      if (capped) items.push(capped);
+    }
+    t.items = items;
+    if (isActive) {
+      t.totalItems = items.reduce(
+        (s, it) => s + it.items.reduce((s2, i) => s2 + (Number(i.transportQty) || 0), 0),
+        0
+      );
+    }
   }
 }
 
@@ -2407,38 +2891,58 @@ export async function completeTransport(id: string): Promise<void> {
   if (transport.status === "completed" || transport.status === "archived") throw new Error("Перевозка уже завершена");
 
   const items = (transport.items || []) as TransportItem[];
+  // Фактически отгруженный состав (после урезки по остаткам) сохраняем
+  // в документ перевозки, чтобы бланк и архив совпадали со складом.
+  const postedItems: TransportItem[] = [];
 
   // Обновляем shipped_items для каждого заказа
   for (const ti of items) {
-    const { data: deal } = await db.from("customer_deals").select("shipped_items, items").eq("id", ti.dealId).maybeSingle();
-    if (!deal) continue;
+    const { data: deal } = await db
+      .from("customer_deals")
+      .select("shipped_items, items, status")
+      .eq("id", ti.dealId)
+      .maybeSingle();
+    if (!deal || deal.status === "cancelled") continue;
 
-    const existingShipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as { productId: string; name?: string; shippedQty: number }[];
-    const shippedMap = new Map<string, number>();
-    for (const s of existingShipped) shippedMap.set(s.productId, (shippedMap.get(s.productId) || 0) + (s.shippedQty || 0));
+    const dealItems = (deal.items || []) as StockDocItem[];
+    // ★ Списываем не больше остатка: часть заказа могли уже отпустить
+    //   вручную в «Заказах» после формирования перевозки.
+    const remaining = new Map(
+      dealRemainingItems(dealItems, deal.shipped_items as any[]).map((r) => [
+        r.productId,
+        r.remaining,
+      ])
+    );
+    const shippedMap = shippedQtyMap(deal.shipped_items as any[]);
+    const postedLines: TransportItem["items"] = [];
 
     for (const item of ti.items) {
-      if (item.transportQty <= 0) continue;
-      shippedMap.set(item.productId, (shippedMap.get(item.productId) || 0) + item.transportQty);
-
-      // Списываем со склада
-      const { data: product } = await db.from("products").select("stock_qty").eq("id", item.productId).maybeSingle();
-      if (product) {
-        const current = Number(product.stock_qty || 0);
-        await db.from("products").update({ stock_qty: Math.max(0, current - item.transportQty), in_stock: (current - item.transportQty) > 0 }).eq("id", item.productId);
-      }
+      const available = remaining.get(item.productId) ?? 0;
+      const qty = Math.max(0, Math.min(Number(item.transportQty) || 0, available));
+      if (qty <= 0) continue;
+      remaining.set(item.productId, available - qty);
+      shippedMap.set(item.productId, (shippedMap.get(item.productId) || 0) + qty);
+      await adjustStock(item.productId, -qty);
+      postedLines.push({ ...item, transportQty: qty });
     }
 
-    const dealItems = (deal.items || []) as any[];
-    const newShipped = dealItems.map((it: any) => ({
-      productId: it.productId, name: it.name,
-      shippedQty: shippedMap.get(it.productId) || 0,
+    if (postedLines.length > 0) {
+      postedItems.push({ ...ti, items: postedLines });
+    }
+
+    const names = new Map<string, string>();
+    for (const it of dealItems) {
+      const pid = String(it.productId || "");
+      if (pid && !names.has(pid)) names.set(pid, String(it.name || ""));
+    }
+    const newShipped = [...orderedQtyMap(dealItems).keys()].map((productId) => ({
+      productId,
+      name: names.get(productId) || "",
+      shippedQty: shippedMap.get(productId) || 0,
     }));
 
-    const fullyShipped = dealItems.every((it: any) => (shippedMap.get(it.productId) || 0) >= it.quantity);
-
     const updatePayload: any = { shipped_items: newShipped, updated_at: new Date().toISOString() };
-    if (fullyShipped) {
+    if (isDealFullyShipped(dealItems, newShipped)) {
       updatePayload.status = "completed";
       updatePayload.delivery_released_at = new Date().toISOString();
     }
@@ -2447,12 +2951,18 @@ export async function completeTransport(id: string): Promise<void> {
 
   await db.from("transports").update({
     status: "completed",
+    items: postedItems,
+    total_items: postedItems.reduce(
+      (s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0),
+      0
+    ),
     completed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("products", { expire: 0 });
+  revalidateTag("deliveries", { expire: 0 });
 }
 
 /** Удалить перевозку (только draft/active) */

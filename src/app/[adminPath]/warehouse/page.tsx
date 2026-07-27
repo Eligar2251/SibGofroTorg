@@ -16,6 +16,7 @@ import {
   getTransports,
   getCashCollections,
 } from "@/lib/warehouse";
+import { dealNeedsDelivery } from "@/lib/warehouse-shared";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
 import { getAdminDb } from "@/lib/supabase";
@@ -240,7 +241,9 @@ export default async function AdminWarehousePage({
   );
 
   const pendingDeals = deals
-    .filter((d) => d.hasDelivery && !activeTransportDealIds.has(d.id))
+    // Полностью отпущенные и отменённые заказы в доставке не нужны:
+    // везти нечего. Частично отгруженные остаются — их надо довезти.
+    .filter((d) => dealNeedsDelivery(d) && !activeTransportDealIds.has(d.id))
     .map((d) => ({
       id: d.id,
       number: d.number,

@@ -107,6 +107,8 @@ export interface EditableDeal {
   deliveryNote?: string | null;
   deliveryContact?: string | null;
   deliveryPhone?: string | null;
+  /** Способ оплаты заказа: "cash" — наличные в кассу, иначе безнал. */
+  paymentMethod?: string | null;
 }
 
 function todayIso(): string {
@@ -194,8 +196,11 @@ export function DealForm({
   );
 
   // ── Способ оплаты ──
+  // При редактировании подхватываем реальный способ оплаты заказа:
+  // раньше здесь всегда стоял "regular", и сохранение наличного заказа
+  // сбрасывало оплату в обычный неоплаченный счёт.
   const [paymentMethod, setPaymentMethod] = useState<string>(
-    initialDeal ? "regular" : "regular"
+    initialDeal?.paymentMethod === "cash" ? "cash" : "regular"
   );
 
   // ── Разбиение платежа на части ──
@@ -304,7 +309,7 @@ export function DealForm({
     setPaymentCount(1);
     setSplitAmounts([""]);
     setSplitTouched(false);
-    setPaymentMethod("regular");
+    setPaymentMethod(initialDeal?.paymentMethod === "cash" ? "cash" : "regular");
   }
 
   function pickCustomerAddress(found: CounterpartyOption): string {

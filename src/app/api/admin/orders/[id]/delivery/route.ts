@@ -52,13 +52,9 @@ export async function PATCH(
     }
 
     if (action === "set_paid") {
+      // 0 ₽ — это осознанный выбор менеджера (бесплатно для клиента),
+      // сохраняем как бесплатную доставку, а не ругаемся ошибкой.
       const cost = Math.max(0, Number(body.deliveryCost) || 0);
-      if (cost <= 0) {
-        return NextResponse.json(
-          { error: "Укажите сумму платной доставки" },
-          { status: 400 }
-        );
-      }
       const address =
         body.deliveryAddress != null
           ? String(body.deliveryAddress).trim()
@@ -71,7 +67,7 @@ export async function PATCH(
       }
       const order = await updateOrderDelivery(id, {
         hasDelivery: true,
-        deliveryType: "paid",
+        deliveryType: cost > 0 ? "paid" : "free",
         deliveryCost: cost,
         deliveryAddress: address,
         deliveryPlannedDate:
@@ -142,8 +138,11 @@ export async function PATCH(
       }
     }
     if (body.deliveryCost !== undefined) {
-      patch.deliveryCost =
+      const cost =
         body.deliveryCost == null ? 0 : Math.max(0, Number(body.deliveryCost) || 0);
+      patch.deliveryCost = cost;
+      // Сумма важнее присланного типа: 0 ₽ = бесплатная доставка.
+      patch.deliveryType = cost > 0 ? "paid" : "free";
     }
     if (body.deliveryAddress !== undefined) {
       patch.deliveryAddress =
