@@ -229,6 +229,7 @@ export function WarehouseManager({
   // Filters
   const [q, setQ] = useState(""); // Stock/Deals query
   const [bq, setBq] = useState(""); // Bank query
+  const [rq, setRq] = useState(""); // Receipts query (поставщик/номер/товар)
   const [bdir, setBdir] = useState("all");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
 
@@ -246,6 +247,18 @@ export function WarehouseManager({
   // Calculations
   const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
   const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
+  // Способ оплаты заказа: dealId → "cash" | "regular".
+  // Определяем по привязанным входящим платежам — отдельного поля
+  // у заказа нет, а форме редактирования способ нужен, чтобы наличная
+  // оплата при сохранении не превращалась в неоплаченный счёт.
+  const dealPaymentMethod = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of payments) {
+      if (p.direction !== "incoming" || p.type !== "cash") continue;
+      for (const dealId of p.dealIds || []) map.set(dealId, "cash");
+    }
+    return map;
+  }, [payments]);
   const bankSummary = useMemo(
     () => getBankSummary(payments, salaries, cashCollections),
     [payments, salaries, cashCollections]
@@ -383,7 +396,14 @@ export function WarehouseManager({
       if (!query) return true;
       return (
         d.customerName.toLowerCase().includes(query) ||
-        String(d.number).includes(query)
+        String(d.number).includes(query) ||
+        // Поиск по товару: находим все заказы, где есть эта позиция
+        // (по названию или артикулу).
+        (d.items || []).some(
+          (it) =>
+            (it.name || "").toLowerCase().includes(query) ||
+            (it.sku || "").toLowerCase().includes(query)
+        )
       );
     });
   }, [deals, dealsSub, q, dealPaidMap]);
@@ -713,13 +733,29 @@ export function WarehouseManager({
 
   // Активные поступления (не проведены) и архив (проведённые/на складе).
   // Отмена проведения возвращает поступление из архива в активные.
+  // Поиск — по поставщику, номеру и товару (название/артикул).
+  const searchedReceipts = useMemo(() => {
+    const query = rq.toLowerCase().trim();
+    if (!query) return receipts;
+    return receipts.filter(
+      (r) =>
+        (r.supplier || "").toLowerCase().includes(query) ||
+        String(r.number).includes(query) ||
+        (r.items || []).some(
+          (it) =>
+            (it.name || "").toLowerCase().includes(query) ||
+            (it.sku || "").toLowerCase().includes(query)
+        )
+    );
+  }, [receipts, rq]);
+
   const activeReceipts = useMemo(
-    () => receipts.filter((r) => r.status !== "posted"),
-    [receipts]
+    () => searchedReceipts.filter((r) => r.status !== "posted"),
+    [searchedReceipts]
   );
   const archivedReceipts = useMemo(
-    () => receipts.filter((r) => r.status === "posted"),
-    [receipts]
+    () => searchedReceipts.filter((r) => r.status === "posted"),
+    [searchedReceipts]
   );
 
   return (
@@ -925,6 +961,35 @@ export function WarehouseManager({
                 <button onClick={() => setReceiptSub("active")} className={`admin-filter${receiptSub === "active" ? " admin-filter--active" : ""}`}>Активные</button>
                 <button onClick={() => setReceiptSub("archive")} className={`admin-filter${receiptSub === "archive" ? " admin-filter--active" : ""}`}>Архив</button>
               </div>
+
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                <div style={{ position: "relative", flex: 1 }}>
+                  <Search
+                    size={16}
+                    style={{
+                      position: "absolute",
+                      left: 12,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--adm-sand)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={rq}
+                    onChange={(e) => setRq(e.target.value)}
+                    placeholder="Поиск по товару, поставщику или номеру..."
+                    className="admin-input"
+                    style={{ paddingLeft: 36 }}
+                  />
+                </div>
+                {rq && (
+                  <button onClick={() => setRq("")} className="admin-btn admin-btn--ghost">
+                    Сбросить
+                  </button>
+                )}
+              </div>
+
               <div className="admin-card">
                 {receiptSub === "active" ? (
                   activeReceipts.length > 0 ? activeReceipts.map((r) => (
@@ -1162,7 +1227,7 @@ export function WarehouseManager({
                 type="text"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Поиск по покупателю или номеру..."
+                placeholder="Поиск по товару, покупателю или номеру..."
                 className="admin-input"
                 style={{ paddingLeft: 36 }}
               />
@@ -1371,6 +1436,9 @@ export function WarehouseManager({
                                 d.deliveryAddress ?? d.address ?? null,
                               deliveryPlannedDate: d.deliveryPlannedDate ?? null,
                               deliveryNote: d.deliveryNote ?? null,
+                              // Способ оплаты берём из привязанных платежей,
+                              // чтобы наличный заказ не «переезжал» в безнал.
+                              paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
                               items: d.items.map((item) => ({
                                 productId: item.productId,
                                 name: item.name,

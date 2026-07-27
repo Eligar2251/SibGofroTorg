@@ -1119,11 +1119,16 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   // Способ оплаты: "cash" = наличные в кассу, иначе — безнал (счёт)
   const payMethod = String(data.paymentMethod || "regular");
   const isCash = payMethod === "cash";
-  const now = new Date().toISOString();
+  // paid_at — текстовая дата YYYY-MM-DD (как во всех остальных местах).
+  // Раньше сюда писался полный ISO-таймстамп, из-за чего дата оплаты
+  // выпадала из общего формата.
+  const paidDate = date || new Date().toISOString().slice(0, 10);
 
   for (let i = 0; i < targets.length; i++) {
     const payNum = targets.length > 1 ? await nextNumber("payment") : paymentNumber;
-    await db.from("bank_payments").insert({
+    // Ошибку вставки не глотаем: иначе заказ создавался бы без платежа,
+    // и оплата «пропадала» бы молча.
+    const { error: payError } = await db.from("bank_payments").insert({
       number: payNum, date,
       direction: "incoming",
       type: isCash ? "cash" : "regular",
@@ -1132,12 +1137,16 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
       receipt_ids: [], receipt_numbers: [],
       amount: targets[i], invoice_number: null,
       vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
-      is_paid: isCash, paid_at: isCash ? now : null,
+      is_paid: isCash, paid_at: isCash ? paidDate : null,
       exclude_from_balance: false,
       comment: isCash
         ? `Оплата наличными по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
         : `Счёт покупателю по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
     });
+    if (payError) {
+      console.error("createDeal: не удалось создать платёж:", payError);
+      throw new Error(`Не удалось создать платёж: ${payError.message}`);
+    }
   }
 
   // Привязываем существующие платежи
@@ -1388,6 +1397,19 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     return dealLinks === 1 && receiptLinks === 0;
   });
 
+  // Способ оплаты заказа. Если явно не передан — наследуем от уже
+  // существующих платежей: наличный заказ должен остаться наличным,
+  // иначе при любом редактировании оплата превращалась в обычный счёт
+  // и слетала отметка «оплачено».
+  const inheritedCash = dealPayments.some(
+    (p: any) => p.type === "cash" && p.direction === "incoming"
+  );
+  const dealIsCash =
+    data.paymentMethod !== undefined
+      ? String(data.paymentMethod) === "cash"
+      : inheritedCash;
+  const payType = dealIsCash ? "cash" : "regular";
+
   const remaining = Math.max(0, round2(total - paidTotal));
 
   // Разбиение на части (аналогично receipts)
@@ -1409,12 +1431,18 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     targets = [remaining];
   }
 
+  const payDate = date || new Date().toISOString().slice(0, 10);
+
   if (targets.length > 0 && unpaidSoloPayments.length === targets.length) {
-    // Количество совпало — обновляем суммы
+    // Количество совпало — обновляем суммы (и тип, если заказ наличный)
     for (let i = 0; i < unpaidSoloPayments.length; i++) {
       await db.from("bank_payments").update({
         counterparty: customerName, counterparty_id: counterpartyId,
+        type: payType,
         amount: targets[i], vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
+        // Наличные считаются полученными сразу — деньги уже в кассе.
+        is_paid: dealIsCash,
+        paid_at: dealIsCash ? payDate : null,
       }).eq("id", unpaidSoloPayments[i].id);
     }
   } else {
@@ -1426,15 +1454,19 @@ export async function updateDeal(id: string, data: any): Promise<void> {
       const payNumber = await nextNumber("payment");
       await db.from("bank_payments").insert({
         number: payNumber, date,
-        direction: "incoming", type: "regular",
+        direction: "incoming", type: payType,
         counterparty: customerName, counterparty_id: counterpartyId,
         deal_ids: [id], deal_numbers: [existing.number],
         receipt_ids: [], receipt_numbers: [],
         amount: targets[i], invoice_number: null,
         vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
-        is_paid: false, paid_at: null,
+        // Наличные сразу помечаем оплаченными, безнал ждёт поступления.
+        is_paid: dealIsCash,
+        paid_at: dealIsCash ? payDate : null,
         exclude_from_balance: false,
-        comment: `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
+        comment: dealIsCash
+          ? `Оплата наличными по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
+          : `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
       });
     }
   }
@@ -2078,7 +2110,8 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
   const orderPayMethod = String(order.payment_method || "");
   const isCash = orderPayMethod === "cash";
   const isTransfer = orderPayMethod === "transfer";
-  const now = new Date().toISOString();
+  // paid_at — текстовая дата YYYY-MM-DD, как и в остальных местах учёта.
+  const paidDate = date || new Date().toISOString().slice(0, 10);
   const payComment = isCash
     ? `Оплата наличными по заказу ЗК-${number} (из заявки с сайта)`
     : isTransfer
@@ -2094,7 +2127,7 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
     receipt_ids: [], receipt_numbers: [],
     amount: total, vat_rate: VAT_RATE, vat_amount: vatAmount,
     is_paid: isCash,
-    paid_at: isCash ? now : null,
+    paid_at: isCash ? paidDate : null,
     exclude_from_balance: false,
     comment: payComment,
   }).select("id").single();
