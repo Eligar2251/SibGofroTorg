@@ -6069,6 +6069,56 @@ body:has(.admin-modal-overlay) {
 .cashc-total--transfer { border-color: var(--adm-steel-line); background: var(--adm-steel-pale); }
 .cashc-total--transfer strong { color: var(--adm-steel); }
 .cashc-total--sum { border-color: var(--adm-border-mid); }
+.cashc-total--spent { border-color: var(--adm-rust-line); background: var(--adm-rust-pale); }
+.cashc-total--spent strong { color: var(--adm-rust); }
+
+/* ── Траты налом за день (ЗП и прочие расходы из кассы) ── */
+.cashc-spent {
+  margin-top: 10px;
+  border: 1px solid var(--adm-rust-line);
+  background: var(--adm-rust-pale);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.cashc-spent__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-rust);
+  margin-bottom: 6px;
+}
+
+.cashc-spent__sum { margin-left: auto; }
+
+.cashc-spent__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  border-top: 1px dashed var(--adm-rust-line);
+}
+
+.cashc-spent__title { color: var(--adm-ink); min-width: 0; }
+.cashc-spent__note { color: var(--adm-sand); }
+
+.cashc-spent__amount {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--adm-rust);
+  white-space: nowrap;
+}
+
+.cashc-spent__foot {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--adm-rust-line);
+  font-size: 12px;
+  color: var(--adm-ink);
+}
 
 .cashc-bulk {
   display: flex;

@@ -2009,28 +2009,35 @@ function computeCashBalance(
  * Менеджер размечает каждый платёж: уходит он инкассацией на карту или
  * остаётся наличными (виртуальная карта «наличка»).
  */
-export async function getPendingCashPayments(): Promise<
-  {
+export async function getPendingCashPayments(): Promise<{
+  pending: {
     paymentId: string;
     number: number;
     date: string;
     counterparty: string;
     amount: number;
     comment: string | null;
-  }[]
-> {
-  const [payments, collections] = await Promise.all([
+  }[];
+  expenses: CashExpenseRow[];
+}> {
+  const [payments, salaries, collections] = await Promise.all([
     fetchPayments(),
+    fetchSalaries(),
     fetchCashCollections(),
   ]);
-  return listPendingCashPayments(payments, collections).map((p) => ({
-    paymentId: String(p.id),
-    number: p.number,
-    date: p.date,
-    counterparty: p.counterparty,
-    amount: p.amount,
-    comment: p.comment ?? null,
-  }));
+  return {
+    pending: listPendingCashPayments(payments, collections).map((p) => ({
+      paymentId: String(p.id),
+      number: p.number,
+      date: p.date,
+      counterparty: p.counterparty,
+      amount: p.amount,
+      comment: p.comment ?? null,
+    })),
+    // Наличные траты (ЗП и прочие расходы налом) — их вычитаем из
+    // прихода, потому что эти деньги уже ушли из кассы.
+    expenses: listCashExpenses(payments, salaries),
+  };
 }
 
 /** Платёж относится к кассе: наличное поступление, влияющее на остаток. */
@@ -2042,6 +2049,65 @@ function isCashDeskIncome(p: BankPayment): boolean {
     p.direction === "incoming" &&
     p.amount > 0
   );
+}
+
+/** Наличный расход из кассы: зарплата или исходящий платёж налом. */
+export interface CashExpenseRow {
+  kind: "salary" | "payment";
+  id: string;
+  date: string;
+  title: string;
+  amount: number;
+  comment: string | null;
+}
+
+/**
+ * Наличные расходы, уменьшившие кассу: выплаченные налом зарплаты и
+ * проведённые исходящие платежи с типом "cash".
+ *
+ * Эти деньги физически ушли из кассы до сдачи, поэтому сдавать нужно
+ * приход МИНУС расходы. Безнала здесь нет: только type='cash' и
+ * source='cash'.
+ */
+function listCashExpenses(
+  payments: BankPayment[],
+  salaries: Salary[]
+): CashExpenseRow[] {
+  const rows: CashExpenseRow[] = [];
+
+  for (const s of salaries) {
+    if (!s.isPaid || s.source !== "cash" || s.amount <= 0) continue;
+    rows.push({
+      kind: "salary",
+      id: String(s.id),
+      date: (s.paidAt || s.date || "").slice(0, 10),
+      title: `Зарплата — ${s.employeeName || "сотрудник"}`,
+      amount: s.amount,
+      comment: s.comment ?? null,
+    });
+  }
+
+  for (const p of payments) {
+    if (
+      !p.isPaid ||
+      p.excludeFromBalance ||
+      p.type !== "cash" ||
+      p.direction !== "outgoing" ||
+      p.amount <= 0
+    ) {
+      continue;
+    }
+    rows.push({
+      kind: "payment",
+      id: String(p.id),
+      date: (p.paidAt || p.date || "").slice(0, 10),
+      title: `ПЛ-${p.number} — ${p.counterparty || "расход"}`,
+      amount: p.amount,
+      comment: p.comment ?? null,
+    });
+  }
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** Наличные поступления, ещё не размеченные ни в одной сдаче кассы. */
@@ -2173,13 +2239,43 @@ export async function collectCash(
 
   cashAmount = Math.round(cashAmount * 100) / 100;
   cardAmount = Math.round(cardAmount * 100) / 100;
-  const amount = Math.round((cashAmount + cardAmount) * 100) / 100;
+
+  // ── Наличные траты этого дня (ЗП и прочие расходы налом) ──
+  // Эти деньги физически ушли из кассы до сдачи, поэтому сдаётся
+  // приход МИНУС траты. Иначе сдали бы больше, чем есть, и остаток
+  // кассы ушёл бы в минус ровно на сумму трат.
+  const expensesOfDay = listCashExpenses(payments, salaries).filter(
+    (e) => e.date === date
+  );
+  const expensesTotal =
+    Math.round(expensesOfDay.reduce((sum, e) => sum + e.amount, 0) * 100) / 100;
+
+  // Траты покрываются физической наличкой; если её не хватило —
+  // остаток списывается с инкассируемой на карту части.
+  let cashPart = Math.round((cashAmount - expensesTotal) * 100) / 100;
+  let cardPart = cardAmount;
+  if (cashPart < 0) {
+    cardPart = Math.round((cardPart + cashPart) * 100) / 100;
+    cashPart = 0;
+  }
+  if (cardPart < 0) cardPart = 0;
+
+  const amount = Math.round((cashPart + cardPart) * 100) / 100;
+
+  if (amount <= 0.009) {
+    throw new Error(
+      `Наличные траты за ${date} (${expensesTotal} ₽) покрывают весь приход — сдавать нечего`
+    );
+  }
 
   if (amount > cashBalance + 0.009) {
     throw new Error(
       `Сумма сдачи (${amount} ₽) больше остатка кассы (${cashBalance} ₽)`
     );
   }
+
+  cashAmount = cashPart;
+  cardAmount = cardPart;
 
   const { error } = await db.from("cash_collections").insert({
     date,

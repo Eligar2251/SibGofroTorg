@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Check,
   CalendarDays,
+  Wallet,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
@@ -33,6 +34,16 @@ interface PendingCashPayment {
   number: number;
   date: string;
   counterparty: string;
+  amount: number;
+  comment: string | null;
+}
+
+/** Наличный расход из кассы: ЗП или исходящий платёж налом. */
+interface CashExpense {
+  kind: "salary" | "payment";
+  id: string;
+  date: string;
+  title: string;
   amount: number;
   comment: string | null;
 }
@@ -63,6 +74,7 @@ export function CashCollectModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<PendingCashPayment[]>([]);
+  const [expenses, setExpenses] = useState<CashExpense[]>([]);
   const [kinds, setKinds] = useState<Record<string, CashKind>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
@@ -83,6 +95,7 @@ export function CashCollectModal({
         if (cancelled) return;
         const list: PendingCashPayment[] = data.pending || [];
         setPending(list);
+        setExpenses(data.expenses || []);
         if (data.cardHolder) setCardHolder(String(data.cardHolder));
         // Открываем на самой свежей дате: обычно сдают кассу за сегодня.
         const latest = list.reduce(
@@ -143,6 +156,17 @@ export function CashCollectModal({
     setError("");
   }
 
+  /** Наличные траты за выбранный день — эти деньги уже ушли из кассы. */
+  const dayExpenses = useMemo(
+    () => expenses.filter((e) => e.date === activeDate),
+    [expenses, activeDate]
+  );
+  const expensesTotal = useMemo(
+    () =>
+      Math.round(dayExpenses.reduce((s, e) => s + e.amount, 0) * 100) / 100,
+    [dayExpenses]
+  );
+
   const totals = useMemo(() => {
     let cash = 0;
     let card = 0;
@@ -151,12 +175,16 @@ export function CashCollectModal({
       if (kinds[p.paymentId] === "cash") cash += p.amount;
       else card += p.amount;
     }
+    const income = Math.round((cash + card) * 100) / 100;
     return {
       cash: Math.round(cash * 100) / 100,
       card: Math.round(card * 100) / 100,
-      total: Math.round((cash + card) * 100) / 100,
+      /** Приход за день до вычета трат */
+      income,
+      /** Фактически к сдаче: приход минус наличные траты */
+      total: Math.round((income - expensesTotal) * 100) / 100,
     };
-  }, [dayItems, selected, kinds]);
+  }, [dayItems, selected, kinds, expensesTotal]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -195,9 +223,12 @@ export function CashCollectModal({
     }
     if (
       !confirm(
-        `Сдать кассу за ${fmtDate(activeDate)}: на карту (${cardHolder}) ${fmt(
-          totals.card
-        )} ₽, наличными ${fmt(totals.cash)} ₽. Итого ${fmt(totals.total)} ₽?`
+        `Сдать кассу за ${fmtDate(activeDate)}.\n` +
+          `Приход: ${fmt(totals.income)} ₽` +
+          (expensesTotal > 0.009
+            ? `\nТраты налом: −${fmt(expensesTotal)} ₽`
+            : "") +
+          `\nИтого к сдаче: ${fmt(totals.total)} ₽`
       )
     ) {
       return;
@@ -312,6 +343,14 @@ export function CashCollectModal({
                   </span>
                   <strong>{fmt(totals.cash)} ₽</strong>
                 </div>
+                {expensesTotal > 0.009 && (
+                  <div className="cashc-total cashc-total--spent">
+                    <span className="cashc-total__label">
+                      <Wallet size={13} /> Потрачено налом
+                    </span>
+                    <strong>−{fmt(expensesTotal)} ₽</strong>
+                  </div>
+                )}
                 <div className="cashc-total cashc-total--sum">
                   <span className="cashc-total__label">Итого к сдаче</span>
                   <strong>{fmt(totals.total)} ₽</strong>
@@ -412,6 +451,36 @@ export function CashCollectModal({
                       );
                     })}
                   </div>
+
+                  {/* ── Траты налом за этот день ── */}
+                  {dayExpenses.length > 0 && (
+                    <div className="cashc-spent">
+                      <div className="cashc-spent__head">
+                        <Wallet size={13} />
+                        Потрачено из кассы за {fmtDate(activeDate)}
+                        <b className="cashc-spent__sum">
+                          −{fmt(expensesTotal)} ₽
+                        </b>
+                      </div>
+                      {dayExpenses.map((e) => (
+                        <div key={`${e.kind}-${e.id}`} className="cashc-spent__row">
+                          <span className="cashc-spent__title">
+                            {e.title}
+                            {e.comment && (
+                              <span className="cashc-spent__note"> · {e.comment}</span>
+                            )}
+                          </span>
+                          <span className="cashc-spent__amount">
+                            −{fmt(e.amount)} ₽
+                          </span>
+                        </div>
+                      ))}
+                      <div className="cashc-spent__foot">
+                        Приход {fmt(totals.income)} ₽ − траты{" "}
+                        {fmt(expensesTotal)} ₽ = <b>{fmt(totals.total)} ₽</b> к сдаче
+                      </div>
+                    </div>
+                  )}
 
                   {(otherDaysTotal > 0.009 || uncovered < -0.009) && (
                     <div className="cashc-hint">

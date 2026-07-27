@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     // При сдаче их размечают: «на карту (инкассация)» или «наличными».
     const { searchParams } = new URL(request.url);
     if (searchParams.get("pending")) {
-      const [pending, settings] = await Promise.all([
+      const [cashData, settings] = await Promise.all([
         getPendingCashPayments(),
         getSettings().catch(() => ({} as Record<string, string>)),
       ]);
@@ -30,7 +30,12 @@ export async function GET(request: NextRequest) {
       const cardHolder =
         String(settings[CASH_CARD_HOLDER_SETTING_KEY] || "").trim() ||
         DEFAULT_CASH_CARD_HOLDER;
-      return NextResponse.json({ pending, cardHolder });
+      return NextResponse.json({
+        pending: cashData.pending,
+        // Наличные траты (ЗП и прочее): уменьшают сумму к сдаче.
+        expenses: cashData.expenses,
+        cardHolder,
+      });
     }
     const collections = await getCashCollections();
     return NextResponse.json({ collections });
