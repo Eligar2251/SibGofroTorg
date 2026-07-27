@@ -91,10 +91,12 @@ export function QuickOrderForm({
             Ваше имя *
           </label>
           <input
+            id="qof-name"
             name="name"
             type="text"
             required
             placeholder="Иван Иванов"
+            autoComplete="name"
             className={isLight ? "qof-input qof-input--light" : "qof-input"}
           />
         </div>
@@ -103,12 +105,14 @@ export function QuickOrderForm({
             Телефон *
           </label>
           <input
+            id="qof-phone"
             name="phone"
             type="tel"
             required
             value={phone}
             onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
             placeholder="+7 (913) 000-00-00"
+            autoComplete="tel"
             className={isLight ? "qof-input qof-input--light" : "qof-input"}
           />
         </div>
@@ -120,9 +124,11 @@ export function QuickOrderForm({
             Какой товар интересует?
           </label>
           <input
+            id="qof-product"
             name="product"
             type="text"
             placeholder="Например: коробки 600×400×400"
+            autoComplete="off"
             className={isLight ? "qof-input qof-input--light" : "qof-input"}
           />
         </div>

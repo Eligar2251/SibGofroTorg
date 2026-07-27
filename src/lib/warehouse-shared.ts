@@ -184,6 +184,17 @@ export interface Salary {
   createdAt?: string | null;
 }
 
+/** Сдача кассы (инкассация): списание всего остатка наличных в банк */
+export interface CashCollection {
+  id: string;
+  /** Дата сдачи (YYYY-MM-DD) */
+  date: string;
+  /** Сумма, сданная из наличной кассы */
+  amount: number;
+  note?: string | null;
+  createdAt?: string | null;
+}
+
 function normalizeName(name: string): string {
   return (name || "")
     .trim()
@@ -194,14 +205,21 @@ function normalizeName(name: string): string {
 
 /** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
  *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
-export function getBankSummary(payments: BankPayment[], salaries: Salary[] = []) {
+export function getBankSummary(
+  payments: BankPayment[],
+  salaries: Salary[] = [],
+  collections: CashCollection[] = []
+) {
   let bankBalance = 0;
   let cashBalance = 0;
   let expectedIn = 0;
   let expectedOut = 0;
   for (const p of payments) {
+    // Платёж «вне баланса» не имеет отношения к текущему банку/кассе:
+    // не учитываем его ни в факте, ни в ожидаемых оплатах.
+    if (p.excludeFromBalance) continue;
+
     if (p.isPaid) {
-      if (p.excludeFromBalance) continue; // Пропускаем архивные/старые платежи
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
       if (p.type === "cash") cashBalance += amt;
       else bankBalance += amt;
@@ -220,16 +238,29 @@ export function getBankSummary(payments: BankPayment[], salaries: Salary[] = [])
       expectedOut += s.amount;
     }
   }
+  // Сдача кассы: деньги уходят из текущей кассы в отдельный журнал сдач.
+  // В безналичный банковский счёт их НЕ прибавляем.
+  let collectedCash = 0;
+  for (const c of collections) {
+    cashBalance -= c.amount;
+    collectedCash += c.amount;
+  }
   return {
     balance: bankBalance + cashBalance,
     bankBalance,
     cashBalance,
+    collectedCash,
     expectedIn,
     expectedOut,
   };
 }
 
-/** Оплачено по каждому заказу (id → сумма оплаченных входящих платежей) */
+/**
+ * Оплачено по каждому заказу (id → сумма проведённых входящих платежей).
+ * Платежи «вне баланса» тоже закрывают документ, но не влияют на банк/кассу
+ * в getBankSummary. Так старые/архивные оплаты не создают ложный долг и
+ * экстренные уведомления «отпущено без оплаты».
+ */
 export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const p of payments) {
@@ -244,7 +275,10 @@ export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
   return map;
 }
 
-/** Оплачено по каждому поступлению (id → сумма оплаченных исходящих) */
+/**
+ * Оплачено по каждому поступлению (id → сумма проведённых исходящих).
+ * «Вне баланса» закрывает документ, но не меняет текущий банк/кассу.
+ */
 export function getReceiptPaidMap(payments: BankPayment[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const p of payments) {
@@ -257,6 +291,78 @@ export function getReceiptPaidMap(payments: BankPayment[]): Map<string, number> 
     }
   }
   return map;
+}
+
+/** Долги по контрагентам на основании непроведённых платежей банка. */
+export function getPendingPaymentCounterpartyBalances(
+  payments: BankPayment[]
+): CounterpartyBalance[] {
+  const result = new Map<string, CounterpartyBalance>();
+
+  const getRow = (name: string, type: "customer" | "supplier") => {
+    const norm = normalizeName(name);
+    if (!norm) return null;
+    const key = `${type}:${norm}`;
+    if (!result.has(key)) {
+      result.set(key, {
+        name: name.trim(),
+        type,
+        docsTotal: 0,
+        paidTotal: 0,
+        balance: 0,
+        lastPaymentDate: null,
+        docsCount: 0,
+      });
+    }
+    return result.get(key)!;
+  };
+
+  for (const p of payments) {
+    if (p.isPaid) continue;
+    if (p.excludeFromBalance) continue;
+    if (!p.counterparty || p.amount <= 0) continue;
+
+    const hasDealLink = p.dealIds && p.dealIds.length > 0;
+    const hasReceiptLink = p.receiptIds && p.receiptIds.length > 0;
+    let type: "customer" | "supplier";
+    if (hasDealLink) type = "customer";
+    else if (hasReceiptLink) type = "supplier";
+    else type = p.direction === "outgoing" ? "supplier" : "customer";
+
+    const row = getRow(p.counterparty, type);
+    if (!row) continue;
+
+    // Для покупателей положительный баланс = должны нам (ожидаемый приход).
+    // Для поставщиков положительный баланс = мы должны (ожидаемый расход).
+    if (type === "customer") {
+      if (p.direction === "incoming") row.docsTotal += p.amount;
+      else row.paidTotal += p.amount;
+    } else {
+      if (p.direction === "outgoing") row.docsTotal += p.amount;
+      else row.paidTotal += p.amount;
+    }
+
+    row.docsCount += 1;
+    if (!row.lastPaymentDate || p.date > row.lastPaymentDate) {
+      row.lastPaymentDate = p.date;
+    }
+  }
+
+  const list = [...result.values()].map((row) => ({
+    ...row,
+    docsTotal: Math.round(row.docsTotal * 100) / 100,
+    paidTotal: Math.round(row.paidTotal * 100) / 100,
+    balance: Math.round((row.docsTotal - row.paidTotal) * 100) / 100,
+  }));
+
+  list.sort((a, b) => {
+    const aDebt = a.balance > 0.009 ? 1 : 0;
+    const bDebt = b.balance > 0.009 ? 1 : 0;
+    if (aDebt !== bDebt) return bDebt - aDebt;
+    return a.name.localeCompare(b.name, "ru");
+  });
+
+  return list;
 }
 
 export function getCounterpartyBalances(
@@ -284,9 +390,13 @@ export function getCounterpartyBalances(
     return result.get(key)!;
   };
 
+  const activeDealIds = new Set<string>();
+  const receiptIds = new Set<string>();
+
   // 1. Process all documents
   for (const d of deals) {
     if (d.status === "cancelled") continue;
+    activeDealIds.add(d.id);
     const row = getRow(d.customerName, "customer");
     if (row) {
       row.docsTotal += d.total;
@@ -294,6 +404,7 @@ export function getCounterpartyBalances(
     }
   }
   for (const r of receipts) {
+    receiptIds.add(r.id);
     if (!r.supplier) continue;
     const row = getRow(r.supplier, "supplier");
     if (row) {
@@ -302,25 +413,28 @@ export function getCounterpartyBalances(
     }
   }
 
-  // 2. Process ALL paid payments for debt balance
+  // 2. Process ALL paid payments for debt balance.
+  // В долг контрагента идут ВСЕ проведённые платежи, в том числе не
+  // привязанные к документам (расходы, прочие выплаты). Платежи с пометкой
+  // «вне баланса» (excludeFromBalance) исключаем — это старый/архивный учёт,
+  // который не должен влиять на текущий долг.
   for (const p of payments) {
     if (!p.isPaid) continue;
-    // Note: we include excludeFromBalance payments here because they still 
-    // represent money that was paid towards a document, even if they don't 
-    // affect the "current" bank balance.
-    
+    if (p.excludeFromBalance) continue;
+
     const hasDealLink = p.dealIds && p.dealIds.length > 0;
     const hasReceiptLink = p.receiptIds && p.receiptIds.length > 0;
-    
-    // User requirement: Unlinked payments (third-party) do not affect counterparty debt
-    if (!hasDealLink && !hasReceiptLink) continue;
 
-    const payDate = p.paidAt || p.date;
     const normName = normalizeName(p.counterparty);
     if (!normName) continue;
 
-    // Detect role based on link
-    let type: "customer" | "supplier" = hasDealLink ? "customer" : "supplier";
+    // Роль контрагента: по привязке, иначе по направлению платежа.
+    // Исходящий без привязки — это расход у поставщика;
+    // входящий без привязки — поступление от покупателя.
+    let type: "customer" | "supplier";
+    if (hasDealLink) type = "customer";
+    else if (hasReceiptLink) type = "supplier";
+    else type = p.direction === "outgoing" ? "supplier" : "customer";
 
     const row = getRow(p.counterparty, type);
     if (!row) continue;
@@ -332,8 +446,51 @@ export function getCounterpartyBalances(
       row.paidTotal += (p.direction === "outgoing" ? amount : -amount);
     }
 
+    const payDate = p.paidAt || p.date;
     if (!row.lastPaymentDate || payDate > row.lastPaymentDate) {
       row.lastPaymentDate = payDate;
+    }
+  }
+
+  // 3. Добавляем непроведённые платежи без действующего документа.
+  // Документы уже дают долг (docsTotal - paidTotal), поэтому платежи,
+  // привязанные к существующему заказу/поступлению, второй раз не считаем.
+  // А вот самостоятельные ожидающие оплаты должны быть видны в блоках
+  // «Покупатели должны нам» / «Поставщики мы должны».
+  for (const p of payments) {
+    if (p.isPaid) continue;
+    if (p.excludeFromBalance) continue;
+
+    const hasActiveDealLink =
+      Array.isArray(p.dealIds) && p.dealIds.some((id) => activeDealIds.has(id));
+    const hasReceiptLink =
+      Array.isArray(p.receiptIds) && p.receiptIds.some((id) => receiptIds.has(id));
+    if (hasActiveDealLink || hasReceiptLink) continue;
+
+    const normName = normalizeName(p.counterparty);
+    if (!normName) continue;
+
+    const hasAnyDealLink = p.dealIds && p.dealIds.length > 0;
+    const hasAnyReceiptLink = p.receiptIds && p.receiptIds.length > 0;
+    let type: "customer" | "supplier";
+    if (hasAnyDealLink) type = "customer";
+    else if (hasAnyReceiptLink) type = "supplier";
+    else type = p.direction === "outgoing" ? "supplier" : "customer";
+
+    const row = getRow(p.counterparty, type);
+    if (!row) continue;
+
+    const amount = p.amount;
+    if (type === "customer") {
+      if (p.direction === "incoming") row.docsTotal += amount;
+      else row.paidTotal += amount;
+    } else {
+      if (p.direction === "outgoing") row.docsTotal += amount;
+      else row.paidTotal += amount;
+    }
+    row.docsCount += 1;
+    if (!row.lastPaymentDate || p.date > row.lastPaymentDate) {
+      row.lastPaymentDate = p.date;
     }
   }
 

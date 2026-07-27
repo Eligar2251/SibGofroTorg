@@ -1,8 +1,8 @@
 // src/app/api/wastepaper/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/supabase";
-import { getSettings } from "@/lib/supabase-queries";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { sendAdminNotifications } from "@/lib/notify";
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,28 +45,7 @@ export async function POST(request: NextRequest) {
 
 <b>Комментарий:</b> ${comment || "—"}`;
 
-    const settings = await getSettings();
-    const telegramToken = settings.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
-    const telegramChatId = settings.telegram_admin_chat_id || process.env.TELEGRAM_ADMIN_CHAT_ID;
-    const maxToken = settings.max_bot_token || process.env.MAX_BOT_TOKEN;
-    const maxChatId = settings.max_admin_chat_id || process.env.MAX_ADMIN_CHAT_ID;
-
-    const promises: Promise<unknown>[] = [];
-    if (telegramToken && telegramChatId) {
-      promises.push(fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: telegramChatId, text: message, parse_mode: "HTML" }),
-      }));
-    }
-    if (maxToken && maxChatId) {
-      promises.push(fetch(`https://botapi.max.ru/messages?access_token=${maxToken}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: maxChatId, text: message.replace(/<[^>]*>/g, "") }),
-      }));
-    }
-    if (promises.length > 0) await Promise.allSettled(promises);
+    await sendAdminNotifications(message);
 
     return NextResponse.json({ success: true, id: data.id });
   } catch (error) {

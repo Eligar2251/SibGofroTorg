@@ -17,8 +17,10 @@ import {
   XCircle,
   Gift,
   Banknote,
+  CreditCard,
   Truck,
   RotateCcw,
+  Wallet,
 } from "lucide-react";
 import {
   ProductPicker,
@@ -197,6 +199,9 @@ export function DealForm({
   );
 
   // ── Разбиение платежа на части ──
+  // Непроведённые платежи ИМЕННО этого заказа (раньше фильтр не учитывал
+  // текущий заказ и подтягивал чужие неоплаты со всего банка — из-за этого
+  // при открытии заказа счётчик частей мог самопроизвольно стать 6).
   const existingUnpaid = useMemo(() => {
     if (!initialDeal) return [] as BankPayment[];
     return payments.filter(
@@ -204,13 +209,19 @@ export function DealForm({
         p.direction === "incoming" &&
         !p.isPaid &&
         (p.dealIds || []).length === 1 &&
+        (p.dealIds || []).map(String).includes(String(initialDeal.id)) &&
         (p.receiptIds || []).length === 0
     );
   }, [payments, initialDeal]);
 
-  const [paymentCount, setPaymentCount] = useState(
-    initialDeal && existingUnpaid.length > 1 ? existingUnpaid.length : 1
+  // По умолчанию — 1 платёж. При редактировании заказа, у которого уже есть
+  // несколько непроведённых частей, подставляем их количество, но не больше 3
+  // (кнопок выбора больше нет, а значение «6» без кнопки ломало интерфейс).
+  const initialPaymentCount = Math.min(
+    initialDeal && existingUnpaid.length > 1 ? existingUnpaid.length : 1,
+    3
   );
+  const [paymentCount, setPaymentCount] = useState(initialPaymentCount);
   const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
   const [splitTouched, setSplitTouched] = useState(false);
 
@@ -489,7 +500,14 @@ export function DealForm({
 
       {open && (
         <ModalPortal>
-        <div className="admin-modal-overlay" onClick={() => setOpen(false)}>
+        {/* data-admin="true" — портал рендерится в document.body вне обёртки
+            AdminShell, поэтому без этого атрибута скоуп-стили админки
+            (в т.ч. кастомный чекбокс доставки) в модалке не применялись. */}
+        <div
+          className="admin-modal-overlay"
+          data-admin="true"
+          onClick={() => setOpen(false)}
+        >
           <div
             className="admin-modal wh-modal"
             onClick={(e) => e.stopPropagation()}
@@ -806,7 +824,9 @@ export function DealForm({
               </div>
 
               <div className="admin-field" style={{ marginTop: 12 }}>
-                <label className="admin-label">Способ оплаты</label>
+                <label className="admin-label">
+                  <Wallet size={12} style={{ verticalAlign: "-1px" }} /> Способ оплаты
+                </label>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                   <button
                     type="button"
@@ -814,7 +834,7 @@ export function DealForm({
                     style={{ flex: 1 }}
                     onClick={() => setPaymentMethod('regular')}
                   >
-                    По счёту (безнал)
+                    <CreditCard size={14} /> По счёту (безнал)
                   </button>
                   <button
                     type="button"
@@ -822,7 +842,7 @@ export function DealForm({
                     style={{ flex: 1 }}
                     onClick={() => setPaymentMethod('cash')}
                   >
-                    Наличные (касса)
+                    <Banknote size={14} /> Наличные (касса)
                   </button>
                 </div>
                 {paymentMethod === 'cash' && (
@@ -833,7 +853,9 @@ export function DealForm({
               </div>
 
               <div className="admin-field" style={{ marginTop: 12 }}>
-                <label className="admin-label">Оплата (разбить на части?)</label>
+                <label className="admin-label">
+                  <Banknote size={12} style={{ verticalAlign: "-1px" }} /> Оплата (разбить на части?)
+                </label>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   {[1, 2, 3].map(count => (
                     <button

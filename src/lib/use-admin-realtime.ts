@@ -36,7 +36,10 @@ export function useAdminRealtime(options: RealtimeOptions) {
   const { pollIntervalMs = 30_000, onUpdate } = options;
   const router = useRouter();
   const onUpdateRef = useRef(onUpdate);
-  onUpdateRef.current = onUpdate;
+
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
 
   // Стабильная ссылка на tables — пересоздаётся только при изменении содержимого
   const tablesKey = JSON.stringify(options.tables);

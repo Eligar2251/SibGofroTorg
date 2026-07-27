@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Boxes,
   Truck,
@@ -25,11 +26,12 @@ import {
   Loader2,
   Save,
   Gift,
+  Trash2,
 } from "lucide-react";
 import {
   type BankPayment,
   getBankSummary,
-  getCounterpartyBalances,
+  getPendingPaymentCounterpartyBalances,
   getDealPaidMap,
   getReceiptPaidMap,
   type WarehouseStockRow,
@@ -38,6 +40,7 @@ import {
   type Counterparty,
   type Employee,
   type Salary,
+  type CashCollection,
   includedVat,
   VAT_RATE,
 } from "@/lib/warehouse-shared";
@@ -105,7 +108,7 @@ type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers";
 type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
-type BankSub = "pending" | "history";
+type BankSub = "pending" | "history" | "cash";
 type ProcurementCartItem = { productId: string; supplierId: string; quantity: number; price: number; vatRate: number };
 type BankEntry =
   | (BankPayment & { entryKind: "payment" })
@@ -147,6 +150,7 @@ interface WarehouseManagerProps {
   transports?: TransportRow[];
   pendingDeals?: TransportDeal[];
   drivers?: DriverOption[];
+  cashCollections?: CashCollection[];
   companyPhone?: string;
   companyAddress?: string;
 }
@@ -175,6 +179,7 @@ export function WarehouseManager({
   transports = [],
   pendingDeals = [],
   drivers = [],
+  cashCollections = [],
   companyPhone,
   companyAddress,
 }: WarehouseManagerProps) {
@@ -192,6 +197,9 @@ export function WarehouseManager({
   const [procurementCart, setProcurementCart] = useState<ProcurementCartItem[]>([]);
   const [procurementSaving, setProcurementSaving] = useState(false);
   const [bankSub, setBankSub] = useState<BankSub>("pending");
+  const router = useRouter();
+  const [collecting, setCollecting] = useState(false);
+  const [collectError, setCollectError] = useState("");
 
   useEffect(() => {
     if (focusDealId) {
@@ -238,13 +246,13 @@ export function WarehouseManager({
   const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
   const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
   const bankSummary = useMemo(
-    () => getBankSummary(payments, salaries),
-    [payments, salaries]
+    () => getBankSummary(payments, salaries, cashCollections),
+    [payments, salaries, cashCollections]
   );
   
   const allCounterparties = useMemo(
-    () => getCounterpartyBalances(deals, receipts, payments),
-    [deals, receipts, payments]
+    () => getPendingPaymentCounterpartyBalances(payments),
+    [payments]
   );
 
   // Filter counterparties to only show those with positive debt (what is owed)
@@ -253,13 +261,95 @@ export function WarehouseManager({
     [allCounterparties]
   );
 
-  // Find posted receipts that are not fully paid
-  const unpaidPostedReceipts = useMemo(() => {
-    return receipts.filter((r) => {
-      const paid = receiptPaidMap.get(r.id) || 0;
-      return r.status === "posted" && paid + 0.009 < r.total;
-    });
-  }, [receipts, receiptPaidMap]);
+  // Непроведённые исходящие платежи поставщикам показываем только как
+  // срочное напоминание, когда они связаны с уже отпущенным заказом.
+  // Обычные долги поставщикам остаются в списке платежей, но не всплывают
+  // отдельным красным блоком.
+  const pendingSupplierPayments = useMemo(() => {
+    const releasedDealIds = new Set(
+      deals.filter((d) => d.status === "completed").map((d) => d.id)
+    );
+    const receiptIdsForReleasedDeals = new Set(
+      receipts
+        .filter((r) =>
+          (r.linkedDealIds || []).some((dealId) => releasedDealIds.has(String(dealId)))
+        )
+        .map((r) => r.id)
+    );
+
+    return payments
+      .filter((p) => {
+        if (p.isPaid || p.direction !== "outgoing" || p.excludeFromBalance || p.amount <= 0) {
+          return false;
+        }
+        const linkedToReleasedDeal = (p.dealIds || []).some((dealId) =>
+          releasedDealIds.has(String(dealId))
+        );
+        const linkedToReceiptForReleasedDeal = (p.receiptIds || []).some((receiptId) =>
+          receiptIdsForReleasedDeals.has(String(receiptId))
+        );
+        return linkedToReleasedDeal || linkedToReceiptForReleasedDeal;
+      })
+      .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
+  }, [deals, payments, receipts]);
+
+  // Сданная касса — отчёт (по дате убывания) и итог
+  const collectionsSorted = useMemo(
+    () =>
+      [...cashCollections]
+        .filter((c) => c && typeof c.amount === "number")
+        .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id)),
+    [cashCollections]
+  );
+  const collectionsTotal = useMemo(
+    () => collectionsSorted.reduce((sum, c) => sum + (c.amount || 0), 0),
+    [collectionsSorted]
+  );
+
+  async function handleCollectCash() {
+    if (bankSummary.cashBalance <= 0.009) {
+      setCollectError("Касса пуста — нечего сдавать");
+      return;
+    }
+    const amount = Math.round(bankSummary.cashBalance);
+    if (!confirm(`Сдать кассу и списать ${fmt(amount)} ₽ из текущей кассы в журнал сдач?`)) return;
+    const note = window.prompt("Комментарий к сдаче кассы (необязательно)", "") || "";
+    setCollecting(true);
+    setCollectError("");
+    try {
+      const res = await fetch("/api/admin/warehouse/cash-collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: note.trim() || null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Не удалось сдать кассу");
+      router.refresh();
+    } catch (err) {
+      setCollectError(err instanceof Error ? err.message : "Не удалось сдать кассу");
+    } finally {
+      setCollecting(false);
+    }
+  }
+
+  async function handleDeleteCollection(id: string) {
+    if (!confirm("Отменить сдачу кассы? Остаток наличных вернётся в кассу.")) return;
+    setCollecting(true);
+    try {
+      const res = await fetch(`/api/admin/warehouse/cash-collections/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Не удалось удалить");
+      }
+      router.refresh();
+    } catch (err) {
+      setCollectError(err instanceof Error ? err.message : "Не удалось удалить");
+    } finally {
+      setCollecting(false);
+    }
+  }
 
   // Filtered Stock
   const filteredStock = useMemo(() => {
@@ -313,11 +403,10 @@ export function WarehouseManager({
       salary,
     }));
     let list: BankEntry[] = [
-      ...payments
-        .filter((payment) => !payment.excludeFromBalance)
-        .map((payment) => ({ ...payment, entryKind: "payment" as const })),
+      ...payments.map((payment) => ({ ...payment, entryKind: "payment" as const })),
       ...salaryEntries,
     ].filter((p) => {
+      if (bankSub === "cash") return false;
       const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
       if (!matchesTab) return false;
       if (bdir !== "all" && p.direction !== bdir) return false;
@@ -349,6 +438,7 @@ export function WarehouseManager({
     let inSum = 0;
     let outSum = 0;
     for (const p of bankList) {
+      if (p.entryKind === "payment" && p.excludeFromBalance) continue;
       if (p.direction === "incoming") inSum += p.amount;
       else outSum += p.amount;
     }
@@ -1577,6 +1667,16 @@ export function WarehouseManager({
                 <div className="bank-hero__value" style={{ color: '#fff' }}>
                   {fmt(bankSummary.cashBalance)} ₽
                 </div>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--primary admin-btn--sm"
+                  disabled={collecting || bankSummary.cashBalance <= 0.009}
+                  onClick={handleCollectCash}
+                  style={{ marginTop: 10 }}
+                >
+                  {collecting ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
+                  Сдать кассу
+                </button>
               </div>
               <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
                 Общий итог (факт): <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
@@ -1610,41 +1710,64 @@ export function WarehouseManager({
             </div>
           </div>
 
-          {/* Unpaid Posted Receipts Block */}
-          {unpaidPostedReceipts.length > 0 && (
+          {collectError && <div className="wh-form-error" style={{ marginBottom: 12 }}>{collectError}</div>}
+
+          {/* Непроведённые исходящие платежи поставщикам/получателям */}
+          {bankSub !== "cash" && pendingSupplierPayments.length > 0 && (
             <div className="admin-card" style={{ border: "1px solid var(--adm-rust-line)", background: "var(--adm-rust-pale)", marginBottom: 16 }}>
               <div className="admin-card__head" style={{ background: "transparent", borderBottom: "1px solid var(--adm-rust-line)" }}>
                 <h3 className="admin-card__title" style={{ color: "var(--adm-rust)" }}>
                   <AlertTriangle size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
                   Нужно оплатить поставщикам
                 </h3>
+                <span className="admin-badge admin-badge--red">
+                  −{fmt(pendingSupplierPayments.reduce((sum, p) => sum + p.amount, 0))} ₽
+                </span>
               </div>
               <div className="admin-card__pad">
                 <div className="bank-month__list">
-                  {unpaidPostedReceipts.map((r) => {
-                    const paid = receiptPaidMap.get(r.id) || 0;
-                    return (
-                      <div key={r.id} className="bank-pay" style={{ background: "#fff", padding: "10px 14px" }}>
-                        <div className="bank-pay__icon bank-pay__icon--out" style={{ width: 32, height: 32 }}>
-                          <Truck size={15} />
+                  {pendingSupplierPayments.slice(0, 6).map((p) => (
+                    <div key={p.id} className="bank-pay" style={{ background: "#fff", padding: "10px 14px" }}>
+                      <div className="bank-pay__icon bank-pay__icon--out" style={{ width: 32, height: 32 }}>
+                        <Truck size={15} />
+                      </div>
+                      <div className="bank-pay__main">
+                        <div className="bank-pay__row1">
+                          <span className="bank-pay__counterparty" style={{ fontSize: 13 }}>{p.counterparty}</span>
+                          <span className="bank-pay__num">{p.invoiceNumber || `ПЛ-${p.number}`}</span>
+                          <span className="bank-pay__wait">ожидается</span>
                         </div>
-                        <div className="bank-pay__main">
-                          <div className="bank-pay__row1">
-                            <span className="bank-pay__counterparty" style={{ fontSize: 13 }}>{r.supplier}</span>
-                            <span className="bank-pay__num">ПО-{r.number}</span>
-                          </div>
-                          <div className="bank-pay__row2">
-                            <span className="bank-pay__date">Поступление от {fmtDate(r.date)}</span>
-                          </div>
-                        </div>
-                        <div className="bank-pay__side">
-                          <span className="bank-pay__amount bank-pay__amount--out" style={{ fontSize: 16 }}>
-                            {fmt(r.total - paid)} ₽
-                          </span>
+                        <div className="bank-pay__row2">
+                          {p.receiptNumbers.length > 0 && (
+                            <span className="bank-pay__links">
+                              {p.receiptNumbers.map((n, idx) => (
+                                <Link
+                                  key={`alert-r${p.id}-${n}`}
+                                  className="bank-pay__doc"
+                                  href={`/${adminPath}/warehouse?tab=receipts&receipt=${p.receiptIds[idx] || ""}`}
+                                  prefetch={false}
+                                >
+                                  ПО-{n}
+                                </Link>
+                              ))}
+                            </span>
+                          )}
+                          <span className="bank-pay__date">{fmtDate(p.date)}</span>
+                          {p.comment && <span className="bank-pay__comment">{p.comment}</span>}
                         </div>
                       </div>
-                    );
-                  })}
+                      <div className="bank-pay__side">
+                        <span className="bank-pay__amount bank-pay__amount--out" style={{ fontSize: 16 }}>
+                          −{fmt(p.amount)} ₽
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {pendingSupplierPayments.length > 6 && (
+                    <div className="admin-muted" style={{ fontSize: 12, padding: "0 4px" }}>
+                      Ещё {pendingSupplierPayments.length - 6} платеж(а) в списке «Ожидают оплаты».
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1666,7 +1789,7 @@ export function WarehouseManager({
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
-                          {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
+                          {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
                       <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
@@ -1691,7 +1814,7 @@ export function WarehouseManager({
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
-                          {c.docsCount} док. · последний {fmtDate(c.lastPaymentDate)}
+                          {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
                       <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
@@ -1702,6 +1825,7 @@ export function WarehouseManager({
               )}
             </div>
           </div>
+
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
             <button
@@ -1718,8 +1842,86 @@ export function WarehouseManager({
               <History size={12} />
               История (архив)
             </button>
+            <button
+              onClick={() => setBankSub("cash")}
+              className={`admin-filter${bankSub === "cash" ? " admin-filter--active" : ""}`}
+            >
+              <Banknote size={12} />
+              Касса
+            </button>
           </div>
 
+          {bankSub === "cash" ? (
+            <div className="admin-card wh-cashcollect" style={{ marginTop: 12 }}>
+              <div className="admin-card__head">
+                <h3 className="admin-card__title">
+                  <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
+                  Отчёт по сданной кассе
+                </h3>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <span className="admin-badge admin-badge--muted">
+                    В кассе: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
+                  </span>
+                  <span className="admin-badge admin-badge--green">
+                    Сдано всего: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
+                  </span>
+                </div>
+              </div>
+              <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
+                <div className="admin-muted" style={{ fontSize: 13 }}>
+                  Кнопка «Сдать кассу» находится в верхнем блоке банка рядом с остатком наличных.
+                  При сдаче весь остаток наличных списывается из текущей кассы и фиксируется здесь отдельной записью с датой и комментарием. В безналичный счёт сумма не прибавляется.
+                </div>
+                {collectionsSorted.length === 0 ? (
+                  <div className="admin-empty" style={{ padding: 16 }}>
+                    <p>Касса ещё ни разу не сдавалась</p>
+                  </div>
+                ) : (
+                  <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Дата</th>
+                          <th style={{ textAlign: "right" }}>Сумма</th>
+                          <th>Комментарий</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {collectionsSorted.map((c) => (
+                          <tr key={c.id}>
+                            <td>{fmtDate(c.date)}</td>
+                            <td style={{ textAlign: "right", fontWeight: 700, color: "var(--adm-pine)" }}>
+                              +{fmt(Math.round(c.amount * 100) / 100)} ₽
+                            </td>
+                            <td>{c.note || "—"}</td>
+                            <td style={{ textAlign: "right" }}>
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--ghost admin-btn--sm"
+                                disabled={collecting}
+                                onClick={() => handleDeleteCollection(c.id)}
+                              >
+                                <Trash2 size={13} /> Удалить
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="wh-cashcollect__total">
+                          <td style={{ fontWeight: 800 }}>Итого сдано</td>
+                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-pine)" }}>
+                            +{fmt(Math.round(collectionsTotal * 100) / 100)} ₽
+                          </td>
+                          <td colSpan={2} />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="bank-toolbar">
             <div className="bank-toolbar__search" style={{ position: "relative" }}>
               <Search
@@ -1846,9 +2048,13 @@ export function WarehouseManager({
                         {!p.isPaid && (
                           <span className="bank-pay__wait">ожидается</span>
                         )}
-                        {p.entryKind === "payment" && p.isPaid && p.excludeFromBalance && (
-                          <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>
-                            архив (вне баланса)
+                        {p.entryKind === "payment" && p.excludeFromBalance && (
+                          <span
+                            className="admin-badge admin-badge--muted"
+                            style={{ marginLeft: 6 }}
+                            title="Платёж закрывает документ, но не влияет на текущий банк/кассу"
+                          >
+                            вне баланса
                           </span>
                         )}
                       </div>
@@ -1939,6 +2145,8 @@ export function WarehouseManager({
               </div>
             </div>
           ))}
+            </>
+          )}
         </div>
       )}
     </div>

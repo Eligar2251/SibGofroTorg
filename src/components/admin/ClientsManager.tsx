@@ -45,7 +45,7 @@ const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
   completed: "Выполнена",
-  rejected: "Отклонена",
+  rejected: "Отменена",
 };
 
 const statusColors: Record<string, string> = {

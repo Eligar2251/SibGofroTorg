@@ -32,6 +32,7 @@ import {
   getDealPaidMap,
   getReceiptPaidMap,
   getCounterpartyBalances,
+  getPendingPaymentCounterpartyBalances,
 } from "./warehouse-shared";
 
 export {
@@ -56,6 +57,7 @@ export {
   getDealPaidMap,
   getReceiptPaidMap,
   getCounterpartyBalances,
+  getPendingPaymentCounterpartyBalances,
 } from "./warehouse-shared";
 
 // ─── Утилиты ───────────────────────────────────────────────
@@ -1331,8 +1333,74 @@ export async function deleteDeal(id: string): Promise<void> {
     await applyStockDelta(existing.items as StockDocItem[], 1);
   }
 
+  // ★ Удаляем связанные НЕПРОВЕДЁННЫЕ платежи, чтобы не приходилось
+  //   чистить их руками в банке. Проведённые (is_paid) не трогаем —
+  //   они уже повлияли на баланс; только отвязываем удаляемый заказ.
+  try {
+    const { data: payments } = await db
+      .from("bank_payments")
+      .select("*")
+      .contains("deal_ids", [id]);
+
+    for (const payment of payments || []) {
+      const dealIds = Array.isArray(payment.deal_ids)
+        ? payment.deal_ids.map((d: unknown) => String(d))
+        : [];
+      const dealNumbers = Array.isArray(payment.deal_numbers)
+        ? payment.deal_numbers
+        : [];
+      const receiptLinks = Array.isArray(payment.receipt_ids) ? payment.receipt_ids : [];
+      const onlyThisDeal = dealIds.length === 1 && dealIds[0] === String(id) && receiptLinks.length === 0;
+
+      if (!payment.is_paid && onlyThisDeal) {
+        // Непроведённый платёж, привязанный только к этому заказу — удаляем.
+        await db.from("bank_payments").delete().eq("id", payment.id);
+        continue;
+      }
+
+      // Остальные (проведённые или общие) — отвязываем заказ, платёж живёт.
+      const newDealIds: string[] = [];
+      const newDealNumbers: unknown[] = [];
+      for (let i = 0; i < dealIds.length; i++) {
+        if (dealIds[i] === String(id)) continue;
+        newDealIds.push(dealIds[i]);
+        if (i < dealNumbers.length) newDealNumbers.push(dealNumbers[i]);
+      }
+      await db
+        .from("bank_payments")
+        .update({ deal_ids: newDealIds, deal_numbers: newDealNumbers })
+        .eq("id", payment.id);
+    }
+  } catch (e) {
+    console.error("deleteDeal: ошибка удаления/отвязки платежей:", e);
+  }
+
+  // ★ Если заказ был создан из заявки с сайта — отвязываем заявку,
+  //   чтобы не остался битый бейдж «В учёте: ЗК-…» и заявку можно было
+  //   снова передать в работу.
+  try {
+    const sourceOrderId = existing.source_order_id ? String(existing.source_order_id) : null;
+    if (sourceOrderId) {
+      await db
+        .from("orders")
+        .update({
+          deal_id: null,
+          deal_number: null,
+          payment_id: null,
+          status: "new",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sourceOrderId)
+        .eq("deal_id", id);
+    }
+  } catch (e) {
+    console.error("deleteDeal: ошибка отвязки исходной заявки:", e);
+  }
+
   await db.from("customer_deals").delete().eq("id", id);
   revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("orders", { expire: 0 });
   revalidateTag("products", { expire: 0 });
 }
 
@@ -1668,6 +1736,93 @@ export async function deleteSalary(id: string): Promise<void> {
   revalidateTag("warehouse-salaries", { expire: 0 });
 }
 
+// ─── Cash collections (сдача кассы / инкассация) ──────────
+
+export interface CashCollectionRow {
+  id: string;
+  date: string;
+  amount: number;
+  note?: string | null;
+  createdAt?: string | null;
+}
+
+async function fetchCashCollections(): Promise<CashCollectionRow[]> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("cash_collections")
+    .select("*")
+    .order("date", { ascending: false });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    date: row.date,
+    amount: Number(row.amount) || 0,
+    note: row.note ?? null,
+    createdAt: toIso(row.created_at),
+  }));
+}
+
+export const getCashCollections = () =>
+  unstable_cache(fetchCashCollections, ["warehouse-cash-collections"], {
+    revalidate: 60,
+    tags: ["warehouse-cash-collections"],
+  })();
+
+/**
+ * Сдача кассы: списываем ВЕСЬ текущий остаток наличных из кассы
+ * в отдельный журнал сдач. В безналичный банковский счёт сумма не попадает.
+ * Сумма берётся с сервера (актуальный баланс по платежам/зарплатам/прошлым
+ * сдачам), чтобы исключить состояние гонки на клиенте.
+ */
+export async function collectCash(
+  note?: string | null
+): Promise<{ amount: number }> {
+  const db = getAdminDb();
+  const [payments, salaries, collections] = await Promise.all([
+    fetchPayments(),
+    fetchSalaries(),
+    fetchCashCollections(),
+  ]);
+
+  // Текущий остаток наличных — тем же правилом, что и getBankSummary.
+  let cashBalance = 0;
+  for (const p of payments) {
+    if (!p.isPaid || p.excludeFromBalance) continue;
+    const amt = p.direction === "incoming" ? p.amount : -p.amount;
+    if (p.type === "cash") cashBalance += amt;
+  }
+  for (const s of salaries) {
+    if (s.isPaid && s.source === "cash") cashBalance -= s.amount;
+  }
+  for (const c of collections) cashBalance -= c.amount;
+
+  if (cashBalance <= 0.009) {
+    throw new Error("Касса пуста — нечего сдавать");
+  }
+
+  const amount = Math.round(cashBalance * 100) / 100;
+  const date = new Date().toISOString().slice(0, 10);
+  const { error } = await db.from("cash_collections").insert({
+    date,
+    amount,
+    note: note ? cleanText(note, 500) : null,
+  });
+  if (error) throw error;
+  revalidateTag("warehouse-cash-collections", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-salaries", { expire: 0 });
+  return { amount };
+}
+
+export async function deleteCashCollection(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { error } = await db.from("cash_collections").delete().eq("id", id);
+  if (error) throw error;
+  revalidateTag("warehouse-cash-collections", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-salaries", { expire: 0 });
+}
+
 // ─── Convert order to deal (КЛЮЧЕВАЯ ФУНКЦИЯ) ──────────────
 
 export async function convertOrderToDeal(orderId: string): Promise<{ dealId: string; dealNumber: number; paymentId: string; skipped: boolean }> {
@@ -1692,27 +1847,63 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
   const linesTotal = itemsTotal(items);
   const number = await nextNumber("deal");
   const date = new Date().toISOString().slice(0, 10);
-  const customerName = order.customer_name || "Клиент";
+  const personName = order.customer_name || "Клиент";
+  // Для юрлиц главный идентификатор в учёте — карточка предприятия
+  // (наименование организации из заявки), а не имя контакта из ЛК.
+  const isLegalEntity = order.customer_type === "legal";
+  const companyName = cleanText(order.company_name, 200);
+  const customerName = isLegalEntity && companyName ? companyName : personName;
   // Адрес из заявки сайта (клиент указал при оформлении)
   const orderAddress = cleanText(
     order.delivery_address || order.actual_address || order.legal_address,
     400
   );
 
-  // ★ Создаём/обновляем контрагента-покупателя
+  // ★ Создаём/обновляем контрагента-покупателя.
+  //   Юрлицо → контрагент с наименованием организации и полными
+  //   реквизитами из карточки предприятия (ИНН/КПП/ОГРН/адреса/банк),
+  //   контактное лицо сохраняется отдельно.
   const counterpartyId = await ensureCounterparty(customerName, "customer", {
     phone: order.customer_phone,
     email: order.customer_email,
     inn: order.inn,
     kpp: order.kpp,
-    address: orderAddress,
+    ogrn: order.ogrn,
+    fullName: isLegalEntity ? companyName ?? undefined : undefined,
+    shortName: cleanText(order.short_name, 200) ?? undefined,
     legalAddress: cleanText(order.legal_address, 400),
+    taxSystem: order.tax_system,
+    bankAccount: order.bank_account,
+    bankName: order.bank_name,
+    bik: order.bik,
+    correspondentAccount: order.correspondent_account,
+    address: orderAddress,
+    contactName: isLegalEntity ? personName : undefined,
     comment: order.comment,
   });
 
-  // Доставка в заказ учёта не включается автоматически —
-  // менеджер ставит её в форме ЗК. Адрес клиента переносим в address.
-  const total = linesTotal;
+  // Сумму берём из заявки сайта: она уже включает выбранную клиентом
+  // доставку и возможные скидки корзины. Если по старым заявкам total_sum
+  // не заполнен, используем сумму товарных строк.
+  const requestedTotal = round2(Number(order.total_sum) || 0);
+  const total = requestedTotal > 0 ? requestedTotal : linesTotal;
+  const bankAdjustment = round2(total - linesTotal);
+  const deliveryCostFromOrder = Math.max(0, Number(order.delivery_cost) || 0);
+  const inferredDeliveryCost =
+    deliveryCostFromOrder > 0
+      ? round2(deliveryCostFromOrder)
+      : bankAdjustment > 0
+        ? bankAdjustment
+        : 0;
+  const hasDelivery = Boolean(
+    order.has_delivery || order.delivery_address || inferredDeliveryCost > 0
+  );
+  const deliveryType = hasDelivery
+    ? order.delivery_type === "paid" || inferredDeliveryCost > 0
+      ? "paid"
+      : "free"
+    : null;
+  const deliveryCost = deliveryType === "paid" ? inferredDeliveryCost : 0;
   const vatAmount = includedVat(total, VAT_RATE);
 
   // ★ Создаём заказ покупателя с привязкой к контрагенту
@@ -1724,11 +1915,16 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
     inn: order.inn || null,
     kpp: order.kpp || null,
     address: orderAddress,
+    contact_name: isLegalEntity ? personName : null,
     comment: order.comment ? `Из заявки с сайта. ${String(order.comment).slice(0, 400)}` : "Из заявки с сайта",
-    items, total, bank_adjustment: 0,
+    items, total, bank_adjustment: bankAdjustment,
     vat_rate: VAT_RATE, vat_amount: vatAmount,
     status: "new", source_order_id: orderId,
-    has_delivery: false,
+    has_delivery: hasDelivery,
+    delivery_type: deliveryType,
+    delivery_cost: deliveryCost,
+    delivery_address: hasDelivery ? orderAddress : null,
+    delivery_note: cleanText(order.delivery_note, 1000),
   }).select("id").single();
   if (dealError) throw dealError;
 
@@ -1776,6 +1972,107 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
   revalidateTag("orders", { expire: 0 });
   revalidateTag("warehouse-counterparties", { expire: 0 });
   return { dealId: dealResult.id, dealNumber: number, paymentId: paymentResult.id, skipped: false };
+}
+
+/**
+ * Убрать заявку из работы: удаляем созданный из неё заказ учёта и
+ * автоматически созданный платёж, затем возвращаем заявку в статус «Новая».
+ * Ручные платежи не удаляем — только отвязываем их от удаляемого ЗК.
+ */
+export async function returnOrderFromWork(orderId: string): Promise<{
+  dealId: string | null;
+  paymentIds: string[];
+}> {
+  const db = getAdminDb();
+  const { data: order, error: orderError } = await db
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .single();
+  if (orderError || !order) throw new Error("Заявка не найдена");
+
+  const dealId = order.deal_id ? String(order.deal_id) : null;
+  const paymentIds: string[] = [];
+
+  if (dealId) {
+    const { data: deal } = await db
+      .from("customer_deals")
+      .select("*")
+      .eq("id", dealId)
+      .maybeSingle();
+
+    if (deal) {
+      const shipped = (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as {
+        shippedQty?: number;
+      }[];
+      const shippedTotal = shipped.reduce((sum, item) => sum + (Number(item.shippedQty) || 0), 0);
+      if (deal.status === "completed" || shippedTotal > 0) {
+        throw new Error(
+          "Нельзя убрать из работы: заказ в учёте уже отгружен. Сначала отмените отгрузку в учёте."
+        );
+      }
+
+      const { data: payments } = await db
+        .from("bank_payments")
+        .select("*")
+        .contains("deal_ids", [dealId]);
+
+      for (const payment of payments || []) {
+        const dealIds = Array.isArray(payment.deal_ids)
+          ? payment.deal_ids.map((id: unknown) => String(id))
+          : [];
+        const dealNumbers = Array.isArray(payment.deal_numbers)
+          ? payment.deal_numbers
+          : [];
+        const receiptIds = Array.isArray(payment.receipt_ids) ? payment.receipt_ids : [];
+        const isAutoPayment =
+          order.payment_id && String(payment.id) === String(order.payment_id);
+        const hasOnlyThisDeal =
+          dealIds.length === 1 && dealIds[0] === dealId && receiptIds.length === 0;
+
+        if (isAutoPayment && hasOnlyThisDeal) {
+          const { error } = await db.from("bank_payments").delete().eq("id", payment.id);
+          if (error) throw error;
+          paymentIds.push(String(payment.id));
+          continue;
+        }
+
+        const newDealIds: string[] = [];
+        const newDealNumbers: unknown[] = [];
+        for (let i = 0; i < dealIds.length; i++) {
+          if (dealIds[i] === dealId) continue;
+          newDealIds.push(dealIds[i]);
+          if (i < dealNumbers.length) newDealNumbers.push(dealNumbers[i]);
+        }
+        const { error } = await db
+          .from("bank_payments")
+          .update({ deal_ids: newDealIds, deal_numbers: newDealNumbers })
+          .eq("id", payment.id);
+        if (error) throw error;
+      }
+
+      const { error: deleteDealError } = await db
+        .from("customer_deals")
+        .delete()
+        .eq("id", dealId);
+      if (deleteDealError) throw deleteDealError;
+    }
+  }
+
+  const { error: updateOrderError } = await db.from("orders").update({
+    status: "new",
+    close_reason: null,
+    deal_id: null,
+    deal_number: null,
+    payment_id: null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", orderId);
+  if (updateOrderError) throw updateOrderError;
+
+  revalidateTag("orders", { expire: 0 });
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  return { dealId, paymentIds };
 }
 
 // ─── Supplier prices ───────────────────────────────────────
@@ -1943,8 +2240,10 @@ export interface TransportItem {
   dealId: string;
   dealNumber: number;
   customerName: string;
+  contactName?: string | null;
   address: string | null;
   phone: string | null;
+  deliveryNote?: string | null;
   items: { productId: string; name: string; orderedQty: number; transportQty: number }[];
   totalSum: number | null;
 }
@@ -1985,6 +2284,39 @@ function mapTransportRow(row: any): Transport {
   };
 }
 
+/**
+ * Дотягивает из сделки (customer_deals) контактное лицо и заметку
+ * курьеру для позиций перевозки, у которых они не сохранены (старые
+ * перевозки, созданные до появления этих полей). Пакетный запрос.
+ */
+async function enrichTransportItems(transports: Transport[]): Promise<void> {
+  const dealIds = [
+    ...new Set(
+      transports.flatMap((t) => t.items.map((i) => String(i.dealId))).filter(Boolean)
+    ),
+  ];
+  if (dealIds.length === 0) return;
+  const db = getAdminDb();
+  const { data: deals } = await db
+    .from("customer_deals")
+    .select("id, contact_name, delivery_note")
+    .in("id", dealIds);
+  if (!deals || deals.length === 0) return;
+  const contactMap = new Map<string, string | null>(
+    deals.map((d: any) => [String(d.id), d.contact_name ?? null])
+  );
+  const noteMap = new Map<string, string | null>(
+    deals.map((d: any) => [String(d.id), d.delivery_note ?? null])
+  );
+  for (const t of transports) {
+    t.items = t.items.map((i) => ({
+      ...i,
+      contactName: i.contactName ?? contactMap.get(String(i.dealId)) ?? null,
+      deliveryNote: i.deliveryNote ?? noteMap.get(String(i.dealId)) ?? null,
+    }));
+  }
+}
+
 export async function getTransports(opts: { status?: string; limit?: number } = {}): Promise<Transport[]> {
   const db = getAdminDb();
   let q = db.from("transports").select("*").order("created_at", { ascending: false });
@@ -1992,14 +2324,18 @@ export async function getTransports(opts: { status?: string; limit?: number } = 
   q = q.limit(opts.limit || 200);
   const { data, error } = await q;
   if (error) throw error;
-  return (data || []).map(mapTransportRow);
+  const transports = (data || []).map(mapTransportRow);
+  await enrichTransportItems(transports);
+  return transports;
 }
 
 export async function getTransportById(id: string): Promise<Transport | null> {
   const db = getAdminDb();
   const { data, error } = await db.from("transports").select("*").eq("id", id).maybeSingle();
   if (error || !data) return null;
-  return mapTransportRow(data);
+  const transport = mapTransportRow(data);
+  await enrichTransportItems([transport]);
+  return transport;
 }
 
 export async function createTransport(data: {

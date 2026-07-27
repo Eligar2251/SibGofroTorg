@@ -295,6 +295,20 @@ export function OrderPageClient({
         correspondentAccount:
           customerType === "legal" ? correspondentAccount.trim() || null : null,
         deliveryAddress: address.trim() || null,
+        hasDelivery: delivery !== "pickup",
+        deliveryType:
+          delivery !== "pickup"
+            ? deliveryCost > 0
+              ? "paid"
+              : "free"
+            : null,
+        deliveryCost,
+        deliveryNote:
+          delivery === "courier"
+            ? "Доставка: курьер"
+            : delivery === "pickup"
+              ? "Доставка: самовывоз"
+              : "Доставка: ТК",
         comment: [
           address ? `Адрес доставки: ${address}` : "",
           delivery === "courier"

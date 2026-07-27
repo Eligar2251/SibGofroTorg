@@ -9,6 +9,8 @@ import { ActivityLogs } from "@/components/admin/ActivityLogs";
 
 export const dynamic = "force-dynamic";
 
+const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
+
 export default async function AdminSettingsPage() {
   const settings = await getSettings();
 
@@ -31,9 +33,9 @@ export default async function AdminSettingsPage() {
           📋 Журнал действий
         </h2>
         <p style={{ color: "#6b7280", marginBottom: "1rem", fontSize: "0.875rem" }}>
-          Кто, когда и что сделал в админ-панели. Видно только главному администратору.
+          Кто, когда и что сделал в админ-панели: пользователь, действие, объект, время, IP и технические детали. Журнал обновляется автоматически.
         </p>
-        <ActivityLogs />
+        <ActivityLogs adminPath={ADMIN_PATH} />
       </div>
 
     </div>

@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
     ],
     formats: ["image/avif", "image/webp"],
+    // Промежуточные ширины под карточки товаров на мобильных
+    // (DPR 2.6 × ~185px ≈ 480px): без них next/image отдавал исходники
+    // ~600px для слотов ~185px — лишние ~150 КиБ на главной (Lighthouse).
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384, 480, 560],
     minimumCacheTTL: isProd ? 60 * 60 * 24 * 30 : 60,
   },
 

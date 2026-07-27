@@ -14,7 +14,7 @@ const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
   completed: "Проведена",
-  rejected: "Отклонена",
+  rejected: "Отменена",
 };
 
 const statusBadge: Record<string, string> = {
@@ -40,18 +40,11 @@ const paymentLabels: Record<string, { token: string; text: string }> = {
   invoice: { token: "receipt", text: "Счет" },
 };
 
-  const filterOptions = [
+const filterOptions = [
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
-  { value: "completed", label: "Отработанные" },
+  { value: "rejected", label: "Отменённые" },
   { value: "all", label: "Все" },
-];
-
-const typeOptions = [
-  { value: "all", label: "Все заявки", token: "clipboard" },
-  { value: "order", label: "Заявки-заказы", token: "box" },
-  { value: "inquiry", label: "На уточнение", token: "chat" },
-  { value: "wastepaper", label: "За макулатуру", token: "recycle" },
 ];
 
 function formatDate(raw: any): string {
@@ -92,21 +85,22 @@ function typeMeta(order: any) {
   return { label: "На уточнение", icon: "chat", cls: "admin-badge admin-badge--teal" };
 }
 
+function firstParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] || "" : value || "";
+}
+
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; type?: string; sort?: string }>;
+  searchParams: Promise<{ status?: string | string[]; q?: string | string[] }>;
 }) {
-  const {
-    status: filterStatus,
-    q: searchQuery,
-    type: typeQuery,
-    sort: sortQuery,
-  } = await searchParams;
-  const activeFilter = filterStatus || "new"; // По умолчанию показываем новые заявки
-  const activeType = typeQuery || "all";
-  const activeSort = sortQuery || "new_first";
-  const query = searchQuery ? searchQuery.toLowerCase().trim() : "";
+  const params = await searchParams;
+  const requestedStatus = firstParam(params.status);
+  const activeFilter = ["new", "in_progress", "rejected", "all"].includes(requestedStatus)
+    ? requestedStatus
+    : "new";
+  const searchQuery = firstParam(params.q);
+  const query = searchQuery.toLowerCase().trim();
 
   const [siteOrders, wastepaperRequests] = await Promise.all([
     getOrders({ status: activeFilter, limit: 200 }),
@@ -117,7 +111,6 @@ export default async function AdminOrdersPage({
 
   const filteredOrders = allOrders
     .filter((order: any) => {
-      if (activeType !== "all" && order.type !== activeType) return false;
       if (!query) return true;
       const itemText = Array.isArray(order.items)
         ? order.items.map((it: any) => `${it.name || ""} ${it.sku || ""}`).join(" ")
@@ -133,12 +126,7 @@ export default async function AdminOrdersPage({
         itemText.toLowerCase().includes(query)
       );
     })
-    .sort((a: any, b: any) => {
-      if (activeSort === "old_first") return createdMs(a.createdAt) - createdMs(b.createdAt);
-      if (activeSort === "status") return String(a.status || "").localeCompare(String(b.status || ""), "ru");
-      if (activeSort === "type") return String(a.type || "").localeCompare(String(b.type || ""), "ru");
-      return createdMs(b.createdAt) - createdMs(a.createdAt);
-    });
+    .sort((a: any, b: any) => createdMs(b.createdAt) - createdMs(a.createdAt));
 
   const hrefBase = `/${ADMIN_PATH}/orders`;
   const qSuffix = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
@@ -156,66 +144,32 @@ export default async function AdminOrdersPage({
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 260 }}>
           <form method="GET" action={hrefBase} style={{ display: "flex", gap: 8 }}>
-            <input type="hidden" name="status" value={activeFilter} />
-            <input type="hidden" name="type" value={activeType} />
-            <input type="hidden" name="sort" value={activeSort} />
+            <input type="hidden" name="status" defaultValue={activeFilter} />
             <input
               type="text"
               name="q"
-              defaultValue={searchQuery || ""}
+              defaultValue={searchQuery}
               placeholder="Поиск по имени, телефону, почте, ID, товару..."
               className="admin-input"
             />
             <button type="submit" className="admin-btn admin-btn--navy">Найти</button>
             {searchQuery && (
-              <Link href={`${hrefBase}?status=${activeFilter}&type=${activeType}&sort=${activeSort}`} className="admin-btn admin-btn--ghost" prefetch={false}>
+              <Link href={`${hrefBase}?status=${activeFilter}`} className="admin-btn admin-btn--ghost" prefetch={false}>
                 Сбросить
               </Link>
             )}
           </form>
         </div>
-
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[
-            { value: "new_first", label: "Новые сверху" },
-            { value: "old_first", label: "Старые сверху" },
-            { value: "status", label: "По статусу" },
-            { value: "type", label: "По типу" },
-          ].map((s) => (
-            <Link
-              key={s.value}
-              href={`${hrefBase}?status=${activeFilter}&type=${activeType}&sort=${s.value}${qSuffix}`}
-              className={`admin-filter${activeSort === s.value ? " admin-filter--active" : ""}`}
-              prefetch={false}
-            >
-              {s.label}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      <div className="admin-filters" style={{ marginBottom: 10 }}>
-        {typeOptions.map((t) => (
-          <Link
-            key={t.value}
-            href={`${hrefBase}?status=${activeFilter}&type=${t.value}&sort=${activeSort}${qSuffix}`}
-            className={`admin-filter${activeType === t.value ? " admin-filter--active" : ""}`}
-            prefetch={false}
-          >
-            <GlyphIcon value={t.token} size={13} />
-            {t.label}
-          </Link>
-        ))}
       </div>
 
       <div className="admin-filters">
         {filterOptions.map((opt) => (
           <Link
             key={opt.value}
-            href={`${hrefBase}?status=${opt.value}&type=${activeType}&sort=${activeSort}${qSuffix}`}
+            href={`${hrefBase}?status=${opt.value}${qSuffix}`}
             className={`admin-filter${activeFilter === opt.value ? " admin-filter--active" : ""}`}
             prefetch={false}
           >
@@ -360,7 +314,7 @@ export default async function AdminOrdersPage({
 
                       {order.closeReason && (
                         <div className="admin-order__close-reason">
-                          <strong style={{ display: "block", marginBottom: 4 }}>Причина закрытия / отклонения:</strong>
+                          <strong style={{ display: "block", marginBottom: 4 }}>Причина закрытия / отмены:</strong>
                           {order.closeReason}
                         </div>
                       )}

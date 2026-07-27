@@ -1,7 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@800;900&display=swap");
-@import "./admin.css";
+/* Шрифты Google (Oswald/Inter/Montserrat) подключены в src/app/layout.tsx
+   через <link rel="preconnect"> + <link rel="stylesheet"> — без цепочки
+   @import внутри CSS-бандла (быстрее FCP/LCP).
+   admin.css и pdp.css больше не грузятся на всех страницах:
+   admin.css — только в админке ([adminPath]/layout.tsx),
+   pdp.css — только на странице товара. */
 @import "./mobile.css";
-@import "./pdp.css";
 @import "tailwindcss";
 
 /* ══════════════════════════════════════
@@ -6066,6 +6069,7 @@ select {
   display: block;
   width: 100%;
   height: 100%;
+  position: relative;
 }
 
 .story-v2__img {
@@ -6105,4 +6109,85 @@ select {
 @media (max-width: 640px) {
   .banner-v2__body { padding: 30px; }
   .story-v2 { border-radius: 20px; }
+}
+
+/* ══════════════════════════════════════
+   ЛЕНИВАЯ КАРТА (заглушка до клика)
+   ══════════════════════════════════════ */
+.map-facade {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  color: #2c2c2c;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(27, 43, 75, 0.06), transparent 60%),
+    repeating-linear-gradient(45deg, #f2f2f0 0 14px, #ececea 14px 28px);
+  transition: filter 0.15s ease, transform 0.15s ease;
+  text-align: center;
+  padding: 24px;
+}
+
+.map-embed .map-facade {
+  min-height: 480px;
+}
+
+.map-facade:hover {
+  filter: brightness(0.97);
+}
+
+.map-facade__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #1b2b4b;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+  box-shadow: 0 8px 24px rgba(27, 43, 75, 0.3);
+}
+
+.map-facade__title {
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.02em;
+}
+
+.map-facade__address {
+  font-size: 13.5px;
+  color: #555;
+  max-width: 320px;
+}
+
+.map-facade__cta {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #1b2b4b;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.map-facade:hover .map-facade__cta {
+  background: #24375f;
+}
+
+.map-facade__note {
+  font-size: 11px;
+  color: #8a8a8a;
+  margin-top: 2px;
 }

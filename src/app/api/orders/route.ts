@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createOrder, getSettings } from "@/lib/supabase-queries";
+import { createOrder } from "@/lib/supabase-queries";
 import {
   formatPhoneDisplay,
   getUserById,
@@ -13,6 +13,7 @@ import {
   verifyUserSession,
 } from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { sendAdminNotifications } from "@/lib/notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,6 +98,16 @@ export async function POST(request: NextRequest) {
     const deliveryAddress = body.deliveryAddress
       ? clip(body.deliveryAddress, 300)
       : null;
+    const hasDelivery = Boolean(body.hasDelivery);
+    const deliveryCost = hasDelivery
+      ? Math.max(0, Number(body.deliveryCost) || 0)
+      : 0;
+    const deliveryType = hasDelivery
+      ? body.deliveryType === "paid" || deliveryCost > 0
+        ? "paid"
+        : "free"
+      : null;
+    const deliveryNote = body.deliveryNote ? clip(body.deliveryNote, 300) : null;
 
     if (isLegal) {
       if (!companyName) {
@@ -198,6 +209,10 @@ export async function POST(request: NextRequest) {
       bik,
       correspondentAccount,
       deliveryAddress,
+      hasDelivery,
+      deliveryType,
+      deliveryCost,
+      deliveryNote,
     };
 
     if (typeRaw === "order" && Array.isArray(body.items)) {
@@ -355,82 +370,7 @@ async function sendNotifications(order: {
     message += `<b>Комментарий:</b> ${escapeHtml(order.comment)}\n`;
   }
 
-  const settings = await getSettings();
-  const telegramToken =
-    settings.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
-  const telegramChatId =
-    settings.telegram_admin_chat_id || process.env.TELEGRAM_ADMIN_CHAT_ID;
-  const maxToken = settings.max_bot_token || process.env.MAX_BOT_TOKEN;
-  const maxChatId = settings.max_admin_chat_id || process.env.MAX_ADMIN_CHAT_ID;
-
-  const promises: Promise<unknown>[] = [];
-  const timeoutMs = 5000;
-
-  if (telegramToken && telegramChatId) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    promises.push(
-      fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: telegramChatId,
-          text: message,
-          parse_mode: "HTML",
-        }),
-        signal: controller.signal,
-      })
-        .then(async (res) => {
-          clearTimeout(timer);
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            console.error("Telegram bot error:", data?.description || res.status);
-          } else {
-            console.log("Telegram sent OK");
-          }
-        })
-        .catch((err) => {
-          clearTimeout(timer);
-          if (err.name === "AbortError") {
-            console.error("Telegram notify timeout (>5s)");
-          } else {
-            console.error("Telegram notify error:", err);
-          }
-        })
-    );
-  }
-  if (maxToken && maxChatId) {
-    const controller2 = new AbortController();
-    const timer2 = setTimeout(() => controller2.abort(), timeoutMs);
-    promises.push(
-      fetch(`https://botapi.max.ru/messages?access_token=${maxToken}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: maxChatId,
-          text: message.replace(/<[^>]*>/g, ""),
-        }),
-        signal: controller2.signal,
-      })
-        .then(async (res) => {
-          clearTimeout(timer2);
-          if (!res.ok) {
-            console.error("Max notify error:", res.status);
-          } else {
-            console.log("Max sent OK");
-          }
-        })
-        .catch((err) => {
-          clearTimeout(timer2);
-          if (err.name === "AbortError") {
-            console.error("Max notify timeout (>5s)");
-          } else {
-            console.error("Max notify error:", err);
-          }
-        })
-    );
-  }
-  if (promises.length) await Promise.allSettled(promises);
+  await sendAdminNotifications(message);
 }
 
 function escapeHtml(s: string): string {

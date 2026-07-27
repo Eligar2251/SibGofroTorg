@@ -18,6 +18,8 @@ import { ProductViewTracker } from "@/components/catalog/ProductViewTracker";
 import { Stars } from "@/components/catalog/Stars";
 import { ReviewForm } from "@/components/catalog/ReviewForm";
 import { ReviewHelpfulButton } from "@/components/catalog/ReviewHelpfulButton";
+// Стили страницы товара — только на этой странице, а не в общем бандле
+import "@/app/pdp.css";
 import {
   FirestoreCategory,
   FirestoreProduct,

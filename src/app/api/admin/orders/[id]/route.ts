@@ -1,9 +1,10 @@
 // src/app/api/admin/orders/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { updateOrderStatus, deleteOrder } from "@/lib/supabase-queries";
-import { convertOrderToDeal } from "@/lib/warehouse";
-import { requireAdminApi, hasPermission } from "@/lib/auth";
+import { convertOrderToDeal, returnOrderFromWork } from "@/lib/warehouse";
+import { requireAdminApi } from "@/lib/auth";
 import { logAdminAction } from "@/lib/activity-log";
+import { getAdminDb } from "@/lib/supabase";
 
 export async function PATCH(
   request: NextRequest,
@@ -18,20 +19,46 @@ export async function PATCH(
       return NextResponse.json({ error: "Статус обязателен" }, { status: 400 });
     }
     const oldStatus = body.oldStatus || "";
-    await updateOrderStatus(id, body.status, body.closeReason ?? null);
+
+    // Определяем тип заявки, чтобы «В работу» работал единообразно:
+    // заявка-заказ (есть позиции) → создаётся сделка в учёте и платёж,
+    // запрос на уточнение (без позиций) → просто меняет статус.
+    const db = getAdminDb();
+    const { data: orderRow } = await db
+      .from("orders")
+      .select("type, items, status, deal_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    const isOrderWithItems =
+      orderRow?.type === "order" &&
+      Array.isArray(orderRow.items) &&
+      orderRow.items.length > 0;
+
+    if (body.status === "new" && body.removeFromWork) {
+      const rollback = await returnOrderFromWork(id);
+      await logAdminAction(
+        auth.displayName, auth.role, "status_change", "order", id,
+        `Заявка #${id.slice(0, 8)}: убрана из работы`,
+        { oldStatus, newStatus: "new", rollback }
+      );
+      return NextResponse.json({ success: true, rollback });
+    }
 
     let deal: Awaited<ReturnType<typeof convertOrderToDeal>> | undefined;
-    if (body.status === "in_progress") {
+    if (body.status === "in_progress" && isOrderWithItems) {
       try {
         deal = await convertOrderToDeal(id);
       } catch (convertError) {
         console.error("Convert order to deal error:", convertError);
-        return NextResponse.json({
-          success: true,
-          dealError: convertError instanceof Error ? convertError.message : "Не удалось передать в учёт",
-        });
+        return NextResponse.json(
+          { error: convertError instanceof Error ? convertError.message : "Не удалось передать в учёт" },
+          { status: 500 }
+        );
       }
     }
+
+    await updateOrderStatus(id, body.status, body.closeReason ?? null);
 
     await logAdminAction(
       auth.displayName, auth.role, "status_change", "order", id,
@@ -53,20 +80,19 @@ export async function DELETE(
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
 
-  if (!hasPermission(auth, "delete")) {
-    return NextResponse.json({ error: "Нет прав на удаление" }, { status: 403 });
-  }
-
   try {
     const { id } = await params;
-    await deleteOrder(id);
+    const result = await deleteOrder(id);
 
     await logAdminAction(
       auth.displayName, auth.role, "delete", "order", id,
-      `Удалена заявка #${id.slice(0, 8)}`
+      result.deleted
+        ? `Удалена заявка #${id.slice(0, 8)} (${result.table || "unknown"})`
+        : `Заявка #${id.slice(0, 8)} уже отсутствовала в базе`,
+      result
     );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error("Delete order error:", error);
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });

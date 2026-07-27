@@ -1,4 +1,5 @@
 import type {
+  PopupCampaign,
   PopupCampaignFrequency,
   PopupCampaignStyle,
   PopupCampaignType,
@@ -60,3 +61,42 @@ export function safePopupUrl(raw: string | null | undefined): string | null {
   if (/^(mailto:|tel:|tg:)/i.test(value)) return value;
   return null;
 }
+
+/**
+ * Публичная проекция кампаний: только активные и не истёкшие,
+ * с обрезанными/нормализованными полями. Используется и в API
+ * (/api/popups), и при SSR в корневом layout — чтобы попапы не
+ * требовали отдельного клиентского fetch на каждой странице.
+ */
+export function preparePublicCampaigns(
+  campaigns: PopupCampaign[],
+  now: number = Date.now()
+) {
+  return campaigns
+    .filter((item) => {
+      if (!item.isActive) return false;
+      const end = item.endAt ? new Date(item.endAt).getTime() : 0;
+      return !Number.isFinite(end) || end <= 0 || end > now;
+    })
+    .map((item) => ({
+      id: item.id,
+      type: item.type,
+      title: item.title,
+      kicker: item.kicker || null,
+      description: item.description || null,
+      details: item.details || null,
+      imageUrl: item.imageUrl || null,
+      buttonText: item.buttonText || null,
+      buttonUrl: safePopupUrl(item.buttonUrl),
+      style: item.style,
+      startAt: item.startAt || null,
+      endAt: item.endAt || null,
+      delaySeconds: Math.min(3600, Math.max(0, item.delaySeconds || 0)),
+      durationSeconds: Math.min(600, Math.max(5, item.durationSeconds || 20)),
+      frequency: item.frequency,
+    }));
+}
+
+export type PublicPopupCampaign = ReturnType<
+  typeof preparePublicCampaigns
+>[number];

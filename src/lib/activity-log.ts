@@ -30,7 +30,8 @@ export type EntityType =
   | "category"
   | "review"
   | "counterparty"
-  | "salary";
+  | "salary"
+  | "cash-collection";
 
 interface LogEntry {
   adminId?: string;

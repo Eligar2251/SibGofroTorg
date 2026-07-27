@@ -6,6 +6,9 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
+// Стили админки грузятся только здесь, а не на всём сайте (раньше
+// admin.css импортировался в globals.css и попадал в бандл каждой страницы).
+import "../admin.css";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 

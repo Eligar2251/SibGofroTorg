@@ -518,6 +518,8 @@ CREATE TABLE IF NOT EXISTS bank_payments (
   vat_amount NUMERIC DEFAULT 0,
   is_paid BOOLEAN DEFAULT FALSE,
   paid_at TEXT,
+  -- TRUE = платёж закрывает связанный документ, но не влияет на текущий банк/кассу
+  -- (архивная/старая оплата, чтобы не было ложных долгов и уведомлений).
   exclude_from_balance BOOLEAN DEFAULT FALSE,
   comment TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -526,6 +528,7 @@ CREATE TABLE IF NOT EXISTS bank_payments (
 CREATE INDEX IF NOT EXISTS idx_payments_direction ON bank_payments(direction);
 CREATE INDEX IF NOT EXISTS idx_payments_paid ON bank_payments(is_paid);
 CREATE INDEX IF NOT EXISTS idx_payments_date ON bank_payments(date);
+CREATE INDEX IF NOT EXISTS idx_payments_exclude_from_balance ON bank_payments(exclude_from_balance);
 CREATE TRIGGER trg_payments_updated BEFORE UPDATE ON bank_payments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -564,6 +567,21 @@ CREATE INDEX IF NOT EXISTS idx_salaries_paid ON salaries(is_paid);
 CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
+-- 22.1. СДАЧА КАССЫ
+-- Списание всего остатка наличных из кассы в отдельный журнал сдач.
+-- В безналичный банковский счёт эти суммы не прибавляются.
+-- Каждая запись = одна сданная смена (дата + сумма + примечание).
+-- =========================================================
+CREATE TABLE IF NOT EXISTS cash_collections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date TEXT NOT NULL DEFAULT '',
+  amount NUMERIC NOT NULL DEFAULT 0,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_cash_collections_date ON cash_collections(date);
+
+-- =========================================================
 -- ROW LEVEL SECURITY
 -- service_role ключ обходит RLS автоматически.
 -- Эти политики — для публичного доступа (anon key).
@@ -591,6 +609,7 @@ ALTER TABLE customer_deals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE salaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cash_collections ENABLE ROW LEVEL SECURITY;
 
 -- Публичное чтение
 DROP POLICY IF EXISTS "cat_sel" ON categories;
