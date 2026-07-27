@@ -29,10 +29,14 @@ import type {
   SalarySource,
   CashKind,
   CashCollectionItem,
+  CashCollectionExpense,
 } from "./warehouse-shared";
 import {
   includedVat,
   VAT_RATE,
+  normalizeCashKind,
+  CASH_CARD_HOLDER_SETTING_KEY,
+  DEFAULT_CASH_CARD_HOLDER,
   getBankSummary,
   getDealPaidMap,
   getReceiptPaidMap,
@@ -49,6 +53,9 @@ import {
 export {
   includedVat,
   VAT_RATE,
+  normalizeCashKind,
+  CASH_CARD_HOLDER_SETTING_KEY,
+  DEFAULT_CASH_CARD_HOLDER,
   type StockDocItem,
   type CounterpartyRole,
   type CounterpartyDetails,
@@ -66,6 +73,7 @@ export {
   type SalarySource,
   type CashKind,
   type CashCollectionItem,
+  type CashCollectionExpense,
   getCollectedBreakdown,
   getBankSummary,
   getDealPaidMap,
@@ -1924,12 +1932,18 @@ export interface CashCollectionRow {
   id: string;
   date: string;
   amount: number;
-  /** Часть, сданная физическими наличными */
+  /** Часть, сданная наличными (виртуальная карта «наличка») */
   cashAmount: number;
-  /** Часть, полученная переводом (вне основного расчётного счёта) */
+  /** Часть, сданная инкассацией на карту (вне расчётного счёта) */
   transferAmount: number;
   /** Разметка платежей, вошедших в сдачу */
   items: CashCollectionItem[];
+  /** Наличные траты дня, вычтенные из прихода */
+  expenses: CashCollectionExpense[];
+  /** Сумма трат налом */
+  expensesAmount: number;
+  /** Приход за день до вычета трат */
+  incomeAmount: number;
   note?: string | null;
   createdAt?: string | null;
 }
@@ -1955,7 +1969,17 @@ async function fetchCashCollections(): Promise<CashCollectionRow[]> {
       amount,
       cashAmount,
       transferAmount,
-      items: Array.isArray(row.items) ? row.items : [],
+      items: (Array.isArray(row.items) ? row.items : []).map((it: any) => ({
+        ...it,
+        // "transfer" — устаревшее имя для инкассации на карту.
+        kind: normalizeCashKind(it?.kind),
+      })),
+      // Траты и приход появились позже; у старых сдач их нет —
+      // тогда приходом считаем саму сумму сдачи, трат нет.
+      expenses: Array.isArray(row.expenses) ? row.expenses : [],
+      expensesAmount: Number(row.expenses_amount) || 0,
+      incomeAmount:
+        row.income_amount != null ? Number(row.income_amount) || 0 : amount,
       note: row.note ?? null,
       createdAt: toIso(row.created_at),
     };
@@ -1989,16 +2013,122 @@ function computeCashBalance(
 
 /**
  * Наличные поступления, ещё не вошедшие ни в одну сдачу кассы.
- * Их менеджер размечает при сдаче: какие деньги пришли физической
- * наличкой, а какие переводом на карту/СБП.
+ *
+ * В список попадают ТОЛЬКО проведённые входящие платежи с типом "cash" —
+ * то есть деньги, которые физически лежат в кассе. Безналичные платежи по
+ * расчётному счёту (type "regular"/"transfer"/"deposit"/"refund") к кассе
+ * отношения не имеют и здесь не показываются, чтобы сдача кассы не списывала
+ * деньги с расчётного счёта.
+ *
+ * Менеджер размечает каждый платёж: уходит он инкассацией на карту или
+ * остаётся наличными (виртуальная карта «наличка»).
  */
-export async function getPendingCashPayments(): Promise<
-  { paymentId: string; number: number; date: string; counterparty: string; amount: number; comment: string | null }[]
-> {
-  const [payments, collections] = await Promise.all([
+export async function getPendingCashPayments(): Promise<{
+  pending: {
+    paymentId: string;
+    number: number;
+    date: string;
+    counterparty: string;
+    amount: number;
+    comment: string | null;
+  }[];
+  expenses: CashExpenseRow[];
+}> {
+  const [payments, salaries, collections] = await Promise.all([
     fetchPayments(),
+    fetchSalaries(),
     fetchCashCollections(),
   ]);
+  return {
+    pending: listPendingCashPayments(payments, collections).map((p) => ({
+      paymentId: String(p.id),
+      number: p.number,
+      date: p.date,
+      counterparty: p.counterparty,
+      amount: p.amount,
+      comment: p.comment ?? null,
+    })),
+    // Наличные траты (ЗП и прочие расходы налом) — их вычитаем из
+    // прихода, потому что эти деньги уже ушли из кассы.
+    expenses: listCashExpenses(payments, salaries),
+  };
+}
+
+/** Платёж относится к кассе: наличное поступление, влияющее на остаток. */
+function isCashDeskIncome(p: BankPayment): boolean {
+  return (
+    p.isPaid &&
+    !p.excludeFromBalance &&
+    p.type === "cash" &&
+    p.direction === "incoming" &&
+    p.amount > 0
+  );
+}
+
+/** Наличный расход из кассы: зарплата или исходящий платёж налом. */
+export interface CashExpenseRow {
+  kind: "salary" | "payment";
+  id: string;
+  date: string;
+  title: string;
+  amount: number;
+  comment: string | null;
+}
+
+/**
+ * Наличные расходы, уменьшившие кассу: выплаченные налом зарплаты и
+ * проведённые исходящие платежи с типом "cash".
+ *
+ * Эти деньги физически ушли из кассы до сдачи, поэтому сдавать нужно
+ * приход МИНУС расходы. Безнала здесь нет: только type='cash' и
+ * source='cash'.
+ */
+function listCashExpenses(
+  payments: BankPayment[],
+  salaries: Salary[]
+): CashExpenseRow[] {
+  const rows: CashExpenseRow[] = [];
+
+  for (const s of salaries) {
+    if (!s.isPaid || s.source !== "cash" || s.amount <= 0) continue;
+    rows.push({
+      kind: "salary",
+      id: String(s.id),
+      date: (s.paidAt || s.date || "").slice(0, 10),
+      title: `Зарплата — ${s.employeeName || "сотрудник"}`,
+      amount: s.amount,
+      comment: s.comment ?? null,
+    });
+  }
+
+  for (const p of payments) {
+    if (
+      !p.isPaid ||
+      p.excludeFromBalance ||
+      p.type !== "cash" ||
+      p.direction !== "outgoing" ||
+      p.amount <= 0
+    ) {
+      continue;
+    }
+    rows.push({
+      kind: "payment",
+      id: String(p.id),
+      date: (p.paidAt || p.date || "").slice(0, 10),
+      title: `ПЛ-${p.number} — ${p.counterparty || "расход"}`,
+      amount: p.amount,
+      comment: p.comment ?? null,
+    });
+  }
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Наличные поступления, ещё не размеченные ни в одной сдаче кассы. */
+function listPendingCashPayments(
+  payments: BankPayment[],
+  collections: CashCollectionRow[]
+): BankPayment[] {
   const collected = new Set<string>();
   for (const c of collections) {
     for (const it of c.items || []) {
@@ -2006,39 +2136,34 @@ export async function getPendingCashPayments(): Promise<
     }
   }
   return payments
-    .filter(
-      (p) =>
-        p.isPaid &&
-        !p.excludeFromBalance &&
-        p.type === "cash" &&
-        p.direction === "incoming" &&
-        !collected.has(String(p.id))
-    )
-    .map((p) => ({
-      paymentId: String(p.id),
-      number: p.number,
-      date: p.date,
-      counterparty: p.counterparty,
-      amount: p.amount,
-      comment: p.comment ?? null,
-    }))
+    .filter((p) => isCashDeskIncome(p) && !collected.has(String(p.id)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
 }
 
 /**
- * Сдача кассы. Списывает остаток кассы в отдельный журнал сдач;
- * в безналичный расчётный счёт сумма НЕ попадает — ни наличная часть,
- * ни переводы (переводы в кассе это отдельный «карманный» поток).
+ * Сдача кассы (инкассация).
  *
- * `items` — разметка платежей: какие деньги ушли наличными, какие
- * переводом. Если разметка не передана, сдаётся весь остаток кассы
- * как наличные (прежнее поведение).
+ * Из кассы уходят ТОЛЬКО наличные платежи. Основной безналичный счёт в банке
+ * при этом не затрагивается ни в какую сторону: он к кассе не относится.
+ * Каждый наличный платёж размечается, куда он ушёл:
+ *   - "card" — инкассация на карту (Юлия Марковна / кто указан в настройках);
+ *   - "cash" — наличные (виртуальная карта, куда уходит сданная касса).
  *
- * Суммы считаются на сервере, чтобы исключить гонку с клиентом.
+ * Суммы считаются на сервере из самих платежей, чтобы исключить гонку
+ * с клиентом и «сдачу» денег, которых в кассе нет.
  */
 export async function collectCash(
   note?: string | null,
-  items?: { paymentId: string; kind: "cash" | "transfer" }[]
+  items?: {
+    paymentId: string;
+    kind?: CashKind | "transfer";
+    /** Ручная разбивка: сколько оставить наличными */
+    cashAmount?: number;
+    /** Ручная разбивка: сколько инкассировать на карту */
+    cardAmount?: number;
+    /** Ручная разбивка: сколько забрать на расходы (ЗП и прочее) */
+    expenseAmount?: number;
+  }[]
 ): Promise<{ amount: number; cashAmount: number; transferAmount: number }> {
   const db = getAdminDb();
   const [payments, salaries, collections] = await Promise.all([
@@ -2048,32 +2173,43 @@ export async function collectCash(
   ]);
 
   const cashBalance = computeCashBalance(payments, salaries, collections);
+  if (cashBalance < -0.009) {
+    // Отрицательная касса = учёт разошёлся (обычно приход, покрытый старой
+    // сдачей, стал безналичным). Новая сдача только усугубит расхождение.
+    throw new Error(
+      `Остаток кассы отрицательный (${cashBalance} ₽) — учёт разошёлся. ` +
+        "Сдача заблокирована: сначала проверьте типы платежей и суммы прошлых сдач."
+    );
+  }
   if (cashBalance <= 0.009) {
     throw new Error("Касса пуста — нечего сдавать");
   }
 
-  const date = new Date().toISOString().slice(0, 10);
   const cleanNote = note ? cleanText(note, 500) : null;
+  const pending = listPendingCashPayments(payments, collections);
 
-  // ── Без разметки: сдаём весь остаток как наличные (старое поведение) ──
-  if (!items || items.length === 0) {
-    const amount = cashBalance;
-    const { error } = await db.from("cash_collections").insert({
-      date,
-      amount,
-      cash_amount: amount,
-      transfer_amount: 0,
-      items: [],
-      note: cleanNote,
-    });
-    if (error) throw error;
-    revalidateTag("warehouse-cash-collections", { expire: 0 });
-    revalidateTag("warehouse-payments", { expire: 0 });
-    revalidateTag("warehouse-salaries", { expire: 0 });
-    return { amount, cashAmount: amount, transferAmount: 0 };
+  // ── Без разметки: сдаём все неразмеченные наличные платежи как «наличные».
+  // Раньше здесь списывался весь остаток кассы одной суммой без привязки
+  // к платежам — из-за этого сдача могла «съесть» деньги, к наличке
+  // отношения не имеющие. Теперь сдаются строго конкретные платежи.
+  type RequestedItem = {
+    paymentId: string;
+    kind?: CashKind | "transfer";
+    cashAmount?: number;
+    cardAmount?: number;
+    expenseAmount?: number;
+  };
+  const requested: RequestedItem[] =
+    items && items.length > 0
+      ? items
+      : pending.map((p) => ({ paymentId: String(p.id), kind: "cash" as const }));
+
+  if (requested.length === 0) {
+    throw new Error(
+      "Нет наличных поступлений для сдачи: все наличные платежи уже сданы"
+    );
   }
 
-  // ── С разметкой: суммы берём из самих платежей, а не с клиента ──
   const alreadyCollected = new Set<string>();
   for (const c of collections) {
     for (const it of c.items || []) {
@@ -2085,9 +2221,11 @@ export async function collectCash(
   const rows: CashCollectionItem[] = [];
   const seen = new Set<string>();
   let cashAmount = 0;
-  let transferAmount = 0;
+  let cardAmount = 0;
+  // Сколько денег забрали на расходы прямо с платежей (ручная разбивка).
+  let coveredByItems = 0;
 
-  for (const raw of items) {
+  for (const raw of requested) {
     const id = String(raw?.paymentId || "");
     if (!id || seen.has(id)) continue;
     if (alreadyCollected.has(id)) {
@@ -2095,29 +2233,113 @@ export async function collectCash(
     }
     const p = payById.get(id);
     if (!p) throw new Error("Платёж не найден");
-    if (!p.isPaid || p.excludeFromBalance || p.type !== "cash" || p.direction !== "incoming") {
-      throw new Error(`Платёж ПЛ-${p.number} нельзя сдать: это не наличное поступление`);
+    // Ключевая защита: в сдачу кассы попадают только наличные поступления.
+    // Безналичные платежи расчётного счёта сюда не пускаем.
+    if (!isCashDeskIncome(p)) {
+      throw new Error(
+        `Платёж ПЛ-${p.number} нельзя сдать: это не наличное поступление в кассу`
+      );
     }
     seen.add(id);
-    const kind = raw?.kind === "transfer" ? "transfer" : "cash";
-    if (kind === "transfer") transferAmount += p.amount;
-    else cashAmount += p.amount;
+
+    // Ручная разбивка платежа: сколько наличными, сколько на карту,
+    // сколько забрали на расходы (например, 1000 из 1500 в счёт ЗП).
+    // Если разбивки нет — работает старое правило «весь платёж одним видом».
+    const hasSplit =
+      raw?.cashAmount != null ||
+      raw?.cardAmount != null ||
+      raw?.expenseAmount != null;
+
+    let itemCash: number;
+    let itemCard: number;
+    let itemExpense: number;
+
+    if (hasSplit) {
+      itemCash = round2(Math.max(0, Number(raw?.cashAmount) || 0));
+      itemCard = round2(Math.max(0, Number(raw?.cardAmount) || 0));
+      itemExpense = round2(Math.max(0, Number(raw?.expenseAmount) || 0));
+      const sum = round2(itemCash + itemCard + itemExpense);
+      if (Math.abs(sum - p.amount) > 0.01) {
+        throw new Error(
+          `ПЛ-${p.number}: разбивка ${sum} ₽ не совпадает с суммой платежа ${p.amount} ₽`
+        );
+      }
+    } else {
+      const kind = normalizeCashKind(raw?.kind);
+      itemCash = kind === "cash" ? p.amount : 0;
+      itemCard = kind === "card" ? p.amount : 0;
+      itemExpense = 0;
+    }
+
+    cashAmount += itemCash;
+    cardAmount += itemCard;
+    coveredByItems += itemExpense;
+
     rows.push({
       paymentId: id,
       number: p.number,
       counterparty: p.counterparty,
       amount: p.amount,
-      kind,
+      // Преобладающее направление — для совместимости со старым чтением.
+      kind: itemCard > itemCash ? "card" : "cash",
+      cashAmount: itemCash,
+      cardAmount: itemCard,
+      expenseAmount: itemExpense,
     });
   }
+  coveredByItems = round2(coveredByItems);
 
   if (rows.length === 0) {
     throw new Error("Выберите хотя бы один платёж для сдачи");
   }
 
+  // Сдача кассы идёт за конкретный день, поэтому дата записи — это дата
+  // самих платежей, а не «сегодня». Иначе отчёт за 27.07 попадал бы в 28.07.
+  const payDates = [
+    ...new Set(rows.map((r) => payById.get(String(r.paymentId))?.date || "")),
+  ].filter(Boolean);
+  if (payDates.length > 1) {
+    throw new Error(
+      "В одну сдачу можно включать платежи только за один день. Сдайте каждый день отдельно."
+    );
+  }
+  const date = payDates[0] || new Date().toISOString().slice(0, 10);
+
   cashAmount = Math.round(cashAmount * 100) / 100;
-  transferAmount = Math.round(transferAmount * 100) / 100;
-  const amount = Math.round((cashAmount + transferAmount) * 100) / 100;
+  cardAmount = Math.round(cardAmount * 100) / 100;
+
+  // ── Наличные траты этого дня (ЗП и прочие расходы налом) ──
+  // Эти деньги физически ушли из кассы до сдачи, поэтому сдаётся
+  // приход МИНУС траты. Иначе сдали бы больше, чем есть, и остаток
+  // кассы ушёл бы в минус ровно на сумму трат.
+  const expensesOfDay = listCashExpenses(payments, salaries).filter(
+    (e) => e.date === date
+  );
+  const expensesTotal =
+    Math.round(expensesOfDay.reduce((sum, e) => sum + e.amount, 0) * 100) / 100;
+
+  // Часть трат кассир мог расписать вручную прямо по платежам
+  // (например, 1000 из ПЛ-5 в счёт ЗП). Эти деньги уже вычтены из
+  // cashAmount/cardAmount, поэтому второй раз их вычитать нельзя.
+  const remainingExpenses = Math.max(0, round2(expensesTotal - coveredByItems));
+
+  // Остаток трат покрывается физической наличкой; если её не хватило —
+  // списывается с инкассируемой на карту части.
+  let cashPart = round2(cashAmount - remainingExpenses);
+  let cardPart = cardAmount;
+  if (cashPart < 0) {
+    cardPart = round2(cardPart + cashPart);
+    cashPart = 0;
+  }
+  if (cardPart < 0) cardPart = 0;
+
+  const amount = Math.round((cashPart + cardPart) * 100) / 100;
+
+  if (amount <= 0.009) {
+    throw new Error(
+      `Наличные траты за ${date} (${expensesTotal} ₽) покрывают весь приход — сдавать нечего`
+    );
+  }
 
   if (amount > cashBalance + 0.009) {
     throw new Error(
@@ -2125,19 +2347,82 @@ export async function collectCash(
     );
   }
 
+  cashAmount = cashPart;
+  cardAmount = cardPart;
+
+  // Траты сохраняем в самой записи сдачи: тогда детализация останется
+  // верной, даже если зарплату или платёж потом отредактируют.
+  const expenseRows: CashCollectionExpense[] = expensesOfDay.map((e) => ({
+    kind: e.kind,
+    id: e.id,
+    title: e.title,
+    amount: e.amount,
+    comment: e.comment,
+  }));
+
   const { error } = await db.from("cash_collections").insert({
     date,
     amount,
     cash_amount: cashAmount,
-    transfer_amount: transferAmount,
+    // transfer_amount исторически хранит инкассацию на карту.
+    transfer_amount: cardAmount,
     items: rows,
+    expenses: expenseRows,
+    income_amount: round2(cashPart + cardPart + expensesTotal),
+    expenses_amount: expensesTotal,
     note: cleanNote,
   });
   if (error) throw error;
   revalidateTag("warehouse-cash-collections", { expire: 0 });
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-salaries", { expire: 0 });
-  return { amount, cashAmount, transferAmount };
+  return { amount, cashAmount, transferAmount: cardAmount };
+}
+
+/**
+ * Закрыть старые наличные платежи без инкассации.
+ *
+ * Инкассация ведётся с определённой даты, а в кассе висят более ранние
+ * платежи — их не нужно сдавать, нужно просто убрать из списка и из
+ * остатка кассы. Помечаем их exclude_from_balance: документ остаётся
+ * в истории, но на баланс не влияет.
+ *
+ * Затрагиваются ТОЛЬКО наличные приходы (type='cash'). Безналичный
+ * расчётный счёт не трогается.
+ */
+export async function closeOldCashPayments(
+  paymentIds: string[]
+): Promise<{ closed: number; amount: number }> {
+  const db = getAdminDb();
+  const ids = [...new Set(paymentIds.map((x) => String(x || "").trim()))].filter(
+    Boolean
+  );
+  if (ids.length === 0) throw new Error("Не выбрано ни одного платежа");
+
+  const payments = await fetchPayments();
+  const byId = new Map(payments.map((p) => [String(p.id), p]));
+
+  let amount = 0;
+  for (const id of ids) {
+    const p = byId.get(id);
+    if (!p) throw new Error("Платёж не найден");
+    if (!isCashDeskIncome(p)) {
+      throw new Error(
+        `ПЛ-${p.number} нельзя закрыть: это не наличное поступление в кассу`
+      );
+    }
+    amount += p.amount;
+  }
+
+  const { error } = await db
+    .from("bank_payments")
+    .update({ exclude_from_balance: true })
+    .in("id", ids);
+  if (error) throw error;
+
+  revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-cash-collections", { expire: 0 });
+  return { closed: ids.length, amount: round2(amount) };
 }
 
 export async function deleteCashCollection(id: string): Promise<void> {

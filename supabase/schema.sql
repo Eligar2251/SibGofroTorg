@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 CREATE INDEX IF NOT EXISTS idx_categories_slug ON categories(slug);
 CREATE INDEX IF NOT EXISTS idx_categories_sort ON categories(sort_order ASC);
+DROP TRIGGER IF EXISTS trg_categories_updated ON categories;
 CREATE TRIGGER trg_categories_updated BEFORE UPDATE ON categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -80,6 +81,7 @@ CREATE INDEX IF NOT EXISTS idx_products_visible ON products(is_visible) WHERE is
 CREATE INDEX IF NOT EXISTS idx_products_featured ON products(is_featured) WHERE is_featured = TRUE;
 CREATE INDEX IF NOT EXISTS idx_products_promo ON products(is_promo) WHERE is_promo = TRUE;
 CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock) WHERE in_stock = TRUE;
+DROP TRIGGER IF EXISTS trg_products_updated ON products;
 CREATE TRIGGER trg_products_updated BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -104,6 +106,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_digits ON users(phone_digits);
+DROP TRIGGER IF EXISTS trg_users_updated ON users;
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -117,6 +120,7 @@ CREATE TABLE IF NOT EXISTS admins (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_username ON admins(username);
+DROP TRIGGER IF EXISTS trg_admins_updated ON admins;
 CREATE TRIGGER trg_admins_updated BEFORE UPDATE ON admins FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -177,6 +181,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_type ON orders(type);
 CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_has_delivery ON orders(has_delivery) WHERE has_delivery = TRUE;
 CREATE INDEX IF NOT EXISTS idx_orders_delivery_planned ON orders(delivery_planned_date) WHERE has_delivery = TRUE;
+DROP TRIGGER IF EXISTS trg_orders_updated ON orders;
 CREATE TRIGGER trg_orders_updated BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -187,6 +192,7 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+DROP TRIGGER IF EXISTS trg_settings_updated ON settings;
 CREATE TRIGGER trg_settings_updated BEFORE UPDATE ON settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -216,6 +222,7 @@ CREATE TABLE IF NOT EXISTS promotions (
 );
 CREATE INDEX IF NOT EXISTS idx_promotions_sort ON promotions(sort_order ASC);
 CREATE INDEX IF NOT EXISTS idx_promotions_visible ON promotions(is_visible) WHERE is_visible = TRUE;
+DROP TRIGGER IF EXISTS trg_promotions_updated ON promotions;
 CREATE TRIGGER trg_promotions_updated BEFORE UPDATE ON promotions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -243,6 +250,7 @@ CREATE TABLE IF NOT EXISTS popup_campaigns (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_popup_campaigns_active ON popup_campaigns(is_active) WHERE is_active = TRUE;
+DROP TRIGGER IF EXISTS trg_popup_campaigns_updated ON popup_campaigns;
 CREATE TRIGGER trg_popup_campaigns_updated BEFORE UPDATE ON popup_campaigns FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -272,6 +280,7 @@ CREATE TABLE IF NOT EXISTS product_reviews (
 CREATE INDEX IF NOT EXISTS idx_reviews_product ON product_reviews(product_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_approved ON product_reviews(product_id, is_approved, moderation_status);
 CREATE INDEX IF NOT EXISTS idx_reviews_created ON product_reviews(created_at DESC);
+DROP TRIGGER IF EXISTS trg_reviews_updated ON product_reviews;
 CREATE TRIGGER trg_reviews_updated BEFORE UPDATE ON product_reviews FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -310,6 +319,7 @@ CREATE TABLE IF NOT EXISTS product_questions (
 CREATE INDEX IF NOT EXISTS idx_questions_product ON product_questions(product_id);
 CREATE INDEX IF NOT EXISTS idx_questions_approved ON product_questions(product_id, is_approved, moderation_status);
 CREATE INDEX IF NOT EXISTS idx_questions_created ON product_questions(created_at DESC);
+DROP TRIGGER IF EXISTS trg_questions_updated ON product_questions;
 CREATE TRIGGER trg_questions_updated BEFORE UPDATE ON product_questions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -322,6 +332,7 @@ CREATE TABLE IF NOT EXISTS product_ratings (
   rating_distribution JSONB DEFAULT '{"5":0,"4":0,"3":0,"2":0,"1":0}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+DROP TRIGGER IF EXISTS trg_product_ratings_updated ON product_ratings;
 CREATE TRIGGER trg_product_ratings_updated BEFORE UPDATE ON product_ratings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -358,6 +369,7 @@ CREATE TABLE IF NOT EXISTS wastepaper_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_wastepaper_status ON wastepaper_requests(status);
 CREATE INDEX IF NOT EXISTS idx_wastepaper_created ON wastepaper_requests(created_at DESC);
+DROP TRIGGER IF EXISTS trg_wastepaper_updated ON wastepaper_requests;
 CREATE TRIGGER trg_wastepaper_updated BEFORE UPDATE ON wastepaper_requests FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -400,6 +412,7 @@ CREATE TABLE IF NOT EXISTS counterparties (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_counterparties_normalized ON counterparties(normalized_name);
+DROP TRIGGER IF EXISTS trg_counterparties_updated ON counterparties;
 CREATE TRIGGER trg_counterparties_updated BEFORE UPDATE ON counterparties FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -416,6 +429,7 @@ CREATE TABLE IF NOT EXISTS supplier_prices (
 );
 CREATE INDEX IF NOT EXISTS idx_supplier_prices_counterparty ON supplier_prices(counterparty_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_prices_product ON supplier_prices(product_id);
+DROP TRIGGER IF EXISTS trg_supplier_prices_updated ON supplier_prices;
 CREATE TRIGGER trg_supplier_prices_updated BEFORE UPDATE ON supplier_prices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -448,6 +462,7 @@ CREATE TABLE IF NOT EXISTS warehouse_receipts (
 CREATE INDEX IF NOT EXISTS idx_receipts_number ON warehouse_receipts(number);
 CREATE INDEX IF NOT EXISTS idx_receipts_status ON warehouse_receipts(status);
 CREATE INDEX IF NOT EXISTS idx_receipts_date ON warehouse_receipts(date);
+DROP TRIGGER IF EXISTS trg_receipts_updated ON warehouse_receipts;
 CREATE TRIGGER trg_receipts_updated BEFORE UPDATE ON warehouse_receipts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -495,6 +510,7 @@ CREATE INDEX IF NOT EXISTS idx_deals_source_order ON customer_deals(source_order
 CREATE INDEX IF NOT EXISTS idx_deals_has_delivery ON customer_deals(has_delivery) WHERE has_delivery = TRUE;
 CREATE INDEX IF NOT EXISTS idx_deals_delivery_planned ON customer_deals(delivery_planned_date) WHERE has_delivery = TRUE;
 CREATE INDEX IF NOT EXISTS idx_deals_delivery_driver ON customer_deals(delivery_driver_id) WHERE has_delivery = TRUE;
+DROP TRIGGER IF EXISTS trg_deals_updated ON customer_deals;
 CREATE TRIGGER trg_deals_updated BEFORE UPDATE ON customer_deals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -529,6 +545,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_direction ON bank_payments(direction);
 CREATE INDEX IF NOT EXISTS idx_payments_paid ON bank_payments(is_paid);
 CREATE INDEX IF NOT EXISTS idx_payments_date ON bank_payments(date);
 CREATE INDEX IF NOT EXISTS idx_payments_exclude_from_balance ON bank_payments(exclude_from_balance);
+DROP TRIGGER IF EXISTS trg_payments_updated ON bank_payments;
 CREATE TRIGGER trg_payments_updated BEFORE UPDATE ON bank_payments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -543,6 +560,7 @@ CREATE TABLE IF NOT EXISTS employees (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+DROP TRIGGER IF EXISTS trg_employees_updated ON employees;
 CREATE TRIGGER trg_employees_updated BEFORE UPDATE ON employees FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
@@ -564,6 +582,7 @@ CREATE TABLE IF NOT EXISTS salaries (
 CREATE INDEX IF NOT EXISTS idx_salaries_employee ON salaries(employee_id);
 CREATE INDEX IF NOT EXISTS idx_salaries_date ON salaries(date);
 CREATE INDEX IF NOT EXISTS idx_salaries_paid ON salaries(is_paid);
+DROP TRIGGER IF EXISTS trg_salaries_updated ON salaries;
 CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================

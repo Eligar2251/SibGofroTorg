@@ -5,6 +5,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/context/CartContext";
 import { PriceInquiryButton } from "./PriceInquiryButton";
+import {
+  isOutOfStock,
+  OUT_OF_STOCK_LABEL,
+  RESTOCK_INQUIRY_LABEL,
+} from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { Plus, Minus, ShoppingCart, Check, Package } from "lucide-react";
 
@@ -39,6 +44,9 @@ export function ProductCardCompact({
   const { addToCart, cart } = useCart();
   const packSize = product.packQty ? Math.max(1, Number(product.packQty)) : 1;
   const maxStock = product.stockQty ?? null;
+  // Нет на складе — цену не показываем совсем, вместо неё «Нет в наличии»
+  // и автозаявка «Уточнить поступление».
+  const outOfStock = isOutOfStock(product);
 
   const [qty, setQty] = useState(packSize);
   const [inputVal, setInputVal] = useState(String(packSize));
@@ -91,7 +99,7 @@ export function ProductCardCompact({
 
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
-    if (!product.price || product.madeToOrder) return;
+    if (!product.price || product.madeToOrder || outOfStock) return;
     addToCart(
       {
         productId: product.id,
@@ -124,8 +132,8 @@ export function ProductCardCompact({
         {product.promoLabel && (
           <span className="pcc__badge pcc__badge--promo">{product.promoLabel}</span>
         )}
-        {!product.inStock && (
-          <span className="pcc__badge pcc__badge--out">Нет в наличии</span>
+        {outOfStock && (
+          <span className="pcc__badge pcc__badge--out">{OUT_OF_STOCK_LABEL}</span>
         )}
         {maxStock !== null && maxStock > 0 && maxStock <= 20 && (
           <span className="pcc__badge pcc__badge--low">Осталось {maxStock}</span>
@@ -194,7 +202,11 @@ export function ProductCardCompact({
 
         {/* Цена — шт + партия */}
         <div className="pcc__prices">
-          {product.madeToOrder ? (
+          {outOfStock ? (
+            <span className="pcc__price-muted pcc__price-muted--out">
+              {OUT_OF_STOCK_LABEL}
+            </span>
+          ) : product.madeToOrder ? (
             <span className="pcc__price-muted pcc__price-muted--mto">
               Под заказ
             </span>
@@ -223,7 +235,15 @@ export function ProductCardCompact({
         </div>
 
         {/* Управление количеством */}
-        {product.madeToOrder ? (
+        {outOfStock ? (
+          <PriceInquiryButton
+            productName={product.name}
+            productSku={product.sku}
+            className="pcc__inquiry-btn"
+            label={RESTOCK_INQUIRY_LABEL}
+            kind="restock"
+          />
+        ) : product.madeToOrder ? (
           <PriceInquiryButton
             productName={product.name}
             productSku={product.sku}
@@ -231,13 +251,6 @@ export function ProductCardCompact({
             label="Узнать цену"
           />
         ) : product.price == null ? (
-          <PriceInquiryButton
-            productName={product.name}
-            productSku={product.sku}
-            className="pcc__inquiry-btn"
-            label="Узнать цену"
-          />
-        ) : product.inStock === false ? (
           <PriceInquiryButton
             productName={product.name}
             productSku={product.sku}

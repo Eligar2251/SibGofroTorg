@@ -7,6 +7,10 @@
 import { useState } from "react";
 import { Save, Loader2, CheckCircle, Send } from "lucide-react";
 import {
+  CASH_CARD_HOLDER_SETTING_KEY,
+  DEFAULT_CASH_CARD_HOLDER,
+} from "@/lib/warehouse-shared";
+import {
   WASTEPAPER_RATE_IDS,
   WASTEPAPER_RATE_DEFAULTS,
   wpRateSettingKey,
@@ -55,6 +59,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     const defaults: Record<string, string> = {
       delivery_price: "800",
       free_delivery_threshold: "30000",
+      [CASH_CARD_HOLDER_SETTING_KEY]: DEFAULT_CASH_CARD_HOLDER,
     };
     for (const id of WASTEPAPER_RATE_IDS) {
       defaults[wpRateSettingKey(id)] = String(WASTEPAPER_RATE_DEFAULTS[id]);
@@ -210,6 +215,34 @@ export function SettingsForm({ settings }: SettingsFormProps) {
             <p className="admin-hint" style={{ marginTop: "auto" }}>
               Эти значения показываются покупателю в корзине при оформлении
               заказа.
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Сдача кассы</h2>
+            <div className="admin-field">
+              <label className="admin-label">Получатель инкассации на карту</label>
+              <input
+                type="text"
+                value={values[CASH_CARD_HOLDER_SETTING_KEY] ?? ""}
+                onChange={(e) =>
+                  setValues({
+                    ...values,
+                    [CASH_CARD_HOLDER_SETTING_KEY]: e.target.value,
+                  })
+                }
+                className="admin-input"
+                placeholder={DEFAULT_CASH_CARD_HOLDER}
+              />
+              <span className="admin-hint">
+                Имя показывается при сдаче кассы у варианта «На карту».
+              </span>
+            </div>
+            <p className="admin-hint" style={{ marginTop: "auto" }}>
+              В сдачу кассы попадают только наличные платежи. Основной
+              безналичный счёт в банке к кассе не относится и не затрагивается.
             </p>
           </div>
         </div>

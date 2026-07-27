@@ -2424,6 +2424,12 @@ select {
   font-weight: 700;
 }
 
+/* Товара нет на складе: вместо цены — понятная пометка */
+.pcc__price-muted--out {
+  color: var(--red);
+  font-weight: 700;
+}
+
 .pcc__price-row {
   display: flex;
   align-items: baseline;

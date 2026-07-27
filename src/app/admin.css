@@ -5973,6 +5973,63 @@ body:has(.admin-modal-overlay) {
    ══════════════════════════════════════ */
 .cashc-modal { max-width: 46rem; }
 
+/* ── Дни в сдаче кассы: платежи за наличку сгруппированы по числам ── */
+.cashc-days {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 10px;
+}
+
+.cashc-day {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cashc-day:hover { background: var(--adm-paper); }
+
+.cashc-day--active {
+  border-color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+}
+
+.cashc-day__date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  white-space: nowrap;
+}
+
+.cashc-day__today {
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--adm-pine);
+}
+
+.cashc-day__sum {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--adm-pine);
+}
+
+.cashc-day__count { font-size: 11px; color: var(--adm-sand); }
+
 .cashc-totals {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -6012,6 +6069,56 @@ body:has(.admin-modal-overlay) {
 .cashc-total--transfer { border-color: var(--adm-steel-line); background: var(--adm-steel-pale); }
 .cashc-total--transfer strong { color: var(--adm-steel); }
 .cashc-total--sum { border-color: var(--adm-border-mid); }
+.cashc-total--spent { border-color: var(--adm-rust-line); background: var(--adm-rust-pale); }
+.cashc-total--spent strong { color: var(--adm-rust); }
+
+/* ── Траты налом за день (ЗП и прочие расходы из кассы) ── */
+.cashc-spent {
+  margin-top: 10px;
+  border: 1px solid var(--adm-rust-line);
+  background: var(--adm-rust-pale);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.cashc-spent__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-rust);
+  margin-bottom: 6px;
+}
+
+.cashc-spent__sum { margin-left: auto; }
+
+.cashc-spent__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  border-top: 1px dashed var(--adm-rust-line);
+}
+
+.cashc-spent__title { color: var(--adm-ink); min-width: 0; }
+.cashc-spent__note { color: var(--adm-sand); }
+
+.cashc-spent__amount {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--adm-rust);
+  white-space: nowrap;
+}
+
+.cashc-spent__foot {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--adm-rust-line);
+  font-size: 12px;
+  color: var(--adm-ink);
+}
 
 .cashc-bulk {
   display: flex;
@@ -6053,6 +6160,20 @@ body:has(.admin-modal-overlay) {
 }
 
 .cashc-row__meta { font-size: 11px; color: var(--adm-sand); }
+
+/* Пометка «похоже на безнал» у платежа в списке сдачи кассы */
+.cashc-row__warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+}
 
 .cashc-row__amount {
   font-size: 13px;
@@ -6318,3 +6439,139 @@ body:has(.admin-modal-overlay) {
     padding-top: env(safe-area-inset-top);
   }
 }
+
+
+/* ── Детализация сданной кассы: платежи, траты, куда ушли деньги ── */
+.wh-cc-row:hover { background: var(--adm-paper); }
+
+.wh-cc-details > td { background: var(--adm-paper); padding: 10px 12px !important; }
+
+.wh-cc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.wh-cc-box {
+  background: #fff;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.wh-cc-box__head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--adm-border-mid);
+  margin-bottom: 4px;
+}
+
+.wh-cc-box__head b { margin-left: auto; }
+
+.wh-cc-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.wh-cc-line > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wh-cc-line__val {
+  margin-left: auto;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wh-cc-dest {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.wh-cc-dest--card { color: var(--adm-steel); background: var(--adm-steel-pale); }
+.wh-cc-dest--cash { color: var(--adm-pine); background: var(--adm-pine-pale); }
+.wh-cc-dest--exp { color: var(--adm-rust); background: var(--adm-rust-pale); }
+
+.wh-cc-note { color: var(--adm-sand); }
+.wh-cc-empty { font-size: 12px; color: var(--adm-sand); padding: 4px 0; }
+
+.wh-cc-total {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--adm-border-mid);
+  font-size: 12px;
+  color: var(--adm-ink);
+}
+
+
+/* ── Ручная разбивка платежа в сдаче кассы ── */
+.cashc-row--split { background: var(--adm-paper); }
+
+.cashc-seg__btn--split {
+  background: var(--adm-sand);
+  color: #fff;
+  border-color: var(--adm-sand);
+}
+
+.cashc-split {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--adm-border-mid);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.cashc-split__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 150px;
+}
+
+.cashc-split__field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--adm-ink);
+}
+
+.cashc-split__field .admin-input { padding: 5px 8px; font-size: 13px; }
+
+.cashc-split__rest {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--adm-steel);
+  padding-bottom: 6px;
+}
+
+.cashc-split__rest--bad { color: var(--adm-rust); font-weight: 700; }
+
+.cashc-close-day { margin-left: auto; }

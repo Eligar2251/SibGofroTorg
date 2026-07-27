@@ -1251,7 +1251,11 @@ export async function importExcelWorkbook(buffer: Buffer): Promise<ImportReport>
 
         const typeRaw = cell(row, "Тип", "type").toLowerCase();
         let type: string = "regular";
-        if (/нал|cash|касс/.test(typeRaw)) type = "cash";
+        // ВАЖНО: «безнал»/«безналичный» содержит подстроку «нал», поэтому
+        // безналичные платежи сначала отсекаем явно. Иначе они уезжали
+        // в кассу (type='cash') и попадали в сдачу кассы.
+        if (/безнал|б\/нал|расчет|расчёт|р\/с/.test(typeRaw)) type = "regular";
+        else if (/нал|cash|касс/.test(typeRaw)) type = "cash";
         else if (/перевод|transfer/.test(typeRaw)) type = "transfer";
         else if (/возврат|refund/.test(typeRaw)) type = "refund";
         else if (/внесен|deposit/.test(typeRaw)) type = "deposit";
