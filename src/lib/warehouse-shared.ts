@@ -215,6 +215,15 @@ export interface CashCollectionItem {
   kind: CashKind;
 }
 
+/** Наличный расход, вычтенный при сдаче кассы (ЗП или платёж налом). */
+export interface CashCollectionExpense {
+  kind: "salary" | "payment";
+  id: string;
+  title: string;
+  amount: number;
+  comment?: string | null;
+}
+
 /** Сдача кассы (инкассация): списание остатка наличных из кассы */
 export interface CashCollection {
   id: string;
@@ -228,6 +237,12 @@ export interface CashCollection {
   transferAmount?: number;
   /** Разметка платежей, вошедших в сдачу */
   items?: CashCollectionItem[];
+  /** Наличные траты этого дня, вычтенные из суммы сдачи */
+  expenses?: CashCollectionExpense[];
+  /** Приход за день до вычета трат */
+  incomeAmount?: number;
+  /** Сумма трат налом, вычтенная из прихода */
+  expensesAmount?: number;
   note?: string | null;
   createdAt?: string | null;
 }

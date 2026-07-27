@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -27,6 +27,7 @@ import {
   Save,
   Gift,
   Trash2,
+  ChevronRight,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -203,6 +204,8 @@ export function WarehouseManager({
   const router = useRouter();
   const [collecting, setCollecting] = useState(false);
   const [showCollect, setShowCollect] = useState(false);
+  /** Раскрытые сдачи кассы: id -> показать детализацию. */
+  const [openCollections, setOpenCollections] = useState<Set<string>>(new Set());
   const [collectError, setCollectError] = useState("");
 
   useEffect(() => {
@@ -2003,9 +2006,44 @@ export function WarehouseManager({
                                 : (c.amount || 0) - transfer) * 100
                             ) / 100;
                           const marked = (c.items || []).length;
+                          const exp = c.expenses || [];
+                          const expSum =
+                            Math.round((c.expensesAmount || 0) * 100) / 100;
+                          const income =
+                            Math.round(
+                              (c.incomeAmount != null ? c.incomeAmount : c.amount) * 100
+                            ) / 100;
+                          const isOpen = openCollections.has(c.id);
+                          const canOpen = marked > 0 || exp.length > 0;
                           return (
-                            <tr key={c.id}>
+                            <React.Fragment key={c.id}>
+                            <tr
+                              className={canOpen ? "wh-cc-row" : undefined}
+                              onClick={
+                                canOpen
+                                  ? () =>
+                                      setOpenCollections((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(c.id)) next.delete(c.id);
+                                        else next.add(c.id);
+                                        return next;
+                                      })
+                                  : undefined
+                              }
+                              style={canOpen ? { cursor: "pointer" } : undefined}
+                            >
                               <td>
+                                {canOpen && (
+                                  <ChevronRight
+                                    size={13}
+                                    style={{
+                                      verticalAlign: "middle",
+                                      marginRight: 4,
+                                      transform: isOpen ? "rotate(90deg)" : "none",
+                                      transition: "transform 0.15s",
+                                    }}
+                                  />
+                                )}
                                 {fmtDate(c.date)}
                                 {marked > 0 && (
                                   <span
@@ -2014,6 +2052,15 @@ export function WarehouseManager({
                                     title="Платежей размечено в этой сдаче"
                                   >
                                     {marked} плат.
+                                  </span>
+                                )}
+                                {expSum > 0 && (
+                                  <span
+                                    className="admin-badge admin-badge--red"
+                                    style={{ marginLeft: 6 }}
+                                    title="Потрачено налом в этот день"
+                                  >
+                                    −{fmt(expSum)} ₽
                                   </span>
                                 )}
                               </td>
@@ -2032,12 +2079,126 @@ export function WarehouseManager({
                                   type="button"
                                   className="admin-btn admin-btn--ghost admin-btn--sm"
                                   disabled={collecting}
-                                  onClick={() => handleDeleteCollection(c.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteCollection(c.id);
+                                  }}
                                 >
                                   <Trash2 size={13} /> Удалить
                                 </button>
                               </td>
                             </tr>
+
+                            {/* ── Детализация смены: платежи, траты, куда ушло ── */}
+                            {isOpen && (
+                              <tr className="wh-cc-details">
+                                <td colSpan={6}>
+                                  <div className="wh-cc-grid">
+                                    {/* Платежи, вошедшие в сдачу */}
+                                    <div className="wh-cc-box">
+                                      <div className="wh-cc-box__head">
+                                        <Banknote size={13} /> Платежи за наличку
+                                        <b>{fmt(income)} ₽</b>
+                                      </div>
+                                      {marked === 0 ? (
+                                        <div className="wh-cc-empty">
+                                          Платежи не размечены (старая сдача)
+                                        </div>
+                                      ) : (
+                                        (c.items || []).map((it, i) => (
+                                          <div key={`${c.id}-i${i}`} className="wh-cc-line">
+                                            <span>
+                                              {it.number ? `ПЛ-${it.number} · ` : ""}
+                                              {it.counterparty || "Без контрагента"}
+                                            </span>
+                                            <span className="wh-cc-line__val">
+                                              {fmt(it.amount)} ₽
+                                              <span
+                                                className={`wh-cc-dest wh-cc-dest--${
+                                                  it.kind === "cash" ? "cash" : "card"
+                                                }`}
+                                              >
+                                                {it.kind === "cash" ? (
+                                                  <>
+                                                    <Banknote size={10} /> наличка
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <CreditCard size={10} /> на карту
+                                                  </>
+                                                )}
+                                              </span>
+                                            </span>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+
+                                    {/* Траты налом */}
+                                    <div className="wh-cc-box">
+                                      <div className="wh-cc-box__head">
+                                        <Wallet size={13} /> Потрачено налом
+                                        <b style={{ color: "var(--adm-rust)" }}>
+                                          −{fmt(expSum)} ₽
+                                        </b>
+                                      </div>
+                                      {exp.length === 0 ? (
+                                        <div className="wh-cc-empty">Трат не было</div>
+                                      ) : (
+                                        exp.map((e, i) => (
+                                          <div key={`${c.id}-e${i}`} className="wh-cc-line">
+                                            <span>
+                                              {e.title}
+                                              {e.comment && (
+                                                <span className="wh-cc-note"> · {e.comment}</span>
+                                              )}
+                                            </span>
+                                            <span
+                                              className="wh-cc-line__val"
+                                              style={{ color: "var(--adm-rust)" }}
+                                            >
+                                              −{fmt(e.amount)} ₽
+                                            </span>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+
+                                    {/* Куда поступили деньги */}
+                                    <div className="wh-cc-box">
+                                      <div className="wh-cc-box__head">
+                                        Куда поступили деньги
+                                      </div>
+                                      <div className="wh-cc-line">
+                                        <span>
+                                          <CreditCard size={11} /> Инкассация на карту
+                                        </span>
+                                        <span
+                                          className="wh-cc-line__val"
+                                          style={{ color: "var(--adm-steel)" }}
+                                        >
+                                          {fmt(transfer)} ₽
+                                        </span>
+                                      </div>
+                                      <div className="wh-cc-line">
+                                        <span>
+                                          <Banknote size={11} /> Наличными
+                                        </span>
+                                        <span className="wh-cc-line__val">
+                                          {fmt(cashPart)} ₽
+                                        </span>
+                                      </div>
+                                      <div className="wh-cc-total">
+                                        Приход {fmt(income)} ₽
+                                        {expSum > 0 && <> − траты {fmt(expSum)} ₽</>} ={" "}
+                                        <b>{fmt(Math.round(c.amount * 100) / 100)} ₽</b> сдано
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
                           );
                         })}
                         <tr className="wh-cashcollect__total">

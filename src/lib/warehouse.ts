@@ -29,6 +29,7 @@ import type {
   SalarySource,
   CashKind,
   CashCollectionItem,
+  CashCollectionExpense,
 } from "./warehouse-shared";
 import {
   includedVat,
@@ -72,6 +73,7 @@ export {
   type SalarySource,
   type CashKind,
   type CashCollectionItem,
+  type CashCollectionExpense,
   getCollectedBreakdown,
   getBankSummary,
   getDealPaidMap,
@@ -1936,6 +1938,12 @@ export interface CashCollectionRow {
   transferAmount: number;
   /** Разметка платежей, вошедших в сдачу */
   items: CashCollectionItem[];
+  /** Наличные траты дня, вычтенные из прихода */
+  expenses: CashCollectionExpense[];
+  /** Сумма трат налом */
+  expensesAmount: number;
+  /** Приход за день до вычета трат */
+  incomeAmount: number;
   note?: string | null;
   createdAt?: string | null;
 }
@@ -1966,6 +1974,12 @@ async function fetchCashCollections(): Promise<CashCollectionRow[]> {
         // "transfer" — устаревшее имя для инкассации на карту.
         kind: normalizeCashKind(it?.kind),
       })),
+      // Траты и приход появились позже; у старых сдач их нет —
+      // тогда приходом считаем саму сумму сдачи, трат нет.
+      expenses: Array.isArray(row.expenses) ? row.expenses : [],
+      expensesAmount: Number(row.expenses_amount) || 0,
+      incomeAmount:
+        row.income_amount != null ? Number(row.income_amount) || 0 : amount,
       note: row.note ?? null,
       createdAt: toIso(row.created_at),
     };
@@ -2277,6 +2291,16 @@ export async function collectCash(
   cashAmount = cashPart;
   cardAmount = cardPart;
 
+  // Траты сохраняем в самой записи сдачи: тогда детализация останется
+  // верной, даже если зарплату или платёж потом отредактируют.
+  const expenseRows: CashCollectionExpense[] = expensesOfDay.map((e) => ({
+    kind: e.kind,
+    id: e.id,
+    title: e.title,
+    amount: e.amount,
+    comment: e.comment,
+  }));
+
   const { error } = await db.from("cash_collections").insert({
     date,
     amount,
@@ -2284,6 +2308,9 @@ export async function collectCash(
     // transfer_amount исторически хранит инкассацию на карту.
     transfer_amount: cardAmount,
     items: rows,
+    expenses: expenseRows,
+    income_amount: Math.round((cashPart + cardPart + expensesTotal) * 100) / 100,
+    expenses_amount: expensesTotal,
     note: cleanNote,
   });
   if (error) throw error;

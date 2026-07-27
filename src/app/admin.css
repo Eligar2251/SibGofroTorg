@@ -6439,3 +6439,84 @@ body:has(.admin-modal-overlay) {
     padding-top: env(safe-area-inset-top);
   }
 }
+
+
+/* ── Детализация сданной кассы: платежи, траты, куда ушли деньги ── */
+.wh-cc-row:hover { background: var(--adm-paper); }
+
+.wh-cc-details > td { background: var(--adm-paper); padding: 10px 12px !important; }
+
+.wh-cc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.wh-cc-box {
+  background: #fff;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.wh-cc-box__head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--adm-border-mid);
+  margin-bottom: 4px;
+}
+
+.wh-cc-box__head b { margin-left: auto; }
+
+.wh-cc-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.wh-cc-line > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wh-cc-line__val {
+  margin-left: auto;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wh-cc-dest {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.wh-cc-dest--card { color: var(--adm-steel); background: var(--adm-steel-pale); }
+.wh-cc-dest--cash { color: var(--adm-pine); background: var(--adm-pine-pale); }
+
+.wh-cc-note { color: var(--adm-sand); }
+.wh-cc-empty { font-size: 12px; color: var(--adm-sand); padding: 4px 0; }
+
+.wh-cc-total {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--adm-border-mid);
+  font-size: 12px;
+  color: var(--adm-ink);
+}
