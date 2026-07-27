@@ -2010,7 +2010,16 @@ function computeCashBalance(
  * остаётся наличными (виртуальная карта «наличка»).
  */
 export async function getPendingCashPayments(): Promise<
-  { paymentId: string; number: number; date: string; counterparty: string; amount: number; comment: string | null }[]
+  {
+    paymentId: string;
+    number: number;
+    date: string;
+    counterparty: string;
+    amount: number;
+    comment: string | null;
+    /** Похоже, что платёж на самом деле безналичный (см. suspectsNonCash). */
+    suspectNonCash: boolean;
+  }[]
 > {
   const [payments, collections] = await Promise.all([
     fetchPayments(),
@@ -2023,7 +2032,25 @@ export async function getPendingCashPayments(): Promise<
     counterparty: p.counterparty,
     amount: p.amount,
     comment: p.comment ?? null,
+    suspectNonCash: suspectsNonCash(p),
   }));
+}
+
+/**
+ * Платёж помечен наличным (type='cash'), но по комментарию похож на
+ * безналичный расчёт. Такие записи появились из-за старого импорта из
+ * Excel: регулярка /нал|cash|касс/ ловила слово «безнал».
+ *
+ * Мы их НЕ прячем автоматически (вдруг это правда наличные с неудачным
+ * комментарием), но подсвечиваем в модалке сдачи, чтобы кассир не сдал
+ * деньги с расчётного счёта по ошибке.
+ */
+function suspectsNonCash(p: BankPayment): boolean {
+  const c = String(p.comment || "").toLowerCase();
+  if (!c) return false;
+  return /безнал|б\/нал|расчетный счет|расчётный счёт|счёт покупателю|счет покупателю|п\/п/.test(
+    c
+  );
 }
 
 /** Платёж относится к кассе: наличное поступление, влияющее на остаток. */

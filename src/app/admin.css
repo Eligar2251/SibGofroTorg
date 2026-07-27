@@ -6054,6 +6054,20 @@ body:has(.admin-modal-overlay) {
 
 .cashc-row__meta { font-size: 11px; color: var(--adm-sand); }
 
+/* Пометка «похоже на безнал» у платежа в списке сдачи кассы */
+.cashc-row__warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+}
+
 .cashc-row__amount {
   font-size: 13px;
   font-weight: 700;

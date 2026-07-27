@@ -34,6 +34,8 @@ interface PendingCashPayment {
   counterparty: string;
   amount: number;
   comment: string | null;
+  /** Похоже на безналичный платёж, ошибочно помеченный наличным. */
+  suspectNonCash?: boolean;
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
@@ -75,8 +77,13 @@ export function CashCollectModal({
         const list: PendingCashPayment[] = data.pending || [];
         setPending(list);
         if (data.cardHolder) setCardHolder(String(data.cardHolder));
-        // По умолчанию всё выбрано и уходит на карту (инкассация)
-        setSelected(new Set(list.map((p) => p.paymentId)));
+        // По умолчанию отмечаем всё, КРОМЕ подозрительных записей, которые
+        // выглядят как безналичный расчёт: их кассир должен включить сам.
+        setSelected(
+          new Set(
+            list.filter((p) => !p.suspectNonCash).map((p) => p.paymentId)
+          )
+        );
         const initial: Record<string, CashKind> = {};
         for (const p of list) initial[p.paymentId] = "card";
         setKinds(initial);
@@ -284,6 +291,14 @@ export function CashCollectModal({
                             </span>
                             <span className="cashc-row__meta">
                               ПЛ-{p.number} · {fmtDate(p.date)}
+                              {p.suspectNonCash && (
+                                <span
+                                  className="cashc-row__warn"
+                                  title="По комментарию похоже на безналичный расчёт. Проверьте тип платежа — возможно, он ошибочно помечен наличным."
+                                >
+                                  <AlertTriangle size={11} /> похоже на безнал
+                                </span>
+                              )}
                             </span>
                           </div>
                           <span className="cashc-row__amount">
