@@ -288,6 +288,35 @@ export function isDealFullyShipped(
   return rows.every((row) => row.remaining <= 0);
 }
 
+/**
+ * Нужно ли ещё везти заказ — единый критерий для всех списков доставки.
+ *
+ * Показываем, только пока есть долг по товару:
+ *   • полностью отгружен (остатков нет) → заказ закрыт, в доставке не нужен;
+ *   • отгружен частично                 → остаётся, надо довезти остаток;
+ *   • отменён                           → не нужен.
+ *
+ * Важно: этим предикатом обязаны пользоваться ВСЕ места, где строится
+ * список доставок. Раньше вкладка «Учёт → Доставки» фильтровала заказы
+ * сама (`d.hasDelivery && …`) и показывала уже отпущенные.
+ */
+export function dealNeedsDelivery(deal: {
+  hasDelivery?: boolean | null;
+  status?: string | null;
+  items?: { productId: string; quantity: number }[] | null;
+  shippedItems?: ShippedEntry[] | null;
+}): boolean {
+  if (!deal.hasDelivery) return false;
+  if (deal.status === "cancelled") return false;
+
+  const items = Array.isArray(deal.items) ? deal.items : [];
+  // Заказ без позиций (например, только услуга доставки): ориентируемся
+  // на статус — проведённый считаем закрытым.
+  if (items.length === 0) return deal.status !== "completed";
+
+  return dealRemainingQty(items, deal.shippedItems) > 0;
+}
+
 /** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
  *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
 export function getBankSummary(

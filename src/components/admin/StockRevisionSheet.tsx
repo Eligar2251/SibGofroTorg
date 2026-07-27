@@ -204,12 +204,30 @@ const REVISION_PRINT_CSS = `
 
 @media print {
   @page { size: A4 portrait; margin: 10mm 8mm; }
-  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-  .admin-sidebar, .admin-mobile-bar, .NavigationProgress { display: none !important; }
-  .admin-content, .admin-main { visibility: hidden !important; }
+  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important; }
+
+  /* На печать уходит ТОЛЬКО бланк.
+     Прячем через display:none, а не visibility:hidden — скрытый по
+     visibility элемент сохраняет место и давал пустые первые страницы.
+     Модалка ревизии — соседний узел в <body> (оба через портал), поэтому
+     её нужно скрыть явно, иначе печаталась именно она. */
+  body > *:not(.rev-print-root) { display: none !important; }
+  .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content,
+  .admin-main, .NavigationProgress, .admin-modal-overlay { display: none !important; }
+
+  .rev-print-root { display: block !important; }
   .rev-print-root, .rev-print-root * { visibility: visible !important; }
-  .rev-print-root { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
-  .rev-sheet { padding: 0 !important; max-width: none !important; box-shadow: none !important; }
+  .rev-print-root {
+    position: static !important;
+    inset: auto !important;
+    width: auto !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    z-index: auto !important;
+  }
+  .rev-sheet { padding: 0 !important; max-width: none !important; margin: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
   .rev-print-close { display: none !important; }
   /* Шапка таблицы повторяется на каждой странице многостраничного бланка */
   .rev-table thead { display: table-header-group; }

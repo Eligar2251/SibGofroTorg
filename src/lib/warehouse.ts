@@ -41,6 +41,7 @@ import {
   dealRemainingItems,
   dealRemainingQty,
   isDealFullyShipped,
+  dealNeedsDelivery,
 } from "./warehouse-shared";
 
 export {
@@ -71,6 +72,7 @@ export {
   dealRemainingItems,
   dealRemainingQty,
   isDealFullyShipped,
+  dealNeedsDelivery,
 } from "./warehouse-shared";
 
 // ─── Утилиты ───────────────────────────────────────────────
@@ -1712,12 +1714,8 @@ export async function getDealDeliveries(opts: {
   if (error) throw error;
   const deals = (data || []).map(mapDealRow);
   if (opts.onlyPending === false) return deals;
-  return deals.filter(
-    (d) =>
-      d.status !== "cancelled" &&
-      // Есть незакрытый долг по товару — заказ ещё нужно везти.
-      dealRemainingQty(d.items, d.shippedItems) > 0
-  );
+  // Тот же предикат, что и на вкладке «Учёт → Доставки», — списки не расходятся.
+  return deals.filter(dealNeedsDelivery);
 }
 
 // ─── Payments CRUD ─────────────────────────────────────────

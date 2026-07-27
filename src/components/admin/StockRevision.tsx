@@ -242,14 +242,19 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
         </span>
       )}
 
+      {/* Бланк рендерим порталом в <body>: внутри .admin-main его скрывало
+          правило печати `.admin-main { visibility: hidden }`, и на бумагу
+          уходила модалка вместо отчёта. */}
       {printMode && (
-        <StockRevisionSheet
-          rows={sheetRows}
-          filled={printMode === "filled"}
-          note={note.trim() || null}
-          responsible={responsible.trim() || null}
-          onDone={() => setPrintMode(null)}
-        />
+        <ModalPortal>
+          <StockRevisionSheet
+            rows={sheetRows}
+            filled={printMode === "filled"}
+            note={note.trim() || null}
+            responsible={responsible.trim() || null}
+            onDone={() => setPrintMode(null)}
+          />
+        </ModalPortal>
       )}
 
       {open && (
