@@ -6191,3 +6191,43 @@ select {
   color: #8a8a8a;
   margin-top: 2px;
 }
+
+/* ══════════════════════════════════════
+   PWA / iOS: полноэкранный режим с домашнего экрана
+   ══════════════════════════════════════
+
+   Когда сайт добавлен на рабочий стол iPhone (Поделиться → «На экран
+   Домой»), Safari запускает его как приложение — без адресной строки.
+   Включает это <meta name="apple-mobile-web-app-capable" content="yes">
+   (задаётся через metadata.appleWebApp в src/app/layout.tsx).
+
+   Вместе со статусбаром black-translucent и viewport-fit=cover контент
+   рисуется под «чёлкой» и индикатором Home, поэтому здесь возвращаем
+   безопасные отступы через env(safe-area-inset-*). */
+
+@media (display-mode: standalone) {
+  /* Верх страницы уходит под статусбар — компенсируем «чёлку». */
+  .site-header-wrap {
+    padding-top: env(safe-area-inset-top);
+    background: var(--white);
+  }
+
+  /* Боковые вырезы в ландшафте + индикатор Home снизу. */
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .site-footer,
+  .footer-bottom {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  /* В standalone нет кнопки «назад» браузера — не даём случайно
+     «вытянуть» страницу за края (rubber-band) на iOS. */
+  html {
+    overscroll-behavior-y: none;
+  }
+}
+
+

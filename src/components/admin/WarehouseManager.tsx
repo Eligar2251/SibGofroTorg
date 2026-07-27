@@ -54,6 +54,7 @@ import {
 } from "@/components/admin/WarehousePayments";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
+import { StockRevision } from "@/components/admin/StockRevision";
 import {
   CounterpartiesManager,
   type CounterpartyDocument,
@@ -825,6 +826,8 @@ export function WarehouseManager({
                 Сбросить
               </button>
             )}
+            {/* Ревизия: бланк для пересчёта + сверка фактических остатков */}
+            <StockRevision stock={stock} />
           </div>
 
           <div className="admin-card">

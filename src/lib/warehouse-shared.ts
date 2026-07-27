@@ -203,6 +203,91 @@ function normalizeName(name: string): string {
     .replace(/\s+/g, " ");
 }
 
+// ─── Отгрузка: единые расчёты «заказано / отгружено / остаток» ──────
+// Используются и на сервере (списание склада, синхронизация перевозок),
+// и на клиенте (списки доставок, модалка перевозки), чтобы цифры везде
+// совпадали.
+
+export interface ShippedEntry {
+  productId: string;
+  name?: string;
+  shippedQty: number;
+}
+
+/** productId → сколько всего уже отгружено по заказу (кумулятивно). */
+export function shippedQtyMap(
+  shippedItems: ShippedEntry[] | null | undefined
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const s of Array.isArray(shippedItems) ? shippedItems : []) {
+    const id = String(s?.productId || "");
+    if (!id) continue;
+    map.set(id, (map.get(id) || 0) + (Number(s?.shippedQty) || 0));
+  }
+  return map;
+}
+
+/** productId → сколько всего заказано (дубли строк складываются). */
+export function orderedQtyMap(
+  items: { productId: string; quantity: number }[] | null | undefined
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const it of Array.isArray(items) ? items : []) {
+    const id = String(it?.productId || "");
+    if (!id) continue;
+    map.set(id, (map.get(id) || 0) + (Number(it?.quantity) || 0));
+  }
+  return map;
+}
+
+/** Остаток к отгрузке по каждой позиции заказа. */
+export function dealRemainingItems(
+  items: { productId: string; name?: string; quantity: number }[] | null | undefined,
+  shippedItems: ShippedEntry[] | null | undefined
+): { productId: string; name: string; ordered: number; shipped: number; remaining: number }[] {
+  const ordered = orderedQtyMap(items);
+  const shipped = shippedQtyMap(shippedItems);
+  const names = new Map<string, string>();
+  for (const it of Array.isArray(items) ? items : []) {
+    const id = String(it?.productId || "");
+    if (id && !names.has(id)) names.set(id, String(it?.name || ""));
+  }
+  return [...ordered.entries()].map(([productId, orderedQty]) => {
+    const shippedQty = shipped.get(productId) || 0;
+    return {
+      productId,
+      name: names.get(productId) || "",
+      ordered: orderedQty,
+      shipped: shippedQty,
+      remaining: Math.max(0, orderedQty - shippedQty),
+    };
+  });
+}
+
+/** Сколько единиц товара по заказу ещё не отгружено (долг перед клиентом). */
+export function dealRemainingQty(
+  items: { productId: string; quantity: number }[] | null | undefined,
+  shippedItems: ShippedEntry[] | null | undefined
+): number {
+  return dealRemainingItems(items, shippedItems).reduce(
+    (sum, row) => sum + row.remaining,
+    0
+  );
+}
+
+/**
+ * Заказ отгружен полностью — долга перед клиентом нет.
+ * Заказ без позиций полностью отгруженным не считается.
+ */
+export function isDealFullyShipped(
+  items: { productId: string; quantity: number }[] | null | undefined,
+  shippedItems: ShippedEntry[] | null | undefined
+): boolean {
+  const rows = dealRemainingItems(items, shippedItems);
+  if (rows.length === 0) return false;
+  return rows.every((row) => row.remaining <= 0);
+}
+
 /** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
  *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
 export function getBankSummary(

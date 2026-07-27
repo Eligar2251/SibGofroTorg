@@ -40,8 +40,10 @@ export function OrderDeliveryControls({
     "idle"
   );
   const [address, setAddress] = useState(deliveryAddress || "");
+  // Показываем сохранённую сумму как есть, включая 0 — так видно, что
+  // для этого клиента доставка сделана бесплатной вручную.
   const [cost, setCost] = useState(
-    deliveryCost != null && deliveryCost > 0 ? String(deliveryCost) : ""
+    hasDelivery && deliveryCost != null ? String(deliveryCost) : ""
   );
   const [note, setNote] = useState(deliveryNote || "");
   const endpoint =
@@ -88,11 +90,11 @@ export function OrderDeliveryControls({
   }
 
   async function setPaid() {
-    const num = Number(cost);
-    if (!num || num <= 0) {
-      setError("Укажите сумму доставки");
+    if (cost.trim() === "") {
+      setError("Укажите сумму доставки (0 — бесплатно для клиента)");
       return;
     }
+    const num = Math.max(0, Number(cost) || 0);
     if (!address.trim()) {
       setError("Укажите адрес доставки");
       return;
@@ -115,31 +117,27 @@ export function OrderDeliveryControls({
       setError("Адрес обязателен");
       return;
     }
-    const type = deliveryType === "paid" ? "paid" : "free";
-    const payload: Record<string, unknown> = {
+    // ★ Сумму можно менять всегда, а не только у «платной» доставки:
+    //   0 ₽ делает доставку бесплатной, > 0 ₽ — платной. Раньше поле
+    //   стоимости у бесплатной доставки вообще не показывалось, а нулевой
+    //   тариф отбрасывался — новый тариф не сохранялся.
+    const num = cost.trim() === "" ? 0 : Math.max(0, Number(cost) || 0);
+    await callApi({
       hasDelivery: true,
-      deliveryType: type,
+      deliveryType: num > 0 ? "paid" : "free",
+      deliveryCost: num,
       deliveryAddress: address.trim(),
       deliveryNote: note.trim() || null,
-    };
-    if (type === "paid") {
-      const num = Number(cost);
-      if (!num || num <= 0) {
-        setError("Укажите сумму платной доставки");
-        return;
-      }
-      payload.deliveryCost = num;
-    } else {
-      payload.deliveryCost = 0;
-    }
-    await callApi(payload);
+    });
   }
 
   function openForm(next: "free" | "paid" | "edit") {
     setError(null);
     setAddress(deliveryAddress || "");
+    // При редактировании подставляем текущий тариф (в т.ч. 0),
+    // при добавлении новой доставки поле пустое.
     setCost(
-      deliveryCost != null && deliveryCost > 0 ? String(deliveryCost) : ""
+      next === "edit" && deliveryCost != null ? String(deliveryCost) : ""
     );
     setNote(deliveryNote || "");
     setMode(next);
@@ -196,7 +194,10 @@ export function OrderDeliveryControls({
               setCost={setCost}
               note={note}
               setNote={setNote}
-              showCost={deliveryType === "paid"}
+              /* Сумму показываем всегда: её можно как назначить,
+                 так и обнулить (бесплатно для этого клиента). */
+              showCost
+              costOptional
               saving={saving}
               error={error}
               onCancel={() => setMode("idle")}
@@ -282,6 +283,7 @@ function DeliveryForm({
   note,
   setNote,
   showCost,
+  costOptional = false,
   saving,
   error,
   onCancel,
@@ -295,6 +297,8 @@ function DeliveryForm({
   note: string;
   setNote: (v: string) => void;
   showCost: boolean;
+  /** true — допускается 0 (бесплатно для клиента) */
+  costOptional?: boolean;
   saving: boolean;
   error: string | null;
   onCancel: () => void;
@@ -318,16 +322,23 @@ function DeliveryForm({
       {showCost && (
         <div className="admin-field">
           <label className="admin-label">
-            Сумма доставки, ₽ <span style={{ color: "#ef4444" }}>*</span>
+            Сумма доставки, ₽{" "}
+            {costOptional ? (
+              <span style={{ fontWeight: 400, color: "var(--adm-sand)" }}>
+                — 0 = бесплатно для клиента
+              </span>
+            ) : (
+              <span style={{ color: "#ef4444" }}>*</span>
+            )}
           </label>
           <input
             className="admin-input"
             type="number"
-            min={1}
+            min={0}
             step={1}
             value={cost}
             onChange={(e) => setCost(e.target.value)}
-            placeholder="Например, 800"
+            placeholder={costOptional ? "0 — бесплатно" : "Например, 800"}
             disabled={saving}
           />
         </div>

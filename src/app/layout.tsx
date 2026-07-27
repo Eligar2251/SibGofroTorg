@@ -49,12 +49,41 @@ export const metadata: Metadata = {
     "упаковка Новосибирск",
     "СибГофроТорг",
   ],
+  // PWA: манифест + иконки домашнего экрана.
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    // ★ Полноэкранный режим на iOS: сайт, добавленный на домашний экран,
+    //   открывается без адресной строки и панели навигации.
+    capable: true,
+    title: SITE_NAME,
+    // Статусбар прозрачный — контент уходит под «чёлку», а отступы за нас
+    // добирает viewport-fit=cover + env(safe-area-inset-*) в CSS.
+    statusBarStyle: "black-translucent",
+  },
+  other: {
+    // Next.js 15+ вместо apple-mobile-web-app-capable выводит только
+    // современный mobile-web-app-capable (vercel/next.js#70272). Актуальные
+    // iOS читают display:"standalone" из манифеста, но версии до 16.4 —
+    // только этот тег, поэтому дублируем его вручную. Без него сайт
+    // открывается с домашнего экрана обычной вкладкой Safari.
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#1b2b4b",
+  // viewport-fit=cover обязателен для black-translucent: без него iOS
+  // оставляет белые полосы сверху/снизу вместо полноэкранной отрисовки.
+  viewportFit: "cover",
 };
 
 export default async function RootLayout({

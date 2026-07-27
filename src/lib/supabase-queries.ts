@@ -737,8 +737,14 @@ export async function updateOrderDelivery(
   if (data.hasDelivery !== undefined) payload.has_delivery = data.hasDelivery;
   if (data.deliveryType !== undefined) payload.delivery_type = data.deliveryType;
   if (data.deliveryCost !== undefined) {
-    payload.delivery_cost =
+    // ★ Сумма определяет тариф: 0 ₽ — бесплатная доставка (например,
+    //   персональные условия клиента при заказе ниже порога), > 0 ₽ —
+    //   платная. Иначе ручной ноль «не сохранялся» и заказ оставался
+    //   платным со старой суммой.
+    const cost =
       data.deliveryCost == null ? 0 : Math.max(0, Number(data.deliveryCost) || 0);
+    payload.delivery_cost = cost;
+    payload.delivery_type = cost > 0 ? "paid" : "free";
   }
   if (data.deliveryAddress !== undefined) {
     payload.delivery_address = data.deliveryAddress
