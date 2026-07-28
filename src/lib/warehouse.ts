@@ -547,15 +547,23 @@ async function adjustStock(productId: string, delta: number): Promise<void> {
   const id = String(productId || "");
   const qty = Number(delta) || 0;
   if (!id || qty === 0) return;
+
   const db = getAdminDb();
-  const { data: product } = await db
+  const { data: product, error: selectError } = await db
     .from("products")
     .select("stock_qty")
     .eq("id", id)
     .maybeSingle();
-  if (!product) return;
+
+  if (selectError) {
+    throw new Error(`Не удалось прочитать остаток товара ${id}: ${selectError.message}`);
+  }
+  if (!product) {
+    throw new Error(`Товар ${id} не найден при изменении остатка`);
+  }
+
   const newQty = Number(product.stock_qty || 0) + qty;
-  await db
+  const { error: updateError } = await db
     .from("products")
     .update({
       stock_qty: newQty,
@@ -563,6 +571,10 @@ async function adjustStock(productId: string, delta: number): Promise<void> {
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
+
+  if (updateError) {
+    throw new Error(`Не удалось обновить остаток товара ${id}: ${updateError.message}`);
+  }
 }
 
 async function applyStockDelta(items: StockDocItem[], direction: 1 | -1): Promise<void> {
@@ -571,32 +583,61 @@ async function applyStockDelta(items: StockDocItem[], direction: 1 | -1): Promis
   }
 }
 
+function normalizeShippedEntries(
+  shippedItems: { productId: string; name?: string; shippedQty: number }[] | null | undefined
+): { productId: string; shippedQty: number }[] {
+  const map = shippedQtyMap(shippedItems);
+  return [...map.entries()]
+    .filter(([, qty]) => qty > 0)
+    .map(([productId, shippedQty]) => ({ productId, shippedQty }));
+}
+
 /**
- * Вернуть на склад всё, что было отгружено по заказу (сторно отгрузки).
- * Возвращает ровно те количества, которые были списаны, — по shipped_items.
- * Для старых заказов (проведён, но shipped_items пуст) — по позициям заказа.
+ * Приводит склад в соответствие с кумулятивным shipped_items.
+ *
+ * Это жёсткая защита от рассинхрона: сначала считаем, сколько было
+ * отгружено ДО операции и сколько стало ПОСЛЕ, и только разницу
+ * применяем к складу. Тогда ручная частичная отгрузка, перевозка,
+ * отмена отгрузки и отмена заказа используют одну и ту же механику,
+ * а счётчик в заказе не расходится с остатком на складе.
  */
-async function returnShippedToStock(deal: {
+async function applyShippedItemsDelta(
+  previousShippedItems: { productId: string; name?: string; shippedQty: number }[] | null | undefined,
+  nextShippedItems: { productId: string; name?: string; shippedQty: number }[] | null | undefined
+): Promise<void> {
+  const prev = shippedQtyMap(previousShippedItems);
+  const next = shippedQtyMap(nextShippedItems);
+  const productIds = new Set<string>([...prev.keys(), ...next.keys()]);
+
+  for (const productId of productIds) {
+    const before = prev.get(productId) || 0;
+    const after = next.get(productId) || 0;
+    const delta = after - before;
+    if (delta === 0) continue;
+    // delta > 0 → отгрузили больше → списываем со склада.
+    // delta < 0 → часть вернули/отменили → возвращаем на склад.
+    await adjustStock(productId, -delta);
+  }
+}
+
+/**
+ * Старые заказы могли быть проведены без shipped_items. Для них при
+ * отмене/удалении всё ещё возвращаем на склад весь состав заказа.
+ */
+async function returnLegacyCompletedDealToStock(deal: {
   items?: unknown;
   shipped_items?: unknown;
   status?: string | null;
 }): Promise<void> {
-  const shipped = shippedQtyMap(
+  const shippedTotal = normalizeShippedEntries(
     (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as {
       productId: string;
       shippedQty: number;
     }[]
-  );
-  const shippedTotal = [...shipped.values()].reduce((s, q) => s + q, 0);
+  ).reduce((sum, item) => sum + item.shippedQty, 0);
 
-  if (shippedTotal > 0) {
-    for (const [productId, qty] of shipped) {
-      if (qty > 0) await adjustStock(productId, qty);
-    }
-    return;
-  }
+  if (shippedTotal > 0) return;
 
-  // Старое поведение: проведённый заказ без shipped_items — возвращаем всё.
   if (deal.status === "completed") {
     await applyStockDelta((deal.items || []) as StockDocItem[], 1);
   }
@@ -1290,9 +1331,6 @@ export async function postDeal(id: string, shippedItems?: { productId: string; q
     }
   }
 
-  // Списываем со склада ровно то, что отгружаем
-  for (const s of toShip) await adjustStock(s.productId, -s.quantity);
-
   // Обновляем кумулятивный shipped_items (по одной строке на товар)
   const shippedMap = shippedQtyMap(deal.shipped_items);
   for (const s of toShip) {
@@ -1309,6 +1347,19 @@ export async function postDeal(id: string, shippedItems?: { productId: string; q
     name: names.get(productId) || "",
     shippedQty: shippedMap.get(productId) || 0,
   }));
+
+  // Склад меняем по дельте shipped_items, а не по локальному списку.
+  // Так ручная частичная отгрузка всегда даёт тот же результат,
+  // что и последующая перевозка/отмена — без расхождения счётчика
+  // заказа и фактического остатка на складе.
+  await applyShippedItemsDelta(
+    (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as {
+      productId: string;
+      name?: string;
+      shippedQty: number;
+    }[],
+    newShipped
+  );
 
   // Заказ без позиций закрываем сразу — списывать нечего.
   const fullyShipped =
@@ -1340,9 +1391,16 @@ export async function unshipDeal(id: string): Promise<void> {
   const { data: deal } = await db.from("customer_deals").select("*").eq("id", id).single();
   if (!deal) throw new Error("Заказ не найден");
 
-  // Возвращаем на склад ровно то, что было списано (по shipped_items,
-  // а для старых проведённых заказов без них — все позиции заказа).
-  await returnShippedToStock(deal);
+  // Возвращаем на склад ровно то, что числится в shipped_items.
+  await applyShippedItemsDelta(
+    (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as {
+      productId: string;
+      name?: string;
+      shippedQty: number;
+    }[],
+    []
+  );
+  await returnLegacyCompletedDealToStock(deal);
 
   await db.from("customer_deals").update({
     shipped_items: [],
@@ -1365,7 +1423,15 @@ export async function cancelDeal(id: string, reason: string | null = null): Prom
   if (deal.status === "cancelled") throw new Error("Уже отменён");
 
   // Если были отгрузки — возвращаем на склад ровно списанные количества.
-  await returnShippedToStock(deal);
+  await applyShippedItemsDelta(
+    (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as {
+      productId: string;
+      name?: string;
+      shippedQty: number;
+    }[],
+    []
+  );
+  await returnLegacyCompletedDealToStock(deal);
 
   await db.from("customer_deals").update({
     status: "cancelled", cancel_reason: reason,
@@ -1579,7 +1645,15 @@ export async function deleteDeal(id: string): Promise<void> {
   if (!existing) throw new Error("Заказ не найден");
 
   // Если были отгрузки — возвращаем на склад ровно списанные количества.
-  await returnShippedToStock(existing);
+  await applyShippedItemsDelta(
+    (Array.isArray(existing.shipped_items) ? existing.shipped_items : []) as {
+      productId: string;
+      name?: string;
+      shippedQty: number;
+    }[],
+    []
+  );
+  await returnLegacyCompletedDealToStock(existing);
   // Заказа больше нет — убираем его из активных перевозок.
   await removeDealFromActiveTransports(id);
 
@@ -3368,7 +3442,6 @@ export async function completeTransport(id: string): Promise<void> {
       if (qty <= 0) continue;
       remaining.set(item.productId, available - qty);
       shippedMap.set(item.productId, (shippedMap.get(item.productId) || 0) + qty);
-      await adjustStock(item.productId, -qty);
       postedLines.push({ ...item, transportQty: qty });
     }
 
@@ -3386,6 +3459,15 @@ export async function completeTransport(id: string): Promise<void> {
       name: names.get(productId) || "",
       shippedQty: shippedMap.get(productId) || 0,
     }));
+
+    await applyShippedItemsDelta(
+      (Array.isArray(deal.shipped_items) ? deal.shipped_items : []) as {
+        productId: string;
+        name?: string;
+        shippedQty: number;
+      }[],
+      newShipped
+    );
 
     const updatePayload: any = { shipped_items: newShipped, updated_at: new Date().toISOString() };
     if (isDealFullyShipped(dealItems, newShipped)) {

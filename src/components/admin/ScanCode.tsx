@@ -1,20 +1,15 @@
 // =========================================================
 // FILE: src/components/admin/ScanCode.tsx
-// Клиентский компонент для страницы сканера /admin/scan/[code].
+// Клиентский экран сканера /admin/scan.
 //
 // Что умеет:
-// 1) Показывать карточку товара: название, цена (с оптовой), наличие,
-//    артикул, QR + штрихкод. Кнопки: «Открыть в админке»,
-//    «Скопировать код», «Новый поиск».
-// 2) Поле ручного ввода + Enter → переход на /admin/scan/{code}.
-// 3) Кнопка камеры (только https / localhost) — сканирование:
-//    • Chrome/Edge/Android — нативный BarcodeDetector (быстрый);
-//    • Safari / Firefox / iOS (там BarcodeDetector НЕТ совсем) —
-//      JS-декодер ZXing (@zxing/browser), подгружается динамически
-//      только когда нужен. Работает везде, где есть getUserMedia.
-//    Распознанный код автоматически открывает страницу товара.
-//
-// UI оптимизирован под мобильный: крупные кнопки, мало текста.
+// 1) Показывать карточку товара прямо ПОД сканером без навигации —
+//    удобно сканировать подряд.
+// 2) Поддерживать ручной ввод, QR и штрихкоды.
+// 3) Нормализовать данные из камеры: если QR содержит полный URL,
+//    вытаскиваем из него slug / code и показываем товар сразу здесь.
+// 4) Работать через BarcodeDetector (Chrome/Edge/Android) и ZXing
+//    (Safari/Firefox/iOS) с одной и той же UI-логикой.
 // =========================================================
 
 "use client";
@@ -22,9 +17,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-// Тип-only импорт: в бандл не попадает (стирается при компиляции),
-// сам ZXing подгружается динамически — только в браузерах без
-// нативного BarcodeDetector (Safari/Firefox/iOS).
 import type { IScannerControls } from "@zxing/browser";
 import {
   ScanLine,
@@ -34,14 +26,12 @@ import {
   XCircle,
   AlertCircle,
   ExternalLink,
-  Copy,
   Hash,
   Package,
-  RotateCcw,
+  LoaderCircle,
+  ScanSearch,
 } from "lucide-react";
-
-type StockTone = "ok" | "low" | "out";
-type StockLabel = { text: string; tone: StockTone };
+import { buildStockLabel, normalizeScanCode, type StockLabel } from "@/lib/scan";
 
 type ScanProduct = {
   id: string;
@@ -55,6 +45,30 @@ type ScanProduct = {
   priceWholesale: number | null | undefined;
   stockQty: number | null | undefined;
   stockLabel: StockLabel;
+};
+
+type ScanLookupProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  sku: string | null;
+  barcode: string;
+  qrSlug: string;
+  imageUrl: string | null;
+  price: number | null | undefined;
+  priceWholesale: number | null | undefined;
+  stockQty: number | null | undefined;
+  inStock?: boolean | null | undefined;
+  stockLabel?: StockLabel;
+};
+
+type NativeDetectedCode = { rawValue?: string | null };
+type NativeBarcodeDetector = {
+  detect(source: HTMLVideoElement): Promise<NativeDetectedCode[]>;
+};
+type NativeBarcodeDetectorCtor = {
+  new (options?: { formats?: string[] }): NativeBarcodeDetector;
+  getSupportedFormats(): Promise<string[]>;
 };
 
 interface Props {
@@ -71,6 +85,32 @@ function formatBarcode(s: string): string {
   return `${s.slice(0, 3)} ${s.slice(3, 7)} ${s.slice(7, 12)} ${s.slice(12)}`;
 }
 
+function toScanProduct(product: ScanLookupProduct | ScanProduct): ScanProduct {
+  return {
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    sku: product.sku ?? null,
+    barcode: product.barcode,
+    qrSlug: product.qrSlug,
+    imageUrl: product.imageUrl ?? null,
+    price: product.price ?? 0,
+    priceWholesale: product.priceWholesale ?? null,
+    stockQty: product.stockQty ?? null,
+    stockLabel:
+      product.stockLabel ??
+      buildStockLabel({
+        stockQty: product.stockQty,
+        inStock: "inStock" in product ? product.inStock : undefined,
+      }),
+  };
+}
+
+function getErrorMessage(error: unknown): string | null {
+  if (error instanceof Error) return error.message;
+  return null;
+}
+
 export function ScanCode({
   adminPath,
   initialCode,
@@ -78,42 +118,108 @@ export function ScanCode({
   notFoundMessage,
 }: Props) {
   const router = useRouter();
+
   const [code, setCode] = useState(initialCode);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<"barcode" | "slug" | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(notFoundMessage || null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [currentProduct, setCurrentProduct] = useState<ScanProduct | null>(
+    product ? toScanProduct(product) : null
+  );
+  const [lastResolvedCode, setLastResolvedCode] = useState<string>(() =>
+    initialCode || product?.qrSlug || product?.barcode || ""
+  );
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectorRef = useRef<any>(null);
+  const detectorRef = useRef<NativeBarcodeDetector | null>(null);
   const intervalRef = useRef<number | null>(null);
-  // ZXing-сканер (Safari/Firefox): controls.stop() останавливает
-  // и декодер, и камеру. cancelScanRef — защита от гонки «юзер
-  // выключил камеру, пока ZXing ещё загружался динамическим import».
   const zxingControlsRef = useRef<IScannerControls | null>(null);
   const cancelScanRef = useRef(false);
+  const lookupInFlightRef = useRef(false);
+  const pendingLookupRef = useRef<{ value: string; fromCamera: boolean } | null>(null);
+  const lastHandledRef = useRef<{ code: string; at: number }>({ code: "", at: 0 });
 
-  // Остановка камеры при размонтировании
+  useEffect(() => {
+    setCode(initialCode);
+    setLookupError(notFoundMessage || null);
+    setCurrentProduct(product ? toScanProduct(product) : null);
+    setLastResolvedCode(initialCode || product?.qrSlug || product?.barcode || "");
+  }, [initialCode, notFoundMessage, product]);
+
   useEffect(() => {
     return () => stopCamera();
   }, []);
 
-  function navigateToScan(value: string) {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    // Если код распознан как «не нашёный» (например, попал в чужой QR)
-    // — страница /admin/scan/[code] вернёт 404, и мы покажем
-    // сообщение через notFound-флаг в URL.
-    router.push(`/${adminPath}/scan/${encodeURIComponent(trimmed)}`);
+  async function lookupProduct(rawValue: string, { fromCamera = false } = {}) {
+    const normalized = normalizeScanCode(rawValue, adminPath);
+    if (!normalized) return;
+
+    const now = Date.now();
+    if (
+      fromCamera &&
+      lastHandledRef.current.code === normalized &&
+      now - lastHandledRef.current.at < 3000
+    ) {
+      return;
+    }
+
+    if (lookupInFlightRef.current) {
+      pendingLookupRef.current = { value: rawValue, fromCamera };
+      return;
+    }
+
+    lookupInFlightRef.current = true;
+    lastHandledRef.current = { code: normalized, at: now };
+    setCode(normalized);
+    setLookupError(null);
+    setIsLookingUp(true);
+
+    try {
+      const res = await fetch(`/api/admin/scan/${encodeURIComponent(normalized)}`, {
+        cache: "no-store",
+      });
+      const data = (await res.json().catch(() => null)) as
+        | {
+            found?: boolean;
+            message?: string;
+            product?: ScanLookupProduct;
+          }
+        | null;
+
+      if (res.ok && data?.found && data.product) {
+        setCurrentProduct(toScanProduct(data.product));
+        setLastResolvedCode(normalized);
+        setLookupError(null);
+      } else {
+        setCurrentProduct(null);
+        setLastResolvedCode(normalized);
+        setLookupError(data?.message || `Товар с кодом «${normalized}» не найден`);
+      }
+    } catch {
+      setLookupError("Не удалось получить данные о товаре. Проверьте сеть и попробуйте снова.");
+    } finally {
+      setIsLookingUp(false);
+      lookupInFlightRef.current = false;
+
+      const pending = pendingLookupRef.current;
+      pendingLookupRef.current = null;
+      if (pending) {
+        void lookupProduct(pending.value, { fromCamera: pending.fromCamera });
+      }
+    }
   }
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    navigateToScan(code);
+    void lookupProduct(code);
   }
 
   async function startCamera() {
     setCameraError(null);
     cancelScanRef.current = false;
+
     if (
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia
@@ -122,18 +228,13 @@ export function ScanCode({
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const BD = (window as any).BarcodeDetector;
+    const BD = (window as Window & { BarcodeDetector?: NativeBarcodeDetectorCtor })
+      .BarcodeDetector;
     const hasBarcodeDetector = !!(BD && typeof BD === "function");
 
-    // ── Safari / Firefox / iOS-webview: нативного BarcodeDetector НЕТ ──
-    // Декодируем кадры на JS через ZXing (@zxing/browser) — библиотека
-    // подгружается динамически, только когда она реально нужна (в основной
-    // бандл админки не попадает). Камера включается самим ZXing.
+    // Safari / Firefox / iOS — через ZXing.
     if (!hasBarcodeDetector) {
       try {
-        // <video> в DOM всегда (скрыт display:none) — показываем
-        // превью до запроса разрешения, чтобы не было «чёрного кадра».
         setCameraOn(true);
         const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] =
           await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
@@ -147,6 +248,7 @@ export function ScanCode({
           BarcodeFormat.CODE_39,
           BarcodeFormat.DATA_MATRIX,
         ]);
+
         const reader = new BrowserMultiFormatReader(hints, {
           delayBetweenScanAttempts: 250,
           delayBetweenScanSuccess: 600,
@@ -155,21 +257,13 @@ export function ScanCode({
         const video = videoRef.current;
         if (!video) throw new Error("Видеоэлемент не смонтирован");
 
-        let navigated = false;
-        const controls = await reader.decodeFromVideoDevice(
-          undefined, // без deviceId → ZXing просит заднюю камеру (facingMode: environment)
-          video,
-          (result) => {
-            const value = result?.getText();
-            if (value && !navigated) {
-              navigated = true;
-              setCode(value);
-              stopCamera();
-              navigateToScan(value);
-            }
+        const controls = await reader.decodeFromVideoDevice(undefined, video, (result) => {
+          const value = result?.getText();
+          if (value) {
+            void lookupProduct(value, { fromCamera: true });
           }
-        );
-        // Юзер успел выключить камеру, пока ZXing запускался?
+        });
+
         if (cancelScanRef.current) {
           try {
             controls.stop();
@@ -178,12 +272,14 @@ export function ScanCode({
           }
           return;
         }
+
         zxingControlsRef.current = controls;
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const message = getErrorMessage(err);
         setCameraError(
-          err?.name === "NotAllowedError"
+          err instanceof DOMException && err.name === "NotAllowedError"
             ? "Доступ к камере запрещён. Разрешите камеру в настройках браузера (в Safari: значок «аА» в адресной строке → Камера) и попробуйте ещё раз."
-            : err?.message ||
+            : message ||
               "Не удалось включить камеру. Проверьте разрешения и попробуйте снова."
         );
         stopCamera();
@@ -191,27 +287,26 @@ export function ScanCode({
       return;
     }
 
-    // ── Chrome / Edge / Android: нативный BarcodeDetector ──
+    // Chrome / Edge / Android — через нативный BarcodeDetector.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
       streamRef.current = stream;
-      // Юзер успел выключить камеру, пока ждали getUserMedia? — гасим
-      // свежие треки и выходим, чтобы не «воскрешать» превью.
+
       if (cancelScanRef.current) {
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
         return;
       }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
       setCameraOn(true);
 
-      // Периодическое распознавание нативным детектором.
       const formats = await BD.getSupportedFormats();
       const wanted = [
         "ean_13",
@@ -220,7 +315,8 @@ export function ScanCode({
         "code_39",
         "qr_code",
         "data_matrix",
-      ].filter((f) => formats.includes(f));
+      ].filter((format: string) => formats.includes(format));
+
       if (wanted.length > 0) {
         detectorRef.current = new BD({ formats: wanted });
         intervalRef.current = window.setInterval(async () => {
@@ -230,9 +326,7 @@ export function ScanCode({
             if (codes && codes.length > 0) {
               const value = codes[0].rawValue || "";
               if (value) {
-                setCode(value);
-                stopCamera();
-                navigateToScan(value);
+                void lookupProduct(value, { fromCamera: true });
               }
             }
           } catch {
@@ -240,11 +334,12 @@ export function ScanCode({
           }
         }, 350);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
       setCameraError(
-        err?.name === "NotAllowedError"
+        err instanceof DOMException && err.name === "NotAllowedError"
           ? "Доступ к камере запрещён. Разрешите камеру в настройках браузера и попробуйте ещё раз."
-          : err?.message ||
+          : message ||
             "Не удалось включить камеру. Проверьте разрешения и попробуйте снова."
       );
       stopCamera();
@@ -253,11 +348,12 @@ export function ScanCode({
 
   function stopCamera() {
     cancelScanRef.current = true;
+
     if (intervalRef.current) {
       window.clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    // Останавливаем ZXing-сканер (он сам гасит свой видеопоток)
+
     if (zxingControlsRef.current) {
       try {
         zxingControlsRef.current.stop();
@@ -266,90 +362,27 @@ export function ScanCode({
       }
       zxingControlsRef.current = null;
     }
+
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+
     detectorRef.current = null;
     setCameraOn(false);
   }
 
-  async function copy(text: string, kind: "barcode" | "slug") {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(kind);
-      setTimeout(() => setCopied(null), 1500);
-    } catch {
-      /* clipboard не доступен */
-    }
+  function clearResult() {
+    setCode("");
+    setLookupError(null);
+    setCurrentProduct(null);
+    setLastResolvedCode("");
   }
 
-  // ── Экран «товар не найден» (пришёл notFound-флаг) ──
-  if (notFoundMessage) {
-    return (
-      <div className="scan-page">
-        <div className="scan-page__top">
-          <Link href={`/${adminPath}`} className="scan-page__back">
-            ← В админку
-          </Link>
-          <h1 className="scan-page__title">
-            <ScanLine size={22} /> Сканер
-          </h1>
-        </div>
-        <form className="scan-page__form" onSubmit={onSubmit}>
-          <input
-            className="scan-page__input"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="Введите код (EAN-13 или slug) и нажмите Enter"
-            autoFocus
-            inputMode="text"
-            autoComplete="off"
-          />
-          <button type="button" className="scan-page__cam-btn" onClick={cameraOn ? stopCamera : startCamera}>
-            {cameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
-          </button>
-        </form>
-        {/* <video> смонтирован всегда (скрыт display:none, когда камера
-            выкл): иначе ref ещё пуст на момент запуска getUserMedia и
-            превью не стартует с первого нажатия. */}
-        <div
-          className="scan-page__video-wrap"
-          style={cameraOn ? undefined : { display: "none" }}
-          aria-hidden={!cameraOn}
-        >
-          <video
-            ref={videoRef}
-            className="scan-page__video"
-            playsInline
-            muted
-          />
-          <p className="scan-page__video-hint">
-            Наведите камеру на QR или штрихкод — сканирует и в Safari
-          </p>
-        </div>
-        {cameraError && (
-          <div className="scan-page__err">
-            <AlertCircle size={15} /> {cameraError}
-          </div>
-        )}
-        <div className="scan-page__notfound">
-          <XCircle size={32} />
-          <p>{notFoundMessage}</p>
-          <p className="scan-page__hint">
-            Проверьте правильность кода. QR генерируется из id товара —
-            если вы пересоздавали товар с тем же id, ссылка должна
-            сработать.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Главный экран с товаром или пустой формой поиска ──
   return (
     <div className="scan-page">
       <div className="scan-page__top">
@@ -366,8 +399,8 @@ export function ScanCode({
           className="scan-page__input"
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="Введите код или отсканируйте"
-          autoFocus={!product}
+          placeholder="Наведите камеру или введите код"
+          autoFocus={!currentProduct && !cameraOn}
           inputMode="text"
           autoComplete="off"
         />
@@ -379,14 +412,11 @@ export function ScanCode({
         >
           {cameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
         </button>
-        <button type="submit" className="scan-page__go">
-          Найти
+        <button type="submit" className="scan-page__go" disabled={isLookingUp}>
+          {isLookingUp ? "Поиск..." : "Найти"}
         </button>
       </form>
 
-      {/* <video> смонтирован всегда (скрыт display:none, когда камера
-          выкл): иначе ref ещё пуст на момент запуска getUserMedia и
-          превью не стартует с первого нажатия. */}
       <div
         className="scan-page__video-wrap"
         style={cameraOn ? undefined : { display: "none" }}
@@ -399,9 +429,22 @@ export function ScanCode({
           muted
         />
         <p className="scan-page__video-hint">
-          Наведите камеру на QR или штрихкод — сканирует и в Safari
+          Наведите на QR или штрихкод — карточка появится ниже
         </p>
       </div>
+
+      {cameraOn && !isLookingUp && (
+        <div className="scan-page__status scan-page__status--live" aria-live="polite">
+          <ScanSearch size={15} /> Камера включена — можно сканировать подряд, карточка будет обновляться ниже.
+        </div>
+      )}
+
+      {isLookingUp && (
+        <div className="scan-page__status scan-page__status--loading" aria-live="polite">
+          <LoaderCircle size={15} className="animate-spin" /> Ищу товар по коду
+          {lastResolvedCode || code ? ` «${code || lastResolvedCode}»` : ""}…
+        </div>
+      )}
 
       {cameraError && (
         <div className="scan-page__err">
@@ -409,22 +452,33 @@ export function ScanCode({
         </div>
       )}
 
-      {product ? (
-        <div className="scan-page__card">
+      {lookupError && (
+        <div className="scan-page__notfound" aria-live="polite">
+          <XCircle size={28} />
+          <p>{lookupError}</p>
+          <p className="scan-page__hint">
+            Можно сканировать полный QR-URL, QR-slug, EAN-13, SKU или обычный slug товара.
+          </p>
+        </div>
+      )}
+
+      {currentProduct ? (
+        <div className="scan-page__card" aria-live="polite">
           <div className="scan-page__head">
             <div className="scan-page__thumb">
-              {product.imageUrl ? (
+              {currentProduct.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={product.imageUrl} alt={product.name} />
+                <img src={currentProduct.imageUrl} alt={currentProduct.name} />
               ) : (
                 <Package size={42} />
               )}
             </div>
+
             <div className="scan-page__head-main">
-              <h2 className="scan-page__name">{product.name}</h2>
-              {product.sku && (
+              <h2 className="scan-page__name">{currentProduct.name}</h2>
+              {currentProduct.sku && (
                 <div className="scan-page__sku">
-                  <Hash size={12} /> Артикул: {product.sku}
+                  <Hash size={12} /> Артикул: {currentProduct.sku}
                 </div>
               )}
             </div>
@@ -432,104 +486,58 @@ export function ScanCode({
 
           <div className="scan-page__price-row">
             <div className="scan-page__price-main">
-              {product.price > 0
-                ? `${fmt(product.price)} ₽`
+              {currentProduct.price > 0
+                ? `${fmt(currentProduct.price)} ₽`
                 : "Цена не указана"}
             </div>
-            {product.priceWholesale != null &&
-              product.priceWholesale > 0 && (
-                <div className="scan-page__price-wholesale">
-                  опт: {fmt(product.priceWholesale)} ₽
-                </div>
-              )}
+            {currentProduct.priceWholesale != null && currentProduct.priceWholesale > 0 && (
+              <div className="scan-page__price-wholesale">
+                опт: {fmt(currentProduct.priceWholesale)} ₽
+              </div>
+            )}
           </div>
 
           <div
-            className={`scan-page__stock scan-page__stock--${product.stockLabel.tone}`}
+            className={`scan-page__stock scan-page__stock--${currentProduct.stockLabel.tone}`}
           >
-            {product.stockLabel.tone === "ok" && <CheckCircle2 size={16} />}
-            {product.stockLabel.tone === "low" && <AlertCircle size={16} />}
-            {product.stockLabel.tone === "out" && <XCircle size={16} />}
-            <span>{product.stockLabel.text}</span>
+            {currentProduct.stockLabel.tone === "ok" && <CheckCircle2 size={16} />}
+            {currentProduct.stockLabel.tone === "low" && <AlertCircle size={16} />}
+            {currentProduct.stockLabel.tone === "out" && <XCircle size={16} />}
+            <span>{currentProduct.stockLabel.text}</span>
           </div>
 
-          <div className="scan-page__codes">
-            <div className="scan-page__code-block">
-              <img
-                src={`/api/admin/qr/${product.id}?size=180`}
-                alt="QR-код"
-                className="scan-page__qr"
-                width={180}
-                height={180}
-              />
-              <button
-                type="button"
-                className="scan-page__copy"
-                onClick={() => copy(product.qrSlug, "slug")}
-                title="Скопировать slug"
-              >
-                {copied === "slug" ? (
-                  <CheckCircle2 size={13} />
-                ) : (
-                  <Copy size={13} />
-                )}
-                <span>QR · {product.qrSlug}</span>
-              </button>
-            </div>
-            <div className="scan-page__code-block">
-              <img
-                src={`/api/admin/qr/barcode/${product.id}`}
-                alt="Штрихкод"
-                className="scan-page__barcode"
-                width={180}
-                height={70}
-              />
-              <button
-                type="button"
-                className="scan-page__copy"
-                onClick={() => copy(product.barcode, "barcode")}
-                title="Скопировать штрихкод"
-              >
-                {copied === "barcode" ? (
-                  <CheckCircle2 size={13} />
-                ) : (
-                  <Copy size={13} />
-                )}
-                <span>EAN-13 · {formatBarcode(product.barcode)}</span>
-              </button>
-            </div>
+          <div className="scan-page__meta">
+            <span>
+              <strong>QR:</strong> {currentProduct.qrSlug}
+            </span>
+            <span>
+              <strong>EAN:</strong> {formatBarcode(currentProduct.barcode)}
+            </span>
           </div>
 
           <div className="scan-page__actions">
             <Link
-              href={`/${adminPath}/products?edit=${product.id}`}
+              href={`/${adminPath}/products?edit=${currentProduct.id}`}
               className="scan-page__btn scan-page__btn--primary"
             >
               <ExternalLink size={15} /> Открыть в админке
             </Link>
-            <Link
-              href={`/${adminPath}/products`}
-              className="scan-page__btn"
-            >
-              <Package size={15} /> Все товары
-            </Link>
+            <button type="button" className="scan-page__btn" onClick={clearResult}>
+              <ScanLine size={15} /> Очистить карточку
+            </button>
             <button
               type="button"
               className="scan-page__btn"
-              onClick={() => {
-                setCode("");
-                router.push(`/${adminPath}/scan`);
-              }}
+              onClick={() => router.push(`/${adminPath}/products`)}
             >
-              <RotateCcw size={15} /> Новый поиск
+              <Package size={15} /> Все товары
             </button>
           </div>
         </div>
       ) : null}
 
       <p className="scan-page__footer-hint">
-        Можно вводить <strong>QR-slug</strong>, <strong>EAN-13</strong>,{" "}
-        <strong>id</strong> или обычный <strong>slug</strong> товара.
+        Сканер принимает <strong>полный QR-URL</strong>, <strong>QR-slug</strong>, <strong>EAN-13</strong>, <strong>SKU</strong>, <strong>id</strong> и обычный <strong>slug</strong> товара.
       </p>
     </div>
   );

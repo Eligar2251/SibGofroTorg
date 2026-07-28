@@ -28,6 +28,10 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ["lucide-react"],
   },
 
+  // Standalone output ускоряет контейнерный деплой: рантайм получает
+  // уже собранный self-contained bundle без повторной установки prod-deps.
+  output: "standalone",
+
   // Fix turbopack root directory issue
   turbopack: {
     root: __dirname,

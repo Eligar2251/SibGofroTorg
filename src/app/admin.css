@@ -7069,6 +7069,28 @@ body:has(.admin-modal-overlay) {
   padding: 8px 12px;
 }
 
+.scan-page__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--adm-r-sm);
+  padding: 9px 12px;
+}
+
+.scan-page__status--live {
+  color: var(--adm-steel);
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+}
+
+.scan-page__status--loading {
+  color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+  border: 1px solid var(--adm-kraft-line);
+}
+
 .scan-page__notfound {
   display: flex;
   flex-direction: column;
@@ -7210,6 +7232,26 @@ body:has(.admin-modal-overlay) {
   background: var(--adm-rust-pale);
   color: var(--adm-rust);
   border: 1px solid var(--adm-rust-line);
+}
+
+.scan-page__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  padding: 10px 12px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+}
+
+.scan-page__meta span {
+  overflow-wrap: anywhere;
+}
+
+.scan-page__meta strong {
+  color: var(--adm-ink);
 }
 
 .scan-page__codes {

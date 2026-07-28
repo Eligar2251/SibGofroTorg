@@ -55,6 +55,7 @@ export type DeliveryRow = {
   items?:
     | { productId?: string; name: string; quantity: number; variantName?: string | null }[]
     | null;
+  shippedItems?: { productId: string; name?: string; shippedQty: number }[] | null;
   deliveryItems?: { productId: string; name: string; quantity: number }[] | null;
   totalSum?: number | null;
   createdAt?: string | null;
@@ -222,7 +223,8 @@ export function DeliveriesManager({
       for (const item of row.items) {
         const pid = item.productId || item.name;
         const existingDeliveryQty = (row.deliveryItems || []).find((d) => d.productId === pid)?.quantity || 0;
-        qtys[row.id][pid] = item.quantity - existingDeliveryQty;
+        const alreadyShipped = (row.shippedItems || []).find((s) => s.productId === pid)?.shippedQty || 0;
+        qtys[row.id][pid] = Math.max(0, item.quantity - alreadyShipped - existingDeliveryQty);
       }
     }
     setPlanQtys(qtys);
@@ -703,15 +705,24 @@ export function DeliveriesManager({
                               .map((it) => {
                                 const pid = it.productId || it.name;
                                 const delQty = (order.deliveryItems || []).find((d) => d.productId === pid)?.quantity || 0;
-                                const remaining = it.quantity - delQty;
+                                const shippedQty = (order.shippedItems || []).find((s) => s.productId === pid)?.shippedQty || 0;
+                                const remaining = Math.max(0, it.quantity - shippedQty - delQty);
                                 // Имя варианта (если есть) подмешиваем к названию —
                                 // иначе водитель/курьер видит просто «Ящик 670»
                                 // и не знает, какого цвета брать.
                                 const fullName = it.variantName
                                   ? `${it.name} (${it.variantName})`
                                   : it.name;
-                                if (delQty > 0 && remaining > 0) {
-                                  return <span key={pid} style={{ marginRight: 8 }}><del style={{ color: "#999" }}>{it.quantity}</del> <strong style={{ color: "var(--adm-kraft)" }}>{remaining}</strong> {fullName}</span>;
+                                if (shippedQty > 0 || delQty > 0) {
+                                  return (
+                                    <span key={pid} style={{ marginRight: 8 }}>
+                                      <del style={{ color: "#999" }}>{it.quantity}</del>{" "}
+                                      <strong style={{ color: "var(--adm-kraft)" }}>{remaining}</strong>{" "}
+                                      {fullName}
+                                      {shippedQty > 0 ? ` · отгружено: ${shippedQty}` : ""}
+                                      {delQty > 0 ? ` · в доставке: ${delQty}` : ""}
+                                    </span>
+                                  );
                                 }
                                 return <span key={pid} style={{ marginRight: 8 }}>{fullName} × {it.quantity}</span>;
                               })}
@@ -849,14 +860,15 @@ export function DeliveriesManager({
                         {row.items.map((item) => {
                           const pid = item.productId || item.name;
                           const existingDelQty = (row.deliveryItems || []).find((d: any) => d.productId === pid)?.quantity || 0;
-                          const maxQty = item.quantity - existingDelQty;
+                          const shippedQty = (row.shippedItems || []).find((s: any) => s.productId === pid)?.shippedQty || 0;
+                          const maxQty = Math.max(0, item.quantity - shippedQty - existingDelQty);
                           const curQty = planQtys[row.id]?.[pid] ?? maxQty;
                           return (
                             <div key={pid} style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, alignItems: "center", marginBottom: 6 }}>
                               <span style={{ fontSize: 12, color: "var(--adm-ink-soft)" }}>
                                 {item.name}{" "}
                                 <span style={{ color: "var(--adm-sand)" }}>
-                                  (заказано: {item.quantity}{existingDelQty > 0 ? `, в доставке: ${existingDelQty}` : ""})
+                                  (заказано: {item.quantity}{shippedQty > 0 ? `, отгружено: ${shippedQty}` : ""}{existingDelQty > 0 ? `, в доставке: ${existingDelQty}` : ""})
                                 </span>
                               </span>
                               <input
