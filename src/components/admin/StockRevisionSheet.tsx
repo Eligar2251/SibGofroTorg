@@ -11,6 +11,25 @@ import { useEffect, useRef, useState } from "react";
 import { SITE_ADDRESS, SITE_PHONE } from "@/lib/site-config";
 import { SITE_NAME } from "@/lib/seo";
 
+/**
+ * Форматирует габариты товара для колонки «Размеры» бланка ревизии.
+ * Пусто/нули → «—», иначе «Д×Ш×В ед.» (например «670×370×370 мм»).
+ */
+function formatDimensions(row: RevisionSheetRow): string {
+  const l = Number(row.dimensionLength) || 0;
+  const w = Number(row.dimensionWidth) || 0;
+  const h = Number(row.dimensionHeight) || 0;
+  if (l <= 0 && w <= 0 && h <= 0) return "—";
+  const unit = row.dimensionUnit || "мм";
+  return `${l}×${w}×${h} ${unit}`;
+}
+
+/** Цена за единицу в бланке ревизии: «1 234 ₽» или «—». */
+function formatPrice(price: number | null | undefined): string {
+  if (price == null || !Number.isFinite(price) || price <= 0) return "—";
+  return `${price.toLocaleString("ru-RU")} ₽`;
+}
+
 export interface RevisionSheetRow {
   id: string;
   name: string;
@@ -19,6 +38,17 @@ export interface RevisionSheetRow {
   stockQty: number;
   /** Введённый факт (только для заполненного бланка) */
   actualQty?: number | null;
+  /** Габариты товара в мм (или в dimensionUnit). Используются в
+   *  колонке «Размеры» бланка, чтобы кладовщик видел, что именно
+   *  он пересчитывает (ящик 670×370×370, а не абстрактный SKU). */
+  dimensionLength?: number | null;
+  dimensionWidth?: number | null;
+  dimensionHeight?: number | null;
+  dimensionUnit?: string | null;
+  /** Розничная цена за единицу — показывается в бланке ревизии,
+   *  чтобы при расхождениях сразу было видно, сколько стоит
+   *  «недостача» / «излишек». */
+  price?: number | null;
 }
 
 export function StockRevisionSheet({
@@ -116,9 +146,11 @@ export function StockRevisionSheet({
               <th className="rev-col-n">№</th>
               <th className="rev-col-name">Наименование товара</th>
               <th className="rev-col-sku">Артикул</th>
+              <th className="rev-col-dims">Размеры</th>
               <th className="rev-col-num">По учёту</th>
               <th className="rev-col-num rev-col-fact">Факт</th>
               {filled && <th className="rev-col-num">Расхождение</th>}
+              <th className="rev-col-num">Цена</th>
             </tr>
           </thead>
           <tbody>
@@ -130,6 +162,7 @@ export function StockRevisionSheet({
                   <td className="rev-col-n">{idx + 1}</td>
                   <td className="rev-col-name">{r.name}</td>
                   <td className="rev-col-sku">{r.sku || "—"}</td>
+                  <td className="rev-col-dims">{formatDimensions(r)}</td>
                   <td className="rev-col-num">{r.stockQty.toLocaleString("ru-RU")}</td>
                   <td className="rev-col-num rev-col-fact">
                     {filled && actual != null ? actual.toLocaleString("ru-RU") : ""}
@@ -143,13 +176,14 @@ export function StockRevisionSheet({
                       {diff == null ? "" : diff === 0 ? "0" : diff > 0 ? `+${diff}` : diff}
                     </td>
                   )}
+                  <td className="rev-col-num">{formatPrice(r.price)}</td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={3} className="rev-total-label">
+              <td colSpan={4} className="rev-total-label">
                 Итого единиц
               </td>
               <td className="rev-col-num">{totalAccounted.toLocaleString("ru-RU")}</td>
@@ -162,6 +196,7 @@ export function StockRevisionSheet({
                   {(totalActual - totalAccounted).toLocaleString("ru-RU")}
                 </td>
               )}
+              <td className="rev-col-num">—</td>
             </tr>
           </tfoot>
         </table>
@@ -255,6 +290,10 @@ const REVISION_PRINT_CSS = `
 .rev-col-n { width: 9mm; text-align: center; color: #8a857c; }
 .rev-col-name { font-weight: 600; }
 .rev-col-sku { width: 26mm; font-size: 10px; color: #6f6a61; }
+/* Габариты — отдельная колонка, чтобы кладовщик видел «670×370×370» и не
+   считал «абстрактный» SKU наугад. Шрифт мельче, по центру. */
+.rev-col-dims { width: 30mm; text-align: center; font-size: 10px; color: #4a463f; white-space: nowrap; font-variant-numeric: tabular-nums; }
+th.rev-col-dims { text-align: center; }
 .rev-col-num { width: 22mm; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 th.rev-col-num { text-align: right; }
 /* Колонка «Факт» — крупная и пустая: в неё пишут ручкой */

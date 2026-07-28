@@ -357,8 +357,8 @@ export async function buildExcelExport(mode: "full" | "template" = "full"): Prom
             ID: "",
             Название: "ООО Ромашка",
             Роли: "поставщик, покупатель",
-            Телефон: "+7 383 000-00-00",
-            Email: "info@romashka.ru",
+            Телефон: "+7 000 000-00-00",
+            Email: "info@example.ru",
             ИНН: "5400000000",
             КПП: "540001001",
             Адрес: "Новосибирск, ул. Примерная, 1",
@@ -694,10 +694,10 @@ export async function buildExcelExport(mode: "full" | "template" = "full"): Prom
   const settingsRows =
     mode === "template"
       ? [
-          { Ключ: "phone", Значение: "+7 (383) 000-00-00" },
-          { Ключ: "address", Значение: "Новосибирск" },
-          { Ключ: "email", Значение: "info@example.ru" },
-          { Ключ: "working_hours", Значение: "Пн–Пт 9:00–18:00" },
+          { Ключ: "phone", Значение: "+7 (913) 915-81-46" },
+          { Ключ: "address", Значение: "г. Новосибирск, ул. Ватутина, 42а к1" },
+          { Ключ: "email", Значение: "sk2-tdstm@mail.ru" },
+          { Ключ: "working_hours", Значение: "Пн–Пт 8:30–17:00" },
           { Ключ: "delivery_price", Значение: "800" },
           { Ключ: "free_delivery_threshold", Значение: "30000" },
         ]

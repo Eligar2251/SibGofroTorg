@@ -112,6 +112,14 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
           sku: p.sku,
           stockQty: p.stockQty,
           actualQty: parsed,
+          // Габариты и цена подхватываются из `WarehouseStockRow`
+          // (поле `price` подтянуто из БД ещё на этапе загрузки
+          // остатков через `getWarehouseStock()`).
+          dimensionLength: p.dimensionLength ?? null,
+          dimensionWidth: p.dimensionWidth ?? null,
+          dimensionHeight: p.dimensionHeight ?? null,
+          dimensionUnit: p.dimensionUnit ?? null,
+          price: p.price ?? null,
         };
       }),
     [selectedRows, actual]

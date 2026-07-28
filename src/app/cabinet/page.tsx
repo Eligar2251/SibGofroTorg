@@ -24,6 +24,8 @@ import {
 import { GlyphIcon } from "@/components/ui/Glyph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSiteSettings } from "@/hooks/use-site-settings";
+import { SITE_PHONE, SITE_PHONE_HREF, SITE_HOURS_LABEL } from "@/lib/site-config";
 
 interface OrderItem {
   productId?: string;
@@ -399,6 +401,11 @@ export default function CabinetPage() {
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Телефон/часы для блока «Нужна помощь?» в сайдбаре — из настроек
+  const siteSettings = useSiteSettings();
+  const cabPhone = siteSettings.phone || SITE_PHONE;
+  const cabPhoneHref = siteSettings.phoneHref || SITE_PHONE_HREF;
+  const cabHours = siteSettings.hoursLabel || SITE_HOURS_LABEL;
 
   useEffect(() => {
     let cancelled = false;
@@ -543,11 +550,11 @@ export default function CabinetPage() {
               <div style={{ fontSize: "13px", color: "var(--ink-light)", marginBottom: "8px" }}>
                 Нужна помощь?
               </div>
-              <a href="tel:+73832918146" className="cab-sidebar__phone">
-                <Phone size={15} /> +7 (383) 291-81-46
+              <a href={cabPhoneHref} className="cab-sidebar__phone">
+                <Phone size={15} /> {cabPhone}
               </a>
               <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginTop: "4px" }}>
-                Пн–Пт 8:30–17:00 · Сб, Вс — выходные
+                {cabHours}
               </div>
             </div>
           </aside>

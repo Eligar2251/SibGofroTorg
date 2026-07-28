@@ -144,6 +144,14 @@ export interface WarehouseStockRow {
   price: number | null;
   priceWholesale: number | null;
   isVisible: boolean;
+  /** Габариты товара в мм (или в иных единицах из dimensionUnit).
+   *  Подхватываются в ревизию склада, чтобы кладовщик мог
+   *  пересчитать остатки по позициям и сразу видеть, что именно
+   *  он считает — ящик 670×370×370, а не абстрактный SKU. */
+  dimensionLength?: number | null;
+  dimensionWidth?: number | null;
+  dimensionHeight?: number | null;
+  dimensionUnit?: string | null;
 }
 
 export interface CounterpartyBalance {

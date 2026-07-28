@@ -300,6 +300,18 @@ select {
   white-space: nowrap;
 }
 
+/* Email в шапке (топбаре) — кликабельный, слегка приглушённый,
+   при наведении подсвечивается как обычный текст топбара */
+.topbar-email {
+  color: rgba(255, 255, 255, 0.5);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.topbar-email:hover {
+  color: #ffffff;
+}
+
 /* ══════════════════════════════════════
    HEADER
    ══════════════════════════════════════ */
@@ -5123,6 +5135,20 @@ select {
   display: block;
   margin-bottom: 4px;
   text-decoration: none;
+}
+
+.footer-email {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.footer-email:hover {
+  color: var(--green-lime);
 }
 
 .footer-hours {

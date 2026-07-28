@@ -1,25 +1,64 @@
-// src/app/api/settings/public/route.ts
+// src/app/settings/public — публичные настройки, которые читает сам сайт
+// (шапка, подвал, страница контактов, success-страница и т. п.).
+//
+// Ключи совпадают с тем, что сохраняется в админке «Настройки → Контактная
+// информация»: phone, email, address, working_hours. Если в БД значения
+// нет, отдаём дефолт из src/lib/site-config.ts — чтобы клиентский код
+// никогда не показывал «пустоту».
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/supabase-queries";
+import {
+  SITE_ADDRESS,
+  SITE_PHONE,
+  SITE_EMAIL,
+  SITE_HOURS_WEEKDAY,
+} from "@/lib/site-config";
 
 export async function GET() {
   try {
     const settings = (await getSettings()) || {};
     const deliveryPrice = Number(settings.delivery_price);
     const freeDeliveryThreshold = Number(settings.free_delivery_threshold);
-    return NextResponse.json({
-      deliveryPrice: Number.isFinite(deliveryPrice) && deliveryPrice >= 0 ? deliveryPrice : 800,
-      freeDeliveryThreshold:
-        Number.isFinite(freeDeliveryThreshold) && freeDeliveryThreshold > 0
-          ? freeDeliveryThreshold
-          : 30000,
-    }, {
-      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
-    });
+    return NextResponse.json(
+      {
+        // Публичные контактные данные берём из БД (админка),
+        // а если там пусто — подставляем дефолт из site-config.ts.
+        phone: (settings.phone || SITE_PHONE || "").trim(),
+        email: (settings.email || SITE_EMAIL || "").trim(),
+        address: (settings.address || SITE_ADDRESS || "").trim(),
+        // "Пн–Пт 8:30–17:00" или иной формат, сохранённый админом
+        workingHours: (settings.working_hours || "").trim(),
+        // Чтобы клиент мог собрать SITE_HOURS_LABEL даже когда в БД пусто
+        hoursWeekday: SITE_HOURS_WEEKDAY,
+        deliveryPrice:
+          Number.isFinite(deliveryPrice) && deliveryPrice >= 0 ? deliveryPrice : 800,
+        freeDeliveryThreshold:
+          Number.isFinite(freeDeliveryThreshold) && freeDeliveryThreshold > 0
+            ? freeDeliveryThreshold
+            : 30000,
+      },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        },
+      }
+    );
   } catch {
     return NextResponse.json(
-      { deliveryPrice: 800, freeDeliveryThreshold: 30000 },
-      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+      {
+        phone: SITE_PHONE,
+        email: SITE_EMAIL,
+        address: SITE_ADDRESS,
+        workingHours: "",
+        hoursWeekday: SITE_HOURS_WEEKDAY,
+        deliveryPrice: 800,
+        freeDeliveryThreshold: 30000,
+      },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        },
+      }
     );
   }
 }
