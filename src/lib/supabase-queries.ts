@@ -5,6 +5,7 @@
 
 import { unstable_cache, revalidateTag } from "next/cache";
 import { getAdminDb } from "./supabase";
+import { computeBarcode, computeQrSlug } from "./qr";
 import {
   extractQueryDims,
   dimensionScore,
@@ -96,6 +97,17 @@ function mapProductRow(row: any): FirestoreProduct {
     updatedAt: toIso(row.updated_at),
   };
 }
+
+// ── QR + штрихкод ──
+//
+// `barcode` и `qrSlug` генерируются детерминированно из `id` и не
+// хранятся в БД — поэтому в mapProductRow они остаются `undefined`,
+// а заполняются в post-обработке `getCachedProducts` (см. ниже).
+// Это даёт 2 плюса: 1) не нужна миграция; 2) коды ВСЕГДА актуальны
+// и согласованы с `id`, даже если БД частично отстала.
+//
+// Реальные колонки в products (если когда-нибудь решим хранить
+// явно): `barcode` и `qr_slug`. Пока — null.
 
 function mapReviewRow(row: any): ProductReview {
   return {
@@ -246,6 +258,11 @@ const getCachedProducts = unstable_cache(
         p.inStock = agg.anyInStock;
         p.stockQty = agg.totalStock;
       }
+      // QR + штрихкод — детерминированно из id. Ленивое вычисление:
+      // ~микросекунды на товар, кеш на 120с, так что в худшем
+      // случае один раз за 2 минуты.
+      p.barcode = computeBarcode(p.id);
+      p.qrSlug = computeQrSlug(p.id);
     }
     return products;
   },
