@@ -1,25 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowLeft,
   ExternalLink,
@@ -61,32 +43,35 @@ type FeaturedProduct = {
   isVisible?: boolean;
 };
 
-function SortableFeaturedCard({
+function moveItem<T>(list: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) {
+    return list;
+  }
+  const next = [...list];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
+function FeaturedCard({
   product,
   index,
+  dragging,
+  onPointerDown,
+  registerRef,
 }: {
   product: FeaturedProduct;
   index: number;
+  dragging: boolean;
+  onPointerDown: (id: string, e: React.PointerEvent<HTMLDivElement>) => void;
+  registerRef: (id: string, node: HTMLDivElement | null) => void;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: product.id });
-
   return (
     <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-      }}
-      className={`featured-sort__item${isDragging ? " featured-sort__item--dragging" : ""}`}
-      {...attributes}
-      {...listeners}
+      ref={(node) => registerRef(product.id, node)}
+      data-featured-id={product.id}
+      className={`featured-sort__item${dragging ? " featured-sort__item--placeholder" : ""}`}
+      onPointerDown={(e) => onPointerDown(product.id, e)}
     >
       <div className="featured-sort__order">
         <GripVertical size={15} /> #{index + 1}
@@ -135,26 +120,28 @@ export function FeaturedProductsOrderClient({
   initialProducts: FeaturedProduct[];
 }) {
   const [products, setProducts] = useState(initialProducts);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragPointer, setDragPointer] = useState({ x: 0, y: 0 });
+  const [dragBox, setDragBox] = useState({ width: 0, height: 0, offsetX: 0, offsetY: 0 });
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 140,
-        tolerance: 8,
-      },
-    })
-  );
+  const itemRefs = useRef(new Map<string, HTMLDivElement | null>());
+  const productsRef = useRef(products);
+  const initialOrderRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
 
   const activeProduct = useMemo(
-    () => products.find((item) => item.id === activeId) || null,
-    [products, activeId]
+    () => products.find((item) => item.id === draggingId) || null,
+    [products, draggingId]
   );
+
+  function registerRef(id: string, node: HTMLDivElement | null) {
+    itemRefs.current.set(id, node);
+  }
 
   async function persistOrder(nextProducts: FeaturedProduct[]) {
     setSaveState("saving");
@@ -180,23 +167,91 @@ export function FeaturedProductsOrderClient({
     }
   }
 
-  function handleDragStart(event: DragStartEvent) {
-    setActiveId(String(event.active.id));
-  }
+  function reorderByHover(activeId: string, clientX: number, clientY: number) {
+    const orderedIds = productsRef.current.map((item) => item.id);
+    let overId: string | null = null;
 
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    setActiveId(null);
-    if (!over || active.id === over.id) return;
+    for (const id of orderedIds) {
+      if (id === activeId) continue;
+      const node = itemRefs.current.get(id);
+      if (!node) continue;
+      const rect = node.getBoundingClientRect();
+      if (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
+        overId = id;
+        break;
+      }
+    }
+
+    if (!overId) return;
 
     setProducts((current) => {
-      const oldIndex = current.findIndex((item) => item.id === String(active.id));
-      const newIndex = current.findIndex((item) => item.id === String(over.id));
-      if (oldIndex < 0 || newIndex < 0) return current;
-      const next = arrayMove(current, oldIndex, newIndex);
-      void persistOrder(next);
-      return next;
+      const oldIndex = current.findIndex((item) => item.id === activeId);
+      const newIndex = current.findIndex((item) => item.id === overId);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return current;
+      return moveItem(current, oldIndex, newIndex);
     });
+  }
+
+  const finishDrag = useCallback(() => {
+    const currentOrder = productsRef.current.map((item) => item.id);
+    const changed =
+      currentOrder.length !== initialOrderRef.current.length ||
+      currentOrder.some((id, index) => id !== initialOrderRef.current[index]);
+
+    setDraggingId(null);
+    document.body.style.userSelect = "";
+
+    if (changed) {
+      void persistOrder(productsRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draggingId) return;
+
+    const handleMove = (event: PointerEvent) => {
+      setDragPointer({ x: event.clientX, y: event.clientY });
+      reorderByHover(draggingId, event.clientX, event.clientY);
+    };
+
+    const handleUp = () => {
+      finishDrag();
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
+    };
+  }, [draggingId, finishDrag]);
+
+  function handlePointerDown(id: string, e: React.PointerEvent<HTMLDivElement>) {
+    if (products.length < 2) return;
+    if (e.button !== 0 && e.pointerType !== "touch") return;
+
+    const node = itemRefs.current.get(id);
+    if (!node) return;
+
+    const rect = node.getBoundingClientRect();
+    initialOrderRef.current = productsRef.current.map((item) => item.id);
+    setDraggingId(id);
+    setDragPointer({ x: e.clientX, y: e.clientY });
+    setDragBox({
+      width: rect.width,
+      height: rect.height,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+    });
+    document.body.style.userSelect = "none";
   }
 
   return (
@@ -280,41 +335,40 @@ export function FeaturedProductsOrderClient({
                   <span>Отметьте товары флагом «Популярный товар» в карточке товара.</span>
                 </div>
               ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={products.map((item) => item.id)}
-                    strategy={rectSortingStrategy}
-                  >
-                    <div className="products-grid-4 featured-sort-grid">
-                      {products.map((product, index) => (
-                        <SortableFeaturedCard
-                          key={product.id}
-                          product={product}
-                          index={index}
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
-
-                  <DragOverlay>
-                    {activeProduct ? (
-                      <DragCardOverlay
-                        product={activeProduct}
-                        index={products.findIndex((item) => item.id === activeProduct.id)}
-                      />
-                    ) : null}
-                  </DragOverlay>
-                </DndContext>
+                <div className="products-grid-4 featured-sort-grid">
+                  {products.map((product, index) => (
+                    <FeaturedCard
+                      key={product.id}
+                      product={product}
+                      index={index}
+                      dragging={draggingId === product.id}
+                      onPointerDown={handlePointerDown}
+                      registerRef={registerRef}
+                    />
+                  ))}
+                </div>
               )}
             </div>
           </div>
         </div>
       </section>
+
+      {activeProduct && (
+        <div
+          className="featured-sort-overlay"
+          style={{
+            width: dragBox.width,
+            height: dragBox.height,
+            left: dragPointer.x - dragBox.offsetX,
+            top: dragPointer.y - dragBox.offsetY,
+          }}
+        >
+          <DragCardOverlay
+            product={activeProduct}
+            index={products.findIndex((item) => item.id === activeProduct.id)}
+          />
+        </div>
+      )}
     </div>
   );
 }

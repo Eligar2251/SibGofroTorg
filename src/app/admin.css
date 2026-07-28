@@ -7088,6 +7088,10 @@ body:has(.admin-modal-overlay) {
   cursor: grabbing;
 }
 
+.featured-sort__item--placeholder {
+  opacity: 0.25;
+}
+
 .featured-sort__item--dragging {
   z-index: 20;
 }
@@ -7095,6 +7099,12 @@ body:has(.admin-modal-overlay) {
 .featured-sort__item--overlay {
   transform: rotate(1.6deg) scale(1.02);
   box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+}
+
+.featured-sort-overlay {
+  position: fixed;
+  z-index: 1200;
+  pointer-events: none;
 }
 
 .featured-sort__card-mask {
