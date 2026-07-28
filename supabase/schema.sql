@@ -768,3 +768,63 @@ DROP TRIGGER IF EXISTS trg_views_increment ON product_views;
 CREATE TRIGGER trg_views_increment
   AFTER INSERT ON product_views
   FOR EACH ROW EXECUTE FUNCTION fn_increment_view_count();
+
+-- =========================================================
+-- ВАРИАНТЫ ТОВАРА (product_variants)
+-- =========================================================
+-- Добавлено в схему: каждый товар может иметь 0..N вариантов
+-- (цвет, размер, фасовка, материал). У каждого варианта свой
+-- SKU, цена, остаток, изображения и (опционально) габариты.
+-- Товары без вариантов продолжают работать как раньше — данные
+-- читаются из самой строки products.
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS product_variants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  option_type TEXT NOT NULL DEFAULT '',
+  color_hex TEXT,
+  sort_order INT NOT NULL DEFAULT 0,
+  price NUMERIC,
+  price_wholesale NUMERIC,
+  sku TEXT,
+  stock_qty INT NOT NULL DEFAULT 0,
+  stock_warn_qty INT,
+  images JSONB DEFAULT '[]'::jsonb,
+  image_url TEXT,
+  dimension_length NUMERIC,
+  dimension_width NUMERIC,
+  dimension_height NUMERIC,
+  dimension_unit TEXT,
+  weight NUMERIC,
+  pack_qty INT,
+  is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_variants_product ON product_variants(product_id);
+CREATE INDEX IF NOT EXISTS idx_variants_visible_in_stock
+  ON product_variants(product_id, is_visible, stock_qty) WHERE is_visible = TRUE;
+CREATE INDEX IF NOT EXISTS idx_variants_sort
+  ON product_variants(product_id, option_type, sort_order);
+
+ALTER TABLE product_variants ENABLE ROW LEVEL SECURITY;
+
+-- Анонимный пользователь (витрина) — только чтение видимых вариантов
+DROP POLICY IF EXISTS pv_anon_select ON product_variants;
+CREATE POLICY pv_anon_select ON product_variants
+  FOR SELECT USING (is_visible = TRUE);
+
+-- Сервисная роль (Supabase service_role) — полный доступ
+-- (запись идёт из server-функций с правами service_role).
+DROP POLICY IF EXISTS pv_service_all ON product_variants;
+CREATE POLICY pv_service_all ON product_variants
+  FOR ALL TO service_role USING (TRUE) WITH CHECK (TRUE);
+
+-- Авто-обновление updated_at при UPDATE
+DROP TRIGGER IF EXISTS trg_pv_updated_at ON product_variants;
+CREATE TRIGGER trg_pv_updated_at
+  BEFORE UPDATE ON product_variants
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

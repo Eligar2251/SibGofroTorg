@@ -395,7 +395,19 @@ export async function getProductBySlugForPage(
   // Берём кешированную карту (та же, что и в getCachedProducts) —
   // это сохраняет 1 запрос в БД.
   const map = await getCachedVariantsMap([product.id]);
-  const allVariants = map.get(product.id) || [];
+  // Defensive: getCachedVariantsMap всегда возвращает Map, но если
+  // на edge крутится старая версия, которая вернула что-то иное
+  // (например, массив из-за двойного оборачивания productIds), то
+  // без этой проверки мы получим "X.get is not a function" и страница
+  // товара упадёт. Поэтому проверяем тип и при необходимости
+  // восстанавливаем карту из entries.
+  const variantsMap: Map<string, ProductVariant[]> =
+    map instanceof Map
+      ? map
+      : new Map<string, ProductVariant[]>(
+          Array.isArray(map) ? (map as Array<[string, ProductVariant[]]>) : []
+        );
+  const allVariants = variantsMap.get(product.id) || [];
   // Для страницы товара — только видимые
   return {
     product,
