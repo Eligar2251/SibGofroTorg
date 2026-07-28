@@ -30,14 +30,22 @@ export async function GET(
   try {
     // bwip-js: toBuffer({ bcid: "ean13", text: ..., scale, height, includetext })
     // — возвращает Promise<Buffer> с PNG.
+    // scale: 3 вместо 2 — при печати на 203 dpi узкий модуль EAN-13
+    // при scale=2 попадал примерно в 0.25 мм и «слипался» с соседним
+    // после растекания краски/термопереноса. scale=3 даёт запас.
+    // paddingwidth: 10 — обязательная светлая зона слева/справа от
+    // штрихкода (для EAN-13 стандарт требует ≥ 11 узких модулей);
+    // без неё сканер не видит границу символа.
     const png = await bwipjs.toBuffer({
       bcid: "ean13",
       text: barcode,
-      scale: 2,
-      height: 14, // ~14 мм при scale=2
+      scale: 3,
+      height: 14, // ~14 мм
       includetext: true,
       textxalign: "center",
       textsize: 8,
+      paddingwidth: 10,
+      paddingheight: 2,
     });
 
     return new NextResponse(new Uint8Array(png), {

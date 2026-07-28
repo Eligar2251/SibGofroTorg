@@ -100,6 +100,23 @@ function applySecurityHeaders(response: NextResponse) {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // ── Короткие QR-ссылки /q/{code} ──
+  // QR-код зашивается в ВЕРХНЕМ регистре ("HTTPS://SITE/Q/XXXX"),
+  // чтобы попасть в alphanumeric-режим QR и получить символ на одну
+  // версию меньше (крупнее модули → надёжнее читается камерой,
+  // см. src/lib/qr.ts). Но роутинг в Next регистрозависимый, и
+  // сегмент "/Q/" не находил роут "/q/[code]" → 404.
+  // Нормализуем префикс здесь, до матчинга роутов.
+  // Сам {code} не трогаем — его приводит к нужному виду роут.
+  const shortQr = pathname.match(/^\/[Qq]\/(.+)$/);
+  if (shortQr && !pathname.startsWith("/q/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/q/${shortQr[1]}`;
+    const res = NextResponse.rewrite(url);
+    applySecurityHeaders(res);
+    return res;
+  }
+
   // ── Admin API ──
   if (pathname.startsWith("/api/admin")) {
     const ok = await isAdminAuthed(request);

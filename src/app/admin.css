@@ -336,16 +336,20 @@
   flex-shrink: 0;
 }
 
+/* Кнопка сворачивания на самой панели — компактный кружок в углу
+   шапки сайдбара. Единственный видимый орган управления, пока
+   панель раскрыта (парная ей — .admin-sidebar-handle у края
+   экрана — показывается только когда панель свёрнута). */
 .admin-sidebar__toggle {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
+  top: 12px;
+  right: 12px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.65);
+  color: rgba(255,255,255,0.55);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -354,9 +358,14 @@
 }
 
 .admin-sidebar__toggle:hover {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.1);
   color: #fff;
-  border-color: rgba(255,255,255,0.22);
+  border-color: rgba(255,255,255,0.28);
+}
+
+.admin-sidebar__toggle:focus-visible {
+  outline: 2px solid var(--adm-kraft);
+  outline-offset: 2px;
 }
 
 /* Полный логотип (знак + название) вместо буквы.
@@ -630,10 +639,6 @@
   }
 }
 
-.admin-content__toolbar {
-  display: none;
-}
-
 .desktop-only {
   display: none;
 }
@@ -642,34 +647,119 @@
   .desktop-only {
     display: inline-flex;
   }
+}
 
-  .admin-content__toolbar {
-    display: flex;
-    align-items: center;
-    padding: 18px 28px 0;
+/* ══════════════════════════════════════
+   ЯЗЫЧОК РАСКРЫТИЯ БОКОВОЙ ПАНЕЛИ
+   ══════════════════════════════════════
+   Заменил прежнюю широкую кнопку «Показать меню», которая занимала
+   отдельную полосу тулбара над контентом. Теперь это компактный
+   язычок у левого края экрана:
+     • десктоп — почти прозрачный, проявляется при наведении
+       на левый край (см. :hover ниже);
+     • мобильные/планшет — постоянно чуть выглядывает,
+       чтобы попасть пальцем без «слепого» наведения.
+   Рендерится только при свёрнутой панели (см. AdminShell.tsx). */
+.admin-sidebar-handle {
+  /* Сайдбар существует только на ≥1024px (ниже — верхняя
+     admin-mobile-bar), поэтому и язычок показываем только там:
+     иначе на телефоне висела бы кнопка, которой нечего раскрывать. */
+  display: none;
+
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 45;
+
+  /* Компактная «таблетка», прижатая к краю: скруглена только
+     правая сторона, левая уходит за край экрана. */
+  height: 56px;
+  padding: 0 0 0 1px;
+  border: 1px solid var(--adm-kraft);
+  border-left: none;
+  border-radius: 0 999px 999px 0;
+  background: var(--adm-ink);
+  color: var(--adm-kraft-mid);
+
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  box-shadow: var(--adm-sh-sm);
+  overflow: hidden;
+
+  transition:
+    width 0.18s ease,
+    opacity 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.admin-sidebar-handle svg {
+  flex: 0 0 auto;
+  transition: opacity 0.18s ease;
+}
+
+@media (min-width: 1024px) {
+  .admin-sidebar-handle {
+    display: inline-flex;
   }
 }
 
-.admin-content__sidebar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 38px;
-  padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid var(--adm-border-mid);
-  background: rgba(255,255,255,0.88);
-  color: var(--adm-ink-soft);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+/* ── Мышь: язычок проявляется при наведении ──
+   В покое — едва заметная полоска у самого края (10px, стрелка
+   спрятана). Подвёл курсор — «выезжает» и становится контрастным.
+   Различаем по (hover: hover), а не по ширине экрана: на
+   тач-ноутбуке/планшете ширина десктопная, но наведения нет. */
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  .admin-sidebar-handle {
+    width: 10px;
+    opacity: 0.3;
+  }
+
+  .admin-sidebar-handle svg {
+    opacity: 0;
+  }
+
+  .admin-sidebar-handle:hover,
+  .admin-sidebar-handle:focus-visible {
+    width: 26px;
+    opacity: 1;
+    color: #fff;
+  }
+
+  .admin-sidebar-handle:hover svg,
+  .admin-sidebar-handle:focus-visible svg {
+    opacity: 1;
+  }
 }
 
-.admin-content__sidebar-btn:hover {
-  background: #fff;
-  color: var(--adm-ink);
-  border-color: var(--adm-kraft);
+/* ── Тач: наведения нет, поэтому язычок всегда немного видно ──
+   Пальцем «слепо» водить по краю неудобно, так что показываем
+   стрелку сразу и даём комфортную ширину для попадания. */
+@media (min-width: 1024px) and (hover: none) {
+  .admin-sidebar-handle {
+    width: 24px;
+    opacity: 0.75;
+  }
+
+  .admin-sidebar-handle:active {
+    opacity: 1;
+  }
+}
+
+/* Клавиатурная доступность: обводка видна в любом состоянии. */
+.admin-sidebar-handle:focus-visible {
+  outline: 2px solid var(--adm-kraft);
+  outline-offset: 2px;
+}
+
+/* Уважаем системную настройку «уменьшить движение». */
+@media (prefers-reduced-motion: reduce) {
+  .admin-sidebar-handle,
+  .admin-sidebar-handle svg {
+    transition: none;
+  }
 }
 
 .admin-main {
@@ -8225,6 +8315,7 @@ body:has(.admin-modal-overlay) {
   .no-print,
   .admin-mobile-bar,
   .admin-sidebar,
+  .admin-sidebar-handle,
   .admin-notify {
     display: none !important;
   }

@@ -108,11 +108,14 @@ const SHEET_DIM: Record<
 // ширина 60 мм × высота 40 мм. Раскладка — колонка по центру:
 // название сверху, QR (26×26 мм) в центре, цена под QR.
 // Штрихкод не печатаем (на термо мелкие штрихи плывут).
-// qrSize: 26 мм при 203 dpi термоголовки ≈ 208 px — берём с запасом 280.
+// qrSize — это только width/height атрибуты <img> для резервирования
+// места в лейауте (чтобы этикетки не «прыгали» до загрузки картинки).
+// Сам код приходит в SVG и масштабируется CSS'ом до 26 мм —
+// см. .qrprint__tape-qr в admin.css.
 const TAPE_DIM = {
   widthMm: 60,
   heightMm: 40,
-  qrSize: 280, // пикселей для API /api/admin/qr/[id]?size=...
+  qrSize: 280,
 };
 
 // ── Правило @page — зависит от режима печати ──
@@ -429,8 +432,14 @@ export function PrintLabelsClient({
               </div>
               )}
               <div className="qrprint__label-code">
+                {/* SVG, а не PNG: вектор печатается без растровой
+                    интерполяции, модули остаются идеально ровными
+                    при любом DPI принтера. Раньше PNG фиксированной
+                    ширины браузер масштабировал под слот этикетки и
+                    «размывал» границы модулей — часть кодов после
+                    печати переставала читаться. */}
                 <img
-                  src={`/api/admin/qr/${p.id}?size=${dim.qrSize}`}
+                  src={`/api/admin/qr/${p.id}?format=svg`}
                   alt=""
                   className="qrprint__label-qr"
                   width={dim.qrSize}
@@ -492,8 +501,11 @@ export function PrintLabelsClient({
                   {p.name}
                 </div>
               )}
+              {/* SVG — см. комментарий в режиме листа: на термопринтере
+                  (203 dpi) векторный QR критичен, растянутый PNG там
+                  терял чёткость границ модулей. */}
               <img
-                src={`/api/admin/qr/${p.id}?size=${TAPE_DIM.qrSize}`}
+                src={`/api/admin/qr/${p.id}?format=svg`}
                 alt=""
                 className="qrprint__tape-qr"
                 width={TAPE_DIM.qrSize}
