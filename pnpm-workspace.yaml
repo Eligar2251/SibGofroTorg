@@ -1,3 +1,5 @@
+verifyDepsBeforeRun: false
+enableGlobalVirtualStore: false
 allowBuilds:
   '@firebase/util': false
   protobufjs: false
