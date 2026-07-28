@@ -1,7 +1,7 @@
 // src/components/admin/AdminShell.tsx
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -16,10 +16,14 @@ import {
   Boxes,
   Truck,
   QrCode,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
+
+const SIDEBAR_PREF_KEY = "admin-sidebar-hidden";
 
 export function AdminShell({
   children,
@@ -30,6 +34,27 @@ export function AdminShell({
 }) {
   const pathname = usePathname() || "";
   const isLogin = pathname === `/${adminPath}/login`;
+  const [sidebarHidden, setSidebarHidden] = useState(false);
+
+  useEffect(() => {
+    try {
+      setSidebarHidden(window.localStorage.getItem(SIDEBAR_PREF_KEY) === "1");
+    } catch {
+      /* localStorage недоступен */
+    }
+  }, []);
+
+  function toggleSidebar() {
+    setSidebarHidden((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_PREF_KEY, next ? "1" : "0");
+      } catch {
+        /* localStorage недоступен */
+      }
+      return next;
+    });
+  }
 
   if (isLogin) {
     return <div data-admin="true">{children}</div>;
@@ -82,12 +107,27 @@ export function AdminShell({
   ];
 
   return (
-    <div className="admin-shell" data-admin="true">
+    <div
+      className={`admin-shell${sidebarHidden ? " admin-shell--sidebar-hidden" : ""}`}
+      data-admin="true"
+    >
       <NavigationProgress />
-      <aside className="admin-sidebar">
+      <aside
+        className={`admin-sidebar${sidebarHidden ? " admin-sidebar--hidden" : ""}`}
+        aria-hidden={sidebarHidden}
+      >
         <div className="admin-sidebar__brand">
           <SiteLogo variant="light" className="admin-sidebar__logo-svg" />
           <div className="admin-sidebar__sub">Управление</div>
+          <button
+            type="button"
+            className="admin-sidebar__toggle desktop-only"
+            onClick={toggleSidebar}
+            aria-label="Скрыть боковую панель"
+            title="Скрыть боковую панель"
+          >
+            <PanelLeftClose size={16} />
+          </button>
         </div>
 
         <nav className="admin-sidebar__nav">
@@ -154,6 +194,19 @@ export function AdminShell({
 
       <div className="admin-content">
         <AdminNotifications adminPath={adminPath} />
+        <div className="admin-content__toolbar desktop-only">
+          <button
+            type="button"
+            className="admin-content__sidebar-btn"
+            onClick={toggleSidebar}
+            aria-label={sidebarHidden ? "Показать боковую панель" : "Скрыть боковую панель"}
+            title={sidebarHidden ? "Показать боковую панель" : "Скрыть боковую панель"}
+            aria-pressed={sidebarHidden}
+          >
+            {sidebarHidden ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            <span>{sidebarHidden ? "Показать меню" : "Скрыть меню"}</span>
+          </button>
+        </div>
         <main className="admin-main">{children}</main>
       </div>
     </div>

@@ -295,6 +295,8 @@
   background: var(--adm-ink);
   border-right: 2px solid var(--adm-kraft);
   overflow: hidden;
+  transition: transform 0.22s ease, opacity 0.18s ease;
+  will-change: transform;
 }
 
 /* Фактура гофры на сайдбаре */
@@ -314,6 +316,12 @@
 
 @media (min-width: 1024px) {
   .admin-sidebar { display: flex; }
+
+  .admin-sidebar--hidden {
+    transform: translateX(calc(-100% - 16px));
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .admin-sidebar__brand {
@@ -326,6 +334,29 @@
   border-bottom: 1px solid rgba(255,255,255,0.07);
   position: relative;
   flex-shrink: 0;
+}
+
+.admin-sidebar__toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.65);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-sidebar__toggle:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border-color: rgba(255,255,255,0.22);
 }
 
 /* Полный логотип (знак + название) вместо буквы.
@@ -589,7 +620,56 @@
 }
 
 @media (min-width: 1024px) {
-  .admin-content { margin-left: 240px; }
+  .admin-content {
+    margin-left: 240px;
+    transition: margin-left 0.22s ease;
+  }
+
+  .admin-shell--sidebar-hidden .admin-content {
+    margin-left: 0;
+  }
+}
+
+.admin-content__toolbar {
+  display: none;
+}
+
+.desktop-only {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .desktop-only {
+    display: inline-flex;
+  }
+
+  .admin-content__toolbar {
+    display: flex;
+    align-items: center;
+    padding: 18px 28px 0;
+  }
+}
+
+.admin-content__sidebar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--adm-border-mid);
+  background: rgba(255,255,255,0.88);
+  color: var(--adm-ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-content__sidebar-btn:hover {
+  background: #fff;
+  color: var(--adm-ink);
+  border-color: var(--adm-kraft);
 }
 
 .admin-main {
@@ -603,7 +683,9 @@
 }
 
 @media (min-width: 1024px) {
-  .admin-main { padding-top: 28px; }
+  .admin-main {
+    padding-top: 18px;
+  }
 }
 
 /* ══════════════════════════════════════
