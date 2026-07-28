@@ -207,11 +207,20 @@ export default async function HomePage() {
           </div>
         </div>
 
-        <Link
-          href="/wastepaper"
-          className="hero__right"
-          aria-label="Приём макулатуры"
-        >
+        {/* Правая панель hero — «Приём макулатуры».
+            ВАЖНО: нельзя класть <a> внутрь <a> (invalid HTML →
+            React hydration error). Поэтому панель — обычный div,
+            а «кликабельность всей карточки» делает растянутый на
+            всю панель Link-заглушка (.hero__right-stretch, inset:0,
+            z-index:1). Бейдж с телефоном — отдельная ссылка с
+            z-index:2 поверх неё: тап по бейджу звонит, тап по
+            остальной панели ведёт на /wastepaper. */}
+        <div className="hero__right">
+          <Link
+            href="/wastepaper"
+            className="hero__right-stretch"
+            aria-label="Приём макулатуры"
+          />
           <div className="hero__right-inner container-half-right">
             <div className="hero__wp-tag">
               <Recycle size={13} />
@@ -266,7 +275,7 @@ export default async function HomePage() {
               </a>
             </div>
           </div>
-        </Link>
+        </div>
       </section>
 
       {/* АКЦИИ */}
