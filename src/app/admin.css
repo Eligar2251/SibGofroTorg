@@ -7673,6 +7673,28 @@ body:has(.admin-modal-overlay) {
   border-radius: var(--adm-r-lg);
 }
 
+/* Подсказка под тулбаром — для ленточного режима */
+.qrprint__hint {
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+  border-radius: var(--adm-r-sm);
+  padding: 8px 12px;
+  line-height: 1.5;
+}
+
+.qrprint__hint strong {
+  color: var(--adm-steel);
+}
+
+/* Иконки в кнопках seg-кнопок (LayoutGrid / ScanLine) */
+.qrprint__seg-btn svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
 .qrprint__label {
   /* Квадратная этикетка — width/height через тот же var(--qr-side) */
   width: var(--qr-side);
@@ -7802,3 +7824,159 @@ body:has(.admin-modal-overlay) {
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────
+   ТЕРМОЛЕНТА 58×40 мм (Brother, Xprinter, MUNBYN, Mercury)
+   ──────────────────────────────────────────────────────────────────
+   Вертикальный стек: каждая этикетка — отдельный блок фиксированного
+   размера 58×40 мм. Между ними — пунктирная линия реза.
+   В режиме экрана — превью с тенью, в режиме печати — сплошная
+   лента без полей. @page { size: 58mm auto; margin: 0 }. */
+.qrprint__tape {
+  width: var(--tape-w);
+  margin: 0 auto;
+  background: #fff;
+  border: 1px dashed var(--adm-border-mid);
+  /* В превью — лента видна целиком, но с возможностью скролла
+     внутри длинной стопки этикеток */
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.qrprint__tape-label {
+  /* Фиксированный размер этикетки на ленте — 58×40 мм */
+  width: var(--tape-w);
+  height: var(--tape-h);
+  box-sizing: border-box;
+  padding: 1.5mm;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 0.5mm 1.5mm;
+  align-items: center;
+  background: #fff;
+  /* Пунктирная линия снизу — «линия реза» между этикетками.
+     На последней этикетке — без линии (чтобы не печатать
+     мусор после последней). */
+  border-bottom: 1px dashed #b0b0b0;
+  position: relative;
+  overflow: hidden;
+}
+
+.qrprint__tape-label:last-child {
+  border-bottom: none;
+}
+
+.qrprint__tape-qr {
+  /* QR в левом столбце, квадратный, занимает почти всю высоту */
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  width: auto;
+  height: 100%;
+  max-width: 36mm;
+  max-height: 36mm;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+}
+
+.qrprint__tape-name {
+  grid-row: 1;
+  grid-column: 2;
+  font-size: 7pt;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.1;
+  width: 100%;
+  /* Название может быть длинным — обрезаем в 2 строки */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+  align-self: end;
+}
+
+.qrprint__tape-price {
+  grid-row: 2;
+  grid-column: 2;
+  font-size: 8.5pt;
+  font-weight: 800;
+  color: #000;
+  white-space: nowrap;
+  align-self: start;
+}
+
+
+/* ── Печать на термоленте 58×40 мм ──
+   Браузер печатает ленту непрерывно: каждая этикетка — отдельный
+   «виртуальный лист» A4 без полей. page-break-after: always
+   между этикетками не нужен — нам нужно НЕПРЕРЫВНОЕ полотно,
+   которое термопринтер сам отрежет по линии. */
+@media print {
+  @page {
+    size: 58mm auto;
+    margin: 0;
+  }
+
+  .qrprint-page,
+  .qrprint {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  .no-print,
+  .admin-mobile-bar,
+  .admin-sidebar,
+  .admin-notify {
+    display: none !important;
+  }
+
+  /* В режиме печати у ленты убираем рамки превью */
+  .qrprint__tape {
+    width: 58mm;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  /* На этикетках убираем разделительную линию снизу (принтер сам
+     печатает линию реза, если она задана в настройках термоголовки;
+     мы же рисуем её в превью только для визуала). В печати
+     оставляем, но более тонкую, чтобы принтер нарисовал аккуратно.
+
+     ВАЖНО: не ставим page-break-after: always — большинство
+     термопринтеров 58 мм умеют «сплошная лента», и они сами
+     отрезают по заданной в драйвере высоте этикетки (40 мм). Если
+     ваш принтер интерпретирует каждую страницу как отдельную
+     этикетку (например, некоторые драйверы Xprinter с включённым
+     «tape mode») — добавьте в ваш .css:
+
+         .qrprint__tape-label { page-break-after: always; }
+         .qrprint__tape-label:last-child { page-break-after: auto; } */
+  .qrprint__tape-label {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border-bottom: 1px dashed #c8c8c8 !important;
+  }
+
+  /* Чтобы белый фон точно печатался */
+  .qrprint__tape-label,
+  .qrprint__tape-qr,
+  .qrprint__tape-name,
+  .qrprint__tape-price {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Скрываем СЕТКУ (sheet) — она тут не нужна, когда печатаем ленту */
+  .qrprint__sheet {
+    display: none !important;
+  }
+}
+
+/* Если у ленты нет page-break-after, печатается сплошной стек
+   меток — это и нужно для большинства 58-мм термопринтеров
+   (они интерпретируют каждую «страницу» как отдельную этикетку
+   и режут по линии). Если на конкретном принтере нужно
+   наоборот — без разрыва, добавьте в @page { page-break-after: never }. */

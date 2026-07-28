@@ -2,22 +2,28 @@
 // FILE: src/components/admin/PrintLabelsClient.tsx
 // Клиентская часть страницы массовой печати QR.
 //
-// Что делает:
-// 1) Фильтр по категории + поиск по названию/SKU.
-// 2) Чекбоксы на каждый товар (по умолчанию отмечены все видимые).
-// 3) Превью этикеток в виде сетки — каждая этикетка с QR, штрихкодом,
-//    названием, артикулом и ценой.
-// 4) Кнопка «Печатать N шт» — window.print(). Специальный @media print
-//    CSS оставляет только сетку этикеток.
-//
-// Размер этикетки в режиме печати: 4×5 см (по умолчанию). 24 этикетки
-// на листе A4. Можно переключить на 3×3 см (54 шт) или 5×7 см (12 шт).
+// Два режима печати:
+// • sheet (лист A4): квадратные этикетки 4×4 / 5×5 / 6×6 см,
+//   сетка repeat(N, M), печатаются на обычном принтере/листе.
+// • tape (лента 58×40 мм): вертикальный стек по одной этикетке
+//   на каждую позицию, для термопринтера этикеток (Brother, Xprinter,
+//   MUNBYN, Mercury и т.п.). @page { size: 58mm auto; margin: 0 } —
+//   принтер сам отрежет ленту, либо оператор нажмёт «подать»
+//   вручную. Между этикетками — пунктирная линия реза.
 // =========================================================
 
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Printer, Search, Filter, Square, CheckSquare } from "lucide-react";
+import {
+  Printer,
+  Search,
+  Filter,
+  Square,
+  CheckSquare,
+  ScanLine,
+  LayoutGrid,
+} from "lucide-react";
 
 type Product = {
   id: string;
@@ -39,7 +45,10 @@ interface Props {
   adminPath: string;
 }
 
-type LabelSize = "4x4" | "5x5" | "6x6";
+/** Режим печати. */
+type PrintMode = "sheet" | "tape";
+/** Размер этикетки на листе A4 (квадратные). */
+type SheetSize = "4x4" | "5x5" | "6x6";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -48,21 +57,31 @@ function formatBarcode(s: string): string {
   return `${s.slice(0, 3)} ${s.slice(3, 7)} ${s.slice(7, 12)} ${s.slice(12)}`;
 }
 
-// ── Размеры этикеток ──
-// По запросу пользователя: квадратные 4×4, 5×5, 6×6 см.
-// На листе A4 (210×297 мм) с полями 8 мм (см. @page margin) —
-// рабочая зона 194×281 мм. Раскладка сетки:
-//   4×4 см → 4 колонки × 6 строк = 24 шт/лист
-//   5×5 см → 3 колонки × 5 строк = 15 шт/лист
-//   6×6 см → 3 колонки × 4 строки = 12 шт/лист
-// Зазор между этикетками (gap) печатается по линиям реза.
-const LABEL_DIM: Record<
-  LabelSize,
+// ── Размеры этикеток на листе A4 ──
+// Квадратные 4×4, 5×5, 6×6 см. На листе A4 (210×297 мм) с полями
+// 8 мм (см. @page margin) — рабочая зона 194×281 мм. Раскладка:
+//   4×4 см → 4×6 = 24 шт/лист
+//   5×5 см → 3×5 = 15 шт/лист
+//   6×6 см → 3×4 = 12 шт/лист
+const SHEET_DIM: Record<
+  SheetSize,
   { sideCm: number; cols: number; rows: number; qrSize: number; bcHeight: number }
 > = {
   "4x4": { sideCm: 4, cols: 4, rows: 6, qrSize: 90, bcHeight: 30 },
   "5x5": { sideCm: 5, cols: 3, rows: 5, qrSize: 110, bcHeight: 36 },
   "6x6": { sideCm: 6, cols: 3, rows: 4, qrSize: 130, bcHeight: 42 },
+};
+
+// ── Размер этикетки на термоленте ──
+// Стандарт: 58×40 мм. QR-код занимает большую часть этикетки,
+// под ним — название товара и цена. Штрихкод на 58-мм термо-
+// принтере печатается плохо (тонкая бумага, плохое качество), и
+// по просьбе пользователя — здесь ТОЛЬКО QR + подпись. Меняется
+// через TAPE_DIM.qrSize если потребуется.
+const TAPE_DIM = {
+  widthMm: 58,
+  heightMm: 40,
+  qrSize: 130, // пикселей для API /api/admin/qr/[id]?size=...
 };
 
 export function PrintLabelsClient({
@@ -73,7 +92,8 @@ export function PrintLabelsClient({
 }: Props) {
   const [cat, setCat] = useState<string>(initialCat);
   const [q, setQ] = useState<string>(initialQ);
-  const [size, setSize] = useState<LabelSize>("4x4");
+  const [mode, setMode] = useState<PrintMode>("sheet");
+  const [size, setSize] = useState<SheetSize>("4x4");
   const [selected, setSelected] = useState<Set<string>>(() => {
     // По умолчанию отмечены все видимые и в наличии
     return new Set(
@@ -112,7 +132,7 @@ export function PrintLabelsClient({
   }
 
   const selectedProducts = filtered.filter((p) => selected.has(p.id));
-  const dim = LABEL_DIM[size];
+  const dim = mode === "sheet" ? SHEET_DIM[size] : null;
 
   // При монтировании снимаем фокус с авто-инпутов, чтобы они не
   // получали синюю рамку при печати.
@@ -177,19 +197,46 @@ export function PrintLabelsClient({
               Снять
             </button>
             <span className="qrprint__seg-divider" />
-            <span className="qrprint__seg-label">Размер этикетки:</span>
-            {(["4x4", "5x5", "6x6"] as LabelSize[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSize(s)}
-                className={`qrprint__seg-btn${
-                  size === s ? " qrprint__seg-btn--active" : ""
-                }`}
-              >
-                {s}
-              </button>
-            ))}
+            {/* ── Переключатель режима печати: лист / лента ── */}
+            <span className="qrprint__seg-label">Режим:</span>
+            <button
+              type="button"
+              onClick={() => setMode("sheet")}
+              className={`qrprint__seg-btn${
+                mode === "sheet" ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="Лист A4 с сеткой этикеток"
+            >
+              <LayoutGrid size={12} /> Лист A4
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("tape")}
+              className={`qrprint__seg-btn${
+                mode === "tape" ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="Термопринтер: лента 58×40 мм, по одной этикетке подряд"
+            >
+              <ScanLine size={12} /> Лента 58×40
+            </button>
+            {mode === "sheet" && (
+              <>
+                <span className="qrprint__seg-divider" />
+                <span className="qrprint__seg-label">Размер:</span>
+                {(["4x4", "5x5", "6x6"] as SheetSize[]).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSize(s)}
+                    className={`qrprint__seg-btn${
+                      size === s ? " qrprint__seg-btn--active" : ""
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
           <button
             type="button"
@@ -201,6 +248,15 @@ export function PrintLabelsClient({
             Печатать {selectedProducts.length} шт
           </button>
         </div>
+        {mode === "tape" && (
+          <div className="qrprint__hint">
+            <strong>Термолента 58×40 мм.</strong> Каждая этикетка
+            содержит только QR + название + цену. При печати выберите
+            в диалоге браузера ваш термопринтер (Brother / Xprinter /
+            MUNBYN / Mercury / Generic / etc.), ширину бумаги 58 мм и
+            «Без полей». Между этикетками пунктир — линия реза.
+          </div>
+        )}
       </div>
 
       <div className="qrprint__list no-print">
@@ -239,55 +295,88 @@ export function PrintLabelsClient({
         ))}
       </div>
 
-      {/* ── Лист для печати ──
-           Табличная сетка: фиксированное число колонок/рядов
-           (как в Excel), все этикетки одинакового квадратного
-           размера, gap между ними — это «линии реза» при печати.
-           Контент этикетки центрирован в своей ячейке. */}
-      <div
-        className="qrprint__sheet"
-        style={{
-          // Передаём CSS-переменные строкой: '4' → '4' (нужно для
-          // repeat()), плюс px-эквивалент для превью на экране.
-          ["--qr-cols" as string]: String(dim.cols),
-          ["--qr-side" as string]: `${dim.sideCm}cm`,
-        } as React.CSSProperties}
-      >
-        {selectedProducts.map((p) => (
-          <div key={p.id} className="qrprint__label">
-            {/* Шапка: название + цена, прижаты к верху этикетки */}
-            <div className="qrprint__label-head">
-              <div className="qrprint__label-name">{p.name}</div>
-              <div className="qrprint__label-price">
+      {/*
+       * ── Лист A4 (сетка) ──
+       * Табличная сетка: фиксированное число колонок/рядов,
+       * все этикетки одинакового квадратного размера, gap между
+       * ними — это «линии реза» при печати. Контент этикетки
+       * центрирован в своей ячейке.
+       */}
+      {mode === "sheet" && dim && (
+        <div
+          className="qrprint__sheet qrprint__sheet--grid"
+          style={{
+            ["--qr-cols" as string]: String(dim.cols),
+            ["--qr-side" as string]: `${dim.sideCm}cm`,
+          } as React.CSSProperties}
+        >
+          {selectedProducts.map((p) => (
+            <div key={p.id} className="qrprint__label">
+              <div className="qrprint__label-head">
+                <div className="qrprint__label-name">{p.name}</div>
+                <div className="qrprint__label-price">
+                  {p.price != null ? `${fmt(p.price)} ₽` : ""}
+                </div>
+              </div>
+              <div className="qrprint__label-code">
+                <img
+                  src={`/api/admin/qr/${p.id}?size=${dim.qrSize}`}
+                  alt=""
+                  className="qrprint__label-qr"
+                  width={dim.qrSize}
+                  height={dim.qrSize}
+                />
+              </div>
+              <div className="qrprint__label-code">
+                <img
+                  src={`/api/admin/qr/barcode/${p.id}`}
+                  alt=""
+                  className="qrprint__label-bc"
+                  width={dim.qrSize + 20}
+                  height={dim.bcHeight}
+                />
+                <div className="qrprint__label-ean">
+                  {formatBarcode(p.barcode)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/*
+       * ── Термолента 58×40 мм ──
+       * Вертикальный стек: каждая этикетка — отдельный блок
+       * фиксированного размера 58×40 мм, между ними пунктирная
+       * линия реза. @page { size: 58mm auto; margin: 0 } — браузер
+       * печатает всю ленту непрерывно. Содержимое: только QR +
+       * подпись с именем и ценой (компактно для узкой ленты).
+       */}
+      {mode === "tape" && (
+        <div
+          className="qrprint__tape"
+          style={{
+            ["--tape-w" as string]: `${TAPE_DIM.widthMm}mm`,
+            ["--tape-h" as string]: `${TAPE_DIM.heightMm}mm`,
+          } as React.CSSProperties}
+        >
+          {selectedProducts.map((p, i) => (
+            <div key={p.id} className="qrprint__tape-label">
+              <img
+                src={`/api/admin/qr/${p.id}?size=${TAPE_DIM.qrSize}`}
+                alt=""
+                className="qrprint__tape-qr"
+                width={TAPE_DIM.qrSize}
+                height={TAPE_DIM.qrSize}
+              />
+              <div className="qrprint__tape-name">{p.name}</div>
+              <div className="qrprint__tape-price">
                 {p.price != null ? `${fmt(p.price)} ₽` : ""}
               </div>
             </div>
-            {/* QR-код — главный элемент, центрирован */}
-            <div className="qrprint__label-code">
-              <img
-                src={`/api/admin/qr/${p.id}?size=${dim.qrSize}`}
-                alt=""
-                className="qrprint__label-qr"
-                width={dim.qrSize}
-                height={dim.qrSize}
-              />
-            </div>
-            {/* Штрихкод — прижат к низу, центрирован */}
-            <div className="qrprint__label-code">
-              <img
-                src={`/api/admin/qr/barcode/${p.id}`}
-                alt=""
-                className="qrprint__label-bc"
-                width={dim.qrSize + 20}
-                height={dim.bcHeight}
-              />
-              <div className="qrprint__label-ean">
-                {formatBarcode(p.barcode)}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
