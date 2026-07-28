@@ -2,7 +2,10 @@
 // FILE: src/app/[adminPath]/products/new/page.tsx
 // =========================================================
 
-import { getAllCategories } from "@/lib/supabase-queries";
+import {
+  getAllCategories,
+  getFeaturedProductOrderIds,
+} from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
 import { notFound } from "next/navigation";
 
@@ -18,7 +21,10 @@ export default async function NewProductPage({
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
-  const categories = await getAllCategories();
+  const [categories, featuredOrderIds] = await Promise.all([
+    getAllCategories(),
+    getFeaturedProductOrderIds(),
+  ]);
   const serializedCategories = categories.map((cat) => ({
     id: cat.id,
     name: cat.name,
@@ -34,7 +40,10 @@ export default async function NewProductPage({
   return (
     <div>
       <h1 className="admin-h1">Добавить товар</h1>
-      <ProductFormClient categories={serializedCategories} />
+      <ProductFormClient
+        categories={serializedCategories}
+        featuredOrderIds={featuredOrderIds}
+      />
     </div>
   );
 }

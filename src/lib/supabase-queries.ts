@@ -34,6 +34,8 @@ import {
   getCachedVariantsMap,
 } from "./variants";
 
+export const FEATURED_PRODUCTS_ORDER_SETTING_KEY = "featured_products_order";
+
 // ─── Helpers ───────────────────────────────────────────────
 
 function slugify(text: string): string {
@@ -65,6 +67,7 @@ function mapProductRow(row: any): FirestoreProduct {
     categoryId: row.category_id || null,
     sku: row.sku || null,
     description: row.description || null,
+    featuredOrder: row.sort_order != null ? Number(row.sort_order) : null,
     price: row.price != null ? Number(row.price) : null,
     priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
     minWholesaleQty: row.min_wholesale_qty != null ? Number(row.min_wholesale_qty) : null,
@@ -314,6 +317,45 @@ function getProductDims(p: FirestoreProduct): number[] {
   return dims;
 }
 
+function parseFeaturedProductOrder(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.map((x) => String(x || "").trim()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+export async function getFeaturedProductOrderIds(): Promise<string[]> {
+  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  return parseFeaturedProductOrder(settings[FEATURED_PRODUCTS_ORDER_SETTING_KEY]);
+}
+
+function featuredRankFor(product: FirestoreProduct, orderMap: Map<string, number>): number {
+  const bySettings = orderMap.get(product.id);
+  if (bySettings != null) return bySettings;
+  if (product.featuredOrder != null && Number.isFinite(product.featuredOrder)) {
+    return 10_000 + Number(product.featuredOrder);
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function defaultProductCompare(a: FirestoreProduct, b: FirestoreProduct, orderMap: Map<string, number>): number {
+  if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
+
+  const rankA = featuredRankFor(a, orderMap);
+  const rankB = featuredRankFor(b, orderMap);
+  if (rankA !== rankB) return rankA - rankB;
+
+  const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  if (createdA !== createdB) return createdB - createdA;
+
+  return a.name.localeCompare(b.name, "ru");
+}
+
 export async function getProducts(opts: {
   categoryId?: string;
   search?: string;
@@ -360,6 +402,14 @@ export async function getProducts(opts: {
       .map((x) => x.p);
   }
 
+  const featuredOrderIds =
+    opts.featuredOnly || !opts.sortBy || opts.sortBy === "default"
+      ? await getFeaturedProductOrderIds()
+      : [];
+  const featuredOrderMap = new Map(
+    featuredOrderIds.map((id, index) => [id, index] as const)
+  );
+
   switch (opts.sortBy) {
     case "price_asc":
       products.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
@@ -378,10 +428,7 @@ export async function getProducts(opts: {
       });
       break;
     default:
-      products.sort((a, b) => {
-        if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
-        return 0;
-      });
+      products.sort((a, b) => defaultProductCompare(a, b, featuredOrderMap));
   }
 
   if (opts.limitCount) products = products.slice(0, opts.limitCount);

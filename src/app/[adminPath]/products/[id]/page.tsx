@@ -3,7 +3,11 @@
 // =========================================================
 
 import { notFound } from "next/navigation";
-import { getProductById, getAllCategories } from "@/lib/supabase-queries";
+import {
+  getProductById,
+  getAllCategories,
+  getFeaturedProductOrderIds,
+} from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
@@ -21,10 +25,20 @@ export default async function EditProductPage({
   const product = await getProductById(id);
   if (!product) notFound();
 
-  const categories = await getAllCategories();
+  const [categories, featuredOrderIds] = await Promise.all([
+    getAllCategories(),
+    getFeaturedProductOrderIds(),
+  ]);
 
   const serializedProduct = {
     ...product,
+    featuredOrder:
+      product.isFeatured
+        ? (() => {
+            const idx = featuredOrderIds.findIndex((itemId) => itemId === product.id);
+            return idx >= 0 ? idx + 1 : null;
+          })()
+        : null,
     createdAt:
       typeof product.createdAt === "string"
         ? product.createdAt
@@ -57,6 +71,7 @@ export default async function EditProductPage({
       <ProductFormClient
         categories={serializedCategories}
         product={serializedProduct}
+        featuredOrderIds={featuredOrderIds}
       />
     </div>
   );
