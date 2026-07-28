@@ -703,8 +703,21 @@ function cleanItems(rawItems: any[]): StockDocItem[] {
       } else {
         lineTotal = round2(price * quantity);
       }
+      // Идентификатор варианта: если не передан (старые заявки) — null,
+      // и тогда «товар без варианта». Имя варианта — snapshot, чтобы при
+      // переименовании в админке в учёте осталось то, что заказывал клиент.
+      const variantId =
+        it.variantId == null || it.variantId === ""
+          ? null
+          : String(it.variantId);
+      const variantName =
+        it.variantName == null || it.variantName === ""
+          ? null
+          : String(it.variantName).slice(0, 200);
       return {
         productId: String(it.productId || ""),
+        variantId,
+        variantName,
         name: String(it.name || "").slice(0, 300),
         sku: it.sku ? String(it.sku).slice(0, 60) : null,
         quantity,
@@ -2445,6 +2458,17 @@ export async function convertOrderToDeal(orderId: string): Promise<{ dealId: str
   const items: StockDocItem[] = Array.isArray(order.items)
     ? order.items.map((i: any) => ({
         productId: String(i.productId || ""),
+        // variantId/variantName — чтобы склад и перевозки учитывали
+        // конкретный вариант (цвет/размер) и не «съезжали» с остатка
+        // при переименовании в админке.
+        variantId:
+          i.variantId == null || i.variantId === ""
+            ? null
+            : String(i.variantId),
+        variantName:
+          i.variantName == null || i.variantName === ""
+            ? null
+            : String(i.variantName).slice(0, 200),
         name: String(i.name || "").slice(0, 200),
         sku: i.sku ? String(i.sku).slice(0, 80) : "—",
         quantity: Math.max(0, Math.min(100_000, Number(i.quantity) || 0)),
@@ -2714,29 +2738,82 @@ export async function updateSupplierPriceList(
 
 // ─── Customer cabinet operations ───────────────────────────
 
-async function buildOrderItemsFromProducts(rawItems: { productId?: string; quantity?: number }[]): Promise<StockDocItem[]> {
+async function buildOrderItemsFromProducts(
+  rawItems: {
+    productId?: string;
+    quantity?: number;
+    variantId?: string | null;
+    variantName?: string | null;
+  }[]
+): Promise<StockDocItem[]> {
   const db = getAdminDb();
-  const merged = new Map<string, number>();
+  // Ключ слияния одинаковых строк: один и тот же товар в разных
+  // вариантах — это разные позиции.
+  type Key = string;
+  const merged = new Map<Key, { productId: string; quantity: number; variantId: string | null; variantName: string | null }>();
   for (const item of Array.isArray(rawItems) ? rawItems : []) {
     const productId = String(item.productId || "").trim();
     const quantity = Math.max(0, Math.min(100_000, Number(item.quantity) || 0));
     if (!productId || quantity <= 0) continue;
-    merged.set(productId, (merged.get(productId) || 0) + quantity);
+    const variantId =
+      item.variantId == null || item.variantId === ""
+        ? null
+        : String(item.variantId);
+    const variantName =
+      item.variantName == null || item.variantName === ""
+        ? null
+        : String(item.variantName).slice(0, 200);
+    const key: Key = `${productId}::${variantId || ""}`;
+    const prev = merged.get(key);
+    if (prev) {
+      prev.quantity += quantity;
+    } else {
+      merged.set(key, { productId, quantity, variantId, variantName });
+    }
   }
   const result: StockDocItem[] = [];
-  for (const [productId, quantity] of merged) {
+  for (const { productId, quantity, variantId, variantName } of merged.values()) {
     const { data: product } = await db.from("products").select("*").eq("id", productId).maybeSingle();
     if (!product || product.is_visible === false) continue;
-    const price = getProductEffectivePrice({
+    // Цена/имя/SKU варианта (если выбран) подтягиваются с варианта.
+    let variantPrice: number | null = null;
+    let variantPriceWholesale: number | null = null;
+    let variantSku: string | null = product.sku ? String(product.sku) : null;
+    let variantImage: string | null = product.image_url || null;
+    if (variantId) {
+      const { data: variant } = await db
+        .from("product_variants")
+        .select("price, price_wholesale, sku, image_url")
+        .eq("id", variantId)
+        .maybeSingle();
+      if (variant) {
+        if (variant.price != null) variantPrice = Number(variant.price);
+        if (variant.price_wholesale != null) variantPriceWholesale = Number(variant.price_wholesale);
+        if (variant.sku) variantSku = String(variant.sku);
+        if (variant.image_url) variantImage = String(variant.image_url);
+      }
+    }
+    const basePrice = getProductEffectivePrice({
       price: product.price != null ? Number(product.price) : null,
       discountType: product.discount_type ?? null,
       discountValue: product.discount_value ?? null,
     });
-    const safePrice = Math.max(0, Number(price) || 0);
+    const safePrice = Math.max(0, Number(variantPrice ?? basePrice) || 0);
+    // Имя в строке заказа = имя товара + имя варианта (если есть).
+    const nameWithVariant = variantName
+      ? `${String(product.name || "Товар")} (${variantName})`.slice(0, 200)
+      : String(product.name || "Товар").slice(0, 200);
     result.push({
-      productId, name: String(product.name || "Товар").slice(0, 200),
-      sku: product.sku ? String(product.sku).slice(0, 80) : "—",
-      quantity, price: safePrice, lineTotal: round2(quantity * safePrice),
+      productId,
+      variantId,
+      variantName,
+      name: nameWithVariant,
+      sku: variantSku ? String(variantSku).slice(0, 80) : "—",
+      quantity,
+      price: safePrice,
+      lineTotal: round2(quantity * safePrice),
+      // Доп. поля ниже — необязательные, но иногда пригодятся в UI учёта.
+      // Они уже не сохраняются в БД, если там нет соответствующих колонок.
     });
   }
   return result;
@@ -2744,7 +2821,15 @@ async function buildOrderItemsFromProducts(rawItems: { productId?: string; quant
 
 export async function reviseWebsiteOrderByCustomer(
   orderId: string,
-  data: { items: { productId?: string; quantity?: number }[]; comment?: string | null }
+  data: {
+    items: {
+      productId?: string;
+      quantity?: number;
+      variantId?: string | null;
+      variantName?: string | null;
+    }[];
+    comment?: string | null;
+  }
 ): Promise<{ totalSum: number; paidTotal: number; additionalDue: number }> {
   const db = getAdminDb();
   const { data: order } = await db.from("orders").select("*").eq("id", orderId).single();
@@ -2784,7 +2869,17 @@ export async function reviseWebsiteOrderByCustomer(
   if (!dealId) additionalDue = total;
 
   await db.from("orders").update({
-    items: items.map(({ productId, name, sku, quantity, price }) => ({ productId, name, sku: sku ?? "—", quantity, price })),
+    // variantId/variantName сохраняем в заявке — иначе при следующем
+    // конвертировании в учёт потеряем «цвет/размер» клиента.
+    items: items.map(({ productId, name, sku, quantity, price, variantId, variantName }) => ({
+      productId,
+      name,
+      sku: sku ?? "—",
+      quantity,
+      price,
+      variantId: variantId ?? null,
+      variantName: variantName ?? null,
+    })),
     total_sum: total, status: "new", close_reason: null,
     comment: comment || order.comment || null,
     customer_edited_at: new Date().toISOString(),

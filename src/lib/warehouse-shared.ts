@@ -7,6 +7,10 @@ export { includedVat, VAT_RATE, VAT_RATES } from "./vat";
 
 export interface StockDocItem {
   productId: string;
+  /** id варианта (если выбран в заказе/поступлении). NULL — без варианта. */
+  variantId?: string | null;
+  /** Snapshot имени варианта (на случай, если админ переименует). */
+  variantName?: string | null;
   name: string;
   sku?: string | null;
   quantity: number;

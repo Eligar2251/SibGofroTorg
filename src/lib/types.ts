@@ -269,6 +269,11 @@ export function getEffectiveVariantPrice(
 
 export interface OrderItem {
   productId: string;
+  /** id варианта (если выбран). NULL — товар без вариантов */
+  variantId?: string | null;
+  /** Snapshot имени варианта (для бэкенда, чтобы не зависеть от
+   *  переименований в админке). */
+  variantName?: string | null;
   name: string;
   sku?: string | null;
   quantity: number;
