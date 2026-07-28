@@ -2155,22 +2155,33 @@ export const getCashCollections = () =>
     tags: ["warehouse-cash-collections"],
   })();
 
-/** Текущий остаток кассы по серверным данным (правило getBankSummary). */
+/**
+ * Текущий остаток кассы по серверным данным.
+ *
+ * ВАЖНО: остаток считается ровно одной функцией — getBankSummary из
+ * warehouse-shared. Здесь намеренно НЕТ собственной копии формулы.
+ *
+ * История бага (из-за чего касса уходила в минус):
+ * раньше эта функция дублировала расчёт и вычитала ВСЕ выплаченные
+ * налом зарплаты, тогда как getBankSummary (по которой считается число
+ * в админке) пропускает зарплаты, помеченные тегом «[Вне баланса]».
+ * Такие выплаты идут в обход кассы: они показываются в разделе ЗП, но
+ * на текущий остаток влиять не должны.
+ *
+ * В результате две формулы расходились ровно на сумму «внебалансовых»
+ * зарплат: в интерфейсе касса показывала, например, 7981 ₽, а сервер
+ * при сдаче видел −35269 ₽ и блокировал инкассацию сообщением
+ * «Остаток кассы отрицательный — учёт разошёлся». Минуса в данных при
+ * этом не было: расходилась только арифметика.
+ *
+ * Пока расчёт живёт в одном месте, такое разойтись не может.
+ */
 function computeCashBalance(
   payments: BankPayment[],
   salaries: Salary[],
   collections: CashCollectionRow[]
 ): number {
-  let cashBalance = 0;
-  for (const p of payments) {
-    if (!p.isPaid || p.excludeFromBalance) continue;
-    const amt = p.direction === "incoming" ? p.amount : -p.amount;
-    if (p.type === "cash") cashBalance += amt;
-  }
-  for (const s of salaries) {
-    if (s.isPaid && s.source === "cash") cashBalance -= s.amount;
-  }
-  for (const c of collections) cashBalance -= c.amount;
+  const { cashBalance } = getBankSummary(payments, salaries, collections);
   return Math.round(cashBalance * 100) / 100;
 }
 
@@ -2340,6 +2351,11 @@ export async function collectCash(
   if (cashBalance < -0.009) {
     // Отрицательная касса = учёт разошёлся (обычно приход, покрытый старой
     // сдачей, стал безналичным). Новая сдача только усугубит расхождение.
+    //
+    // Остаток считается той же функцией, что и число в админке
+    // (getBankSummary), поэтому расхождение «в интерфейсе плюс, а при
+    // сдаче минус» здесь уже невозможно — минус означает реальную
+    // проблему в данных. Для диагностики: supabase/CHECK_cash_balance.sql.
     throw new Error(
       `Остаток кассы отрицательный (${cashBalance} ₽) — учёт разошёлся. ` +
         "Сдача заблокирована: сначала проверьте типы платежей и суммы прошлых сдач."
