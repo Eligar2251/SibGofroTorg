@@ -36,9 +36,10 @@ function projectForScan(p: any) {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
-  const code = (params.code || "").trim();
+  const { code: codeParam } = await params;
+  const code = (codeParam || "").trim();
   if (!code) {
     return NextResponse.json(
       { error: "Пустой код", notFound: true },

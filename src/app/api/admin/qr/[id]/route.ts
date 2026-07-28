@@ -12,9 +12,9 @@ import { computeQrSlug, qrTargetUrl } from "@/lib/qr";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
   const product = await getProductById(id).catch(() => null);
   if (!product) {
     return new NextResponse("Product not found", { status: 404 });

@@ -2,18 +2,24 @@
 // FILE: src/app/api/admin/qr/barcode/[id]/route.ts
 // PNG штрихкод EAN-13 для одного товара. GET /api/admin/qr/barcode/{id}
 // Используется страницей массовой печати и компонентом превью.
+//
+// Реализация на bwip-js вместо jsbarcode:
+//  • jsbarcode v3 написан для браузера (canvas/document) и падает
+//    в Node SSR-роуте с "ReferenceError: document is not defined".
+//  • bwip-js работает одинаково в Node и в браузере, без DOM.
+//  • Один пакет — меньше bundle-size, чем тянуть DOM-эмуляцию.
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import JsBarcode from "jsbarcode";
+import bwipjs from "bwip-js";
 import { getProductById } from "@/lib/supabase-queries";
 import { computeBarcode } from "@/lib/qr";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
   const product = await getProductById(id).catch(() => null);
   if (!product) {
     return new NextResponse("Product not found", { status: 404 });
@@ -22,21 +28,17 @@ export async function GET(
   const barcode = product.barcode || computeBarcode(product.id);
 
   try {
-    // JsBarcode v3 в Node возвращает data-URL строкой
-    // ("data:image/png;base64,XXXX..."). Извлекаем base64.
-    const dataUrl = JsBarcode({
-      format: "EAN13",
-      value: barcode,
-      width: 2,
-      height: 60,
-      displayValue: true,
-      fontSize: 14,
-      margin: 4,
-      background: "#ffffff",
-      lineColor: "#1a1a1a",
-    }) as unknown as string;
-    const b64 = dataUrl.replace(/^data:image\/png;base64,/, "");
-    const png = Buffer.from(b64, "base64");
+    // bwip-js: toBuffer({ bcid: "ean13", text: ..., scale, height, includetext })
+    // — возвращает Promise<Buffer> с PNG.
+    const png = await bwipjs.toBuffer({
+      bcid: "ean13",
+      text: barcode,
+      scale: 2,
+      height: 14, // ~14 мм при scale=2
+      includetext: true,
+      textxalign: "center",
+      textsize: 8,
+    });
 
     return new NextResponse(new Uint8Array(png), {
       status: 200,
