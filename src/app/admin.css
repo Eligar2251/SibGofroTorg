@@ -5352,6 +5352,24 @@ body:has(.admin-modal-overlay) {
   border-top: 2px solid var(--adm-border-mid);
 }
 
+/* Экспорт в PNG: sticky-колонки и тени мешают рендеру canvas,
+   поэтому на время захвата отключаем fixed/sticky-поведение. */
+.whsal-export-mode .whsal-th--name,
+.whsal-export-mode .whsal-td--name,
+.whsal-export-mode .whsal-th--accrued,
+.whsal-export-mode .whsal-td--accrued,
+.whsal-export-mode .whsal-th--debt,
+.whsal-export-mode .whsal-td--debt,
+.whsal-export-mode .whsal-th--received,
+.whsal-export-mode .whsal-td--received,
+.whsal-export-mode .whsal-th--rest,
+.whsal-export-mode .whsal-td--rest {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  box-shadow: none !important;
+}
+
 /* ── Ячейка ФИО ── */
 .whsal-td--name {
   text-align: left;
@@ -5534,6 +5552,19 @@ body:has(.admin-modal-overlay) {
 .whsal-day--rent .whsal-day-sum {
   color: var(--adm-steel);
   font-weight: 700;
+}
+
+.whsal-day--scheduled {
+  background: #e8eef6;
+  box-shadow: inset 0 0 0 1px var(--adm-steel-line);
+}
+
+.whsal-day--scheduled:hover {
+  box-shadow: inset 0 0 0 2px var(--adm-steel);
+}
+
+.whsal-day--scheduled .whsal-day-mark {
+  color: var(--adm-steel);
 }
 
 .whsal-day-sum {

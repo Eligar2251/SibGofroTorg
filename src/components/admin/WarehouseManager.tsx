@@ -130,6 +130,7 @@ type BankEntry =
       source: "cash" | "bank";
       comment?: string | null;
       excludeFromBalance?: boolean;
+      createdAt?: string | null;
       salary: Salary;
     };
 
@@ -426,6 +427,7 @@ export function WarehouseManager({
       source: salary.source,
       comment: stripSalaryMetaTags(salary.comment),
       excludeFromBalance: isSalaryExcludedFromBalance(salary.comment),
+      createdAt: salary.createdAt || salary.paidAt || salary.date,
       salary,
     }));
     let list: BankEntry[] = [
@@ -452,11 +454,26 @@ export function WarehouseManager({
       return true;
     });
 
-    list.sort((a, b) =>
-      bsort === "asc"
-        ? a.date.localeCompare(b.date) || a.number - b.number
-        : b.date.localeCompare(a.date) || b.number - a.number
-    );
+    const createdKey = (entry: BankEntry) =>
+      entry.entryKind === "payment"
+        ? entry.createdAt || entry.updatedAt || entry.paidAt || entry.date
+        : entry.createdAt || entry.salary.paidAt || entry.salary.date;
+
+    list.sort((a, b) => {
+      const byDate = bsort === "asc"
+        ? a.date.localeCompare(b.date)
+        : b.date.localeCompare(a.date);
+      if (byDate !== 0) return byDate;
+
+      const byCreated = bsort === "asc"
+        ? createdKey(a).localeCompare(createdKey(b))
+        : createdKey(b).localeCompare(createdKey(a));
+      if (byCreated !== 0) return byCreated;
+
+      return bsort === "asc"
+        ? String(a.id).localeCompare(String(b.id))
+        : String(b.id).localeCompare(String(a.id));
+    });
     return list;
   }, [payments, salaries, bankSub, bq, bdir, bsort]);
 
