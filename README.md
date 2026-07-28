@@ -20,7 +20,7 @@
 - **Команда запуска (Start Command)**: `node .next/standalone/server.js`
 - **Порт (Port)**: `3000`
 
-> Если в Timeweb используется автодетект пакетов (Cloudpack / Nixpacks), обязательно укажите именно `pnpm`: в репозитории исторически есть и `package-lock.json`, и `pnpm-lock.yaml`, из-за чего платформа может выбрать более медленный `npm install`.
+> Если в Timeweb используется автодетект пакетов (Cloudpack / Nixpacks), в репозитории уже добавлен `nixpacks.toml`, который принудительно включает `pnpm` и запускает standalone-рантайм. Это нужно потому, что исторически в проекте есть и `package-lock.json`, и `pnpm-lock.yaml`, а без явной конфигурации платформа может выбрать более медленный `npm install`.
 
 ---
 
