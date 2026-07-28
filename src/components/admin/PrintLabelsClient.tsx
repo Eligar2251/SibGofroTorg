@@ -17,6 +17,11 @@
 //
 // Правило @page зависит от режима, поэтому оно НЕ в admin.css,
 // а инъектируется отсюда тегом <style> (см. ниже в разметке).
+//
+// Состав этикетки (в обоих режимах) настраивается тумблерами
+// «На этикетке»: Название / Цена / Размеры — можно оставить
+// один голый QR. Размеры берутся из карточки товара (Д×Ш[×В] мм)
+// и печатаются только там, где они заданы.
 // =========================================================
 
 "use client";
@@ -30,6 +35,9 @@ import {
   CheckSquare,
   ScanLine,
   LayoutGrid,
+  Type,
+  Tag,
+  Ruler,
 } from "lucide-react";
 
 type Product = {
@@ -42,6 +50,10 @@ type Product = {
   barcode: string;
   qrSlug: string;
   categoryId: string | null;
+  dimensionLength: number | null;
+  dimensionWidth: number | null;
+  dimensionHeight: number | null;
+  dimensionUnit: string | null;
 };
 
 interface Props {
@@ -62,6 +74,18 @@ const fmt = (n: number) => n.toLocaleString("ru-RU");
 function formatBarcode(s: string): string {
   if (s.length !== 13) return s;
   return `${s.slice(0, 3)} ${s.slice(3, 7)} ${s.slice(7, 12)} ${s.slice(12)}`;
+}
+
+/**
+ * Размеры товара для этикетки: «Д×Ш[×В] мм», как на странице товара
+ * в каталоге (catalog/product/[slug]). Нужны минимум Д и Ш.
+ */
+function formatDims(p: Product): string | null {
+  const L = p.dimensionLength;
+  const W = p.dimensionWidth;
+  if (!L || !W) return null;
+  const H = p.dimensionHeight;
+  return `${L}×${W}${H ? `×${H}` : ""} ${p.dimensionUnit || "мм"}`;
 }
 
 // ── Размеры этикеток на листе A4 ──
@@ -114,6 +138,12 @@ export function PrintLabelsClient({
   const [q, setQ] = useState<string>(initialQ);
   const [mode, setMode] = useState<PrintMode>("sheet");
   const [size, setSize] = useState<SheetSize>("4x4");
+  // ── Что печатать на этикетке ПОМИМО QR-кода ──
+  // Название / цена / размеры — включаются отдельными тумблерами.
+  // По умолчанию всё включено (как было раньше).
+  const [showName, setShowName] = useState(true);
+  const [showPrice, setShowPrice] = useState(true);
+  const [showSizes, setShowSizes] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(() => {
     // По умолчанию отмечены все видимые и в наличии
     return new Set(
@@ -263,6 +293,42 @@ export function PrintLabelsClient({
               </>
             )}
           </div>
+          {/* ── Состав этикетки: что печатать ПОМИМО QR ──
+              Три независимых тумблера. Работают для обоих режимов
+              (лист A4 и термоэтикетка 40×60). */}
+          <div className="qrprint__seg" role="group" aria-label="Что печатать помимо QR-кода">
+            <span className="qrprint__seg-label">На этикетке:</span>
+            <button
+              type="button"
+              onClick={() => setShowName((v) => !v)}
+              className={`qrprint__seg-btn${
+                showName ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="Название товара на этикетке"
+            >
+              <Type size={12} /> Название
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPrice((v) => !v)}
+              className={`qrprint__seg-btn${
+                showPrice ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="Цена на этикетке"
+            >
+              <Tag size={12} /> Цена
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSizes((v) => !v)}
+              className={`qrprint__seg-btn${
+                showSizes ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="Габариты Д×Ш×В на этикетке (печатаются, только если размеры заданы в карточке товара)"
+            >
+              <Ruler size={12} /> Размеры
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => window.print()}
@@ -340,14 +406,28 @@ export function PrintLabelsClient({
             ["--qr-side" as string]: `${dim.sideCm}cm`,
           } as React.CSSProperties}
         >
-          {selectedProducts.map((p) => (
+          {selectedProducts.map((p) => {
+            const dims = showSizes ? formatDims(p) : null;
+            return (
             <div key={p.id} className="qrprint__label">
+              {/* Шапка этикетки: только выбранные тумблерами поля.
+                  Если всё выключено — шапку не рисуем вовсе (QR
+                  и штрихкод распределятся равномерно). */}
+              {(showName || (showPrice && p.price != null) || dims) && (
               <div className="qrprint__label-head">
-                <div className="qrprint__label-name">{p.name}</div>
-                <div className="qrprint__label-price">
-                  {p.price != null ? `${fmt(p.price)} ₽` : ""}
-                </div>
+                {showName && (
+                  <div className="qrprint__label-name">{p.name}</div>
+                )}
+                {showPrice && p.price != null && (
+                  <div className="qrprint__label-price">
+                    {`${fmt(p.price)} ₽`}
+                  </div>
+                )}
+                {dims && (
+                  <div className="qrprint__label-dims">{dims}</div>
+                )}
               </div>
+              )}
               <div className="qrprint__label-code">
                 <img
                   src={`/api/admin/qr/${p.id}?size=${dim.qrSize}`}
@@ -370,7 +450,8 @@ export function PrintLabelsClient({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -393,11 +474,24 @@ export function PrintLabelsClient({
             ["--tape-h" as string]: `${TAPE_DIM.heightMm}mm`,
           } as React.CSSProperties}
         >
-          {selectedProducts.map((p) => (
-            <div key={p.id} className="qrprint__tape-label">
-              <div className="qrprint__tape-name" title={p.name}>
-                {p.name}
-              </div>
+          {selectedProducts.map((p) => {
+            const dims = showSizes ? formatDims(p) : null;
+            // Включены ВСЕ три поля (название+цена+размеры) — QR
+            // чуть уменьшаем (compact), чтобы всё гарантированно
+            // уместилось на 40 мм высоты и этикетки не «поползли».
+            const compact = showName && showPrice && !!dims;
+            return (
+            <div
+              key={p.id}
+              className={`qrprint__tape-label${
+                compact ? " qrprint__tape-label--compact" : ""
+              }`}
+            >
+              {showName && (
+                <div className="qrprint__tape-name" title={p.name}>
+                  {p.name}
+                </div>
+              )}
               <img
                 src={`/api/admin/qr/${p.id}?size=${TAPE_DIM.qrSize}`}
                 alt=""
@@ -405,11 +499,19 @@ export function PrintLabelsClient({
                 width={TAPE_DIM.qrSize}
                 height={TAPE_DIM.qrSize}
               />
-              <div className="qrprint__tape-price">
-                {p.price != null ? `${fmt(p.price)} ₽` : ""}
-              </div>
+              {showPrice && p.price != null && (
+                <div className="qrprint__tape-price">
+                  {`${fmt(p.price)} ₽`}
+                </div>
+              )}
+              {dims && (
+                <div className="qrprint__tape-dims" title={dims}>
+                  {dims}
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

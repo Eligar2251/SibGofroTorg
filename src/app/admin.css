@@ -7743,6 +7743,16 @@ body:has(.admin-modal-overlay) {
   white-space: nowrap;
 }
 
+/* Габариты товара на этикетке листа («400×300×200 мм») — печатается,
+   если включён тумблер «Размеры» и размеры заданы в карточке. */
+.qrprint__label-dims {
+  font-size: 6.5pt;
+  font-weight: 600;
+  color: #000;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
 .qrprint__label-code {
   width: 100%;
   display: flex;
@@ -7907,6 +7917,30 @@ body:has(.admin-modal-overlay) {
   line-height: 1.1;
 }
 
+/* Габариты на термоэтикетке — самой мелкой строкой под ценой */
+.qrprint__tape-dims {
+  width: 100%;
+  font-size: 6.5pt;
+  font-weight: 600;
+  color: #000;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Компактная раскладка: выбраны ВСЕ поля (название+цена+размеры).
+   QR уменьшаем до 22 мм, чтобы суммарная высота гарантированно
+   уместилась в 40 мм этикетки (иначе этикетки «поползут»). */
+.qrprint__tape-label--compact {
+  gap: 0.6mm;
+}
+
+.qrprint__tape-label--compact .qrprint__tape-qr {
+  width: 22mm;
+  height: 22mm;
+}
+
 
 /* ── Печать на термоэтикетке 40×60 мм (альбомная, Xprinter XP-365B) ──
    Формула «1 этикетка = 1 страница = 1 QR по центру»:
@@ -7969,7 +8003,8 @@ body:has(.admin-modal-overlay) {
   body.qrprint-mode .qrprint__tape-label,
   body.qrprint-mode .qrprint__tape-qr,
   body.qrprint-mode .qrprint__tape-name,
-  body.qrprint-mode .qrprint__tape-price {
+  body.qrprint-mode .qrprint__tape-price,
+  body.qrprint-mode .qrprint__tape-dims {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
