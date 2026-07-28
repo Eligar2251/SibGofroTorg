@@ -19,6 +19,16 @@ export async function POST(request: NextRequest) {
     const items = rawItems
       .map((it: any) => ({
         productId: String(it?.productId || "").trim(),
+        // variantId/variantName: если заданы — обновляем остаток варианта;
+        // иначе — основной остаток товара.
+        variantId:
+          it?.variantId == null || it.variantId === ""
+            ? null
+            : String(it.variantId),
+        variantName:
+          it?.variantName == null || it.variantName === ""
+            ? null
+            : String(it.variantName).slice(0, 200),
         name: it?.name ? String(it.name).slice(0, 300) : undefined,
         accountedQty: Math.floor(Number(it?.accountedQty) || 0),
         actualQty: Math.max(0, Math.floor(Number(it?.actualQty) || 0)),

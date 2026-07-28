@@ -52,7 +52,9 @@ export type DeliveryRow = {
   deliveryNote?: string | null;
   deliveryDriverId?: string | null;
   deliveryDriverName?: string | null;
-  items?: { productId?: string; name: string; quantity: number }[] | null;
+  items?:
+    | { productId?: string; name: string; quantity: number; variantName?: string | null }[]
+    | null;
   deliveryItems?: { productId: string; name: string; quantity: number }[] | null;
   totalSum?: number | null;
   createdAt?: string | null;
@@ -702,10 +704,16 @@ export function DeliveriesManager({
                                 const pid = it.productId || it.name;
                                 const delQty = (order.deliveryItems || []).find((d) => d.productId === pid)?.quantity || 0;
                                 const remaining = it.quantity - delQty;
+                                // Имя варианта (если есть) подмешиваем к названию —
+                                // иначе водитель/курьер видит просто «Ящик 670»
+                                // и не знает, какого цвета брать.
+                                const fullName = it.variantName
+                                  ? `${it.name} (${it.variantName})`
+                                  : it.name;
                                 if (delQty > 0 && remaining > 0) {
-                                  return <span key={pid} style={{ marginRight: 8 }}><del style={{ color: "#999" }}>{it.quantity}</del> <strong style={{ color: "var(--adm-kraft)" }}>{remaining}</strong> {it.name}</span>;
+                                  return <span key={pid} style={{ marginRight: 8 }}><del style={{ color: "#999" }}>{it.quantity}</del> <strong style={{ color: "var(--adm-kraft)" }}>{remaining}</strong> {fullName}</span>;
                                 }
-                                return <span key={pid} style={{ marginRight: 8 }}>{it.name} × {it.quantity}</span>;
+                                return <span key={pid} style={{ marginRight: 8 }}>{fullName} × {it.quantity}</span>;
                               })}
                             {order.items.length > 4 ? ` · +${order.items.length - 4}` : ""}
                           </span>

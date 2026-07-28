@@ -6357,6 +6357,15 @@ body:has(.admin-modal-overlay) {
   font-size: 11.5px;
 }
 
+/* Пометка варианта (цвет/размер) в строке электронного заполнения —
+   зелёная, чтобы было видно, что это отдельная позиция для
+   конкретного варианта. */
+.rev-fill-row__variant {
+  font-weight: 600;
+  color: var(--adm-pine);
+  font-size: 11.5px;
+}
+
 .rev-fill-row__acc {
   text-align: right;
   font-variant-numeric: tabular-nums;

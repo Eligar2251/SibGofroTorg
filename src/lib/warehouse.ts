@@ -614,6 +614,14 @@ export async function setWarehouseStock(productId: string, quantity: number): Pr
 
 export interface StockRevisionItem {
   productId: string;
+  /**
+   * id варианта (если у товара есть варианты и ревизия идёт по
+   * конкретному варианту — например, «красный 5 шт.», «XL 2 шт.»).
+   * NULL — пересчитываем основной остаток товара (без вариантов).
+   */
+  variantId?: string | null;
+  /** Имя варианта — для записи в журнал ревизии. */
+  variantName?: string | null;
   name?: string;
   /** Остаток по учёту на момент печати бланка */
   accountedQty: number;
@@ -628,14 +636,19 @@ export interface StockRevisionItem {
  * последней инстанции. Возвращаем список реальных изменений для журнала
  * действий, сравнивая с текущим значением в БД, а не с тем, что было
  * напечатано в бланке (остаток мог измениться, пока шёл пересчёт).
+ *
+ * Если у позиции указан `variantId` — обновляем остаток варианта
+ * (`product_variants.stock_qty`). В этом случае `products.stock_qty`
+ * не меняется: он остаётся «сводным» и считается агрегатором вариантов
+ * в `getCachedProducts` (см. `aggregateVariants`).
  */
 export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
   updated: number;
   skipped: number;
-  changes: { productId: string; name: string; from: number; to: number; diff: number }[];
+  changes: { productId: string; name: string; from: number; to: number; diff: number; variantId?: string | null; variantName?: string | null }[];
 }> {
   const db = getAdminDb();
-  const changes: { productId: string; name: string; from: number; to: number; diff: number }[] = [];
+  const changes: { productId: string; name: string; from: number; to: number; diff: number; variantId?: string | null; variantName?: string | null }[] = [];
   let skipped = 0;
 
   for (const item of items) {
@@ -645,7 +658,51 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
       continue;
     }
     const actual = Math.max(0, Math.floor(Number(item.actualQty) || 0));
+    const variantId =
+      item.variantId == null || item.variantId === ""
+        ? null
+        : String(item.variantId);
 
+    if (variantId) {
+      // ── Ревизия по конкретному варианту ───────────────────────
+      const { data: variant, error: vErr } = await db
+        .from("product_variants")
+        .select("id, product_id, stock_qty, name")
+        .eq("id", variantId)
+        .maybeSingle();
+      if (vErr || !variant) {
+        skipped += 1;
+        continue;
+      }
+      const current = Number(variant.stock_qty || 0);
+      if (current === actual) {
+        skipped += 1;
+        continue;
+      }
+      const { error: updErr } = await db
+        .from("product_variants")
+        .update({ stock_qty: actual, updated_at: new Date().toISOString() })
+        .eq("id", variantId);
+      if (updErr) {
+        // Если таблица вариантов ещё не создана (миграция не применена) —
+        // не валим всю ревизию, а просто пропускаем эту строку.
+        console.error("applyStockRevision variant update error:", updErr);
+        skipped += 1;
+        continue;
+      }
+      changes.push({
+        productId: String(variant.product_id || productId),
+        name: item.name || variant.name || "",
+        from: current,
+        to: actual,
+        diff: actual - current,
+        variantId,
+        variantName: item.variantName ?? variant.name ?? null,
+      });
+      continue;
+    }
+
+    // ── Ревизия товара без вариантов (старая логика) ────────────
     const { data: product } = await db
       .from("products")
       .select("id, name, stock_qty")
@@ -678,11 +735,14 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
       from: current,
       to: actual,
       diff: actual - current,
+      variantId: null,
+      variantName: null,
     });
   }
 
   invalidateProductsCache();
   revalidateTag("products", { expire: 0 });
+  revalidateTag("variants", { expire: 0 });
   return { updated: changes.length, skipped, changes };
 }
 

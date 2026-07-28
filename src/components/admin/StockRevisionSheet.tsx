@@ -33,6 +33,13 @@ function formatPrice(price: number | null | undefined): string {
 export interface RevisionSheetRow {
   id: string;
   name: string;
+  /**
+   * Имя варианта (цвет/размер/фасовка). Если задано — у товара
+   * есть варианты, и эта строка соответствует конкретному варианту.
+   * Кладовщик должен видеть отдельный остаток по «красному» и
+   * «синему», а не сводный «Ящик 670».
+   */
+  variantName?: string | null;
   sku: string | null;
   /** Остаток по учёту на момент печати */
   stockQty: number;
@@ -160,7 +167,12 @@ export function StockRevisionSheet({
               return (
                 <tr key={r.id}>
                   <td className="rev-col-n">{idx + 1}</td>
-                  <td className="rev-col-name">{r.name}</td>
+                  <td className="rev-col-name">
+                    {r.name}
+                    {r.variantName && (
+                      <span className="rev-col-variant"> · {r.variantName}</span>
+                    )}
+                  </td>
                   <td className="rev-col-sku">{r.sku || "—"}</td>
                   <td className="rev-col-dims">{formatDimensions(r)}</td>
                   <td className="rev-col-num">{r.stockQty.toLocaleString("ru-RU")}</td>
@@ -289,6 +301,14 @@ const REVISION_PRINT_CSS = `
 .rev-table td { padding: 2.2mm 1.5mm; border: 1px solid #d5d1c8; font-size: 11px; vertical-align: middle; }
 .rev-col-n { width: 9mm; text-align: center; color: #8a857c; }
 .rev-col-name { font-weight: 600; }
+/* Пометка варианта (цвет/размер) — чуть мельче и зеленоватее, чтобы
+   кладовщик сразу видел, что это отдельная строка для конкретного SKU. */
+.rev-col-variant {
+  display: inline;
+  color: #2d6a4f;
+  font-size: 10.5px;
+  font-weight: 600;
+}
 .rev-col-sku { width: 26mm; font-size: 10px; color: #6f6a61; }
 /* Габариты — отдельная колонка, чтобы кладовщик видел «670×370×370» и не
    считал «абстрактный» SKU наугад. Шрифт мельче, по центру. */

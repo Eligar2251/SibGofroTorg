@@ -22,6 +22,7 @@ import {
   type RevisionSheetRow,
 } from "@/components/admin/StockRevisionSheet";
 import type { WarehouseStockRow } from "@/lib/warehouse-shared";
+import type { ProductVariant } from "@/lib/types";
 
 /** Черновик ревизии хранится локально: закрыл вкладку — данные не потерялись. */
 const DRAFT_KEY = "sgt:stock-revision-draft:v1";
@@ -62,12 +63,61 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
   const [error, setError] = useState("");
   const [savedOk, setSavedOk] = useState(0);
   const [hasDraft, setHasDraft] = useState(false);
+  // Варианты, подтянутые для выбранных товаров: productId → ProductVariant[].
+  // Если у товара есть варианты — ревизия идёт по ним отдельной строкой,
+  // иначе — по основному остатку товара. Так кладовщик видит «красный 5 шт.»,
+  // а не «товар N шт.».
+  const [variantsByProductId, setVariantsByProductId] = useState<
+    Record<string, ProductVariant[]>
+  >({});
+  const [variantsLoading, setVariantsLoading] = useState(false);
 
   // Подхватываем сохранённый черновик при первом рендере
   useEffect(() => {
     const draft = loadDraft();
     if (draft && draft.selectedIds.length > 0) setHasDraft(true);
   }, []);
+
+  // Подтягиваем варианты для выбранных товаров. Грузим порциями
+  // по выбранным ID, чтобы не тащить все варианты всех товаров —
+  // их может быть много.
+  useEffect(() => {
+    if (!open) return;
+    const missing = [...selectedIds].filter((id) => !variantsByProductId[id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    setVariantsLoading(true);
+    (async () => {
+      try {
+        const results = await Promise.all(
+          missing.map((id) =>
+            fetch(`/api/admin/products/${id}/variants`, { cache: "no-store" })
+              .then((r) => (r.ok ? r.json() : { variants: [] }))
+              .then((d) => [id, d.variants || []] as const)
+              .catch(() => [id, []] as const)
+          )
+        );
+        if (cancelled) return;
+        setVariantsByProductId((prev) => {
+          const next = { ...prev };
+          for (const [id, list] of results) {
+            // Оставляем только видимые — ревизовать скрытые варианты
+            // бессмысленно.
+            next[id] = (list as ProductVariant[]).filter((v) => v.isVisible !== false);
+          }
+          return next;
+        });
+      } finally {
+        if (!cancelled) setVariantsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // variantsByProductId — намеренно не в зависимостях, иначе грузим
+    // каждый раз при добавлении. missing-фильтр выше защищает от дублей.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedIds]);
 
   // Автосохранение черновика
   useEffect(() => {
@@ -101,29 +151,63 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
     [stock, selectedIds]
   );
 
-  const sheetRows: RevisionSheetRow[] = useMemo(
-    () =>
-      selectedRows.map((p) => {
+  /**
+   * Плоский список строк ревизии. Для товара с вариантами —
+   * по одной строке на КАЖДЫЙ видимый вариант (цвет/размер/фасовка),
+   * иначе — одна строка по основному остатку. Ключ в `actual` —
+   * `productId` (для товара без вариантов) или `${productId}::${variantId}`
+   * (для варианта). Так ввод «факта» попадает в нужную строку и
+   * при печати, и при применении.
+   */
+  const sheetRows: RevisionSheetRow[] = useMemo(() => {
+    const out: RevisionSheetRow[] = [];
+    for (const p of selectedRows) {
+      const variants = variantsByProductId[p.id];
+      if (variants && variants.length > 0) {
+        for (const v of variants) {
+          const key = `${p.id}::${v.id}`;
+          const raw = actual[key];
+          const parsed =
+            raw != null && raw !== ""
+              ? Math.max(0, Math.floor(Number(raw) || 0))
+              : null;
+          out.push({
+            id: key,
+            name: p.name,
+            variantName: v.name || null,
+            // Если у варианта свой артикул — показываем его; иначе
+            // артикул товара.
+            sku: v.sku || p.sku,
+            stockQty: v.stockQty || 0,
+            actualQty: parsed,
+            dimensionLength: p.dimensionLength ?? null,
+            dimensionWidth: p.dimensionWidth ?? null,
+            dimensionHeight: p.dimensionHeight ?? null,
+            dimensionUnit: p.dimensionUnit ?? null,
+            // Цена варианта (если задана отдельная) — иначе цена товара.
+            price: v.price != null ? Number(v.price) : p.price ?? null,
+          });
+        }
+      } else {
         const raw = actual[p.id];
-        const parsed = raw != null && raw !== "" ? Math.max(0, Math.floor(Number(raw) || 0)) : null;
-        return {
+        const parsed =
+          raw != null && raw !== "" ? Math.max(0, Math.floor(Number(raw) || 0)) : null;
+        out.push({
           id: p.id,
           name: p.name,
           sku: p.sku,
           stockQty: p.stockQty,
           actualQty: parsed,
-          // Габариты и цена подхватываются из `WarehouseStockRow`
-          // (поле `price` подтянуто из БД ещё на этапе загрузки
-          // остатков через `getWarehouseStock()`).
           dimensionLength: p.dimensionLength ?? null,
           dimensionWidth: p.dimensionWidth ?? null,
           dimensionHeight: p.dimensionHeight ?? null,
           dimensionUnit: p.dimensionUnit ?? null,
           price: p.price ?? null,
-        };
-      }),
-    [selectedRows, actual]
-  );
+        });
+      }
+    }
+    return out;
+  }, [selectedRows, variantsByProductId, actual]);
 
   const changedRows = useMemo(
     () => sheetRows.filter((r) => r.actualQty != null && r.actualQty !== r.stockQty),
@@ -177,7 +261,7 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
   function fillRestAsAccounted() {
     setActual((prev) => {
       const next = { ...prev };
-      for (const row of selectedRows) {
+      for (const row of sheetRows) {
         if (next[row.id] == null || next[row.id] === "") {
           next[row.id] = String(row.stockQty);
         }
@@ -208,12 +292,18 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
         body: JSON.stringify({
           note: note.trim() || null,
           responsible: responsible.trim() || null,
-          items: changedRows.map((r) => ({
-            productId: r.id,
-            name: r.name,
-            accountedQty: r.stockQty,
-            actualQty: r.actualQty,
-          })),
+          items: changedRows.map((r) => {
+            // `id` у нас либо `productId`, либо `${productId}::${variantId}`.
+            const [productId, variantId] = r.id.split("::");
+            return {
+              productId,
+              variantId: variantId || null,
+              variantName: r.variantName ?? null,
+              name: r.name,
+              accountedQty: r.stockQty,
+              actualQty: r.actualQty,
+            };
+          }),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -419,21 +509,27 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
                     <span style={{ textAlign: "right" }}>Разница</span>
                   </div>
                   <div className="rev-fill-list">
-                    {selectedRows.map((p) => {
-                      const raw = actual[p.id] ?? "";
+                    {sheetRows.map((r) => {
+                      const raw = actual[r.id] ?? "";
                       const parsed =
                         raw !== "" ? Math.max(0, Math.floor(Number(raw) || 0)) : null;
-                      const diff = parsed != null ? parsed - p.stockQty : null;
+                      const diff = parsed != null ? parsed - r.stockQty : null;
                       return (
-                        <div key={p.id} className="rev-fill-row">
+                        <div key={r.id} className="rev-fill-row">
                           <span className="rev-fill-row__name">
-                            {p.name}
-                            {p.sku && (
-                              <span className="rev-fill-row__sku"> · {p.sku}</span>
+                            {r.name}
+                            {r.variantName && (
+                              <span className="rev-fill-row__variant">
+                                {" "}
+                                · {r.variantName}
+                              </span>
+                            )}
+                            {r.sku && (
+                              <span className="rev-fill-row__sku"> · {r.sku}</span>
                             )}
                           </span>
                           <span className="rev-fill-row__acc">
-                            {p.stockQty.toLocaleString("ru-RU")}
+                            {r.stockQty.toLocaleString("ru-RU")}
                           </span>
                           <input
                             type="number"
@@ -444,7 +540,7 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
                             value={raw}
                             placeholder="—"
                             onChange={(e) =>
-                              setActual((prev) => ({ ...prev, [p.id]: e.target.value }))
+                              setActual((prev) => ({ ...prev, [r.id]: e.target.value }))
                             }
                           />
                           <span

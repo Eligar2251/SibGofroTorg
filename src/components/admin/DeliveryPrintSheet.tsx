@@ -16,7 +16,9 @@ export type PrintDeliveryItem = {
   deliveryCost?: number | null;
   deliveryPlannedDate?: string | null;
   deliveryDriverName?: string | null;
-  items?: { name: string; quantity: number }[] | null;
+  items?:
+    | { productId?: string; name: string; quantity: number; variantName?: string | null }[]
+    | null;
   totalSum?: number | null;
 };
 
@@ -173,7 +175,11 @@ export function DeliveryPrintSheet({
                     <span className="deliv-print-strip__v deliv-print-strip__v--items" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {it.items
                         .slice(0, 6)
-                        .map((x) => `${x.name}`)
+                        .map((x) =>
+                          x.variantName
+                            ? `${x.name} (${x.variantName})`
+                            : x.name
+                        )
                         .join(" · ")}
                       {it.items.length > 6 ? ` · +${it.items.length - 6}` : ""}
                     </span>
