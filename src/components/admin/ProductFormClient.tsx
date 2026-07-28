@@ -221,24 +221,35 @@ export function ProductFormClient({
       }
 
       const productId = product?.id || (resBody as Record<string, string>).id;
-      if (productId) {
-        const nextOrderIds = normalizeFeaturedOrderIds(
-          featuredOrderIds,
-          productId,
-          isFeatured,
-          Number.isFinite(featuredOrder ?? NaN) && (featuredOrder ?? 0) > 0
-            ? featuredOrder
-            : null
-        );
-        const settingsRes = await fetch("/api/admin/settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            [FEATURED_ORDER_SETTING_KEY]: JSON.stringify(nextOrderIds),
-          }),
-        });
-        if (!settingsRes.ok) {
-          throw new Error("Товар сохранён, но не удалось обновить порядок популярных товаров");
+      const hadFeatured = Boolean(product?.isFeatured);
+      const previousOrder = product?.featuredOrder ?? null;
+      const requestedOrder =
+        Number.isFinite(featuredOrder ?? NaN) && (featuredOrder ?? 0) > 0
+          ? featuredOrder
+          : null;
+      const featuredOrderChanged =
+        hadFeatured !== isFeatured || previousOrder !== requestedOrder;
+
+      // Порядок популярных — отдельная настройка. Если её обновление
+      // внезапно упадёт, сам товар уже всё равно сохранён и юзера
+      // нельзя оставлять на форме с ощущением «ничего не сохранилось».
+      if (productId && featuredOrderChanged) {
+        try {
+          const nextOrderIds = normalizeFeaturedOrderIds(
+            featuredOrderIds,
+            productId,
+            isFeatured,
+            requestedOrder
+          );
+          await fetch("/api/admin/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              [FEATURED_ORDER_SETTING_KEY]: JSON.stringify(nextOrderIds),
+            }),
+          });
+        } catch (err) {
+          console.error("featured order update error:", err);
         }
       }
 

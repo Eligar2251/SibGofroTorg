@@ -1447,7 +1447,7 @@ export async function getGlobalReviewStats() {
 
 // ─── Category helpers ──────────────────────────────────────
 
-export async function createCategory(data: Record<string, any>): Promise<{ id: string }> {
+export async function createCategory(data: Record<string, any>): Promise<{ id: string; slug: string }> {
   const db = getAdminDb();
   const slug = data.slug || slugify(data.name || "category");
   const { data: result, error } = await db.from("categories").insert({
@@ -1458,8 +1458,8 @@ export async function createCategory(data: Record<string, any>): Promise<{ id: s
     sort_order: data.sortOrder || 0,
     is_visible: data.isVisible ?? true,
     image_url: data.imageUrl || null,
-  }).select("id").single();
+  }).select("id, slug").single();
   if (error) throw error;
   revalidateTag("categories", { expire: 0 });
-  return { id: result.id };
+  return { id: result.id, slug: result.slug || slug };
 }
