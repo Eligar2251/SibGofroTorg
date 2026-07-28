@@ -13,6 +13,7 @@ import {
   SITE_HOURS_LABEL,
   SITE_EMAIL,
 } from "@/lib/site-config";
+import { useSiteSettings } from "@/hooks/use-site-settings";
 
 const INFO_LINKS = [
   { href: "/about", label: "О компании" },
@@ -39,6 +40,14 @@ export function Footer() {
     { href: "/catalog", label: "Весь каталог" },
   ]);
   const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState(30000);
+  // Подхватываем телефон/email/адрес/часы из БД (админ-панель «Настройки»).
+  // Пока запрос идёт, показываем дефолты из site-config.ts.
+  const siteSettings = useSiteSettings();
+  const footerPhone = siteSettings.phone || SITE_PHONE;
+  const footerPhoneHref = siteSettings.phoneHref || SITE_PHONE_HREF;
+  const footerEmail = siteSettings.email || SITE_EMAIL;
+  const footerAddress = siteSettings.address || SITE_ADDRESS;
+  const footerHours = siteSettings.hoursLabel || SITE_HOURS_LABEL;
 
   useEffect(() => {
     fetch("/api/categories")
@@ -76,14 +85,17 @@ export function Footer() {
               Производство и продажа гофротары, упаковочных материалов. Оптовые
               цены в розницу. Приём макулатуры.
               <br />
-              {SITE_ADDRESS}
+              {footerAddress}
             </p>
-            <a href={SITE_PHONE_HREF} className="footer-phone">
-              {SITE_PHONE}
+            <a href={footerPhoneHref} className="footer-phone">
+              {footerPhone}
             </a>
-            <p className="footer-hours">
-              {SITE_HOURS_LABEL}
-            </p>
+            <p className="footer-hours">{footerHours}</p>
+            {footerEmail && (
+              <a href={`mailto:${footerEmail}`} className="footer-email">
+                {footerEmail}
+              </a>
+            )}
           </div>
 
           <div>
@@ -123,7 +135,7 @@ export function Footer() {
           <span>
             © {new Date().getFullYear()} ООО «СибГофроТорг» · Все права защищены
           </span>
-          <span>{SITE_EMAIL}</span>
+          <span>{footerEmail}</span>
         </div>
       </div>
     </footer>

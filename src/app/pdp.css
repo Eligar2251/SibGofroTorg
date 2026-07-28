@@ -549,6 +549,146 @@
   white-space: nowrap;
 }
 
+/* «от X ₽» — префикс минимальной цены, когда у товара есть варианты.
+   Чуть мельче и сероватее, чтобы не конкурировать с самой цифрой. */
+.pdp-price-from {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  margin-right: 2px;
+}
+
+/* Бейдж «N вариантов» рядом с ценой — подсказка, что у товара есть
+   выбор. Делаем её спокойной, чтобы не отвлекать. */
+.pdp-price-variants {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green-dark);
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  padding: 3px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════
+   ВАРИАНТЫ ТОВАРА (VariantPicker)
+   Цвет, размер, фасовка и т.д. — чипы, группированные по option_type.
+   ══════════════════════════════════════ */
+
+.variant-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f0f2f1;
+}
+
+.variant-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.variant-group__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-light);
+  letter-spacing: 0.01em;
+}
+
+.variant-group__selected {
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-left: 4px;
+}
+
+.variant-group__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Один чип варианта. Овальные скругления как у фильтров
+   каталога. У selected — зелёная рамка, у out — серая. */
+.variant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 14px 6px 10px;
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: border-color var(--transition),
+    background-color var(--transition),
+    color var(--transition);
+  font-family: var(--font-body);
+  white-space: nowrap;
+}
+
+.variant-chip:hover:not(:disabled):not(.variant-chip--out) {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.variant-chip--selected {
+  background: var(--green-light);
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.variant-chip--out {
+  background: #fafbfb;
+  color: var(--ink-faint);
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.variant-chip__swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  /* Тонкая обводка — для светлых цветов (белый, жёлтый) */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.variant-chip__name {
+  line-height: 1.2;
+}
+
+.variant-chip__badge {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-faint);
+}
+
+.variant-chip__check {
+  display: inline-flex;
+  align-items: center;
+  color: var(--green);
+}
+
+/* Если все варианты в опции распроданы — предупреждение */
+.variant-group__warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  border-radius: 8px;
+  width: fit-content;
+}
+
 /* Оптовая цена */
 .pdp-wholesale-row {
   display: flex;

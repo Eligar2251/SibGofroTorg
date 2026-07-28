@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { CheckCircle2, ArrowRight, PhoneCall, Package } from "lucide-react";
 import { OrderSuccessGoal } from "@/components/analytics/OrderSuccessGoal";
+import { SuccessContactPhone } from "@/components/order/SuccessContactPhone";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -53,10 +54,7 @@ export default function OrderSuccessPage() {
 
           <div className="success-phone-block">
             <div className="success-phone-label">Срочный вопрос? Позвоните нам:</div>
-            <a href="tel:+73832918146" className="success-phone">
-              <PhoneCall size={18} /> +7 (383) 291-81-46
-            </a>
-            <div className="success-phone-hours">Пн–Пт 8:30–17:00 · Сб, Вс — выходные</div>
+            <SuccessContactPhone />
           </div>
 
           <div className="success-actions">

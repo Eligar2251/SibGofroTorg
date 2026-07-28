@@ -19,6 +19,7 @@ import { SITE_URL } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { YandexMapEmbed } from "@/components/layout/YandexMapEmbed";
 import { buildLocalBusinessJsonLd, buildBreadcrumbJsonLd } from "@/lib/seo";
+import { getSettings } from "@/lib/supabase-queries";
 
 export const metadata: Metadata = {
   title: "Контакты — склад и офис в Новосибирске",
@@ -31,7 +32,33 @@ function ContactIcon({ children }: { children: React.ReactNode }) {
   return <div className="contacts-icon">{children}</div>;
 }
 
-export default function ContactsPage() {
+/** Превращает значение working_hours из БД в строку «Пн–Пт HH:MM–HH:MM» */
+function buildWeekdayLabel(workingHours: string, fallback: string): string {
+  if (workingHours && /пн[‐-―‑–—]?пт/i.test(workingHours)) {
+    // Если админ сохранил «Пн–Пт 8:30–17:00» целиком, оставляем как есть
+    return workingHours;
+  }
+  if (workingHours) {
+    return `Пн–Пт ${workingHours}`;
+  }
+  return `Пн–Пт: ${fallback}`;
+}
+
+export const dynamic = "force-dynamic";
+
+export default async function ContactsPage() {
+  // Подхватываем настройки из БД (админка «Настройки → Контактная информация»)
+  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  const contactsPhone = (settings.phone || SITE_PHONE || "").trim();
+  const contactsPhoneHref =
+    `tel:${contactsPhone.replace(/[^\d+]/g, "")}` || SITE_PHONE_HREF;
+  const contactsEmail = (settings.email || SITE_EMAIL || "").trim();
+  const contactsAddress = (settings.address || SITE_ADDRESS || "").trim();
+  const contactsWeekday = buildWeekdayLabel(
+    (settings.working_hours || "").trim(),
+    SITE_HOURS_WEEKDAY
+  );
+
   return (
     <div className="contacts-page">
       <JsonLd
@@ -72,8 +99,8 @@ export default function ContactsPage() {
                 <div className="contacts-card__label">
                   Телефон отдела продаж
                 </div>
-                <a href={SITE_PHONE_HREF} className="contacts-card__phone">
-                  {SITE_PHONE}
+                <a href={contactsPhoneHref} className="contacts-card__phone">
+                  {contactsPhone}
                 </a>
                 <div className="contacts-card__hint">
                   Принимаем звонки в рабочее время
@@ -88,7 +115,7 @@ export default function ContactsPage() {
               </ContactIcon>
               <div>
                 <div className="contacts-card__label">Адрес офиса и склада</div>
-                <div className="contacts-card__value">{SITE_ADDRESS}</div>
+                <div className="contacts-card__value">{contactsAddress}</div>
               </div>
             </div>
 
@@ -100,7 +127,7 @@ export default function ContactsPage() {
               <div>
                 <div className="contacts-card__label">Режим работы</div>
                 <div className="contacts-card__value contacts-card__value--md">
-                  Пн–Пт: {SITE_HOURS_WEEKDAY}
+                  {contactsWeekday}
                 </div>
                 <div className="contacts-card__closed">
                   Сб, Вс: выходные дни
@@ -116,10 +143,10 @@ export default function ContactsPage() {
               <div>
                 <div className="contacts-card__label">Электронная почта</div>
                 <a
-                  href={`mailto:${SITE_EMAIL}`}
+                  href={`mailto:${contactsEmail}`}
                   className="contacts-card__email"
                 >
-                  {SITE_EMAIL}
+                  {contactsEmail}
                 </a>
               </div>
             </div>
@@ -145,7 +172,7 @@ export default function ContactsPage() {
               <YandexMapEmbed
                 src={SITE_MAP_EMBED_URL}
                 title="Карта — СибГофроТорг"
-                address={SITE_ADDRESS}
+                address={contactsAddress}
               />
             </div>
           </div>

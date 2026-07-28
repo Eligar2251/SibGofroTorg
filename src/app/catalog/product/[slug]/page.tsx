@@ -4,13 +4,14 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import {
   getProductBySlug,
+  getProductBySlugForPage,
   getRelatedProducts,
   getAllCategories,
   getProductReviews,
   getProductReviewStats,
 } from "@/lib/supabase-queries";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
-import { AddToCartButton } from "@/components/catalog/AddToCartButton";
+import { ProductPurchaseBlock } from "@/components/catalog/ProductPurchaseBlock";
 import { PriceInquiryButton } from "@/components/catalog/PriceInquiryButton";
 import {
   isOutOfStock,
@@ -129,7 +130,11 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const product = await getProductBySlug(slug);
+  // getProductBySlugForPage подтягивает и сам товар, и
+  // полный список видимых вариантов в одном вызове. Для
+  // товаров БЕЗ вариантов variants будет пустым, и UI
+  // работает в обычном режиме.
+  const { product, variants } = await getProductBySlugForPage(slug);
   if (!product) notFound();
 
   /* Все выборки параллельно — один раундтрип к кэшу данных */
@@ -154,6 +159,9 @@ export default async function ProductPage({
 
   // Нет на складе — цену на витрине не показываем совсем: вместо неё
   // «Нет в наличии» и автозаявка «Уточнить поступление».
+  // ★ Важно: effectivePrice/oldPrice/discountPercent считаем от
+  // СВОДНОЙ цены товара (для крупных бейджей). В блоке покупки
+  // (ProductPurchaseBlock) своя логика с вариантами.
   const outOfStock = isOutOfStock(product);
   const effectivePrice = getProductEffectivePrice(product);
   const hasDiscount =
@@ -166,6 +174,25 @@ export default async function ProductPage({
     hasDiscount && oldPrice != null && effectivePrice != null
       ? Math.round((1 - effectivePrice / oldPrice) * 100)
       : 0;
+
+  // Если у товара есть варианты — считаем «от X ₽» для крупного
+  // блока цены на странице.
+  const variantPriceMin = variants.length > 0
+    ? Math.min(
+        ...variants
+          .map((v) => v.price)
+          .filter((p): p is number => p != null && p > 0),
+      )
+    : null;
+  const displayPrice =
+    variantPriceMin != null
+      ? variantPriceMin
+      : (effectivePrice ?? product.price);
+  const displayOldPrice = variantPriceMin != null ? oldPrice : oldPrice;
+  const displayDiscountPercent =
+    variantPriceMin != null
+      ? Math.max(0, discountPercent)
+      : discountPercent;
 
   const dims =
     product.dimensionLength && product.dimensionWidth
@@ -438,7 +465,9 @@ export default async function ProductPage({
           {/* ── 4. БЛОК ПОКУПКИ ── */}
           <div className="purchase-block">
             <div className="purchase-card">
-              {/* Цена. Нет на складе — цену не показываем вовсе. */}
+              {/* Цена. Если у товара есть варианты — показываем
+                 «от X ₽» по минимальной цене. Иначе — обычная
+                 логика с effectivePrice. */}
               {outOfStock ? (
                 <div className="pdp-price-row">
                   <span className="pdp-price-current pdp-price-current--out">
@@ -451,25 +480,35 @@ export default async function ProductPage({
                     Под заказ
                   </span>
                 </div>
-              ) : effectivePrice == null ? (
+              ) : displayPrice == null ? (
                 <div className="pdp-price-row">
                   <span className="pdp-price-current pdp-price-current--mto">
                     Цена по запросу
                   </span>
                 </div>
               ) : (
-                effectivePrice != null && (
+                displayPrice != null && (
                   <div className="pdp-price-row">
                     <span className="pdp-price-current">
-                      {effectivePrice.toLocaleString("ru-RU")}{"\u00a0₽"}
+                      {/* «от X ₽» если у товара есть варианты */}
+                      {variantPriceMin != null && (
+                        <span className="pdp-price-from">от{"\u00a0"}</span>
+                      )}
+                      {displayPrice.toLocaleString("ru-RU")}{"\u00a0₽"}
                     </span>
-                    {oldPrice != null && (
+                    {displayOldPrice != null && (
                       <span className="pdp-price-old">
-                        {oldPrice.toLocaleString("ru-RU")} ₽
+                        {displayOldPrice.toLocaleString("ru-RU")} ₽
                       </span>
                     )}
-                    {discountPercent > 0 && (
-                      <span className="pdp-price-save">−{discountPercent}%</span>
+                    {displayDiscountPercent > 0 && (
+                      <span className="pdp-price-save">−{displayDiscountPercent}%</span>
+                    )}
+                    {variants.length > 0 && (
+                      <span className="pdp-price-variants">
+                        {variants.length}{" "}
+                        {plural(variants.length, "вариант", "варианта", "вариантов")}
+                      </span>
                     )}
                   </div>
                 )
@@ -521,7 +560,7 @@ export default async function ProductPage({
                       label="Узнать цену"
                     />
                   </div>
-                ) : effectivePrice == null ? (
+                ) : effectivePrice == null && variants.length === 0 ? (
                   <div className="pdp-made-to-order">
                     <div className="pdp-made-to-order__text">
                       <FileText size={15} />
@@ -536,7 +575,7 @@ export default async function ProductPage({
                     />
                   </div>
                 ) : (
-                  <AddToCartButton
+                  <ProductPurchaseBlock
                     product={{
                       id: product.id,
                       name: product.name,
@@ -546,6 +585,7 @@ export default async function ProductPage({
                       stockQty: product.stockQty,
                       packQty: product.packQty,
                     }}
+                    variants={variants}
                   />
                 )}
               </div>

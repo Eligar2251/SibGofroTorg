@@ -6357,6 +6357,15 @@ body:has(.admin-modal-overlay) {
   font-size: 11.5px;
 }
 
+/* Пометка варианта (цвет/размер) в строке электронного заполнения —
+   зелёная, чтобы было видно, что это отдельная позиция для
+   конкретного варианта. */
+.rev-fill-row__variant {
+  font-weight: 600;
+  color: var(--adm-pine);
+  font-size: 11.5px;
+}
+
 .rev-fill-row__acc {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -6410,6 +6419,287 @@ body:has(.admin-modal-overlay) {
   .rev-fill-row {
     grid-template-columns: 1fr 56px 84px 56px;
     gap: 6px;
+  }
+}
+
+/* ══════════════════════════════════════
+   ЗАРПЛАТЫ: мобильный адаптив
+   ══════════════════════════════════════
+   Главная проблема — панель инструментов .whsal-toolbar и
+   широкая Excel-таблица с 5 липкими колонками, которая на
+   экранах ≤640px превращалась в горизонтальный скролл
+   с «выезжающей» кнопкой «Начислить зарплату» и нерабочим
+   sticky. Здесь:
+   1) Тулбар перестраивается в колонку; actions становятся
+      сеткой 2×N с кнопками одинаковой ширины.
+   2) Сводные карточки на ≤480px — по 1 в ряд, значения
+      уменьшаются, чтобы не разрывать строку.
+   3) Таблица: на ≤640px отключаем липкие колонки (чтобы
+      строка прокручивалась естественно) и сжимаем ФИО/За
+      месяц/Долг/Получено. Whsal-day на мобильном уже 34px.
+   4) Popover ячейки — на всю ширину экрана, сверху, без
+      overflow.
+   5) Кнопки в списке выплат (bank-pay) — кнопки действий
+      получают min-width:0, чтобы не «уезжали» за край. */
+@media (max-width: 900px) {
+  .whsal-toolbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .whsal-toolbar__title {
+    font-size: 1.1rem;
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+
+  .whsal-monthnav .admin-select {
+    min-width: 120px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .whsal-toolbar {
+    padding: 10px;
+  }
+
+  .whsal-toolbar__title {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .whsal-monthnav,
+  .whsal-toolbar__actions,
+  .whsal-monthnav[style] {
+    flex-basis: 100%;
+  }
+
+  .whsal-monthnav .admin-select {
+    min-width: 0 !important;
+    flex: 1;
+  }
+
+  .whsal-monthnav[style*="margin-left"] {
+    margin-left: 0 !important;
+  }
+
+  /* Главное исправление «выезжающей кнопки»: на десктопе
+     margin-left:auto толкал actions вправо, и кнопка «Начислить
+     зарплату» не помещалась и «уезжала» за край. Делаем сетку
+     2 в ряд. */
+  .whsal-toolbar__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-left: 0;
+  }
+
+  .whsal-toolbar__actions .admin-btn {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    padding: 8px 8px;
+    font-size: 12px;
+  }
+
+  .whsal-monthnav {
+    display: flex;
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-width: 380px) {
+  /* На совсем узких экранах (360-380px) кнопки тулбара по 1 в ряд,
+     чтобы длинные подписи не обрезались */
+  .whsal-toolbar__actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Сводные карточки: на ≤480px значения уменьшаются, чтобы
+   «1 234 567 ₽» не разрывалось и не вылезало за край */
+@media (max-width: 480px) {
+  .whsal-card {
+    padding: 12px 14px;
+  }
+
+  .whsal-card__value {
+    font-size: 1.4rem;
+  }
+
+  .whsal-card__label {
+    font-size: 10px;
+  }
+
+  .whsal-card__sub {
+    font-size: 11px;
+  }
+}
+
+/* ══════════════════════════════════════
+   ЗАРПЛАТЫ: мобильная таблица
+   На ≤640px липкие колонки выключаем — иначе они ломают
+   горизонтальный скролл и ФИО «прилипает» к левому краю
+   на любом смещении. Сами колонки сжимаем.
+   ══════════════════════════════════════ */
+@media (max-width: 640px) {
+  .whsal-grid-scroll {
+    max-height: 75vh;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Снимаем sticky на мобильном — иначе «ФИО» при скролле
+     вправо «прилипает» к левому краю и накладывается на
+     дни, а колонка «Остаток» прибита к правому и режет
+     содержимое */
+  .whsal-th--name,
+  .whsal-td--name,
+  .whsal-th--accrued,
+  .whsal-td--accrued,
+  .whsal-th--debt,
+  .whsal-td--debt,
+  .whsal-th--received,
+  .whsal-td--received,
+  .whsal-th--rest,
+  .whsal-td--rest {
+    position: static;
+    left: auto;
+    right: auto;
+    min-width: 0;
+    max-width: none;
+    box-shadow: none;
+    z-index: auto;
+  }
+
+  .whsal-th--name,
+  .whsal-td--name {
+    min-width: 132px;
+  }
+
+  .whsal-th--accrued,
+  .whsal-td--accrued,
+  .whsal-th--debt,
+  .whsal-td--debt,
+  .whsal-th--received,
+  .whsal-td--received {
+    min-width: 80px;
+  }
+
+  .whsal-th--rest,
+  .whsal-td--rest {
+    min-width: 88px;
+  }
+
+  /* Без sticky ячейки head/thead теряют свой фон поверх
+     прокручиваемой области — рисуем заливку явно */
+  .whsal-td--name,
+  .whsal-td--accrued,
+  .whsal-td--debt,
+  .whsal-td--received,
+  .whsal-td--rest {
+    background: var(--adm-card);
+  }
+
+  .whsal-td--name {
+    padding: 5px 8px;
+  }
+
+  .whsal-name-text strong {
+    font-size: 12px;
+  }
+
+  .whsal-td--accrued,
+  .whsal-td--received,
+  .whsal-td--rest,
+  .whsal-td--debt {
+    padding: 5px 4px;
+    font-size: 11px;
+  }
+
+  .whsal-legend {
+    gap: 8px 12px;
+  }
+
+  .whsal-legend__item {
+    font-size: 11px;
+  }
+
+  /* Заголовок таблицы «клик по дню — запись выплаты» — на узком
+     экране прячется, иначе он растягивает .admin-card__head
+     до 3 строк */
+  .admin-card__head .whsal-hint {
+    display: none;
+  }
+}
+
+/* Popover ячейки: на мобильном — на всю ширину, прибит к верху
+   с учётом safe-area */
+@media (max-width: 640px) {
+  .whsal-pop {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    left: 8px !important;
+    right: 8px;
+    top: calc(72px + env(safe-area-inset-top, 0px)) !important;
+    max-height: calc(100vh - 96px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+
+  .whsal-pop__title {
+    font-size: 14px;
+  }
+}
+
+/* Модалка «Установка зарплат»: на мобильном поля ввода на всю ширину */
+@media (max-width: 560px) {
+  .whsal-setup {
+    padding: 2px 8px;
+  }
+
+  .whsal-setup__row {
+    gap: 8px;
+  }
+
+  .whsal-setup__name {
+    flex-basis: 100%;
+  }
+
+  .whsal-setup__inputs {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .whsal-setup__col input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .whsal-setup__col--btn {
+    width: auto;
+  }
+}
+
+/* Список выплат (bank-pay) на узких экранах: действия
+   не должны «уезжать» вправо. */
+@media (max-width: 640px) {
+  .bank-pay__side {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .bank-pay__side .wh-pay-controls {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .bank-pay__side .wh-pay-controls .admin-status__btn {
+    min-width: 0;
+    font-size: 11px;
+    padding: 0 8px;
+  }
+
+  .bank-pay__side .wh-pay-controls .admin-status__btn svg {
+    width: 13px;
+    height: 13px;
   }
 }
 
@@ -6575,3 +6865,1118 @@ body:has(.admin-modal-overlay) {
 .cashc-split__rest--bad { color: var(--adm-rust); font-weight: 700; }
 
 .cashc-close-day { margin-left: auto; }
+
+/* ══════════════════════════════════════
+   VariantsEditor (admin) — общая обёртка
+   ══════════════════════════════════════ */
+.admin-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-block__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--adm-ink, #1a1a18);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-block__hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--adm-ink-muted, #6b6b60);
+}
+
+.admin-block__desc {
+  font-size: 13px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.admin-block__desc--muted {
+  color: var(--adm-ink-muted, #6b6b60);
+  font-style: italic;
+}
+
+/* ══════════════════════════════════════
+   СКАНЕР ТОВАРОВ (/admin/scan/[code])
+   ══════════════════════════════════════
+   Компактная страница, открывается по QR-коду. Показывает
+   цену + наличие + кнопку «Открыть в админке». Оптимизирована
+   под мобильный (сотрудник сканирует QR телефоном). */
+.scan-page {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.scan-page__top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.scan-page__back {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--adm-steel);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.scan-page__back:hover {
+  background: var(--adm-steel-pale);
+  border-color: var(--adm-steel-line);
+}
+
+.scan-page__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--adm-font-head);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0;
+}
+
+/* Поле ввода + кнопка камеры + submit. На узких экранах — стек. */
+.scan-page__form {
+  display: flex;
+  gap: 6px;
+  background: var(--adm-card);
+  border: 2px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  padding: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.scan-page__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: var(--f-mono);
+  background: transparent;
+  color: var(--adm-ink);
+  padding: 8px 10px;
+  letter-spacing: 0.04em;
+}
+
+.scan-page__input::placeholder {
+  color: var(--adm-sand);
+  font-family: var(--adm-font-body);
+  font-weight: 500;
+  letter-spacing: normal;
+}
+
+.scan-page__cam-btn {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-paper-warm);
+  color: var(--adm-ink-soft);
+  border: 1px solid var(--adm-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.scan-page__cam-btn:hover {
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+}
+
+.scan-page__go {
+  height: 38px;
+  padding: 0 16px;
+  background: var(--adm-kraft);
+  color: var(--adm-ink);
+  border: none;
+  border-radius: var(--adm-r-sm);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.scan-page__go:hover {
+  background: var(--adm-kraft-mid);
+}
+
+.scan-page__video-wrap {
+  position: relative;
+  border-radius: var(--adm-r);
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--adm-border);
+}
+
+.scan-page__video {
+  width: 100%;
+  display: block;
+  max-height: 320px;
+  object-fit: cover;
+}
+
+.scan-page__video-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 4px 0;
+}
+
+.scan-page__err {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+  border-radius: var(--adm-r-sm);
+  padding: 8px 12px;
+}
+
+.scan-page__notfound {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  background: var(--adm-card);
+  border: 1px dashed var(--adm-rust-line);
+  border-radius: var(--adm-r);
+  padding: 24px 16px;
+  color: var(--adm-rust);
+}
+
+.scan-page__notfound p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--adm-ink);
+}
+
+.scan-page__hint {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--adm-muted);
+  line-height: 1.5;
+  max-width: 360px;
+}
+
+.scan-page__card {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--adm-sh-sm);
+}
+
+.scan-page__head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.scan-page__thumb {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  background: var(--adm-paper-warm);
+  border-radius: var(--adm-r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--adm-sand);
+  overflow: hidden;
+  border: 1px solid var(--adm-border);
+}
+
+.scan-page__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scan-page__head-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.scan-page__name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  line-height: 1.3;
+  margin: 0 0 4px;
+}
+
+.scan-page__sku {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--adm-muted);
+  font-family: var(--f-mono);
+}
+
+.scan-page__price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+  border-top: 1px dashed var(--adm-border);
+  border-bottom: 1px dashed var(--adm-border);
+  padding-block: 10px;
+}
+
+.scan-page__price-main {
+  font-family: var(--adm-font-head);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  letter-spacing: -0.01em;
+}
+
+.scan-page__price-wholesale {
+  font-size: 13px;
+  color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.scan-page__stock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: var(--adm-r-sm);
+}
+
+.scan-page__stock--ok {
+  background: var(--adm-pine-pale);
+  color: var(--adm-pine);
+  border: 1px solid var(--adm-pine-line);
+}
+
+.scan-page__stock--low {
+  background: #fdf3d3;
+  color: var(--adm-kraft);
+  border: 1px solid var(--adm-kraft-line);
+}
+
+.scan-page__stock--out {
+  background: var(--adm-rust-pale);
+  color: var(--adm-rust);
+  border: 1px solid var(--adm-rust-line);
+}
+
+.scan-page__codes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.scan-page__code-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+}
+
+.scan-page__qr {
+  width: 100%;
+  height: auto;
+  max-width: 180px;
+  aspect-ratio: 1;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.scan-page__barcode {
+  width: 100%;
+  height: auto;
+  max-width: 180px;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.scan-page__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-family: var(--f-mono);
+  font-weight: 700;
+  color: var(--adm-muted);
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  letter-spacing: 0.02em;
+  width: 100%;
+  justify-content: center;
+}
+
+.scan-page__copy:hover {
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+}
+
+.scan-page__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.scan-page__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--adm-r-sm);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border-mid);
+  color: var(--adm-ink-soft);
+  text-decoration: none;
+  cursor: pointer;
+  flex: 1 1 auto;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.scan-page__btn:hover {
+  border-color: var(--adm-ink-muted);
+  color: var(--adm-ink);
+}
+
+.scan-page__btn--primary {
+  background: var(--adm-kraft);
+  border-color: var(--adm-kraft);
+  color: var(--adm-ink);
+}
+
+.scan-page__btn--primary:hover {
+  background: var(--adm-kraft-mid);
+  border-color: var(--adm-kraft-mid);
+}
+
+.scan-page__footer-hint {
+  font-size: 11.5px;
+  color: var(--adm-sand);
+  text-align: center;
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  .scan-page {
+    padding: 16px 12px 80px;
+  }
+
+  .scan-page__title {
+    font-size: 17px;
+  }
+
+  .scan-page__price-main {
+    font-size: 24px;
+  }
+
+  .scan-page__codes {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ══════════════════════════════════════
+   ПЕЧАТЬ QR-КОДОВ (/admin/qr-print)
+   ══════════════════════════════════════
+   Страница массовой печати: фильтры (категория, поиск) +
+   сетка этикеток 4×5 см. В режиме @media print оставляем
+   только сетку, прячем всё остальное.
+   ──────────────────────────────────── */
+.qrprint-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 24px 60px;
+}
+
+.qrprint-page__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.qrprint-page__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--adm-steel);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+}
+
+.qrprint-page__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--adm-font-head);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0;
+}
+
+.qrprint {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Фильтры (скрыты при печати через .no-print) ── */
+.qrprint__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  padding: 14px;
+}
+
+.qrprint__filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qrprint__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-paper);
+  color: var(--adm-ink-muted);
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.qrprint__select {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink);
+  outline: none;
+  font-family: inherit;
+}
+
+.qrprint__search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-paper);
+  color: var(--adm-ink-muted);
+  flex: 2 1 320px;
+  min-width: 240px;
+}
+
+.qrprint__search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--adm-ink);
+  outline: none;
+  font-family: inherit;
+}
+
+.qrprint__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qrprint__counts {
+  font-size: 12px;
+  color: var(--adm-muted);
+}
+
+.qrprint__counts strong {
+  color: var(--adm-ink);
+}
+
+.qrprint__seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  padding: 3px;
+}
+
+.qrprint__seg-btn {
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: var(--adm-ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  font-family: inherit;
+}
+
+.qrprint__seg-btn:hover {
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+}
+
+.qrprint__seg-btn--active {
+  background: var(--adm-ink);
+  color: #fff;
+}
+
+.qrprint__seg-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--adm-border);
+  margin: 0 4px;
+}
+
+.qrprint__seg-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--adm-sand);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 4px;
+}
+
+.qrprint__print-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  background: var(--adm-kraft);
+  color: var(--adm-ink);
+  border: 1px solid var(--adm-kraft);
+  border-radius: var(--adm-r-sm);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.qrprint__print-btn:hover {
+  background: var(--adm-kraft-mid);
+  border-color: var(--adm-kraft-mid);
+}
+
+.qrprint__print-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Список товаров с чекбоксами ── */
+.qrprint__list {
+  display: flex;
+  flex-direction: column;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-lg);
+  overflow: hidden;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.qrprint__row {
+  display: grid;
+  grid-template-columns: 22px 1fr 100px 80px 140px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--adm-border);
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: background var(--transition);
+}
+
+.qrprint__row:last-child {
+  border-bottom: none;
+}
+
+.qrprint__row:hover {
+  background: var(--adm-sand-pale);
+}
+
+.qrprint__row--on {
+  background: var(--adm-pine-pale);
+}
+
+.qrprint__row--on:hover {
+  background: #def0e0;
+}
+
+.qrprint__row--out {
+  opacity: 0.6;
+}
+
+.qrprint__check {
+  color: var(--adm-ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qrprint__row--on .qrprint__check {
+  color: var(--adm-pine);
+}
+
+.qrprint__cb {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+
+.qrprint__row-name {
+  font-weight: 600;
+  color: var(--adm-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qrprint__row-sku {
+  font-size: 11px;
+  color: var(--adm-sand);
+  font-family: var(--f-mono);
+}
+
+.qrprint__row-price {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink);
+  text-align: right;
+}
+
+.qrprint__row-barcode {
+  font-size: 11px;
+  color: var(--adm-sand);
+  font-family: var(--f-mono);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.qrprint__empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--adm-sand);
+  font-size: 13px;
+}
+
+/* ── Превью этикеток (на экране — на сером фоне, в печати — белый лист A4) ──
+   Задача: квадратные этикетки ОДИНАКОВОГО размера (4×4, 5×5 или
+   6×6 см), выстроенные в табличную сетку с равным шагом (это
+   будущие «линии реза»). Внутри каждой этикетки — flex-колонка
+   с justify-content:space-between, чтобы название и цена
+   прижимались к верху, штрихкод — к низу, QR — по центру. */
+.qrprint__sheet {
+  display: grid;
+  /* Фиксированный квадратный размер колонок через var(--qr-side)
+     + явное число колонок через var(--qr-cols). Это даёт
+     «табличную» сетку с одинаковыми ячейками, в отличие от
+     repeat(N, minmax(0, 1fr)) — там колонки могут «плавать» */
+  grid-template-columns: repeat(var(--qr-cols), var(--qr-side));
+  grid-auto-rows: var(--qr-side); /* высота строки = стороне этикетки */
+  gap: 2mm;                       /* зазор между этикетками (будущие «линии реза») */
+  justify-content: center;        /* центрируем сетку по горизонтали */
+  padding: 6mm;
+  background: var(--adm-paper);
+  border: 1px dashed var(--adm-border-mid);
+  border-radius: var(--adm-r-lg);
+}
+
+/* Подсказка под тулбаром — для ленточного режима */
+.qrprint__hint {
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+  border-radius: var(--adm-r-sm);
+  padding: 8px 12px;
+  line-height: 1.5;
+}
+
+.qrprint__hint strong {
+  color: var(--adm-steel);
+}
+
+/* Иконки в кнопках seg-кнопок (LayoutGrid / ScanLine) */
+.qrprint__seg-btn svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
+.qrprint__label {
+  /* Квадратная этикетка — width/height через тот же var(--qr-side) */
+  width: var(--qr-side);
+  height: var(--qr-side);
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 2px;
+  padding: 1.5mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;             /* всё по горизонтали — центр */
+  justify-content: space-between;  /* шапка ↕ QR ↕ штрихкод равномерно */
+  text-align: center;
+  overflow: hidden;
+  /* На превью и в печати этикетка должна быть идеально квадратной
+     и одинаковой для всех карточек — никаких вытягиваний */
+  box-sizing: border-box;
+}
+
+.qrprint__label-head {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5mm;
+  line-height: 1.05;
+}
+
+.qrprint__label-name {
+  font-size: 7pt;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.1;
+  width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.qrprint__label-price {
+  font-size: 8.5pt;
+  font-weight: 800;
+  color: #000;
+  white-space: nowrap;
+}
+
+.qrprint__label-code {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5mm;
+  line-height: 1;
+}
+
+.qrprint__label-qr {
+  width: auto;
+  /* ВАЖНО: фиксированный квадратный размер + aspect-ratio: 1 —
+     чтобы QR не «вытягивался» по высоте, если родитель чуть
+     уже ожидаемого. */
+  aspect-ratio: 1 / 1;
+  height: auto;
+  max-width: 100%;
+  background: #fff;
+  object-fit: contain;
+}
+
+.qrprint__label-bc {
+  /* Штрихкод — фиксированная высота, ширина по содержимому
+     (max-width:100%, чтобы не вылезал за этикетку) */
+  height: auto;
+  max-width: 100%;
+  background: #fff;
+  object-fit: contain;
+}
+
+.qrprint__label-ean {
+  font-size: 6pt;
+  color: #000;
+  font-family: var(--f-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* ── Печать ── */
+@media print {
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+
+  .qrprint-page,
+  .qrprint {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  .no-print,
+  .admin-mobile-bar,
+  .admin-sidebar,
+  .admin-notify {
+    display: none !important;
+  }
+
+  /* На печати: белая подложка, без рамок и скруглений */
+  .qrprint__sheet {
+    border: none !important;
+    padding: 0 !important;
+    gap: 2mm !important;
+    background: #fff !important;
+    border-radius: 0 !important;
+  }
+
+  /* Этикетки — белая заливка, серая разделительная рамка (помогает
+     при ручном резе ножницами). page-break-inside: avoid — чтобы
+     этикетка НЕ разрывалась между страницами. */
+  .qrprint__label {
+    background: #fff !important;
+    border: 1px dashed #c0c0c0 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   ТЕРМОЛЕНТА 58×40 мм (Brother, Xprinter, MUNBYN, Mercury)
+   ──────────────────────────────────────────────────────────────────
+   Вертикальный стек: каждая этикетка — отдельный блок фиксированного
+   размера 58×40 мм. Между ними — пунктирная линия реза.
+   В режиме экрана — превью с тенью, в режиме печати — сплошная
+   лента без полей. @page { size: 58mm auto; margin: 0 }. */
+.qrprint__tape {
+  width: var(--tape-w);
+  margin: 0 auto;
+  background: #fff;
+  border: 1px dashed var(--adm-border-mid);
+  /* В превью — лента видна целиком, но с возможностью скролла
+     внутри длинной стопки этикеток */
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.qrprint__tape-label {
+  /* Фиксированный размер этикетки на ленте — 58×40 мм */
+  width: var(--tape-w);
+  height: var(--tape-h);
+  box-sizing: border-box;
+  padding: 1.5mm;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 0.5mm 1.5mm;
+  align-items: center;
+  background: #fff;
+  /* Пунктирная линия снизу — «линия реза» между этикетками.
+     На последней этикетке — без линии (чтобы не печатать
+     мусор после последней). */
+  border-bottom: 1px dashed #b0b0b0;
+  position: relative;
+  overflow: hidden;
+}
+
+.qrprint__tape-label:last-child {
+  border-bottom: none;
+}
+
+.qrprint__tape-qr {
+  /* QR в левом столбце, квадратный, занимает почти всю высоту */
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  width: auto;
+  height: 100%;
+  max-width: 36mm;
+  max-height: 36mm;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+}
+
+.qrprint__tape-name {
+  grid-row: 1;
+  grid-column: 2;
+  font-size: 7pt;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.1;
+  width: 100%;
+  /* Название может быть длинным — обрезаем в 2 строки */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+  align-self: end;
+}
+
+.qrprint__tape-price {
+  grid-row: 2;
+  grid-column: 2;
+  font-size: 8.5pt;
+  font-weight: 800;
+  color: #000;
+  white-space: nowrap;
+  align-self: start;
+}
+
+
+/* ── Печать на термоленте 58×40 мм ──
+   Браузер печатает ленту непрерывно: каждая этикетка — отдельный
+   «виртуальный лист» A4 без полей. page-break-after: always
+   между этикетками не нужен — нам нужно НЕПРЕРЫВНОЕ полотно,
+   которое термопринтер сам отрежет по линии. */
+@media print {
+  @page {
+    size: 58mm auto;
+    margin: 0;
+  }
+
+  .qrprint-page,
+  .qrprint {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  .no-print,
+  .admin-mobile-bar,
+  .admin-sidebar,
+  .admin-notify {
+    display: none !important;
+  }
+
+  /* В режиме печати у ленты убираем рамки превью */
+  .qrprint__tape {
+    width: 58mm;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  /* На этикетках убираем разделительную линию снизу (принтер сам
+     печатает линию реза, если она задана в настройках термоголовки;
+     мы же рисуем её в превью только для визуала). В печати
+     оставляем, но более тонкую, чтобы принтер нарисовал аккуратно.
+
+     ВАЖНО: не ставим page-break-after: always — большинство
+     термопринтеров 58 мм умеют «сплошная лента», и они сами
+     отрезают по заданной в драйвере высоте этикетки (40 мм). Если
+     ваш принтер интерпретирует каждую страницу как отдельную
+     этикетку (например, некоторые драйверы Xprinter с включённым
+     «tape mode») — добавьте в ваш .css:
+
+         .qrprint__tape-label { page-break-after: always; }
+         .qrprint__tape-label:last-child { page-break-after: auto; } */
+  .qrprint__tape-label {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border-bottom: 1px dashed #c8c8c8 !important;
+  }
+
+  /* Чтобы белый фон точно печатался */
+  .qrprint__tape-label,
+  .qrprint__tape-qr,
+  .qrprint__tape-name,
+  .qrprint__tape-price {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Скрываем СЕТКУ (sheet) — она тут не нужна, когда печатаем ленту */
+  .qrprint__sheet {
+    display: none !important;
+  }
+}
+
+/* Если у ленты нет page-break-after, печатается сплошной стек
+   меток — это и нужно для большинства 58-мм термопринтеров
+   (они интерпретируют каждую «страницу» как отдельную этикетку
+   и режут по линии). Если на конкретном принтере нужно
+   наоборот — без разрыва, добавьте в @page { page-break-after: never }. */

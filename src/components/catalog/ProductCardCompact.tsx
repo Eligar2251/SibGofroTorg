@@ -13,6 +13,15 @@ import {
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { Plus, Minus, ShoppingCart, Check, Package } from "lucide-react";
 
+/** Склонение для «N вариантов» на карточке. */
+function pluralVariants(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "вариант";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "варианта";
+  return "вариантов";
+}
+
 interface CompactProduct {
   id: string;
   name: string;
@@ -32,6 +41,14 @@ interface CompactProduct {
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
   material?: string | null;
+  // ── Сводка по вариантам (если они у товара есть).
+  //    Присылается сразу с getCachedProducts → здесь просто
+  //    показываем «от X ₽» и бейдж «N вариантов».
+  hasVariants?: boolean;
+  variantCount?: number;
+  variantPriceMin?: number | null;
+  variantPriceMax?: number | null;
+  variantTotalStock?: number;
 }
 
 export function ProductCardCompact({
@@ -200,7 +217,8 @@ export function ProductCardCompact({
           {dims && <span className="pcc__name-dims">{dims}</span>}
         </Link>
 
-        {/* Цена — шт + партия */}
+        {/* Цена — шт + партия. Если у товара есть варианты,
+           показываем «от X ₽» (по минимальной цене). */}
         <div className="pcc__prices">
           {outOfStock ? (
             <span className="pcc__price-muted pcc__price-muted--out">
@@ -213,11 +231,22 @@ export function ProductCardCompact({
           ) : product.price != null ? (
             <>
               <div className="pcc__price-main">
+                {/* «от» — только когда есть варианты с разной ценой */}
+                {product.hasVariants && product.variantPriceMin !== product.variantPriceMax && (
+                  <span className="pcc__price-from">от{"\u00a0"}</span>
+                )}
                 <span className="pcc__price-val">
                   {product.price.toLocaleString("ru-RU")}
                 </span>
                 <span className="pcc__price-rub">₽/шт</span>
               </div>
+              {/* Бейдж «N вариантов» — намекает, что есть выбор */}
+              {product.hasVariants && product.variantCount ? (
+                <div className="pcc__variants-badge">
+                  {product.variantCount}{" "}
+                  {pluralVariants(product.variantCount)}
+                </div>
+              ) : null}
               {product.priceWholesale && product.minWholesaleQty && (
                 <div className="pcc__price-wholesale">
                   <Package size={9} />

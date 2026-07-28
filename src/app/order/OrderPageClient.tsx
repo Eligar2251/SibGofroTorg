@@ -323,6 +323,8 @@ export function OrderPageClient({
         channel: "website",
         items: cart.map((item) => ({
           productId: item.productId,
+          variantId: item.variantId ?? null,
+          variantName: item.variantName ?? null,
           name: item.name,
           sku: item.sku || "—",
           quantity: item.quantity,
@@ -475,7 +477,10 @@ export function OrderPageClient({
                 <div className="checkout-block__body">
                   <div className="cart-items">
                     {cart.map((item) => (
-                      <div key={item.productId} className="cart-item">
+                      <div
+                        key={`${item.productId}::${item.variantId || ""}`}
+                        className="cart-item"
+                      >
                         <div className="cart-item__img">
                           {item.imageUrl ? (
                             <Image
@@ -491,6 +496,11 @@ export function OrderPageClient({
                         </div>
                         <div className="cart-item__info">
                           <div className="cart-item__name">{item.name}</div>
+                          {item.variantName && (
+                            <div className="cart-item__sku">
+                              Вариант: {item.variantName}
+                            </div>
+                          )}
                           {item.sku && (
                             <div className="cart-item__sku">
                               Арт: {item.sku}
@@ -505,7 +515,11 @@ export function OrderPageClient({
                             <button
                               type="button"
                               onClick={() =>
-                                updateQty(item.productId, item.quantity - 1)
+                                updateQty(
+                                  item.productId,
+                                  item.quantity - 1,
+                                  item.variantId ?? null
+                                )
                               }
                               className="cart-item__step-btn"
                             >
@@ -517,7 +531,11 @@ export function OrderPageClient({
                             <button
                               type="button"
                               onClick={() =>
-                                updateQty(item.productId, item.quantity + 1)
+                                updateQty(
+                                  item.productId,
+                                  item.quantity + 1,
+                                  item.variantId ?? null
+                                )
                               }
                               className="cart-item__step-btn"
                             >
@@ -532,7 +550,9 @@ export function OrderPageClient({
                           </div>
                           <button
                             type="button"
-                            onClick={() => removeFromCart(item.productId)}
+                            onClick={() =>
+                              removeFromCart(item.productId, item.variantId ?? null)
+                            }
                             className="cart-item__del"
                             aria-label="Удалить"
                           >
@@ -1153,9 +1173,18 @@ export function OrderPageClient({
               <div className="checkout-summary__title">Итог заказа</div>
               <div className="checkout-summary__items">
                 {cart.map((item) => (
-                  <div key={item.productId} className="checkout-summary__item">
+                  <div
+                    key={`${item.productId}::${item.variantId || ""}`}
+                    className="checkout-summary__item"
+                  >
                     <span className="checkout-summary__item-name">
                       {item.name}
+                      {item.variantName && (
+                        <span className="checkout-summary__item-variant">
+                          {" "}
+                          · {item.variantName}
+                        </span>
+                      )}
                       <span className="checkout-summary__item-qty">
                         {" "}
                         × {item.quantity}

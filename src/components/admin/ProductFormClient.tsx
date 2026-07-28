@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
 import { MarkdownText } from "@/components/catalog/MarkdownText";
+import { VariantsEditor } from "./VariantsEditor";
 
 interface Category {
   id: string;
@@ -564,6 +565,28 @@ export function ProductFormClient({
               <option value="м">м</option>
             </select>
           </div>
+        </div>
+      </div>
+
+      <div className="admin-card">
+        <div className="admin-card__pad">
+          {isEdit ? (
+            <VariantsEditor
+              productId={product.id!}
+              basePrice={product?.price ?? null}
+            />
+          ) : (
+            <div className="admin-block">
+              <div className="admin-block__title">
+                Варианты (цвет/размер/фасовка)
+              </div>
+              <p className="admin-block__desc admin-block__desc--muted">
+                Чтобы добавить варианты — сначала сохраните товар. Варианты
+                позволяют покупателю выбирать конкретный цвет, размер или
+                фасовку и хранят свою цену/остаток/артикул.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

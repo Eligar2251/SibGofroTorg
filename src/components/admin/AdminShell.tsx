@@ -15,6 +15,7 @@ import {
   Star,
   Boxes,
   Truck,
+  QrCode,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
@@ -64,6 +65,14 @@ export function AdminShell({
       href: `/${adminPath}/warehouse`,
       label: "Учёт",
       icon: <Boxes size={18} />,
+    },
+    {
+      // Отдельная страница сканера /admin/scan (без [code] — это
+      // просто точка входа: открывается пустая форма поиска +
+      // доступ к камере, можно начать ввод кода).
+      href: `/${adminPath}/scan`,
+      label: "Сканер",
+      icon: <QrCode size={18} />,
     },
     {
       href: `/${adminPath}/settings`,

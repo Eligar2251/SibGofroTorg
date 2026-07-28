@@ -5,6 +5,7 @@ import {
   getPromotions,
   getProductById,
   getWastepaperRates,
+  getSettings,
 } from "@/lib/supabase-queries";
 import { formatRate } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
@@ -36,6 +37,19 @@ import { YandexMapEmbed } from "@/components/layout/YandexMapEmbed";
 import type { Metadata } from "next";
 import { SITE_URL, SITE_NAME, DEFAULT_DESCRIPTION } from "@/lib/seo";
 
+/** Превращает значение working_hours из БД в SITE_HOURS_LABEL-формат */
+function buildHoursLabel(workingHours: string, weekdayFallback: string): string {
+  if (workingHours && /пн[‐-―‑–—]?пт/i.test(workingHours)) {
+    return /сб.*вс|выходн/i.test(workingHours)
+      ? workingHours
+      : `${workingHours} · Сб, Вс — выходные`;
+  }
+  if (workingHours) {
+    return `Пн–Пт ${workingHours} · Сб, Вс — выходные`;
+  }
+  return `Пн–Пт ${weekdayFallback} · Сб, Вс — выходные`;
+}
+
 export const metadata: Metadata = {
   title: `Гофрокоробки в Новосибирске от 1 шт. — ${SITE_NAME}`,
   description: DEFAULT_DESCRIPTION,
@@ -55,7 +69,7 @@ export const revalidate = 120;
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [categories, featuredProducts, promotions, wpRates] = await Promise.all([
+  const [categories, featuredProducts, promotions, wpRates, settings] = await Promise.all([
     getCategories(),
     getProducts({
       featuredOnly: true,
@@ -63,7 +77,16 @@ export default async function HomePage() {
     }),
     getPromotions(),
     getWastepaperRates(),
+    getSettings().catch(() => ({} as Record<string, string>)),
   ]);
+
+  // Берём контактные данные из настроек (админка «Настройки →
+  // Контактная информация»), с дефолтами из site-config.ts.
+  const homePhone = (settings.phone || SITE_PHONE || "").trim();
+  const homePhoneHref = `tel:${homePhone.replace(/[^\d+]/g, "")}` || SITE_PHONE_HREF;
+  const homeAddress = (settings.address || SITE_ADDRESS || "").trim();
+  const homeWorkingHours = (settings.working_hours || "").trim();
+  const homeHoursLabel = buildHoursLabel(homeWorkingHours, "8:30–17:00") || SITE_HOURS_LABEL;
 
   // Для акций со ссылкой на товар резолвим slug товара,
   // чтобы «Подробнее» вело прямо на страницу товара
@@ -177,8 +200,8 @@ export default async function HomePage() {
               <Link href="/catalog" className="btn-hero-primary">
                 Перейти в каталог <ArrowRight size={16} />
               </Link>
-              <a href={SITE_PHONE_HREF} className="btn-hero-ghost">
-                <Phone size={15} /> {SITE_PHONE}
+              <a href={homePhoneHref} className="btn-hero-ghost">
+                <Phone size={15} /> {homePhone}
               </a>
             </div>
           </div>
@@ -224,14 +247,24 @@ export default async function HomePage() {
               <span>Работаем с юрлицами</span>
             </div>
 
-            <div className="hero__wp-phone">
-              <Phone size={14} />
-              <span>Отдел макулатуры: <strong>291-08-20</strong></span>
+            {/* Нижняя панель: «Рассчитать выплату» слева, бейдж с номером
+                отдела макулатуры справа — на одной горизонтальной линии.
+                margin-top:auto прижимает блок к низу flex-колонки
+                правой панели. На мобильном перестраивается в колонку
+                (см. media в globals.css). */}
+            <div className="hero__wp-bottom">
+              <span className="hero__wp-label">
+                Рассчитать выплату <ChevronRight size={15} />
+              </span>
+              <a
+                href="tel:+73832910820"
+                className="hero__wp-phone-badge"
+                aria-label="Позвонить в отдел макулатуры 291-08-20"
+              >
+                <Phone size={13} />
+                <strong>291-08-20</strong>
+              </a>
             </div>
-
-            <span className="hero__wp-label">
-              Рассчитать выплату <ChevronRight size={15} />
-            </span>
           </div>
         </Link>
       </section>
@@ -308,12 +341,10 @@ export default async function HomePage() {
                 Подберём нужный размер короба, рассчитаем оптовую стоимость и
                 организуем доставку.
               </p>
-              <a href={SITE_PHONE_HREF} className="consult-phone">
-                <Phone size={18} /> {SITE_PHONE}
+              <a href={homePhoneHref} className="consult-phone">
+                <Phone size={18} /> {homePhone}
               </a>
-              <p className="consult-hours">
-                {SITE_HOURS_LABEL}
-              </p>
+              <p className="consult-hours">{homeHoursLabel}</p>
             </div>
             <div className="consult-form">
               <QuickOrderForm />
@@ -330,15 +361,15 @@ export default async function HomePage() {
               <h3 className="map-info__title">Склад-магазин</h3>
               <div className="map-info__row">
                 <MapPin size={15} />
-                <span>{SITE_ADDRESS}</span>
+                <span>{homeAddress}</span>
               </div>
               <div className="map-info__row">
                 <Clock size={15} />
-                <span>{SITE_HOURS_LABEL}</span>
+                <span>{homeHoursLabel}</span>
               </div>
               <div className="map-info__row">
                 <Phone size={15} />
-                <a href={SITE_PHONE_HREF}>{SITE_PHONE}</a>
+                <a href={homePhoneHref}>{homePhone}</a>
               </div>
               <a
                 href={SITE_MAP_LINK}
@@ -353,7 +384,7 @@ export default async function HomePage() {
               <YandexMapEmbed
                 src={SITE_MAP_EMBED_URL}
                 title="Карта — СибГофроТорг"
-                address={SITE_ADDRESS}
+                address={homeAddress}
               />
             </div>
           </div>

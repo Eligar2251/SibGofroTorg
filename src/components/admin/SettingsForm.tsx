@@ -16,6 +16,7 @@ import {
   wpRateSettingKey,
   type WastepaperRateId,
 } from "@/lib/wastepaper";
+import { invalidateSiteSettingsCache } from "@/hooks/use-site-settings";
 
 interface SettingsFormProps {
   settings: Record<string, string>;
@@ -105,6 +106,11 @@ export function SettingsForm({ settings }: SettingsFormProps) {
       });
 
       if (res.ok) {
+        // Сбрасываем клиентский кеш публичных настроек (телефон/email/
+        // адрес/часы), чтобы при следующем рендере Header, Footer,
+        // страница контактов и success-страница сразу подхватили
+        // новые значения без перезагрузки.
+        invalidateSiteSettingsCache();
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
       }

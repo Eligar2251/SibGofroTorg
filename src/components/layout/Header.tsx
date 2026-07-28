@@ -18,6 +18,7 @@ import {
   Clock,
   LogIn,
   Recycle,
+  Mail,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { SearchBar } from "./SearchBar";
@@ -27,7 +28,9 @@ import {
   SITE_PHONE,
   SITE_PHONE_HREF,
   SITE_HOURS_LABEL,
+  SITE_EMAIL,
 } from "@/lib/site-config";
+import { useSiteSettings } from "@/hooks/use-site-settings";
 
 interface Category {
   id: string;
@@ -46,6 +49,16 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { totalItems } = useCart();
+  // Подхватываем телефон/email/адрес из БД (админ-панель «Настройки»).
+  // Пока запрос идёт, показываем дефолты из site-config.ts.
+  const siteSettings = useSiteSettings();
+  const headerPhone = siteSettings.phone || SITE_PHONE;
+  const headerPhoneHref =
+    siteSettings.phoneHref || SITE_PHONE_HREF;
+  const headerEmail = siteSettings.email || SITE_EMAIL;
+  const headerAddress = siteSettings.address || SITE_ADDRESS;
+  const headerHours =
+    siteSettings.hoursLabel || SITE_HOURS_LABEL;
 
   // Когда страница прокручена, шапка «отлипает» от верхней плашки —
   // добавляем тень, чтобы было видно, что она парит над контентом.
@@ -111,12 +124,20 @@ export function Header() {
           <div className="topbar-left">
             <span className="topbar-item">
               <MapPin size={12} />
-              <span className="hide-mobile">{SITE_ADDRESS}</span>
+              <span className="hide-mobile">{headerAddress}</span>
             </span>
             <span className="topbar-item hide-mobile">
               <Clock size={12} />
-              {SITE_HOURS_LABEL}
+              {headerHours}
             </span>
+            <a
+              href={headerEmail ? `mailto:${headerEmail}` : undefined}
+              className="topbar-item topbar-email hide-mobile"
+              aria-label="Написать нам на email"
+            >
+              <Mail size={12} />
+              <span className="hide-mobile">{headerEmail}</span>
+            </a>
           </div>
           <div className="topbar-right">
             <Link href="/about" className="hide-mobile">
@@ -128,8 +149,8 @@ export function Header() {
             <Link href="/contacts" className="hide-mobile">
               Контакты
             </Link>
-            <a href={SITE_PHONE_HREF} className="topbar-phone">
-              {SITE_PHONE}
+            <a href={headerPhoneHref} className="topbar-phone">
+              {headerPhone}
             </a>
           </div>
         </div>

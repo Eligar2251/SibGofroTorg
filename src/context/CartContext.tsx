@@ -2,8 +2,20 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 
+/**
+ * Позиция в корзине. Если у товара есть варианты (цвет/размер),
+ * `variantId` непустой — именно он идентифицирует позицию вместе
+ * с `productId`. У одного и того же товара в разных вариантах —
+ * две разные строки в корзине.
+ *
+ * `variantName` хранится для UI (например «Ящик 670 / красный»)
+ * и для бэкенда (в заказе мы храним snapshot, чтобы потом название
+ * не «сломалось», если админ переименует вариант).
+ */
 export interface CartItem {
   productId: string;
+  variantId?: string | null;
+  variantName?: string | null;
   name: string;
   sku?: string | null;
   price: number;
@@ -15,8 +27,8 @@ export interface CartItem {
 interface CartContextType {
   cart: CartItem[];
   addToCart: (item: Omit<CartItem, "quantity">, qty?: number) => void;
-  removeFromCart: (productId: string) => void;
-  updateQty: (productId: string, qty: number) => void;
+  removeFromCart: (productId: string, variantId?: string | null) => void;
+  updateQty: (productId: string, qty: number, variantId?: string | null) => void;
   clearCart: () => void;
   rawSubtotal: number;
   discountPercent: number;
@@ -27,6 +39,14 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+/**
+ * Уникальный ключ позиции корзины. Учитывает вариант: один и тот
+ * же товар в разных вариантах — это две разные строки.
+ */
+function cartItemKey(item: Pick<CartItem, "productId" | "variantId">): string {
+  return `${item.productId}::${item.variantId || ""}`;
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -35,7 +55,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const saved = localStorage.getItem("sib_cart");
     if (saved) {
       try {
-        setCart(JSON.parse(saved));
+        const parsed = JSON.parse(saved) as CartItem[];
+        // Обратная совместимость: в старой корзине не было
+        // variantId — ставим пустую строку, чтобы ключ
+        // совпадал с «товар без варианта».
+        const normalized = (parsed || []).map((it) => ({
+          ...it,
+          variantId: it.variantId ?? null,
+          variantName: it.variantName ?? null,
+        }));
+        setCart(normalized);
       } catch (e) {
         console.error("Ошибка парсинга корзины", e);
       }
@@ -51,26 +80,35 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addToCart = (product: Omit<CartItem, "quantity">, qty = 1) => {
     setCart((prev) => {
-      const existing = prev.find((item) => item.productId === product.productId);
+      const incomingKey = cartItemKey(product);
+      const existing = prev.find((item) => cartItemKey(item) === incomingKey);
       if (existing) {
         const newQty = existing.quantity + qty;
         const finalQty = product.maxStock != null ? Math.min(newQty, product.maxStock) : newQty;
         return prev.map((item) =>
-          item.productId === product.productId ? { ...item, quantity: finalQty } : item
+          cartItemKey(item) === incomingKey ? { ...item, quantity: finalQty } : item
         );
       }
       return [...prev, { ...product, quantity: qty }];
     });
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.productId !== productId));
+  const removeFromCart = (productId: string, variantId?: string | null) => {
+    setCart((prev) =>
+      prev.filter(
+        (item) =>
+          !(item.productId === productId && (item.variantId ?? null) === (variantId ?? null))
+      )
+    );
   };
 
-  const updateQty = (productId: string, qty: number) => {
+  const updateQty = (productId: string, qty: number, variantId?: string | null) => {
     setCart((prev) =>
       prev.map((item) => {
-        if (item.productId === productId) {
+        if (
+          item.productId === productId &&
+          (item.variantId ?? null) === (variantId ?? null)
+        ) {
           const finalQty = Math.max(1, qty);
           const validatedQty = item.maxStock != null ? Math.min(finalQty, item.maxStock) : finalQty;
           return { ...item, quantity: validatedQty };

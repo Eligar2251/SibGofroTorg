@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Eye, EyeOff, Trash2, Loader2, Edit2 } from "lucide-react";
+import { Search, Eye, EyeOff, Trash2, Loader2, Edit2, QrCode } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 
 interface ProductItem {
@@ -325,6 +325,14 @@ export function ProductListClient({
                           title="Редактировать"
                         >
                           <Edit2 size={15} />
+                        </Link>
+                        <Link
+                          href={`/${adminPath}/scan/${(product as any).qrSlug || (product as any).barcode || product.id}`}
+                          prefetch={false}
+                          className="admin-btn admin-btn--icon"
+                          title="QR + штрихкод"
+                        >
+                          <QrCode size={15} />
                         </Link>
                         <Link
                           href={`/catalog/product/${product.slug}`}

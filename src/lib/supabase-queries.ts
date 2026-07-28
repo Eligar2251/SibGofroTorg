@@ -5,6 +5,7 @@
 
 import { unstable_cache, revalidateTag } from "next/cache";
 import { getAdminDb } from "./supabase";
+import { computeBarcode, computeQrSlug } from "./qr";
 import {
   extractQueryDims,
   dimensionScore,
@@ -26,7 +27,12 @@ import type {
   ProductQuestion,
   ProductRating,
   ProductView,
+  ProductVariant,
 } from "./types";
+import {
+  aggregateVariants as aggregateVariantsPure,
+  getCachedVariantsMap,
+} from "./variants";
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -91,6 +97,17 @@ function mapProductRow(row: any): FirestoreProduct {
     updatedAt: toIso(row.updated_at),
   };
 }
+
+// ── QR + штрихкод ──
+//
+// `barcode` и `qrSlug` генерируются детерминированно из `id` и не
+// хранятся в БД — поэтому в mapProductRow они остаются `undefined`,
+// а заполняются в post-обработке `getCachedProducts` (см. ниже).
+// Это даёт 2 плюса: 1) не нужна миграция; 2) коды ВСЕГДА актуальны
+// и согласованы с `id`, даже если БД частично отстала.
+//
+// Реальные колонки в products (если когда-нибудь решим хранить
+// явно): `barcode` и `qr_slug`. Пока — null.
 
 function mapReviewRow(row: any): ProductReview {
   return {
@@ -217,9 +234,40 @@ export function invalidateProductsCache(): void {
 }
 
 const getCachedProducts = unstable_cache(
-  fetchAllProducts,
+  async () => {
+    const products = await fetchAllProducts();
+    // Подтягиваем сводку по вариантам: используется в каталоге для
+    // «от X ₽», бейджа «Есть варианты», сводного остатка и т.п.
+    // Сами варианты не тянем сюда — они нужны только на странице
+    // товара и в админке (отдельные запросы).
+    const productIds = products.map((p) => p.id);
+    const variantsMap = await getCachedVariantsMap(productIds);
+    for (const p of products) {
+      const variants = variantsMap.get(p.id) || [];
+      const agg = aggregateVariantsPure(variants, p);
+      p.variants = variants;
+      p.hasVariants = agg.hasVariants;
+      p.variantCount = agg.variantCount;
+      p.variantPriceMin = agg.priceMin;
+      p.variantPriceMax = agg.priceMax;
+      p.variantTotalStock = agg.totalStock;
+      // Если у товара есть варианты — в карточке каталога
+      // показываем «от X ₽» вместо обычной цены.
+      if (agg.hasVariants && agg.priceMin != null) {
+        p.price = agg.priceMin;
+        p.inStock = agg.anyInStock;
+        p.stockQty = agg.totalStock;
+      }
+      // QR + штрихкод — детерминированно из id. Ленивое вычисление:
+      // ~микросекунды на товар, кеш на 120с, так что в худшем
+      // случае один раз за 2 минуты.
+      p.barcode = computeBarcode(p.id);
+      p.qrSlug = computeQrSlug(p.id);
+    }
+    return products;
+  },
   ["base-products"],
-  { revalidate: DATA_REVALIDATE, tags: ["products"] }
+  { revalidate: DATA_REVALIDATE, tags: ["products", "variants"] }
 );
 
 async function fetchProductReviewsRaw(productId: string): Promise<ProductReview[]> {
@@ -348,6 +396,40 @@ export async function getProductById(id: string): Promise<FirestoreProduct | nul
 export async function getProductBySlug(slug: string): Promise<FirestoreProduct | null> {
   const products = await getCachedProducts();
   return products.find((p) => p.slug === slug) || null;
+}
+
+/**
+ * Версия для страницы товара: всегда подтягивает полный список
+ * видимых вариантов (для UI «выбери цвет/размер»).
+ * Использует кеш getCachedVariantsMap, так что дополнительный
+ * запрос идёт только если данные устарели.
+ */
+export async function getProductBySlugForPage(
+  slug: string,
+): Promise<{ product: FirestoreProduct | null; variants: ProductVariant[] }> {
+  const product = await getProductBySlug(slug);
+  if (!product) return { product: null, variants: [] };
+  // Берём кешированную карту (та же, что и в getCachedProducts) —
+  // это сохраняет 1 запрос в БД.
+  const map = await getCachedVariantsMap([product.id]);
+  // Defensive: getCachedVariantsMap всегда возвращает Map, но если
+  // на edge крутится старая версия, которая вернула что-то иное
+  // (например, массив из-за двойного оборачивания productIds), то
+  // без этой проверки мы получим "X.get is not a function" и страница
+  // товара упадёт. Поэтому проверяем тип и при необходимости
+  // восстанавливаем карту из entries.
+  const variantsMap: Map<string, ProductVariant[]> =
+    map instanceof Map
+      ? map
+      : new Map<string, ProductVariant[]>(
+          Array.isArray(map) ? (map as Array<[string, ProductVariant[]]>) : []
+        );
+  const allVariants = variantsMap.get(product.id) || [];
+  // Для страницы товара — только видимые
+  return {
+    product,
+    variants: allVariants.filter((v) => v.isVisible),
+  };
 }
 
 export async function getRelatedProducts(

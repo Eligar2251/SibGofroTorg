@@ -24,9 +24,15 @@ import {
 import { GlyphIcon } from "@/components/ui/Glyph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSiteSettings } from "@/hooks/use-site-settings";
+import { SITE_PHONE, SITE_PHONE_HREF, SITE_HOURS_LABEL } from "@/lib/site-config";
 
 interface OrderItem {
   productId?: string;
+  /** id выбранного варианта (цвет/размер/фасовка). NULL — без варианта. */
+  variantId?: string | null;
+  /** Snapshot имени варианта на момент заказа. */
+  variantName?: string | null;
   name: string;
   quantity: number;
   price: number;
@@ -159,12 +165,12 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
     loadProducts();
   }
 
-  function patchQty(productId: string | undefined, delta: number) {
+  function patchQty(productId: string | undefined, delta: number, variantId?: string | null) {
     if (!productId) return;
     setEditItems((prev) =>
       prev
         .map((item) =>
-          item.productId === productId
+          item.productId === productId && (item.variantId ?? null) === (variantId ?? null)
             ? { ...item, quantity: Math.max(0, item.quantity + delta) }
             : item
         )
@@ -175,10 +181,12 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
   function addProduct(p: ProductOption) {
     const price = Number(p.price) || 0;
     setEditItems((prev) => {
-      const found = prev.find((item) => item.productId === p.id);
+      const found = prev.find((item) => item.productId === p.id && (item.variantId ?? null) === null);
       if (found) {
         return prev.map((item) =>
-          item.productId === p.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.productId === p.id && (item.variantId ?? null) === null
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
         );
       }
       return [...prev, { productId: p.id, name: p.name, sku: p.sku || "—", quantity: 1, price }];
@@ -193,7 +201,14 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: editItems.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+          items: editItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            // variantId/variantName пробрасываем, чтобы при сохранении
+            // сохранился «цвет/размер», выбранный клиентом.
+            variantId: item.variantId ?? null,
+            variantName: item.variantName ?? null,
+          })),
           comment: order.comment || null,
         }),
       });
@@ -254,6 +269,11 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
                   <div key={idx} className="cab-order__item">
                     <div className="cab-order__item-name">
                       {item.name}
+                      {item.variantName && (
+                        <span className="cab-order__item-variant">
+                          · {item.variantName}
+                        </span>
+                      )}
                       {item.sku && <span className="cab-order__item-sku">{item.sku}</span>}
                     </div>
                     <div className="cab-order__item-right">
@@ -345,12 +365,35 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
 
               <div className="cab-order__items-list" style={{ marginBottom: 12 }}>
                 {editItems.map((item) => (
-                  <div key={item.productId || item.name} className="cab-order__item">
-                    <div className="cab-order__item-name">{item.name}<span className="cab-order__item-sku">{item.sku}</span></div>
+                  <div
+                    key={`${item.productId || ""}::${item.variantId || ""}`}
+                    className="cab-order__item"
+                  >
+                    <div className="cab-order__item-name">
+                      {item.name}
+                      {item.variantName && (
+                        <span className="cab-order__item-variant">
+                          · {item.variantName}
+                        </span>
+                      )}
+                      <span className="cab-order__item-sku">{item.sku}</span>
+                    </div>
                     <div className="cab-order__item-right">
-                      <button type="button" className="qty-btn" onClick={() => patchQty(item.productId, -1)}><Minus size={12} /></button>
+                      <button
+                        type="button"
+                        className="qty-btn"
+                        onClick={() => patchQty(item.productId, -1, item.variantId ?? null)}
+                      >
+                        <Minus size={12} />
+                      </button>
                       <span className="cab-order__item-qty">{item.quantity} шт.</span>
-                      <button type="button" className="qty-btn" onClick={() => patchQty(item.productId, 1)}><Plus size={12} /></button>
+                      <button
+                        type="button"
+                        className="qty-btn"
+                        onClick={() => patchQty(item.productId, 1, item.variantId ?? null)}
+                      >
+                        <Plus size={12} />
+                      </button>
                       <span className="cab-order__item-sum">{(item.price * item.quantity).toLocaleString("ru-RU")} ₽</span>
                     </div>
                   </div>
@@ -399,6 +442,11 @@ export default function CabinetPage() {
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Телефон/часы для блока «Нужна помощь?» в сайдбаре — из настроек
+  const siteSettings = useSiteSettings();
+  const cabPhone = siteSettings.phone || SITE_PHONE;
+  const cabPhoneHref = siteSettings.phoneHref || SITE_PHONE_HREF;
+  const cabHours = siteSettings.hoursLabel || SITE_HOURS_LABEL;
 
   useEffect(() => {
     let cancelled = false;
@@ -543,11 +591,11 @@ export default function CabinetPage() {
               <div style={{ fontSize: "13px", color: "var(--ink-light)", marginBottom: "8px" }}>
                 Нужна помощь?
               </div>
-              <a href="tel:+73832918146" className="cab-sidebar__phone">
-                <Phone size={15} /> +7 (383) 291-81-46
+              <a href={cabPhoneHref} className="cab-sidebar__phone">
+                <Phone size={15} /> {cabPhone}
               </a>
               <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginTop: "4px" }}>
-                Пн–Пт 8:30–17:00 · Сб, Вс — выходные
+                {cabHours}
               </div>
             </div>
           </aside>
