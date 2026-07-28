@@ -440,6 +440,22 @@ export async function getProductById(id: string): Promise<FirestoreProduct | nul
   return products.find((p) => p.id === id) || null;
 }
 
+/**
+ * Сырой товар для админки — без агрегирования из вариантов и без
+ * витринных подмен price/stockQty. Нужен на странице редактирования,
+ * иначе админ видел производные значения (например, -1 из products или
+ * суммарный variant stock) вместо того, что сохраняет в карточке.
+ */
+export async function getProductByIdForAdmin(id: string): Promise<FirestoreProduct | null> {
+  const db = getAdminDb();
+  const { data, error } = await db.from("products").select("*").eq("id", id).maybeSingle();
+  if (error || !data) return null;
+  const product = mapProductRow(data);
+  product.barcode = computeBarcode(product.id);
+  product.qrSlug = computeQrSlug(product.id);
+  return product;
+}
+
 export async function getProductBySlug(slug: string): Promise<FirestoreProduct | null> {
   const products = await getCachedProducts();
   return products.find((p) => p.slug === slug) || null;
@@ -550,6 +566,20 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   };
   for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
     if (data[jsKey] !== undefined) payload[dbKey] = data[jsKey];
+  }
+
+  // Админка редактирует эти поля напрямую в карточке товара.
+  // Приводим их к числам явно, чтобы в БД не оставались старые/битые
+  // значения и чтобы UI после сохранения показывал именно то, что ввёл админ.
+  if (data.stockQty !== undefined) {
+    payload.stock_qty = data.stockQty == null || data.stockQty === ""
+      ? null
+      : Number(data.stockQty);
+  }
+  if (data.packQty !== undefined) {
+    payload.pack_qty = data.packQty == null || data.packQty === ""
+      ? null
+      : Number(data.packQty);
   }
   const { error } = await db.from("products").update(payload).eq("id", id);
   if (error) throw error;

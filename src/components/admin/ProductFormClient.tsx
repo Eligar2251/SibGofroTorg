@@ -608,6 +608,7 @@ export function ProductFormClient({
               <input
                 name="packQty"
                 type="number"
+                min="0"
                 defaultValue={product?.packQty ?? ""}
                 className="admin-input"
               />

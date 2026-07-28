@@ -4,7 +4,7 @@
 
 import { notFound } from "next/navigation";
 import {
-  getProductById,
+  getProductByIdForAdmin,
   getAllCategories,
   getFeaturedProductOrderIds,
 } from "@/lib/supabase-queries";
@@ -22,7 +22,7 @@ export default async function EditProductPage({
   const { adminPath, id } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
-  const product = await getProductById(id);
+  const product = await getProductByIdForAdmin(id);
   if (!product) notFound();
 
   const [categories, featuredOrderIds] = await Promise.all([
