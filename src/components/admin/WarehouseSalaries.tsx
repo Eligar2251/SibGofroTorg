@@ -60,6 +60,7 @@ import {
   type Salary,
   type SalarySource,
   composeSalaryComment,
+  isDebtSalaryComment,
   isRentSalaryComment,
   isSalaryExcludedFromBalance,
   stripSalaryMetaTags,
@@ -194,6 +195,17 @@ function sourceBadgeClass(s: Salary): string {
   return s.source === "cash" ? "admin-badge--green" : "admin-badge--blue";
 }
 
+function isDebtPaymentSalary(s: Salary): boolean {
+  return isDebtSalaryComment(s.comment);
+}
+
+function fmtCellCompactAmount(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 10000) return `${Math.round(n / 1000)}к`;
+  if (abs >= 1000) return `${Math.round(n / 100) / 10}к`;
+  return `${Math.round(n)}`;
+}
+
 // ─── Форма начисления зарплаты ─────────────────────
 
 function SalaryFormModal({
@@ -220,6 +232,9 @@ function SalaryFormModal({
   const [comment, setComment] = useState(stripSalaryMetaTags(initial?.comment));
   const [excludeFromBalance, setExcludeFromBalance] = useState(
     Boolean(initial && isSalaryExcludedFromBalance(initial.comment))
+  );
+  const [debtPayment, setDebtPayment] = useState(
+    Boolean(initial && isDebtPaymentSalary(initial))
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -274,6 +289,7 @@ function SalaryFormModal({
               comment,
               rent: initialRent,
               excludeFromBalance,
+              debtPayment,
             }),
           }),
         }
@@ -395,6 +411,14 @@ function SalaryFormModal({
                 onChange={(e) => setExcludeFromBalance(e.target.checked)}
               />
               <span>В обход баланса: показать в истории ЗП, но не списывать из банка/кассы</span>
+            </label>
+            <label className="admin-check" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={debtPayment}
+                onChange={(e) => setDebtPayment(e.target.checked)}
+              />
+              <span>В счёт долга, не считать как зарплату месяца</span>
             </label>
 
             {error && <div className="wh-form-error">{error}</div>}
@@ -638,6 +662,7 @@ function QuickPayForm({
     source: QuickSource;
     paid: boolean;
     excludeFromBalance: boolean;
+    debtPayment: boolean;
     comment: string;
   }) => void;
 }) {
@@ -645,6 +670,7 @@ function QuickPayForm({
   const [source, setSource] = useState<QuickSource>("cash");
   const [paid, setPaid] = useState(true);
   const [excludeFromBalance, setExcludeFromBalance] = useState(false);
+  const [debtPayment, setDebtPayment] = useState(false);
   const [comment, setComment] = useState("");
 
   function submit(e: React.FormEvent) {
@@ -656,10 +682,12 @@ function QuickPayForm({
       source,
       paid,
       excludeFromBalance,
+      debtPayment,
       comment: comment.trim(),
     });
     setAmount("");
     setExcludeFromBalance(false);
+    setDebtPayment(false);
     setComment("");
   }
 
@@ -723,6 +751,14 @@ function QuickPayForm({
           onChange={(e) => setExcludeFromBalance(e.target.checked)}
         />
         В обход баланса (историческая выплата)
+      </label>
+      <label className="whsal-check">
+        <input
+          type="checkbox"
+          checked={debtPayment}
+          onChange={(e) => setDebtPayment(e.target.checked)}
+        />
+        В счёт долга (не зарплата месяца)
       </label>
       <input
         type="text"
@@ -1104,6 +1140,7 @@ interface GridRow {
   cells: Record<number, Salary[]>;
   scheduledDays: number[];
   scheduledSet: Set<number>;
+  scheduledPlanByDay: Record<number, number>;
 }
 
 export function WarehouseSalaries({
@@ -1203,7 +1240,9 @@ export function WarehouseSalaries({
   const pending = scopedSalaries.filter((s) => !s.isPaid);
   const paid = scopedSalaries.filter((s) => s.isPaid);
   const pendingTotal = pending.reduce((s, x) => s + x.amount, 0);
-  const accruedTotal = scopedSalaries.reduce((s, x) => s + x.amount, 0);
+  const accruedTotal = scopedSalaries
+    .filter((s) => !isDebtPaymentSalary(s))
+    .reduce((s, x) => s + x.amount, 0);
   const paidTotal = paid.reduce((s, x) => s + x.amount, 0);
   const paidCash = paid
     .filter((s) => s.source === "cash" && !isRentSalary(s))
@@ -1232,7 +1271,8 @@ export function WarehouseSalaries({
         );
         const paidRows = rows.filter((r) => r.isPaid);
         const received = paidRows.reduce((sum, r) => sum + r.amount, 0);
-        const accruedRecords = rows.reduce((sum, r) => sum + r.amount, 0);
+        const salaryRows = rows.filter((r) => !isDebtPaymentSalary(r));
+        const accruedRecords = salaryRows.reduce((sum, r) => sum + r.amount, 0);
         const planRaw = settingsRaw[planSettingKey(activeMonth, employee.id)];
         const plan = planRaw !== undefined ? Number(planRaw) || 0 : 0;
         const effectivePlan = plan > 0 ? plan : accruedRecords;
@@ -1248,6 +1288,21 @@ export function WarehouseSalaries({
           const d = dayOfMonth(r.date);
           (cells[d] = cells[d] || []).push(r);
         }
+        const rest = totalDue - received;
+        const futureScheduledDays = scheduledDays.filter((day) => !(cells[day] && cells[day].length));
+        const scheduledPlanByDay: Record<number, number> = {};
+        if (futureScheduledDays.length > 0 && rest > 0) {
+          const base = Math.floor((rest / futureScheduledDays.length) * 100) / 100;
+          let allocated = 0;
+          futureScheduledDays.forEach((day, idx) => {
+            const amount =
+              idx === futureScheduledDays.length - 1
+                ? Math.round((rest - allocated) * 100) / 100
+                : base;
+            scheduledPlanByDay[day] = amount;
+            allocated = Math.round((allocated + amount) * 100) / 100;
+          });
+        }
         return {
           employee,
           rows,
@@ -1258,10 +1313,11 @@ export function WarehouseSalaries({
           effectivePlan,
           manualDebt,
           totalDue,
-          rest: totalDue - received,
+          rest,
           cells,
           scheduledDays,
           scheduledSet: new Set(scheduledDays),
+          scheduledPlanByDay,
         };
       })
       .filter(
@@ -1373,6 +1429,7 @@ export function WarehouseSalaries({
       source: QuickSource;
       paid: boolean;
       excludeFromBalance: boolean;
+      debtPayment: boolean;
       comment: string;
     }
   ) {
@@ -1383,6 +1440,7 @@ export function WarehouseSalaries({
         comment: data.comment,
         rent: data.source === "rent",
         excludeFromBalance: data.excludeFromBalance,
+        debtPayment: data.debtPayment,
       });
       const res = await fetch("/api/admin/warehouse/salaries", {
         method: "POST",
@@ -1699,7 +1757,7 @@ export function WarehouseSalaries({
       `<div style="font-family:Arial;font-size:14px;font-weight:bold;margin-bottom:8px;">Таблица взаиморасчётов за ${esc(ml)}</div>` +
       `<table>${head}${body}</table>` +
       `<div style="font-family:Arial;font-size:10px;color:#6B6B60;margin-top:10px;">` +
-      `Красный — выплата получена · Жёлтый — выходной/праздник · Синий — оплачено с аренды на карту · Остаток = За месяц + Долг − Получено</div>` +
+      `Красный — выплата получена · Жёлтый — выходной/праздник · Синий — аренда / план выплаты · Остаток = За месяц + Долг − Получено</div>` +
       `</body></html>`;
 
     const blob = new Blob(["\ufeff", html], {
@@ -2099,6 +2157,9 @@ export function WarehouseSalaries({
                         : scheduled
                         ? "\nЗапланирована выплата с аренды"
                         : "\nКлик — добавить выплату");
+                    const plannedAmount = row.scheduledPlanByDay?.[d] || 0;
+                    const visibleItems = items.slice(0, 2);
+                    const extraCount = items.length - visibleItems.length;
                     return (
                       <td
                         key={d}
@@ -2106,11 +2167,31 @@ export function WarehouseSalaries({
                         title={title}
                         onClick={(e) => openDayPopover(row.employee, d, e.currentTarget)}
                       >
-                        {sum > 0 && <span className="whsal-day-sum">{fmt(sum)}</span>}
+                        <span className="whsal-day-stack">
+                          {visibleItems.map((entry) => (
+                            <span
+                              key={entry.id}
+                              className={`whsal-day-chip${
+                                isRentSalary(entry)
+                                  ? " whsal-day-chip--rent"
+                                  : isDebtPaymentSalary(entry)
+                                  ? " whsal-day-chip--debt"
+                                  : ""
+                              }`}
+                            >
+                              {fmtCellCompactAmount(entry.amount)}
+                            </span>
+                          ))}
+                          {!items.length && plannedAmount > 0 && (
+                            <span className="whsal-day-chip whsal-day-chip--scheduled">
+                              {fmtCellCompactAmount(plannedAmount)}
+                            </span>
+                          )}
+                        </span>
                         {rent && <span className="whsal-day-mark">А</span>}
                         {!items.length && scheduled && <span className="whsal-day-mark">П</span>}
-                        {items.length > 1 && (
-                          <span className="whsal-day-count">×{items.length}</span>
+                        {extraCount > 0 && (
+                          <span className="whsal-day-count">+{extraCount}</span>
                         )}
                       </td>
                     );
@@ -2304,6 +2385,9 @@ export function WarehouseSalaries({
                   <span className={`admin-badge ${sourceBadgeClass(s)}`}>
                     {sourceLabel(s)}
                   </span>
+                  {isDebtPaymentSalary(s) && (
+                    <span className="admin-badge admin-badge--amber">долг</span>
+                  )}
                   {!s.isPaid && <span className="bank-pay__wait">к выплате</span>}
                   {s.isPaid && (
                     <span className="admin-badge admin-badge--green">
@@ -2433,6 +2517,9 @@ export function WarehouseSalaries({
                         <span className={`admin-badge ${sourceBadgeClass(s)}`}>
                           {sourceLabel(s)}
                         </span>
+                        {isDebtPaymentSalary(s) && (
+                          <span className="admin-badge admin-badge--amber">долг</span>
+                        )}
                         {s.isPaid ? (
                           <span className="admin-badge admin-badge--green">
                             <CheckCircle size={10} /> выплачено
@@ -2624,6 +2711,9 @@ export function WarehouseSalaries({
                             <div className="whsal-pop__item-top">
                               <span className="whsal-pop__amount">{fmt(s.amount)} ₽</span>
                               <span className="whsal-pop__date">{fmtDate(s.date)}</span>
+                              {isDebtPaymentSalary(s) && (
+                                <span className="admin-badge admin-badge--amber">долг</span>
+                              )}
                               {s.isPaid ? (
                                 <span className="admin-badge admin-badge--green">выплачено</span>
                               ) : (

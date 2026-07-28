@@ -5284,35 +5284,35 @@ body:has(.admin-modal-overlay) {
 .whsal-td--name {
   position: sticky;
   left: 0;
-  min-width: 172px;
-  max-width: 172px;
+  min-width: 152px;
+  max-width: 152px;
   z-index: 4;
 }
 
 .whsal-th--accrued,
 .whsal-td--accrued {
   position: sticky;
-  left: 172px;
-  min-width: 96px;
-  max-width: 96px;
+  left: 152px;
+  min-width: 84px;
+  max-width: 84px;
   z-index: 4;
 }
 
 .whsal-th--debt,
 .whsal-td--debt {
   position: sticky;
-  left: 268px;
-  min-width: 92px;
-  max-width: 92px;
+  left: 236px;
+  min-width: 78px;
+  max-width: 78px;
   z-index: 4;
 }
 
 .whsal-th--received,
 .whsal-td--received {
   position: sticky;
-  left: 360px;
-  min-width: 100px;
-  max-width: 100px;
+  left: 314px;
+  min-width: 88px;
+  max-width: 88px;
   z-index: 4;
   box-shadow: 6px 0 8px -6px rgba(26, 26, 24, 0.22);
 }
@@ -5333,6 +5333,14 @@ body:has(.admin-modal-overlay) {
 .whsal-th--received,
 .whsal-th--rest {
   z-index: 7;
+}
+
+.whsal-th--accrued,
+.whsal-th--debt,
+.whsal-th--received {
+  font-size: 9px;
+  line-height: 1.15;
+  padding: 4px 3px;
 }
 
 .whsal-td--name,
@@ -5373,7 +5381,7 @@ body:has(.admin-modal-overlay) {
 /* ── Ячейка ФИО ── */
 .whsal-td--name {
   text-align: left;
-  padding: 6px 10px;
+  padding: 5px 8px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -5384,17 +5392,17 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-avatar {
-  width: 27px;
-  height: 27px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--adm-steel-pale);
   color: var(--adm-steel);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 8px;
+  margin-right: 6px;
   flex-shrink: 0;
   vertical-align: middle;
 }
@@ -5408,7 +5416,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-name-text strong {
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: var(--adm-ink);
   transition: color 0.12s;
   overflow: hidden;
@@ -5417,7 +5425,7 @@ body:has(.admin-modal-overlay) {
 
 .whsal-name-text small {
   color: var(--adm-sand);
-  font-size: 10px;
+  font-size: 9px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -5429,8 +5437,8 @@ body:has(.admin-modal-overlay) {
   text-align: center;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  font-size: 12px;
-  padding: 6px 4px;
+  font-size: 11px;
+  padding: 5px 3px;
   white-space: nowrap;
 }
 
@@ -5477,8 +5485,8 @@ body:has(.admin-modal-overlay) {
   text-align: center;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  font-size: 12px;
-  padding: 6px 4px;
+  font-size: 11px;
+  padding: 5px 3px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -5493,10 +5501,10 @@ body:has(.admin-modal-overlay) {
 
 /* ── Ячейки дней ── */
 .whsal-day {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
-  height: 42px;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+  height: 46px;
   text-align: center;
   cursor: pointer;
   position: relative;
@@ -5507,10 +5515,10 @@ body:has(.admin-modal-overlay) {
 
 @media (max-width: 640px) {
   .whsal-day {
-    width: 34px;
-    min-width: 34px;
-    max-width: 34px;
-    height: 38px;
+    width: 32px;
+    min-width: 32px;
+    max-width: 32px;
+    height: 40px;
   }
 }
 
@@ -5565,6 +5573,45 @@ body:has(.admin-modal-overlay) {
 
 .whsal-day--scheduled .whsal-day-mark {
   color: var(--adm-steel);
+}
+
+.whsal-day-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 100%;
+}
+
+.whsal-day-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  max-width: 100%;
+  padding: 1px 3px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  background: rgba(255,255,255,0.55);
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.whsal-day-chip--rent,
+.whsal-day-chip--scheduled {
+  background: rgba(255,255,255,0.82);
+  color: var(--adm-steel);
+}
+
+.whsal-day-chip--debt {
+  background: rgba(255,255,255,0.82);
+  color: var(--adm-kraft);
 }
 
 .whsal-day-sum {

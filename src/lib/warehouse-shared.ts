@@ -199,6 +199,7 @@ export interface Salary {
 /** Служебные теги в комментарии зарплаты. */
 export const SALARY_RENT_TAG = "[Аренда]";
 export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
+export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
 
 function salaryHasTag(comment: string | null | undefined, tag: string): boolean {
   return (comment || "").includes(tag);
@@ -214,11 +215,17 @@ export function isSalaryExcludedFromBalance(comment: string | null | undefined):
   return salaryHasTag(comment, SALARY_EXCLUDE_BALANCE_TAG);
 }
 
+/** Выплата относится к долгу, а не к зарплате текущего месяца. */
+export function isDebtSalaryComment(comment: string | null | undefined): boolean {
+  return salaryHasTag(comment, SALARY_DEBT_PAYMENT_TAG);
+}
+
 /** Убирает служебные теги из комментария для отображения в UI. */
 export function stripSalaryMetaTags(comment: string | null | undefined): string {
   return String(comment || "")
     .replaceAll(SALARY_RENT_TAG, "")
     .replaceAll(SALARY_EXCLUDE_BALANCE_TAG, "")
+    .replaceAll(SALARY_DEBT_PAYMENT_TAG, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -228,10 +235,12 @@ export function composeSalaryComment(options: {
   comment?: string | null;
   rent?: boolean;
   excludeFromBalance?: boolean;
+  debtPayment?: boolean;
 }): string | null {
   const tags: string[] = [];
   if (options.rent) tags.push(SALARY_RENT_TAG);
   if (options.excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
+  if (options.debtPayment) tags.push(SALARY_DEBT_PAYMENT_TAG);
   const clean = stripSalaryMetaTags(options.comment);
   const joined = [...tags, clean].filter(Boolean).join(" ").trim();
   return joined || null;
