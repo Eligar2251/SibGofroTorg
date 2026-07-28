@@ -2412,6 +2412,31 @@ select {
   color: var(--ink-muted);
 }
 
+/* Префикс «от» — когда у товара варианты и цены разные.
+   Чуть мельче и сероватее, чтобы не отвлекать. */
+.pcc__price-from {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-muted);
+  margin-right: 2px;
+}
+
+/* Бейдж «N вариантов» под ценой — намекает, что у товара
+   есть выбор цвета/размера/фасовки. */
+.pcc__variants-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green-dark);
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  padding: 2px 8px;
+  border-radius: 8px;
+  width: fit-content;
+  margin-top: 1px;
+}
+
 .pcc__price-wholesale {
   display: flex;
   align-items: center;
