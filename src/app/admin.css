@@ -7651,85 +7651,112 @@ body:has(.admin-modal-overlay) {
   font-size: 13px;
 }
 
-/* ── Превью этикеток (на экране серое, в печати — белое) ── */
+/* ── Превью этикеток (на экране — на сером фоне, в печати — белый лист A4) ──
+   Задача: квадратные этикетки ОДИНАКОВОГО размера (4×4, 5×5 или
+   6×6 см), выстроенные в табличную сетку с равным шагом (это
+   будущие «линии реза»). Внутри каждой этикетки — flex-колонка
+   с justify-content:space-between, чтобы название и цена
+   прижимались к верху, штрихкод — к низу, QR — по центру. */
 .qrprint__sheet {
   display: grid;
-  grid-template-columns: repeat(var(--qr-cols), minmax(0, 1fr));
-  grid-auto-rows: max-content;
-  gap: 4mm;
-  padding: 8mm;
+  /* Фиксированный квадратный размер колонок через var(--qr-side)
+     + явное число колонок через var(--qr-cols). Это даёт
+     «табличную» сетку с одинаковыми ячейками, в отличие от
+     repeat(N, minmax(0, 1fr)) — там колонки могут «плавать» */
+  grid-template-columns: repeat(var(--qr-cols), var(--qr-side));
+  grid-auto-rows: var(--qr-side); /* высота строки = стороне этикетки */
+  gap: 2mm;                       /* зазор между этикетками (будущие «линии реза») */
+  justify-content: center;        /* центрируем сетку по горизонтали */
+  padding: 6mm;
   background: var(--adm-paper);
   border: 1px dashed var(--adm-border-mid);
   border-radius: var(--adm-r-lg);
-  /* Каждая этикетка занимает 1 ячейку; высота строки —
-     фиксированная, чтобы превью выглядело как на листе A4 */
 }
 
 .qrprint__label {
+  /* Квадратная этикетка — width/height через тот же var(--qr-side) */
+  width: var(--qr-side);
+  height: var(--qr-side);
   background: #fff;
-  border: 1px dashed #d0d0d0;
+  border: 1px solid #d0d0d0;
   border-radius: 2px;
-  padding: 2mm;
+  padding: 1.5mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;             /* всё по горизонтали — центр */
+  justify-content: space-between;  /* шапка ↕ QR ↕ штрихкод равномерно */
+  text-align: center;
+  overflow: hidden;
+  /* На превью и в печати этикетка должна быть идеально квадратной
+     и одинаковой для всех карточек — никаких вытягиваний */
+  box-sizing: border-box;
+}
+
+.qrprint__label-head {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1mm;
-  text-align: center;
-  overflow: hidden;
+  gap: 0.5mm;
+  line-height: 1.05;
 }
 
 .qrprint__label-name {
-  font-size: 8pt;
+  font-size: 7pt;
   font-weight: 700;
   color: #000;
   line-height: 1.1;
-  max-width: 100%;
+  width: 100%;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  word-break: break-word;
 }
 
-.qrprint__label-sku {
-  font-size: 6.5pt;
-  color: #555;
-  font-family: var(--f-mono);
+.qrprint__label-price {
+  font-size: 8.5pt;
+  font-weight: 800;
+  color: #000;
+  white-space: nowrap;
+}
+
+.qrprint__label-code {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5mm;
   line-height: 1;
 }
 
 .qrprint__label-qr {
-  width: 70%;
-  max-width: 100%;
+  width: auto;
+  /* ВАЖНО: фиксированный квадратный размер + aspect-ratio: 1 —
+     чтобы QR не «вытягивался» по высоте, если родитель чуть
+     уже ожидаемого. */
+  aspect-ratio: 1 / 1;
   height: auto;
-  aspect-ratio: 1;
+  max-width: 100%;
   background: #fff;
+  object-fit: contain;
 }
 
 .qrprint__label-bc {
-  width: 95%;
+  /* Штрихкод — фиксированная высота, ширина по содержимому
+     (max-width:100%, чтобы не вылезал за этикетку) */
   height: auto;
+  max-width: 100%;
   background: #fff;
+  object-fit: contain;
 }
 
-.qrprint__label-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  width: 100%;
-  line-height: 1;
-}
-
-.qrprint__label-price {
-  font-size: 9pt;
-  font-weight: 800;
-  color: #000;
-}
-
-.qrprint__label-code {
-  font-size: 6.5pt;
+.qrprint__label-ean {
+  font-size: 6pt;
   color: #000;
   font-family: var(--f-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 /* ── Печать ── */
@@ -7753,19 +7780,25 @@ body:has(.admin-modal-overlay) {
     display: none !important;
   }
 
+  /* На печати: белая подложка, без рамок и скруглений */
   .qrprint__sheet {
     border: none !important;
     padding: 0 !important;
     gap: 2mm !important;
     background: #fff !important;
-    /* На печати: ровно столько строк, сколько влезает на A4.
-       Для 4×5 см это 4 строки × 4 колонки при крупном размере. */
+    border-radius: 0 !important;
   }
 
+  /* Этикетки — белая заливка, серая разделительная рамка (помогает
+     при ручном резе ножницами). page-break-inside: avoid — чтобы
+     этикетка НЕ разрывалась между страницами. */
   .qrprint__label {
-    border: 1px solid #d0d0d0 !important;
+    background: #fff !important;
+    border: 1px dashed #c0c0c0 !important;
     page-break-inside: avoid;
     break-inside: avoid;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }
 

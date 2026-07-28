@@ -39,7 +39,7 @@ interface Props {
   adminPath: string;
 }
 
-type LabelSize = "3x3" | "4x5" | "5x7";
+type LabelSize = "4x4" | "5x5" | "6x6";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -48,13 +48,21 @@ function formatBarcode(s: string): string {
   return `${s.slice(0, 3)} ${s.slice(3, 7)} ${s.slice(7, 12)} ${s.slice(12)}`;
 }
 
+// ── Размеры этикеток ──
+// По запросу пользователя: квадратные 4×4, 5×5, 6×6 см.
+// На листе A4 (210×297 мм) с полями 8 мм (см. @page margin) —
+// рабочая зона 194×281 мм. Раскладка сетки:
+//   4×4 см → 4 колонки × 6 строк = 24 шт/лист
+//   5×5 см → 3 колонки × 5 строк = 15 шт/лист
+//   6×6 см → 3 колонки × 4 строки = 12 шт/лист
+// Зазор между этикетками (gap) печатается по линиям реза.
 const LABEL_DIM: Record<
   LabelSize,
-  { cm: string; cols: number; rows: number; qrSize: number }
+  { sideCm: number; cols: number; rows: number; qrSize: number; bcHeight: number }
 > = {
-  "3x3": { cm: "3.5cm 3.5cm", cols: 6, rows: 8, qrSize: 70 },
-  "4x5": { cm: "4.5cm 5cm", cols: 5, rows: 5, qrSize: 95 },
-  "5x7": { cm: "6cm 7.5cm", cols: 3, rows: 3, qrSize: 130 },
+  "4x4": { sideCm: 4, cols: 4, rows: 6, qrSize: 90, bcHeight: 30 },
+  "5x5": { sideCm: 5, cols: 3, rows: 5, qrSize: 110, bcHeight: 36 },
+  "6x6": { sideCm: 6, cols: 3, rows: 4, qrSize: 130, bcHeight: 42 },
 };
 
 export function PrintLabelsClient({
@@ -65,7 +73,7 @@ export function PrintLabelsClient({
 }: Props) {
   const [cat, setCat] = useState<string>(initialCat);
   const [q, setQ] = useState<string>(initialQ);
-  const [size, setSize] = useState<LabelSize>("4x5");
+  const [size, setSize] = useState<LabelSize>("4x4");
   const [selected, setSelected] = useState<Set<string>>(() => {
     // По умолчанию отмечены все видимые и в наличии
     return new Set(
@@ -170,7 +178,7 @@ export function PrintLabelsClient({
             </button>
             <span className="qrprint__seg-divider" />
             <span className="qrprint__seg-label">Размер этикетки:</span>
-            {(["3x3", "4x5", "5x7"] as LabelSize[]).map((s) => (
+            {(["4x4", "5x5", "6x6"] as LabelSize[]).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -231,47 +239,51 @@ export function PrintLabelsClient({
         ))}
       </div>
 
-      {/* ── Лист для печати: виден только в @media print, иначе
-            показывается как превью в сером фоне ── */}
+      {/* ── Лист для печати ──
+           Табличная сетка: фиксированное число колонок/рядов
+           (как в Excel), все этикетки одинакового квадратного
+           размера, gap между ними — это «линии реза» при печати.
+           Контент этикетки центрирован в своей ячейке. */}
       <div
         className="qrprint__sheet"
-        style={
-          {
-            "--qr-cols": dim.cols,
-            "--qr-rows": dim.rows,
-            "--qr-size": dim.qrSize,
-          } as React.CSSProperties
-        }
+        style={{
+          // Передаём CSS-переменные строкой: '4' → '4' (нужно для
+          // repeat()), плюс px-эквивалент для превью на экране.
+          ["--qr-cols" as string]: String(dim.cols),
+          ["--qr-side" as string]: `${dim.sideCm}cm`,
+        } as React.CSSProperties}
       >
         {selectedProducts.map((p) => (
-          <div
-            key={p.id}
-            className="qrprint__label"
-            style={{ width: dim.cm.split(" ")[0], height: dim.cm.split(" ")[1] }}
-          >
-            <div className="qrprint__label-name">{p.name}</div>
-            {p.sku && <div className="qrprint__label-sku">{p.sku}</div>}
-            <img
-              src={`/api/admin/qr/${p.id}?size=${dim.qrSize}`}
-              alt=""
-              className="qrprint__label-qr"
-              width={dim.qrSize}
-              height={dim.qrSize}
-            />
-            <img
-              src={`/api/admin/qr/barcode/${p.id}`}
-              alt=""
-              className="qrprint__label-bc"
-              width={dim.qrSize + 30}
-              height={36}
-            />
-            <div className="qrprint__label-meta">
-              <span className="qrprint__label-price">
+          <div key={p.id} className="qrprint__label">
+            {/* Шапка: название + цена, прижаты к верху этикетки */}
+            <div className="qrprint__label-head">
+              <div className="qrprint__label-name">{p.name}</div>
+              <div className="qrprint__label-price">
                 {p.price != null ? `${fmt(p.price)} ₽` : ""}
-              </span>
-              <span className="qrprint__label-code">
+              </div>
+            </div>
+            {/* QR-код — главный элемент, центрирован */}
+            <div className="qrprint__label-code">
+              <img
+                src={`/api/admin/qr/${p.id}?size=${dim.qrSize}`}
+                alt=""
+                className="qrprint__label-qr"
+                width={dim.qrSize}
+                height={dim.qrSize}
+              />
+            </div>
+            {/* Штрихкод — прижат к низу, центрирован */}
+            <div className="qrprint__label-code">
+              <img
+                src={`/api/admin/qr/barcode/${p.id}`}
+                alt=""
+                className="qrprint__label-bc"
+                width={dim.qrSize + 20}
+                height={dim.bcHeight}
+              />
+              <div className="qrprint__label-ean">
                 {formatBarcode(p.barcode)}
-              </span>
+              </div>
             </div>
           </div>
         ))}
