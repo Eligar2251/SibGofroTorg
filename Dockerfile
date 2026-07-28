@@ -29,9 +29,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV TMPDIR=/tmp
 
 RUN groupadd --system --gid 1001 nextjs \
-    && useradd --system --uid 1001 --gid nextjs nextjs
+    && useradd --system --uid 1001 --gid nextjs nextjs \
+    && mkdir -p /tmp && chmod 1777 /tmp
 
 COPY --from=production-dependencies --chown=nextjs:nextjs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nextjs /app/.next ./.next
