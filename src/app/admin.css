@@ -6575,3 +6575,40 @@ body:has(.admin-modal-overlay) {
 .cashc-split__rest--bad { color: var(--adm-rust); font-weight: 700; }
 
 .cashc-close-day { margin-left: auto; }
+
+/* ══════════════════════════════════════
+   VariantsEditor (admin) — общая обёртка
+   ══════════════════════════════════════ */
+.admin-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-block__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--adm-ink, #1a1a18);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-block__hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--adm-ink-muted, #6b6b60);
+}
+
+.admin-block__desc {
+  font-size: 13px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.admin-block__desc--muted {
+  color: var(--adm-ink-muted, #6b6b60);
+  font-style: italic;
+}

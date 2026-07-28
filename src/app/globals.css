@@ -3690,6 +3690,14 @@ select {
   min-width: 0;
 }
 
+.cab-order__item-variant {
+  display: inline;
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
 .cab-order__item-sku {
   display: block;
   font-size: 10px;
