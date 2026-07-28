@@ -26,7 +26,12 @@ import type {
   ProductQuestion,
   ProductRating,
   ProductView,
+  ProductVariant,
 } from "./types";
+import {
+  aggregateVariants as aggregateVariantsPure,
+  getCachedVariantsMap,
+} from "./variants";
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -217,9 +222,35 @@ export function invalidateProductsCache(): void {
 }
 
 const getCachedProducts = unstable_cache(
-  fetchAllProducts,
+  async () => {
+    const products = await fetchAllProducts();
+    // Подтягиваем сводку по вариантам: используется в каталоге для
+    // «от X ₽», бейджа «Есть варианты», сводного остатка и т.п.
+    // Сами варианты не тянем сюда — они нужны только на странице
+    // товара и в админке (отдельные запросы).
+    const productIds = products.map((p) => p.id);
+    const variantsMap = await getCachedVariantsMap(productIds);
+    for (const p of products) {
+      const variants = variantsMap.get(p.id) || [];
+      const agg = aggregateVariantsPure(variants, p);
+      p.variants = variants;
+      p.hasVariants = agg.hasVariants;
+      p.variantCount = agg.variantCount;
+      p.variantPriceMin = agg.priceMin;
+      p.variantPriceMax = agg.priceMax;
+      p.variantTotalStock = agg.totalStock;
+      // Если у товара есть варианты — в карточке каталога
+      // показываем «от X ₽» вместо обычной цены.
+      if (agg.hasVariants && agg.priceMin != null) {
+        p.price = agg.priceMin;
+        p.inStock = agg.anyInStock;
+        p.stockQty = agg.totalStock;
+      }
+    }
+    return products;
+  },
   ["base-products"],
-  { revalidate: DATA_REVALIDATE, tags: ["products"] }
+  { revalidate: DATA_REVALIDATE, tags: ["products", "variants"] }
 );
 
 async function fetchProductReviewsRaw(productId: string): Promise<ProductReview[]> {
@@ -348,6 +379,28 @@ export async function getProductById(id: string): Promise<FirestoreProduct | nul
 export async function getProductBySlug(slug: string): Promise<FirestoreProduct | null> {
   const products = await getCachedProducts();
   return products.find((p) => p.slug === slug) || null;
+}
+
+/**
+ * Версия для страницы товара: всегда подтягивает полный список
+ * видимых вариантов (для UI «выбери цвет/размер»).
+ * Использует кеш getCachedVariantsMap, так что дополнительный
+ * запрос идёт только если данные устарели.
+ */
+export async function getProductBySlugForPage(
+  slug: string,
+): Promise<{ product: FirestoreProduct | null; variants: ProductVariant[] }> {
+  const product = await getProductBySlug(slug);
+  if (!product) return { product: null, variants: [] };
+  // Берём кешированную карту (та же, что и в getCachedProducts) —
+  // это сохраняет 1 запрос в БД.
+  const map = await getCachedVariantsMap([product.id]);
+  const allVariants = map.get(product.id) || [];
+  // Для страницы товара — только видимые
+  return {
+    product,
+    variants: allVariants.filter((v) => v.isVisible),
+  };
 }
 
 export async function getRelatedProducts(
