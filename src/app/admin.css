@@ -6423,6 +6423,287 @@ body:has(.admin-modal-overlay) {
 }
 
 /* ══════════════════════════════════════
+   ЗАРПЛАТЫ: мобильный адаптив
+   ══════════════════════════════════════
+   Главная проблема — панель инструментов .whsal-toolbar и
+   широкая Excel-таблица с 5 липкими колонками, которая на
+   экранах ≤640px превращалась в горизонтальный скролл
+   с «выезжающей» кнопкой «Начислить зарплату» и нерабочим
+   sticky. Здесь:
+   1) Тулбар перестраивается в колонку; actions становятся
+      сеткой 2×N с кнопками одинаковой ширины.
+   2) Сводные карточки на ≤480px — по 1 в ряд, значения
+      уменьшаются, чтобы не разрывать строку.
+   3) Таблица: на ≤640px отключаем липкие колонки (чтобы
+      строка прокручивалась естественно) и сжимаем ФИО/За
+      месяц/Долг/Получено. Whsal-day на мобильном уже 34px.
+   4) Popover ячейки — на всю ширину экрана, сверху, без
+      overflow.
+   5) Кнопки в списке выплат (bank-pay) — кнопки действий
+      получают min-width:0, чтобы не «уезжали» за край. */
+@media (max-width: 900px) {
+  .whsal-toolbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .whsal-toolbar__title {
+    font-size: 1.1rem;
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+
+  .whsal-monthnav .admin-select {
+    min-width: 120px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .whsal-toolbar {
+    padding: 10px;
+  }
+
+  .whsal-toolbar__title {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .whsal-monthnav,
+  .whsal-toolbar__actions,
+  .whsal-monthnav[style] {
+    flex-basis: 100%;
+  }
+
+  .whsal-monthnav .admin-select {
+    min-width: 0 !important;
+    flex: 1;
+  }
+
+  .whsal-monthnav[style*="margin-left"] {
+    margin-left: 0 !important;
+  }
+
+  /* Главное исправление «выезжающей кнопки»: на десктопе
+     margin-left:auto толкал actions вправо, и кнопка «Начислить
+     зарплату» не помещалась и «уезжала» за край. Делаем сетку
+     2 в ряд. */
+  .whsal-toolbar__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-left: 0;
+  }
+
+  .whsal-toolbar__actions .admin-btn {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    padding: 8px 8px;
+    font-size: 12px;
+  }
+
+  .whsal-monthnav {
+    display: flex;
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-width: 380px) {
+  /* На совсем узких экранах (360-380px) кнопки тулбара по 1 в ряд,
+     чтобы длинные подписи не обрезались */
+  .whsal-toolbar__actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Сводные карточки: на ≤480px значения уменьшаются, чтобы
+   «1 234 567 ₽» не разрывалось и не вылезало за край */
+@media (max-width: 480px) {
+  .whsal-card {
+    padding: 12px 14px;
+  }
+
+  .whsal-card__value {
+    font-size: 1.4rem;
+  }
+
+  .whsal-card__label {
+    font-size: 10px;
+  }
+
+  .whsal-card__sub {
+    font-size: 11px;
+  }
+}
+
+/* ══════════════════════════════════════
+   ЗАРПЛАТЫ: мобильная таблица
+   На ≤640px липкие колонки выключаем — иначе они ломают
+   горизонтальный скролл и ФИО «прилипает» к левому краю
+   на любом смещении. Сами колонки сжимаем.
+   ══════════════════════════════════════ */
+@media (max-width: 640px) {
+  .whsal-grid-scroll {
+    max-height: 75vh;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Снимаем sticky на мобильном — иначе «ФИО» при скролле
+     вправо «прилипает» к левому краю и накладывается на
+     дни, а колонка «Остаток» прибита к правому и режет
+     содержимое */
+  .whsal-th--name,
+  .whsal-td--name,
+  .whsal-th--accrued,
+  .whsal-td--accrued,
+  .whsal-th--debt,
+  .whsal-td--debt,
+  .whsal-th--received,
+  .whsal-td--received,
+  .whsal-th--rest,
+  .whsal-td--rest {
+    position: static;
+    left: auto;
+    right: auto;
+    min-width: 0;
+    max-width: none;
+    box-shadow: none;
+    z-index: auto;
+  }
+
+  .whsal-th--name,
+  .whsal-td--name {
+    min-width: 132px;
+  }
+
+  .whsal-th--accrued,
+  .whsal-td--accrued,
+  .whsal-th--debt,
+  .whsal-td--debt,
+  .whsal-th--received,
+  .whsal-td--received {
+    min-width: 80px;
+  }
+
+  .whsal-th--rest,
+  .whsal-td--rest {
+    min-width: 88px;
+  }
+
+  /* Без sticky ячейки head/thead теряют свой фон поверх
+     прокручиваемой области — рисуем заливку явно */
+  .whsal-td--name,
+  .whsal-td--accrued,
+  .whsal-td--debt,
+  .whsal-td--received,
+  .whsal-td--rest {
+    background: var(--adm-card);
+  }
+
+  .whsal-td--name {
+    padding: 5px 8px;
+  }
+
+  .whsal-name-text strong {
+    font-size: 12px;
+  }
+
+  .whsal-td--accrued,
+  .whsal-td--received,
+  .whsal-td--rest,
+  .whsal-td--debt {
+    padding: 5px 4px;
+    font-size: 11px;
+  }
+
+  .whsal-legend {
+    gap: 8px 12px;
+  }
+
+  .whsal-legend__item {
+    font-size: 11px;
+  }
+
+  /* Заголовок таблицы «клик по дню — запись выплаты» — на узком
+     экране прячется, иначе он растягивает .admin-card__head
+     до 3 строк */
+  .admin-card__head .whsal-hint {
+    display: none;
+  }
+}
+
+/* Popover ячейки: на мобильном — на всю ширину, прибит к верху
+   с учётом safe-area */
+@media (max-width: 640px) {
+  .whsal-pop {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    left: 8px !important;
+    right: 8px;
+    top: calc(72px + env(safe-area-inset-top, 0px)) !important;
+    max-height: calc(100vh - 96px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+
+  .whsal-pop__title {
+    font-size: 14px;
+  }
+}
+
+/* Модалка «Установка зарплат»: на мобильном поля ввода на всю ширину */
+@media (max-width: 560px) {
+  .whsal-setup {
+    padding: 2px 8px;
+  }
+
+  .whsal-setup__row {
+    gap: 8px;
+  }
+
+  .whsal-setup__name {
+    flex-basis: 100%;
+  }
+
+  .whsal-setup__inputs {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .whsal-setup__col input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .whsal-setup__col--btn {
+    width: auto;
+  }
+}
+
+/* Список выплат (bank-pay) на узких экранах: действия
+   не должны «уезжать» вправо. */
+@media (max-width: 640px) {
+  .bank-pay__side {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .bank-pay__side .wh-pay-controls {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .bank-pay__side .wh-pay-controls .admin-status__btn {
+    min-width: 0;
+    font-size: 11px;
+    padding: 0 8px;
+  }
+
+  .bank-pay__side .wh-pay-controls .admin-status__btn svg {
+    width: 13px;
+    height: 13px;
+  }
+}
+
+/* ══════════════════════════════════════
    PWA / iOS: админка в режиме приложения
    ══════════════════════════════════════
    Сайт, добавленный на домашний экран iPhone, открывается без адресной

@@ -247,14 +247,21 @@ export default async function HomePage() {
               <span>Работаем с юрлицами</span>
             </div>
 
-            <div className="hero__wp-phone">
-              <Phone size={14} />
-              <span>Отдел макулатуры: <strong>291-08-20</strong></span>
+            {/* Нижняя панель: телефон отдела + CTA «Рассчитать выплату» — на
+                одной горизонтальной линии, по центру. margin-top:auto
+                прижимает блок к низу, а внутренний flex с
+                align-items:center+justify-content:center выравнивает
+                элементы ровно по середине. На мобильном перестраивается
+                в колонку (см. media в globals.css). */}
+            <div className="hero__wp-bottom">
+              <div className="hero__wp-phone">
+                <Phone size={14} />
+                <span>Отдел макулатуры: <strong>291-08-20</strong></span>
+              </div>
+              <span className="hero__wp-label">
+                Рассчитать выплату <ChevronRight size={15} />
+              </span>
             </div>
-
-            <span className="hero__wp-label">
-              Рассчитать выплату <ChevronRight size={15} />
-            </span>
           </div>
         </Link>
       </section>

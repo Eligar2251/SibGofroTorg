@@ -298,6 +298,11 @@ select {
   align-items: center;
   gap: 5px;
   white-space: nowrap;
+  /* На узких экранах иконки+текст в одной строке не влезают —
+     разрешаем перенос, чтобы «📍 Адрес» и «🕐 Часы» не вылезали
+     за края. white-space на мобильном переопределяется в media ниже. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Email в шапке (топбаре) — кликабельный, слегка приглушённый,
@@ -1124,8 +1129,6 @@ select {
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.8);
   font-size: 13px;
-  margin-bottom: 4px;
-  margin-top: 8px;
 }
 
 .hero__wp-phone strong {
@@ -1133,6 +1136,26 @@ select {
   font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.02em;
+}
+
+/* Нижняя панель правой колонки hero: телефон отдела макулатуры
+   (291-08-20) и CTA «Рассчитать выплату» — на одной горизонтальной
+   линии, по центру. margin-top:auto прижимает блок к низу flex-колонки
+   правой панели. Внутри — flex с align-items:center+justify-content:center
+   и переходом в колонку на узких экранах (media внизу файла). */
+.hero__wp-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-top: auto;
+  padding-top: 10px;
+  width: 100%;
+}
+
+.hero__wp-bottom .hero__wp-label {
+  margin-top: 0; /* отменяем старый margin-top:auto — теперь его даёт обёртка */
 }
 
 .hero__wp-features span::before {
@@ -1169,7 +1192,9 @@ select {
 }
 
 .hero__wp-label {
-  margin-top: auto;
+  /* margin-top:auto теперь на .hero__wp-bottom (обёртке), чтобы
+     телефон и кнопка «Рассчитать выплату» выравнивались как
+     единый блок к низу правой панели. */
 }
 
 /* ══════════════════════════════════════
@@ -5657,8 +5682,16 @@ select {
     margin-top: 8px;
   }
 
-  .hero__wp-label {
-    margin-top: 20px;
+  /* На мобильном нижняя панель hero (телефон + CTA) перестраивается
+     в колонку: телефон сверху, кнопка «Рассчитать выплату» под ним,
+     обе по центру. Это решает проблему «вылезающих» элементов при
+     горизонтальной компоновке на узких экранах (где wp-label
+     прижимался margin-top:20px и съезжал вправо/вниз). */
+  .hero__wp-bottom {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding-top: 16px;
   }
 
   .home-catalog-unified {
@@ -5786,8 +5819,65 @@ select {
     grid-template-columns: 1fr;
   }
 
-  
+  /* ── Топбар на мобильном ──
+     «📍 Адрес», «🕐 Часы», «✉ Email» и «☎ Телефон» в одну строку
+     часто не влезают. Каждый topbar-item становится «карточкой»
+     с переносом внутри (адрес на двух строках — норм). Сами
+     контейнеры topbar-left/right выстраиваются в колонку,
+     чтобы не было горизонтального скролла. */
+  .topbar {
+    height: auto;
+    min-height: 36px;
+    padding-block: 8px;
+  }
 
+  .topbar-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    justify-content: flex-start;
+  }
+
+  .topbar-item {
+    white-space: normal;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  /* Email в топбаре — не вылезает за экран благодаря wrap */
+  .topbar-email {
+    word-break: break-all;
+  }
+
+  /* ── Шапка: логотип + бургер-меню + actions, без огромной строки поиска ── */
+  .header-inner {
+    height: 56px;
+    gap: 8px;
+  }
+
+  .site-logo {
+    height: 36px;
+  }
+
+  .header-icon-btn span {
+    /* Подпись «Каталог/Корзина/Кабинет» под иконкой часто переносится
+       на 2 строки и ломает высоту шапки. На мобильном скрываем её —
+       остаётся только иконка (как у бургер-меню). */
+    display: none;
+  }
+
+  /* Скрываем email-строки в топбаре, чтобы не было каши */
+  .topbar-email {
+    max-width: 70vw;
+  }
+
+  /* ── Футер: колонки в один столбец, текст влезает ── */
   .footer-top {
     grid-template-columns: 1fr;
   }
@@ -5799,11 +5889,152 @@ select {
     padding: 16px 0;
   }
 
-  
+  /* ── Hero на мобильном: кнопки «Перейти в каталог» и телефон
+     прижимаются к низу левой колонки; на очень узких экранах
+     кнопка-CTA «Перейти в каталог» — на всю ширину, без переноса
+     иконки/текста ── */
+  .hero__ctas {
+    flex-wrap: wrap;
+    gap: 12px 16px;
+  }
 
-  
+  .btn-hero-primary {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
 
-  
+  .btn-hero-ghost {
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  /* ── В правой панели hero: фичи «Вывоз от 150 кг — 0 ₽» и
+     «Работаем с юрлицами» переносятся на 2 строки (был nowrap,
+     текст вылезал за края) ── */
+  .hero__wp-features {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .hero__wp-features span {
+    white-space: normal;
+  }
+
+  /* ── Консультация: 2 колонки → 1 на мобильном ── */
+  .consult-grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .consult-phone {
+    font-size: 18px;
+  }
+
+  /* ── Контейнер: уменьшаем боковые отступы на узких экранах ── */
+  .container,
+  .container-wide,
+  .wrap {
+    padding-inline: 16px;
+  }
+
+  /* ── Карта: 2 колонки → 1 на мобильном, и кнопка «Открыть на
+     карте» не вылезает за край ── */
+  .map-card {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .map-info {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .map-embed,
+  .map-embed iframe {
+    min-height: 320px;
+  }
+
+  .map-cta {
+    align-self: flex-start;
+  }
+
+  /* ── Checkout: 2 колонки → 1, кнопка «Оформить» на всю ширину ── */
+  .checkout-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-sidebar {
+    position: static;
+  }
+
+  .checkout-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-summary__total-sum {
+    font-size: 22px;
+  }
+
+  /* ── Шапка каталога: toolbar-2 переходит в колонку ── */
+  .catalog-toolbar2 {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .catalog-sort-links {
+    justify-content: flex-start;
+  }
+
+  /* ── Карточка акции (.deal-card): длинный заголовок «4 строки»
+     теперь помещается без переноса иконки/тега ── */
+  .deal-card__title {
+    font-size: 16px;
+  }
+
+  /* ── Корзина: 3 колонки (товар + степпер + сумма) → 1 колонка
+     с горизонтальной компоновкой. Иначе иконка удаления
+     «уезжает» вниз и ломает рядом с полем количества. ── */
+  .cart-item {
+    flex-wrap: wrap;
+    gap: 10px 12px;
+  }
+
+  .cart-item__right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .cart-item__sum {
+    min-width: 0;
+  }
+
+  /* ── Cart summary: qty × 2 кнопки иногда вылезают. Делаем wrap. ── */
+  .checkout-summary__items {
+    max-height: 280px;
+  }
+
+  .checkout-summary__item {
+    flex-wrap: wrap;
+  }
+
+  /* ── Кабинет: карточка заказа — статус-бейдж и кнопки не
+     вылезают. flex-wrap гарантирует переход на новую строку. ── */
+  .cab-order__head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .cab-order__head-right {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .cab-order__date {
+    order: 3;
+    width: 100%;
+  }
 
   .mobile-burger {
     display: flex;
@@ -5816,6 +6047,82 @@ select {
 
   .mcs-wrap {
     display: block;
+  }
+}
+
+/* ══════════════════════════════════════
+   Очень узкие экраны (≤ 480px) — финальная зачистка
+   ══════════════════════════════════════ */
+@media (max-width: 480px) {
+  /* Шапка: логотип ещё компактнее, иконки действий — без подписей */
+  .site-logo {
+    height: 32px;
+  }
+
+  /* Заголовки секций: уменьшаем, чтобы не вылезали */
+  .section-title {
+    font-size: 18px;
+  }
+
+  .consult-title {
+    font-size: 22px;
+  }
+
+  /* Каталог: одна колонка карточек товаров */
+  .products-grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Hero h1: гарантируем влезание */
+  .hero__h1 {
+    font-size: 32px;
+  }
+
+  /* Cart item: имя товара + вариант (если есть) умещаются, а
+     кнопка «× удалить» не уезжает вправо */
+  .cart-item__name {
+    -webkit-line-clamp: 3;
+  }
+}
+
+/* ══════════════════════════════════════
+   PWA / iOS Safari — закрыть нижнюю «адресную строку»
+   ══════════════════════════════════════
+   Когда сайт открыт с домашнего экрана iOS (display:standalone),
+   Safari по умолчанию рисует home indicator bar, а в браузерном
+   режиме — нижнюю toolbar. Чтобы у пользователя не было
+   «нижней адресной строки», мешающей листать:
+   1) body получает padding-bottom = env(safe-area-inset-bottom),
+      чтобы последний контент не упирался в индикатор Home.
+   2) В браузерном (не standalone) режиме добавляем такой же отступ
+      через fallback 16px — этого достаточно, чтобы Safari-toolbar
+      не перекрывал кнопку/футер.
+   3) html помечаем overscroll-behavior:none, чтобы rubber-band
+      не «вытягивал» страницу за края в standalone (уже было).
+   4) Сам body красим в фон сайта (--bg) — в PWA-режиме при
+      прокрутке «выше/ниже» тело остаётся непрозрачным и Safari
+      не показывает серый «address bar». */
+html,
+body {
+  background: #ffffff;
+}
+
+body {
+  /* Универсальный нижний отступ под iOS home indicator и
+     браузерный toolbar Safari. max() гарантирует, что на старых
+     устройствах без safe-area останется хотя бы 16px. В
+     standalone-режиме (см. media ниже) оставляем только env() —
+     иначе был бы двойной отступ и лишняя пустая полоса внизу. */
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+}
+
+/* Когда приложение открыто с домашнего экрана (PWA standalone),
+   убираем «защитный» 16px и опираемся только на env() — иначе
+   на iPhone c home indicator будет двойной отступ и лишняя
+   пустая полоса внизу. */
+@media (display-mode: standalone) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
