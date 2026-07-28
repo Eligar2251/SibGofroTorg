@@ -34,7 +34,7 @@ export default async function QrPrintPage({
     getAllCategories(),
   ]);
 
-  // Обогащаем товары кодами (если не из кеша)
+  // Обогащаем товары кодами (если не из кеша) + размерами для этикеток
   const products = allProducts.map((p) => ({
     id: p.id,
     name: p.name,
@@ -45,6 +45,10 @@ export default async function QrPrintPage({
     barcode: p.barcode || computeBarcode(p.id),
     qrSlug: p.qrSlug || computeQrSlug(p.id),
     categoryId: p.categoryId ?? null,
+    dimensionLength: p.dimensionLength ?? null,
+    dimensionWidth: p.dimensionWidth ?? null,
+    dimensionHeight: p.dimensionHeight ?? null,
+    dimensionUnit: p.dimensionUnit ?? null,
   }));
 
   // Сортировка по имени для удобства выбора

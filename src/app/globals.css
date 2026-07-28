@@ -1000,6 +1000,27 @@ select {
   background: linear-gradient(185deg, #1e4430 0%, #12291b 100%);
 }
 
+.hero__right {
+  cursor: pointer; /* панель кликабельна через stretched-link ниже */
+}
+
+/* «Растянутая ссылка»: невидимый <a> на всю панель (вместо <a> в <a>,
+   из-за которого React падал с hydration error). z-index:1 — поверх
+   статичного текста, поэтому клик по любому месту панели ведёт на
+   /wastepaper; кликабельные элементы внутри (бейдж телефона) имеют
+   z-index:2 и перехватывают клик на себя. */
+.hero__right-stretch {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.hero__right-stretch:focus-visible {
+  outline: 2px solid var(--green-lime, #5dcb61);
+  outline-offset: -2px;
+}
+
 .container-half-right {
   width: 100%;
   padding: 56px 32px 48px 48px;
@@ -1143,6 +1164,11 @@ select {
    панели hero справа. Клик — tel:. Цвет фона в тон CTA, чтобы
    правый блок «Рассчитать выплату + телефон» выглядел сбалансированно. */
 .hero__wp-phone-badge {
+  /* z-index:2 — бейдж лежит ПОВЕРХ растянутой ссылки панели
+     (.hero__right-stretch), чтобы клик по номеру звонил (tel:),
+     а не вёл на /wastepaper. См. комментарий у .hero__right-stretch. */
+  position: relative;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 5px;

@@ -7,10 +7,12 @@
 //    артикул, QR + штрихкод. Кнопки: «Открыть в админке»,
 //    «Скопировать код», «Новый поиск».
 // 2) Поле ручного ввода + Enter → переход на /admin/scan/{code}.
-// 3) Кнопка камеры (только https / localhost) — getUserMedia +
-//    BarcodeDetector API (если браузер поддерживает), иначе
-//    ручной ввод. Распознанный код автоматически подставляется
-//    в поле «код» и пользователь нажимает Enter.
+// 3) Кнопка камеры (только https / localhost) — сканирование:
+//    • Chrome/Edge/Android — нативный BarcodeDetector (быстрый);
+//    • Safari / Firefox / iOS (там BarcodeDetector НЕТ совсем) —
+//      JS-декодер ZXing (@zxing/browser), подгружается динамически
+//      только когда нужен. Работает везде, где есть getUserMedia.
+//    Распознанный код автоматически открывает страницу товара.
 //
 // UI оптимизирован под мобильный: крупные кнопки, мало текста.
 // =========================================================
@@ -20,6 +22,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+// Тип-only импорт: в бандл не попадает (стирается при компиляции),
+// сам ZXing подгружается динамически — только в браузерах без
+// нативного BarcodeDetector (Safari/Firefox/iOS).
+import type { IScannerControls } from "@zxing/browser";
 import {
   ScanLine,
   Camera,
@@ -80,6 +86,11 @@ export function ScanCode({
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<any>(null);
   const intervalRef = useRef<number | null>(null);
+  // ZXing-сканер (Safari/Firefox): controls.stop() останавливает
+  // и декодер, и камеру. cancelScanRef — защита от гонки «юзер
+  // выключил камеру, пока ZXing ещё загружался динамическим import».
+  const zxingControlsRef = useRef<IScannerControls | null>(null);
+  const cancelScanRef = useRef(false);
 
   // Остановка камеры при размонтировании
   useEffect(() => {
@@ -102,6 +113,7 @@ export function ScanCode({
 
   async function startCamera() {
     setCameraError(null);
+    cancelScanRef.current = false;
     if (
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia
@@ -109,69 +121,150 @@ export function ScanCode({
       setCameraError("Камера недоступна в этом браузере. Введите код вручную.");
       return;
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const BD = (window as any).BarcodeDetector;
+    const hasBarcodeDetector = !!(BD && typeof BD === "function");
+
+    // ── Safari / Firefox / iOS-webview: нативного BarcodeDetector НЕТ ──
+    // Декодируем кадры на JS через ZXing (@zxing/browser) — библиотека
+    // подгружается динамически, только когда она реально нужна (в основной
+    // бандл админки не попадает). Камера включается самим ZXing.
+    if (!hasBarcodeDetector) {
+      try {
+        // <video> в DOM всегда (скрыт display:none) — показываем
+        // превью до запроса разрешения, чтобы не было «чёрного кадра».
+        setCameraOn(true);
+        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] =
+          await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
+
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.QR_CODE,
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.DATA_MATRIX,
+        ]);
+        const reader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 250,
+          delayBetweenScanSuccess: 600,
+        });
+
+        const video = videoRef.current;
+        if (!video) throw new Error("Видеоэлемент не смонтирован");
+
+        let navigated = false;
+        const controls = await reader.decodeFromVideoDevice(
+          undefined, // без deviceId → ZXing просит заднюю камеру (facingMode: environment)
+          video,
+          (result) => {
+            const value = result?.getText();
+            if (value && !navigated) {
+              navigated = true;
+              setCode(value);
+              stopCamera();
+              navigateToScan(value);
+            }
+          }
+        );
+        // Юзер успел выключить камеру, пока ZXing запускался?
+        if (cancelScanRef.current) {
+          try {
+            controls.stop();
+          } catch {
+            /* уже остановлено */
+          }
+          return;
+        }
+        zxingControlsRef.current = controls;
+      } catch (err: any) {
+        setCameraError(
+          err?.name === "NotAllowedError"
+            ? "Доступ к камере запрещён. Разрешите камеру в настройках браузера (в Safari: значок «аА» в адресной строке → Камера) и попробуйте ещё раз."
+            : err?.message ||
+              "Не удалось включить камеру. Проверьте разрешения и попробуйте снова."
+        );
+        stopCamera();
+      }
+      return;
+    }
+
+    // ── Chrome / Edge / Android: нативный BarcodeDetector ──
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
       streamRef.current = stream;
+      // Юзер успел выключить камеру, пока ждали getUserMedia? — гасим
+      // свежие треки и выходим, чтобы не «воскрешать» превью.
+      if (cancelScanRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        return;
+      }
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
       setCameraOn(true);
 
-      // BarcodeDetector (Chrome/Edge/Android, не Safari/Firefox).
-      // Если есть — запускаем периодическое распознавание.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const BD = (window as any).BarcodeDetector;
-      if (BD && typeof BD === "function") {
-        const formats = await BD.getSupportedFormats();
-        const wanted = [
-          "ean_13",
-          "ean_8",
-          "code_128",
-          "code_39",
-          "qr_code",
-          "data_matrix",
-        ].filter((f) => formats.includes(f));
-        if (wanted.length > 0) {
-          detectorRef.current = new BD({ formats: wanted });
-          intervalRef.current = window.setInterval(async () => {
-            if (!videoRef.current || !detectorRef.current) return;
-            try {
-              const codes = await detectorRef.current.detect(videoRef.current);
-              if (codes && codes.length > 0) {
-                const value = codes[0].rawValue || "";
-                if (value) {
-                  setCode(value);
-                  stopCamera();
-                  navigateToScan(value);
-                }
+      // Периодическое распознавание нативным детектором.
+      const formats = await BD.getSupportedFormats();
+      const wanted = [
+        "ean_13",
+        "ean_8",
+        "code_128",
+        "code_39",
+        "qr_code",
+        "data_matrix",
+      ].filter((f) => formats.includes(f));
+      if (wanted.length > 0) {
+        detectorRef.current = new BD({ formats: wanted });
+        intervalRef.current = window.setInterval(async () => {
+          if (!videoRef.current || !detectorRef.current) return;
+          try {
+            const codes = await detectorRef.current.detect(videoRef.current);
+            if (codes && codes.length > 0) {
+              const value = codes[0].rawValue || "";
+              if (value) {
+                setCode(value);
+                stopCamera();
+                navigateToScan(value);
               }
-            } catch {
-              // кадр не успел — пропускаем
             }
-          }, 350);
-        }
-      } else {
-        setCameraError(
-          "Этот браузер не поддерживает автораспознавание кодов — введите код вручную."
-        );
+          } catch {
+            // кадр не успел — пропускаем
+          }
+        }, 350);
       }
     } catch (err: any) {
       setCameraError(
-        err?.message ||
-          "Не удалось включить камеру. Проверьте разрешения и попробуйте снова."
+        err?.name === "NotAllowedError"
+          ? "Доступ к камере запрещён. Разрешите камеру в настройках браузера и попробуйте ещё раз."
+          : err?.message ||
+            "Не удалось включить камеру. Проверьте разрешения и попробуйте снова."
       );
       stopCamera();
     }
   }
 
   function stopCamera() {
+    cancelScanRef.current = true;
     if (intervalRef.current) {
       window.clearInterval(intervalRef.current);
       intervalRef.current = null;
+    }
+    // Останавливаем ZXing-сканер (он сам гасит свой видеопоток)
+    if (zxingControlsRef.current) {
+      try {
+        zxingControlsRef.current.stop();
+      } catch {
+        /* уже остановлен */
+      }
+      zxingControlsRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -220,19 +313,24 @@ export function ScanCode({
             {cameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
           </button>
         </form>
-        {cameraOn && (
-          <div className="scan-page__video-wrap">
-            <video
-              ref={videoRef}
-              className="scan-page__video"
-              playsInline
-              muted
-            />
-            <p className="scan-page__video-hint">
-              Наведите камеру на QR или штрихкод
-            </p>
-          </div>
-        )}
+        {/* <video> смонтирован всегда (скрыт display:none, когда камера
+            выкл): иначе ref ещё пуст на момент запуска getUserMedia и
+            превью не стартует с первого нажатия. */}
+        <div
+          className="scan-page__video-wrap"
+          style={cameraOn ? undefined : { display: "none" }}
+          aria-hidden={!cameraOn}
+        >
+          <video
+            ref={videoRef}
+            className="scan-page__video"
+            playsInline
+            muted
+          />
+          <p className="scan-page__video-hint">
+            Наведите камеру на QR или штрихкод — сканирует и в Safari
+          </p>
+        </div>
         {cameraError && (
           <div className="scan-page__err">
             <AlertCircle size={15} /> {cameraError}
@@ -286,19 +384,24 @@ export function ScanCode({
         </button>
       </form>
 
-      {cameraOn && (
-        <div className="scan-page__video-wrap">
-          <video
-            ref={videoRef}
-            className="scan-page__video"
-            playsInline
-            muted
-          />
-          <p className="scan-page__video-hint">
-            Наведите камеру на QR или штрихкод
-          </p>
-        </div>
-      )}
+      {/* <video> смонтирован всегда (скрыт display:none, когда камера
+          выкл): иначе ref ещё пуст на момент запуска getUserMedia и
+          превью не стартует с первого нажатия. */}
+      <div
+        className="scan-page__video-wrap"
+        style={cameraOn ? undefined : { display: "none" }}
+        aria-hidden={!cameraOn}
+      >
+        <video
+          ref={videoRef}
+          className="scan-page__video"
+          playsInline
+          muted
+        />
+        <p className="scan-page__video-hint">
+          Наведите камеру на QR или штрихкод — сканирует и в Safari
+        </p>
+      </div>
 
       {cameraError && (
         <div className="scan-page__err">
