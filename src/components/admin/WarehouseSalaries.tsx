@@ -199,13 +199,6 @@ function isDebtPaymentSalary(s: Salary): boolean {
   return isDebtSalaryComment(s.comment);
 }
 
-function fmtCellCompactAmount(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 10000) return `${Math.round(n / 1000)}к`;
-  if (abs >= 1000) return `${Math.round(n / 100) / 10}к`;
-  return `${Math.round(n)}`;
-}
-
 // ─── Форма начисления зарплаты ─────────────────────
 
 function SalaryFormModal({
@@ -1158,11 +1151,6 @@ export function WarehouseSalaries({
   const [editing, setEditing] = useState<Salary | null>(null);
   const [empOpen, setEmpOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const monthOptions = useMemo(() => {
-    const keys = new Set(salaries.map((s) => monthKey(s.date)));
-    keys.add(todayIso().slice(0, 7));
-    return [...keys].sort((a, b) => b.localeCompare(a));
-  }, [salaries]);
   const [activeMonth, setActiveMonth] = useState(todayIso().slice(0, 7));
   const [activeEmployee, setActiveEmployee] = useState("all");
 
@@ -1181,6 +1169,23 @@ export function WarehouseSalaries({
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const popRef = useRef<HTMLDivElement | null>(null);
   const salaryTableExportRef = useRef<HTMLDivElement | null>(null);
+
+  const monthOptions = useMemo(() => {
+    const currentMonth = todayIso().slice(0, 7);
+    const keys = new Set<string>(salaries.map((s) => monthKey(s.date)));
+    keys.add(currentMonth);
+
+    for (const key of Object.keys(settingsRaw)) {
+      const match = key.match(/salary_(?:plan|debt|calendar|schedule)_(\d{4}-\d{2})/);
+      if (match?.[1]) keys.add(match[1]);
+    }
+
+    for (let i = 1; i <= 18; i++) {
+      keys.add(shiftMonth(currentMonth, -i));
+    }
+
+    return [...keys].sort((a, b) => b.localeCompare(a));
+  }, [salaries, settingsRaw]);
 
   // Синхронизируем локальное состояние после router.refresh()
   useEffect(() => setEmployees(initialEmployees), [initialEmployees]);
@@ -1325,6 +1330,7 @@ export function WarehouseSalaries({
           row.rows.length > 0 ||
           row.plan > 0 ||
           row.manualDebt !== 0 ||
+          row.scheduledDays.length > 0 ||
           activeEmployee === row.employee.id
       )
       .filter((row) => activeEmployee === "all" || row.employee.id === activeEmployee);
@@ -1922,6 +1928,20 @@ export function WarehouseSalaries({
         </div>
       </div>
 
+      <div className="admin-filters admin-filters--sub" style={{ marginTop: -2, marginBottom: 14 }}>
+        {monthOptions.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`admin-filter${activeMonth === key ? " admin-filter--active" : ""}`}
+            onClick={() => setActiveMonth(key)}
+            title={`Открыть таблицу за ${monthLabel(key)}`}
+          >
+            {monthLabel(key)}
+          </button>
+        ))}
+      </div>
+
       {/* ── Сводные карточки ── */}
       <div className="whsal-cards">
         <div className="whsal-card">
@@ -2171,20 +2191,24 @@ export function WarehouseSalaries({
                           {visibleItems.map((entry) => (
                             <span
                               key={entry.id}
-                              className={`whsal-day-chip${
+                              className={`whsal-day-line${
                                 isRentSalary(entry)
-                                  ? " whsal-day-chip--rent"
+                                  ? " whsal-day-line--rent"
                                   : isDebtPaymentSalary(entry)
-                                  ? " whsal-day-chip--debt"
+                                  ? " whsal-day-line--debt"
                                   : ""
                               }`}
                             >
-                              {fmtCellCompactAmount(entry.amount)}
+                              {Math.round(entry.amount) === entry.amount
+                                ? String(entry.amount)
+                                : String(entry.amount).replace(".", ",")}
                             </span>
                           ))}
                           {!items.length && plannedAmount > 0 && (
-                            <span className="whsal-day-chip whsal-day-chip--scheduled">
-                              {fmtCellCompactAmount(plannedAmount)}
+                            <span className="whsal-day-line whsal-day-line--scheduled">
+                              {Math.round(plannedAmount) === plannedAmount
+                                ? String(plannedAmount)
+                                : String(plannedAmount).replace(".", ",")}
                             </span>
                           )}
                         </span>
