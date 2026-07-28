@@ -5,7 +5,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Loader2, Save, Eye, EyeOff } from "lucide-react";
+import { Plus, Loader2, Save, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { GlyphIcon, GLYPH_CHOICES } from "@/components/ui/Glyph";
 
 interface Category {
@@ -29,6 +29,7 @@ export function CategoryManager({
   const [categories, setCategories] = useState(initialCats);
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [newCat, setNewCat] = useState({
     name: "",
     icon: "box",
@@ -38,34 +39,39 @@ export function CategoryManager({
   async function addCategory() {
     if (!newCat.name.trim()) return;
     setSaving(true);
+    setError("");
     try {
       const res = await fetch("/api/admin/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newCat),
       });
-      if (res.ok) {
-        const created = await res.json();
-        setCategories([
-          ...categories,
-          {
-            ...created,
-            name: newCat.name,
-            slug: created.slug || "",
-            icon: newCat.icon,
-            description: newCat.description,
-            isVisible: true,
-            sortOrder: 0,
-            imageUrl: null,
-            createdAt: null,
-            productCount: 0,
-          },
-        ]);
-        setNewCat({ name: "", icon: "box", description: "" });
-        setShowAdd(false);
+      const created = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(created.error || "Не удалось создать категорию");
+        setSaving(false);
+        return;
       }
+      setCategories([
+        ...categories,
+        {
+          id: created.id,
+          name: newCat.name,
+          slug: created.slug || "",
+          icon: newCat.icon,
+          description: newCat.description,
+          isVisible: true,
+          sortOrder: 0,
+          imageUrl: null,
+          createdAt: null,
+          productCount: 0,
+        },
+      ]);
+      setNewCat({ name: "", icon: "box", description: "" });
+      setShowAdd(false);
     } catch (err) {
       console.error(err);
+      setError("Ошибка сети при создании категории");
     }
     setSaving(false);
   }
@@ -140,12 +146,20 @@ export function CategoryManager({
               </button>
               <button
                 type="button"
-                onClick={() => setShowAdd(false)}
+                onClick={() => {
+                  setShowAdd(false);
+                  setError("");
+                }}
                 className="admin-btn admin-btn--ghost"
               >
                 Отмена
               </button>
             </div>
+            {error && (
+              <div className="admin-error" style={{ marginTop: 12 }}>
+                <AlertCircle size={14} /> {error}
+              </div>
+            )}
           </div>
         </div>
       )}

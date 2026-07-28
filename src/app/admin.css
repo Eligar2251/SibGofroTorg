@@ -295,6 +295,8 @@
   background: var(--adm-ink);
   border-right: 2px solid var(--adm-kraft);
   overflow: hidden;
+  transition: transform 0.22s ease, opacity 0.18s ease;
+  will-change: transform;
 }
 
 /* Фактура гофры на сайдбаре */
@@ -314,6 +316,12 @@
 
 @media (min-width: 1024px) {
   .admin-sidebar { display: flex; }
+
+  .admin-sidebar--hidden {
+    transform: translateX(calc(-100% - 16px));
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .admin-sidebar__brand {
@@ -326,6 +334,29 @@
   border-bottom: 1px solid rgba(255,255,255,0.07);
   position: relative;
   flex-shrink: 0;
+}
+
+.admin-sidebar__toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.65);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-sidebar__toggle:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border-color: rgba(255,255,255,0.22);
 }
 
 /* Полный логотип (знак + название) вместо буквы.
@@ -589,7 +620,56 @@
 }
 
 @media (min-width: 1024px) {
-  .admin-content { margin-left: 240px; }
+  .admin-content {
+    margin-left: 240px;
+    transition: margin-left 0.22s ease;
+  }
+
+  .admin-shell--sidebar-hidden .admin-content {
+    margin-left: 0;
+  }
+}
+
+.admin-content__toolbar {
+  display: none;
+}
+
+.desktop-only {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .desktop-only {
+    display: inline-flex;
+  }
+
+  .admin-content__toolbar {
+    display: flex;
+    align-items: center;
+    padding: 18px 28px 0;
+  }
+}
+
+.admin-content__sidebar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--adm-border-mid);
+  background: rgba(255,255,255,0.88);
+  color: var(--adm-ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-content__sidebar-btn:hover {
+  background: #fff;
+  color: var(--adm-ink);
+  border-color: var(--adm-kraft);
 }
 
 .admin-main {
@@ -603,7 +683,9 @@
 }
 
 @media (min-width: 1024px) {
-  .admin-main { padding-top: 28px; }
+  .admin-main {
+    padding-top: 18px;
+  }
 }
 
 /* ══════════════════════════════════════
@@ -5284,35 +5366,35 @@ body:has(.admin-modal-overlay) {
 .whsal-td--name {
   position: sticky;
   left: 0;
-  min-width: 172px;
-  max-width: 172px;
+  min-width: 152px;
+  max-width: 152px;
   z-index: 4;
 }
 
 .whsal-th--accrued,
 .whsal-td--accrued {
   position: sticky;
-  left: 172px;
-  min-width: 96px;
-  max-width: 96px;
+  left: 152px;
+  min-width: 84px;
+  max-width: 84px;
   z-index: 4;
 }
 
 .whsal-th--debt,
 .whsal-td--debt {
   position: sticky;
-  left: 268px;
-  min-width: 92px;
-  max-width: 92px;
+  left: 236px;
+  min-width: 78px;
+  max-width: 78px;
   z-index: 4;
 }
 
 .whsal-th--received,
 .whsal-td--received {
   position: sticky;
-  left: 360px;
-  min-width: 100px;
-  max-width: 100px;
+  left: 314px;
+  min-width: 88px;
+  max-width: 88px;
   z-index: 4;
   box-shadow: 6px 0 8px -6px rgba(26, 26, 24, 0.22);
 }
@@ -5335,6 +5417,14 @@ body:has(.admin-modal-overlay) {
   z-index: 7;
 }
 
+.whsal-th--accrued,
+.whsal-th--debt,
+.whsal-th--received {
+  font-size: 9px;
+  line-height: 1.15;
+  padding: 4px 3px;
+}
+
 .whsal-td--name,
 .whsal-td--accrued,
 .whsal-td--debt,
@@ -5352,10 +5442,28 @@ body:has(.admin-modal-overlay) {
   border-top: 2px solid var(--adm-border-mid);
 }
 
+/* Экспорт в PNG: sticky-колонки и тени мешают рендеру canvas,
+   поэтому на время захвата отключаем fixed/sticky-поведение. */
+.whsal-export-mode .whsal-th--name,
+.whsal-export-mode .whsal-td--name,
+.whsal-export-mode .whsal-th--accrued,
+.whsal-export-mode .whsal-td--accrued,
+.whsal-export-mode .whsal-th--debt,
+.whsal-export-mode .whsal-td--debt,
+.whsal-export-mode .whsal-th--received,
+.whsal-export-mode .whsal-td--received,
+.whsal-export-mode .whsal-th--rest,
+.whsal-export-mode .whsal-td--rest {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  box-shadow: none !important;
+}
+
 /* ── Ячейка ФИО ── */
 .whsal-td--name {
   text-align: left;
-  padding: 6px 10px;
+  padding: 5px 8px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -5366,17 +5474,17 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-avatar {
-  width: 27px;
-  height: 27px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--adm-steel-pale);
   color: var(--adm-steel);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 8px;
+  margin-right: 6px;
   flex-shrink: 0;
   vertical-align: middle;
 }
@@ -5390,7 +5498,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-name-text strong {
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: var(--adm-ink);
   transition: color 0.12s;
   overflow: hidden;
@@ -5399,7 +5507,7 @@ body:has(.admin-modal-overlay) {
 
 .whsal-name-text small {
   color: var(--adm-sand);
-  font-size: 10px;
+  font-size: 9px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -5411,8 +5519,8 @@ body:has(.admin-modal-overlay) {
   text-align: center;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  font-size: 12px;
-  padding: 6px 4px;
+  font-size: 11px;
+  padding: 5px 3px;
   white-space: nowrap;
 }
 
@@ -5459,8 +5567,8 @@ body:has(.admin-modal-overlay) {
   text-align: center;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  font-size: 12px;
-  padding: 6px 4px;
+  font-size: 11px;
+  padding: 5px 3px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -5475,10 +5583,10 @@ body:has(.admin-modal-overlay) {
 
 /* ── Ячейки дней ── */
 .whsal-day {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
-  height: 42px;
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
+  height: 48px;
   text-align: center;
   cursor: pointer;
   position: relative;
@@ -5489,10 +5597,10 @@ body:has(.admin-modal-overlay) {
 
 @media (max-width: 640px) {
   .whsal-day {
-    width: 34px;
-    min-width: 34px;
-    max-width: 34px;
-    height: 38px;
+    width: 32px;
+    min-width: 32px;
+    max-width: 32px;
+    height: 40px;
   }
 }
 
@@ -5534,6 +5642,48 @@ body:has(.admin-modal-overlay) {
 .whsal-day--rent .whsal-day-sum {
   color: var(--adm-steel);
   font-weight: 700;
+}
+
+.whsal-day--scheduled {
+  background: #e8eef6;
+  box-shadow: inset 0 0 0 1px var(--adm-steel-line);
+}
+
+.whsal-day--scheduled:hover {
+  box-shadow: inset 0 0 0 2px var(--adm-steel);
+}
+
+.whsal-day--scheduled .whsal-day-mark {
+  color: var(--adm-steel);
+}
+
+.whsal-day-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 100%;
+  min-height: 100%;
+}
+
+.whsal-day-line {
+  display: block;
+  width: 100%;
+  font-size: 7.5px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--adm-rust);
+  white-space: nowrap;
+}
+
+.whsal-day-line--rent,
+.whsal-day-line--scheduled {
+  color: var(--adm-steel);
+}
+
+.whsal-day-line--debt {
+  color: var(--adm-kraft);
 }
 
 .whsal-day-sum {
@@ -6867,6 +7017,231 @@ body:has(.admin-modal-overlay) {
 .cashc-close-day { margin-left: auto; }
 
 /* ══════════════════════════════════════
+   ПОРЯДОК ПОПУЛЯРНЫХ ТОВАРОВ
+   ══════════════════════════════════════ */
+.featured-sort-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.featured-sort-page__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.featured-sort-page__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--adm-steel);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+
+.featured-sort-page__title {
+  margin: 0;
+  font-family: var(--adm-font-head);
+  font-size: 24px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.featured-sort-page__sub {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--adm-ink-muted);
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.featured-sort-page__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.featured-sort-page__count {
+  font-size: 13px;
+  color: var(--adm-ink-muted);
+}
+
+.featured-sort-page__preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  color: var(--adm-ink);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.featured-sort-page__section {
+  padding: 0 !important;
+}
+
+.featured-sort-layout {
+  align-items: start;
+}
+
+.featured-sort-side {
+  top: 24px;
+}
+
+.featured-sort-side__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-light);
+  line-height: 1.5;
+}
+
+.featured-sort-side__status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.featured-sort-side__status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--adm-border);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink-soft);
+}
+
+.featured-sort-side__status-badge--saving {
+  color: var(--adm-steel);
+  background: var(--adm-steel-pale);
+  border-color: var(--adm-steel-line);
+}
+
+.featured-sort-side__status-badge--saved {
+  color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+  border-color: var(--adm-pine-line);
+}
+
+.featured-sort-side__status-badge--error {
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border-color: var(--adm-rust-line);
+}
+
+.featured-sort-side__error {
+  font-size: 12px;
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  line-height: 1.45;
+}
+
+.featured-sort-grid {
+  align-items: stretch;
+}
+
+.featured-sort__item {
+  position: relative;
+  border-radius: 12px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  transform-origin: center center;
+}
+
+.featured-sort__item:active {
+  cursor: grabbing;
+}
+
+.featured-sort__item--placeholder {
+  opacity: 0.25;
+}
+
+.featured-sort__item--dragging {
+  z-index: 20;
+}
+
+.featured-sort__item--overlay {
+  transform: rotate(1.6deg) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+}
+
+.featured-sort-overlay {
+  position: fixed;
+  z-index: 1200;
+  pointer-events: none;
+}
+
+.featured-sort__card-mask {
+  pointer-events: none;
+}
+
+.featured-sort__order {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(26, 26, 24, 0.86);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+
+.featured-sort__hidden {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(184, 58, 30, 0.92);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .featured-sort-page__meta {
+    align-items: flex-start;
+  }
+
+  .featured-sort-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .featured-sort-side {
+    position: static;
+  }
+}
+
+/* ══════════════════════════════════════
    VariantsEditor (admin) — общая обёртка
    ══════════════════════════════════════ */
 .admin-block {
@@ -7069,6 +7444,28 @@ body:has(.admin-modal-overlay) {
   padding: 8px 12px;
 }
 
+.scan-page__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--adm-r-sm);
+  padding: 9px 12px;
+}
+
+.scan-page__status--live {
+  color: var(--adm-steel);
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+}
+
+.scan-page__status--loading {
+  color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+  border: 1px solid var(--adm-kraft-line);
+}
+
 .scan-page__notfound {
   display: flex;
   flex-direction: column;
@@ -7210,6 +7607,26 @@ body:has(.admin-modal-overlay) {
   background: var(--adm-rust-pale);
   color: var(--adm-rust);
   border: 1px solid var(--adm-rust-line);
+}
+
+.scan-page__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  padding: 10px 12px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+}
+
+.scan-page__meta span {
+  overflow-wrap: anywhere;
+}
+
+.scan-page__meta strong {
+  color: var(--adm-ink);
 }
 
 .scan-page__codes {

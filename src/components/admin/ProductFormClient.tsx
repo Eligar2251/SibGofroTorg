@@ -62,18 +62,41 @@ interface ProductData {
   discountBadge?: string | null;
   isVisible?: boolean | null;
   isFeatured?: boolean | null;
+  featuredOrder?: number | null;
   images?: ProductImage[];
   imageUrl?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
 
+const FEATURED_ORDER_SETTING_KEY = "featured_products_order";
+
+function normalizeFeaturedOrderIds(
+  currentIds: string[],
+  productId: string,
+  isFeatured: boolean,
+  requestedOrder: number | null,
+): string[] {
+  const clean = currentIds.filter((id) => id && id !== productId);
+  if (!isFeatured) return clean;
+
+  const insertAt =
+    requestedOrder && Number.isFinite(requestedOrder) && requestedOrder > 0
+      ? Math.min(clean.length, Math.max(0, requestedOrder - 1))
+      : clean.length;
+
+  clean.splice(insertAt, 0, productId);
+  return [...new Set(clean)];
+}
+
 export function ProductFormClient({
   categories,
   product,
+  featuredOrderIds = [],
 }: {
   categories: Category[];
   product?: ProductData;
+  featuredOrderIds?: string[];
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -129,6 +152,10 @@ export function ProductFormClient({
     const form = e.currentTarget;
     const data = new FormData(form);
 
+    const isFeatured = data.get("isFeatured") === "on";
+    const featuredOrderRaw = String(data.get("featuredOrder") || "").trim();
+    const featuredOrder = featuredOrderRaw ? Number(featuredOrderRaw) : null;
+
     const body = {
       stockQty: data.get("stockQty") !== "" ? Number(data.get("stockQty")) : null,
       stockWarnQty:
@@ -168,7 +195,7 @@ export function ProductFormClient({
         : null,
       discountBadge: data.get("discountBadge") || null,
       isVisible: data.get("isVisible") === "on",
-      isFeatured: data.get("isFeatured") === "on",
+      isFeatured,
       images,
       imageUrl: images[0]?.url || null,
     };
@@ -185,11 +212,45 @@ export function ProductFormClient({
         body: JSON.stringify(body),
       });
 
+      const resBody = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const resBody = await res.json().catch(() => ({}));
         throw new Error(
           (resBody as Record<string, string>).error || "Ошибка сохранения"
         );
+      }
+
+      const productId = product?.id || (resBody as Record<string, string>).id;
+      const hadFeatured = Boolean(product?.isFeatured);
+      const previousOrder = product?.featuredOrder ?? null;
+      const requestedOrder =
+        Number.isFinite(featuredOrder ?? NaN) && (featuredOrder ?? 0) > 0
+          ? featuredOrder
+          : null;
+      const featuredOrderChanged =
+        hadFeatured !== isFeatured || previousOrder !== requestedOrder;
+
+      // Порядок популярных — отдельная настройка. Если её обновление
+      // внезапно упадёт, сам товар уже всё равно сохранён и юзера
+      // нельзя оставлять на форме с ощущением «ничего не сохранилось».
+      if (productId && featuredOrderChanged) {
+        try {
+          const nextOrderIds = normalizeFeaturedOrderIds(
+            featuredOrderIds,
+            productId,
+            isFeatured,
+            requestedOrder
+          );
+          await fetch("/api/admin/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              [FEATURED_ORDER_SETTING_KEY]: JSON.stringify(nextOrderIds),
+            }),
+          });
+        } catch (err) {
+          console.error("featured order update error:", err);
+        }
       }
 
       router.push(`/${adminPath}/products`);
@@ -547,6 +608,7 @@ export function ProductFormClient({
               <input
                 name="packQty"
                 type="number"
+                min="0"
                 defaultValue={product?.packQty ?? ""}
                 className="admin-input"
               />
@@ -631,15 +693,32 @@ export function ProductFormClient({
               </label>
             ))}
           </div>
-          <div className="admin-field">
-            <label className="admin-label">Метка акции</label>
-            <input
-              name="promoLabel"
-              type="text"
-              defaultValue={product?.promoLabel || ""}
-              placeholder='например: "Хит", "Акция"'
-              className="admin-input"
-            />
+          <div className="admin-grid-2">
+            <div className="admin-field">
+              <label className="admin-label">Метка акции</label>
+              <input
+                name="promoLabel"
+                type="text"
+                defaultValue={product?.promoLabel || ""}
+                placeholder='например: "Хит", "Акция"'
+                className="admin-input"
+              />
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Порядок в популярных</label>
+              <input
+                name="featuredOrder"
+                type="number"
+                min={1}
+                step={1}
+                defaultValue={product?.featuredOrder ?? ""}
+                placeholder="1 — самый первый"
+                className="admin-input"
+              />
+              <span className="admin-hint">
+                Работает для товаров с флагом «Популярный товар». Если оставить пустым — товар будет добавлен в конец блока.
+              </span>
+            </div>
           </div>
         </div>
       </div>

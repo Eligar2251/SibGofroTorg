@@ -196,6 +196,56 @@ export interface Salary {
   createdAt?: string | null;
 }
 
+/** Служебные теги в комментарии зарплаты. */
+export const SALARY_RENT_TAG = "[Аренда]";
+export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
+export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
+
+function salaryHasTag(comment: string | null | undefined, tag: string): boolean {
+  return (comment || "").includes(tag);
+}
+
+/** Выплата прошла по схеме «с аренды на карту». */
+export function isRentSalaryComment(comment: string | null | undefined): boolean {
+  return salaryHasTag(comment, SALARY_RENT_TAG);
+}
+
+/** Историческая выплата: показывается в ЗП, но не влияет на текущий баланс. */
+export function isSalaryExcludedFromBalance(comment: string | null | undefined): boolean {
+  return salaryHasTag(comment, SALARY_EXCLUDE_BALANCE_TAG);
+}
+
+/** Выплата относится к долгу, а не к зарплате текущего месяца. */
+export function isDebtSalaryComment(comment: string | null | undefined): boolean {
+  return salaryHasTag(comment, SALARY_DEBT_PAYMENT_TAG);
+}
+
+/** Убирает служебные теги из комментария для отображения в UI. */
+export function stripSalaryMetaTags(comment: string | null | undefined): string {
+  return String(comment || "")
+    .replaceAll(SALARY_RENT_TAG, "")
+    .replaceAll(SALARY_EXCLUDE_BALANCE_TAG, "")
+    .replaceAll(SALARY_DEBT_PAYMENT_TAG, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Собирает комментарий зарплаты с нужными служебными тегами. */
+export function composeSalaryComment(options: {
+  comment?: string | null;
+  rent?: boolean;
+  excludeFromBalance?: boolean;
+  debtPayment?: boolean;
+}): string | null {
+  const tags: string[] = [];
+  if (options.rent) tags.push(SALARY_RENT_TAG);
+  if (options.excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
+  if (options.debtPayment) tags.push(SALARY_DEBT_PAYMENT_TAG);
+  const clean = stripSalaryMetaTags(options.comment);
+  const joined = [...tags, clean].filter(Boolean).join(" ").trim();
+  return joined || null;
+}
+
 /**
  * Куда уходит наличный платёж при сдаче кассы:
  *  - "card" — инкассация на карту (по умолчанию Юлия Марковна);
@@ -417,10 +467,13 @@ export function getBankSummary(
   // Зарплаты — это расход: выплаченные уменьшают кассу/банк,
   // начисленные, но ещё не выплаченные — это долг «к оплате».
   for (const s of salaries) {
+    const bypassBalance = isSalaryExcludedFromBalance(s.comment);
     if (s.isPaid) {
+      if (bypassBalance) continue;
       if (s.source === "cash") cashBalance -= s.amount;
       else bankBalance -= s.amount;
     } else {
+      if (bypassBalance) continue;
       expectedOut += s.amount;
     }
   }

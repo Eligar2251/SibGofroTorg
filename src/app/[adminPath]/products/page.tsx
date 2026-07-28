@@ -2,9 +2,20 @@
 // FILE: src/app/[adminPath]/products/page.tsx
 // =========================================================
 
-import { getProducts, getAllCategories } from "@/lib/supabase-queries";
+import {
+  getProducts,
+  getAllCategories,
+  getFeaturedProductOrderIds,
+} from "@/lib/supabase-queries";
 import Link from "next/link";
-import { Plus, Pencil, Package, FolderOpen, QrCode } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Package,
+  FolderOpen,
+  QrCode,
+  GripVertical,
+} from "lucide-react";
 import { notFound } from "next/navigation";
 import { ProductListClient } from "@/components/admin/ProductListClient";
 import { CategoryManager } from "@/components/admin/CategoryManager";
@@ -25,10 +36,15 @@ export default async function AdminProductsPage({
   const { tab } = await searchParams;
   const activeTab = tab === "categories" ? "categories" : "products";
 
-  const [allProducts, cats] = await Promise.all([
+  const [allProducts, cats, featuredOrderIds] = await Promise.all([
     getProducts({ includeHidden: true }),
     getAllCategories(),
+    getFeaturedProductOrderIds(),
   ]);
+
+  const featuredOrderMap = new Map(
+    featuredOrderIds.map((id, index) => [id, index + 1] as const)
+  );
 
   const serializedProducts = allProducts.map((p) => ({
     id: p.id,
@@ -44,6 +60,8 @@ export default async function AdminProductsPage({
     promoLabel: p.promoLabel ?? null,
     madeToOrder: p.madeToOrder ?? false,
     isVisible: p.isVisible,
+    isFeatured: p.isFeatured,
+    featuredOrder: featuredOrderMap.get(p.id) ?? null,
     imageUrl: p.imageUrl ?? null,
     viewCount: p.viewCount ?? 0,
   }));
@@ -82,6 +100,9 @@ export default async function AdminProductsPage({
         </div>
         {activeTab === "products" && (
           <div className="admin-page-head__actions">
+            <Link href={`/${ADMIN_PATH}/products/featured-order`} className="admin-btn admin-btn--ghost" prefetch={false}>
+              <GripVertical size={15} /> Порядок популярных
+            </Link>
             <Link href={`/${ADMIN_PATH}/qr-print`} className="admin-btn admin-btn--ghost" prefetch={false}>
               <QrCode size={15} /> Печать QR-кодов
             </Link>

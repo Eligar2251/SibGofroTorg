@@ -45,6 +45,8 @@ import {
   type CashCollection,
   includedVat,
   VAT_RATE,
+  isSalaryExcludedFromBalance,
+  stripSalaryMetaTags,
 } from "@/lib/warehouse-shared";
 import { ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
 import { DealForm, DealActions } from "@/components/admin/WarehouseDeals";
@@ -127,6 +129,8 @@ type BankEntry =
       isPaid: boolean;
       source: "cash" | "bank";
       comment?: string | null;
+      excludeFromBalance?: boolean;
+      createdAt?: string | null;
       salary: Salary;
     };
 
@@ -238,6 +242,11 @@ export function WarehouseManager({
   const [rq, setRq] = useState(""); // Receipts query (поставщик/номер/товар)
   const [bdir, setBdir] = useState("all");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
+  const [historyDaysPage, setHistoryDaysPage] = useState(0);
+
+  useEffect(() => {
+    setHistoryDaysPage(0);
+  }, [bankSub, bq, bdir, bsort]);
 
   useEffect(() => {
     if (!selectedSupplierId) return;
@@ -416,7 +425,9 @@ export function WarehouseManager({
       amount: salary.amount,
       isPaid: salary.isPaid,
       source: salary.source,
-      comment: salary.comment,
+      comment: stripSalaryMetaTags(salary.comment),
+      excludeFromBalance: isSalaryExcludedFromBalance(salary.comment),
+      createdAt: salary.createdAt || salary.paidAt || salary.date,
       salary,
     }));
     let list: BankEntry[] = [
@@ -443,11 +454,26 @@ export function WarehouseManager({
       return true;
     });
 
-    list.sort((a, b) =>
-      bsort === "asc"
-        ? a.date.localeCompare(b.date) || a.number - b.number
-        : b.date.localeCompare(a.date) || b.number - a.number
-    );
+    const createdKey = (entry: BankEntry) =>
+      entry.entryKind === "payment"
+        ? entry.createdAt || entry.updatedAt || entry.paidAt || entry.date
+        : entry.createdAt || entry.salary.paidAt || entry.salary.date;
+
+    list.sort((a, b) => {
+      const byDate = bsort === "asc"
+        ? a.date.localeCompare(b.date)
+        : b.date.localeCompare(a.date);
+      if (byDate !== 0) return byDate;
+
+      const byCreated = bsort === "asc"
+        ? createdKey(a).localeCompare(createdKey(b))
+        : createdKey(b).localeCompare(createdKey(a));
+      if (byCreated !== 0) return byCreated;
+
+      return bsort === "asc"
+        ? String(a.id).localeCompare(String(b.id))
+        : String(b.id).localeCompare(String(a.id));
+    });
     return list;
   }, [payments, salaries, bankSub, bq, bdir, bsort]);
 
@@ -462,7 +488,25 @@ export function WarehouseManager({
     return { inSum, outSum };
   }, [bankList]);
 
-  const bankGroups = useMemo(() => {
+  const bankHistoryDayGroups = useMemo(() => {
+    const groups: { key: string; label: string; items: BankEntry[] }[] = [];
+    for (const p of bankList) {
+      const key = (p.date || "").slice(0, 10) || "unknown";
+      const lastGroup = groups[groups.length - 1];
+      if (lastGroup && lastGroup.key === key) {
+        lastGroup.items.push(p);
+      } else {
+        groups.push({
+          key,
+          label: key === "unknown" ? "Без даты" : fmtDate(key),
+          items: [p],
+        });
+      }
+    }
+    return groups;
+  }, [bankList]);
+
+  const bankMonthGroups = useMemo(() => {
     const groups: { key: string; label: string; items: BankEntry[] }[] = [];
     for (const p of bankList) {
       const key = (p.date || "").slice(0, 7) || "unknown";
@@ -479,6 +523,27 @@ export function WarehouseManager({
     }
     return groups;
   }, [bankList]);
+
+  const historyDaysPerPage = 7;
+  const historyDaysTotalPages = Math.max(
+    1,
+    Math.ceil(bankHistoryDayGroups.length / historyDaysPerPage)
+  );
+  const visibleBankGroups = useMemo(() => {
+    if (bankSub === "history") {
+      const page = Math.min(historyDaysPage, historyDaysTotalPages - 1);
+      const start = page * historyDaysPerPage;
+      return bankHistoryDayGroups.slice(start, start + historyDaysPerPage);
+    }
+    return bankMonthGroups;
+  }, [
+    bankSub,
+    historyDaysPage,
+    historyDaysPerPage,
+    historyDaysTotalPages,
+    bankHistoryDayGroups,
+    bankMonthGroups,
+  ]);
 
   const totalUnits = useMemo(
     () => stock.reduce((s, p) => s + p.stockQty, 0),
@@ -2307,7 +2372,36 @@ export function WarehouseManager({
             Расход: <strong className="bank-totalbar__out">−{fmt(bankFilteredTotals.outSum)} ₽</strong>
           </div>
 
-          {bankGroups.map((g) => (
+          {bankSub === "history" && bankHistoryDayGroups.length > 0 && (
+            <div className="bank-totalbar" style={{ justifyContent: "space-between" }}>
+              <span>
+                Дни в архиве: <strong>{bankHistoryDayGroups.length}</strong> · страница{" "}
+                <strong>{Math.min(historyDaysPage + 1, historyDaysTotalPages)}</strong> из <strong>{historyDaysTotalPages}</strong>
+              </span>
+              <span style={{ display: "inline-flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                  disabled={historyDaysPage <= 0}
+                  onClick={() => setHistoryDaysPage((p) => Math.max(0, p - 1))}
+                >
+                  ← Новее
+                </button>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                  disabled={historyDaysPage >= historyDaysTotalPages - 1}
+                  onClick={() =>
+                    setHistoryDaysPage((p) => Math.min(historyDaysTotalPages - 1, p + 1))
+                  }
+                >
+                  Старее →
+                </button>
+              </span>
+            </div>
+          )}
+
+          {visibleBankGroups.map((g) => (
             <div key={g.key} className="bank-month">
               <div className="bank-month__label">
                 {g.label}
@@ -2373,11 +2467,15 @@ export function WarehouseManager({
                         {!p.isPaid && (
                           <span className="bank-pay__wait">ожидается</span>
                         )}
-                        {p.entryKind === "payment" && p.excludeFromBalance && (
+                        {p.excludeFromBalance && (
                           <span
                             className="admin-badge admin-badge--muted"
                             style={{ marginLeft: 6 }}
-                            title="Платёж закрывает документ, но не влияет на текущий банк/кассу"
+                            title={
+                              p.entryKind === "salary"
+                                ? "Историческая зарплата: показывается в архиве, но не влияет на текущий банк/кассу"
+                                : "Платёж закрывает документ, но не влияет на текущий банк/кассу"
+                            }
                           >
                             вне баланса
                           </span>

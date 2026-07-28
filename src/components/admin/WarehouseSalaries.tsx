@@ -55,20 +55,22 @@ import {
   type PickerOption,
 } from "@/components/admin/SearchPicker";
 import { ModalPortal } from "@/components/admin/ModalPortal";
-import type { Employee, Salary, SalarySource } from "@/lib/warehouse-shared";
+import {
+  type Employee,
+  type Salary,
+  type SalarySource,
+  composeSalaryComment,
+  isDebtSalaryComment,
+  isRentSalaryComment,
+  isSalaryExcludedFromBalance,
+  stripSalaryMetaTags,
+} from "@/lib/warehouse-shared";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-const RENT_TAG = "[Аренда]";
-
 /** Оплата «с аренды на карту»: обычная запись bank + тег в комментарии. */
 function isRentSalary(s: Salary): boolean {
-  return (s.comment || "").includes(RENT_TAG);
-}
-
-function rentComment(comment: string): string {
-  const clean = comment.trim();
-  return clean ? `${RENT_TAG} ${clean}` : RENT_TAG;
+  return isRentSalaryComment(s.comment);
 }
 
 function todayIso(): string {
@@ -150,6 +152,18 @@ function defaultWeekendDays(key: string): number[] {
   return days;
 }
 
+function parseDayList(raw: string | undefined, maxDay: number): number[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.map(Number).filter((n) => Number.isFinite(n) && n >= 1 && n <= maxDay))]
+      .sort((a, b) => a - b);
+  } catch {
+    return [];
+  }
+}
+
 const planSettingKey = (month: string, employeeId: string) =>
   `salary_plan_${month}_${employeeId}`;
 /** Ручной долг/доплата: плюс — компания должна сотруднику (остаток с
@@ -157,6 +171,8 @@ const planSettingKey = (month: string, employeeId: string) =>
 const debtSettingKey = (month: string, employeeId: string) =>
   `salary_debt_${month}_${employeeId}`;
 const calendarSettingKey = (month: string) => `salary_calendar_${month}`;
+const scheduleSettingKey = (month: string, employeeId: string) =>
+  `salary_schedule_${month}_${employeeId}`;
 
 function initialsOf(name: string): string {
   return name
@@ -179,6 +195,10 @@ function sourceBadgeClass(s: Salary): string {
   return s.source === "cash" ? "admin-badge--green" : "admin-badge--blue";
 }
 
+function isDebtPaymentSalary(s: Salary): boolean {
+  return isDebtSalaryComment(s.comment);
+}
+
 // ─── Форма начисления зарплаты ─────────────────────
 
 function SalaryFormModal({
@@ -196,12 +216,19 @@ function SalaryFormModal({
   const [employeeId, setEmployeeId] = useState<string | null>(
     initial?.employeeId || null
   );
+  const initialRent = Boolean(initial && isRentSalary(initial));
   const [amount, setAmount] = useState(
     initial ? String(initial.amount) : ""
   );
   const [date, setDate] = useState(initial?.date || todayIso());
   const [source, setSource] = useState<SalarySource>(initial?.source || "cash");
-  const [comment, setComment] = useState(initial?.comment || "");
+  const [comment, setComment] = useState(stripSalaryMetaTags(initial?.comment));
+  const [excludeFromBalance, setExcludeFromBalance] = useState(
+    Boolean(initial && isSalaryExcludedFromBalance(initial.comment))
+  );
+  const [debtPayment, setDebtPayment] = useState(
+    Boolean(initial && isDebtPaymentSalary(initial))
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -251,7 +278,12 @@ function SalaryFormModal({
             amount: amountNum,
             date,
             source,
-            comment: comment.trim() || null,
+            comment: composeSalaryComment({
+              comment,
+              rent: initialRent,
+              excludeFromBalance,
+              debtPayment,
+            }),
           }),
         }
       );
@@ -365,6 +397,23 @@ function SalaryFormModal({
               />
             </div>
 
+            <label className="admin-check" style={{ marginTop: 12 }}>
+              <input
+                type="checkbox"
+                checked={excludeFromBalance}
+                onChange={(e) => setExcludeFromBalance(e.target.checked)}
+              />
+              <span>В обход баланса: показать в истории ЗП, но не списывать из банка/кассы</span>
+            </label>
+            <label className="admin-check" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={debtPayment}
+                onChange={(e) => setDebtPayment(e.target.checked)}
+              />
+              <span>В счёт долга, не считать как зарплату месяца</span>
+            </label>
+
             {error && <div className="wh-form-error">{error}</div>}
 
             <div className="admin-form-actions" style={{ marginTop: 14 }}>
@@ -388,6 +437,8 @@ function SalaryFormModal({
             <p className="wh-form-hint">
               Начисление создаётся «к выплате». Когда выдали деньги — нажмите
               «Выплатить», и сумма спишется с выбранного счёта (касса/банк).
+              Если включён режим «в обход баланса», запись останется в истории,
+              но не повлияет на текущие остатки банка/кассы.
             </p>
           </form>
         </div>
@@ -603,20 +654,33 @@ function QuickPayForm({
     amount: number;
     source: QuickSource;
     paid: boolean;
+    excludeFromBalance: boolean;
+    debtPayment: boolean;
     comment: string;
   }) => void;
 }) {
   const [amount, setAmount] = useState("");
   const [source, setSource] = useState<QuickSource>("cash");
   const [paid, setPaid] = useState(true);
+  const [excludeFromBalance, setExcludeFromBalance] = useState(false);
+  const [debtPayment, setDebtPayment] = useState(false);
   const [comment, setComment] = useState("");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const amountNum = Number(amount.replace(",", "."));
     if (!amountNum || amountNum <= 0) return;
-    onSubmit({ amount: amountNum, source, paid, comment: comment.trim() });
+    onSubmit({
+      amount: amountNum,
+      source,
+      paid,
+      excludeFromBalance,
+      debtPayment,
+      comment: comment.trim(),
+    });
     setAmount("");
+    setExcludeFromBalance(false);
+    setDebtPayment(false);
     setComment("");
   }
 
@@ -672,6 +736,22 @@ function QuickPayForm({
           onChange={(e) => setPaid(e.target.checked)}
         />
         Выплачено (списать со счёта сразу)
+      </label>
+      <label className="whsal-check">
+        <input
+          type="checkbox"
+          checked={excludeFromBalance}
+          onChange={(e) => setExcludeFromBalance(e.target.checked)}
+        />
+        В обход баланса (историческая выплата)
+      </label>
+      <label className="whsal-check">
+        <input
+          type="checkbox"
+          checked={debtPayment}
+          onChange={(e) => setDebtPayment(e.target.checked)}
+        />
+        В счёт долга (не зарплата месяца)
       </label>
       <input
         type="text"
@@ -1051,6 +1131,9 @@ interface GridRow {
   /** остаток к выплате = всего к выплате − получено */
   rest: number;
   cells: Record<number, Salary[]>;
+  scheduledDays: number[];
+  scheduledSet: Set<number>;
+  scheduledPlanByDay: Record<number, number>;
 }
 
 export function WarehouseSalaries({
@@ -1068,11 +1151,6 @@ export function WarehouseSalaries({
   const [editing, setEditing] = useState<Salary | null>(null);
   const [empOpen, setEmpOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const monthOptions = useMemo(() => {
-    const keys = new Set(salaries.map((s) => monthKey(s.date)));
-    keys.add(todayIso().slice(0, 7));
-    return [...keys].sort((a, b) => b.localeCompare(a));
-  }, [salaries]);
   const [activeMonth, setActiveMonth] = useState(todayIso().slice(0, 7));
   const [activeEmployee, setActiveEmployee] = useState("all");
 
@@ -1086,7 +1164,28 @@ export function WarehouseSalaries({
   const [accruedValue, setAccruedValue] = useState("");
   const [debtValue, setDebtValue] = useState("");
   const [setupOpen, setSetupOpen] = useState(false);
+  const [exportingImage, setExportingImage] = useState(false);
+  const [scheduleStartValue, setScheduleStartValue] = useState("1");
+  const [scheduleBusy, setScheduleBusy] = useState(false);
   const popRef = useRef<HTMLDivElement | null>(null);
+  const salaryTableExportRef = useRef<HTMLDivElement | null>(null);
+
+  const monthOptions = useMemo(() => {
+    const currentMonth = todayIso().slice(0, 7);
+    const keys = new Set<string>(salaries.map((s) => monthKey(s.date)));
+    keys.add(currentMonth);
+
+    for (const key of Object.keys(settingsRaw)) {
+      const match = key.match(/salary_(?:plan|debt|calendar|schedule)_(\d{4}-\d{2})/);
+      if (match?.[1]) keys.add(match[1]);
+    }
+
+    for (let i = 1; i <= 18; i++) {
+      keys.add(shiftMonth(currentMonth, -i));
+    }
+
+    return [...keys].sort((a, b) => b.localeCompare(a));
+  }, [salaries, settingsRaw]);
 
   // Синхронизируем локальное состояние после router.refresh()
   useEffect(() => setEmployees(initialEmployees), [initialEmployees]);
@@ -1146,7 +1245,9 @@ export function WarehouseSalaries({
   const pending = scopedSalaries.filter((s) => !s.isPaid);
   const paid = scopedSalaries.filter((s) => s.isPaid);
   const pendingTotal = pending.reduce((s, x) => s + x.amount, 0);
-  const accruedTotal = scopedSalaries.reduce((s, x) => s + x.amount, 0);
+  const accruedTotal = scopedSalaries
+    .filter((s) => !isDebtPaymentSalary(s))
+    .reduce((s, x) => s + x.amount, 0);
   const paidTotal = paid.reduce((s, x) => s + x.amount, 0);
   const paidCash = paid
     .filter((s) => s.source === "cash" && !isRentSalary(s))
@@ -1161,14 +1262,8 @@ export function WarehouseSalaries({
   // ── Excel-таблица: выходные дни месяца ──
   const weekendDays = useMemo(() => {
     const raw = settingsRaw[calendarSettingKey(activeMonth)];
-    if (!raw) return defaultWeekendDays(activeMonth);
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.map(Number).filter((n) => n > 0);
-    } catch {
-      /* повреждённый JSON — используем сб/вс */
-    }
-    return defaultWeekendDays(activeMonth);
+    const parsed = parseDayList(raw, daysInMonth(activeMonth));
+    return parsed.length > 0 ? parsed : defaultWeekendDays(activeMonth);
   }, [settingsRaw, activeMonth]);
   const weekendSet = useMemo(() => new Set(weekendDays), [weekendDays]);
 
@@ -1181,17 +1276,37 @@ export function WarehouseSalaries({
         );
         const paidRows = rows.filter((r) => r.isPaid);
         const received = paidRows.reduce((sum, r) => sum + r.amount, 0);
-        const accruedRecords = rows.reduce((sum, r) => sum + r.amount, 0);
+        const salaryRows = rows.filter((r) => !isDebtPaymentSalary(r));
+        const accruedRecords = salaryRows.reduce((sum, r) => sum + r.amount, 0);
         const planRaw = settingsRaw[planSettingKey(activeMonth, employee.id)];
         const plan = planRaw !== undefined ? Number(planRaw) || 0 : 0;
         const effectivePlan = plan > 0 ? plan : accruedRecords;
         const debtRaw = settingsRaw[debtSettingKey(activeMonth, employee.id)];
         const manualDebt = debtRaw !== undefined ? Number(debtRaw) || 0 : 0;
         const totalDue = effectivePlan + manualDebt;
+        const scheduledDays = parseDayList(
+          settingsRaw[scheduleSettingKey(activeMonth, employee.id)],
+          daysInMonth(activeMonth)
+        );
         const cells: Record<number, Salary[]> = {};
         for (const r of paidRows) {
           const d = dayOfMonth(r.date);
           (cells[d] = cells[d] || []).push(r);
+        }
+        const rest = totalDue - received;
+        const futureScheduledDays = scheduledDays.filter((day) => !(cells[day] && cells[day].length));
+        const scheduledPlanByDay: Record<number, number> = {};
+        if (futureScheduledDays.length > 0 && rest > 0) {
+          const base = Math.floor((rest / futureScheduledDays.length) * 100) / 100;
+          let allocated = 0;
+          futureScheduledDays.forEach((day, idx) => {
+            const amount =
+              idx === futureScheduledDays.length - 1
+                ? Math.round((rest - allocated) * 100) / 100
+                : base;
+            scheduledPlanByDay[day] = amount;
+            allocated = Math.round((allocated + amount) * 100) / 100;
+          });
         }
         return {
           employee,
@@ -1203,8 +1318,11 @@ export function WarehouseSalaries({
           effectivePlan,
           manualDebt,
           totalDue,
-          rest: totalDue - received,
+          rest,
           cells,
+          scheduledDays,
+          scheduledSet: new Set(scheduledDays),
+          scheduledPlanByDay,
         };
       })
       .filter(
@@ -1212,6 +1330,7 @@ export function WarehouseSalaries({
           row.rows.length > 0 ||
           row.plan > 0 ||
           row.manualDebt !== 0 ||
+          row.scheduledDays.length > 0 ||
           activeEmployee === row.employee.id
       )
       .filter((row) => activeEmployee === "all" || row.employee.id === activeEmployee);
@@ -1311,11 +1430,24 @@ export function WarehouseSalaries({
   async function quickCreate(
     employee: Employee,
     day: number,
-    data: { amount: number; source: QuickSource; paid: boolean; comment: string }
+    data: {
+      amount: number;
+      source: QuickSource;
+      paid: boolean;
+      excludeFromBalance: boolean;
+      debtPayment: boolean;
+      comment: string;
+    }
   ) {
     setQuickBusy(true);
     try {
       const date = `${activeMonth}-${String(day).padStart(2, "0")}`;
+      const finalComment = composeSalaryComment({
+        comment: data.comment,
+        rent: data.source === "rent",
+        excludeFromBalance: data.excludeFromBalance,
+        debtPayment: data.debtPayment,
+      });
       const res = await fetch("/api/admin/warehouse/salaries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1326,8 +1458,7 @@ export function WarehouseSalaries({
           date,
           source: data.source === "rent" ? "bank" : data.source,
           isPaid: data.paid,
-          comment:
-            data.source === "rent" ? rentComment(data.comment) : data.comment || null,
+          comment: finalComment,
         }),
       });
       if (!res.ok) {
@@ -1345,8 +1476,7 @@ export function WarehouseSalaries({
         source: data.source === "rent" ? "bank" : data.source,
         isPaid: data.paid,
         paidAt: data.paid ? date : null,
-        comment:
-          data.source === "rent" ? rentComment(data.comment) : data.comment || null,
+        comment: finalComment,
       };
       setSalaries((prev) => [newSalary, ...prev]);
       flashCell(`${employee.id}:${day}`);
@@ -1455,6 +1585,53 @@ export function WarehouseSalaries({
     return true;
   }
 
+  function scheduledDaysFor(employeeId: string): number[] {
+    return parseDayList(
+      settingsRaw[scheduleSettingKey(activeMonth, employeeId)],
+      daysInMonth(activeMonth)
+    );
+  }
+
+  async function saveScheduleDays(employeeId: string, days: number[]): Promise<boolean> {
+    const key = scheduleSettingKey(activeMonth, employeeId);
+    const value = JSON.stringify(days.sort((a, b) => a - b));
+    setScheduleBusy(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!res.ok) {
+        alert("Не удалось сохранить план выплат");
+        return false;
+      }
+      setSettingsRaw((prev) => ({ ...prev, [key]: value }));
+      return true;
+    } finally {
+      setScheduleBusy(false);
+    }
+  }
+
+  async function toggleScheduledDay(employeeId: string, day: number): Promise<void> {
+    const current = new Set(scheduledDaysFor(employeeId));
+    if (current.has(day)) current.delete(day);
+    else current.add(day);
+    await saveScheduleDays(employeeId, [...current]);
+  }
+
+  async function distributeWeeklySchedule(employeeId: string, startDay: number): Promise<void> {
+    const lastDay = daysInMonth(activeMonth);
+    const days: number[] = [];
+    for (let day = startDay; day <= lastDay; day += 7) {
+      days.push(day);
+    }
+    const ok = await saveScheduleDays(employeeId, days);
+    if (ok) {
+      flashCell(`${employeeId}:schedule`);
+    }
+  }
+
   async function saveWeekends(days: number[]) {
     const key = calendarSettingKey(activeMonth);
     const value = JSON.stringify(days);
@@ -1486,6 +1663,7 @@ export function WarehouseSalaries({
   function openAccruedPopover(row: GridRow, el: HTMLElement) {
     const r = el.getBoundingClientRect();
     setAccruedValue(row.effectivePlan ? String(row.effectivePlan) : "");
+    setScheduleStartValue(String(row.scheduledDays[0] || 1));
     setPopPos(null);
     setPopover({
       kind: "accrued",
@@ -1543,12 +1721,14 @@ export function WarehouseSalaries({
         const items = row.cells[d] || [];
         const sum = items.reduce((s, x) => s + x.amount, 0);
         const rent = items.some(isRentSalary);
+        const scheduled = row.scheduledSet.has(d);
         let style = "border:1px solid #D5D2C9;padding:4px 3px;font-size:10px;text-align:center;";
         if (rent) style += "background:#DCE6F5;color:#1E3A5A;font-weight:bold;";
         else if (items.length) style += "background:#FBE3DC;color:#B83A1E;font-weight:bold;";
+        else if (scheduled) style += "background:#E8EEF6;color:#1E3A5A;font-weight:bold;";
         else if (weekendSet.has(d)) style += "background:#FFF3C4;";
         else style += "background:#FFFFFF;";
-        body += `<td style="${style}">${sum ? fmt(sum) : ""}</td>`;
+        body += `<td style="${style}">${sum ? fmt(sum) : scheduled ? "П" : ""}</td>`;
       }
       const restColor = row.rest === 0 ? "#1E4A2D" : row.rest < 0 ? "#B83A1E" : "#C8860A";
       body += `<td align="right" style="border:1px solid #D5D2C9;padding:4px 6px;font-size:11px;font-weight:bold;color:${restColor};background:#F7F5F0;">${row.rest}</td>`;
@@ -1583,7 +1763,7 @@ export function WarehouseSalaries({
       `<div style="font-family:Arial;font-size:14px;font-weight:bold;margin-bottom:8px;">Таблица взаиморасчётов за ${esc(ml)}</div>` +
       `<table>${head}${body}</table>` +
       `<div style="font-family:Arial;font-size:10px;color:#6B6B60;margin-top:10px;">` +
-      `Красный — выплата получена · Жёлтый — выходной/праздник · Синий — оплачено с аренды на карту · Остаток = За месяц + Долг − Получено</div>` +
+      `Красный — выплата получена · Жёлтый — выходной/праздник · Синий — аренда / план выплаты · Остаток = За месяц + Долг − Получено</div>` +
       `</body></html>`;
 
     const blob = new Blob(["\ufeff", html], {
@@ -1597,6 +1777,52 @@ export function WarehouseSalaries({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  async function exportTableAsImage() {
+    if (!salaryTableExportRef.current || exportingImage) return;
+    setExportingImage(true);
+    const node = salaryTableExportRef.current;
+    try {
+      node.classList.add("whsal-export-mode");
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      const html2canvas = (await import("html2canvas")).default;
+      const canvas = await html2canvas(node, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        width: node.scrollWidth,
+        height: node.scrollHeight,
+        windowWidth: node.scrollWidth,
+        windowHeight: node.scrollHeight,
+      });
+      const dataUrl = canvas.toDataURL("image/png");
+
+      const month = monthLabel(activeMonth).replace(/\s+/g, "_");
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `Зарплаты_${month}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      if (navigator.clipboard && typeof ClipboardItem !== "undefined") {
+        try {
+          const blob = await (await fetch(dataUrl)).blob();
+          await navigator.clipboard.write([
+            new ClipboardItem({ [blob.type]: blob }),
+          ]);
+        } catch {
+          // Буфер обмена не критичен: файл уже скачан.
+        }
+      }
+    } catch {
+      alert("Не удалось сохранить таблицу как PNG");
+    } finally {
+      node.classList.remove("whsal-export-mode");
+      setExportingImage(false);
+    }
   }
 
   // ── Данные popover ──
@@ -1679,6 +1905,15 @@ export function WarehouseSalaries({
           </button>
           <button
             className="admin-btn admin-btn--ghost"
+            onClick={exportTableAsImage}
+            disabled={exportingImage}
+            title="Сохранить таблицу как PNG и попробовать скопировать в буфер обмена"
+          >
+            {exportingImage ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />}
+            PNG
+          </button>
+          <button
+            className="admin-btn admin-btn--ghost"
             onClick={() => setDaysModalOpen(true)}
             title="Выходные и праздничные дни месяца"
           >
@@ -1691,6 +1926,20 @@ export function WarehouseSalaries({
             <Plus size={15} /> Начислить зарплату
           </button>
         </div>
+      </div>
+
+      <div className="admin-filters admin-filters--sub" style={{ marginTop: -2, marginBottom: 14 }}>
+        {monthOptions.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`admin-filter${activeMonth === key ? " admin-filter--active" : ""}`}
+            onClick={() => setActiveMonth(key)}
+            title={`Открыть таблицу за ${monthLabel(key)}`}
+          >
+            {monthLabel(key)}
+          </button>
+        ))}
       </div>
 
       {/* ── Сводные карточки ── */}
@@ -1772,7 +2021,9 @@ export function WarehouseSalaries({
           </span>
         </div>
 
+        <div style={{ background: "#fff" }}>
         <div className="whsal-grid-scroll">
+          <div ref={salaryTableExportRef} style={{ width: "max-content", minWidth: "100%", background: "#fff" }}>
           <table className="whsal-table">
             <thead>
               <tr>
@@ -1903,11 +2154,18 @@ export function WarehouseSalaries({
                     const items = row.cells[d] || [];
                     const sum = items.reduce((s, x) => s + x.amount, 0);
                     const rent = items.some(isRentSalary);
+                    const scheduled = row.scheduledSet.has(d);
                     const cls = [
                       "whsal-td",
                       "whsal-day",
                       weekendSet.has(d) ? "whsal-day--weekend" : "",
-                      items.length ? (rent ? "whsal-day--rent" : "whsal-day--paid") : "",
+                      items.length
+                        ? rent
+                          ? "whsal-day--rent"
+                          : "whsal-day--paid"
+                        : scheduled
+                        ? "whsal-day--scheduled"
+                        : "",
                       flashKey === `${row.employee.id}:${d}` ? "whsal-day--flash" : "",
                     ]
                       .filter(Boolean)
@@ -1916,7 +2174,12 @@ export function WarehouseSalaries({
                       `${row.employee.name} — ${dayFullTitle(activeMonth, d)}` +
                       (items.length
                         ? `\nВыплачено: ${fmt(sum)} ₽ (${items.length} шт.)`
+                        : scheduled
+                        ? "\nЗапланирована выплата с аренды"
                         : "\nКлик — добавить выплату");
+                    const plannedAmount = row.scheduledPlanByDay?.[d] || 0;
+                    const visibleItems = items.slice(0, 2);
+                    const extraCount = items.length - visibleItems.length;
                     return (
                       <td
                         key={d}
@@ -1924,10 +2187,35 @@ export function WarehouseSalaries({
                         title={title}
                         onClick={(e) => openDayPopover(row.employee, d, e.currentTarget)}
                       >
-                        {sum > 0 && <span className="whsal-day-sum">{fmt(sum)}</span>}
+                        <span className="whsal-day-stack">
+                          {visibleItems.map((entry) => (
+                            <span
+                              key={entry.id}
+                              className={`whsal-day-line${
+                                isRentSalary(entry)
+                                  ? " whsal-day-line--rent"
+                                  : isDebtPaymentSalary(entry)
+                                  ? " whsal-day-line--debt"
+                                  : ""
+                              }`}
+                            >
+                              {Math.round(entry.amount) === entry.amount
+                                ? String(entry.amount)
+                                : String(entry.amount).replace(".", ",")}
+                            </span>
+                          ))}
+                          {!items.length && plannedAmount > 0 && (
+                            <span className="whsal-day-line whsal-day-line--scheduled">
+                              {Math.round(plannedAmount) === plannedAmount
+                                ? String(plannedAmount)
+                                : String(plannedAmount).replace(".", ",")}
+                            </span>
+                          )}
+                        </span>
                         {rent && <span className="whsal-day-mark">А</span>}
-                        {items.length > 1 && (
-                          <span className="whsal-day-count">×{items.length}</span>
+                        {!items.length && scheduled && <span className="whsal-day-mark">П</span>}
+                        {extraCount > 0 && (
+                          <span className="whsal-day-count">+{extraCount}</span>
                         )}
                       </td>
                     );
@@ -2023,6 +2311,7 @@ export function WarehouseSalaries({
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Легенда */}
@@ -2039,6 +2328,10 @@ export function WarehouseSalaries({
             <span className="whsal-legend__swatch whsal-legend__swatch--rent" />
             Оплачено с аренды на карту
           </span>
+          <span className="whsal-legend__item">
+            <span className="admin-badge admin-badge--muted">вне баланса</span>
+            Историческая выплата — не влияет на банк/кассу
+          </span>
           <span className="whsal-legend__item whsal-hint">
             «Остаток» (к выплате) = «За месяц» + «Долг» − «Получено» · зелёный —
             выплачено полностью
@@ -2047,6 +2340,7 @@ export function WarehouseSalaries({
             «Долг»: + должны сотруднику (остаток с прошлого месяца), − сотрудник
             должен (аванс)
           </span>
+        </div>
         </div>
       </div>
 
@@ -2115,17 +2409,25 @@ export function WarehouseSalaries({
                   <span className={`admin-badge ${sourceBadgeClass(s)}`}>
                     {sourceLabel(s)}
                   </span>
+                  {isDebtPaymentSalary(s) && (
+                    <span className="admin-badge admin-badge--amber">долг</span>
+                  )}
                   {!s.isPaid && <span className="bank-pay__wait">к выплате</span>}
                   {s.isPaid && (
                     <span className="admin-badge admin-badge--green">
                       <CheckCircle size={10} /> выплачено
                     </span>
                   )}
+                  {isSalaryExcludedFromBalance(s.comment) && (
+                    <span className="admin-badge admin-badge--muted">
+                      вне баланса
+                    </span>
+                  )}
                 </div>
                 <div className="bank-pay__row2">
                   <span className="bank-pay__date">{fmtDate(s.date)}</span>
-                  {s.comment && (
-                    <span className="bank-pay__comment">{s.comment}</span>
+                  {stripSalaryMetaTags(s.comment) && (
+                    <span className="bank-pay__comment">{stripSalaryMetaTags(s.comment)}</span>
                   )}
                 </div>
               </div>
@@ -2239,6 +2541,9 @@ export function WarehouseSalaries({
                         <span className={`admin-badge ${sourceBadgeClass(s)}`}>
                           {sourceLabel(s)}
                         </span>
+                        {isDebtPaymentSalary(s) && (
+                          <span className="admin-badge admin-badge--amber">долг</span>
+                        )}
                         {s.isPaid ? (
                           <span className="admin-badge admin-badge--green">
                             <CheckCircle size={10} /> выплачено
@@ -2247,6 +2552,9 @@ export function WarehouseSalaries({
                           <span className="admin-badge admin-badge--amber">
                             <Hourglass size={10} /> к выплате
                           </span>
+                        )}
+                        {isSalaryExcludedFromBalance(s.comment) && (
+                          <span className="admin-badge admin-badge--muted">вне баланса</span>
                         )}
                         <span className="whsal-pop__actions">
                           <button
@@ -2283,8 +2591,8 @@ export function WarehouseSalaries({
                           </button>
                         </span>
                       </div>
-                      {s.comment && (
-                        <div className="whsal-pop__comment">{s.comment}</div>
+                      {stripSalaryMetaTags(s.comment) && (
+                        <div className="whsal-pop__comment">{stripSalaryMetaTags(s.comment)}</div>
                       )}
                     </div>
                   ))}
@@ -2305,6 +2613,19 @@ export function WarehouseSalaries({
                       setPopover(null);
                     }}
                   />
+                  <div className="whsal-pop__quick-actions" style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      disabled={scheduleBusy}
+                      onClick={async () => {
+                        await toggleScheduledDay(popRow.employee.id, popover.day);
+                        flashCell(`${popRow.employee.id}:schedule`);
+                      }}
+                    >
+                      {popRow.scheduledSet.has(popover.day) ? "Убрать план аренды" : "Запланировать аренду на этот день"}
+                    </button>
+                  </div>
                 </>
               )}
 
@@ -2351,6 +2672,52 @@ export function WarehouseSalaries({
                     </button>
                   </form>
                   <div className="whsal-pop__sep" />
+                  <div className="whsal-pop__subtitle">Плановые даты выплат с аренды</div>
+                  <div className="whsal-pop__comment" style={{ marginTop: 0 }}>
+                    Синие пометки можно расставить заранее — например, каждую неделю для сотрудников, которым платите с аренды.
+                  </div>
+                  <div className="whsal-qform">
+                    <div className="whsal-qform__row">
+                      <input
+                        type="number"
+                        className="admin-input whsal-qform__amount"
+                        min={1}
+                        max={dayCount}
+                        value={scheduleStartValue}
+                        onChange={(e) => setScheduleStartValue(e.target.value)}
+                        placeholder="День старта"
+                      />
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--primary whsal-qform__submit"
+                        disabled={scheduleBusy}
+                        onClick={async () => {
+                          const start = Number(scheduleStartValue);
+                          if (!Number.isFinite(start) || start < 1 || start > dayCount) return;
+                          await distributeWeeklySchedule(popRow.employee.id, start);
+                        }}
+                      >
+                        Каждые 7 дней
+                      </button>
+                    </div>
+                    <div className="whsal-pop__quick-actions">
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        disabled={scheduleBusy}
+                        onClick={async () => {
+                          await saveScheduleDays(popRow.employee.id, []);
+                          flashCell(`${popRow.employee.id}:schedule`);
+                        }}
+                      >
+                        Очистить план
+                      </button>
+                    </div>
+                    <div className="whsal-pop__comment">
+                      Сейчас отмечены: {popRow.scheduledDays.length ? popRow.scheduledDays.join(", ") : "нет дат"}
+                    </div>
+                  </div>
+                  <div className="whsal-pop__sep" />
                   <div className="whsal-pop__subtitle">
                     Записи за месяц · {popRow.rows.length} шт · {fmt(popRow.accruedRecords)} ₽
                   </div>
@@ -2368,10 +2735,16 @@ export function WarehouseSalaries({
                             <div className="whsal-pop__item-top">
                               <span className="whsal-pop__amount">{fmt(s.amount)} ₽</span>
                               <span className="whsal-pop__date">{fmtDate(s.date)}</span>
+                              {isDebtPaymentSalary(s) && (
+                                <span className="admin-badge admin-badge--amber">долг</span>
+                              )}
                               {s.isPaid ? (
                                 <span className="admin-badge admin-badge--green">выплачено</span>
                               ) : (
                                 <span className="admin-badge admin-badge--amber">к выплате</span>
+                              )}
+                              {isSalaryExcludedFromBalance(s.comment) && (
+                                <span className="admin-badge admin-badge--muted">вне баланса</span>
                               )}
                               <span className="whsal-pop__actions">
                                 <button
@@ -2408,8 +2781,8 @@ export function WarehouseSalaries({
                                 </button>
                               </span>
                             </div>
-                            {s.comment && (
-                              <div className="whsal-pop__comment">{s.comment}</div>
+                            {stripSalaryMetaTags(s.comment) && (
+                              <div className="whsal-pop__comment">{stripSalaryMetaTags(s.comment)}</div>
                             )}
                           </div>
                         ))}

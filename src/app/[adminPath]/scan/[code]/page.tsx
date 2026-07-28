@@ -1,26 +1,19 @@
 // =========================================================
 // FILE: src/app/[adminPath]/scan/[code]/page.tsx
-// Компактная страница сканера: открывается по ссылке из QR-кода
-// (вида /admin/scan/{slug}). Показывает название товара, цену,
-// наличие. Сверху — поле «Введите код / отсканируйте» + кнопка
-// камеры (getUserMedia), чтобы сканировать прямо в браузере.
-//
-// Доступ — по авторизации админки (через layout-обёртку).
-// Если код не найден — страница показывает сообщение.
+// Прямой вход по URL из QR-кода вида /admin/scan/{slug}.
+// Показывает тот же экран сканера, но уже с найденным товаром.
 // =========================================================
 
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { getProductById, getProducts } from "@/lib/supabase-queries";
-import { computeBarcode, computeQrSlug, formatBarcode } from "@/lib/qr";
+import { computeBarcode, computeQrSlug } from "@/lib/qr";
+import { buildStockLabel, normalizeScanCode } from "@/lib/scan";
 import { ScanCode } from "@/components/admin/ScanCode";
-
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 
-async function findByCode(code: string) {
-  const trimmed = (code || "").trim();
+async function findByCode(rawCode: string, adminPath: string) {
+  const trimmed = normalizeScanCode(rawCode, adminPath);
   if (!trimmed) return null;
 
   // 1) productId
@@ -58,9 +51,8 @@ export default async function ScanPage({
 }) {
   const { adminPath, code } = await params;
   const { notFound: notFoundFlag } = await searchParams;
-  const product = await findByCode(code);
+  const product = await findByCode(code, adminPath);
 
-  // Если код введён руками и не нашёлся — показываем экран «не найдено».
   if (!product && notFoundFlag) {
     return (
       <ScanCode
@@ -73,44 +65,33 @@ export default async function ScanPage({
     );
   }
 
-  // Если зашли прямым URL и код битый — 404
   if (!product) {
     notFound();
   }
 
   const barcode = product.barcode || computeBarcode(product.id);
   const qrSlug = product.qrSlug || computeQrSlug(product.id);
-  const stockLabel = (() => {
-    if (product.stockQty != null) {
-      if (product.stockQty <= 0) return { text: "Нет в наличии", tone: "out" as const };
-      if (product.stockQty < 10) return { text: `Мало: ${product.stockQty} шт`, tone: "low" as const };
-      return { text: `В наличии: ${product.stockQty} шт`, tone: "ok" as const };
-    }
-    return product.inStock
-      ? { text: "В наличии", tone: "ok" as const }
-      : { text: "Нет в наличии", tone: "out" as const };
-  })();
 
   return (
     <ScanCode
       adminPath={adminPath}
       initialCode=""
-      product={(() => {
-        const basePrice = product.price ?? 0;
-        return {
-          id: product.id,
-          name: product.name,
-          slug: product.slug,
-          sku: product.sku ?? null,
-          barcode,
-          qrSlug,
-          imageUrl: product.imageUrl ?? null,
-          price: basePrice,
-          priceWholesale: product.priceWholesale ?? null,
-          stockQty: product.stockQty ?? null,
-          stockLabel,
-        };
-      })()}
+      product={{
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        sku: product.sku ?? null,
+        barcode,
+        qrSlug,
+        imageUrl: product.imageUrl ?? null,
+        price: product.price ?? 0,
+        priceWholesale: product.priceWholesale ?? null,
+        stockQty: product.stockQty ?? null,
+        stockLabel: buildStockLabel({
+          stockQty: product.stockQty,
+          inStock: product.inStock,
+        }),
+      }}
     />
   );
 }

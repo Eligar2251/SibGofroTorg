@@ -20,6 +20,8 @@ interface ProductItem {
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
   isVisible: boolean;
+  isFeatured?: boolean;
+  featuredOrder?: number | null;
   imageUrl?: string | null;
   viewCount?: number;
 }
@@ -312,6 +314,11 @@ export function ProductListClient({
                         {product.isPromo && (
                           <span className="admin-badge admin-badge--amber">
                             {product.promoLabel || "Акция"}
+                          </span>
+                        )}
+                        {product.isFeatured && (
+                          <span className="admin-badge admin-badge--blue">
+                            Популярный{product.featuredOrder ? ` · #${product.featuredOrder}` : ""}
                           </span>
                         )}
                       </div>

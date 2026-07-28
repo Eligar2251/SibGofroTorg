@@ -1,0 +1,16 @@
+# Явно заставляем Nixpacks / Cloudpack использовать pnpm и standalone-рантайм.
+# Это убирает двусмысленность из-за наличия package-lock.json в репозитории
+# и ускоряет деплой в Timeweb Cloud.
+
+[phases.install]
+cmds = [
+  "corepack enable",
+  "corepack prepare pnpm@11.17.0 --activate",
+  "pnpm install --frozen-lockfile --prefer-offline"
+]
+
+[phases.build]
+cmds = ["pnpm build"]
+
+[start]
+cmd = "node .next/standalone/server.js"

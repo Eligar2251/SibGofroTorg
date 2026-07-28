@@ -40,6 +40,8 @@ export interface FirestoreProduct {
   discountBadge?: string | null | undefined;
   isVisible: boolean;
   isFeatured: boolean;
+  /** Ручной порядок в блоке «Популярные товары» на главной. */
+  featuredOrder?: number | null | undefined;
   imageUrl?: string | null | undefined;
   images?: { url: string; publicId: string }[];
   viewCount?: number;

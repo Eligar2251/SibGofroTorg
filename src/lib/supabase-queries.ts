@@ -34,6 +34,8 @@ import {
   getCachedVariantsMap,
 } from "./variants";
 
+export const FEATURED_PRODUCTS_ORDER_SETTING_KEY = "featured_products_order";
+
 // ─── Helpers ───────────────────────────────────────────────
 
 function slugify(text: string): string {
@@ -65,6 +67,7 @@ function mapProductRow(row: any): FirestoreProduct {
     categoryId: row.category_id || null,
     sku: row.sku || null,
     description: row.description || null,
+    featuredOrder: row.sort_order != null ? Number(row.sort_order) : null,
     price: row.price != null ? Number(row.price) : null,
     priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
     minWholesaleQty: row.min_wholesale_qty != null ? Number(row.min_wholesale_qty) : null,
@@ -314,6 +317,45 @@ function getProductDims(p: FirestoreProduct): number[] {
   return dims;
 }
 
+function parseFeaturedProductOrder(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.map((x) => String(x || "").trim()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+export async function getFeaturedProductOrderIds(): Promise<string[]> {
+  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  return parseFeaturedProductOrder(settings[FEATURED_PRODUCTS_ORDER_SETTING_KEY]);
+}
+
+function featuredRankFor(product: FirestoreProduct, orderMap: Map<string, number>): number {
+  const bySettings = orderMap.get(product.id);
+  if (bySettings != null) return bySettings;
+  if (product.featuredOrder != null && Number.isFinite(product.featuredOrder)) {
+    return 10_000 + Number(product.featuredOrder);
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function defaultProductCompare(a: FirestoreProduct, b: FirestoreProduct, orderMap: Map<string, number>): number {
+  if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
+
+  const rankA = featuredRankFor(a, orderMap);
+  const rankB = featuredRankFor(b, orderMap);
+  if (rankA !== rankB) return rankA - rankB;
+
+  const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  if (createdA !== createdB) return createdB - createdA;
+
+  return a.name.localeCompare(b.name, "ru");
+}
+
 export async function getProducts(opts: {
   categoryId?: string;
   search?: string;
@@ -360,6 +402,14 @@ export async function getProducts(opts: {
       .map((x) => x.p);
   }
 
+  const featuredOrderIds =
+    opts.featuredOnly || !opts.sortBy || opts.sortBy === "default"
+      ? await getFeaturedProductOrderIds()
+      : [];
+  const featuredOrderMap = new Map(
+    featuredOrderIds.map((id, index) => [id, index] as const)
+  );
+
   switch (opts.sortBy) {
     case "price_asc":
       products.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
@@ -378,10 +428,7 @@ export async function getProducts(opts: {
       });
       break;
     default:
-      products.sort((a, b) => {
-        if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
-        return 0;
-      });
+      products.sort((a, b) => defaultProductCompare(a, b, featuredOrderMap));
   }
 
   if (opts.limitCount) products = products.slice(0, opts.limitCount);
@@ -391,6 +438,22 @@ export async function getProducts(opts: {
 export async function getProductById(id: string): Promise<FirestoreProduct | null> {
   const products = await getCachedProducts();
   return products.find((p) => p.id === id) || null;
+}
+
+/**
+ * Сырой товар для админки — без агрегирования из вариантов и без
+ * витринных подмен price/stockQty. Нужен на странице редактирования,
+ * иначе админ видел производные значения (например, -1 из products или
+ * суммарный variant stock) вместо того, что сохраняет в карточке.
+ */
+export async function getProductByIdForAdmin(id: string): Promise<FirestoreProduct | null> {
+  const db = getAdminDb();
+  const { data, error } = await db.from("products").select("*").eq("id", id).maybeSingle();
+  if (error || !data) return null;
+  const product = mapProductRow(data);
+  product.barcode = computeBarcode(product.id);
+  product.qrSlug = computeQrSlug(product.id);
+  return product;
 }
 
 export async function getProductBySlug(slug: string): Promise<FirestoreProduct | null> {
@@ -503,6 +566,20 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   };
   for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
     if (data[jsKey] !== undefined) payload[dbKey] = data[jsKey];
+  }
+
+  // Админка редактирует эти поля напрямую в карточке товара.
+  // Приводим их к числам явно, чтобы в БД не оставались старые/битые
+  // значения и чтобы UI после сохранения показывал именно то, что ввёл админ.
+  if (data.stockQty !== undefined) {
+    payload.stock_qty = data.stockQty == null || data.stockQty === ""
+      ? null
+      : Number(data.stockQty);
+  }
+  if (data.packQty !== undefined) {
+    payload.pack_qty = data.packQty == null || data.packQty === ""
+      ? null
+      : Number(data.packQty);
   }
   const { error } = await db.from("products").update(payload).eq("id", id);
   if (error) throw error;
@@ -1400,7 +1477,7 @@ export async function getGlobalReviewStats() {
 
 // ─── Category helpers ──────────────────────────────────────
 
-export async function createCategory(data: Record<string, any>): Promise<{ id: string }> {
+export async function createCategory(data: Record<string, any>): Promise<{ id: string; slug: string }> {
   const db = getAdminDb();
   const slug = data.slug || slugify(data.name || "category");
   const { data: result, error } = await db.from("categories").insert({
@@ -1411,8 +1488,8 @@ export async function createCategory(data: Record<string, any>): Promise<{ id: s
     sort_order: data.sortOrder || 0,
     is_visible: data.isVisible ?? true,
     image_url: data.imageUrl || null,
-  }).select("id").single();
+  }).select("id, slug").single();
   if (error) throw error;
   revalidateTag("categories", { expire: 0 });
-  return { id: result.id };
+  return { id: result.id, slug: result.slug || slug };
 }
