@@ -6935,6 +6935,221 @@ body:has(.admin-modal-overlay) {
 .cashc-close-day { margin-left: auto; }
 
 /* ══════════════════════════════════════
+   ПОРЯДОК ПОПУЛЯРНЫХ ТОВАРОВ
+   ══════════════════════════════════════ */
+.featured-sort-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.featured-sort-page__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.featured-sort-page__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--adm-steel);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+
+.featured-sort-page__title {
+  margin: 0;
+  font-family: var(--adm-font-head);
+  font-size: 24px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.featured-sort-page__sub {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--adm-ink-muted);
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.featured-sort-page__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.featured-sort-page__count {
+  font-size: 13px;
+  color: var(--adm-ink-muted);
+}
+
+.featured-sort-page__preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  color: var(--adm-ink);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.featured-sort-page__section {
+  padding: 0 !important;
+}
+
+.featured-sort-layout {
+  align-items: start;
+}
+
+.featured-sort-side {
+  top: 24px;
+}
+
+.featured-sort-side__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-light);
+  line-height: 1.5;
+}
+
+.featured-sort-side__status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.featured-sort-side__status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--adm-border);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink-soft);
+}
+
+.featured-sort-side__status-badge--saving {
+  color: var(--adm-steel);
+  background: var(--adm-steel-pale);
+  border-color: var(--adm-steel-line);
+}
+
+.featured-sort-side__status-badge--saved {
+  color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+  border-color: var(--adm-pine-line);
+}
+
+.featured-sort-side__status-badge--error {
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border-color: var(--adm-rust-line);
+}
+
+.featured-sort-side__error {
+  font-size: 12px;
+  color: var(--adm-rust);
+  background: var(--adm-rust-pale);
+  border: 1px solid var(--adm-rust-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  line-height: 1.45;
+}
+
+.featured-sort-grid {
+  align-items: stretch;
+}
+
+.featured-sort__item {
+  position: relative;
+  border-radius: 12px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  transform-origin: center center;
+}
+
+.featured-sort__item:active {
+  cursor: grabbing;
+}
+
+.featured-sort__item--dragging {
+  z-index: 20;
+}
+
+.featured-sort__item--overlay {
+  transform: rotate(1.6deg) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+}
+
+.featured-sort__card-mask {
+  pointer-events: none;
+}
+
+.featured-sort__order {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(26, 26, 24, 0.86);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+
+.featured-sort__hidden {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(184, 58, 30, 0.92);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .featured-sort-page__meta {
+    align-items: flex-start;
+  }
+
+  .featured-sort-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .featured-sort-side {
+    position: static;
+  }
+}
+
+/* ══════════════════════════════════════
    VariantsEditor (admin) — общая обёртка
    ══════════════════════════════════════ */
 .admin-block {

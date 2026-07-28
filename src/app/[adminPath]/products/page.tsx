@@ -8,7 +8,14 @@ import {
   getFeaturedProductOrderIds,
 } from "@/lib/supabase-queries";
 import Link from "next/link";
-import { Plus, Pencil, Package, FolderOpen, QrCode } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Package,
+  FolderOpen,
+  QrCode,
+  GripVertical,
+} from "lucide-react";
 import { notFound } from "next/navigation";
 import { ProductListClient } from "@/components/admin/ProductListClient";
 import { CategoryManager } from "@/components/admin/CategoryManager";
@@ -93,6 +100,9 @@ export default async function AdminProductsPage({
         </div>
         {activeTab === "products" && (
           <div className="admin-page-head__actions">
+            <Link href={`/${ADMIN_PATH}/products/featured-order`} className="admin-btn admin-btn--ghost" prefetch={false}>
+              <GripVertical size={15} /> Порядок популярных
+            </Link>
             <Link href={`/${ADMIN_PATH}/qr-print`} className="admin-btn admin-btn--ghost" prefetch={false}>
               <QrCode size={15} /> Печать QR-кодов
             </Link>
