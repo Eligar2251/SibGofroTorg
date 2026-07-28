@@ -247,20 +247,23 @@ export default async function HomePage() {
               <span>Работаем с юрлицами</span>
             </div>
 
-            {/* Нижняя панель: телефон отдела + CTA «Рассчитать выплату» — на
-                одной горизонтальной линии, по центру. margin-top:auto
-                прижимает блок к низу, а внутренний flex с
-                align-items:center+justify-content:center выравнивает
-                элементы ровно по середине. На мобильном перестраивается
-                в колонку (см. media в globals.css). */}
+            {/* Нижняя панель: «Рассчитать выплату» слева, бейдж с номером
+                отдела макулатуры справа — на одной горизонтальной линии.
+                margin-top:auto прижимает блок к низу flex-колонки
+                правой панели. На мобильном перестраивается в колонку
+                (см. media в globals.css). */}
             <div className="hero__wp-bottom">
-              <div className="hero__wp-phone">
-                <Phone size={14} />
-                <span>Отдел макулатуры: <strong>291-08-20</strong></span>
-              </div>
               <span className="hero__wp-label">
                 Рассчитать выплату <ChevronRight size={15} />
               </span>
+              <a
+                href="tel:+73832910820"
+                className="hero__wp-phone-badge"
+                aria-label="Позвонить в отдел макулатуры 291-08-20"
+              >
+                <Phone size={13} />
+                <strong>291-08-20</strong>
+              </a>
             </div>
           </div>
         </Link>

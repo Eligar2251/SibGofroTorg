@@ -1138,17 +1138,58 @@ select {
   letter-spacing: 0.02em;
 }
 
-/* Нижняя панель правой колонки hero: телефон отдела макулатуры
-   (291-08-20) и CTA «Рассчитать выплату» — на одной горизонтальной
-   линии, по центру. margin-top:auto прижимает блок к низу flex-колонки
-   правой панели. Внутри — flex с align-items:center+justify-content:center
-   и переходом в колонку на узких экранах (media внизу файла). */
+/* Бейдж с номером отдела макулатуры (291-08-20) — компактная
+   «таблетка» с иконкой телефона и крупным номером, для нижней
+   панели hero справа. Клик — tel:. Цвет фона в тон CTA, чтобы
+   правый блок «Рассчитать выплату + телефон» выглядел сбалансированно. */
+.hero__wp-phone-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px 5px 9px;
+  background: rgba(93, 203, 97, 0.14);
+  border: 1px solid rgba(93, 203, 97, 0.32);
+  border-radius: 999px;
+  color: var(--green-lime);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--transition), border-color var(--transition);
+  flex-shrink: 0;
+}
+
+.hero__wp-phone-badge:hover {
+  background: rgba(93, 203, 97, 0.22);
+  border-color: rgba(93, 203, 97, 0.5);
+}
+
+.hero__wp-phone-badge svg {
+  flex-shrink: 0;
+  display: block;
+}
+
+.hero__wp-phone-badge strong {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+/* Нижняя панель правой колонки hero: «Рассчитать выплату» слева,
+   бейдж с номером отдела макулатуры (291-08-20) справа — на одной
+   горизонтальной линии. margin-top:auto прижимает блок к низу
+   flex-колонки правой панели; space-between разводит элементы по
+   краям. На мобильном перестраивается в колонку (media ниже). */
 .hero__wp-bottom {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px 18px;
+  gap: 12px 14px;
   margin-top: auto;
   padding-top: 10px;
   width: 100%;
