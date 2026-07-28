@@ -55,20 +55,21 @@ import {
   type PickerOption,
 } from "@/components/admin/SearchPicker";
 import { ModalPortal } from "@/components/admin/ModalPortal";
-import type { Employee, Salary, SalarySource } from "@/lib/warehouse-shared";
+import {
+  type Employee,
+  type Salary,
+  type SalarySource,
+  composeSalaryComment,
+  isRentSalaryComment,
+  isSalaryExcludedFromBalance,
+  stripSalaryMetaTags,
+} from "@/lib/warehouse-shared";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-const RENT_TAG = "[Аренда]";
-
 /** Оплата «с аренды на карту»: обычная запись bank + тег в комментарии. */
 function isRentSalary(s: Salary): boolean {
-  return (s.comment || "").includes(RENT_TAG);
-}
-
-function rentComment(comment: string): string {
-  const clean = comment.trim();
-  return clean ? `${RENT_TAG} ${clean}` : RENT_TAG;
+  return isRentSalaryComment(s.comment);
 }
 
 function todayIso(): string {
@@ -196,12 +197,16 @@ function SalaryFormModal({
   const [employeeId, setEmployeeId] = useState<string | null>(
     initial?.employeeId || null
   );
+  const initialRent = Boolean(initial && isRentSalary(initial));
   const [amount, setAmount] = useState(
     initial ? String(initial.amount) : ""
   );
   const [date, setDate] = useState(initial?.date || todayIso());
   const [source, setSource] = useState<SalarySource>(initial?.source || "cash");
-  const [comment, setComment] = useState(initial?.comment || "");
+  const [comment, setComment] = useState(stripSalaryMetaTags(initial?.comment));
+  const [excludeFromBalance, setExcludeFromBalance] = useState(
+    Boolean(initial && isSalaryExcludedFromBalance(initial.comment))
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -251,7 +256,11 @@ function SalaryFormModal({
             amount: amountNum,
             date,
             source,
-            comment: comment.trim() || null,
+            comment: composeSalaryComment({
+              comment,
+              rent: initialRent,
+              excludeFromBalance,
+            }),
           }),
         }
       );
@@ -365,6 +374,15 @@ function SalaryFormModal({
               />
             </div>
 
+            <label className="admin-check" style={{ marginTop: 12 }}>
+              <input
+                type="checkbox"
+                checked={excludeFromBalance}
+                onChange={(e) => setExcludeFromBalance(e.target.checked)}
+              />
+              <span>В обход баланса: показать в истории ЗП, но не списывать из банка/кассы</span>
+            </label>
+
             {error && <div className="wh-form-error">{error}</div>}
 
             <div className="admin-form-actions" style={{ marginTop: 14 }}>
@@ -388,6 +406,8 @@ function SalaryFormModal({
             <p className="wh-form-hint">
               Начисление создаётся «к выплате». Когда выдали деньги — нажмите
               «Выплатить», и сумма спишется с выбранного счёта (касса/банк).
+              Если включён режим «в обход баланса», запись останется в истории,
+              но не повлияет на текущие остатки банка/кассы.
             </p>
           </form>
         </div>
@@ -603,20 +623,29 @@ function QuickPayForm({
     amount: number;
     source: QuickSource;
     paid: boolean;
+    excludeFromBalance: boolean;
     comment: string;
   }) => void;
 }) {
   const [amount, setAmount] = useState("");
   const [source, setSource] = useState<QuickSource>("cash");
   const [paid, setPaid] = useState(true);
+  const [excludeFromBalance, setExcludeFromBalance] = useState(false);
   const [comment, setComment] = useState("");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const amountNum = Number(amount.replace(",", "."));
     if (!amountNum || amountNum <= 0) return;
-    onSubmit({ amount: amountNum, source, paid, comment: comment.trim() });
+    onSubmit({
+      amount: amountNum,
+      source,
+      paid,
+      excludeFromBalance,
+      comment: comment.trim(),
+    });
     setAmount("");
+    setExcludeFromBalance(false);
     setComment("");
   }
 
@@ -672,6 +701,14 @@ function QuickPayForm({
           onChange={(e) => setPaid(e.target.checked)}
         />
         Выплачено (списать со счёта сразу)
+      </label>
+      <label className="whsal-check">
+        <input
+          type="checkbox"
+          checked={excludeFromBalance}
+          onChange={(e) => setExcludeFromBalance(e.target.checked)}
+        />
+        В обход баланса (историческая выплата)
       </label>
       <input
         type="text"
@@ -1086,7 +1123,9 @@ export function WarehouseSalaries({
   const [accruedValue, setAccruedValue] = useState("");
   const [debtValue, setDebtValue] = useState("");
   const [setupOpen, setSetupOpen] = useState(false);
+  const [exportingImage, setExportingImage] = useState(false);
   const popRef = useRef<HTMLDivElement | null>(null);
+  const salaryTableExportRef = useRef<HTMLDivElement | null>(null);
 
   // Синхронизируем локальное состояние после router.refresh()
   useEffect(() => setEmployees(initialEmployees), [initialEmployees]);
@@ -1311,11 +1350,22 @@ export function WarehouseSalaries({
   async function quickCreate(
     employee: Employee,
     day: number,
-    data: { amount: number; source: QuickSource; paid: boolean; comment: string }
+    data: {
+      amount: number;
+      source: QuickSource;
+      paid: boolean;
+      excludeFromBalance: boolean;
+      comment: string;
+    }
   ) {
     setQuickBusy(true);
     try {
       const date = `${activeMonth}-${String(day).padStart(2, "0")}`;
+      const finalComment = composeSalaryComment({
+        comment: data.comment,
+        rent: data.source === "rent",
+        excludeFromBalance: data.excludeFromBalance,
+      });
       const res = await fetch("/api/admin/warehouse/salaries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1326,8 +1376,7 @@ export function WarehouseSalaries({
           date,
           source: data.source === "rent" ? "bank" : data.source,
           isPaid: data.paid,
-          comment:
-            data.source === "rent" ? rentComment(data.comment) : data.comment || null,
+          comment: finalComment,
         }),
       });
       if (!res.ok) {
@@ -1345,8 +1394,7 @@ export function WarehouseSalaries({
         source: data.source === "rent" ? "bank" : data.source,
         isPaid: data.paid,
         paidAt: data.paid ? date : null,
-        comment:
-          data.source === "rent" ? rentComment(data.comment) : data.comment || null,
+        comment: finalComment,
       };
       setSalaries((prev) => [newSalary, ...prev]);
       flashCell(`${employee.id}:${day}`);
@@ -1599,6 +1647,41 @@ export function WarehouseSalaries({
     URL.revokeObjectURL(url);
   }
 
+  async function exportTableAsImage() {
+    if (!salaryTableExportRef.current || exportingImage) return;
+    setExportingImage(true);
+    try {
+      const { toPng } = await import("html-to-image");
+      const dataUrl = await toPng(salaryTableExportRef.current, {
+        backgroundColor: "#ffffff",
+        pixelRatio: 2,
+        cacheBust: true,
+      });
+
+      const month = monthLabel(activeMonth).replace(/\s+/g, "_");
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `Зарплаты_${month}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      if (navigator.clipboard && typeof ClipboardItem !== "undefined") {
+        try {
+          const blob = await (await fetch(dataUrl)).blob();
+          await navigator.clipboard.write([
+            new ClipboardItem({ [blob.type]: blob }),
+          ]);
+        } catch {
+          // Загрузка уже выполнена — буфер обмена необязателен.
+        }
+      }
+    } catch {
+      alert("Не удалось сохранить таблицу как изображение");
+    }
+    setExportingImage(false);
+  }
+
   // ── Данные popover ──
   const popRow = popover
     ? gridRows.find((r) => r.employee.id === popover.employeeId) || null
@@ -1676,6 +1759,15 @@ export function WarehouseSalaries({
           </button>
           <button className="admin-btn admin-btn--ghost" onClick={exportToExcel} title="Скачать таблицу в формате Excel">
             <Download size={15} /> Excel
+          </button>
+          <button
+            className="admin-btn admin-btn--ghost"
+            onClick={exportTableAsImage}
+            disabled={exportingImage}
+            title="Сохранить таблицу как PNG и попробовать скопировать в буфер обмена"
+          >
+            {exportingImage ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />}
+            PNG
           </button>
           <button
             className="admin-btn admin-btn--ghost"
@@ -1772,7 +1864,9 @@ export function WarehouseSalaries({
           </span>
         </div>
 
+        <div style={{ background: "#fff" }}>
         <div className="whsal-grid-scroll">
+          <div ref={salaryTableExportRef} style={{ width: "max-content", minWidth: "100%", background: "#fff" }}>
           <table className="whsal-table">
             <thead>
               <tr>
@@ -2023,6 +2117,7 @@ export function WarehouseSalaries({
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Легенда */}
@@ -2039,6 +2134,10 @@ export function WarehouseSalaries({
             <span className="whsal-legend__swatch whsal-legend__swatch--rent" />
             Оплачено с аренды на карту
           </span>
+          <span className="whsal-legend__item">
+            <span className="admin-badge admin-badge--muted">вне баланса</span>
+            Историческая выплата — не влияет на банк/кассу
+          </span>
           <span className="whsal-legend__item whsal-hint">
             «Остаток» (к выплате) = «За месяц» + «Долг» − «Получено» · зелёный —
             выплачено полностью
@@ -2047,6 +2146,7 @@ export function WarehouseSalaries({
             «Долг»: + должны сотруднику (остаток с прошлого месяца), − сотрудник
             должен (аванс)
           </span>
+        </div>
         </div>
       </div>
 
@@ -2121,11 +2221,16 @@ export function WarehouseSalaries({
                       <CheckCircle size={10} /> выплачено
                     </span>
                   )}
+                  {isSalaryExcludedFromBalance(s.comment) && (
+                    <span className="admin-badge admin-badge--muted">
+                      вне баланса
+                    </span>
+                  )}
                 </div>
                 <div className="bank-pay__row2">
                   <span className="bank-pay__date">{fmtDate(s.date)}</span>
-                  {s.comment && (
-                    <span className="bank-pay__comment">{s.comment}</span>
+                  {stripSalaryMetaTags(s.comment) && (
+                    <span className="bank-pay__comment">{stripSalaryMetaTags(s.comment)}</span>
                   )}
                 </div>
               </div>
@@ -2248,6 +2353,9 @@ export function WarehouseSalaries({
                             <Hourglass size={10} /> к выплате
                           </span>
                         )}
+                        {isSalaryExcludedFromBalance(s.comment) && (
+                          <span className="admin-badge admin-badge--muted">вне баланса</span>
+                        )}
                         <span className="whsal-pop__actions">
                           <button
                             type="button"
@@ -2283,8 +2391,8 @@ export function WarehouseSalaries({
                           </button>
                         </span>
                       </div>
-                      {s.comment && (
-                        <div className="whsal-pop__comment">{s.comment}</div>
+                      {stripSalaryMetaTags(s.comment) && (
+                        <div className="whsal-pop__comment">{stripSalaryMetaTags(s.comment)}</div>
                       )}
                     </div>
                   ))}
@@ -2373,6 +2481,9 @@ export function WarehouseSalaries({
                               ) : (
                                 <span className="admin-badge admin-badge--amber">к выплате</span>
                               )}
+                              {isSalaryExcludedFromBalance(s.comment) && (
+                                <span className="admin-badge admin-badge--muted">вне баланса</span>
+                              )}
                               <span className="whsal-pop__actions">
                                 <button
                                   type="button"
@@ -2408,8 +2519,8 @@ export function WarehouseSalaries({
                                 </button>
                               </span>
                             </div>
-                            {s.comment && (
-                              <div className="whsal-pop__comment">{s.comment}</div>
+                            {stripSalaryMetaTags(s.comment) && (
+                              <div className="whsal-pop__comment">{stripSalaryMetaTags(s.comment)}</div>
                             )}
                           </div>
                         ))}

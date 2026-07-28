@@ -48,6 +48,7 @@ import {
   dealRemainingQty,
   isDealFullyShipped,
   dealNeedsDelivery,
+  isSalaryExcludedFromBalance,
 } from "./warehouse-shared";
 
 export {
@@ -1939,16 +1940,31 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
 
 export async function updatePayment(id: string, data: any): Promise<void> {
   const db = getAdminDb();
+  const today = new Date().toISOString().slice(0, 10);
   const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+
   if (data.isPaid !== undefined) {
     payload.is_paid = data.isPaid;
-    payload.paid_at = data.isPaid ? (data.date || new Date().toISOString().slice(0, 10)) : null;
+    if (data.isPaid) {
+      const paidDate = data.date ? String(data.date).slice(0, 10) : today;
+      // При проведении платежа дата операции должна стать фактической
+      // датой поступления/списания денег, а не датой документа.
+      // Иначе приход от 27.07 продолжал жить под 24.07 и ломал кассу/архив.
+      payload.date = paidDate;
+      payload.paid_at = paidDate;
+    } else {
+      payload.paid_at = null;
+      if (data.date !== undefined) payload.date = String(data.date).slice(0, 10);
+    }
   }
+
   if (data.excludeFromBalance !== undefined) payload.exclude_from_balance = data.excludeFromBalance;
   if (data.type !== undefined) payload.type = data.type;
   if (data.amount !== undefined) payload.amount = Number(data.amount);
   if (data.comment !== undefined) payload.comment = cleanText(data.comment, 500);
-  if (data.date !== undefined) payload.date = String(data.date).slice(0, 10);
+  if (data.date !== undefined && payload.date === undefined) {
+    payload.date = String(data.date).slice(0, 10);
+  }
   if (data.counterparty !== undefined) payload.counterparty = String(data.counterparty).slice(0, 200);
   if (data.invoiceNumber !== undefined) payload.invoice_number = data.invoiceNumber;
   if (data.dealIds !== undefined) payload.deal_ids = data.dealIds;
@@ -2238,6 +2254,7 @@ function listCashExpenses(
 
   for (const s of salaries) {
     if (!s.isPaid || s.source !== "cash" || s.amount <= 0) continue;
+    if (isSalaryExcludedFromBalance(s.comment)) continue;
     rows.push({
       kind: "salary",
       id: String(s.id),
