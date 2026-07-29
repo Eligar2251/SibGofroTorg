@@ -36,6 +36,7 @@ import {
   getBankSummary,
   getDealPaidMap,
   getReceiptPaidMap,
+  getCashCarryoverSummary,
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
   stripSalaryMetaTags,
@@ -214,6 +215,18 @@ export default async function AdminDashboard({
     newOrdersCount + inProgressOrdersCount + completedOrdersCount + rejectedOrdersCount;
   // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
   const bankSummary = getBankSummary(payments, salaries, cashCollections);
+  const dashboardDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Novosibirsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const cashCarryover = getCashCarryoverSummary(
+    payments,
+    salaries,
+    cashCollections,
+    dashboardDate
+  );
   const totalRevenue = bankSummary.balance;
   const recentOrders = recentOrderPool.slice(0, 8);
   const dealPaidMap = getDealPaidMap(payments);
@@ -601,7 +614,7 @@ export default async function AdminDashboard({
               <span className="dash-account-card__icon"><Banknote size={16} /></span>
               <div>
                 <strong>Касса</strong>
-                <span>Наличные с переносом</span>
+                <span>С прошлых дней: {money(cashCarryover.previousDaysRemaining)}</span>
               </div>
             </div>
             <div className="dash-account-card__balance">

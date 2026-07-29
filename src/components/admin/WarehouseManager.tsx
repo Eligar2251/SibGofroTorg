@@ -37,6 +37,7 @@ import {
   getCollectedBreakdown,
   getDealPaidMap,
   getReceiptPaidMap,
+  getCashCarryoverSummary,
   type WarehouseStockRow,
   type ProductStockSummary,
   type WarehouseReceipt,
@@ -398,6 +399,16 @@ export function WarehouseManager({
   }, [payments]);
   const bankSummary = useMemo(
     () => getBankSummary(payments, salaries, cashCollections),
+    [payments, salaries, cashCollections]
+  );
+  const cashCarryover = useMemo(
+    () =>
+      getCashCarryoverSummary(
+        payments,
+        salaries,
+        cashCollections,
+        localDateIso()
+      ),
     [payments, salaries, cashCollections]
   );
   
@@ -1981,6 +1992,17 @@ export function WarehouseManager({
                 >
                   {fmt(bankSummary.cashBalance)} ₽
                 </div>
+                <div className="cash-carryover-hero">
+                  <span>
+                    С прошлых дней: <b>{fmt(cashCarryover.previousDaysRemaining)} ₽</b>
+                  </span>
+                  <span>
+                    На начало дня: <b>{fmt(cashCarryover.openingBalance)} ₽</b>
+                  </span>
+                  <span>
+                    Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
+                  </span>
+                </div>
                 {bankSummary.cashBalanceNegative && (
                   <div
                     style={{
@@ -2193,6 +2215,75 @@ export function WarehouseManager({
           </div>
 
           {bankSub === "cash" ? (
+            <>
+            <div className="admin-card cash-carryover" style={{ marginTop: 12 }}>
+              <div className="admin-card__head">
+                <div>
+                  <h3 className="admin-card__title">
+                    <History size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
+                    Перенос налички и источники остатка
+                  </h3>
+                  <div className="admin-muted" style={{ marginTop: 4, fontSize: 10 }}>
+                    Наличка с прошлых дней автоматически входит в текущий баланс кассы.
+                  </div>
+                </div>
+                <span className="admin-badge admin-badge--green">
+                  С прошлых дней: {fmt(cashCarryover.previousDaysRemaining)} ₽
+                </span>
+              </div>
+              <div className="cash-carryover__stats">
+                <div><span>На начало дня</span><strong>{fmt(cashCarryover.openingBalance)} ₽</strong></div>
+                <div><span>Приход сегодня</span><strong className="bank-totalbar__in">+{fmt(cashCarryover.todayIncoming)} ₽</strong></div>
+                <div><span>Расход сегодня</span><strong className="bank-totalbar__out">−{fmt(cashCarryover.todayOutgoing + cashCarryover.todayCardTransfers)} ₽</strong></div>
+                <div><span>Сейчас в кассе</span><strong>{fmt(cashCarryover.currentBalance)} ₽</strong></div>
+              </div>
+              {cashCarryover.origins.length > 0 ? (
+                <div className="admin-table-wrap cash-carryover__origins">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Откуда поступило</th>
+                        <th>Дата</th>
+                        <th>Плательщик</th>
+                        <th style={{ textAlign: "right" }}>Было</th>
+                        <th style={{ textAlign: "right" }}>Осталось в кассе</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cashCarryover.origins.map((origin) => (
+                        <tr key={origin.paymentId}>
+                          <td>
+                            <Link
+                              href={`/${adminPath}/warehouse?tab=bank&payment=${origin.paymentId}`}
+                              prefetch={false}
+                              className="stock-origin-link"
+                            >
+                              ПЛ-{origin.number} →
+                            </Link>
+                            {origin.date < cashCarryover.date && (
+                              <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>
+                                с прошлых дней
+                              </span>
+                            )}
+                          </td>
+                          <td>{fmtDate(origin.date)}</td>
+                          <td>{origin.counterparty}</td>
+                          <td style={{ textAlign: "right" }}>{fmt(origin.originalAmount)} ₽</td>
+                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-pine)" }}>
+                            {fmt(origin.remainingAmount)} ₽
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="admin-empty" style={{ padding: 18 }}>
+                  <p>Остатка по наличным платежам нет</p>
+                </div>
+              )}
+            </div>
+
             <div className="admin-card wh-cashcollect" style={{ marginTop: 12 }}>
               <div className="admin-card__head">
                 <h3 className="admin-card__title">
@@ -2503,6 +2594,7 @@ export function WarehouseManager({
                 )}
               </div>
             </div>
+            </>
           ) : (
             <>
           <div className="bank-toolbar">

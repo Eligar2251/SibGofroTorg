@@ -516,6 +516,213 @@ export function dealNeedsDelivery(deal: {
   return dealRemainingQty(items, deal.shippedItems) > 0;
 }
 
+export interface CashCarryoverOrigin {
+  paymentId: string;
+  number: number;
+  date: string;
+  counterparty: string;
+  originalAmount: number;
+  remainingAmount: number;
+}
+
+export interface CashCarryoverSummary {
+  date: string;
+  /** Остаток на начало выбранного дня. */
+  openingBalance: number;
+  todayIncoming: number;
+  todayOutgoing: number;
+  todayCardTransfers: number;
+  /** Текущий остаток кассы по всем проведённым движениям. */
+  currentBalance: number;
+  /** Сколько текущего остатка пришло до выбранного дня. */
+  previousDaysRemaining: number;
+  origins: CashCarryoverOrigin[];
+}
+
+function collectionCashOutflow(collection: CashCollection): number {
+  // У новых смен из кассы уходит только перевод на карту. У действительно
+  // старых записей без поля разбивки сохраняем прежнее списание всей суммы.
+  return collection.cashAmount != null
+    ? Math.max(0, Number(collection.transferAmount) || 0)
+    : Math.max(0, Number(collection.amount) || 0);
+}
+
+/**
+ * Детальный кассовый регистр: остаток, перенос с прошлых дней и источники.
+ *
+ * Инкассация по возможности гасит именно те платежи, которые в закрытии
+ * смены помечены «на карту». Остальные расходы списываются FIFO. Поэтому
+ * перенесённая наличка не только входит в баланс, но и сохраняет ссылку на
+ * исходный ПЛ и контрагента.
+ */
+export function getCashCarryoverSummary(
+  payments: BankPayment[],
+  salaries: Salary[] = [],
+  collections: CashCollection[] = [],
+  date = new Date().toISOString().slice(0, 10)
+): CashCarryoverSummary {
+  type CashLot = CashCarryoverOrigin;
+  type CashEvent =
+    | { date: string; priority: number; type: "in"; amount: number; lot: CashLot }
+    | {
+        date: string;
+        priority: number;
+        type: "out" | "card";
+        amount: number;
+        targets?: { paymentId: string; amount: number }[];
+      };
+
+  const events: CashEvent[] = [];
+  for (const payment of payments) {
+    if (!payment.isPaid || payment.excludeFromBalance || payment.type !== "cash") {
+      continue;
+    }
+    const amount = Math.max(0, Number(payment.amount) || 0);
+    if (amount <= 0) continue;
+    const operationDate = String(payment.paidAt || payment.date || "").slice(0, 10);
+    if (payment.direction === "incoming") {
+      events.push({
+        date: operationDate,
+        priority: 0,
+        type: "in",
+        amount,
+        lot: {
+          paymentId: String(payment.id),
+          number: payment.number,
+          date: operationDate,
+          counterparty: payment.counterparty || "Без контрагента",
+          originalAmount: amount,
+          remainingAmount: amount,
+        },
+      });
+    } else {
+      events.push({ date: operationDate, priority: 1, type: "out", amount });
+    }
+  }
+
+  for (const salary of salaries) {
+    if (
+      !salary.isPaid ||
+      salary.source !== "cash" ||
+      salary.amount <= 0 ||
+      isSalaryExcludedFromBalance(salary.comment)
+    ) {
+      continue;
+    }
+    events.push({
+      date: String(salary.paidAt || salary.date || "").slice(0, 10),
+      priority: 1,
+      type: "out",
+      amount: Math.max(0, Number(salary.amount) || 0),
+    });
+  }
+
+  for (const collection of collections) {
+    const amount = collectionCashOutflow(collection);
+    if (amount <= 0) continue;
+    const rawTargets = (collection.items || [])
+      .map((item) => ({
+        paymentId: String(item.paymentId || ""),
+        amount: Math.max(
+          0,
+          Number(
+            item.cardAmount != null
+              ? item.cardAmount
+              : item.kind === "card"
+                ? item.amount
+                : 0
+          ) || 0
+        ),
+      }))
+      .filter((item) => item.paymentId && item.amount > 0);
+    const rawTotal = rawTargets.reduce((sum, item) => sum + item.amount, 0);
+    const factor = rawTotal > 0 ? Math.min(1, amount / rawTotal) : 0;
+    events.push({
+      date: String(collection.date || "").slice(0, 10),
+      priority: 2,
+      type: "card",
+      amount,
+      targets: rawTargets.map((item) => ({
+        paymentId: item.paymentId,
+        amount: item.amount * factor,
+      })),
+    });
+  }
+
+  events.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) || a.priority - b.priority
+  );
+
+  const lots: CashLot[] = [];
+  let openingBalance = 0;
+  let currentBalance = 0;
+  let todayIncoming = 0;
+  let todayOutgoing = 0;
+  let todayCardTransfers = 0;
+
+  const consumeLot = (lot: CashLot, requested: number): number => {
+    const used = Math.min(lot.remainingAmount, Math.max(0, requested));
+    lot.remainingAmount = Math.round((lot.remainingAmount - used) * 100) / 100;
+    return used;
+  };
+
+  const consumeFifo = (requested: number): void => {
+    let left = Math.max(0, requested);
+    for (const lot of lots) {
+      if (left <= 0.009) break;
+      left -= consumeLot(lot, left);
+    }
+  };
+
+  for (const event of events) {
+    const signed = event.type === "in" ? event.amount : -event.amount;
+    currentBalance += signed;
+    if (event.date < date) openingBalance += signed;
+    if (event.date === date) {
+      if (event.type === "in") todayIncoming += event.amount;
+      else if (event.type === "card") todayCardTransfers += event.amount;
+      else todayOutgoing += event.amount;
+    }
+
+    if (event.type === "in") {
+      lots.push({ ...event.lot });
+      continue;
+    }
+
+    let targeted = 0;
+    for (const target of event.targets || []) {
+      const lot = lots.find(
+        (item) => item.paymentId === target.paymentId && item.remainingAmount > 0
+      );
+      if (lot) targeted += consumeLot(lot, target.amount);
+    }
+    consumeFifo(Math.max(0, event.amount - targeted));
+  }
+
+  const origins = lots
+    .filter((lot) => lot.remainingAmount > 0.009)
+    .map((lot) => ({
+      ...lot,
+      originalAmount: Math.round(lot.originalAmount * 100) / 100,
+      remainingAmount: Math.round(lot.remainingAmount * 100) / 100,
+    }));
+  const previousDaysRemaining = origins
+    .filter((origin) => origin.date < date)
+    .reduce((sum, origin) => sum + origin.remainingAmount, 0);
+
+  return {
+    date,
+    openingBalance: Math.round(openingBalance * 100) / 100,
+    todayIncoming: Math.round(todayIncoming * 100) / 100,
+    todayOutgoing: Math.round(todayOutgoing * 100) / 100,
+    todayCardTransfers: Math.round(todayCardTransfers * 100) / 100,
+    currentBalance: Math.round(currentBalance * 100) / 100,
+    previousDaysRemaining: Math.round(previousDaysRemaining * 100) / 100,
+    origins,
+  };
+}
+
 /** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
  *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
 export function getBankSummary(
@@ -534,8 +741,9 @@ export function getBankSummary(
 
     if (p.isPaid) {
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
-      if (p.type === "cash") cashBalance += amt;
-      else bankBalance += amt;
+      // Касса ниже считается единым кассовым регистром, чтобы перенос и
+      // источники использовали ту же формулу, что и число на дашборде.
+      if (p.type !== "cash") bankBalance += amt;
     } else {
       if (p.direction === "incoming") expectedIn += p.amount;
       else expectedOut += p.amount;
@@ -547,31 +755,27 @@ export function getBankSummary(
     const bypassBalance = isSalaryExcludedFromBalance(s.comment);
     if (s.isPaid) {
       if (bypassBalance) continue;
-      if (s.source === "cash") cashBalance -= s.amount;
-      else bankBalance -= s.amount;
+      if (s.source === "bank") bankBalance -= s.amount;
     } else {
       if (bypassBalance) continue;
       expectedOut += s.amount;
     }
   }
-  // При закрытии смены из кассы физически уходит только инкассация на
-  // карту. Часть «наличными» остаётся в кассе и переносится на следующий
-  // день. Старые записи без сохранённой разбивки оставляем по прежней
-  // логике: вся сумма считалась сданной — иначе исторический баланс внезапно
-  // вырастет после обновления.
+  // Единый кассовый регистр — тот же расчёт используется для переноса и
+  // детальной расшифровки источников налички.
+  cashBalance = getCashCarryoverSummary(
+    payments,
+    salaries,
+    collections
+  ).currentBalance;
+
   let collectedCash = 0;
   let collectedCashOnly = 0;
   let collectedTransfer = 0;
   for (const c of collections) {
-    const hasSplit = c.cashAmount != null;
-    const transfer = Number(c.transferAmount) || 0;
-    const cashPart = hasSplit
-      ? Number(c.cashAmount) || 0
-      : Math.max(0, (c.amount || 0) - transfer);
-    cashBalance -= hasSplit ? transfer : c.amount;
     collectedCash += c.amount;
-    collectedCashOnly += cashPart;
-    collectedTransfer += transfer;
+    collectedCashOnly += Math.max(0, Number(c.cashAmount) || 0);
+    collectedTransfer += collectionCashOutflow(c);
   }
   return {
     balance: bankBalance + cashBalance,
