@@ -688,6 +688,35 @@ CREATE POLICY "orders_sel" ON orders FOR SELECT USING (TRUE);
 DROP POLICY IF EXISTS "orders_upd" ON orders;
 CREATE POLICY "orders_upd" ON orders FOR UPDATE USING (TRUE);
 
+-- ── Страховка: RLS на всех остальных таблицах public ──
+-- Схема public целиком публикуется наружу через PostgREST, а ключ
+-- anon зашит в JS-бандл сайта. Любая таблица, забытая в списке выше
+-- (а также созданная отдельной миграцией или временным скриптом),
+-- оказывается доступна на чтение обычным HTTP-запросом.
+-- Именно так «утекли» _backup_bank_payments и transports —
+-- Supabase Security Advisor пометил их как Critical.
+--
+-- Здесь только ENABLE, без FORCE: service_role (getAdminDb в
+-- приложении) обходит RLS, поэтому серверная логика не страдает.
+-- Таблицы без политик = доступ только с сервера, что и требуется
+-- для админских данных.
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT c.relname
+    FROM pg_class c
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+    WHERE ns.nspname = 'public'
+      AND c.relkind = 'r'
+      AND c.relrowsecurity = FALSE
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', r.relname);
+    RAISE NOTICE 'RLS включён (страховка): %', r.relname;
+  END LOOP;
+END $$;
+
 -- =========================================================
 -- ФУНКЦИИ
 -- =========================================================

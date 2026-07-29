@@ -57,7 +57,12 @@ DECLARE
 BEGIN
   DROP TABLE IF EXISTS _backup_bank_payments;
   CREATE TABLE _backup_bank_payments AS TABLE bank_payments;
-  RAISE NOTICE 'Резервная копия: _backup_bank_payments';
+  -- Схема public публикуется через PostgREST, поэтому у копии
+  -- банковских платежей RLS должен быть включён сразу — иначе её
+  -- можно прочитать снаружи публичным ключом anon.
+  -- (Именно это отловил Supabase Security Advisor.)
+  ALTER TABLE _backup_bank_payments ENABLE ROW LEVEL SECURITY;
+  RAISE NOTICE 'Резервная копия: _backup_bank_payments (RLS включён)';
 
   SELECT
     COALESCE((SELECT SUM(CASE WHEN direction='incoming' THEN amount ELSE -amount END)

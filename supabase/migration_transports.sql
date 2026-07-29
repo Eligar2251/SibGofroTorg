@@ -22,3 +22,11 @@ CREATE TABLE IF NOT EXISTS transports (
 CREATE INDEX IF NOT EXISTS idx_transports_status ON transports(status);
 CREATE INDEX IF NOT EXISTS idx_transports_date ON transports(planned_date);
 CREATE TRIGGER trg_transports_updated BEFORE UPDATE ON transports FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Row Level Security.
+-- Схема public целиком публикуется наружу через PostgREST, а ключ anon
+-- лежит в JS-бандле сайта — без RLS таблицу можно было бы прочитать
+-- обычным HTTP-запросом (маршруты, водители, адреса клиентов).
+-- Политики не нужны: приложение ходит сюда только через service_role
+-- (getAdminDb), а он RLS обходит. См. migration_rls_public_tables.sql.
+ALTER TABLE transports ENABLE ROW LEVEL SECURITY;

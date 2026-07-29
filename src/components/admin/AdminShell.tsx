@@ -17,7 +17,7 @@ import {
   Truck,
   QrCode,
   PanelLeftClose,
-  PanelLeftOpen,
+  ChevronRight,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
@@ -113,20 +113,26 @@ export function AdminShell({
     >
       <NavigationProgress />
       <aside
+        id="admin-sidebar"
         className={`admin-sidebar${sidebarHidden ? " admin-sidebar--hidden" : ""}`}
         aria-hidden={sidebarHidden}
       >
         <div className="admin-sidebar__brand">
           <SiteLogo variant="light" className="admin-sidebar__logo-svg" />
           <div className="admin-sidebar__sub">Управление</div>
+          {/* Единственная видимая кнопка сворачивания — на самой
+              панели. Скрывать меню на мобильных не нужно: там
+              сайдбара нет вовсе, навигация в верхней панели. */}
           <button
             type="button"
             className="admin-sidebar__toggle desktop-only"
             onClick={toggleSidebar}
             aria-label="Скрыть боковую панель"
             title="Скрыть боковую панель"
+            aria-expanded
+            aria-controls="admin-sidebar"
           >
-            <PanelLeftClose size={16} />
+            <PanelLeftClose size={15} aria-hidden="true" />
           </button>
         </div>
 
@@ -192,21 +198,33 @@ export function AdminShell({
         </div>
       </div>
 
+      {/*
+       * ── Язычок раскрытия панели ──
+       * Вторая (скрытая) кнопка вместо прежней громоздкой «Показать
+       * меню» в тулбаре. Живёт у самого левого края экрана:
+       *  • десктоп — почти невидимая полоска, проявляется при
+       *    наведении на левый край (:hover / :focus-visible);
+       *  • мобильные — всегда чуть выглядывает из-за края,
+       *    чтобы её можно было нащупать пальцем.
+       * Рендерится только когда панель скрыта: пока сайдбар открыт,
+       * закрывать его нужно кнопкой на самой панели.
+       */}
+      {sidebarHidden && (
+        <button
+          type="button"
+          className="admin-sidebar-handle"
+          onClick={toggleSidebar}
+          aria-label="Показать боковую панель"
+          title="Показать боковую панель"
+          aria-expanded={false}
+          aria-controls="admin-sidebar"
+        >
+          <ChevronRight size={16} aria-hidden="true" />
+        </button>
+      )}
+
       <div className="admin-content">
         <AdminNotifications adminPath={adminPath} />
-        <div className="admin-content__toolbar desktop-only">
-          <button
-            type="button"
-            className="admin-content__sidebar-btn"
-            onClick={toggleSidebar}
-            aria-label={sidebarHidden ? "Показать боковую панель" : "Скрыть боковую панель"}
-            title={sidebarHidden ? "Показать боковую панель" : "Скрыть боковую панель"}
-            aria-pressed={sidebarHidden}
-          >
-            {sidebarHidden ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-            <span>{sidebarHidden ? "Показать меню" : "Скрыть меню"}</span>
-          </button>
-        </div>
         <main className="admin-main">{children}</main>
       </div>
     </div>

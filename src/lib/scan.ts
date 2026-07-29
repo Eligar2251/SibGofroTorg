@@ -31,11 +31,16 @@ function extractCodeFromUrlLike(urlLike: URL, adminPath?: string): string {
 
   if (segments.length === 0) return "";
 
-  const scanIndex = segments.findIndex(
-    (segment, index) => segment.toLowerCase() === "scan" && index < segments.length - 1
+  // Маркерные сегменты, после которых идёт сам код:
+  //  • "scan" — старые QR вида /{adminPath}/scan/{slug};
+  //  • "q"    — новые короткие QR вида /q/{slug} (см. src/app/q/[code]).
+  const markerIndex = segments.findIndex(
+    (segment, index) =>
+      ["scan", "q"].includes(segment.toLowerCase()) &&
+      index < segments.length - 1
   );
-  if (scanIndex >= 0) {
-    return safeDecode(segments[scanIndex + 1]);
+  if (markerIndex >= 0) {
+    return safeDecode(segments[markerIndex + 1]);
   }
 
   if (adminPath && segments[0]?.toLowerCase() === adminPath.toLowerCase()) {
@@ -59,7 +64,13 @@ export function normalizeScanCode(rawValue: string, adminPath?: string): string 
   const trimmed = (rawValue || "").trim();
   if (!trimmed) return "";
 
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+  // ВАЖНО: сравнение схемы регистронезависимое.
+  // Новые QR кодируют URL в ВЕРХНЕМ регистре ("HTTPS://SITE/Q/XXXX"),
+  // чтобы уложиться в alphanumeric-режим QR и получить символ на
+  // одну версию меньше (см. src/lib/qr.ts). Со старой проверкой
+  // startsWith("https://") такой payload не распознавался как URL и
+  // уходил в поиск целиком — товар не находился.
+  if (/^https?:\/\//i.test(trimmed)) {
     try {
       return extractCodeFromUrlLike(new URL(trimmed), adminPath) || trimmed;
     } catch {
@@ -77,10 +88,9 @@ export function normalizeScanCode(rawValue: string, adminPath?: string): string 
     }
   }
 
-  if (trimmed.includes("/scan/")) {
-    const match = trimmed.match(/\/scan\/([^/?#]+)/i);
-    if (match?.[1]) return safeDecode(match[1]);
-  }
+  // Фоллбек для строк без схемы: "site.ru/q/XXXX", "…/scan/XXXX".
+  const marker = trimmed.match(/\/(?:scan|q)\/([^/?#]+)/i);
+  if (marker?.[1]) return safeDecode(marker[1]);
 
   return trimmed;
 }

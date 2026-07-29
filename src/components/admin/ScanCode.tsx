@@ -111,6 +111,68 @@ function getErrorMessage(error: unknown): string | null {
   return null;
 }
 
+/**
+ * Constraints для камеры сканера.
+ *
+ * Ключевой момент — разрешение. Дефолт у getUserMedia/ZXing это
+ * 640×480. QR с этикетки 26×26 мм, снятый с комфортных ~20 см,
+ * занимает в таком кадре ~120 px: на 29 модулей приходится ~4 px
+ * на модуль, и это ДО потерь на сжатие и расфокус. Отсюда и
+ * «камера не распознаёт некоторые» — читались только те коды,
+ * что покрупнее или поднесены вплотную.
+ * 1920×1080 (с откатом на меньшее, т.к. это `ideal`, а не `exact`)
+ * даёт втрое больше пикселей на модуль.
+ */
+function buildVideoConstraints(): MediaStreamConstraints {
+  return {
+    video: {
+      // ideal, а не exact: если у устройства нет задней камеры
+      // (десктоп с вебкамерой), поток всё равно откроется.
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      // Более высокая частота = больше попыток декодирования в
+      // секунду и меньше смаза при дрожании руки.
+      frameRate: { ideal: 30 },
+    },
+    audio: false,
+  };
+}
+
+/**
+ * Донастройка трека после старта: непрерывный автофокус.
+ *
+ * Без этого многие Android-камеры фиксируют фокус на «бесконечность»
+ * и мелкий QR с близкого расстояния остаётся размытым — сканер
+ * «не видит» код, пока не повезёт с автофокусом.
+ * Свойства нестандартные (не во всех браузерах), поэтому всё
+ * обёрнуто в try/catch и применяется best-effort.
+ */
+async function applyCameraTuning(stream: MediaStream): Promise<void> {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+
+  try {
+    const caps = track.getCapabilities?.() as
+      | (MediaTrackCapabilities & { focusMode?: string[] })
+      | undefined;
+    if (!caps) return;
+
+    const advanced: Record<string, unknown>[] = [];
+    if (caps.focusMode?.includes("continuous")) {
+      advanced.push({ focusMode: "continuous" });
+    }
+    if (advanced.length > 0) {
+      await track.applyConstraints({
+        advanced,
+      } as MediaTrackConstraints);
+    }
+  } catch {
+    // Камера не поддерживает тонкую настройку — не критично,
+    // сканирование продолжится с настройками по умолчанию.
+  }
+}
+
 export function ScanCode({
   adminPath,
   initialCode,
@@ -248,16 +310,39 @@ export function ScanCode({
           BarcodeFormat.CODE_39,
           BarcodeFormat.DATA_MATRIX,
         ]);
+        // TRY_HARDER — ZXing делает дополнительные проходы (в т.ч.
+        // поворот кадра). Заметно поднимает процент распознавания
+        // мятых/подсвеченных бликом этикеток. Стоит лишних ~10-20 мс
+        // на кадр, что на сканере товара несущественно.
+        hints.set(DecodeHintType.TRY_HARDER, true);
 
         const reader = new BrowserMultiFormatReader(hints, {
-          delayBetweenScanAttempts: 250,
+          delayBetweenScanAttempts: 100,
           delayBetweenScanSuccess: 600,
         });
 
         const video = videoRef.current;
         if (!video) throw new Error("Видеоэлемент не смонтирован");
 
-        const controls = await reader.decodeFromVideoDevice(undefined, video, (result) => {
+        // Запрашиваем поток сами (а не через decodeFromVideoDevice с
+        // deviceId=undefined): так можно задать разрешение и заднюю
+        // камеру. Дефолтный поток у ZXing — 640×480, на нём мелкий
+        // QR с этикетки 26 мм занимает слишком мало пикселей и не
+        // декодируется, пока не поднесёшь телефон вплотную.
+        const stream = await navigator.mediaDevices.getUserMedia(
+          buildVideoConstraints()
+        );
+        streamRef.current = stream;
+
+        if (cancelScanRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+          return;
+        }
+
+        await applyCameraTuning(stream);
+
+        const controls = await reader.decodeFromStream(stream, video, (result) => {
           const value = result?.getText();
           if (value) {
             void lookupProduct(value, { fromCamera: true });
@@ -289,10 +374,9 @@ export function ScanCode({
 
     // Chrome / Edge / Android — через нативный BarcodeDetector.
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
+      const stream = await navigator.mediaDevices.getUserMedia(
+        buildVideoConstraints()
+      );
       streamRef.current = stream;
 
       if (cancelScanRef.current) {
@@ -301,8 +385,12 @@ export function ScanCode({
         return;
       }
 
+      await applyCameraTuning(stream);
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // playsInline уже стоит в разметке; без него iOS уводит
+        // видео в полноэкранный плеер и сканирование обрывается.
         await videoRef.current.play();
       }
       setCameraOn(true);
@@ -319,10 +407,25 @@ export function ScanCode({
 
       if (wanted.length > 0) {
         detectorRef.current = new BD({ formats: wanted });
+
+        // Интервал уменьшен 350 → 150 мс: больше попыток на тот
+        // короткий момент, когда автофокус поймал резкость.
+        // detectBusy защищает от наложения кадров — detect()
+        // асинхронный, и при медленном кадре старый setInterval
+        // запускал параллельные распознавания, которые забивали
+        // main thread и роняли FPS (из-за чего сканирование
+        // «залипало» на секунды).
+        let detectBusy = false;
         intervalRef.current = window.setInterval(async () => {
-          if (!videoRef.current || !detectorRef.current) return;
+          const video = videoRef.current;
+          const detector = detectorRef.current;
+          if (!video || !detector || detectBusy) return;
+          // Кадра ещё нет — детектору нечего разбирать.
+          if (video.readyState < 2) return;
+
+          detectBusy = true;
           try {
-            const codes = await detectorRef.current.detect(videoRef.current);
+            const codes = await detector.detect(video);
             if (codes && codes.length > 0) {
               const value = codes[0].rawValue || "";
               if (value) {
@@ -331,8 +434,10 @@ export function ScanCode({
             }
           } catch {
             // кадр не успел — пропускаем
+          } finally {
+            detectBusy = false;
           }
-        }, 350);
+        }, 150);
       }
     } catch (err: unknown) {
       const message = getErrorMessage(err);
