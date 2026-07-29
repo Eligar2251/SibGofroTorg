@@ -13,8 +13,10 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
+import { ORDER_PRODUCTS_ORDER_SETTING_KEY } from "@/lib/home-product-order";
 
 const FEATURED_ORDER_SETTING_KEY = "featured_products_order";
+type OrderTab = "featured" | "order";
 
 type FeaturedProduct = {
   id: string;
@@ -57,12 +59,14 @@ function FeaturedCard({
   product,
   index,
   dragging,
+  orderMode,
   onPointerDown,
   registerRef,
 }: {
   product: FeaturedProduct;
   index: number;
   dragging: boolean;
+  orderMode: boolean;
   onPointerDown: (id: string, e: React.PointerEvent<HTMLDivElement>) => void;
   registerRef: (id: string, node: HTMLDivElement | null) => void;
 }) {
@@ -84,7 +88,7 @@ function FeaturedCard({
         </div>
       )}
       <div className="featured-sort__card-mask">
-        <ProductCardCompact product={product} highlight={index === 0} />
+        <ProductCardCompact product={product} highlight={index === 0} orderMode={orderMode} />
       </div>
     </div>
   );
@@ -93,9 +97,11 @@ function FeaturedCard({
 function DragCardOverlay({
   product,
   index,
+  orderMode,
 }: {
   product: FeaturedProduct;
   index: number;
+  orderMode: boolean;
 }) {
   return (
     <div className="featured-sort__item featured-sort__item--overlay">
@@ -108,7 +114,7 @@ function DragCardOverlay({
         </div>
       )}
       <div className="featured-sort__card-mask">
-        <ProductCardCompact product={product} highlight={index === 0} />
+        <ProductCardCompact product={product} highlight={index === 0} orderMode={orderMode} />
       </div>
     </div>
   );
@@ -116,12 +122,35 @@ function DragCardOverlay({
 
 export function FeaturedProductsOrderClient({
   adminPath,
-  initialProducts,
+  initialFeaturedProducts,
+  initialOrderProducts,
 }: {
   adminPath: string;
-  initialProducts: FeaturedProduct[];
+  initialFeaturedProducts: FeaturedProduct[];
+  initialOrderProducts: FeaturedProduct[];
 }) {
-  const [products, setProducts] = useState(initialProducts);
+  const [activeTab, setActiveTab] = useState<OrderTab>("featured");
+  const [productsByTab, setProductsByTab] = useState<Record<OrderTab, FeaturedProduct[]>>({
+    featured: initialFeaturedProducts,
+    order: initialOrderProducts,
+  });
+  const products = productsByTab[activeTab];
+  const setProducts = useCallback(
+    (
+      updater:
+        | FeaturedProduct[]
+        | ((current: FeaturedProduct[]) => FeaturedProduct[])
+    ) => {
+      setProductsByTab((current) => ({
+        ...current,
+        [activeTab]:
+          typeof updater === "function"
+            ? updater(current[activeTab])
+            : updater,
+      }));
+    },
+    [activeTab]
+  );
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragPointer, setDragPointer] = useState({ x: 0, y: 0 });
   const [dragBox, setDragBox] = useState({ width: 0, height: 0, offsetX: 0, offsetY: 0 });
@@ -159,19 +188,27 @@ export function FeaturedProductsOrderClient({
     itemRefs.current.set(id, node);
   }
 
-  async function persistOrder(nextProducts: FeaturedProduct[]) {
+  async function persistOrder(nextProducts: FeaturedProduct[], tab: OrderTab) {
     setSaveState("saving");
     setError("");
+    const settingKey =
+      tab === "featured"
+        ? FEATURED_ORDER_SETTING_KEY
+        : ORDER_PRODUCTS_ORDER_SETTING_KEY;
     try {
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          [FEATURED_ORDER_SETTING_KEY]: JSON.stringify(nextProducts.map((item) => item.id)),
+          [settingKey]: JSON.stringify(nextProducts.map((item) => item.id)),
         }),
       });
       if (!res.ok) {
-        throw new Error("Не удалось сохранить порядок популярных товаров");
+        throw new Error(
+          tab === "featured"
+            ? "Не удалось сохранить порядок популярных товаров"
+            : "Не удалось сохранить порядок товаров под заказ"
+        );
       }
       setSaveState("saved");
       window.setTimeout(() => {
@@ -183,7 +220,7 @@ export function FeaturedProductsOrderClient({
     }
   }
 
-  function reorderByHover(activeId: string, clientX: number, clientY: number) {
+  const reorderByHover = useCallback((activeId: string, clientX: number, clientY: number) => {
     const orderedIds = productsRef.current.map((item) => item.id);
     let overId: string | null = null;
 
@@ -211,7 +248,7 @@ export function FeaturedProductsOrderClient({
       if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return current;
       return moveItem(current, oldIndex, newIndex);
     });
-  }
+  }, [setProducts]);
 
   const finishDrag = useCallback(() => {
     const currentOrder = productsRef.current.map((item) => item.id);
@@ -223,9 +260,9 @@ export function FeaturedProductsOrderClient({
     document.body.style.userSelect = "";
 
     if (changed) {
-      void persistOrder(productsRef.current);
+      void persistOrder(productsRef.current, activeTab);
     }
-  }, []);
+  }, [activeTab]);
 
   // Старт фактического перетаскивания (когда порог движения пройден).
   const beginDrag = useCallback(
@@ -287,7 +324,7 @@ export function FeaturedProductsOrderClient({
       window.removeEventListener("pointerup", handleUp);
       window.removeEventListener("pointercancel", handleUp);
     };
-  }, [beginDrag, finishDrag]);
+  }, [beginDrag, finishDrag, reorderByHover]);
 
   function handlePointerDown(id: string, e: React.PointerEvent<HTMLDivElement>) {
     if (products.length < 2) return;
@@ -305,6 +342,24 @@ export function FeaturedProductsOrderClient({
     pendingDragRef.current = { id, downX: e.clientX, downY: e.clientY };
   }
 
+  function selectTab(tab: OrderTab) {
+    if (tab === activeTab) return;
+    pendingDragRef.current = null;
+    setDraggingId(null);
+    draggingIdRef.current = null;
+    document.body.style.userSelect = "";
+    setSaveState("idle");
+    setError("");
+    productsRef.current = productsByTab[tab];
+    setActiveTab(tab);
+  }
+
+  const isFeaturedTab = activeTab === "featured";
+  const blockTitle = isFeaturedTab ? "Популярные товары" : "Товары под заказ";
+  const emptyText = isFeaturedTab
+    ? "Нет товаров, отмеченных как популярные."
+    : "Нет видимых товаров с нулевым остатком.";
+
   return (
     <div className="featured-sort-page">
       <div className="featured-sort-page__head no-print">
@@ -312,17 +367,36 @@ export function FeaturedProductsOrderClient({
           <Link href={`/${adminPath}/products`} className="featured-sort-page__back">
             <ArrowLeft size={14} /> К товарам
           </Link>
-          <h1 className="featured-sort-page__title">Порядок популярных товаров</h1>
+          <h1 className="featured-sort-page__title">Порядок товаров на главной</h1>
           <p className="featured-sort-page__sub">
-            Это копия товарной секции главной страницы. Тяните карточку за значок ⠿ с номером
-            в её левом верхнем углу (на компьютере мышью — за любое место карточки) — порядок
-            меняется сразу и сохраняется автоматически. Сами карточки обычные: страницу можно
-            спокойно листать пальцем.
+            В одном блоке настраивается порядок двух секций главной страницы.
+            Выберите вкладку и перетащите карточку за значок ⠿ с номером —
+            порядок сохраняется автоматически.
           </p>
+          <div className="featured-sort-tabs" role="tablist" aria-label="Секция товаров">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isFeaturedTab}
+              className={isFeaturedTab ? "featured-sort-tab featured-sort-tab--active" : "featured-sort-tab"}
+              onClick={() => selectTab("featured")}
+            >
+              Популярные <span>{productsByTab.featured.length}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isFeaturedTab}
+              className={!isFeaturedTab ? "featured-sort-tab featured-sort-tab--active" : "featured-sort-tab"}
+              onClick={() => selectTab("order")}
+            >
+              Под заказ <span>{productsByTab.order.length}</span>
+            </button>
+          </div>
         </div>
         <div className="featured-sort-page__meta">
           <div className="featured-sort-page__count">
-            Популярных товаров: <strong>{products.length}</strong>
+            {blockTitle}: <strong>{products.length}</strong>
           </div>
           <a
             href="/"
@@ -343,7 +417,10 @@ export function FeaturedProductsOrderClient({
               <div className="featured-sort-side__card">
                 <p>Тяните карточку <strong>за значок ⠿ с номером</strong> в её левом верхнем углу
                 (на компьютере мышью — за любое место карточки) и отпустите на новом месте.</p>
-                <p>Позиция <strong>#1</strong> будет первой в блоке «Популярные товары» на главной.</p>
+                <p>Позиция <strong>#1</strong> будет первой в блоке «{blockTitle}» на главной.</p>
+                {!isFeaturedTab && (
+                  <p>В этот список автоматически попадают видимые товары с нулевым остатком.</p>
+                )}
                 <p>Скролл страницы пальцем по карточкам работает как обычно — теперь он не
                 переставляет карточки случайно.</p>
               </div>
@@ -378,7 +455,7 @@ export function FeaturedProductsOrderClient({
             <div className="home-catalog-unified__main">
               <div className="catalog-top home-catalog-unified__top">
                 <h2 className="section-title" style={{ margin: 0 }}>
-                  Популярные товары
+                  {blockTitle}
                   <span className="catalog-top__count" style={{ marginLeft: 8 }}>
                     {products.length}
                   </span>
@@ -387,8 +464,12 @@ export function FeaturedProductsOrderClient({
 
               {products.length === 0 ? (
                 <div className="empty-state">
-                  <p>Нет товаров, отмеченных как популярные.</p>
-                  <span>Отметьте товары флагом «Популярный товар» в карточке товара.</span>
+                  <p>{emptyText}</p>
+                  <span>
+                    {isFeaturedTab
+                      ? "Отметьте товары флагом «Популярный товар» в карточке товара."
+                      : "Секция появится автоматически, когда у видимого товара закончится остаток."}
+                  </span>
                 </div>
               ) : (
                 <div className="featured-sort-grid">
@@ -398,6 +479,7 @@ export function FeaturedProductsOrderClient({
                       product={product}
                       index={index}
                       dragging={draggingId === product.id}
+                      orderMode={!isFeaturedTab}
                       onPointerDown={handlePointerDown}
                       registerRef={registerRef}
                     />
@@ -422,6 +504,7 @@ export function FeaturedProductsOrderClient({
           <DragCardOverlay
             product={activeProduct}
             index={products.findIndex((item) => item.id === activeProduct.id)}
+            orderMode={!isFeaturedTab}
           />
         </div>
       )}

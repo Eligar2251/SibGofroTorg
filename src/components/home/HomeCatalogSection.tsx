@@ -70,6 +70,7 @@ export function HomeCatalogSection({
           params.set("limit", "12");
         } else {
           params.set("featured", "1");
+          params.set("stock", "yes");
           params.set("limit", "12");
         }
 

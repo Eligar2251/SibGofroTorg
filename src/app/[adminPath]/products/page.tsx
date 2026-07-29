@@ -104,7 +104,7 @@ export default async function AdminProductsPage({
         {activeTab === "products" && (
           <div className="admin-page-head__actions">
             <Link href={`/${ADMIN_PATH}/products/featured-order`} className="admin-btn admin-btn--ghost" prefetch={false}>
-              <GripVertical size={15} /> Порядок популярных
+              <GripVertical size={15} /> Порядок на главной
             </Link>
             <Link href={`/${ADMIN_PATH}/qr-print`} className="admin-btn admin-btn--ghost" prefetch={false}>
               <QrCode size={15} /> Печать этикеток

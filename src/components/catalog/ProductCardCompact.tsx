@@ -54,9 +54,12 @@ interface CompactProduct {
 export function ProductCardCompact({
   product,
   highlight,
+  orderMode = false,
 }: {
   product: CompactProduct;
   highlight?: boolean;
+  /** Карточка показана в специальном блоке «Товары под заказ». */
+  orderMode?: boolean;
 }) {
   const { addToCart, cart } = useCart();
   const packSize = product.packQty ? Math.max(1, Number(product.packQty)) : 1;
@@ -64,6 +67,7 @@ export function ProductCardCompact({
   // Нет на складе — цену не показываем совсем, вместо неё «Нет в наличии»
   // и автозаявка «Уточнить поступление».
   const outOfStock = isOutOfStock(product);
+  const orderOffer = orderMode && outOfStock;
 
   const [qty, setQty] = useState(packSize);
   const [inputVal, setInputVal] = useState(String(packSize));
@@ -220,7 +224,11 @@ export function ProductCardCompact({
         {/* Цена — шт + партия. Если у товара есть варианты,
            показываем «от X ₽» (по минимальной цене). */}
         <div className="pcc__prices">
-          {outOfStock ? (
+          {orderOffer ? (
+            <span className="pcc__price-muted pcc__price-muted--mto">
+              Под заказ · 2–3 дня
+            </span>
+          ) : outOfStock ? (
             <span className="pcc__price-muted pcc__price-muted--out">
               {OUT_OF_STOCK_LABEL}
             </span>
@@ -264,7 +272,16 @@ export function ProductCardCompact({
         </div>
 
         {/* Управление количеством */}
-        {outOfStock ? (
+        {orderOffer ? (
+          <PriceInquiryButton
+            productName={product.name}
+            productSku={product.sku}
+            productImageUrl={product.imageUrl}
+            className="pcc__inquiry-btn"
+            label="Заказать поставку"
+            kind="restock"
+          />
+        ) : outOfStock ? (
           <PriceInquiryButton
             productName={product.name}
             productSku={product.sku}

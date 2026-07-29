@@ -7402,6 +7402,13 @@ body:has(.admin-modal-overlay) {
   line-height: 1.5;
 }
 
+.featured-sort-tabs { display: inline-flex; gap: 4px; margin-top: 12px; padding: 4px; background: var(--adm-paper-warm); border: 1px solid var(--adm-border); border-radius: 9px; }
+.featured-sort-tab { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; color: var(--adm-ink-muted); background: transparent; border: 0; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+.featured-sort-tab > span { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 5px; background: var(--adm-card); border-radius: 999px; font-size: 9px; }
+.featured-sort-tab--active { color: #fff; background: var(--adm-ink); }
+.featured-sort-tab--active > span { color: var(--adm-ink); }
+@media (max-width: 520px) { .featured-sort-tabs { display: flex; width: 100%; } .featured-sort-tab { flex: 1; justify-content: center; } }
+
 .featured-sort-page__meta {
   display: flex;
   flex-direction: column;

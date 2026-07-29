@@ -1,13 +1,19 @@
 import { notFound } from "next/navigation";
-import { getProducts } from "@/lib/supabase-queries";
+import { getProducts, getSettings } from "@/lib/supabase-queries";
 import { FeaturedProductsOrderClient } from "@/components/admin/FeaturedProductsOrderClient";
+import {
+  ORDER_PRODUCTS_ORDER_SETTING_KEY,
+  parseProductOrder,
+  sortByProductOrder,
+} from "@/lib/home-product-order";
+import { isProductAvailable } from "@/lib/stock-availability";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Порядок популярных товаров — СибГофроТорг",
+  title: "Порядок товаров на главной — СибГофроТорг",
 };
 
 export default async function FeaturedOrderPage({
@@ -18,13 +24,25 @@ export default async function FeaturedOrderPage({
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
-  const featuredProducts = await getProducts({
-    featuredOnly: true,
-    includeHidden: true,
-    limitCount: 500,
-  });
+  const [featuredProducts, allProducts, settings] = await Promise.all([
+    getProducts({
+      featuredOnly: true,
+      includeHidden: true,
+      limitCount: 500,
+    }),
+    getProducts({ includeHidden: true }),
+    getSettings().catch(() => ({} as Record<string, string>)),
+  ]);
+  const orderProducts = sortByProductOrder(
+    allProducts.filter(
+      (product) =>
+        product.isVisible !== false && !isProductAvailable(product)
+    ),
+    parseProductOrder(settings[ORDER_PRODUCTS_ORDER_SETTING_KEY])
+  );
 
-  const serializedProducts = featuredProducts.map((p) => ({
+  const serializeProduct = (p: (typeof allProducts)[number]) => ({
+
     id: p.id,
     name: p.name,
     slug: p.slug,
@@ -49,12 +67,15 @@ export default async function FeaturedOrderPage({
     variantPriceMax: p.variantPriceMax ?? null,
     variantTotalStock: p.variantTotalStock ?? 0,
     isVisible: p.isVisible,
-  }));
+  });
+  const serializedFeaturedProducts = featuredProducts.map(serializeProduct);
+  const serializedOrderProducts = orderProducts.map(serializeProduct);
 
   return (
     <FeaturedProductsOrderClient
       adminPath={ADMIN_PATH}
-      initialProducts={serializedProducts}
+      initialFeaturedProducts={serializedFeaturedProducts}
+      initialOrderProducts={serializedOrderProducts}
     />
   );
 }
