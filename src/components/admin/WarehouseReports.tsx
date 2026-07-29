@@ -32,6 +32,7 @@ import {
   type WarehouseStockRow,
 } from "@/lib/warehouse-shared";
 import type { TransportRow } from "@/components/admin/TransportManager";
+import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 
 type ReportKind =
   | "payments"
@@ -225,6 +226,7 @@ export function WarehouseReports({
   // проставляем только после гидратации, иначе секунды на сервере/клиенте
   // расходятся и React пересобирает весь конструктор отчётов.
   const [generatedAt, setGeneratedAt] = useState<string>("");
+  const [detailPaymentId, setDetailPaymentId] = useState<string | null>(null);
   useEffect(() => {
     setGeneratedAt(new Date().toLocaleString("ru-RU"));
   }, []);
@@ -541,6 +543,11 @@ export function WarehouseReports({
 
   return (
     <div className="wh-report-page">
+      <PaymentDetailsModal
+        paymentId={detailPaymentId}
+        adminPath={adminPath}
+        onClose={() => setDetailPaymentId(null)}
+      />
       <div className="wh-report-head">
         <div>
           <span>Управленческий учёт</span>
@@ -629,15 +636,35 @@ export function WarehouseReports({
               <div><CreditCard size={15} /><span>Сальдо периода</span><strong>{money(moneyIn - moneyOut)}</strong></div>
               <div><ClipboardList size={15} /><span>Операций</span><strong>{moneyRows.length}</strong></div>
             </div>
-            <ReportTable headers={["Дата", "Контрагент", "Назначение", "Счёт", "Статус", "Расшифровка", "Сумма"]} empty={moneyRows.length === 0}>
+            <ReportTable headers={["Дата", "Контрагент", "Назначение", "Счёт", "Статус", "Подробности", "Сумма"]} empty={moneyRows.length === 0}>
               {moneyRows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  className={row.kind === "payment" ? "payment-clickable" : undefined}
+                  onClick={(event) => {
+                    if (row.kind !== "payment") return;
+                    if ((event.target as HTMLElement).closest("a,button")) return;
+                    setDetailPaymentId(row.sourceId);
+                  }}
+                >
                   <td>{fmtDate(row.date)}</td>
                   <td><strong>{row.counterparty || "—"}</strong></td>
                   <td>{row.purpose}</td>
                   <td><span className="admin-badge admin-badge--muted">{row.account}</span></td>
                   <td>{row.status}</td>
-                  <td><Link href={row.href} prefetch={false}>{row.details || "Открыть операцию"} →</Link></td>
+                  <td>
+                    {row.kind === "payment" ? (
+                      <button
+                        type="button"
+                        className="wh-report-payment-open"
+                        onClick={() => setDetailPaymentId(row.sourceId)}
+                      >
+                        {row.details || "Открыть платёж"} →
+                      </button>
+                    ) : (
+                      <Link href={row.href} prefetch={false}>{row.details || "Открыть операцию"} →</Link>
+                    )}
+                  </td>
                   <td className={row.direction === "incoming" ? "wh-report-in" : "wh-report-out"}>{row.direction === "incoming" ? "+" : "−"}{money(row.amount)}</td>
                 </tr>
               ))}
@@ -761,7 +788,24 @@ export function WarehouseReports({
                 <tr key={collection.id}>
                   <td>{fmtDate(collection.date)}</td>
                   <td><Link href={`/${adminPath}/warehouse?tab=bank`} prefetch={false}>{collection.items?.length || 0} платежей →</Link></td>
-                  <td>{collection.items?.map((item) => `ПЛ-${item.number || "—"} ${item.counterparty || ""}: ${money(item.amount)}`).join("; ") || "Старая запись без расшифровки"}</td>
+                  <td>
+                    {(collection.items || []).length > 0 ? (
+                      <div className="wh-report-payment-links">
+                        {(collection.items || []).map((item) => (
+                          <button
+                            key={item.paymentId}
+                            type="button"
+                            className="wh-report-payment-open"
+                            onClick={() => setDetailPaymentId(item.paymentId)}
+                          >
+                            ПЛ-{item.number || "—"} · {item.counterparty || ""} · {money(item.amount)}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      "Старая запись без расшифровки"
+                    )}
+                  </td>
                   <td>{money(collection.transferAmount || 0)}</td>
                   <td>{money(collection.cashAmount || 0)}</td>
                   <td>{money(collection.expensesAmount || 0)}</td>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, Search, X } from "lucide-react";
+import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 
 export type DashboardFinanceRow = {
   id: string;
@@ -14,6 +15,7 @@ export type DashboardFinanceRow = {
   amount: number;
   detail: string;
   href: string;
+  paymentId?: string;
   dealLinks?: { id: string; number: number }[];
   receiptLinks?: { id: string; number: number }[];
 };
@@ -48,6 +50,7 @@ export function DashboardFinanceHistory({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sort, setSort] = useState<"asc" | "desc">("desc");
+  const [detailPaymentId, setDetailPaymentId] = useState<string | null>(null);
 
   const periods = useMemo(
     () => [
@@ -102,6 +105,11 @@ export function DashboardFinanceHistory({
 
   return (
     <>
+      <PaymentDetailsModal
+        paymentId={detailPaymentId}
+        adminPath={adminPath}
+        onClose={() => setDetailPaymentId(null)}
+      />
       <div className="dash-finance-filter" aria-label="Фильтр истории платежей">
         <label className="dash-finance-filter__search">
           <span>Поиск</span>
@@ -184,7 +192,23 @@ export function DashboardFinanceHistory({
       {visible.length > 0 ? (
         <div className="dash-finance-list">
           {visible.map((row) => (
-            <div key={row.id} className="dash-finance-row">
+            <div
+              key={row.id}
+              className={`dash-finance-row${row.paymentId ? " payment-clickable" : ""}`}
+              role={row.paymentId ? "button" : undefined}
+              tabIndex={row.paymentId ? 0 : undefined}
+              onClick={(event) => {
+                if (!row.paymentId) return;
+                if ((event.target as HTMLElement).closest("a,button")) return;
+                setDetailPaymentId(row.paymentId);
+              }}
+              onKeyDown={(event) => {
+                if (row.paymentId && (event.key === "Enter" || event.key === " ")) {
+                  event.preventDefault();
+                  setDetailPaymentId(row.paymentId);
+                }
+              }}
+            >
               <span
                 className={`dash-finance-row__icon dash-finance-row__icon--${row.direction}`}
               >
@@ -238,9 +262,19 @@ export function DashboardFinanceHistory({
                   {row.direction === "incoming" ? "+" : "−"}
                   {money(row.amount)}
                 </strong>
-                <Link href={row.href} prefetch={false}>
-                  Открыть →
-                </Link>
+                {row.paymentId ? (
+                  <button
+                    type="button"
+                    className="dash-finance-row__open"
+                    onClick={() => setDetailPaymentId(row.paymentId!)}
+                  >
+                    Подробнее →
+                  </button>
+                ) : (
+                  <Link href={row.href} prefetch={false}>
+                    Открыть →
+                  </Link>
+                )}
               </div>
             </div>
           ))}

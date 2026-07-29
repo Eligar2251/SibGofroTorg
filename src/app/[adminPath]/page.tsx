@@ -241,6 +241,7 @@ export default async function AdminDashboard() {
           ...payment.receiptNumbers.map((number) => `ПО-${number}`),
         ].join(" · "),
       href: `/${ADMIN_PATH}/warehouse?tab=bank&payment=${payment.id}`,
+      paymentId: payment.id,
       dealLinks: payment.dealIds.map((id, index) => ({
         id,
         number: payment.dealNumbers[index] || 0,

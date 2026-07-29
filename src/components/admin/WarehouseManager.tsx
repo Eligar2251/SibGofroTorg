@@ -64,6 +64,7 @@ import {
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
 import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
+import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import { StockRevision } from "@/components/admin/StockRevision";
 import { CashCollectModal } from "@/components/admin/CashCollectModal";
 import {
@@ -262,6 +263,9 @@ export function WarehouseManager({
   const [procurementCart, setProcurementCart] = useState<ProcurementCartItem[]>([]);
   const [procurementSaving, setProcurementSaving] = useState(false);
   const [bankSub, setBankSub] = useState<BankSub>("pending");
+  const [detailPaymentId, setDetailPaymentId] = useState<string | null>(
+    focusPaymentId || null
+  );
   const router = useRouter();
   const [collecting, setCollecting] = useState(false);
   const [showCollect, setShowCollect] = useState(false);
@@ -312,6 +316,7 @@ export function WarehouseManager({
       window.setTimeout(() => document.getElementById(`stock-${focusProductId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     } else if (focusPaymentId) {
       setActiveTab("bank");
+      setDetailPaymentId(focusPaymentId);
       const payment = payments.find((item) => item.id === focusPaymentId);
       setBankSub(payment?.isPaid ? "history" : "pending");
       window.setTimeout(() => document.getElementById(`payment-${focusPaymentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
@@ -1057,6 +1062,11 @@ export function WarehouseManager({
 
   return (
     <div>
+      <PaymentDetailsModal
+        paymentId={detailPaymentId}
+        adminPath={adminPath}
+        onClose={() => setDetailPaymentId(null)}
+      />
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Учёт</h1>
@@ -2161,6 +2171,7 @@ export function WarehouseManager({
           {showCollect && (
             <CashCollectModal
               cashBalance={bankSummary.cashBalance}
+              adminPath={adminPath}
               onClose={() => setShowCollect(false)}
             />
           )}
@@ -2180,7 +2191,23 @@ export function WarehouseManager({
               <div className="admin-card__pad">
                 <div className="bank-month__list">
                   {pendingSupplierPayments.slice(0, 6).map((p) => (
-                    <div key={p.id} className="bank-pay" style={{ background: "#fff", padding: "10px 14px" }}>
+                    <div
+                      key={p.id}
+                      className="bank-pay payment-clickable"
+                      style={{ background: "#fff", padding: "10px 14px" }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        if ((event.target as HTMLElement).closest("a,button")) return;
+                        setDetailPaymentId(p.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setDetailPaymentId(p.id);
+                        }
+                      }}
+                    >
                       <div className="bank-pay__icon bank-pay__icon--out" style={{ width: 32, height: 32 }}>
                         <Truck size={15} />
                       </div>
@@ -2558,10 +2585,14 @@ export function WarehouseManager({
                                       ) : (
                                         (c.items || []).map((it, i) => (
                                           <div key={`${c.id}-i${i}`} className="wh-cc-line">
-                                            <span>
+                                            <button
+                                              type="button"
+                                              className="wh-cc-payment-link"
+                                              onClick={() => setDetailPaymentId(it.paymentId)}
+                                            >
                                               {it.number ? `ПЛ-${it.number} · ` : ""}
                                               {it.counterparty || "Без контрагента"}
-                                            </span>
+                                            </button>
                                             <span className="wh-cc-line__val">
                                               {fmt(it.amount)} ₽
                                               {/* Разбитый платёж: показываем все части */}
@@ -2967,7 +2998,20 @@ export function WarehouseManager({
                   <div
                     key={p.id}
                     id={`payment-${p.id}`}
-                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}`}
+                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}`}
+                    role={p.entryKind === "payment" ? "button" : undefined}
+                    tabIndex={p.entryKind === "payment" ? 0 : undefined}
+                    onClick={(event) => {
+                      if (p.entryKind !== "payment") return;
+                      if ((event.target as HTMLElement).closest("a,button,input,label,select")) return;
+                      setDetailPaymentId(p.id);
+                    }}
+                    onKeyDown={(event) => {
+                      if (p.entryKind === "payment" && (event.key === "Enter" || event.key === " ")) {
+                        event.preventDefault();
+                        setDetailPaymentId(p.id);
+                      }
+                    }}
                   >
                     <div
                       className={`bank-pay__icon ${

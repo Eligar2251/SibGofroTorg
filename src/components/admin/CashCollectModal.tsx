@@ -26,6 +26,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import {
   DEFAULT_CASH_CARD_HOLDER,
   type CashKind,
@@ -67,15 +68,18 @@ function fmtDate(raw: string): string {
 
 export function CashCollectModal({
   cashBalance,
+  adminPath,
   onClose,
 }: {
   cashBalance: number;
+  adminPath: string;
   onClose: () => void;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [detailPaymentId, setDetailPaymentId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingCashPayment[]>([]);
   const [closed, setClosed] = useState<PendingCashPayment[]>([]);
   const [expenses, setExpenses] = useState<CashExpense[]>([]);
@@ -400,6 +404,7 @@ export function CashCollectModal({
   );
 
   return (
+    <>
     <ModalPortal>
       <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
         <div
@@ -440,7 +445,13 @@ export function CashCollectModal({
                 {closed.map((payment) => (
                   <div key={payment.paymentId} className="cashc-closed-settings__row">
                     <div>
-                      <strong>ПЛ-{payment.number} · {payment.counterparty}</strong>
+                      <button
+                        type="button"
+                        className="cashc-payment-details-link"
+                        onClick={() => setDetailPaymentId(payment.paymentId)}
+                      >
+                        ПЛ-{payment.number} · {payment.counterparty}
+                      </button>
                       <span>{fmtDate(payment.date)}</span>
                     </div>
                     <b>{fmt(payment.amount)} ₽</b>
@@ -604,7 +615,14 @@ export function CashCollectModal({
                               {p.counterparty || "Без контрагента"}
                             </span>
                             <span className="cashc-row__meta">
-                              ПЛ-{p.number} · {fmtDate(p.date)}
+                              <button
+                                type="button"
+                                className="cashc-payment-details-link"
+                                onClick={() => setDetailPaymentId(p.paymentId)}
+                              >
+                                ПЛ-{p.number} · подробнее
+                              </button>
+                              <span> · {fmtDate(p.date)}</span>
                             </span>
                           </div>
                           <span className="cashc-row__amount">
@@ -827,5 +845,11 @@ export function CashCollectModal({
         </div>
       </div>
     </ModalPortal>
+    <PaymentDetailsModal
+      paymentId={detailPaymentId}
+      adminPath={adminPath}
+      onClose={() => setDetailPaymentId(null)}
+    />
+    </>
   );
 }
