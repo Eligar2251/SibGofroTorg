@@ -37,6 +37,7 @@ import {
   getDealPaidMap,
   getReceiptPaidMap,
   type WarehouseStockRow,
+  type ProductStockSummary,
   type WarehouseReceipt,
   type CustomerDeal,
   type Counterparty,
@@ -58,6 +59,7 @@ import {
 } from "@/components/admin/WarehousePayments";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
+import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
 import { StockRevision } from "@/components/admin/StockRevision";
 import { CashCollectModal } from "@/components/admin/CashCollectModal";
 import {
@@ -80,6 +82,20 @@ function fmtDate(raw: string | null | undefined): string {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+async function requestProductStockSummary(
+  productId: string
+): Promise<ProductStockSummary> {
+  const response = await fetch(
+    `/api/admin/warehouse/stock/${encodeURIComponent(productId)}`,
+    { cache: "no-store" }
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || "Не удалось загрузить сводку товара");
+  }
+  return body as ProductStockSummary;
 }
 
 function monthLabel(key: string): string {
@@ -197,6 +213,13 @@ export function WarehouseManager({
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
   const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
+  /** Раскрытые расширенные сводки в таблице склада. */
+  const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(
+    () => new Set(focusProductId ? [focusProductId] : [])
+  );
+  const [stockSummaries, setStockSummaries] = useState<Record<string, ProductStockSummary>>({});
+  const [stockSummaryLoading, setStockSummaryLoading] = useState<Set<string>>(new Set());
+  const [stockSummaryErrors, setStockSummaryErrors] = useState<Record<string, string>>({});
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [procurementQuery, setProcurementQuery] = useState("");
   const [supplierPriceQuery, setSupplierPriceQuery] = useState("");
@@ -227,6 +250,31 @@ export function WarehouseManager({
     } else if (focusProductId) {
       setActiveTab("stock");
       setStockSub("stock");
+      setExpandedStockIds((prev) => new Set(prev).add(focusProductId));
+      setStockSummaryLoading((prev) => new Set(prev).add(focusProductId));
+      setStockSummaryErrors((prev) => {
+        const next = { ...prev };
+        delete next[focusProductId];
+        return next;
+      });
+      void requestProductStockSummary(focusProductId)
+        .then((summary) =>
+          setStockSummaries((prev) => ({ ...prev, [focusProductId]: summary }))
+        )
+        .catch((error) =>
+          setStockSummaryErrors((prev) => ({
+            ...prev,
+            [focusProductId]:
+              error instanceof Error ? error.message : "Не удалось загрузить сводку",
+          }))
+        )
+        .finally(() =>
+          setStockSummaryLoading((prev) => {
+            const next = new Set(prev);
+            next.delete(focusProductId);
+            return next;
+          })
+        );
       window.setTimeout(() => document.getElementById(`stock-${focusProductId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     } else if (focusPaymentId) {
       setActiveTab("bank");
@@ -235,6 +283,60 @@ export function WarehouseManager({
       window.setTimeout(() => document.getElementById(`payment-${focusPaymentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     }
   }, [deals, focusDealId, focusPaymentId, focusProductId, focusReceiptId, payments, receipts]);
+
+  async function loadStockSummary(productId: string, force = false) {
+    if (
+      !force &&
+      (stockSummaries[productId] || stockSummaryLoading.has(productId))
+    ) {
+      return;
+    }
+    setStockSummaryLoading((prev) => new Set(prev).add(productId));
+    setStockSummaryErrors((prev) => {
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+    try {
+      const summary = await requestProductStockSummary(productId);
+      setStockSummaries((prev) => ({ ...prev, [productId]: summary }));
+    } catch (error) {
+      setStockSummaryErrors((prev) => ({
+        ...prev,
+        [productId]:
+          error instanceof Error ? error.message : "Не удалось загрузить сводку",
+      }));
+    } finally {
+      setStockSummaryLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+    }
+  }
+
+  function toggleStockSummary(productId: string) {
+    const isExpanded = expandedStockIds.has(productId);
+    setExpandedStockIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+    if (!isExpanded) void loadStockSummary(productId);
+  }
+
+  function handleStockQuantitySaved(productId: string) {
+    setStockSummaries((prev) => {
+      if (!prev[productId]) return prev;
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+    if (expandedStockIds.has(productId)) {
+      void loadStockSummary(productId, true);
+    }
+  }
 
   // Filters
   const [q, setQ] = useState(""); // Stock/Deals query
@@ -942,58 +1044,87 @@ export function WarehouseManager({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredStock.map((p) => (
-                      <tr key={p.id} id={`stock-${p.id}`}>
-                        <td>
-                          <Link href={`/${adminPath}/products/${p.id}`} prefetch={false} className="wh-stock-product-name">
-                            {p.name}
-                          </Link>
-                          <Link
-                            href={`/${adminPath}/warehouse?tab=stock&product=${p.id}#stock-origins`}
-                            prefetch={false}
-                            className="wh-stock-origin-link"
-                          >
-                            Откуда поступил →
-                          </Link>
-                          {!p.isVisible && (
-                            <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>скрыт</span>
+                    {filteredStock.map((p) => {
+                      const summaryExpanded = expandedStockIds.has(p.id);
+                      return (
+                        <React.Fragment key={p.id}>
+                          <tr id={`stock-${p.id}`} className={summaryExpanded ? "wh-stock-row--expanded" : undefined}>
+                            <td>
+                              <Link href={`/${adminPath}/products/${p.id}`} prefetch={false} className="wh-stock-product-name">
+                                {p.name}
+                              </Link>
+                              <button
+                                type="button"
+                                className="wh-stock-origin-link"
+                                onClick={() => toggleStockSummary(p.id)}
+                                aria-expanded={summaryExpanded}
+                                aria-controls={`stock-summary-${p.id}`}
+                              >
+                                <History size={11} />
+                                {summaryExpanded ? "Скрыть сводку" : "Расширенная сводка"}
+                                <ChevronRight
+                                  size={11}
+                                  className={summaryExpanded ? "wh-stock-origin-link__chevron wh-stock-origin-link__chevron--open" : "wh-stock-origin-link__chevron"}
+                                />
+                              </button>
+                              {!p.isVisible && (
+                                <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>скрыт</span>
+                              )}
+                              {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
+                                <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
+                              )}
+                              {p.stockQty <= 0 && (
+                                <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
+                              )}
+                            </td>
+                            <td>{p.sku || "—"}</td>
+                            <td>
+                              {(suppliersByProduct.get(p.id) || []).length > 0 ? (
+                                <div style={{ display: "grid", gap: 3 }}>
+                                  {(suppliersByProduct.get(p.id) || []).slice(0, 2).map((row) => (
+                                    <button
+                                      key={row.supplier.id}
+                                      type="button"
+                                      onClick={() => { setActiveTab("suppliers"); setSelectedSupplierId(row.supplier.id); }}
+                                      className="admin-badge admin-badge--blue"
+                                      style={{ border: 0, cursor: "pointer", justifyContent: "flex-start" }}
+                                    >
+                                      {row.supplier.name} · {fmt(row.price)} ₽
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : "—"}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <StockQtyEditor
+                                productId={p.id}
+                                initialQty={p.stockQty}
+                                onSaved={() => handleStockQuantitySaved(p.id)}
+                              />
+                            </td>
+                            <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                              {p.price != null ? `${fmt(p.price)} ₽` : "—"}
+                            </td>
+                            <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                              {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
+                            </td>
+                          </tr>
+                          {summaryExpanded && (
+                            <tr id={`stock-summary-${p.id}`} className="stock-summary-row">
+                              <td colSpan={6}>
+                                <ProductStockSummaryPanel
+                                  adminPath={adminPath}
+                                  summary={stockSummaries[p.id]}
+                                  loading={stockSummaryLoading.has(p.id)}
+                                  error={stockSummaryErrors[p.id]}
+                                  onRetry={() => void loadStockSummary(p.id, true)}
+                                />
+                              </td>
+                            </tr>
                           )}
-                          {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
-                            <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
-                          )}
-                          {p.stockQty <= 0 && (
-                            <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
-                          )}
-                        </td>
-                        <td>{p.sku || "—"}</td>
-                        <td>
-                          {(suppliersByProduct.get(p.id) || []).length > 0 ? (
-                            <div style={{ display: "grid", gap: 3 }}>
-                              {(suppliersByProduct.get(p.id) || []).slice(0, 2).map((row) => (
-                                <button
-                                  key={row.supplier.id}
-                                  type="button"
-                                  onClick={() => { setActiveTab("suppliers"); setSelectedSupplierId(row.supplier.id); }}
-                                  className="admin-badge admin-badge--blue"
-                                  style={{ border: 0, cursor: "pointer", justifyContent: "flex-start" }}
-                                >
-                                  {row.supplier.name} · {fmt(row.price)} ₽
-                                </button>
-                              ))}
-                            </div>
-                          ) : "—"}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <StockQtyEditor productId={p.id} initialQty={p.stockQty} />
-                        </td>
-                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                          {p.price != null ? `${fmt(p.price)} ₽` : "—"}
-                        </td>
-                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                          {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
-                        </td>
-                      </tr>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2520,7 +2651,7 @@ export function WarehouseManager({
                           </div>
                         ) : (
                           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-kraft)" }}>
-                            Зарплата · {p.source === "cash" ? "касса" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
+                            Зарплата за {monthLabel(p.salary.periodMonth || p.salary.date.slice(0, 7))} · {p.source === "cash" ? "касса" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
                           </div>
                         )}
                         {p.comment && (

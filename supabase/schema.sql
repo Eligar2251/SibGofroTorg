@@ -462,6 +462,7 @@ CREATE TABLE IF NOT EXISTS warehouse_receipts (
 CREATE INDEX IF NOT EXISTS idx_receipts_number ON warehouse_receipts(number);
 CREATE INDEX IF NOT EXISTS idx_receipts_status ON warehouse_receipts(status);
 CREATE INDEX IF NOT EXISTS idx_receipts_date ON warehouse_receipts(date);
+CREATE INDEX IF NOT EXISTS idx_receipts_items_gin ON warehouse_receipts USING GIN (items jsonb_path_ops);
 DROP TRIGGER IF EXISTS trg_receipts_updated ON warehouse_receipts;
 CREATE TRIGGER trg_receipts_updated BEFORE UPDATE ON warehouse_receipts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -506,6 +507,7 @@ CREATE TABLE IF NOT EXISTS customer_deals (
 CREATE INDEX IF NOT EXISTS idx_deals_number ON customer_deals(number);
 CREATE INDEX IF NOT EXISTS idx_deals_status ON customer_deals(status);
 CREATE INDEX IF NOT EXISTS idx_deals_date ON customer_deals(date);
+CREATE INDEX IF NOT EXISTS idx_deals_items_gin ON customer_deals USING GIN (items jsonb_path_ops);
 CREATE INDEX IF NOT EXISTS idx_deals_source_order ON customer_deals(source_order_id);
 CREATE INDEX IF NOT EXISTS idx_deals_has_delivery ON customer_deals(has_delivery) WHERE has_delivery = TRUE;
 CREATE INDEX IF NOT EXISTS idx_deals_delivery_planned ON customer_deals(delivery_planned_date) WHERE has_delivery = TRUE;

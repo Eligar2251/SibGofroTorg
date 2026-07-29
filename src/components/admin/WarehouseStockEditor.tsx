@@ -6,9 +6,11 @@ import { Check, Loader2, Save } from "lucide-react";
 export function StockQtyEditor({
   productId,
   initialQty,
+  onSaved,
 }: {
   productId: string;
   initialQty: number;
+  onSaved?: (quantity: number) => void;
 }) {
   const [value, setValue] = useState(String(initialQty));
   const [savedValue, setSavedValue] = useState(initialQty);
@@ -31,6 +33,7 @@ export function StockQtyEditor({
         setValue(String(quantity));
         setSavedValue(quantity);
         setSaved(true);
+        onSaved?.(quantity);
         window.setTimeout(() => setSaved(false), 1400);
       }
     } finally {

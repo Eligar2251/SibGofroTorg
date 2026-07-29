@@ -3210,30 +3210,31 @@ body:has(.admin-modal-overlay) {
   min-width: 0;
 }
 
-.wh-stock-table td:first-child,
-.wh-stock-table th:first-child {
+.wh-stock-table > tbody > tr:not(.stock-summary-row) > td:first-child,
+.wh-stock-table > thead > tr > th:first-child {
   max-width: 260px;
 }
 
 @media (max-width: 640px) {
-  .wh-stock-table th,
-  .wh-stock-table td {
+  .wh-stock-table > thead > tr > th,
+  .wh-stock-table > tbody > tr:not(.stock-summary-row) > td {
     padding: 9px 8px;
     font-size: 12px;
   }
 
-  .wh-stock-table td:first-child,
-  .wh-stock-table th:first-child {
+  .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:first-child,
+  .wh-stock-table > thead > tr > th:first-child {
     max-width: 170px;
   }
 
-  /* На телефоне все 5 колонок не влезают и уходят за экран —
-     оставляем главное: товар, остаток, цену. «Артикул» и «Сумма»
-     (вычисляемая: остаток × цена) скрываем */
-  .wh-stock-table th:nth-child(2),
-  .wh-stock-table td:nth-child(2),
-  .wh-stock-table th:nth-child(5),
-  .wh-stock-table td:nth-child(5) {
+  /* На телефоне все 6 колонок не влезают и уходят за экран —
+     оставляем главное: товар, поставщика, остаток и сумму. «Артикул» и
+     «Цена продажи» скрываем только у основной таблицы; внутри раскрытой
+     сводки даты и количества должны остаться видимыми. */
+  .wh-stock-table > thead > tr > th:nth-child(2),
+  .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(2),
+  .wh-stock-table > thead > tr > th:nth-child(5),
+  .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(5) {
     display: none;
   }
 }
@@ -4446,23 +4447,69 @@ body:has(.admin-modal-overlay) {
 
 /* История происхождения складского остатка */
 .wh-stock-product-name { display: block; font-weight: 650; }
-.wh-stock-origin-link { display: inline-block; margin-top: 3px; color: var(--adm-steel); font-size: 10px; font-weight: 650; }
+.wh-stock-origin-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; color: var(--adm-steel); background: none; border: 0; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; text-align: left; }
 .wh-stock-origin-link:hover, .stock-origin-link:hover { color: var(--adm-kraft); text-decoration: underline; }
-.stock-origins { margin-bottom: 16px; overflow: hidden; background: var(--adm-card); border: 1px solid var(--adm-steel-line); border-radius: var(--adm-r-lg); box-shadow: var(--adm-sh-sm); scroll-margin-top: 76px; }
-.stock-origins__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 17px 20px; background: linear-gradient(110deg, var(--adm-steel-pale), var(--adm-card)); border-bottom: 1px solid var(--adm-steel-line); }
-.stock-origins__eyebrow { color: var(--adm-steel); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
-.stock-origins__head h2 { margin: 3px 0; color: var(--adm-ink); font-family: var(--adm-font-body); font-size: 18px; }
-.stock-origins__head p { margin: 0; color: var(--adm-sand); font-size: 11px; }
-.stock-origins__summary { display: flex; align-items: center; gap: 18px; padding: 10px 20px; color: var(--adm-ink-muted); background: var(--adm-paper); border-bottom: 1px solid var(--adm-border); font-size: 11px; }
-.stock-origins__summary strong { color: var(--adm-ink); }
-.stock-origins__table { min-width: 720px; }
+.wh-stock-origin-link__chevron { transition: transform .16s ease; }
+.wh-stock-origin-link__chevron--open { transform: rotate(90deg); }
 .stock-origin-link { color: var(--adm-steel); font-weight: 750; white-space: nowrap; }
-.stock-origins__empty { padding: 24px 20px; color: var(--adm-sand); font-size: 12px; text-align: center; }
 .admin-order--highlighted { position: relative; background: var(--adm-steel-pale); box-shadow: inset 4px 0 0 var(--adm-steel); scroll-margin-top: 76px; }
 
+/* Выпадающая расширенная сводка прямо под строкой товара */
+.wh-stock-row--expanded { background: var(--adm-steel-pale); box-shadow: inset 3px 0 0 var(--adm-steel); }
+.stock-summary-row:hover { background: transparent !important; }
+.stock-summary-row > td { padding: 0 !important; background: var(--adm-paper); border-top: 0 !important; }
+.stock-summary { display: grid; gap: 14px; margin: 0 10px 14px; padding: 16px; background: var(--adm-card); border: 1px solid var(--adm-steel-line); border-top: 3px solid var(--adm-steel); border-radius: 0 0 var(--adm-r-lg) var(--adm-r-lg); box-shadow: var(--adm-sh-sm); }
+.stock-summary__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.stock-summary__head > div { display: grid; gap: 2px; }
+.stock-summary__head strong { color: var(--adm-ink); font-size: 14px; }
+.stock-summary__eyebrow { color: var(--adm-steel); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.stock-summary__stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.stock-summary__stats > div { display: grid; gap: 3px; min-width: 0; padding: 11px 12px; background: var(--adm-paper); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
+.stock-summary__stats span { color: var(--adm-sand); font-size: 10px; line-height: 1.25; }
+.stock-summary__stats strong { color: var(--adm-ink); font-size: 16px; white-space: nowrap; }
+.stock-summary__stats .stock-summary__stat--danger { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
+.stock-summary__stats .stock-summary__stat--danger strong { color: var(--adm-rust); }
+.stock-summary__stats .stock-summary__stat--ok { background: var(--adm-pine-pale); border-color: var(--adm-pine-line); }
+.stock-summary__stats .stock-summary__stat--ok strong { color: var(--adm-pine); }
+.stock-summary__balance { display: grid; grid-template-columns: auto 1fr; gap: 3px 9px; align-items: start; padding: 11px 13px; color: var(--adm-ink-muted); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); font-size: 11px; line-height: 1.45; }
+.stock-summary__balance > svg { margin-top: 1px; }
+.stock-summary__balance span { display: grid; gap: 1px; }
+.stock-summary__balance b { color: var(--adm-ink); font-size: 12px; }
+.stock-summary__balance small { grid-column: 2; color: var(--adm-sand); font-size: 10px; }
+.stock-summary__balance--own { color: var(--adm-steel); background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
+.stock-summary__balance--danger { color: var(--adm-rust); background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
+.stock-summary__balance--danger b { color: var(--adm-rust); }
+.stock-summary__balance--ok { color: var(--adm-pine); background: var(--adm-pine-pale); border-color: var(--adm-pine-line); }
+.stock-summary__section { overflow: hidden; border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
+.stock-summary__section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 10px 12px; background: var(--adm-paper); border-bottom: 1px solid var(--adm-border); }
+.stock-summary__section-head > div { display: grid; gap: 2px; }
+.stock-summary__section-head strong { color: var(--adm-ink); font-size: 12px; }
+.stock-summary__section-head span { color: var(--adm-sand); font-size: 10px; line-height: 1.35; }
+.stock-summary__section-head > span { max-width: 48%; text-align: right; }
+.stock-summary__table-wrap { max-height: 390px; overflow: auto; }
+.stock-summary__table { min-width: 760px; }
+.stock-summary__table th, .stock-summary__table td { padding: 8px 10px; font-size: 11px; }
+.stock-summary__table thead { position: sticky; z-index: 1; top: 0; }
+.stock-summary__missing { color: var(--adm-rust); white-space: nowrap; }
+.stock-summary__done { color: var(--adm-pine); font-weight: 700; white-space: nowrap; }
+.stock-summary__empty { padding: 18px 12px; color: var(--adm-sand); font-size: 11px; text-align: center; }
+.stock-summary__state { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 92px; padding: 18px; color: var(--adm-steel); font-size: 12px; }
+.stock-summary__state--error { color: var(--adm-rust); }
+
+@media (max-width: 760px) {
+  .stock-summary { margin-inline: 5px; padding: 12px; }
+  .stock-summary__stats { grid-template-columns: 1fr 1fr; }
+  .stock-summary__section-head { flex-direction: column; gap: 5px; }
+  .stock-summary__section-head > span { max-width: none; text-align: left; }
+}
+
 @media (max-width: 640px) {
-  .stock-origins__head { flex-direction: column; }
-  .stock-origins__summary { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .stock-summary__head { flex-direction: column; }
+  .stock-summary__balance { grid-template-columns: auto 1fr; }
+}
+
+@media (max-width: 430px) {
+  .stock-summary__stats { grid-template-columns: 1fr; }
 }
 
 /* Лёгкий мгновенный skeleton между разделами админки */
@@ -5734,6 +5781,21 @@ body:has(.admin-modal-overlay) {
   font-weight: 700;
 }
 
+/* Конкретная запланированная выплата: это реальная запись с суммой и датой,
+   но деньги ещё не списаны из кассы/банка. */
+.whsal-day--planned {
+  background: var(--adm-kraft-pale);
+  box-shadow: inset 0 0 0 1px var(--adm-kraft-line);
+}
+
+.whsal-day--planned:hover {
+  box-shadow: inset 0 0 0 2px var(--adm-kraft);
+}
+
+.whsal-day--planned .whsal-day-mark {
+  color: var(--adm-kraft);
+}
+
 .whsal-day--scheduled {
   background: #e8eef6;
   box-shadow: inset 0 0 0 1px var(--adm-steel-line);
@@ -5770,6 +5832,20 @@ body:has(.admin-modal-overlay) {
 .whsal-day-line--rent,
 .whsal-day-line--scheduled {
   color: var(--adm-steel);
+}
+
+.whsal-day-line--planned {
+  color: var(--adm-kraft);
+}
+
+.whsal-day-line small {
+  display: block;
+  color: currentColor;
+  font-size: 6.5px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  opacity: .8;
 }
 
 .whsal-day-line--debt {
@@ -5869,6 +5945,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-legend__swatch--paid    { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
+.whsal-legend__swatch--planned { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
 .whsal-legend__swatch--weekend { background: #fdf3d3; border-color: var(--adm-kraft-line); }
 .whsal-legend__swatch--rent    { background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
 

@@ -158,6 +158,57 @@ export interface WarehouseStockRow {
   dimensionUnit?: string | null;
 }
 
+/** Строка поступления в расширенной складской сводке товара. */
+export interface ProductStockReceiptHistory {
+  id: string;
+  number: number;
+  date: string;
+  supplier: string;
+  status: ReceiptStatus;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+/** Строка заказа в расширенной складской сводке товара. */
+export interface ProductStockDealHistory {
+  id: string;
+  number: number;
+  date: string;
+  customerName: string;
+  status: DealStatus;
+  orderedQty: number;
+  shippedQty: number;
+  /** Сколько ещё нужно отгрузить. Для отменённого заказа всегда 0. */
+  remainingQty: number;
+}
+
+/**
+ * Полная история одной складской позиции.
+ *
+ * `ownStockQty` — расчётный остаток, который не объясняется проведёнными
+ * поступлениями: текущий остаток + все отгрузки − проведённые поступления.
+ * Положительное значение показываем как «Наши остатки» (товар внесли
+ * вручную/он был до начала учёта), отрицательное — как недостачу по учёту.
+ */
+export interface ProductStockSummary {
+  productId: string;
+  productName: string;
+  sku: string | null;
+  currentStockQty: number;
+  receipts: ProductStockReceiptHistory[];
+  deals: ProductStockDealHistory[];
+  postedReceiptQty: number;
+  draftReceiptQty: number;
+  orderedQty: number;
+  shippedQty: number;
+  pendingOrderQty: number;
+  /** Нехватка текущего остатка для всех ещё не отгруженных заказов. */
+  shortageQty: number;
+  /** Ручной/начальный остаток; отрицательное значение = расхождение. */
+  ownStockQty: number;
+}
+
 export interface CounterpartyBalance {
   name: string;
   type: "customer" | "supplier";
@@ -187,7 +238,10 @@ export interface Salary {
   employeeId: string | null;
   employeeName: string;
   amount: number;
+  /** Плановая/фактическая дата выплаты. */
   date: string;
+  /** Расчётный месяц зарплаты (YYYY-MM), может отличаться от даты выплаты. */
+  periodMonth?: string | null;
   /** cash = касса (наличные), bank = расчётный счёт (безнал) */
   source: SalarySource;
   isPaid: boolean;
@@ -200,6 +254,9 @@ export interface Salary {
 export const SALARY_RENT_TAG = "[Аренда]";
 export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
 export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
+/** Расчётный месяц хранится служебной пометкой — миграция БД не нужна. */
+export const SALARY_PERIOD_TAG_PREFIX = "Период:";
+const SALARY_PERIOD_TAG_RE = /\[Период:(\d{4}-\d{2})\]/g;
 
 function salaryHasTag(comment: string | null | undefined, tag: string): boolean {
   return (comment || "").includes(tag);
@@ -220,12 +277,26 @@ export function isDebtSalaryComment(comment: string | null | undefined): boolean
   return salaryHasTag(comment, SALARY_DEBT_PAYMENT_TAG);
 }
 
+/**
+ * Расчётный месяц зарплаты. Для старых записей без пометки совпадает с
+ * месяцем даты — их учёт остаётся ровно таким, каким был раньше.
+ */
+export function getSalaryPeriodMonth(
+  comment: string | null | undefined,
+  fallbackDate?: string | null
+): string {
+  const match = String(comment || "").match(/\[Период:(\d{4}-\d{2})\]/);
+  if (match?.[1]) return match[1];
+  return String(fallbackDate || "").slice(0, 7);
+}
+
 /** Убирает служебные теги из комментария для отображения в UI. */
 export function stripSalaryMetaTags(comment: string | null | undefined): string {
   return String(comment || "")
     .replaceAll(SALARY_RENT_TAG, "")
     .replaceAll(SALARY_EXCLUDE_BALANCE_TAG, "")
     .replaceAll(SALARY_DEBT_PAYMENT_TAG, "")
+    .replace(SALARY_PERIOD_TAG_RE, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -236,11 +307,16 @@ export function composeSalaryComment(options: {
   rent?: boolean;
   excludeFromBalance?: boolean;
   debtPayment?: boolean;
+  /** Расчётный месяц YYYY-MM: например, выплата в июле за июнь. */
+  periodMonth?: string | null;
 }): string | null {
   const tags: string[] = [];
   if (options.rent) tags.push(SALARY_RENT_TAG);
   if (options.excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
   if (options.debtPayment) tags.push(SALARY_DEBT_PAYMENT_TAG);
+  if (/^\d{4}-\d{2}$/.test(options.periodMonth || "")) {
+    tags.push(`[${SALARY_PERIOD_TAG_PREFIX}${options.periodMonth}]`);
+  }
   const clean = stripSalaryMetaTags(options.comment);
   const joined = [...tags, clean].filter(Boolean).join(" ").trim();
   return joined || null;

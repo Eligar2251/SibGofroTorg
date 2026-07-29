@@ -23,6 +23,9 @@ import type {
   BankPaymentType,
   BankPayment,
   WarehouseStockRow,
+  ProductStockReceiptHistory,
+  ProductStockDealHistory,
+  ProductStockSummary,
   CounterpartyBalance,
   Employee,
   Salary,
@@ -49,6 +52,8 @@ import {
   isDealFullyShipped,
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
+  getSalaryPeriodMonth,
+  stripSalaryMetaTags,
 } from "./warehouse-shared";
 
 export {
@@ -68,6 +73,9 @@ export {
   type BankPaymentType,
   type BankPayment,
   type WarehouseStockRow,
+  type ProductStockReceiptHistory,
+  type ProductStockDealHistory,
+  type ProductStockSummary,
   type CounterpartyBalance,
   type Employee,
   type Salary,
@@ -309,6 +317,7 @@ function mapSalaryRow(row: any): Salary {
     employeeName: row.employee_name,
     amount: Number(row.amount || 0),
     date: row.date,
+    periodMonth: getSalaryPeriodMonth(row.comment, row.date),
     source: row.source,
     isPaid: row.is_paid ?? false,
     paidAt: row.paid_at ?? null,
@@ -2272,7 +2281,7 @@ function listCashExpenses(
       date: (s.paidAt || s.date || "").slice(0, 10),
       title: `Зарплата — ${s.employeeName || "сотрудник"}`,
       amount: s.amount,
-      comment: s.comment ?? null,
+      comment: stripSalaryMetaTags(s.comment) || null,
     });
   }
 
@@ -3103,6 +3112,200 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     dimensionHeight: row.dimension_height != null ? Number(row.dimension_height) : null,
     dimensionUnit: row.dimension_unit ?? null,
   }));
+}
+
+/**
+ * Читает все документы с товаром постранично. PostgREST обычно ограничивает
+ * ответ 1000 строками, а в этой истории нужны в том числе старые архивные
+ * документы без обрезания.
+ */
+async function fetchProductReceiptRows(productId: string): Promise<any[]> {
+  const db = getAdminDb();
+  const rows: any[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db
+      .from("warehouse_receipts")
+      .select("id, number, date, supplier, status, items")
+      // Для JSONB-массива PostgREST нужен сериализованный JSON. Если передать
+      // массив объектов напрямую, supabase-js превратит его в [object Object].
+      .contains("items", JSON.stringify([{ productId }]))
+      .order("date", { ascending: false })
+      .order("number", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function fetchProductDealRows(productId: string): Promise<any[]> {
+  const db = getAdminDb();
+  const rows: any[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db
+      .from("customer_deals")
+      .select("id, number, date, customer_name, status, items, shipped_items")
+      .contains("items", JSON.stringify([{ productId }]))
+      .order("date", { ascending: false })
+      .order("number", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+function productItemQuantity(items: unknown, productId: string): number {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum: number, item: any) => {
+    if (String(item?.productId || "") !== productId) return sum;
+    return sum + Math.max(0, Number(item?.quantity) || 0);
+  }, 0);
+}
+
+function productShippedQuantity(items: unknown, productId: string): number {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum: number, item: any) => {
+    if (String(item?.productId || "") !== productId) return sum;
+    return sum + Math.max(0, Number(item?.shippedQty) || 0);
+  }, 0);
+}
+
+/**
+ * Расширенная сводка товара: все поступления и все заказы, включая архив.
+ * Загружается по кнопке конкретной строки склада, поэтому открытие вкладки
+ * «Склад» не тянет целиком многолетнюю историю документов.
+ */
+async function fetchProductStockSummary(productId: string): Promise<ProductStockSummary> {
+  const db = getAdminDb();
+  const [{ data: product, error: productError }, receiptRows, dealRows] =
+    await Promise.all([
+      db
+        .from("products")
+        .select("id, name, sku, stock_qty")
+        .eq("id", productId)
+        .maybeSingle(),
+      fetchProductReceiptRows(productId),
+      fetchProductDealRows(productId),
+    ]);
+
+  if (productError) throw productError;
+  if (!product) throw new Error("Товар не найден");
+
+  const receipts: ProductStockReceiptHistory[] = receiptRows.map((row: any) => {
+    const matchingItems = (Array.isArray(row.items) ? row.items : []).filter(
+      (item: any) => String(item?.productId || "") === productId
+    );
+    const quantity = productItemQuantity(matchingItems, productId);
+    const lineTotal = round2(
+      matchingItems.reduce((sum: number, item: any) => {
+        const itemQty = Math.max(0, Number(item?.quantity) || 0);
+        const rawTotal = item?.lineTotal;
+        const total = Number(rawTotal);
+        const hasLineTotal =
+          rawTotal !== null &&
+          rawTotal !== undefined &&
+          rawTotal !== "" &&
+          Number.isFinite(total);
+        return sum +
+          (hasLineTotal
+            ? Math.max(0, total)
+            : itemQty * Math.max(0, Number(item?.price) || 0));
+      }, 0)
+    );
+    return {
+      id: String(row.id),
+      number: Number(row.number) || 0,
+      date: String(row.date || ""),
+      supplier: String(row.supplier || ""),
+      status: row.status === "posted" ? "posted" : "draft",
+      quantity,
+      unitPrice: quantity > 0 ? round2(lineTotal / quantity) : 0,
+      lineTotal,
+    };
+  });
+
+  const deals: ProductStockDealHistory[] = dealRows.map((row: any) => {
+    const status: DealStatus =
+      row.status === "completed" || row.status === "cancelled"
+        ? row.status
+        : "new";
+    const orderedQty = productItemQuantity(row.items, productId);
+    const recordedShipped = productShippedQuantity(row.shipped_items, productId);
+    // Старые проведённые заказы не имели shipped_items, но при проведении
+    // весь состав уже списывался. Поэтому completed = отгружено полностью.
+    const shippedQty =
+      status === "cancelled"
+        ? 0
+        : status === "completed"
+          ? orderedQty
+          : Math.min(orderedQty, recordedShipped);
+    return {
+      id: String(row.id),
+      number: Number(row.number) || 0,
+      date: String(row.date || ""),
+      customerName: String(row.customer_name || ""),
+      status,
+      orderedQty,
+      shippedQty,
+      remainingQty:
+        status === "cancelled" ? 0 : Math.max(0, orderedQty - shippedQty),
+    };
+  });
+
+  const postedReceiptQty = receipts
+    .filter((receipt) => receipt.status === "posted")
+    .reduce((sum, receipt) => sum + receipt.quantity, 0);
+  const draftReceiptQty = receipts
+    .filter((receipt) => receipt.status !== "posted")
+    .reduce((sum, receipt) => sum + receipt.quantity, 0);
+  const activeDeals = deals.filter((deal) => deal.status !== "cancelled");
+  const orderedQty = activeDeals.reduce((sum, deal) => sum + deal.orderedQty, 0);
+  const shippedQty = activeDeals.reduce((sum, deal) => sum + deal.shippedQty, 0);
+  const pendingOrderQty = activeDeals.reduce(
+    (sum, deal) => sum + deal.remainingQty,
+    0
+  );
+  const currentStockQty = Number(product.stock_qty || 0);
+
+  return {
+    productId,
+    productName: String(product.name || ""),
+    sku: product.sku ? String(product.sku) : null,
+    currentStockQty,
+    receipts,
+    deals,
+    postedReceiptQty,
+    draftReceiptQty,
+    orderedQty,
+    shippedQty,
+    pendingOrderQty,
+    shortageQty: Math.max(0, pendingOrderQty - currentStockQty),
+    // Балансовая формула: остаток = наши остатки + поступления − отгрузки.
+    // Положительный хвост — товар занесли руками/он был до начала учёта.
+    ownStockQty: currentStockQty + shippedQty - postedReceiptQty,
+  };
+}
+
+export async function getProductStockSummary(
+  rawProductId: string
+): Promise<ProductStockSummary> {
+  const productId = String(rawProductId || "").trim();
+  if (!productId) throw new Error("Не указан товар");
+  return unstable_cache(
+    () => fetchProductStockSummary(productId),
+    ["warehouse-product-stock-summary", productId],
+    {
+      revalidate: 60,
+      tags: ["products", "warehouse-receipts", "warehouse-deals"],
+    }
+  )();
 }
 
 export async function getReceiptById(id: string): Promise<WarehouseReceipt | null> {

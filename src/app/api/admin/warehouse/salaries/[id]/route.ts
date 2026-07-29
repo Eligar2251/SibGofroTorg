@@ -18,6 +18,7 @@ export async function PATCH(
       date: body.date,
       source: body.source === "cash" || body.source === "bank" ? body.source : undefined,
       isPaid: body.isPaid,
+      paidAt: body.paidAt,
       comment: body.comment,
     });
     return NextResponse.json({ success: true });

@@ -110,7 +110,13 @@ export default async function AdminWarehousePage({
   const needStock = ["stock", "deals", "supplies", "receipts"].includes(initialTab) || !!sp.product;
   const needReceipts = ["supplies", "receipts", "bank", "counterparties"].includes(initialTab) || !!sp.receipt;
   const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries"].includes(initialTab) || !!sp.deal;
-  const needPayments = ["bank", "deals", "supplies"].includes(initialTab) || !!sp.payment;
+  // Платежи нужны и на актуальной вкладке `receipts`: по ним карточки
+  // активных и архивных поступлений получают пометки «Оплачен/Оплачено».
+  // Старый ключ `supplies` оставляем для совместимости со ссылками.
+  const needPayments =
+    ["bank", "deals", "supplies", "receipts"].includes(initialTab) ||
+    !!sp.payment ||
+    !!sp.receipt;
   const needEmployees = initialTab === "salaries" || initialTab === "deliveries";
   const needSalaries = initialTab === "salaries" || initialTab === "bank";
   const needCounterparties = ["counterparties", "supplies", "deals", "receipts", "bank"].includes(initialTab);

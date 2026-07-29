@@ -11,7 +11,11 @@
 //  · План на месяц хранится в настройках (ключ salary_plan_*),
 //    редактируется кликом по ячейке «За месяц».
 //  · Выплаты добавляются кликом по ячейке дня (создают обычную
-//    запись salary через существующий API).
+//    запись salary через существующий API). Неоплаченная запись — это
+//    план на конкретную дату и сумму.
+//  · Расчётный месяц хранится служебной пометкой [Период:YYYY-MM]:
+//    выплата в июле за июнь относится к июньскому плану, но сохраняет
+//    реальную дату выплаты для банка/кассы.
 //  · Выходные/праздники месяца настраиваются отдельно (ключ
 //    salary_calendar_*) и подсвечиваются жёлтым столбцом.
 //  · Оплата «с аренды на карту» = запись с source=bank и тегом
@@ -63,6 +67,7 @@ import {
   isDebtSalaryComment,
   isRentSalaryComment,
   isSalaryExcludedFromBalance,
+  getSalaryPeriodMonth,
   stripSalaryMetaTags,
 } from "@/lib/warehouse-shared";
 
@@ -90,6 +95,20 @@ function fmtDate(raw: string | null | undefined): string {
 
 function monthKey(raw: string | null | undefined): string {
   return (raw || todayIso()).slice(0, 7);
+}
+
+/** Месяц, за который начислена зарплата; не обязательно месяц выплаты. */
+function salaryPeriodKey(salary: Salary): string {
+  return (
+    salary.periodMonth ||
+    getSalaryPeriodMonth(salary.comment, salary.date) ||
+    monthKey(salary.date)
+  );
+}
+
+/** Для факта берём дату выплаты, для ожидания — плановую дату. */
+function salaryOperationDate(salary: Salary): string {
+  return salary.isPaid ? salary.paidAt || salary.date : salary.date;
 }
 
 function monthLabel(key: string): string {
@@ -204,11 +223,13 @@ function isDebtPaymentSalary(s: Salary): boolean {
 function SalaryFormModal({
   employees,
   initial,
+  defaultPeriodMonth,
   onClose,
   onSaved,
 }: {
   employees: Employee[];
   initial: Salary | null;
+  defaultPeriodMonth: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -221,6 +242,11 @@ function SalaryFormModal({
     initial ? String(initial.amount) : ""
   );
   const [date, setDate] = useState(initial?.date || todayIso());
+  const [periodMonth, setPeriodMonth] = useState(
+    initial
+      ? salaryPeriodKey(initial)
+      : defaultPeriodMonth || shiftMonth(monthKey(todayIso()), -1)
+  );
   const [source, setSource] = useState<SalarySource>(initial?.source || "cash");
   const [comment, setComment] = useState(stripSalaryMetaTags(initial?.comment));
   const [excludeFromBalance, setExcludeFromBalance] = useState(
@@ -278,11 +304,13 @@ function SalaryFormModal({
             amount: amountNum,
             date,
             source,
+            periodMonth,
             comment: composeSalaryComment({
               comment,
               rent: initialRent,
               excludeFromBalance,
               debtPayment,
+              periodMonth,
             }),
           }),
         }
@@ -310,7 +338,7 @@ function SalaryFormModal({
         >
           <div className="admin-modal__head">
             <h3 className="admin-modal__title">
-              {initial ? "Изменить зарплату" : "Начислить зарплату"}
+              {initial ? "Изменить зарплату" : "Запланировать зарплату"}
             </h3>
             <button
               type="button"
@@ -351,7 +379,7 @@ function SalaryFormModal({
                 />
               </div>
               <div className="admin-field">
-                <label className="admin-label">Дата</label>
+                <label className="admin-label">Дата выплаты / план *</label>
                 <input
                   type="date"
                   className="admin-input"
@@ -363,7 +391,30 @@ function SalaryFormModal({
             </div>
 
             <div className="admin-field" style={{ marginTop: 12 }}>
-              <label className="admin-label">Списать со счёта *</label>
+              <label className="admin-label">Зарплата за месяц *</label>
+              <input
+                type="month"
+                className="admin-input"
+                value={periodMonth}
+                onChange={(e) => setPeriodMonth(e.target.value)}
+                required
+              />
+              <span className="admin-hint">
+                Например: выплата 15 июля за июнь попадёт в расчёты июня с пометкой «выплата в июле».
+              </span>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                style={{ marginTop: 6, justifySelf: "flex-start" }}
+                onClick={() => setPeriodMonth(shiftMonth(monthKey(date), -1))}
+              >
+                <ChevronLeft size={13} /> За предыдущий месяц —{" "}
+                {monthLabel(shiftMonth(monthKey(date), -1))}
+              </button>
+            </div>
+
+            <div className="admin-field" style={{ marginTop: 12 }}>
+              <label className="admin-label">Счёт будущей выплаты *</label>
               <div className="wh-direction">
                 <button
                   type="button"
@@ -431,11 +482,11 @@ function SalaryFormModal({
                 disabled={saving}
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}
-                {initial ? "Сохранить" : "Начислить"}
+                {initial ? "Сохранить" : "Запланировать"}
               </button>
             </div>
             <p className="wh-form-hint">
-              Начисление создаётся «к выплате». Когда выдали деньги — нажмите
+              План создаётся «к выплате» на указанную дату. Когда выдали деньги — нажмите
               «Выплатить», и сумма спишется с выбранного счёта (касса/банк).
               Если включён режим «в обход баланса», запись останется в истории,
               но не повлияет на текущие остатки банка/кассы.
@@ -1151,7 +1202,11 @@ export function WarehouseSalaries({
   const [editing, setEditing] = useState<Salary | null>(null);
   const [empOpen, setEmpOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [activeMonth, setActiveMonth] = useState(todayIso().slice(0, 7));
+  // Зарплату обычно выплачиваем в текущем месяце за предыдущий, поэтому при
+  // входе сразу открываем расчётный месяц назад (в июле — июнь).
+  const [activeMonth, setActiveMonth] = useState(
+    shiftMonth(todayIso().slice(0, 7), -1)
+  );
   const [activeEmployee, setActiveEmployee] = useState("all");
 
   // Новые состояния Excel-инструмента
@@ -1172,7 +1227,7 @@ export function WarehouseSalaries({
 
   const monthOptions = useMemo(() => {
     const currentMonth = todayIso().slice(0, 7);
-    const keys = new Set<string>(salaries.map((s) => monthKey(s.date)));
+    const keys = new Set<string>(salaries.map(salaryPeriodKey));
     keys.add(currentMonth);
 
     for (const key of Object.keys(settingsRaw)) {
@@ -1233,7 +1288,7 @@ export function WarehouseSalaries({
   }, [popover]);
 
   const monthSalaries = useMemo(
-    () => salaries.filter((s) => monthKey(s.date) === activeMonth),
+    () => salaries.filter((s) => salaryPeriodKey(s) === activeMonth),
     [salaries, activeMonth]
   );
   const activeEmployeeName = employees.find((e) => e.id === activeEmployee)?.name || activeEmployee;
@@ -1289,8 +1344,10 @@ export function WarehouseSalaries({
           daysInMonth(activeMonth)
         );
         const cells: Record<number, Salary[]> = {};
-        for (const r of paidRows) {
-          const d = dayOfMonth(r.date);
+        // В календаре показываем не только факт, но и запланированные
+        // (неоплаченные) выплаты с конкретной суммой и датой.
+        for (const r of rows) {
+          const d = dayOfMonth(salaryOperationDate(r));
           (cells[d] = cells[d] || []).push(r);
         }
         const rest = totalDue - received;
@@ -1341,13 +1398,21 @@ export function WarehouseSalaries({
   const totalReceived = gridRows.reduce((s, r) => s + r.received, 0);
   const totalRest = totalPlan + totalManualDebt - totalReceived;
   const restCount = gridRows.filter((r) => r.rest > 0).length;
-  const dayCount = daysInMonth(activeMonth);
+  const periodDayCount = daysInMonth(activeMonth);
+  // Если зарплату за короткий месяц запланировали/выплатили, например,
+  // 31-го числа следующего месяца, не теряем её из таблицы.
+  const paymentMaxDay = monthSalaries.reduce(
+    (max, salary) => Math.max(max, dayOfMonth(salaryOperationDate(salary))),
+    0
+  );
+  const dayCount = Math.max(periodDayCount, paymentMaxDay);
   const dayTotals = useMemo(() => {
     const totals: Record<number, number> = {};
     for (const row of gridRows) {
       for (const [d, items] of Object.entries(row.cells)) {
         totals[Number(d)] =
-          (totals[Number(d)] || 0) + items.reduce((s, x) => s + x.amount, 0);
+          (totals[Number(d)] || 0) +
+          items.filter((item) => item.isPaid).reduce((s, x) => s + x.amount, 0);
       }
     }
     return totals;
@@ -1384,17 +1449,25 @@ export function WarehouseSalaries({
 
   async function togglePaid(s: Salary) {
     setBusyId(s.id);
+    const nextPaid = !s.isPaid;
+    const nextPaidAt = nextPaid ? todayIso() : null;
     try {
       const res = await fetch(`/api/admin/warehouse/salaries/${s.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPaid: !s.isPaid }),
+        body: JSON.stringify({ isPaid: nextPaid, paidAt: nextPaidAt }),
       });
       if (res.ok) {
         setSalaries((prev) =>
-          prev.map((x) => (x.id === s.id ? { ...x, isPaid: !s.isPaid } : x))
+          prev.map((x) =>
+            x.id === s.id
+              ? { ...x, isPaid: nextPaid, paidAt: nextPaidAt }
+              : x
+          )
         );
-        flashCell(`${s.employeeId || s.employeeName}:${dayOfMonth(s.date)}`);
+        flashCell(
+          `${s.employeeId || s.employeeName}:${dayOfMonth(nextPaidAt || s.date)}`
+        );
         reload();
       } else {
         const d = await res.json().catch(() => ({}));
@@ -1404,6 +1477,43 @@ export function WarehouseSalaries({
       alert("Ошибка сети");
     }
     setBusyId(null);
+  }
+
+  async function moveSalaryToPreviousMonth(s: Salary) {
+    const previousMonth = shiftMonth(monthKey(s.date), -1);
+    const nextComment = composeSalaryComment({
+      comment: stripSalaryMetaTags(s.comment),
+      rent: isRentSalary(s),
+      excludeFromBalance: isSalaryExcludedFromBalance(s.comment),
+      debtPayment: isDebtPaymentSalary(s),
+      periodMonth: previousMonth,
+    });
+    setBusyId(s.id);
+    try {
+      const res = await fetch(`/api/admin/warehouse/salaries/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: nextComment }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || "Не удалось перенести зарплату");
+        return;
+      }
+      setSalaries((prev) =>
+        prev.map((item) =>
+          item.id === s.id
+            ? { ...item, comment: nextComment, periodMonth: previousMonth }
+            : item
+        )
+      );
+      setActiveMonth(previousMonth);
+      reload();
+    } catch {
+      alert("Ошибка сети");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function handleDelete(s: Salary) {
@@ -1447,6 +1557,7 @@ export function WarehouseSalaries({
         rent: data.source === "rent",
         excludeFromBalance: data.excludeFromBalance,
         debtPayment: data.debtPayment,
+        periodMonth: activeMonth,
       });
       const res = await fetch("/api/admin/warehouse/salaries", {
         method: "POST",
@@ -1473,6 +1584,7 @@ export function WarehouseSalaries({
         employeeName: employee.name,
         amount: data.amount,
         date,
+        periodMonth: activeMonth,
         source: data.source === "rent" ? "bank" : data.source,
         isPaid: data.paid,
         paidAt: data.paid ? date : null,
@@ -1531,7 +1643,7 @@ export function WarehouseSalaries({
   function restForMonth(employee: Employee, mkey: string): number {
     const rows = salaries.filter(
       (s) =>
-        monthKey(s.date) === mkey &&
+        salaryPeriodKey(s) === mkey &&
         (s.employeeId === employee.id ||
           (!s.employeeId && s.employeeName === employee.name))
     );
@@ -1700,7 +1812,10 @@ export function WarehouseSalaries({
     head += `${th("Остаток<br/>к выплате")}</tr>`;
     head += `<tr>${th("")}${th("")}${th("")}${th("")}`;
     for (let d = 1; d <= dayCount; d++)
-      head += th(weekdayShort(activeMonth, d), `font-size:9px;color:#8C8070;${weekendSet.has(d) ? "background:#FFF3C4;" : ""}`);
+      head += th(
+        d <= periodDayCount ? weekdayShort(activeMonth, d) : "выпл.",
+        `font-size:9px;color:#8C8070;${weekendSet.has(d) ? "background:#FFF3C4;" : ""}`
+      );
     head += `${th("")}</tr>`;
 
     const num = (v: number, extra = "") =>
@@ -1720,15 +1835,17 @@ export function WarehouseSalaries({
       for (let d = 1; d <= dayCount; d++) {
         const items = row.cells[d] || [];
         const sum = items.reduce((s, x) => s + x.amount, 0);
-        const rent = items.some(isRentSalary);
+        const hasPending = items.some((item) => !item.isPaid);
+        const rent = items.some((item) => item.isPaid && isRentSalary(item));
         const scheduled = row.scheduledSet.has(d);
         let style = "border:1px solid #D5D2C9;padding:4px 3px;font-size:10px;text-align:center;";
-        if (rent) style += "background:#DCE6F5;color:#1E3A5A;font-weight:bold;";
+        if (hasPending) style += "background:#FFF5D9;color:#9A6500;font-weight:bold;";
+        else if (rent) style += "background:#DCE6F5;color:#1E3A5A;font-weight:bold;";
         else if (items.length) style += "background:#FBE3DC;color:#B83A1E;font-weight:bold;";
         else if (scheduled) style += "background:#E8EEF6;color:#1E3A5A;font-weight:bold;";
         else if (weekendSet.has(d)) style += "background:#FFF3C4;";
         else style += "background:#FFFFFF;";
-        body += `<td style="${style}">${sum ? fmt(sum) : scheduled ? "П" : ""}</td>`;
+        body += `<td style="${style}">${sum ? `${fmt(sum)}${hasPending ? " (план)" : ""}` : scheduled ? "П" : ""}</td>`;
       }
       const restColor = row.rest === 0 ? "#1E4A2D" : row.rest < 0 ? "#B83A1E" : "#C8860A";
       body += `<td align="right" style="border:1px solid #D5D2C9;padding:4px 6px;font-size:11px;font-weight:bold;color:${restColor};background:#F7F5F0;">${row.rest}</td>`;
@@ -1923,7 +2040,7 @@ export function WarehouseSalaries({
             <UsersRound size={15} /> Сотрудники
           </button>
           <button className="admin-btn admin-btn--primary" onClick={openCreate}>
-            <Plus size={15} /> Начислить зарплату
+            <Plus size={15} /> Запланировать зарплату
           </button>
         </div>
       </div>
@@ -2014,10 +2131,10 @@ export function WarehouseSalaries({
       <div className="admin-card" style={{ marginBottom: 14 }}>
         <div className="admin-card__head">
           <h3 className="admin-card__title">
-            Таблица взаиморасчётов — {monthLabel(activeMonth)}
+            Таблица взаиморасчётов — зарплата за {monthLabel(activeMonth)}
           </h3>
           <span className="whsal-hint">
-            клик по дню — запись выплаты · клик по «за месяц» — план сотрудника
+            дни — даты плана/выплаты · подпись «июл» означает выплату в июле за выбранный месяц
           </span>
         </div>
 
@@ -2054,7 +2171,11 @@ export function WarehouseSalaries({
                       className={`whsal-th whsal-th--day${
                         weekendSet.has(d) ? " whsal-th--weekend" : ""
                       }`}
-                      title={dayFullTitle(activeMonth, d)}
+                      title={
+                        d <= periodDayCount
+                          ? dayFullTitle(activeMonth, d)
+                          : `${d}-е число выплаты в другом месяце`
+                      }
                     >
                       {d}
                     </th>
@@ -2079,7 +2200,9 @@ export function WarehouseSalaries({
                         weekendSet.has(d) ? " whsal-th--weekend" : ""
                       }`}
                     >
-                      {weekdayShort(activeMonth, d).toLowerCase()}
+                      {d <= periodDayCount
+                        ? weekdayShort(activeMonth, d).toLowerCase()
+                        : "выпл."}
                     </th>
                   );
                 })}
@@ -2089,7 +2212,7 @@ export function WarehouseSalaries({
               {gridRows.length === 0 && (
                 <tr>
                   <td colSpan={dayCount + 5} className="whsal-empty">
-                    За {monthLabel(activeMonth)} записей нет. Нажмите «Начислить
+                    За {monthLabel(activeMonth)} записей нет. Нажмите «Запланировать
                     зарплату» или выберите другой месяц.
                   </td>
                 </tr>
@@ -2152,31 +2275,45 @@ export function WarehouseSalaries({
                   {Array.from({ length: dayCount }).map((_, i) => {
                     const d = i + 1;
                     const items = row.cells[d] || [];
-                    const sum = items.reduce((s, x) => s + x.amount, 0);
-                    const rent = items.some(isRentSalary);
+                    const paidItems = items.filter((item) => item.isPaid);
+                    const pendingItems = items.filter((item) => !item.isPaid);
+                    const rent = paidItems.some(isRentSalary);
+                    const hasPlannedPayment = pendingItems.length > 0;
                     const scheduled = row.scheduledSet.has(d);
                     const cls = [
                       "whsal-td",
                       "whsal-day",
                       weekendSet.has(d) ? "whsal-day--weekend" : "",
                       items.length
-                        ? rent
-                          ? "whsal-day--rent"
-                          : "whsal-day--paid"
+                        ? hasPlannedPayment
+                          ? "whsal-day--planned"
+                          : rent
+                            ? "whsal-day--rent"
+                            : "whsal-day--paid"
                         : scheduled
-                        ? "whsal-day--scheduled"
-                        : "",
+                          ? "whsal-day--scheduled"
+                          : "",
                       flashKey === `${row.employee.id}:${d}` ? "whsal-day--flash" : "",
                     ]
                       .filter(Boolean)
                       .join(" ");
+                    const calendarTitle =
+                      d <= periodDayCount
+                        ? dayFullTitle(activeMonth, d)
+                        : `${d}-е число выплаты (другой месяц)`;
+                    const itemDates = items
+                      .map(
+                        (item) =>
+                          `${fmtDate(salaryOperationDate(item))} — ${item.isPaid ? "выплачено" : "запланировано"} ${fmt(item.amount)} ₽`
+                      )
+                      .join("\n");
                     const title =
-                      `${row.employee.name} — ${dayFullTitle(activeMonth, d)}` +
+                      `${row.employee.name} — ${calendarTitle}` +
                       (items.length
-                        ? `\nВыплачено: ${fmt(sum)} ₽ (${items.length} шт.)`
+                        ? `\n${itemDates}`
                         : scheduled
-                        ? "\nЗапланирована выплата с аренды"
-                        : "\nКлик — добавить выплату");
+                          ? "\nЗапланирована выплата с аренды"
+                          : "\nКлик — добавить выплату");
                     const plannedAmount = row.scheduledPlanByDay?.[d] || 0;
                     const visibleItems = items.slice(0, 2);
                     const extraCount = items.length - visibleItems.length;
@@ -2192,16 +2329,30 @@ export function WarehouseSalaries({
                             <span
                               key={entry.id}
                               className={`whsal-day-line${
-                                isRentSalary(entry)
-                                  ? " whsal-day-line--rent"
-                                  : isDebtPaymentSalary(entry)
-                                  ? " whsal-day-line--debt"
-                                  : ""
+                                !entry.isPaid
+                                  ? " whsal-day-line--planned"
+                                  : isRentSalary(entry)
+                                    ? " whsal-day-line--rent"
+                                    : isDebtPaymentSalary(entry)
+                                      ? " whsal-day-line--debt"
+                                      : ""
                               }`}
+                              title={`${entry.isPaid ? "Выплачено" : "Запланировано"} ${fmtDate(salaryOperationDate(entry))} за ${monthLabel(salaryPeriodKey(entry))}`}
                             >
                               {Math.round(entry.amount) === entry.amount
                                 ? String(entry.amount)
                                 : String(entry.amount).replace(".", ",")}
+                              {(monthKey(salaryOperationDate(entry)) !== activeMonth ||
+                                !entry.isPaid) && (
+                                <small>
+                                  {monthKey(salaryOperationDate(entry)) !== activeMonth
+                                    ? monthLabel(monthKey(salaryOperationDate(entry)))
+                                        .split(" ")[0]
+                                        .slice(0, 3)
+                                        .toLowerCase()
+                                    : "план"}
+                                </small>
+                              )}
                             </span>
                           ))}
                           {!items.length && plannedAmount > 0 && (
@@ -2212,8 +2363,13 @@ export function WarehouseSalaries({
                             </span>
                           )}
                         </span>
-                        {rent && <span className="whsal-day-mark">А</span>}
-                        {!items.length && scheduled && <span className="whsal-day-mark">П</span>}
+                        {hasPlannedPayment ? (
+                          <span className="whsal-day-mark">П</span>
+                        ) : rent ? (
+                          <span className="whsal-day-mark">А</span>
+                        ) : !items.length && scheduled ? (
+                          <span className="whsal-day-mark">П</span>
+                        ) : null}
                         {extraCount > 0 && (
                           <span className="whsal-day-count">+{extraCount}</span>
                         )}
@@ -2321,6 +2477,10 @@ export function WarehouseSalaries({
             Выплата получена
           </span>
           <span className="whsal-legend__item">
+            <span className="whsal-legend__swatch whsal-legend__swatch--planned" />
+            Запланировано на дату (деньги ещё не списаны)
+          </span>
+          <span className="whsal-legend__item">
             <span className="whsal-legend__swatch whsal-legend__swatch--weekend" />
             Выходной / праздник
           </span>
@@ -2382,8 +2542,8 @@ export function WarehouseSalaries({
             </div>
             <p>Здесь пока пусто</p>
             <p className="admin-empty__hint">
-              Начислите зарплату сотруднику — она появится в списке. Выплата
-              спишется с кассы или банка.
+              Запланируйте зарплату сотруднику на дату и укажите расчётный месяц.
+              При выплате сумма спишется с кассы или банка.
             </p>
           </div>
         </div>
@@ -2409,10 +2569,16 @@ export function WarehouseSalaries({
                   <span className={`admin-badge ${sourceBadgeClass(s)}`}>
                     {sourceLabel(s)}
                   </span>
+                  <span
+                    className="admin-badge admin-badge--blue"
+                    title={`Расчётный месяц: ${monthLabel(salaryPeriodKey(s))}`}
+                  >
+                    за {monthLabel(salaryPeriodKey(s)).toLowerCase()}
+                  </span>
                   {isDebtPaymentSalary(s) && (
                     <span className="admin-badge admin-badge--amber">долг</span>
                   )}
-                  {!s.isPaid && <span className="bank-pay__wait">к выплате</span>}
+                  {!s.isPaid && <span className="bank-pay__wait">запланировано</span>}
                   {s.isPaid && (
                     <span className="admin-badge admin-badge--green">
                       <CheckCircle size={10} /> выплачено
@@ -2425,7 +2591,16 @@ export function WarehouseSalaries({
                   )}
                 </div>
                 <div className="bank-pay__row2">
-                  <span className="bank-pay__date">{fmtDate(s.date)}</span>
+                  <span className="bank-pay__date">
+                    {s.isPaid
+                      ? `Выплачено ${fmtDate(s.paidAt || s.date)}`
+                      : `План на ${fmtDate(s.date)}`}
+                  </span>
+                  {s.isPaid && s.paidAt && s.paidAt !== s.date && (
+                    <span className="bank-pay__comment">
+                      плановая дата {fmtDate(s.date)}
+                    </span>
+                  )}
                   {stripSalaryMetaTags(s.comment) && (
                     <span className="bank-pay__comment">{stripSalaryMetaTags(s.comment)}</span>
                   )}
@@ -2465,6 +2640,17 @@ export function WarehouseSalaries({
                         <Undo2 size={14} />
                       )}
                       Вернуть
+                    </button>
+                  )}
+                  {salaryPeriodKey(s) === monthKey(s.date) && (
+                    <button
+                      type="button"
+                      className="admin-status__btn admin-status__btn--outline"
+                      disabled={busyId === s.id}
+                      onClick={() => moveSalaryToPreviousMonth(s)}
+                      title={`Отнести эту выплату к зарплате за ${monthLabel(shiftMonth(monthKey(s.date), -1))}`}
+                    >
+                      <ChevronLeft size={14} /> За предыдущий месяц
                     </button>
                   )}
                   <button
@@ -2538,8 +2724,16 @@ export function WarehouseSalaries({
                     <div key={s.id} className="whsal-pop__item">
                       <div className="whsal-pop__item-top">
                         <span className="whsal-pop__amount">{fmt(s.amount)} ₽</span>
+                        <span className="admin-badge admin-badge--blue">
+                          за {monthLabel(salaryPeriodKey(s)).toLowerCase()}
+                        </span>
                         <span className={`admin-badge ${sourceBadgeClass(s)}`}>
                           {sourceLabel(s)}
+                        </span>
+                        <span className="whsal-pop__date">
+                          {s.isPaid
+                            ? `выплачено ${fmtDate(s.paidAt || s.date)}`
+                            : `план ${fmtDate(s.date)}`}
                         </span>
                         {isDebtPaymentSalary(s) && (
                           <span className="admin-badge admin-badge--amber">долг</span>
@@ -2724,17 +2918,26 @@ export function WarehouseSalaries({
                   {popRow.rows.length === 0 ? (
                     <div className="whsal-pop__comment">
                       Записей нет — добавьте выплату кликом по ячейке дня или
-                      кнопкой «Начислить зарплату».
+                      кнопкой «Запланировать зарплату».
                     </div>
                   ) : (
                     <div className="whsal-pop__list">
                       {[...popRow.rows]
-                        .sort((a, b) => a.date.localeCompare(b.date))
+                        .sort((a, b) =>
+                          salaryOperationDate(a).localeCompare(salaryOperationDate(b))
+                        )
                         .map((s) => (
                           <div key={s.id} className="whsal-pop__item">
                             <div className="whsal-pop__item-top">
                               <span className="whsal-pop__amount">{fmt(s.amount)} ₽</span>
-                              <span className="whsal-pop__date">{fmtDate(s.date)}</span>
+                              <span className="admin-badge admin-badge--blue">
+                                за {monthLabel(salaryPeriodKey(s)).toLowerCase()}
+                              </span>
+                              <span className="whsal-pop__date">
+                                {s.isPaid
+                                  ? `выплачено ${fmtDate(s.paidAt || s.date)}`
+                                  : `план ${fmtDate(s.date)}`}
+                              </span>
                               {isDebtPaymentSalary(s) && (
                                 <span className="admin-badge admin-badge--amber">долг</span>
                               )}
@@ -2907,6 +3110,7 @@ export function WarehouseSalaries({
         <SalaryFormModal
           employees={employees}
           initial={editing}
+          defaultPeriodMonth={activeMonth}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
