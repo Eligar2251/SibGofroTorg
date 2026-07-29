@@ -942,7 +942,48 @@ select {
   color: rgba(255, 255, 255, 0.55);
   line-height: 1.65;
   max-width: 400px;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
+}
+
+.hero__reserve-note {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  max-width: 500px;
+  margin-bottom: 24px;
+  padding: 11px 14px;
+  color: #fff;
+  background: linear-gradient(100deg, rgba(93, 203, 97, 0.18), rgba(93, 203, 97, 0.07));
+  border: 1px solid rgba(93, 203, 97, 0.42);
+  border-radius: 10px;
+  box-shadow: inset 3px 0 0 var(--green-lime);
+}
+
+.hero__reserve-note > svg {
+  flex: 0 0 auto;
+  color: var(--green-lime);
+}
+
+.hero__reserve-note > div {
+  min-width: 0;
+}
+
+.hero__reserve-note strong,
+.hero__reserve-note span {
+  display: block;
+}
+
+.hero__reserve-note strong {
+  color: var(--green-lime);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.hero__reserve-note span {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .hero__perks {

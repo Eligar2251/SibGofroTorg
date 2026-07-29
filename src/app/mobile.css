@@ -322,7 +322,29 @@ body {
     font-size: 13px;
     line-height: 1.55;
     max-width: none;
+    margin-bottom: 12px;
+  }
+
+  .hero__reserve-note {
+    align-items: flex-start;
+    gap: 8px;
+    max-width: none;
     margin-bottom: 16px;
+    padding: 9px 11px;
+  }
+
+  .hero__reserve-note > svg {
+    width: 17px;
+    height: 17px;
+    margin-top: 1px;
+  }
+
+  .hero__reserve-note strong {
+    font-size: 12px;
+  }
+
+  .hero__reserve-note span {
+    font-size: 11px;
   }
 
   .hero__perks {

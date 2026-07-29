@@ -28,6 +28,7 @@ import {
   Truck,
   Zap,
   Package,
+  PackageCheck,
   Recycle,
   ChevronRight,
 } from "lucide-react";
@@ -202,6 +203,16 @@ export default async function HomePage() {
               <br />
               Минимальный заказ — 1 шт. Оптовые цены от 50 шт.
             </p>
+
+            <div className="hero__reserve-note">
+              <PackageCheck size={20} />
+              <div>
+                <strong>Забронируйте товар без предоплаты</strong>
+                <span>
+                  Оформите заказ на сайте, приезжайте на склад и оплатите при получении.
+                </span>
+              </div>
+            </div>
 
             <div className="hero__perks">
               <div className="hero__perk">
