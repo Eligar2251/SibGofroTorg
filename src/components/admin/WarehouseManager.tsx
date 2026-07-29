@@ -28,6 +28,7 @@ import {
   Gift,
   Trash2,
   ChevronRight,
+  BarChart3,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -68,6 +69,7 @@ import {
   type CounterpartyOption,
 } from "@/components/admin/WarehouseCounterparties";
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
+import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
 
@@ -105,6 +107,20 @@ function monthLabel(key: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function localDateIso(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function calendarMonthRange(offset = 0): { from: string; to: string } {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  return { from: localDateIso(first), to: localDateIso(last) };
+}
+
 const dealStatusBadge: Record<string, string> = {
   new: "admin-badge admin-badge--amber",
   completed: "admin-badge admin-badge--green",
@@ -125,7 +141,7 @@ const paymentTypeLabels: Record<string, string> = {
   deposit: "Внесение",
 };
 
-type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries";
+type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers";
 type ReceiptSub = "active" | "archive";
@@ -158,6 +174,7 @@ interface WarehouseManagerProps {
   focusReceiptId?: string | null;
   focusProductId?: string | null;
   focusPaymentId?: string | null;
+  focusTransportId?: string | null;
   stock: WarehouseStockRow[];
   receipts: WarehouseReceipt[];
   deals: CustomerDeal[];
@@ -187,6 +204,7 @@ export function WarehouseManager({
   focusReceiptId,
   focusProductId,
   focusPaymentId,
+  focusTransportId,
   stock,
   receipts,
   deals,
@@ -343,12 +361,14 @@ export function WarehouseManager({
   const [bq, setBq] = useState(""); // Bank query
   const [rq, setRq] = useState(""); // Receipts query (поставщик/номер/товар)
   const [bdir, setBdir] = useState("all");
+  const [bankDateFrom, setBankDateFrom] = useState("");
+  const [bankDateTo, setBankDateTo] = useState("");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
   const [historyDaysPage, setHistoryDaysPage] = useState(0);
 
   useEffect(() => {
     setHistoryDaysPage(0);
-  }, [bankSub, bq, bdir, bsort]);
+  }, [bankSub, bq, bdir, bsort, bankDateFrom, bankDateTo]);
 
   useEffect(() => {
     if (!selectedSupplierId) return;
@@ -540,6 +560,9 @@ export function WarehouseManager({
       const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
       if (!matchesTab) return false;
       if (bdir !== "all" && p.direction !== bdir) return false;
+      const operationDate = String(p.date || "").slice(0, 10);
+      if (bankDateFrom && operationDate < bankDateFrom) return false;
+      if (bankDateTo && operationDate > bankDateTo) return false;
       if (query) {
         const hay = p.entryKind === "payment"
           ? [
@@ -577,7 +600,16 @@ export function WarehouseManager({
         : String(b.id).localeCompare(String(a.id));
     });
     return list;
-  }, [payments, salaries, bankSub, bq, bdir, bsort]);
+  }, [
+    payments,
+    salaries,
+    bankSub,
+    bq,
+    bdir,
+    bsort,
+    bankDateFrom,
+    bankDateTo,
+  ]);
 
   const bankFilteredTotals = useMemo(() => {
     let inSum = 0;
@@ -667,6 +699,7 @@ export function WarehouseManager({
     { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
     { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
+    { key: "reports", label: "Отчёты", icon: <BarChart3 size={13} /> },
     {
       key: "counterparties",
       label: "Контрагенты",
@@ -1380,6 +1413,7 @@ export function WarehouseManager({
           drivers={drivers}
           companyPhone={companyPhone}
           companyAddress={companyAddress}
+          focusTransportId={focusTransportId}
         />
       )}
 
@@ -1669,6 +1703,20 @@ export function WarehouseManager({
       {/* ════════════ ВКЛАДКА: ЗАРПЛАТЫ ════════════ */}
       {activeTab === "salaries" && (
         <WarehouseSalaries employees={employees} salaries={salaries} />
+      )}
+
+      {/* ════════════ ВКЛАДКА: ОТЧЁТЫ ════════════ */}
+      {activeTab === "reports" && (
+        <WarehouseReports
+          adminPath={adminPath}
+          payments={payments}
+          salaries={salaries}
+          deals={deals}
+          receipts={receipts}
+          transports={transports}
+          cashCollections={cashCollections}
+          stock={stock}
+        />
       )}
 
       {/* ════════════ ВКЛАДКА: КОНТРАГЕНТЫ ════════════ */}
@@ -2487,6 +2535,26 @@ export function WarehouseManager({
               <option value="incoming">Только приход</option>
               <option value="outgoing">Только расход</option>
             </select>
+            <label className="bank-toolbar__date">
+              <span>Дата от</span>
+              <input
+                type="date"
+                className="admin-input"
+                value={bankDateFrom}
+                max={bankDateTo || undefined}
+                onChange={(e) => setBankDateFrom(e.target.value)}
+              />
+            </label>
+            <label className="bank-toolbar__date">
+              <span>Дата до</span>
+              <input
+                type="date"
+                className="admin-input"
+                value={bankDateTo}
+                min={bankDateFrom || undefined}
+                onChange={(e) => setBankDateTo(e.target.value)}
+              />
+            </label>
             <button
               onClick={() => setBsort(bsort === "asc" ? "desc" : "asc")}
               className="admin-btn admin-btn--ghost"
@@ -2497,17 +2565,62 @@ export function WarehouseManager({
                 <ArrowUpNarrowWide size={14} />
               )}
             </button>
-            {(bq || bdir !== "all") && (
+            {(bq || bdir !== "all" || bankDateFrom || bankDateTo) && (
               <button
                 onClick={() => {
                   setBq("");
                   setBdir("all");
+                  setBankDateFrom("");
+                  setBankDateTo("");
                 }}
                 className="admin-btn admin-btn--ghost"
               >
                 <X size={14} />
               </button>
             )}
+          </div>
+
+          <div className="bank-period-presets">
+            <span>Быстрый период:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const today = localDateIso();
+                setBankDateFrom(today);
+                setBankDateTo(today);
+              }}
+            >
+              Сегодня
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const range = calendarMonthRange();
+                setBankDateFrom(range.from);
+                setBankDateTo(localDateIso());
+              }}
+            >
+              Этот месяц
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const range = calendarMonthRange(-1);
+                setBankDateFrom(range.from);
+                setBankDateTo(range.to);
+              }}
+            >
+              Прошлый месяц
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBankDateFrom("");
+                setBankDateTo("");
+              }}
+            >
+              Весь период
+            </button>
           </div>
 
           <div className="bank-totalbar">

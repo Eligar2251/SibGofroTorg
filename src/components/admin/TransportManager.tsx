@@ -2,7 +2,7 @@
 // Система перевозок: создание, управление, завершение, архив
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Truck, Calendar, User, MapPin, Phone, Package, CheckCircle2,
@@ -79,19 +79,39 @@ export function TransportManager({
   drivers,
   companyPhone,
   companyAddress,
+  focusTransportId,
 }: {
   transports: TransportRow[];
   pendingDeals: TransportDeal[];
   drivers: DriverOption[];
   companyPhone?: string;
   companyAddress?: string;
+  focusTransportId?: string | null;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<FilterTab>("active");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(focusTransportId || null);
   const [showCreate, setShowCreate] = useState(false);
+
+  useEffect(() => {
+    if (!focusTransportId) return;
+    const focused = initialTransports.find((transport) => transport.id === focusTransportId);
+    setTab(
+      focused?.status === "archived"
+        ? "archived"
+        : focused?.status === "completed"
+          ? "completed"
+          : "active"
+    );
+    setExpandedId(focusTransportId);
+    window.setTimeout(() => {
+      document
+        .getElementById(`transport-${focusTransportId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+  }, [focusTransportId, initialTransports]);
   const [printData, setPrintData] = useState<TransportPrintData | null>(null);
 
   const filtered = useMemo(() => {
@@ -220,7 +240,11 @@ export function TransportManager({
               const isActive = t.status === "draft" || t.status === "active";
               const totalQty = t.items.reduce((s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
               return (
-                <div key={t.id} className={`deliv-item${!isActive ? " deliv-item--released" : ""}`}>
+                <div
+                  key={t.id}
+                  id={`transport-${t.id}`}
+                  className={`deliv-item${!isActive ? " deliv-item--released" : ""}${focusTransportId === t.id ? " admin-order--highlighted" : ""}`}
+                >
                   <div style={{ paddingTop: 4 }}>
                     <Truck size={16} style={{ color: isActive ? "var(--adm-steel)" : "var(--adm-sand)" }} />
                   </div>
