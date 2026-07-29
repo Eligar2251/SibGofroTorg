@@ -5,7 +5,12 @@
 
 import { unstable_cache, revalidateTag } from "next/cache";
 import { getAdminDb } from "./supabase";
-import { computeBarcode, computeQrSlug } from "./qr";
+import {
+  computeBarcode,
+  computeQrSlug,
+  generateUniqueBarcode,
+  isValidBarcode,
+} from "./qr";
 import {
   extractQueryDims,
   dimensionScore,
@@ -36,6 +41,39 @@ import {
 
 export const FEATURED_PRODUCTS_ORDER_SETTING_KEY = "featured_products_order";
 
+// ── Переживаем отсутствие колонки products.barcode ──
+// Миграция supabase/migration_product_barcodes.sql применяется вручную
+// и может быть ещё не выполнена в конкретной БД. В таком случае
+// PostgREST отвечает PGRST204 ("Could not find the 'barcode' column
+// of 'products' in the schema cache") на ЛЮБУЮ запись, где присутствует
+// ключ barcode. Сохранение товара ни в коем случае не должно из-за
+// этого падать — поле при ретрае просто опускаем.
+const BARCODE_COLUMN_MISSING_HINT =
+  "[products] Колонки barcode нет в БД — запись сохранена без штрихкода. " +
+  "Выполните миграцию supabase/migration_product_barcodes.sql в Supabase.";
+
+function isMissingBarcodeColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("barcode")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist") ||
+    msg.includes("unknown column")
+  );
+}
+
+/** Дружелюбная ошибка для операций, которым колонка обязательна. */
+function barcodeColumnRequiredError(): Error {
+  return new Error(
+    "В базе данных ещё нет колонки barcode для товаров. " +
+      "Выполните SQL-миграцию supabase/migration_product_barcodes.sql " +
+      "(Supabase Dashboard → SQL Editor) и повторите."
+  );
+}
+
 // ─── Helpers ───────────────────────────────────────────────
 
 function slugify(text: string): string {
@@ -59,7 +97,45 @@ function toIso(raw: any): string | null {
   return null;
 }
 
+// ── Фото товара: единый вид ──
+// В БД исторически могло встретиться два формата:
+//   1) [{ url, publicId }] — текущий (Cloudinary);
+//   2) ["https://…"] — строки (старые импорты/миграции).
+// Если товар с images-строками открыть в карточке и пересохранить,
+// форма брала `images[0]?.url` → undefined и ЗАТИРАЛА главное
+// фото. Везде нормализуем к { url, publicId }.
+export function normalizeProductImages(raw: any): { url: string; publicId: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { url: string; publicId: string }[] = [];
+  for (const item of raw) {
+    if (!item) continue;
+    if (typeof item === "string") {
+      const url = item.trim();
+      if (url) out.push({ url, publicId: "" });
+      continue;
+    }
+    const url = typeof item.url === "string" && item.url.trim()
+      ? item.url.trim()
+      : typeof item.secure_url === "string" && item.secure_url.trim()
+        ? item.secure_url.trim()
+        : "";
+    if (!url) continue;
+    out.push({ url, publicId: typeof item.publicId === "string" ? item.publicId : "" });
+  }
+  return out;
+}
+
+// Главное фото товара: первый непустой url из массива. Нужно,
+// чтобы фото не пропадало у товаров, где оно задано только через
+// image_url (например, импортом из Excel): форма всегда считает
+// главным images[0], и без этого фоллбека стирала чужое фото.
+export function firstImageUrl(images: { url: string }[]): string | null {
+  const found = images.find((i) => i && typeof i.url === "string" && i.url.trim());
+  return found ? found.url.trim() : null;
+}
+
 function mapProductRow(row: any): FirestoreProduct {
+  const images = normalizeProductImages(row.images);
   return {
     id: row.id,
     name: row.name || "",
@@ -83,6 +159,10 @@ function mapProductRow(row: any): FirestoreProduct {
     inStock: row.in_stock ?? true,
     stockQty: row.stock_qty != null ? Number(row.stock_qty) : null,
     stockWarnQty: row.stock_warn_qty != null ? Number(row.stock_warn_qty) : null,
+    // Постоянный штрихкод из БД. Может отсутствовать у товаров,
+    // созданных до миграции — читающий код подставляет
+    // детерминированный computeBarcode(id) как фоллбек.
+    barcode: row.barcode || null,
     isPromo: row.is_promo ?? false,
     promoLabel: row.promo_label || null,
     madeToOrder: row.made_to_order ?? false,
@@ -91,8 +171,11 @@ function mapProductRow(row: any): FirestoreProduct {
     discountBadge: row.discount_badge || null,
     isVisible: row.is_visible ?? true,
     isFeatured: row.is_featured ?? false,
-    imageUrl: row.image_url || null,
-    images: Array.isArray(row.images) ? row.images : [],
+    // Главное фото: явный image_url, иначе первое из массива images —
+    // самолечение для товаров, у которых фото задано лишь в одном из
+    // двух мест (Excel задаёт image_url, форма — images).
+    imageUrl: row.image_url || firstImageUrl(images) || null,
+    images,
     viewCount: Number(row.view_count || 0),
     averageRating: Number(row.average_rating || 0),
     totalReviews: Number(row.total_reviews || 0),
@@ -103,14 +186,19 @@ function mapProductRow(row: any): FirestoreProduct {
 
 // ── QR + штрихкод ──
 //
-// `barcode` и `qrSlug` генерируются детерминированно из `id` и не
-// хранятся в БД — поэтому в mapProductRow они остаются `undefined`,
-// а заполняются в post-обработке `getCachedProducts` (см. ниже).
-// Это даёт 2 плюса: 1) не нужна миграция; 2) коды ВСЕГДА актуальны
-// и согласованы с `id`, даже если БД частично отстала.
+// `barcode` теперь ХРАНИТСЯ в БД (products.barcode, см.
+// supabase/migration_product_barcodes.sql) — постоянный EAN-13,
+// присваивается один раз и навсегда. У товаров, созданных до
+// миграции, колонка пуста — тогда в post-обработке
+// `getCachedProducts` подставляется детерминированный
+// computeBarcode(id): это ровно тот код, что печатался на
+// этикетках раньше, поэтому старые распечатки продолжают работать.
+// Дозапись в БД — кнопкой «Обновить штрихкоды» (только для товаров
+// без кода или с битым/дублирующимся) либо при следующем
+// сохранении карточки товара (форма отправляет видимый код).
 //
-// Реальные колонки в products (если когда-нибудь решим хранить
-// явно): `barcode` и `qr_slug`. Пока — null.
+// `qrSlug` по-прежнему детерминированно из `id` (не хранится:
+// меняться не должен никогда).
 
 function mapReviewRow(row: any): ProductReview {
   return {
@@ -261,10 +349,11 @@ const getCachedProducts = unstable_cache(
         p.inStock = agg.anyInStock;
         p.stockQty = agg.totalStock;
       }
-      // QR + штрихкод — детерминированно из id. Ленивое вычисление:
-      // ~микросекунды на товар, кеш на 120с, так что в худшем
-      // случае один раз за 2 минуты.
-      p.barcode = computeBarcode(p.id);
+      // Штрихкод: сначала постоянный код из БД; фоллбек —
+      // детерминированный из id (старые товары до миграции, это тот
+      // же код, что печатался на их этикетках). Ленивое вычисление
+      // qrSlug: ~микросекунды на товар, кеш на 120с.
+      p.barcode = p.barcode || computeBarcode(p.id);
       p.qrSlug = computeQrSlug(p.id);
     }
     return products;
@@ -451,7 +540,7 @@ export async function getProductByIdForAdmin(id: string): Promise<FirestoreProdu
   const { data, error } = await db.from("products").select("*").eq("id", id).maybeSingle();
   if (error || !data) return null;
   const product = mapProductRow(data);
-  product.barcode = computeBarcode(product.id);
+  product.barcode = product.barcode || computeBarcode(product.id);
   product.qrSlug = computeQrSlug(product.id);
   return product;
 }
@@ -509,7 +598,7 @@ export async function getRelatedProducts(
 export async function createProduct(data: Record<string, any>): Promise<{ id: string }> {
   const db = getAdminDb();
   const slug = data.slug || slugify(data.name || "product");
-  const payload = {
+  const payload: Record<string, any> = {
     name: data.name || "",
     slug,
     category_id: data.categoryId || null,
@@ -538,11 +627,49 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     discount_badge: data.discountBadge || null,
     is_visible: data.isVisible ?? true,
     is_featured: data.isFeatured ?? false,
-    image_url: data.imageUrl || null,
-    images: data.images || [],
+    // Главное фото: если явное пусто — берём первое из массива.
+    image_url: data.imageUrl || firstImageUrl(normalizeProductImages(data.images)) || null,
+    images: normalizeProductImages(data.images),
+    // Штрихкод админ может задать сам (валидируется на API-слое);
+    // если не задан — сгенерируем сразу после вставки.
+    barcode: data.barcode || null,
   };
-  const { data: result, error } = await db.from("products").insert(payload).select("id").single();
-  if (error) throw error;
+
+  // Если в БД ещё нет колонки barcode (миграция со штрихкодами не
+  // применена), PostgREST отклоняет insert целиком (PGRST204). В таком
+  // случае ПОВТОРЯЕМ запись без поля barcode — товар должен сохраняться
+  // всегда; штрихкод дозапишется после применения миграции.
+  let result: { id: string } | null = null;
+  let insertErr: any = null;
+  const first = await db.from("products").insert(payload).select("id").single();
+  if (first.error) {
+    insertErr = first.error;
+    if (isMissingBarcodeColumnError(first.error)) {
+      console.warn(BARCODE_COLUMN_MISSING_HINT);
+      const { barcode: _bc, ...payloadNoBarcode } = payload;
+      const retry = await db.from("products").insert(payloadNoBarcode).select("id").single();
+      if (retry.error) throw retry.error;
+      result = retry.data;
+      insertErr = null;
+    }
+  } else {
+    result = first.data;
+  }
+  if (insertErr) throw insertErr;
+  if (!result) throw new Error("Не удалось создать товар");
+
+  // Постоянный штрихкод сразу сохраняем в БД. Если админ ввёл свой
+  // (уже уехал в insert выше) — ensure увидит его и ничего не
+  // перезапишет («один штрихкод навсегда»).
+  if (!data.barcode) {
+    await ensureProductBarcode(result.id).catch((e) => {
+      // Товар уже создан, штрихкод дозапишется кнопкой
+      // «Обновить штрихкоды» или при следующем сохранении — не
+      // валим всю операцию из-за вспомогательного шага.
+      console.error("ensureProductBarcode (after create):", e);
+    });
+  }
+
   invalidateProductsCache();
   revalidateTag("products", { expire: 0 });
   return { id: result.id };
@@ -563,9 +690,27 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     discountType: "discount_type", discountValue: "discount_value",
     discountBadge: "discount_badge", isVisible: "is_visible",
     isFeatured: "is_featured", imageUrl: "image_url", images: "images",
+    // Штрихкод можно поменять только явно (форма товара). Значение
+    // валидируется на API-слое; пустая строка = очистить (потом
+    // дозапишется генерацией). Никакая другая правка товара колонку
+    // не трогает — поля просто нет в data.
+    barcode: "barcode",
   };
   for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
     if (data[jsKey] !== undefined) payload[dbKey] = data[jsKey];
+  }
+
+  // ── Фото: нормализация + неубиваемое главное фото ──
+  // Если вызывающий код передал массив images, приводим его к виду
+  // [{url, publicId}] и «главным» делаем первый элемент, даже когда
+  // imageUrl не передан вовсе (раньше форма с пустым массивом у товара,
+  // чьё фото лежало только в image_url, затирала фото null'ом).
+  if (data.images !== undefined) {
+    const imgs = normalizeProductImages(data.images);
+    payload.images = imgs;
+    if (data.imageUrl !== undefined) {
+      payload.image_url = data.imageUrl || firstImageUrl(imgs) || null;
+    }
   }
 
   // Админка редактирует эти поля напрямую в карточке товара.
@@ -581,7 +726,14 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       ? null
       : Number(data.packQty);
   }
-  const { error } = await db.from("products").update(payload).eq("id", id);
+  // Ретрай без barcode, если колонки ещё нет в БД (миграция не
+  // применена) — сохранение товара не должно падать из-за этого.
+  let { error } = await db.from("products").update(payload).eq("id", id);
+  if (error && isMissingBarcodeColumnError(error) && "barcode" in payload) {
+    console.warn(BARCODE_COLUMN_MISSING_HINT);
+    const { barcode: _bc, ...payloadNoBarcode } = payload;
+    ({ error } = await db.from("products").update(payloadNoBarcode).eq("id", id));
+  }
   if (error) throw error;
   invalidateProductsCache();
   revalidateTag("products", { expire: 0 });
@@ -593,6 +745,193 @@ export async function deleteProduct(id: string): Promise<void> {
   if (error) throw error;
   invalidateProductsCache();
   revalidateTag("products", { expire: 0 });
+}
+
+// ── Штрихкоды товаров (постоянные EAN-13 в products.barcode) ──
+
+/** Все занятые штрихкоды каталога (для проверки уникальности). */
+async function fetchUsedBarcodes(exceptIds?: Set<string>): Promise<Set<string>> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("products")
+    .select("id, barcode")
+    .not("barcode", "is", null)
+    .limit(100000);
+  if (error) {
+    if (isMissingBarcodeColumnError(error)) throw barcodeColumnRequiredError();
+    throw error;
+  }
+  const used = new Set<string>();
+  for (const row of data || []) {
+    if (exceptIds?.has(row.id)) continue;
+    if (row.barcode) used.add(row.barcode);
+  }
+  return used;
+}
+
+/**
+ * Гарантирует, что у товара есть штрихкод В БД. Если код уже есть —
+ * ничего не делает (штрихкод постоянный и не меняется сам).
+ * Если нет — генерирует уникальный (приоритет у детерминированного
+ * computeBarcode(id), чтобы совпасть со старыми этикетками) и
+ * сохраняет. Возвращает итоговый код и флаг «создан сейчас».
+ */
+export async function ensureProductBarcode(
+  id: string
+): Promise<{ barcode: string; created: boolean }> {
+  const db = getAdminDb();
+  const { data: row, error } = await db
+    .from("products")
+    .select("id, barcode")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    if (isMissingBarcodeColumnError(error)) throw barcodeColumnRequiredError();
+    throw error;
+  }
+  if (!row) throw new Error("Товар не найден");
+  if (row.barcode && isValidBarcode(row.barcode)) {
+    return { barcode: row.barcode, created: false };
+  }
+
+  const used = await fetchUsedBarcodes(new Set([id]));
+  const barcode = generateUniqueBarcode(id, used);
+  const { error: upErr } = await db
+    .from("products")
+    .update({ barcode })
+    .eq("id", id);
+  if (upErr) {
+    if (isMissingBarcodeColumnError(upErr)) throw barcodeColumnRequiredError();
+    throw upErr;
+  }
+
+  invalidateProductsCache();
+  revalidateTag("products", { expire: 0 });
+  return { barcode, created: true };
+}
+
+/**
+ * Принудительная перегенерация штрихкода одного товара — ручное
+ * действие админа («сам решил изменить»). Старый код гасится.
+ */
+export async function regenerateProductBarcode(
+  id: string
+): Promise<{ barcode: string }> {
+  const db = getAdminDb();
+  const { data: row, error } = await db
+    .from("products")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw new Error("Товар не найден");
+
+  const used = await fetchUsedBarcodes(new Set([id]));
+  // Перегенерация — всегда солёный вариант, даже если
+  // детерминированный свободен (он и есть старый код).
+  let barcode = "";
+  for (let salt = 1; salt < 1000; salt++) {
+    const candidate = computeBarcode(`${id}#${salt}`);
+    if (!used.has(candidate)) {
+      barcode = candidate;
+      break;
+    }
+  }
+  if (!barcode) barcode = generateUniqueBarcode(id, used);
+
+  const { error: upErr } = await db
+    .from("products")
+    .update({ barcode })
+    .eq("id", id);
+  if (upErr) {
+    if (isMissingBarcodeColumnError(upErr)) throw barcodeColumnRequiredError();
+    throw upErr;
+  }
+
+  invalidateProductsCache();
+  revalidateTag("products", { expire: 0 });
+  return { barcode };
+}
+
+export type BarcodeFixReport = {
+  total: number;
+  /** Сколько товаров получило новый штрихкод. */
+  assigned: number;
+  /** Сколько товаров уже имело валидный код — их не трогали. */
+  skipped: number;
+  /** Ошибки по отдельным товарам (id → сообщение). */
+  errors: { id: string; name: string; error: string }[];
+};
+
+/**
+ * Кнопка «Обновить штрихкоды»: проходит по каталогу и дозаписывает
+ * штрихкод ТОЛЬКО товарам, у которых:
+ *   • кода нет вовсе;
+ *   • код битый (не EAN-13 / неверная контрольная сумма);
+ *   • код ДУБЛИРУЕТСЯ у двух товаров (дубль получает новый код,
+ *     первый по имени товар с этим кодом остаётся как есть).
+ * Товары с валидным уникальным кодом НЕ меняются («не менял
+ * постоянно — один штрихкод навсегда»).
+ */
+export async function fixMissingProductBarcodes(): Promise<BarcodeFixReport> {
+  const db = getAdminDb();
+  const { data: rows, error } = await db
+    .from("products")
+    .select("id, name, barcode")
+    .order("created_at", { ascending: true })
+    .limit(100000);
+  if (error) {
+    if (isMissingBarcodeColumnError(error)) throw barcodeColumnRequiredError();
+    throw error;
+  }
+
+  const report: BarcodeFixReport = {
+    total: (rows || []).length,
+    assigned: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  // Множество занятых кодов наполняем по мере обхода: так дубль
+  // (второй товар с тем же кодом) тоже попадёт в перегенерацию,
+  // а первый — останется с исходным кодом.
+  const used = new Set<string>();
+  const pending: { id: string; name: string }[] = [];
+
+  for (const row of rows || []) {
+    const bc = (row.barcode || "").trim();
+    if (bc && isValidBarcode(bc) && !used.has(bc)) {
+      used.add(bc);
+      report.skipped++;
+    } else {
+      pending.push({ id: row.id, name: row.name || "" });
+    }
+  }
+
+  for (const item of pending) {
+    try {
+      const barcode = generateUniqueBarcode(item.id, used);
+      const { error: upErr } = await db
+        .from("products")
+        .update({ barcode })
+        .eq("id", item.id);
+      if (upErr) throw upErr;
+      used.add(barcode);
+      report.assigned++;
+    } catch (e) {
+      report.errors.push({
+        id: item.id,
+        name: item.name,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  if (report.assigned > 0) {
+    invalidateProductsCache();
+    revalidateTag("products", { expire: 0 });
+  }
+  return report;
 }
 
 // ─── Orders ────────────────────────────────────────────────
@@ -972,8 +1311,8 @@ export async function updateSettings(data: Record<string, string>): Promise<void
   for (const [key, value] of Object.entries(data)) {
     const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
     if (error) throw error;
-  revalidateTag("settings", { expire: 0 });
   }
+  revalidateTag("settings", { expire: 0 });
 }
 
 // ─── Wastepaper Rates ──────────────────────────────────────

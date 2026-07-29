@@ -30,6 +30,7 @@ import {
   Package,
   LoaderCircle,
   ScanSearch,
+  Printer,
 } from "lucide-react";
 import { buildStockLabel, normalizeScanCode, type StockLabel } from "@/lib/scan";
 
@@ -534,7 +535,7 @@ export function ScanCode({
           muted
         />
         <p className="scan-page__video-hint">
-          Наведите на QR или штрихкод — карточка появится ниже
+          Наведите на штрихкод или QR — карточка появится ниже
         </p>
       </div>
 
@@ -620,12 +621,31 @@ export function ScanCode({
             </span>
           </div>
 
+          {/* Превью постоянного штрихкода товара (тот самый код,
+              что хранится в БД и печатается на этикетках) */}
+          <div className="scan-page__bc-preview">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/admin/qr/barcode/${currentProduct.id}?height=12`}
+              alt={`Штрихкод ${currentProduct.barcode}`}
+              style={{ maxWidth: 240, width: "100%", height: "auto" }}
+            />
+          </div>
+
           <div className="scan-page__actions">
             <Link
               href={`/${adminPath}/products?edit=${currentProduct.id}`}
               className="scan-page__btn scan-page__btn--primary"
             >
               <ExternalLink size={15} /> Открыть в админке
+            </Link>
+            <Link
+              href={`/${adminPath}/qr-print?q=${encodeURIComponent(
+                currentProduct.barcode
+              )}`}
+              className="scan-page__btn"
+            >
+              <Printer size={15} /> Печатать этикетку
             </Link>
             <button type="button" className="scan-page__btn" onClick={clearResult}>
               <ScanLine size={15} /> Очистить карточку

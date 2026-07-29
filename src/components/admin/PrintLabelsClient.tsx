@@ -1,26 +1,31 @@
 // =========================================================
 // FILE: src/components/admin/PrintLabelsClient.tsx
-// Клиентская часть страницы массовой печати QR.
+// Клиентская часть страницы массовой печати этикеток
+// (штрихкоды EAN-13 и/или QR).
 //
 // Два режима печати:
 // • sheet (лист A4): квадратные этикетки 4×4 / 5×5 / 6×6 см,
 //   сетка repeat(N, M), печатаются на обычном принтере/листе —
 //   НЕСКОЛЬКО этикеток на одном листе.
-// • tape (этикетка 40×60 мм, альбомная): для термопринтера
+// • tape (этикетка 40×60 мм = 6×4 см, альбомная): для термопринтера
 //   этикеток (Xprinter XP-365B, Brother, MUNBYN, Mercury и т.п.).
-//   ОДНА этикетка = ОДНА страница печати = ОДИН QR-код:
+//   ОДНА этикетка = ОДНА страница печати = ОДИН код:
 //   @page { size: 60mm 40mm; margin: 0 } + разрыв страницы после
 //   каждой этикетки. Так драйвер принтера получает ровно одну
-//   этикетку на одну физическую отрывную этикетку (раньше вся
-//   лента уходила одной «бесконечной» страницей 58mm × auto и
-//   масштабировалась — на одну этикетку втискивалась куча кодов).
+//   этикетку на одну физическую отрывную этикетку.
+//
+// Что печатаем — переключатель «Код»:
+// • barcode (по умолчанию): обычный штрихкод EAN-13 — постоянный
+//   код товара из БД. Сканируется камерой телефона и любым
+//   USB-сканером, надёжнее QR.
+// • qr: QR-код со ссылкой на товар (старое поведение этикеток).
 //
 // Правило @page зависит от режима, поэтому оно НЕ в admin.css,
 // а инъектируется отсюда тегом <style> (см. ниже в разметке).
 //
 // Состав этикетки (в обоих режимах) настраивается тумблерами
 // «На этикетке»: Название / Цена / Размеры — можно оставить
-// один голый QR. Размеры берутся из карточки товара (Д×Ш[×В] мм)
+// один голый код. Размеры берутся из карточки товара (Д×Ш[×В] мм)
 // и печатаются только там, где они заданы.
 // =========================================================
 
@@ -38,6 +43,8 @@ import {
   Type,
   Tag,
   Ruler,
+  Barcode,
+  QrCode,
 } from "lucide-react";
 
 type Product = {
@@ -68,6 +75,8 @@ interface Props {
 type PrintMode = "sheet" | "tape";
 /** Размер этикетки на листе A4 (квадратные). */
 type SheetSize = "4x4" | "5x5" | "6x6";
+/** Какой код печатать на этикетке. */
+type CodeType = "barcode" | "qr";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -96,22 +105,31 @@ function formatDims(p: Product): string | null {
 //   6×6 см → 3×4 = 12 шт/лист
 const SHEET_DIM: Record<
   SheetSize,
-  { sideCm: number; cols: number; rows: number; qrSize: number; bcHeight: number }
+  {
+    sideCm: number;
+    cols: number;
+    rows: number;
+    qrSize: number;
+    bcHeight: number;
+    /** Высота штрихов, когда штрихкод — основной код этикетки. */
+    bcMainMm: number;
+  }
 > = {
-  "4x4": { sideCm: 4, cols: 4, rows: 6, qrSize: 170, bcHeight: 30 },
-  "5x5": { sideCm: 5, cols: 3, rows: 5, qrSize: 210, bcHeight: 36 },
-  "6x6": { sideCm: 6, cols: 3, rows: 4, qrSize: 250, bcHeight: 42 },
+  "4x4": { sideCm: 4, cols: 4, rows: 6, qrSize: 170, bcHeight: 30, bcMainMm: 18 },
+  "5x5": { sideCm: 5, cols: 3, rows: 5, qrSize: 210, bcHeight: 36, bcMainMm: 22 },
+  "6x6": { sideCm: 6, cols: 3, rows: 4, qrSize: 250, bcHeight: 42, bcMainMm: 26 },
 };
 
 // ── Размер этикетки на термопринтере (Xprinter XP-365B) ──
-// Отрывная этикетка 40×60 мм, печать в АЛЬБОМНОЙ ориентации:
+// Отрывная этикетка 40×60 мм (6×4 см), печать в АЛЬБОМНОЙ ориентации:
 // ширина 60 мм × высота 40 мм. Раскладка — колонка по центру:
-// название сверху, QR (26×26 мм) в центре, цена под QR.
-// Штрихкод не печатаем (на термо мелкие штрихи плывут).
-// qrSize — это только width/height атрибуты <img> для резервирования
-// места в лейауте (чтобы этикетки не «прыгали» до загрузки картинки).
-// Сам код приходит в SVG и масштабируется CSS'ом до 26 мм —
-// см. .qrprint__tape-qr в admin.css.
+// название сверху, код по центру, цена под кодом.
+// Код — штрихкод EAN-13 (по умолчанию) или QR, см. переключатель
+// «Код». Оба приходят в SVG: на термопечати 203 dpi вектор даёт
+// идеально ровные штрихи/модули, поэтому код пробивается с первого
+// раза. qrSize — только width/height атрибуты <img> для резервирования
+// места в лейауте (этикетки не «прыгают» до загрузки картинки).
+// См. .qrprint__tape-qr / .qrprint__tape-bc в admin.css.
 const TAPE_DIM = {
   widthMm: 60,
   heightMm: 40,
@@ -141,6 +159,10 @@ export function PrintLabelsClient({
   const [q, setQ] = useState<string>(initialQ);
   const [mode, setMode] = useState<PrintMode>("sheet");
   const [size, setSize] = useState<SheetSize>("4x4");
+  // Какой код печатать. По умолчанию — обычный штрихкод EAN-13:
+  // сканируется надёжнее и быстрее QR (в т.ч. USB-сканерами,
+  // которые QR не читают), и именно его формат хранится в БД.
+  const [codeType, setCodeType] = useState<CodeType>("barcode");
   // ── Что печатать на этикетке ПОМИМО QR-кода ──
   // Название / цена / размеры — включаются отдельными тумблерами.
   // По умолчанию всё включено (как было раньше).
@@ -273,9 +295,33 @@ export function PrintLabelsClient({
               className={`qrprint__seg-btn${
                 mode === "tape" ? " qrprint__seg-btn--active" : ""
               }`}
-              title="Термопринтер этикеток (Xprinter XP-365B и др.): отрывная этикетка 40×60 мм альбомная, один QR-код на этикетку"
+              title="Термопринтер этикеток (Xprinter XP-365B и др.): отрывная этикетка 40×60 мм альбомная (6×4 см), один код на этикетку"
             >
               <ScanLine size={12} /> Этикетка 40×60
+            </button>
+            <span className="qrprint__seg-divider" />
+            {/* ── Какой код печатать: обычный штрихкод (EAN-13,
+                 по умолчанию — сканируется надёжнее) или QR ── */}
+            <span className="qrprint__seg-label">Код:</span>
+            <button
+              type="button"
+              onClick={() => setCodeType("barcode")}
+              className={`qrprint__seg-btn${
+                codeType === "barcode" ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="Обычный штрихкод EAN-13 — тот самый постоянный код товара из БД. Читается камерой и любым USB-сканером"
+            >
+              <Barcode size={12} /> Штрихкод
+            </button>
+            <button
+              type="button"
+              onClick={() => setCodeType("qr")}
+              className={`qrprint__seg-btn${
+                codeType === "qr" ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="QR-код со ссылкой на товар (старый формат этикеток)"
+            >
+              <QrCode size={12} /> QR-код
             </button>
             {mode === "sheet" && (
               <>
@@ -344,16 +390,27 @@ export function PrintLabelsClient({
         </div>
         {mode === "tape" && (
           <div className="qrprint__hint">
-            <strong>Этикетка 40×60 мм (альбомная) — один QR-код по
-            центру этикетки.</strong> Каждая этикетка печатается
-            отдельной страницей ровно 60×40 мм: название сверху, QR
-            по центру, цена под QR. В диалоге печати выберите ваш
+            <strong>
+              Этикетка 40×60 мм (альбомная, 6×4 см) — один{" "}
+              {codeType === "barcode" ? "штрихкод EAN-13" : "QR-код"} по
+              центру этикетки.
+            </strong>{" "}
+            Каждая этикетка печатается отдельной страницей ровно 60×40
+            мм: название сверху, {codeType === "barcode" ? "штрихкод" : "QR"}{" "}
+            по центру, цена под ним. В диалоге печати выберите ваш
             термопринтер (Xprinter XP-365B / Brother / MUNBYN /
             Mercury), бумагу <strong>60×40 мм</strong> (она же «6×4 см» в
             драйвере), поля — <strong>«Нет»</strong>, масштаб —{" "}
             <strong>100%</strong> (не «по размеру страницы»), колонтитулы
             — выкл. Если этикетки «съезжают» — значит в диалоге стоит
             масштаб или поля: поставьте как указано выше.
+            {codeType === "barcode" && (
+              <>
+                {" "}
+                Штрихкод — тот же постоянный EAN-13, что хранится в
+                карточке товара: перепечатка этикетки не меняет сам код.
+              </>
+            )}
           </div>
         )}
       </div>
@@ -414,8 +471,8 @@ export function PrintLabelsClient({
             return (
             <div key={p.id} className="qrprint__label">
               {/* Шапка этикетки: только выбранные тумблерами поля.
-                  Если всё выключено — шапку не рисуем вовсе (QR
-                  и штрихкод распределятся равномерно). */}
+                  Если всё выключено — шапку не рисуем вовсе (код
+                  займёт всю этикетку). */}
               {(showName || (showPrice && p.price != null) || dims) && (
               <div className="qrprint__label-head">
                 {showName && (
@@ -431,33 +488,46 @@ export function PrintLabelsClient({
                 )}
               </div>
               )}
-              <div className="qrprint__label-code">
-                {/* SVG, а не PNG: вектор печатается без растровой
-                    интерполяции, модули остаются идеально ровными
-                    при любом DPI принтера. Раньше PNG фиксированной
-                    ширины браузер масштабировал под слот этикетки и
-                    «размывал» границы модулей — часть кодов после
-                    печати переставала читаться. */}
-                <img
-                  src={`/api/admin/qr/${p.id}?format=svg`}
-                  alt=""
-                  className="qrprint__label-qr"
-                  width={dim.qrSize}
-                  height={dim.qrSize}
-                />
-              </div>
-              <div className="qrprint__label-code">
-                <img
-                  src={`/api/admin/qr/barcode/${p.id}`}
-                  alt=""
-                  className="qrprint__label-bc"
-                  width={dim.qrSize + 20}
-                  height={dim.bcHeight}
-                />
-                <div className="qrprint__label-ean">
-                  {formatBarcode(p.barcode)}
+              {codeType === "barcode" ? (
+                // ── Основной штрихкод: один EAN-13 крупно ──
+                // SVG: вектор печатается без растровой интерполяции —
+                // штрихи идеально ровные при любом DPI принтера,
+                // сканируется с первого раза даже на термобумаге.
+                <div className="qrprint__label-code qrprint__label-code--center">
+                  <img
+                    src={`/api/admin/qr/barcode/${p.id}?format=svg&height=${dim.bcMainMm}`}
+                    alt={`Штрихкод ${p.barcode}`}
+                    className="qrprint__label-bconly"
+                  />
                 </div>
-              </div>
+              ) : (
+                // ── QR-режим (старое поведение): QR + маленький
+                //    штрихкод с цифрами под ним ──
+                <>
+                  <div className="qrprint__label-code">
+                    {/* SVG, а не PNG — см. комментарий выше. */}
+                    <img
+                      src={`/api/admin/qr/${p.id}?format=svg`}
+                      alt=""
+                      className="qrprint__label-qr"
+                      width={dim.qrSize}
+                      height={dim.qrSize}
+                    />
+                  </div>
+                  <div className="qrprint__label-code">
+                    <img
+                      src={`/api/admin/qr/barcode/${p.id}`}
+                      alt=""
+                      className="qrprint__label-bc"
+                      width={dim.qrSize + 20}
+                      height={dim.bcHeight}
+                    />
+                    <div className="qrprint__label-ean">
+                      {formatBarcode(p.barcode)}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             );
           })}
@@ -469,11 +539,10 @@ export function PrintLabelsClient({
        * Вертикальный стек этикеток 60×40 мм. При печати каждая
        * этикетка — ОТДЕЛЬНАЯ страница 60×40 мм (@page инъектируется
        * выше + break-after: page в CSS), поэтому на одну физическую
-       * этикетку попадает ровно ОДИН QR-код.
+       * этикетку попадает ровно ОДИН код.
        * Раскладка — классическая для ценников 4×6: всё по ЦЕНТРУ
-       * колонкой: название (1 строка) сверху, QR по центру этикетки,
-       * цена под QR. Штрихкод не печатаем (на термо мелкие штрихи
-       * плывут) — QR достаточно.
+       * колонкой: название (1 строка) сверху, штрихкод EAN-13 (или
+       * QR — переключатель «Код») по центру этикетки, цена под ним.
        */}
       {mode === "tape" && (
         <div
@@ -485,7 +554,7 @@ export function PrintLabelsClient({
         >
           {selectedProducts.map((p) => {
             const dims = showSizes ? formatDims(p) : null;
-            // Включены ВСЕ три поля (название+цена+размеры) — QR
+            // Включены ВСЕ три поля (название+цена+размеры) — код
             // чуть уменьшаем (compact), чтобы всё гарантированно
             // уместилось на 40 мм высоты и этикетки не «поползли».
             const compact = showName && showPrice && !!dims;
@@ -501,16 +570,32 @@ export function PrintLabelsClient({
                   {p.name}
                 </div>
               )}
-              {/* SVG — см. комментарий в режиме листа: на термопринтере
-                  (203 dpi) векторный QR критичен, растянутый PNG там
-                  терял чёткость границ модулей. */}
-              <img
-                src={`/api/admin/qr/${p.id}?format=svg`}
-                alt=""
-                className="qrprint__tape-qr"
-                width={TAPE_DIM.qrSize}
-                height={TAPE_DIM.qrSize}
-              />
+              {codeType === "barcode" ? (
+                // ── Штрихкод на Xprinter 6×4 см ──
+                // EAN-13 почти во всю ширину этикетки (54 мм из 60) —
+                // читается камерой и USB-сканером. SVG: на 203 dpi
+                // термопечати вектор критичен, растянутый PNG терял
+                // чёткость штрихов и код не пробивался.
+                <img
+                  src={`/api/admin/qr/barcode/${p.id}?format=svg&height=${
+                    compact ? 14 : 18
+                  }`}
+                  alt={`Штрихкод ${p.barcode}`}
+                  className="qrprint__tape-bc"
+                />
+              ) : (
+                // ── QR на Xprinter (старый формат этикеток) ──
+                // SVG — см. комментарий в режиме листа: на термопринтере
+                // (203 dpi) векторный QR критичен, растянутый PNG там
+                // терял чёткость границ модулей.
+                <img
+                  src={`/api/admin/qr/${p.id}?format=svg`}
+                  alt=""
+                  className="qrprint__tape-qr"
+                  width={TAPE_DIM.qrSize}
+                  height={TAPE_DIM.qrSize}
+                />
+              )}
               {showPrice && p.price != null && (
                 <div className="qrprint__tape-price">
                   {`${fmt(p.price)} ₽`}

@@ -7155,6 +7155,10 @@ body:has(.admin-modal-overlay) {
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
+  /* Отступ под плавающий колокольчик уведомлений
+     (.admin-notify справа сверху, ~42px + зазор) — иначе он
+     перекрывал счётчик «Популярных товаров: N». */
+  padding-right: 56px;
 }
 
 .featured-sort-page__count {
@@ -7243,21 +7247,36 @@ body:has(.admin-modal-overlay) {
   line-height: 1.45;
 }
 
+/* Сетка карточек — ЛОКАЛЬНАЯ (раньше использовался публичный
+   .products-grid-4 сайта: его media-запросы смотрят на вьюпорт, а
+   не на область контента админки, поэтому при сайдбаре колонки
+   просчитывались неверно). auto-fill подстраивается под реальную
+   ширину области: ~2 колонки на телефоне, 3–5 на компьютере. */
 .featured-sort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
   align-items: stretch;
+}
+
+/* На широких мониторах — не жирнее 4-х колонок (как секция на
+   главной), иначе карточки превращаются в «марки». */
+@media (min-width: 1500px) {
+  .featured-sort-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .featured-sort__item {
   position: relative;
   border-radius: 12px;
-  touch-action: none;
+  /* Вертикальный скролл пальцем ПО КАРТОЧКАМ разрешён — страницу
+     можно листать. Перетаскивание начинается только от ручки
+     (тач) или после порога 8px (мышь) — см. компонент. */
+  touch-action: pan-y;
   user-select: none;
-  cursor: grab;
+  cursor: default;
   transform-origin: center center;
-}
-
-.featured-sort__item:active {
-  cursor: grabbing;
 }
 
 .featured-sort__item--placeholder {
@@ -7283,15 +7302,44 @@ body:has(.admin-modal-overlay) {
   pointer-events: none;
 }
 
+/* ── Компактный вид карточки в инструменте сортировки ──
+   Это рабочая страница сортировки, а не витрина: фото показываем
+   ЦЕЛИКОМ (без жёсткой квадратной обрезки), а корзинные кнопки и
+   суммы прячем — карточки ниже, порядок обозревать удобнее. */
+.featured-sort__card-mask .pcc__img {
+  aspect-ratio: 4 / 3;
+  background: #fff;
+}
+
+.featured-sort__card-mask .pcc__img img {
+  object-fit: contain !important;
+  padding: 6px;
+}
+
+.featured-sort__card-mask .pcc__hover-overlay,
+.featured-sort__card-mask .pcc__actions,
+.featured-sort__card-mask .pcc__qty-total,
+.featured-sort__card-mask .pcc__in-cart,
+.featured-sort__card-mask .pcc__inquiry-btn {
+  display: none !important;
+}
+
+.featured-sort__card-mask .pcc:hover {
+  transform: none;
+}
+
+/* Ручка перетаскивания = бейдж с номером. На тачах drag начинается
+   только от неё (touch-action: none, чтобы жест не превращался в
+   скролл страницы), поэтому хитбокс чуть больше визуального бейджа. */
 .featured-sort__order {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 4px;
+  left: 4px;
   z-index: 6;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 8px;
+  padding: 9px 10px;
   background: rgba(26, 26, 24, 0.86);
   color: #fff;
   border-radius: 10px;
@@ -7299,6 +7347,12 @@ body:has(.admin-modal-overlay) {
   font-weight: 800;
   letter-spacing: 0.03em;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  cursor: grab;
+  touch-action: none;
+}
+
+.featured-sort__order:active {
+  cursor: grabbing;
 }
 
 .featured-sort__hidden {
@@ -7717,6 +7771,16 @@ body:has(.admin-modal-overlay) {
 
 .scan-page__meta strong {
   color: var(--adm-ink);
+}
+
+/* Превью штрихкода в карточке результата сканирования. */
+.scan-page__bc-preview {
+  display: flex;
+  justify-content: center;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
 }
 
 .scan-page__codes {
@@ -8298,6 +8362,28 @@ body:has(.admin-modal-overlay) {
   white-space: nowrap;
 }
 
+/* ── Штрихкод как ОСНОВНОЙ код этикетки (режим «Штрихкод») ──
+   Один EAN-13 крупно по центру: векторный SVG масштабируется
+   под ячейку с сохранением пропорций (max-width/max-height +
+   aspect-saving constraint solving), штрихи ровные на любом DPI. */
+.qrprint__label-code--center {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.qrprint__label-bconly {
+  display: block;
+  /* Ширина — вся внутренняя ширина этикетки, высота — по пропорции
+     EAN-13 (~2.4:1). max-height страхует от налезания на цену/имя;
+     движок при клэмпе пересчитает ширину с сохранением пропорции. */
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 24mm;
+  object-fit: contain;
+  background: #fff;
+}
+
 /* ── Печать ──
    ВАЖНО: правило @page (размер страницы) здесь НЕ задано — оно
    инъектируется компонентом PrintLabelsClient.tsx тегом <style>
@@ -8401,6 +8487,29 @@ body:has(.admin-modal-overlay) {
   flex: 0 0 auto;
   object-fit: contain;
   background: #fff;
+}
+
+/* Штрихкод на термоэтикетке 60×40 мм (Xprinter): EAN-13 почти во
+   всю ширину (54 из 60 мм) — такой размер гарантированно читается
+   и камерой, и USB-сканером. max-height не даёт вылезти за
+   этикетку, когда на ней ещё цена и габариты (compact). */
+.qrprint__tape-bc {
+  display: block;
+  /* 54 мм — почти вся ширина этикетки (60 мм минус поля). SVG от
+     API (height=18) имеет пропорцию ~1.8:1, поэтому реальный
+     размер решает max-height: 24 мм высоты × ~43 мм ширины —
+     уверенно читается камерой и USB-сканером. При клэмпе движок
+     пересчитывает ширину с сохранением пропорции штрихов. */
+  width: 54mm;
+  height: auto;
+  max-height: 24mm;
+  flex: 0 0 auto;
+  object-fit: contain;
+  background: #fff;
+}
+
+.qrprint__tape-label--compact .qrprint__tape-bc {
+  max-height: 18mm;
 }
 
 .qrprint__tape-name {
@@ -8507,9 +8616,10 @@ body:has(.admin-modal-overlay) {
     break-after: auto;
   }
 
-  /* Чтобы белый фон и чёткий QR точно печатались */
+  /* Чтобы белый фон и чёткий код точно печатались */
   body.qrprint-mode .qrprint__tape-label,
   body.qrprint-mode .qrprint__tape-qr,
+  body.qrprint-mode .qrprint__tape-bc,
   body.qrprint-mode .qrprint__tape-name,
   body.qrprint-mode .qrprint__tape-price,
   body.qrprint-mode .qrprint__tape-dims {

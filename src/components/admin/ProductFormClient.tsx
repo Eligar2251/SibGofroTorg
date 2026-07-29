@@ -17,6 +17,7 @@ import {
   ListOrdered,
   Link2,
   Quote,
+  RefreshCw,
 } from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
 import { MarkdownText } from "@/components/catalog/MarkdownText";
@@ -38,6 +39,7 @@ interface ProductData {
   id?: string;
   name?: string | null;
   sku?: string | null;
+  barcode?: string | null;
   categoryId?: string | null;
   description?: string | null;
   price?: number | null;
@@ -102,7 +104,19 @@ export function ProductFormClient({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
-  const [images, setImages] = useState<ProductImage[]>(product?.images || []);
+  // Фото: если массив images пуст, но у товара есть главное фото
+  // (image_url — обычно пришло импортом из Excel), подставляем его
+  // как первый элемент. Иначе пересохранение формы ЗАТИРАЛО
+  // главное фото: imageUrl считался из пустого images как null.
+  const [images, setImages] = useState<ProductImage[]>(() => {
+    const fromDb = product?.images || [];
+    if (fromDb.length > 0) return fromDb;
+    return product?.imageUrl ? [{ url: product.imageUrl, publicId: "" }] : [];
+  });
+  // Штрихкод — постоянный EAN-13. Контролируемое поле, чтобы
+  // кнопка «Перегенерировать» могла сразу подставить новый код.
+  const [barcodeValue, setBarcodeValue] = useState(product?.barcode || "");
+  const [regeneratingBarcode, setRegeneratingBarcode] = useState(false);
 
   // Markdown-редактор описания
   const [descValue, setDescValue] = useState(product?.description || "");
@@ -144,6 +158,41 @@ export function ProductFormClient({
     process.env.ADMIN_SECRET_PATH ||
     "admin";
 
+  // Принудительно сменить штрихкод товара (ручное действие админа).
+  // Сервер сохраняет новый код сразу; поле подставляется в форму.
+  async function handleRegenerateBarcode() {
+    if (!product?.id) {
+      // Новый товар ещё не сохранён в БД — код присвоится автоматом
+      // при сохранении карточки.
+      return;
+    }
+    if (
+      !confirm(
+        "Товар получит НОВЫЙ штрихкод. Старые напечатанные этикетки перестанут находить товар сканером. Продолжить?"
+      )
+    ) {
+      return;
+    }
+    setRegeneratingBarcode(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/products/barcodes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: product.id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.barcode) {
+        throw new Error(data?.error || "Не удалось сгенерировать штрихкод");
+      }
+      setBarcodeValue(data.barcode);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка генерации штрихкода");
+    } finally {
+      setRegeneratingBarcode(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
@@ -162,6 +211,11 @@ export function ProductFormClient({
         data.get("stockWarnQty") !== "" ? Number(data.get("stockWarnQty")) : null,
       name: data.get("name"),
       sku: data.get("sku") || null,
+      // Штрихкод из контролируемого поля (форма его всегда
+      // отправляет — так код из БД сохраняется даже у товаров,
+      // где он пока только вычислялся на лету). Пустое значение
+      // = «очистить», сервер потом дозапишет новый генерацией.
+      barcode: barcodeValue.replace(/\s+/g, "") || null,
       categoryId: data.get("categoryId") || null,
       description: data.get("description") || null,
       price: data.get("price") ? Number(data.get("price")) : null,
@@ -197,6 +251,11 @@ export function ProductFormClient({
       isVisible: data.get("isVisible") === "on",
       isFeatured,
       images,
+      // Главное фото — первое в массиве. Затирания больше нет
+      // благодаря инициализации images из product.imageUrl выше
+      // (Excel-товары), поэтому НЕ добавляем сюда фоллбек на
+      // product.imageUrl: иначе удалить последнее фото у товара
+      // стало бы невозможно (старое «воскресало» при сохранении).
       imageUrl: images[0]?.url || null,
     };
 
@@ -308,6 +367,50 @@ export function ProductFormClient({
                 defaultValue={product?.sku || ""}
                 className="admin-input"
               />
+            </div>
+          </div>
+
+          <div className="admin-field">
+            <label className="admin-label">Штрихкод (EAN-13)</label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                name="barcode"
+                type="text"
+                inputMode="numeric"
+                value={barcodeValue}
+                onChange={(e) =>
+                  setBarcodeValue(e.target.value.replace(/[^\d\s]/g, ""))
+                }
+                maxLength={16}
+                placeholder={
+                  isEdit
+                    ? "Сгенерируется автоматически"
+                    : "Присвоится автоматически при сохранении"
+                }
+                className="admin-input"
+                style={{ fontFamily: "var(--f-mono, monospace)" }}
+              />
+              {isEdit && (
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost"
+                  onClick={handleRegenerateBarcode}
+                  disabled={regeneratingBarcode}
+                  title="Выдать товару новый штрихкод (ручная смена — по кнопке «Обновить штрихкоды» в списке товары с рабочим кодом не трогаются)"
+                >
+                  {regeneratingBarcode ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={14} />
+                  )}
+                  Новый код
+                </button>
+              )}
+            </div>
+            <div className="admin-hint">
+              Постоянный код товара: присваивается один раз и не меняется при
+              правках. Здесь его можно изменить вручную — например, если
+              этикетка повреждена и нужно перевыпустить код.
             </div>
           </div>
 

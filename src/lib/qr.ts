@@ -49,7 +49,7 @@ function ean13CheckDigit(twelveDigits: string): number {
 
 /**
  * EAN-13 для товара. Детерминированно: один productId → один barcode.
- * Пример: "2001234567890"
+ * Пример: "2001234567893"
  */
 export function computeBarcode(productId: string): string {
   // "200" (3 цифры) + 9 цифр из SHA-1 → 12 цифр + контрольная.
@@ -66,8 +66,71 @@ export function computeBarcode(productId: string): string {
   return twelve + String(ean13CheckDigit(twelve));
 }
 
-/** Crockford-style base32 (без 0/O/1/I/L/U для читаемости URL). */
+/**
+ * Случайный EAN-13 из внутреннего диапазона магазина ("200" +
+ * 9 случайных цифр + контрольная). Используется как фоллбек,
+ * когда детерминированный код уже занят другим товаром, и для
+ * ручной перегенерации штрихкода из карточки товара.
+ */
+export function randomBarcode(): string {
+  const bytes = createHash("sha256")
+    .update(`${Date.now()}:${Math.random()}:${process.hrtime.bigint()}`)
+    .digest();
+  let nine = "";
+  for (let i = 0; i < 9; i++) {
+    nine += String(bytes[i] % 10);
+  }
+  const twelve = "200" + nine;
+  return twelve + String(ean13CheckDigit(twelve));
+}
+
+/**
+ * Уникальный штрихкод с учётом уже занятых кодов.
+ * Сначала пробует детерминированный computeBarcode(productId)
+ * (важно для совместимости со старыми распечатками: если у товара
+ * штрихкода в БД ещё нет, он получит ровно тот код, который уже
+ * показывался на этикетках), при коллизии — детерминированные
+ * соль-варианты, затем случайные коды.
+ */
+export function generateUniqueBarcode(
+  productId: string,
+  used: Set<string>
+): string {
+  const deterministic = computeBarcode(productId);
+  if (!used.has(deterministic)) return deterministic;
+
+  for (let salt = 1; salt < 1000; salt++) {
+    const candidate = computeBarcode(`${productId}#${salt}`);
+    if (!used.has(candidate)) return candidate;
+  }
+  // Теоретически недостижимо (1000 вариантов), но на всякий случай —
+  // случайный перебор с кольцевой защитой.
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const candidate = randomBarcode();
+    if (!used.has(candidate)) return candidate;
+  }
+  throw new Error("Не удалось подобрать свободный штрихкод");
+}
+
+/** Crockford-style base32 (без 0/O/1/I/L/U для читаемости URL).
+ *
+ * ВАЖНО про длину: в алфавите СОЗНАТЕЛЬНО 30 символов, а не 32
+ * (исключены 0/1 и I/L/O/U). Пятибитный индекс даёт 0..31, поэтому
+ * приведение к алфавику делается через `% 30` (см. encodeChar) —
+ * раньше индекс 30/31 уходил в `undefined` и товар получал slug
+ * вида «Rundefined9Q» с БУКВАМИ В НИЖНЕМ РЕГИСТРЕ. Такой slug ломал
+ * сканирование: QR кодирует URL целиком в верхнем регистре
+ * (alphanumeric-режим), а сравнение шло регистрозависимо —
+ * «RUNDEFINED9Q» из QR не равнялся «Rundefined9Q» из БД, и товар
+ * «не пробивался». % 30 сохраняет ровно те же slug для всех
+ * товаров, у которых ни разу не выпадал индекс 30/31, — старые
+ * рабочие этикетки продолжают сканироваться.
+ */
 const B32_ALPHABET = "23456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+function encodeChar(fiveBits: number): string {
+  return B32_ALPHABET[fiveBits % B32_ALPHABET.length];
+}
 
 function base32Encode(bytes: Buffer, length: number): string {
   let out = "";
@@ -78,13 +141,13 @@ function base32Encode(bytes: Buffer, length: number): string {
     bits += 8;
     while (bits >= 5) {
       bits -= 5;
-      out += B32_ALPHABET[(buffer >> bits) & 0x1f];
+      out += encodeChar((buffer >> bits) & 0x1f);
       if (out.length >= length) return out;
     }
   }
   // Добиваем нулями, если не хватило бит.
   if (bits > 0 && out.length < length) {
-    out += B32_ALPHABET[(buffer << (5 - bits)) & 0x1f];
+    out += encodeChar((buffer << (5 - bits)) & 0x1f);
   }
   return out.slice(0, length);
 }
@@ -100,6 +163,39 @@ export function computeQrSlug(productId: string): string {
   // Берём 10 байт (80 бит) из hex → 16 base32 → обрезаем до 12.
   const bytes = Buffer.from(hash.slice(0, 20), "hex");
   return base32Encode(bytes, 12);
+}
+
+/**
+ * @deprecated Только для обратной совместимости со СКАНЕРОМ.
+ * Slug по старому (багованному) алгоритму: индекс 30/31 давал
+ * строку "undefined" прямо внутри slug («Rundefined9Q»). У части
+ * уже напечатанных QR-этикеток в Base-URL зашит именно такой код —
+ * сравниваем его при поиске товара дополнительно, чтобы старые
+ * этикетки НАЧАЛИ находиться (ранее они не пробивались из-за
+ * регистрозависимого сравнения). Новые этикетки печатаются уже с
+ * computeQrSlug().
+ */
+export function computeLegacyQrSlug(productId: string): string {
+  const hash = sha1Hex(productId);
+  const bytes = Buffer.from(hash.slice(0, 20), "hex");
+  let out = "";
+  let buffer = 0;
+  let bits = 0;
+  for (const b of bytes) {
+    buffer = (buffer << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      const idx = (buffer >> bits) & 0x1f;
+      out += idx >= B32_ALPHABET.length ? "undefined" : B32_ALPHABET[idx];
+      if (out.length >= 12) return out;
+    }
+  }
+  if (bits > 0 && out.length < 12) {
+    const idx = (buffer << (5 - bits)) & 0x1f;
+    out += idx >= B32_ALPHABET.length ? "undefined" : B32_ALPHABET[idx];
+  }
+  return out.slice(0, 12);
 }
 
 // ── Короткий публичный редирект-путь для QR ──

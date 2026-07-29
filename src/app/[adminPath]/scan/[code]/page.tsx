@@ -6,7 +6,7 @@
 
 import { notFound } from "next/navigation";
 import { getProductById, getProducts } from "@/lib/supabase-queries";
-import { computeBarcode, computeQrSlug } from "@/lib/qr";
+import { computeBarcode, computeQrSlug, computeLegacyQrSlug } from "@/lib/qr";
 import { buildStockLabel, normalizeScanCode } from "@/lib/scan";
 import { ScanCode } from "@/components/admin/ScanCode";
 
@@ -20,17 +20,31 @@ async function findByCode(rawCode: string, adminPath: string) {
   const direct = await getProductById(trimmed).catch(() => null);
   if (direct) return direct;
 
-  // 2) EAN-13
-  if (/^\d{13}$/.test(trimmed)) {
+  // 2) Штрихкод (EAN-13 со сканера или вручную; пробелы/дефисы
+  //    «красивого» формата вычищаем)
+  const digits = trimmed.replace(/[\s-]+/g, "");
+  if (/^\d{8,14}$/.test(digits)) {
     const all = await getProducts({ includeHidden: true });
-    return all.find((p) => p.barcode === trimmed) || null;
+    return (
+      all.find((p) => (p.barcode || "").replace(/\s+/g, "") === digits) || null
+    );
   }
 
-  // 3) qrSlug
-  if (/^[A-Z0-9]{8,16}$/i.test(trimmed)) {
+  // 3) qrSlug (регистронезависимо) + фоллбек на старый багованный
+  //    slug («Rundefined9Q»), чтобы уже напечатанные QR-этикетки
+  //    начали находиться — см. computeLegacyQrSlug. Верхняя граница
+  //    24, а не 16: багованный slug со словом «undefined» внутри
+  //    мог вырасти до 20 символов.
+  if (/^[A-Z0-9]{8,24}$/i.test(trimmed)) {
     const upper = trimmed.toUpperCase();
     const all = await getProducts({ includeHidden: true });
-    return all.find((p) => p.qrSlug === upper) || null;
+    return (
+      all.find(
+        (p) =>
+          (p.qrSlug || "").toUpperCase() === upper ||
+          computeLegacyQrSlug(p.id).toUpperCase() === upper
+      ) || null
+    );
   }
 
   // 4) slug / sku (фоллбек)

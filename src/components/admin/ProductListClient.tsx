@@ -3,7 +3,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Eye, EyeOff, Trash2, Loader2, Edit2, QrCode } from "lucide-react";
+import {
+  Search,
+  Eye,
+  EyeOff,
+  Trash2,
+  Loader2,
+  Edit2,
+  QrCode,
+  RefreshCw,
+} from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 
 interface ProductItem {
@@ -11,6 +20,7 @@ interface ProductItem {
   name: string;
   slug: string;
   sku?: string | null;
+  barcode?: string | null;
   categoryId?: string | null;
   price: number | null;
   priceWholesale?: number | null;
@@ -41,6 +51,8 @@ export function ProductListClient({
   const [selectedVisibility, setSelectedVisibility] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [fixingBarcodes, setFixingBarcodes] = useState(false);
+  const [barcodeMessage, setBarcodeMessage] = useState<string | null>(null);
 
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
 
@@ -54,9 +66,48 @@ export function ProductListClient({
     const s = search.toLowerCase();
     return (
       (p.name && p.name.toLowerCase().includes(s)) ||
-      (p.sku && p.sku.toLowerCase().includes(s))
+      (p.sku && p.sku.toLowerCase().includes(s)) ||
+      (p.barcode && p.barcode.includes(s.replace(/\s+/g, "")))
     );
   });
+
+  // «Обновить штрихкоды»: дозаписывает коды только товарам без кода
+  // или с битым/дублирующимся. У товаров с валидным кодом ничего не
+  // меняет — штрихкод остаётся один и навсегда.
+  async function handleFixBarcodes() {
+    if (fixingBarcodes) return;
+    setFixingBarcodes(true);
+    setBarcodeMessage(null);
+    try {
+      const res = await fetch("/api/admin/products/barcodes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setBarcodeMessage(
+          `Ошибка: ${data?.error || "не удалось обновить штрихкоды"}`
+        );
+      } else if (data.assigned > 0) {
+        setBarcodeMessage(
+          `Готово: новые штрихкоды присвоены ${data.assigned} товарам ` +
+            `(всего ${data.total}, уже с кодом — ${data.skipped}). ` +
+            `Существующие коды не менялись.`
+        );
+        // Небольшая задержка, чтобы сообщение успели прочитать.
+        window.setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setBarcodeMessage(
+          `Все товары уже имеют корректные штрихкоды (проверено: ${data.total}). Менять нечего.`
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      setBarcodeMessage("Ошибка сети — попробуйте ещё раз");
+    }
+    setFixingBarcodes(false);
+  }
 
   function toggleSelectAll() {
     if (filtered.length > 0 && selectedIds.size === filtered.length) {
@@ -161,6 +212,21 @@ export function ProductListClient({
           <option value="hidden">Скрытые</option>
         </select>
 
+        <button
+          type="button"
+          onClick={handleFixBarcodes}
+          disabled={fixingBarcodes}
+          className="admin-btn admin-btn--ghost"
+          title="Присвоить штрихкоды товарам, у которых их нет или они битые/дублируются. Рабочие коды НЕ меняются — штрихкод остаётся один и навсегда."
+        >
+          {fixingBarcodes ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <RefreshCw size={14} />
+          )}
+          Обновить штрихкоды
+        </button>
+
         {selectedIds.size > 0 && (
           <button
             type="button"
@@ -177,6 +243,23 @@ export function ProductListClient({
           </button>
         )}
       </div>
+
+      {barcodeMessage && (
+        <div
+          role="status"
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            fontSize: 13,
+            lineHeight: 1.45,
+            background: "rgba(22,163,74,0.08)",
+            border: "1px solid rgba(22,163,74,0.25)",
+            color: "var(--green-dark, #166534)",
+          }}
+        >
+          {barcodeMessage}
+        </div>
+      )}
 
       {/* Таблица товаров */}
       <div className="admin-card">
@@ -241,6 +324,15 @@ export function ProductListClient({
                           <div className="admin-product-sku">
                             {product.sku || "—"}
                           </div>
+                          {product.barcode && (
+                            <div
+                              className="admin-product-sku"
+                              style={{ fontFamily: "var(--f-mono, monospace)" }}
+                              title="Постоянный штрихкод товара (EAN-13)"
+                            >
+                              {product.barcode}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>

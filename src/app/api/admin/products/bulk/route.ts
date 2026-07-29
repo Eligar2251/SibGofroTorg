@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { requireAdminApi } from "@/lib/auth";
 import { getAdminDb } from "@/lib/supabase";
-import { invalidateProductsCache } from "@/lib/supabase-queries";
+import {
+  invalidateProductsCache,
+  normalizeProductImages,
+  firstImageUrl,
+} from "@/lib/supabase-queries";
 
 export async function PUT(request: NextRequest) {
   const auth = await requireAdminApi();
@@ -38,6 +42,18 @@ export async function PUT(request: NextRequest) {
       const payload: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
         if (rest[jsKey] !== undefined) payload[dbKey] = rest[jsKey];
+      }
+      // Фото: приводим массив к виду [{url, publicId}] (могут
+      // приехать старые строки-ссылки) и не даём затереть главное
+      // фото, если imageUrl не передан, а images — непустой.
+      if (rest.images !== undefined) {
+        payload.images = normalizeProductImages(rest.images);
+      }
+      if (rest.imageUrl !== undefined) {
+        payload.image_url =
+          rest.imageUrl ||
+          firstImageUrl(normalizeProductImages(rest.images)) ||
+          null;
       }
       await db.from("products").update(payload).eq("id", p.id);
     }
