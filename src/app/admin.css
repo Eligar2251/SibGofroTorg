@@ -8991,6 +8991,9 @@ body:has(.admin-modal-overlay) {
 .settings-messenger-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .settings-messenger-item { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 12px; background: var(--adm-paper); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
 .settings-messenger-item > strong { color: var(--adm-ink); font-size: 13px; }
+.settings-color-control { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.settings-color-control input[type="color"] { flex: 0 0 46px; min-height: 38px; padding: 3px; background: var(--adm-card); border: 1px solid var(--adm-border-mid); border-radius: var(--adm-r-sm); cursor: pointer; }
+.settings-color-control .admin-input { flex: 1 1 auto; min-width: 0; }
 .settings-messenger-item .admin-upload { padding: 12px; }
 .settings-messenger-item .admin-upload__icon { width: 24px; height: 24px; }
 .settings-messenger-item .admin-upload-grid { grid-template-columns: minmax(0, 96px); }
@@ -9493,5 +9496,105 @@ body:has(.admin-modal-overlay) {
 
   .admin-stat-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* На десктопе задуманные однострочные контролы не ломают иконку и подпись. */
+@media (min-width: 641px) {
+  .admin-btn,
+  .admin-filter,
+  .admin-badge,
+  .admin-status__btn,
+  .scan-page__btn,
+  .wh-direction__btn,
+  .cashc-seg__btn,
+  .whsal-seg__btn {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  .admin-tabs-with-actions {
+    flex-wrap: nowrap;
+  }
+
+  .admin-tabs-with-actions .admin-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .receipt-head,
+  .deliv-item__top,
+  .bank-pay__row1,
+  .bank-pay__row2 {
+    flex-wrap: nowrap;
+  }
+
+  .receipt-head {
+    overflow-x: auto;
+  }
+
+  .bank-pay__row1,
+  .bank-pay__row2 {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+}
+
+/* Единый масштаб одинаковых контролов на мобильном. */
+@media (max-width: 640px) {
+  .admin-shell,
+  [data-admin="true"] {
+    --adm-mobile-control-font: clamp(8.5px, 2.65vw, 11px);
+    --adm-mobile-control-gap: clamp(3px, 1.3vw, 5px);
+    --adm-mobile-control-pad-y: clamp(5px, 1.8vw, 7px);
+    --adm-mobile-control-pad-x: clamp(6px, 2.5vw, 9px);
+  }
+
+  .admin-btn,
+  .admin-filter,
+  .admin-status__btn,
+  .scan-page__btn,
+  .wh-direction__btn,
+  .cashc-seg__btn,
+  .whsal-seg__btn {
+    gap: var(--adm-mobile-control-gap);
+    padding: var(--adm-mobile-control-pad-y) var(--adm-mobile-control-pad-x);
+    font-size: var(--adm-mobile-control-font);
+    white-space: nowrap;
+  }
+
+  .admin-btn > svg,
+  .admin-filter > svg,
+  .admin-status__btn > svg,
+  .scan-page__btn > svg,
+  .wh-direction__btn > svg,
+  .cashc-seg__btn > svg,
+  .whsal-seg__btn > svg {
+    width: 1em;
+    height: 1em;
+    flex: 0 0 auto;
+  }
+
+  .admin-badge {
+    gap: var(--adm-mobile-control-gap);
+    padding: 2px var(--adm-mobile-control-pad-x);
+    font-size: var(--adm-mobile-control-font);
+    white-space: nowrap;
+  }
+
+  .admin-badge > svg {
+    width: 1em;
+    height: 1em;
+    flex: 0 0 auto;
+  }
+
+  /* Если вся группа физически не помещается, прокручивается группа,
+     а не ломается подпись внутри отдельной кнопки. */
+  .admin-filters,
+  .admin-page-head__actions,
+  .admin-tabs-with-actions .admin-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 }

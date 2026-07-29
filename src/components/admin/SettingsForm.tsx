@@ -69,6 +69,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
       free_delivery_threshold: "30000",
       messenger_banner_enabled: "true",
       messenger_banner_text: "Мы есть в мессенджерах",
+      messenger_banner_color: "#1b2b4b",
       [CASH_CARD_HOLDER_SETTING_KEY]: DEFAULT_CASH_CARD_HOLDER,
     };
     for (const id of WASTEPAPER_RATE_IDS) {
@@ -304,16 +305,40 @@ export function SettingsForm({ settings }: SettingsFormProps) {
               />
               <span>Показывать плавающий баннер на сайте</span>
             </label>
-            <div className="admin-field">
-              <label className="admin-label">Текст баннера</label>
-              <input
-                className="admin-input"
-                value={values.messenger_banner_text || ""}
-                onChange={(e) =>
-                  setValues({ ...values, messenger_banner_text: e.target.value })
-                }
-                placeholder="Мы есть в мессенджерах"
-              />
+            <div className="admin-grid-2">
+              <div className="admin-field">
+                <label className="admin-label">Текст баннера</label>
+                <input
+                  className="admin-input"
+                  value={values.messenger_banner_text || ""}
+                  onChange={(e) =>
+                    setValues({ ...values, messenger_banner_text: e.target.value })
+                  }
+                  placeholder="Мы есть в мессенджерах"
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Цвет баннера</label>
+                <div className="settings-color-control">
+                  <input
+                    type="color"
+                    value={values.messenger_banner_color || "#1b2b4b"}
+                    onChange={(e) =>
+                      setValues({ ...values, messenger_banner_color: e.target.value })
+                    }
+                    aria-label="Выбрать цвет баннера"
+                  />
+                  <input
+                    className="admin-input"
+                    value={values.messenger_banner_color || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, messenger_banner_color: e.target.value })
+                    }
+                    placeholder="#1b2b4b"
+                    pattern="#[0-9A-Fa-f]{6}"
+                  />
+                </div>
+              </div>
             </div>
             <div className="settings-messenger-grid">
               {messengerFields.map((messenger) => (

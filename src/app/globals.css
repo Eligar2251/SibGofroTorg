@@ -7316,5 +7316,84 @@ body {
 
 .messenger-float-tab:hover {
   padding-inline: 10px;
-  background: #f59e0b !important;
+  filter: brightness(1.12);
+}
+
+/* 60 FPS drag: двигается только compositor transform, без layout React. */
+.messenger-float {
+  cursor: grab;
+  contain: layout paint;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.messenger-float--dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.messenger-float__link,
+.messenger-float__collapse {
+  touch-action: manipulation;
+}
+
+/* Иконка и подпись публичных контролов всегда остаются одной группой. */
+:is(
+  .btn,
+  .btn-primary,
+  .btn-outline,
+  .btn-hero-primary,
+  .btn-hero-ghost,
+  .text-link,
+  .deal-card__cta,
+  .map-cta,
+  .consult-phone,
+  .pcc__inquiry-btn
+) {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+:is(
+  .btn,
+  .btn-primary,
+  .btn-outline,
+  .btn-hero-primary,
+  .btn-hero-ghost,
+  .text-link,
+  .deal-card__cta,
+  .map-cta,
+  .consult-phone,
+  .pcc__inquiry-btn
+) > svg {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --mobile-action-font: clamp(9px, 2.85vw, 12px);
+    --mobile-action-gap: clamp(4px, 1.3vw, 6px);
+    --mobile-action-pad: clamp(7px, 2.2vw, 10px);
+  }
+
+  :is(
+    .btn,
+    .btn-primary,
+    .btn-outline,
+    .btn-hero-primary,
+    .btn-hero-ghost,
+    .text-link,
+    .deal-card__cta,
+    .map-cta,
+    .consult-phone,
+    .pcc__inquiry-btn
+  ) {
+    gap: var(--mobile-action-gap);
+    padding-inline: var(--mobile-action-pad);
+    font-size: var(--mobile-action-font);
+  }
 }

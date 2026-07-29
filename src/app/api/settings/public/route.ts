@@ -19,6 +19,11 @@ export async function GET() {
     const settings = (await getSettings()) || {};
     const deliveryPrice = Number(settings.delivery_price);
     const freeDeliveryThreshold = Number(settings.free_delivery_threshold);
+    const messengerColor = /^#[0-9a-f]{6}$/i.test(
+      String(settings.messenger_banner_color || "")
+    )
+      ? String(settings.messenger_banner_color)
+      : "#1b2b4b";
     return NextResponse.json(
       {
         // Публичные контактные данные берём из БД (админка),
@@ -39,6 +44,7 @@ export async function GET() {
         messengerBanner: {
           enabled: settings.messenger_banner_enabled !== "false",
           text: (settings.messenger_banner_text || "Мы есть в мессенджерах").trim(),
+          color: messengerColor,
           telegram: {
             url: (settings.messenger_telegram_url || "").trim(),
             iconUrl: (settings.messenger_telegram_icon_url || "").trim(),
@@ -72,6 +78,7 @@ export async function GET() {
         messengerBanner: {
           enabled: false,
           text: "Мы есть в мессенджерах",
+          color: "#1b2b4b",
           telegram: { url: "", iconUrl: "" },
           whatsapp: { url: "", iconUrl: "" },
           max: { url: "", iconUrl: "" },
