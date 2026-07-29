@@ -97,7 +97,45 @@ function toIso(raw: any): string | null {
   return null;
 }
 
+// ── Фото товара: единый вид ──
+// В БД исторически могло встретиться два формата:
+//   1) [{ url, publicId }] — текущий (Cloudinary);
+//   2) ["https://…"] — строки (старые импорты/миграции).
+// Если товар с images-строками открыть в карточке и пересохранить,
+// форма брала `images[0]?.url` → undefined и ЗАТИРАЛА главное
+// фото. Везде нормализуем к { url, publicId }.
+export function normalizeProductImages(raw: any): { url: string; publicId: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { url: string; publicId: string }[] = [];
+  for (const item of raw) {
+    if (!item) continue;
+    if (typeof item === "string") {
+      const url = item.trim();
+      if (url) out.push({ url, publicId: "" });
+      continue;
+    }
+    const url = typeof item.url === "string" && item.url.trim()
+      ? item.url.trim()
+      : typeof item.secure_url === "string" && item.secure_url.trim()
+        ? item.secure_url.trim()
+        : "";
+    if (!url) continue;
+    out.push({ url, publicId: typeof item.publicId === "string" ? item.publicId : "" });
+  }
+  return out;
+}
+
+// Главное фото товара: первый непустой url из массива. Нужно,
+// чтобы фото не пропадало у товаров, где оно задано только через
+// image_url (например, импортом из Excel): форма всегда считает
+// главным images[0], и без этого фоллбека стирала чужое фото.
+export function firstImageUrl(images: { url: string }[]): string | null {
+  const found = images.find((i) => i && typeof i.url === "string" && i.url.trim());
+  return found ? found.url.trim() : null;
+}
+
 function mapProductRow(row: any): FirestoreProduct {
+  const images = normalizeProductImages(row.images);
   return {
     id: row.id,
     name: row.name || "",
@@ -133,8 +171,11 @@ function mapProductRow(row: any): FirestoreProduct {
     discountBadge: row.discount_badge || null,
     isVisible: row.is_visible ?? true,
     isFeatured: row.is_featured ?? false,
-    imageUrl: row.image_url || null,
-    images: Array.isArray(row.images) ? row.images : [],
+    // Главное фото: явный image_url, иначе первое из массива images —
+    // самолечение для товаров, у которых фото задано лишь в одном из
+    // двух мест (Excel задаёт image_url, форма — images).
+    imageUrl: row.image_url || firstImageUrl(images) || null,
+    images,
     viewCount: Number(row.view_count || 0),
     averageRating: Number(row.average_rating || 0),
     totalReviews: Number(row.total_reviews || 0),
@@ -586,8 +627,9 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     discount_badge: data.discountBadge || null,
     is_visible: data.isVisible ?? true,
     is_featured: data.isFeatured ?? false,
-    image_url: data.imageUrl || null,
-    images: data.images || [],
+    // Главное фото: если явное пусто — берём первое из массива.
+    image_url: data.imageUrl || firstImageUrl(normalizeProductImages(data.images)) || null,
+    images: normalizeProductImages(data.images),
     // Штрихкод админ может задать сам (валидируется на API-слое);
     // если не задан — сгенерируем сразу после вставки.
     barcode: data.barcode || null,
@@ -656,6 +698,19 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   };
   for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
     if (data[jsKey] !== undefined) payload[dbKey] = data[jsKey];
+  }
+
+  // ── Фото: нормализация + неубиваемое главное фото ──
+  // Если вызывающий код передал массив images, приводим его к виду
+  // [{url, publicId}] и «главным» делаем первый элемент, даже когда
+  // imageUrl не передан вовсе (раньше форма с пустым массивом у товара,
+  // чьё фото лежало только в image_url, затирала фото null'ом).
+  if (data.images !== undefined) {
+    const imgs = normalizeProductImages(data.images);
+    payload.images = imgs;
+    if (data.imageUrl !== undefined) {
+      payload.image_url = data.imageUrl || firstImageUrl(imgs) || null;
+    }
   }
 
   // Админка редактирует эти поля напрямую в карточке товара.

@@ -40,14 +40,21 @@ export function ImageUploader({ images, onChange }: ImageUploaderProps) {
     setUploading(false);
   }
 
-  async function removeImage(publicId: string) {
+  async function removeImage(target: { url: string; publicId: string }) {
     try {
-      await fetch("/api/admin/upload", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicId }),
-      });
-      onChange(images.filter((img) => img.publicId !== publicId));
+      // Облачное удаление — только если у фото есть publicId
+      // (загрузки из аплоадера). Фото, пришедшее ссылкой (Excel /
+      // старые данные), просто убираем из списка локально.
+      if (target.publicId) {
+        await fetch("/api/admin/upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ publicId: target.publicId }),
+        });
+        onChange(images.filter((img) => img.publicId !== target.publicId));
+      } else {
+        onChange(images.filter((img) => img !== target));
+      }
     } catch (err) {
       console.error(err);
     }
@@ -104,10 +111,12 @@ export function ImageUploader({ images, onChange }: ImageUploaderProps) {
         )}
       </div>
 
-      {images.length > 0 && (
+      {images.some((img) => img?.url) && (
         <div className="admin-upload-grid">
-          {images.map((img, i) => (
-            <div key={img.publicId} className="admin-upload-item">
+          {images
+            .filter((img) => img && img.url)
+            .map((img, i) => (
+            <div key={img.publicId || img.url} className="admin-upload-item">
               <Image
                 src={img.url}
                 alt={`Фото ${i + 1}`}
@@ -120,7 +129,7 @@ export function ImageUploader({ images, onChange }: ImageUploaderProps) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  removeImage(img.publicId);
+                  removeImage(img);
                 }}
                 className="admin-upload-item__del"
                 aria-label="Удалить"

@@ -152,11 +152,14 @@ export function BulkProductEditor({
     setUploadingProductId(null);
   }
 
-  function removeImageFromProduct(productId: string, publicId: string) {
+  // Удаляем конкретную запись по объекту (а не по publicId — у фото,
+  // пришедших ссылкой из Excel, publicId пустой у всех, и фильтр по
+  // publicId удалял бы их скопом).
+  function removeImageFromProduct(productId: string, target: ImageEntry) {
     setProducts((items) =>
       items.map((item) => {
         if (item.id !== productId) return item;
-        const filtered = (item.images || []).filter((img) => img.publicId !== publicId);
+        const filtered = (item.images || []).filter((img) => img !== target);
         return { ...item, images: filtered, imageUrl: filtered[0]?.url || null };
       })
     );
@@ -363,7 +366,7 @@ export function BulkProductEditor({
                   product={product}
                   isUploading={uploadingProductId === product.id}
                   onUpload={(file) => uploadImageForProduct(product.id, file)}
-                  onRemove={(publicId) => removeImageFromProduct(product.id, publicId)}
+                  onRemove={(img) => removeImageFromProduct(product.id, img)}
                 />
               ))}
             </div>
@@ -419,7 +422,7 @@ function ProductImageRow({
   product: BulkProduct;
   isUploading: boolean;
   onUpload: (file: File) => void;
-  onRemove: (publicId: string) => void;
+  onRemove: (img: ImageEntry) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -449,7 +452,7 @@ function ProductImageRow({
 
       <div className="bulk-img-row__preview">
         {(product.images || []).map((img) => (
-          <div key={img.publicId} className="bulk-img-row__thumb">
+          <div key={img.publicId || img.url} className="bulk-img-row__thumb">
             <Image
               src={img.url}
               alt=""
@@ -460,7 +463,7 @@ function ProductImageRow({
             <button
               type="button"
               className="bulk-img-row__thumb-del"
-              onClick={() => onRemove(img.publicId)}
+              onClick={() => onRemove(img)}
               aria-label="Удалить"
             >
               <X size={10} />

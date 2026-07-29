@@ -7155,6 +7155,10 @@ body:has(.admin-modal-overlay) {
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
+  /* Отступ под плавающий колокольчик уведомлений
+     (.admin-notify справа сверху, ~42px + зазор) — иначе он
+     перекрывал счётчик «Популярных товаров: N». */
+  padding-right: 56px;
 }
 
 .featured-sort-page__count {
@@ -7296,6 +7300,32 @@ body:has(.admin-modal-overlay) {
 
 .featured-sort__card-mask {
   pointer-events: none;
+}
+
+/* ── Компактный вид карточки в инструменте сортировки ──
+   Это рабочая страница сортировки, а не витрина: фото показываем
+   ЦЕЛИКОМ (без жёсткой квадратной обрезки), а корзинные кнопки и
+   суммы прячем — карточки ниже, порядок обозревать удобнее. */
+.featured-sort__card-mask .pcc__img {
+  aspect-ratio: 4 / 3;
+  background: #fff;
+}
+
+.featured-sort__card-mask .pcc__img img {
+  object-fit: contain !important;
+  padding: 6px;
+}
+
+.featured-sort__card-mask .pcc__hover-overlay,
+.featured-sort__card-mask .pcc__actions,
+.featured-sort__card-mask .pcc__qty-total,
+.featured-sort__card-mask .pcc__in-cart,
+.featured-sort__card-mask .pcc__inquiry-btn {
+  display: none !important;
+}
+
+.featured-sort__card-mask .pcc:hover {
+  transform: none;
 }
 
 /* Ручка перетаскивания = бейдж с номером. На тачах drag начинается

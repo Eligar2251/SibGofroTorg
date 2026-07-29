@@ -104,7 +104,15 @@ export function ProductFormClient({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
-  const [images, setImages] = useState<ProductImage[]>(product?.images || []);
+  // Фото: если массив images пуст, но у товара есть главное фото
+  // (image_url — обычно пришло импортом из Excel), подставляем его
+  // как первый элемент. Иначе пересохранение формы ЗАТИРАЛО
+  // главное фото: imageUrl считался из пустого images как null.
+  const [images, setImages] = useState<ProductImage[]>(() => {
+    const fromDb = product?.images || [];
+    if (fromDb.length > 0) return fromDb;
+    return product?.imageUrl ? [{ url: product.imageUrl, publicId: "" }] : [];
+  });
   // Штрихкод — постоянный EAN-13. Контролируемое поле, чтобы
   // кнопка «Перегенерировать» могла сразу подставить новый код.
   const [barcodeValue, setBarcodeValue] = useState(product?.barcode || "");
@@ -243,6 +251,11 @@ export function ProductFormClient({
       isVisible: data.get("isVisible") === "on",
       isFeatured,
       images,
+      // Главное фото — первое в массиве. Затирания больше нет
+      // благодаря инициализации images из product.imageUrl выше
+      // (Excel-товары), поэтому НЕ добавляем сюда фоллбек на
+      // product.imageUrl: иначе удалить последнее фото у товара
+      // стало бы невозможно (старое «воскресало» при сохранении).
       imageUrl: images[0]?.url || null,
     };
 

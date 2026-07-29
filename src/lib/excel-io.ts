@@ -918,8 +918,18 @@ export async function importExcelWorkbook(buffer: Buffer): Promise<ImportReport>
           material: cell(row, "Материал", "material") || null,
           packQty: num(row, "В упаковке", "packQty"),
           weight: num(row, "Вес", "weight"),
-          imageUrl: cell(row, "URL картинки", "imageUrl") || null,
         };
+        // Фото по ссылке — только если ячейка заполнена. Пустую
+        // ячейку НЕ прокидываем, иначе повторный импорт затирал
+        // фотографии товаров пустым image_url/images.
+        const imageCell = (cell(row, "URL картинки", "imageUrl") || "").toString().trim();
+        if (imageCell) {
+          payload.imageUrl = imageCell;
+          // И в массив фото: иначе следующая правка карточки товара
+          // в админке стирала главное фото (форма считает главным
+          // первый элемент images).
+          payload.images = [{ url: imageCell, publicId: "" }];
+        }
         const discType = cell(row, "Скидка тип", "discountType");
         if (discType === "percent" || discType === "fixed") payload.discountType = discType;
         const discVal = num(row, "Скидка значение", "discountValue");
