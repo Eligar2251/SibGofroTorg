@@ -609,10 +609,13 @@ export function getCollectedBreakdown(
   let cash = 0;
   let transfer = 0;
   for (const c of collections) {
-    const t = Number(c.transferAmount) || 0;
-    // Старые сдачи без разбивки считаем полностью наличными.
-    const cashPart =
-      c.cashAmount != null ? Number(c.cashAmount) || 0 : (c.amount || 0) - t;
+    const hasSplit = c.cashAmount != null;
+    // Старые записи целиком уменьшали кассу. В новой расшифровке относим их
+    // к выбывшей части, а не к перенесённой наличке.
+    const t = hasSplit
+      ? Number(c.transferAmount) || 0
+      : Number(c.amount) || 0;
+    const cashPart = hasSplit ? Number(c.cashAmount) || 0 : 0;
     cash += cashPart;
     transfer += t;
   }

@@ -2193,13 +2193,18 @@ export function WarehouseManager({
                       </thead>
                       <tbody>
                         {collectionsSorted.map((c) => {
-                          const transfer = Math.round((c.transferAmount || 0) * 100) / 100;
-                          // Старые записи без разбивки — полностью наличные.
+                          const legacyCollection = c.cashAmount == null;
+                          const transfer =
+                            Math.round(
+                              (legacyCollection
+                                ? c.amount || 0
+                                : c.transferAmount || 0) * 100
+                            ) / 100;
+                          // У старых записей разбивки не было и вся сумма
+                          // уменьшала кассу — не считаем её переносом.
                           const cashPart =
                             Math.round(
-                              (c.cashAmount != null
-                                ? c.cashAmount
-                                : (c.amount || 0) - transfer) * 100
+                              (legacyCollection ? 0 : c.cashAmount || 0) * 100
                             ) / 100;
                           const marked = (c.items || []).length;
                           const exp = c.expenses || [];
@@ -2241,6 +2246,15 @@ export function WarehouseManager({
                                   />
                                 )}
                                 {fmtDate(c.date)}
+                                {legacyCollection && (
+                                  <span
+                                    className="admin-badge admin-badge--muted"
+                                    style={{ marginLeft: 6 }}
+                                    title="Старая запись без разбивки: вся сумма была вычтена из кассы"
+                                  >
+                                    старый учёт
+                                  </span>
+                                )}
                                 {marked > 0 && (
                                   <span
                                     className="admin-badge admin-badge--muted"
