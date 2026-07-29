@@ -28,6 +28,7 @@ import {
   Gift,
   Trash2,
   ChevronRight,
+  RotateCcw,
   BarChart3,
 } from "lucide-react";
 import {
@@ -85,6 +86,19 @@ function fmtDate(raw: string | null | undefined): string {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  });
+}
+
+function fmtDateTime(raw: string | null | undefined): string {
+  if (!raw) return "—";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return fmtDate(raw);
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -474,6 +488,47 @@ export function WarehouseManager({
     [collectionsSorted]
   );
 
+  // Старая версия «закрыть без инкассации» не создавала документ сдачи,
+  // а просто ставила платежам «вне баланса». Восстанавливаем виртуальные
+  // документы по общему updatedAt, чтобы они были видны в проведённых и
+  // отменялись одной кнопкой, как обычная сдача кассы.
+  const legacyCashClosures = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        id: string;
+        date: string;
+        paymentIds: string[];
+        numbers: number[];
+        amount: number;
+      }
+    >();
+    for (const payment of payments) {
+      if (
+        !payment.isPaid ||
+        !payment.excludeFromBalance ||
+        payment.type !== "cash" ||
+        payment.direction !== "incoming"
+      ) {
+        continue;
+      }
+      const stamp = payment.updatedAt || payment.paidAt || payment.date;
+      const key = String(stamp || "legacy").slice(0, 16);
+      const current = groups.get(key) || {
+        id: `legacy-${key}`,
+        date: String(stamp || payment.date),
+        paymentIds: [],
+        numbers: [],
+        amount: 0,
+      };
+      current.paymentIds.push(payment.id);
+      current.numbers.push(payment.number);
+      current.amount += payment.amount;
+      groups.set(key, current);
+    }
+    return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date));
+  }, [payments]);
+
   // Сдача кассы идёт через модалку: там каждый платёж помечается
   // «наличные / перевод», чтобы в отчёте было видно, сколько куда ушло.
   function handleCollectCash() {
@@ -483,6 +538,37 @@ export function WarehouseManager({
     }
     setCollectError("");
     setShowCollect(true);
+  }
+
+  async function handleRestoreLegacyClosure(paymentIds: string[], amount: number) {
+    if (
+      !confirm(
+        `Отменить проведение старой сдачи без инкассации на ${fmt(amount)} ₽?\n\n` +
+          "Платежи вернутся в баланс кассы и снова появятся в настройках сдачи."
+      )
+    ) {
+      return;
+    }
+    setCollecting(true);
+    setCollectError("");
+    try {
+      const response = await fetch("/api/admin/warehouse/cash-collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore", paymentIds }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error || "Не удалось отменить проведение");
+      }
+      router.refresh();
+    } catch (error) {
+      setCollectError(
+        error instanceof Error ? error.message : "Не удалось отменить проведение"
+      );
+    } finally {
+      setCollecting(false);
+    }
   }
 
   async function handleDeleteCollection(id: string, noAccounting = false) {
@@ -2613,6 +2699,109 @@ export function WarehouseManager({
             </>
           ) : (
             <>
+          {bankSub === "history" &&
+            (collectionsSorted.length > 0 || legacyCashClosures.length > 0) && (
+              <div className="admin-card bank-cash-postings">
+                <div className="admin-card__head">
+                  <div>
+                    <h3 className="admin-card__title">
+                      <Banknote size={15} style={{ verticalAlign: "middle", marginRight: 7 }} />
+                      Проведённые сдачи кассы
+                    </h3>
+                    <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
+                      Отдельные документы кассы — не банковские платежи
+                    </div>
+                  </div>
+                  <span className="admin-badge admin-badge--muted">
+                    {collectionsSorted.length + legacyCashClosures.length} док.
+                  </span>
+                </div>
+                <div className="bank-cash-postings__list">
+                  {legacyCashClosures.map((closure) => (
+                    <div key={closure.id} className="bank-cash-posting bank-cash-posting--legacy">
+                      <span className="bank-cash-posting__icon"><Archive size={15} /></span>
+                      <div className="bank-cash-posting__main">
+                        <div className="bank-cash-posting__top">
+                          <strong>Сдача кассы без инкассации · старое проведение</strong>
+                          <span className="admin-badge admin-badge--green">проведено</span>
+                          <span className="admin-badge admin-badge--amber">вне баланса</span>
+                        </div>
+                        <div className="bank-cash-posting__meta">
+                          <span>{fmtDateTime(closure.date)}</span>
+                          <span>{closure.paymentIds.length} платежей</span>
+                          <span>ПЛ-{closure.numbers.join(", ПЛ-")}</span>
+                        </div>
+                      </div>
+                      <strong className="bank-cash-posting__amount">{fmt(closure.amount)} ₽</strong>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        disabled={collecting}
+                        onClick={() =>
+                          handleRestoreLegacyClosure(
+                            closure.paymentIds,
+                            closure.amount
+                          )
+                        }
+                      >
+                        <RotateCcw size={12} /> Отменить проведение
+                      </button>
+                    </div>
+                  ))}
+                  {collectionsSorted.map((collection) => {
+                    const noAccounting = (collection.items || []).some(
+                      (item) => item.noAccounting
+                    );
+                    const documentAmount = noAccounting
+                      ? (collection.items || []).reduce(
+                          (sum, item) => sum + (item.amount || 0),
+                          0
+                        )
+                      : collection.amount;
+                    return (
+                      <div key={collection.id} className="bank-cash-posting">
+                        <span className="bank-cash-posting__icon"><Banknote size={15} /></span>
+                        <div className="bank-cash-posting__main">
+                          <div className="bank-cash-posting__top">
+                            <strong>
+                              {noAccounting
+                                ? "Закрытие старых платежей без движения денег"
+                                : "Сдача кассы"}
+                            </strong>
+                            <span className="admin-badge admin-badge--green">проведено</span>
+                            {noAccounting && (
+                              <span className="admin-badge admin-badge--blue">без учёта</span>
+                            )}
+                          </div>
+                          <div className="bank-cash-posting__meta">
+                            <span>{fmtDate(collection.date)}</span>
+                            <span>{(collection.items || []).length} платежей</span>
+                            {!noAccounting && (
+                              <>
+                                <span>на карту {fmt(collection.transferAmount || 0)} ₽</span>
+                                <span>в кассе {fmt(collection.cashAmount || 0)} ₽</span>
+                              </>
+                            )}
+                            {collection.note && <span>{collection.note}</span>}
+                          </div>
+                        </div>
+                        <strong className="bank-cash-posting__amount">{fmt(documentAmount)} ₽</strong>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost admin-btn--sm"
+                          disabled={collecting}
+                          onClick={() =>
+                            handleDeleteCollection(collection.id, noAccounting)
+                          }
+                        >
+                          <RotateCcw size={12} /> Отменить проведение
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           <div className="bank-toolbar">
             <div className="bank-toolbar__search" style={{ position: "relative" }}>
               <Search

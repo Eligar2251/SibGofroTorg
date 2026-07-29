@@ -3928,6 +3928,25 @@ body:has(.admin-modal-overlay) {
   }
 }
 
+/* Отдельные проведённые документы сдачи кассы в истории банка */
+.bank-cash-postings { overflow: hidden; }
+.bank-cash-postings__list { display: flex; flex-direction: column; }
+.bank-cash-posting { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-top: 1px solid var(--adm-border); }
+.bank-cash-posting:first-child { border-top: 0; }
+.bank-cash-posting--legacy { background: var(--adm-kraft-pale); }
+.bank-cash-posting__icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; padding: 8px; color: var(--adm-kraft); background: var(--adm-card); border: 1px solid var(--adm-kraft-line); border-radius: 50%; }
+.bank-cash-posting__main { flex: 1 1 auto; min-width: 0; }
+.bank-cash-posting__top, .bank-cash-posting__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; }
+.bank-cash-posting__top strong { color: var(--adm-ink); font-size: 12px; }
+.bank-cash-posting__meta { margin-top: 3px; color: var(--adm-sand); font-size: 10px; }
+.bank-cash-posting__amount { flex: 0 0 auto; color: var(--adm-ink); font-family: var(--adm-font-head); font-size: 15px; white-space: nowrap; }
+@media (max-width: 700px) {
+  .bank-cash-posting { align-items: flex-start; flex-wrap: wrap; }
+  .bank-cash-posting__main { flex-basis: calc(100% - 48px); }
+  .bank-cash-posting__amount { margin-left: 42px; }
+  .bank-cash-posting > .admin-btn { flex: 1 1 auto; }
+}
+
 /* Итоги по отфильтрованным */
 .bank-totalbar {
   display: flex;
