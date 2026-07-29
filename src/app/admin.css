@@ -7243,21 +7243,36 @@ body:has(.admin-modal-overlay) {
   line-height: 1.45;
 }
 
+/* Сетка карточек — ЛОКАЛЬНАЯ (раньше использовался публичный
+   .products-grid-4 сайта: его media-запросы смотрят на вьюпорт, а
+   не на область контента админки, поэтому при сайдбаре колонки
+   просчитывались неверно). auto-fill подстраивается под реальную
+   ширину области: ~2 колонки на телефоне, 3–5 на компьютере. */
 .featured-sort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
   align-items: stretch;
+}
+
+/* На широких мониторах — не жирнее 4-х колонок (как секция на
+   главной), иначе карточки превращаются в «марки». */
+@media (min-width: 1500px) {
+  .featured-sort-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .featured-sort__item {
   position: relative;
   border-radius: 12px;
-  touch-action: none;
+  /* Вертикальный скролл пальцем ПО КАРТОЧКАМ разрешён — страницу
+     можно листать. Перетаскивание начинается только от ручки
+     (тач) или после порога 8px (мышь) — см. компонент. */
+  touch-action: pan-y;
   user-select: none;
-  cursor: grab;
+  cursor: default;
   transform-origin: center center;
-}
-
-.featured-sort__item:active {
-  cursor: grabbing;
 }
 
 .featured-sort__item--placeholder {
@@ -7283,15 +7298,18 @@ body:has(.admin-modal-overlay) {
   pointer-events: none;
 }
 
+/* Ручка перетаскивания = бейдж с номером. На тачах drag начинается
+   только от неё (touch-action: none, чтобы жест не превращался в
+   скролл страницы), поэтому хитбокс чуть больше визуального бейджа. */
 .featured-sort__order {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 4px;
+  left: 4px;
   z-index: 6;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 8px;
+  padding: 9px 10px;
   background: rgba(26, 26, 24, 0.86);
   color: #fff;
   border-radius: 10px;
@@ -7299,6 +7317,12 @@ body:has(.admin-modal-overlay) {
   font-weight: 800;
   letter-spacing: 0.03em;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  cursor: grab;
+  touch-action: none;
+}
+
+.featured-sort__order:active {
+  cursor: grabbing;
 }
 
 .featured-sort__hidden {

@@ -73,7 +73,9 @@ function FeaturedCard({
       className={`featured-sort__item${dragging ? " featured-sort__item--placeholder" : ""}`}
       onPointerDown={(e) => onPointerDown(product.id, e)}
     >
-      <div className="featured-sort__order">
+      {/* Ручка перетаскивания: на телефоне тянуть ТОЛЬКО за неё,
+          иначе каждый скролл по странице срывал карточки в drag. */}
+      <div className="featured-sort__order" title="Тяните, чтобы переместить">
         <GripVertical size={15} /> #{index + 1}
       </div>
       {!product.isVisible && (
@@ -129,10 +131,24 @@ export function FeaturedProductsOrderClient({
   const itemRefs = useRef(new Map<string, HTMLDivElement | null>());
   const productsRef = useRef(products);
   const initialOrderRef = useRef<string[]>([]);
+  // Зеркало draggingId для обработчиков (они висят глобально и не
+  // пересоздаются при каждом рендере).
+  const draggingIdRef = useRef<string | null>(null);
+  // «Кандидат» в drag: палец/кнопка нажаты, но порог ещё не пройден.
+  // Пока не пройден — это обычный клик/скролл, карточку не трогаем.
+  const pendingDragRef = useRef<{
+    id: string;
+    downX: number;
+    downY: number;
+  } | null>(null);
 
   useEffect(() => {
     productsRef.current = products;
   }, [products]);
+
+  useEffect(() => {
+    draggingIdRef.current = draggingId;
+  }, [draggingId]);
 
   const activeProduct = useMemo(
     () => products.find((item) => item.id === draggingId) || null,
@@ -211,16 +227,55 @@ export function FeaturedProductsOrderClient({
     }
   }, []);
 
+  // Старт фактического перетаскивания (когда порог движения пройден).
+  const beginDrag = useCallback(
+    (id: string, downX: number, downY: number, curX: number, curY: number) => {
+      const node = itemRefs.current.get(id);
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      initialOrderRef.current = productsRef.current.map((item) => item.id);
+      setDraggingId(id);
+      setDragPointer({ x: curX, y: curY });
+      setDragBox({
+        width: rect.width,
+        height: rect.height,
+        offsetX: downX - rect.left,
+        offsetY: downY - rect.top,
+      });
+      document.body.style.userSelect = "none";
+    },
+    []
+  );
+
+  // Глобальные обработчики: фаза «кандидат» (ждём порога) и фаза drag.
+  // Порог 8px отделяет перетаскивание от обычного клика/скролла —
+  // раньше карточка уходила в drag от одного касания, и страницу
+  // было невозможно листать (карточки «срывались» под палец).
   useEffect(() => {
-    if (!draggingId) return;
+    const DRAG_THRESHOLD = 8;
 
     const handleMove = (event: PointerEvent) => {
-      setDragPointer({ x: event.clientX, y: event.clientY });
-      reorderByHover(draggingId, event.clientX, event.clientY);
+      const activeId = draggingIdRef.current;
+      if (activeId) {
+        setDragPointer({ x: event.clientX, y: event.clientY });
+        reorderByHover(activeId, event.clientX, event.clientY);
+        return;
+      }
+      const pending = pendingDragRef.current;
+      if (!pending) return;
+      const dx = event.clientX - pending.downX;
+      const dy = event.clientY - pending.downY;
+      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD) {
+        pendingDragRef.current = null;
+        beginDrag(pending.id, pending.downX, pending.downY, event.clientX, event.clientY);
+      }
     };
 
     const handleUp = () => {
-      finishDrag();
+      pendingDragRef.current = null;
+      if (draggingIdRef.current) {
+        finishDrag();
+      }
     };
 
     window.addEventListener("pointermove", handleMove);
@@ -232,26 +287,22 @@ export function FeaturedProductsOrderClient({
       window.removeEventListener("pointerup", handleUp);
       window.removeEventListener("pointercancel", handleUp);
     };
-  }, [draggingId, finishDrag]);
+  }, [beginDrag, finishDrag]);
 
   function handlePointerDown(id: string, e: React.PointerEvent<HTMLDivElement>) {
     if (products.length < 2) return;
-    if (e.button !== 0 && e.pointerType !== "touch") return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
 
-    const node = itemRefs.current.get(id);
-    if (!node) return;
+    // На тачах перетаскивание начинается ТОЛЬКО от ручки (значок ⠿
+    // с номером в углу) — остальная площадь карточки отдаётся
+    // обычному скроллу страницы. На десктопе мышью можно тянуть за
+    // любую точку карточки, но drag стартует после порога 8px —
+    // простые клики карточки больше не двигают.
+    const onHandle =
+      (e.target as HTMLElement).closest(".featured-sort__order") != null;
+    if (e.pointerType !== "mouse" && !onHandle) return;
 
-    const rect = node.getBoundingClientRect();
-    initialOrderRef.current = productsRef.current.map((item) => item.id);
-    setDraggingId(id);
-    setDragPointer({ x: e.clientX, y: e.clientY });
-    setDragBox({
-      width: rect.width,
-      height: rect.height,
-      offsetX: e.clientX - rect.left,
-      offsetY: e.clientY - rect.top,
-    });
-    document.body.style.userSelect = "none";
+    pendingDragRef.current = { id, downX: e.clientX, downY: e.clientY };
   }
 
   return (
@@ -263,8 +314,10 @@ export function FeaturedProductsOrderClient({
           </Link>
           <h1 className="featured-sort-page__title">Порядок популярных товаров</h1>
           <p className="featured-sort-page__sub">
-            Это копия товарной секции главной страницы. Перетаскивайте карточки как иконки на iPhone —
-            порядок меняется сразу и сохраняется автоматически.
+            Это копия товарной секции главной страницы. Тяните карточку за значок ⠿ с номером
+            в её левом верхнем углу (на компьютере мышью — за любое место карточки) — порядок
+            меняется сразу и сохраняется автоматически. Сами карточки обычные: страницу можно
+            спокойно листать пальцем.
           </p>
         </div>
         <div className="featured-sort-page__meta">
@@ -288,8 +341,11 @@ export function FeaturedProductsOrderClient({
             <aside className="home-catalog-unified__side featured-sort-side no-print">
               <div className="home-catalog-unified__label">Как пользоваться</div>
               <div className="featured-sort-side__card">
-                <p>Зажмите карточку и перетащите её в нужное место.</p>
+                <p>Тяните карточку <strong>за значок ⠿ с номером</strong> в её левом верхнем углу
+                (на компьютере мышью — за любое место карточки) и отпустите на новом месте.</p>
                 <p>Позиция <strong>#1</strong> будет первой в блоке «Популярные товары» на главной.</p>
+                <p>Скролл страницы пальцем по карточкам работает как обычно — теперь он не
+                переставляет карточки случайно.</p>
               </div>
 
               <div className="home-catalog-unified__label">Статус</div>
@@ -335,7 +391,7 @@ export function FeaturedProductsOrderClient({
                   <span>Отметьте товары флагом «Популярный товар» в карточке товара.</span>
                 </div>
               ) : (
-                <div className="products-grid-4 featured-sort-grid">
+                <div className="featured-sort-grid">
                   {products.map((product, index) => (
                     <FeaturedCard
                       key={product.id}
