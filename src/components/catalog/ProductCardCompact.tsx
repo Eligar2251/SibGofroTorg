@@ -268,6 +268,7 @@ export function ProductCardCompact({
           <PriceInquiryButton
             productName={product.name}
             productSku={product.sku}
+            productImageUrl={product.imageUrl}
             className="pcc__inquiry-btn"
             label={RESTOCK_INQUIRY_LABEL}
             kind="restock"
@@ -276,6 +277,7 @@ export function ProductCardCompact({
           <PriceInquiryButton
             productName={product.name}
             productSku={product.sku}
+            productImageUrl={product.imageUrl}
             className="pcc__inquiry-btn"
             label="Узнать цену"
           />
@@ -283,6 +285,7 @@ export function ProductCardCompact({
           <PriceInquiryButton
             productName={product.name}
             productSku={product.sku}
+            productImageUrl={product.imageUrl}
             className="pcc__inquiry-btn"
             label="Узнать цену"
           />

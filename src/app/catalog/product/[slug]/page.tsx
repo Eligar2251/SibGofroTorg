@@ -541,6 +541,7 @@ export default async function ProductPage({
                     <PriceInquiryButton
                       productName={product.name}
                       productSku={product.sku}
+                      productImageUrl={product.imageUrl}
                       className="pdp-made-to-order__btn"
                       label={RESTOCK_INQUIRY_LABEL}
                       kind="restock"
@@ -556,6 +557,7 @@ export default async function ProductPage({
                     <PriceInquiryButton
                       productName={product.name}
                       productSku={product.sku}
+                      productImageUrl={product.imageUrl}
                       className="pdp-made-to-order__btn"
                       label="Узнать цену"
                     />
@@ -570,6 +572,7 @@ export default async function ProductPage({
                     <PriceInquiryButton
                       productName={product.name}
                       productSku={product.sku}
+                      productImageUrl={product.imageUrl}
                       className="pdp-made-to-order__btn"
                       label="Узнать цену"
                     />

@@ -6684,11 +6684,13 @@ body {
 .pi-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  /* Выше промо-попапов сайта (z-index 1200): модалка заявки
+     всегда поверх, куда бы ни была встроена кнопка. */
+  z-index: 1400;
   background: rgba(10, 18, 14, 0.55);
   backdrop-filter: blur(3px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
   overflow-y: auto;
@@ -6696,6 +6698,9 @@ body {
 
 .pi-modal {
   position: relative;
+  /* auto-отступы центрируют модалку по вертикали, когда она
+     помещается, и не обрезают её сверху, когда экран низкий. */
+  margin: auto 0;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
@@ -6743,8 +6748,8 @@ body {
 
 .pi-product {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   background: var(--green-bg);
   border: 1px solid var(--green-border);
   color: var(--green-dark);
@@ -6752,13 +6757,47 @@ body {
   font-weight: 600;
   line-height: 1.45;
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   padding-right: 32px;
 }
 
-.pi-product svg {
+.pi-product__img {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #fff;
+  border: 1px solid var(--green-border);
   flex-shrink: 0;
-  margin-top: 2px;
+}
+
+/* Заглушка, когда у товара нет фото — та же плашка 44×44. */
+.pi-product__img--placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--green-dark);
+}
+
+.pi-product__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pi-product__name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pi-product__sku {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  font-family: var(--f-mono);
 }
 
 .pi-loading {
