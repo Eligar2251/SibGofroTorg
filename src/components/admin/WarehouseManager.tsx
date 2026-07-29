@@ -2294,7 +2294,7 @@ export function WarehouseManager({
                                     handleDeleteCollection(c.id);
                                   }}
                                 >
-                                  <Trash2 size={13} /> Удалить
+                                  <Trash2 size={13} /> Отменить закрытие
                                 </button>
                               </td>
                             </tr>
