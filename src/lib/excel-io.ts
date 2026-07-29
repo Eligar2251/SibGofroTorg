@@ -38,6 +38,7 @@ import {
   type StockDocItem,
 } from "./warehouse";
 import { VAT_RATE } from "./vat";
+import { isValidBarcode } from "./qr";
 
 // ─── Нормализация текста для «умного» поиска ───────────────
 
@@ -323,6 +324,10 @@ export async function buildExcelExport(mode: "full" | "template" = "full"): Prom
           ID: p.id,
           Название: p.name,
           Артикул: p.sku || "",
+          // Постоянный штрихкод (EAN-13) — для сверки и печати этикеток
+          // из сторонних программ. При импорте применяется ТОЛЬКО к
+          // новым товарам: коды существующих товаров не перезаписываются.
+          Штрихкод: p.barcode || "",
           Категория: (p.categoryId && catById.get(p.categoryId)) || "",
           Цена: p.price ?? "",
           "Оптовая цена": p.priceWholesale ?? "",
@@ -921,9 +926,24 @@ export async function importExcelWorkbook(buffer: Buffer): Promise<ImportReport>
         if (discVal != null) payload.discountValue = discVal;
 
         if (existing) {
+          // Штрихкод существующему товару через импорт НЕ подменяем —
+          // код постоянный, меняется только вручную в карточке.
           await updateProduct(existing.id, payload);
           s.updated++;
         } else {
+          // Новый товар: разрешаем задать штрихкод явно, если он
+          // валидный EAN-13. Иначе — проигнорируем ячейку, сервер
+          // сгенерирует код автоматически.
+          const importBarcode = (cell(row, "Штрихкод", "barcode") || "")
+            .toString()
+            .replace(/\s+/g, "");
+          if (importBarcode && isValidBarcode(importBarcode)) {
+            payload.barcode = importBarcode;
+          } else if (importBarcode) {
+            s.errors.push(
+              `стр.${i + 2}: штрихкод «${importBarcode}» не EAN-13 — будет сгенерирован автоматически`
+            );
+          }
           await createProduct(payload);
           s.created++;
         }

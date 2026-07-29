@@ -1,8 +1,10 @@
 // =========================================================
 // FILE: src/app/[adminPath]/qr-print/page.tsx
-// Массовая печать QR + штрихкодов: компактные этикетки ~4×5 см,
-// на листе A4 помещается ~24 штуки. С фильтром по категории и
-// поиском по названию.
+// Массовая печать этикеток товара: штрихкод EAN-13 (основной
+// формат — тот самый постоянный код из БД) и/или QR-код.
+// Лист A4 с сеткой этикеток 4×4/5×5/6×6 см или термопринтер
+// (Xprinter, этикетки 60×40 мм = 6×4 см) — режим выбирается
+// на странице. С фильтром по категории и поиском по названию.
 //
 // Печать работает через window.print() — отдельный CSS @media print
 // оставляет только сетку этикеток, скрывая всё остальное.
@@ -17,7 +19,7 @@ import { PrintLabelsClient } from "@/components/admin/PrintLabelsClient";
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Печать QR-кодов — СибГофроТорг" };
+export const metadata = { title: "Печать этикеток — СибГофроТорг" };
 
 export default async function QrPrintPage({
   searchParams,
@@ -61,7 +63,7 @@ export default async function QrPrintPage({
           <ArrowLeft size={16} /> В админку
         </Link>
         <h1 className="qrprint-page__title">
-          <QrCode size={20} /> Печать QR + штрихкодов
+          <QrCode size={20} /> Печать этикеток: штрихкоды и QR
         </h1>
       </div>
 

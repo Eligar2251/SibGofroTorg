@@ -20,10 +20,14 @@ async function findByCode(rawCode: string, adminPath: string) {
   const direct = await getProductById(trimmed).catch(() => null);
   if (direct) return direct;
 
-  // 2) EAN-13
-  if (/^\d{13}$/.test(trimmed)) {
+  // 2) Штрихкод (EAN-13 со сканера или вручную; пробелы/дефисы
+  //    «красивого» формата вычищаем)
+  const digits = trimmed.replace(/[\s-]+/g, "");
+  if (/^\d{8,14}$/.test(digits)) {
     const all = await getProducts({ includeHidden: true });
-    return all.find((p) => p.barcode === trimmed) || null;
+    return (
+      all.find((p) => (p.barcode || "").replace(/\s+/g, "") === digits) || null
+    );
   }
 
   // 3) qrSlug

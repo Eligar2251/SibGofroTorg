@@ -49,7 +49,7 @@ function ean13CheckDigit(twelveDigits: string): number {
 
 /**
  * EAN-13 для товара. Детерминированно: один productId → один barcode.
- * Пример: "2001234567890"
+ * Пример: "2001234567893"
  */
 export function computeBarcode(productId: string): string {
   // "200" (3 цифры) + 9 цифр из SHA-1 → 12 цифр + контрольная.
@@ -64,6 +64,52 @@ export function computeBarcode(productId: string): string {
   }
   const twelve = "200" + nine;
   return twelve + String(ean13CheckDigit(twelve));
+}
+
+/**
+ * Случайный EAN-13 из внутреннего диапазона магазина ("200" +
+ * 9 случайных цифр + контрольная). Используется как фоллбек,
+ * когда детерминированный код уже занят другим товаром, и для
+ * ручной перегенерации штрихкода из карточки товара.
+ */
+export function randomBarcode(): string {
+  const bytes = createHash("sha256")
+    .update(`${Date.now()}:${Math.random()}:${process.hrtime.bigint()}`)
+    .digest();
+  let nine = "";
+  for (let i = 0; i < 9; i++) {
+    nine += String(bytes[i] % 10);
+  }
+  const twelve = "200" + nine;
+  return twelve + String(ean13CheckDigit(twelve));
+}
+
+/**
+ * Уникальный штрихкод с учётом уже занятых кодов.
+ * Сначала пробует детерминированный computeBarcode(productId)
+ * (важно для совместимости со старыми распечатками: если у товара
+ * штрихкода в БД ещё нет, он получит ровно тот код, который уже
+ * показывался на этикетках), при коллизии — детерминированные
+ * соль-варианты, затем случайные коды.
+ */
+export function generateUniqueBarcode(
+  productId: string,
+  used: Set<string>
+): string {
+  const deterministic = computeBarcode(productId);
+  if (!used.has(deterministic)) return deterministic;
+
+  for (let salt = 1; salt < 1000; salt++) {
+    const candidate = computeBarcode(`${productId}#${salt}`);
+    if (!used.has(candidate)) return candidate;
+  }
+  // Теоретически недостижимо (1000 вариантов), но на всякий случай —
+  // случайный перебор с кольцевой защитой.
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const candidate = randomBarcode();
+    if (!used.has(candidate)) return candidate;
+  }
+  throw new Error("Не удалось подобрать свободный штрихкод");
 }
 
 /** Crockford-style base32 (без 0/O/1/I/L/U для читаемости URL). */

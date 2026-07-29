@@ -56,6 +56,9 @@ export default async function AdminProductsPage({
     priceWholesale: p.priceWholesale ?? null,
     stockQty: p.stockQty ?? 0,
     inStock: p.inStock,
+    // Постоянный штрихкод (из БД; getProducts подставляет
+    // детерминированный фоллбек для старых товаров)
+    barcode: p.barcode ?? null,
     isPromo: p.isPromo,
     promoLabel: p.promoLabel ?? null,
     madeToOrder: p.madeToOrder ?? false,
@@ -104,7 +107,7 @@ export default async function AdminProductsPage({
               <GripVertical size={15} /> Порядок популярных
             </Link>
             <Link href={`/${ADMIN_PATH}/qr-print`} className="admin-btn admin-btn--ghost" prefetch={false}>
-              <QrCode size={15} /> Печать QR-кодов
+              <QrCode size={15} /> Печать этикеток
             </Link>
             <Link href={`/${ADMIN_PATH}/products/bulk`} className="admin-btn admin-btn--ghost" prefetch={false}>
               <Pencil size={15} /> Массовое редактирование

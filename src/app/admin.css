@@ -7719,6 +7719,16 @@ body:has(.admin-modal-overlay) {
   color: var(--adm-ink);
 }
 
+/* Превью штрихкода в карточке результата сканирования. */
+.scan-page__bc-preview {
+  display: flex;
+  justify-content: center;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+}
+
 .scan-page__codes {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -8298,6 +8308,28 @@ body:has(.admin-modal-overlay) {
   white-space: nowrap;
 }
 
+/* ── Штрихкод как ОСНОВНОЙ код этикетки (режим «Штрихкод») ──
+   Один EAN-13 крупно по центру: векторный SVG масштабируется
+   под ячейку с сохранением пропорций (max-width/max-height +
+   aspect-saving constraint solving), штрихи ровные на любом DPI. */
+.qrprint__label-code--center {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.qrprint__label-bconly {
+  display: block;
+  /* Ширина — вся внутренняя ширина этикетки, высота — по пропорции
+     EAN-13 (~2.4:1). max-height страхует от налезания на цену/имя;
+     движок при клэмпе пересчитает ширину с сохранением пропорции. */
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 24mm;
+  object-fit: contain;
+  background: #fff;
+}
+
 /* ── Печать ──
    ВАЖНО: правило @page (размер страницы) здесь НЕ задано — оно
    инъектируется компонентом PrintLabelsClient.tsx тегом <style>
@@ -8401,6 +8433,29 @@ body:has(.admin-modal-overlay) {
   flex: 0 0 auto;
   object-fit: contain;
   background: #fff;
+}
+
+/* Штрихкод на термоэтикетке 60×40 мм (Xprinter): EAN-13 почти во
+   всю ширину (54 из 60 мм) — такой размер гарантированно читается
+   и камерой, и USB-сканером. max-height не даёт вылезти за
+   этикетку, когда на ней ещё цена и габариты (compact). */
+.qrprint__tape-bc {
+  display: block;
+  /* 54 мм — почти вся ширина этикетки (60 мм минус поля). SVG от
+     API (height=18) имеет пропорцию ~1.8:1, поэтому реальный
+     размер решает max-height: 24 мм высоты × ~43 мм ширины —
+     уверенно читается камерой и USB-сканером. При клэмпе движок
+     пересчитывает ширину с сохранением пропорции штрихов. */
+  width: 54mm;
+  height: auto;
+  max-height: 24mm;
+  flex: 0 0 auto;
+  object-fit: contain;
+  background: #fff;
+}
+
+.qrprint__tape-label--compact .qrprint__tape-bc {
+  max-height: 18mm;
 }
 
 .qrprint__tape-name {
@@ -8507,9 +8562,10 @@ body:has(.admin-modal-overlay) {
     break-after: auto;
   }
 
-  /* Чтобы белый фон и чёткий QR точно печатались */
+  /* Чтобы белый фон и чёткий код точно печатались */
   body.qrprint-mode .qrprint__tape-label,
   body.qrprint-mode .qrprint__tape-qr,
+  body.qrprint-mode .qrprint__tape-bc,
   body.qrprint-mode .qrprint__tape-name,
   body.qrprint-mode .qrprint__tape-price,
   body.qrprint-mode .qrprint__tape-dims {

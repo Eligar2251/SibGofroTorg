@@ -58,8 +58,12 @@ export async function GET(
   // 2) Поиск по кодам / slug / SKU среди всех товаров.
   const all = await getProducts({ includeHidden: true });
 
-  if (/^\d{13}$/.test(code)) {
-    const hit = all.find((p) => p.barcode === code);
+  // Цифровой ввод: EAN-13 со сканера, код, введённый вручную, или
+  // скопированный «красивый» вариант с пробелами («200 1234 …»).
+  // Пробелы/дефисы вычищаем — иначе ручной ввод не находился.
+  const digits = code.replace(/[\s-]+/g, "");
+  if (/^\d{8,14}$/.test(digits)) {
+    const hit = all.find((p) => (p.barcode || "").replace(/\s+/g, "") === digits);
     if (hit) {
       return NextResponse.json({ found: true, product: projectForScan(hit) });
     }
