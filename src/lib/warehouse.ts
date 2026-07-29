@@ -2214,6 +2214,15 @@ export async function getPendingCashPayments(): Promise<{
     amount: number;
     comment: string | null;
   }[];
+  /** Ранее скрытые старые наличные платежи (старой версией функции). */
+  closed: {
+    paymentId: string;
+    number: number;
+    date: string;
+    counterparty: string;
+    amount: number;
+    comment: string | null;
+  }[];
   expenses: CashExpenseRow[];
 }> {
   const [payments, salaries, collections] = await Promise.all([
@@ -2230,6 +2239,24 @@ export async function getPendingCashPayments(): Promise<{
       amount: p.amount,
       comment: p.comment ?? null,
     })),
+    closed: payments
+      .filter(
+        (p) =>
+          p.isPaid &&
+          p.excludeFromBalance &&
+          p.type === "cash" &&
+          p.direction === "incoming" &&
+          p.amount > 0
+      )
+      .map((p) => ({
+        paymentId: String(p.id),
+        number: p.number,
+        date: p.date,
+        counterparty: p.counterparty,
+        amount: p.amount,
+        comment: p.comment ?? null,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number),
     // Наличные траты (ЗП и прочие расходы налом) — их вычитаем из
     // прихода, потому что эти деньги уже ушли из кассы.
     expenses: listCashExpenses(payments, salaries),
@@ -2572,13 +2599,13 @@ export async function collectCash(
 /**
  * Закрыть старые наличные платежи без инкассации.
  *
- * Инкассация ведётся с определённой даты, а в кассе висят более ранние
- * платежи — их не нужно сдавать, нужно просто убрать из списка и из
- * остатка кассы. Помечаем их exclude_from_balance: документ остаётся
- * в истории, но на баланс не влияет.
+ * Инкассация ведётся с определённой даты, а в списке висят более ранние
+ * платежи времён, когда кассовый учёт не вёлся. Их нужно только скрыть из
+ * будущей сдачи. Создаём нулевую служебную запись: никаких оплат, списаний,
+ * внесений и изменений текущего остатка не происходит.
  *
- * Затрагиваются ТОЛЬКО наличные приходы (type='cash'). Безналичный
- * расчётный счёт не трогается.
+ * Затрагивается только видимость наличных приходов (type='cash'). Сам
+ * платёж и его влияние на баланс не изменяются.
  */
 export async function closeOldCashPayments(
   paymentIds: string[]
@@ -2604,15 +2631,73 @@ export async function closeOldCashPayments(
     amount += p.amount;
   }
 
+  const selected = ids.map((id) => byId.get(id)!);
+  const closedAt = new Date().toISOString().slice(0, 10);
+  // Нулевая запись закрытия используется только как настройка видимости:
+  // listPendingCashPayments увидит paymentId в items и уберёт старый платёж
+  // из списка сдачи. amount/transfer/cash = 0, поэтому баланс, банк и касса
+  // вообще не меняются.
+  const { error } = await db.from("cash_collections").insert({
+    date: closedAt,
+    amount: 0,
+    cash_amount: 0,
+    transfer_amount: 0,
+    income_amount: 0,
+    expenses_amount: 0,
+    expenses: [],
+    items: selected.map((p) => ({
+      paymentId: String(p.id),
+      number: p.number,
+      counterparty: p.counterparty,
+      amount: p.amount,
+      kind: "cash",
+      cashAmount: 0,
+      cardAmount: 0,
+      expenseAmount: 0,
+      noAccounting: true,
+    })),
+    note: `Закрыто без учёта и инкассации: ${selected.length} плат. на ${round2(amount)} ₽`,
+  });
+  if (error) throw error;
+
+  revalidateTag("warehouse-cash-collections", { expire: 0 });
+  return { closed: ids.length, amount: round2(amount) };
+}
+
+/**
+ * Откат старой версии «закрыть без инкассации», которая ошибочно ставила
+ * exclude_from_balance и тем самым вычитала весь наличный приход из кассы.
+ */
+export async function restoreClosedOldCashPayments(
+  paymentIds: string[]
+): Promise<{ restored: number; amount: number }> {
+  const db = getAdminDb();
+  const ids = [...new Set(paymentIds.map((id) => String(id || "").trim()))].filter(Boolean);
+  if (ids.length === 0) throw new Error("Не выбрано ни одного платежа");
+
+  const payments = await fetchPayments();
+  const selected = payments.filter(
+    (payment) =>
+      ids.includes(String(payment.id)) &&
+      payment.isPaid &&
+      payment.excludeFromBalance &&
+      payment.type === "cash" &&
+      payment.direction === "incoming"
+  );
+  if (selected.length !== ids.length) {
+    throw new Error("Один из закрытых наличных платежей не найден");
+  }
+
   const { error } = await db
     .from("bank_payments")
-    .update({ exclude_from_balance: true })
+    .update({ exclude_from_balance: false })
     .in("id", ids);
   if (error) throw error;
 
+  const amount = selected.reduce((sum, payment) => sum + payment.amount, 0);
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-cash-collections", { expire: 0 });
-  return { closed: ids.length, amount: round2(amount) };
+  return { restored: selected.length, amount: round2(amount) };
 }
 
 export async function deleteCashCollection(id: string): Promise<void> {

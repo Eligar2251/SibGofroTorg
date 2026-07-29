@@ -485,8 +485,11 @@ export function WarehouseManager({
     setShowCollect(true);
   }
 
-  async function handleDeleteCollection(id: string) {
-    if (!confirm("Отменить закрытие смены? Инкассированная сумма вернётся в кассу, а платежи снова появятся для разметки.")) return;
+  async function handleDeleteCollection(id: string, noAccounting = false) {
+    const message = noAccounting
+      ? "Вернуть скрытые старые платежи в список сдачи? Баланс кассы не изменится."
+      : "Отменить закрытие смены? Инкассированная сумма вернётся в кассу, а платежи снова появятся для разметки.";
+    if (!confirm(message)) return;
     setCollecting(true);
     try {
       const res = await fetch(`/api/admin/warehouse/cash-collections/${id}`, {
@@ -2347,6 +2350,9 @@ export function WarehouseManager({
                               (legacyCollection ? 0 : c.cashAmount || 0) * 100
                             ) / 100;
                           const marked = (c.items || []).length;
+                          const noAccounting = (c.items || []).some(
+                            (item) => item.noAccounting
+                          );
                           const exp = c.expenses || [];
                           const expSum =
                             Math.round((c.expensesAmount || 0) * 100) / 100;
@@ -2386,6 +2392,15 @@ export function WarehouseManager({
                                   />
                                 )}
                                 {fmtDate(c.date)}
+                                {noAccounting && (
+                                  <span
+                                    className="admin-badge admin-badge--amber"
+                                    style={{ marginLeft: 6 }}
+                                    title="Платежи только скрыты из списка сдачи; баланс не менялся"
+                                  >
+                                    без учёта и движения денег
+                                  </span>
+                                )}
                                 {legacyCollection && (
                                   <span
                                     className="admin-badge admin-badge--muted"
@@ -2431,10 +2446,10 @@ export function WarehouseManager({
                                   disabled={collecting}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDeleteCollection(c.id);
+                                    handleDeleteCollection(c.id, noAccounting);
                                   }}
                                 >
-                                  <Trash2 size={13} /> Отменить закрытие
+                                  <Trash2 size={13} /> {noAccounting ? "Вернуть в список" : "Отменить закрытие"}
                                 </button>
                               </td>
                             </tr>

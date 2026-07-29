@@ -360,6 +360,8 @@ export interface CashCollectionItem {
   cardAmount?: number;
   /** Сколько из платежа забрали на расходы (ЗП и прочее) */
   expenseAmount?: number;
+  /** Старый платёж скрыт из сдачи без движения по кассе. */
+  noAccounting?: boolean;
 }
 
 /** Наличный расход, вычтенный при сдаче кассы (ЗП или платёж налом). */

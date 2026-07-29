@@ -23,6 +23,7 @@ import {
   Wallet,
   Scissors,
   Archive,
+  RotateCcw,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
@@ -76,6 +77,7 @@ export function CashCollectModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<PendingCashPayment[]>([]);
+  const [closed, setClosed] = useState<PendingCashPayment[]>([]);
   const [expenses, setExpenses] = useState<CashExpense[]>([]);
   /** Ручная разбивка платежа: paymentId -> сколько наличкой и сколько на расход. */
   const [splits, setSplits] = useState<
@@ -103,6 +105,7 @@ export function CashCollectModal({
         if (cancelled) return;
         const list: PendingCashPayment[] = data.pending || [];
         setPending(list);
+        setClosed(data.closed || []);
         setExpenses(data.expenses || []);
         if (data.cardHolder) setCardHolder(String(data.cardHolder));
         // Открываем на самой свежей дате: обычно сдают кассу за сегодня.
@@ -263,9 +266,9 @@ export function CashCollectModal({
       !confirm(
         `Закрыть ${ids.length} платеж(ей) за ${fmtDate(activeDate)} на ${fmt(
           sum
-        )} ₽ без инкассации?\n\n` +
-          "Они уйдут из списка сдачи и перестанут влиять на остаток кассы. " +
-          "Сами платежи останутся в истории банка."
+        )} ₽ без учёта и инкассации?\n\n` +
+          "Они только скроются из списка сдачи. Баланс кассы, оплаты, " +
+          "платежи и история банка вообще не изменятся."
       )
     ) {
       return;
@@ -280,6 +283,36 @@ export function CashCollectModal({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Не удалось закрыть платежи");
+      router.refresh();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сети");
+      setSaving(false);
+    }
+  }
+
+  async function restoreClosed(paymentIds: string[]) {
+    if (paymentIds.length === 0) return;
+    const restoring = closed.filter((payment) => paymentIds.includes(payment.paymentId));
+    const sum = r2(restoring.reduce((total, payment) => total + payment.amount, 0));
+    if (
+      !confirm(
+        `Вернуть ${restoring.length} платеж(ей) на ${fmt(sum)} ₽?\n\n` +
+          "Наличный приход снова войдёт в баланс кассы и появится в списке сдачи."
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/warehouse/cash-collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore", paymentIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Не удалось вернуть платежи");
       router.refresh();
       onClose();
     } catch (e) {
@@ -392,6 +425,47 @@ export function CashCollectModal({
             расчётный счёт не затрагивается.
           </p>
 
+          {closed.length > 0 && (
+            <details className="cashc-closed-settings">
+              <summary>
+                <Archive size={13} />
+                Ранее закрытые без инкассации — {closed.length} плат. на{" "}
+                {fmt(r2(closed.reduce((sum, payment) => sum + payment.amount, 0)))} ₽
+              </summary>
+              <div className="cashc-closed-settings__note">
+                Эти платежи закрыла старая версия функции через «вне баланса».
+                Нажмите «Вернуть», чтобы восстановить списанную сумму кассы.
+              </div>
+              <div className="cashc-closed-settings__list">
+                {closed.map((payment) => (
+                  <div key={payment.paymentId} className="cashc-closed-settings__row">
+                    <div>
+                      <strong>ПЛ-{payment.number} · {payment.counterparty}</strong>
+                      <span>{fmtDate(payment.date)}</span>
+                    </div>
+                    <b>{fmt(payment.amount)} ₽</b>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      disabled={saving}
+                      onClick={() => restoreClosed([payment.paymentId])}
+                    >
+                      <RotateCcw size={12} /> Вернуть
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary admin-btn--sm"
+                disabled={saving}
+                onClick={() => restoreClosed(closed.map((payment) => payment.paymentId))}
+              >
+                <RotateCcw size={12} /> Вернуть все в кассу
+              </button>
+            </details>
+          )}
+
           {loading ? (
             <div className="admin-empty" style={{ padding: 24 }}>
               <Loader2 size={20} className="animate-spin" />
@@ -500,9 +574,9 @@ export function CashCollectModal({
                       className="admin-btn admin-btn--ghost admin-btn--sm cashc-close-day"
                       onClick={closeDay}
                       disabled={saving}
-                      title="Убрать платежи этого дня из кассы без инкассации. Нужно для старых платежей до начала инкассации."
+                      title="Только скрыть старые платежи из списка. Баланс и оплаты не изменятся."
                     >
-                      <Archive size={12} /> Закрыть день без сдачи
+                      <Archive size={12} /> Скрыть старые без учёта
                     </button>
                   </div>
 
