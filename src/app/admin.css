@@ -8938,571 +8938,274 @@ body:has(.admin-modal-overlay) {
   .wh-report-table th, .wh-report-table td { font-size: 8px; }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   ФИНАЛЬНАЯ ГЕОМЕТРИЯ АДМИНКИ
-   Единая сетка, высота контролов и линия «иконка → текст».
-   Этот слой намеренно находится последним: он сводит воедино старые
-   разделы, которые добавлялись в разное время и имели разные размеры.
-   ═══════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════
+   АККУРАТНАЯ АДАПТИВНАЯ СЕТКА АДМИНКИ
+   Без жёстких размеров и глобальных запретов: элементы растягиваются,
+   переносятся контейнерами и сохраняют естественное выравнивание.
+   ══════════════════════════════════════ */
 
-/* Никаких оптических top/margin-сдвигов: центрирование только геометрией. */
-[data-admin="true"] :is(button, a, label, summary, .admin-badge, .admin-filter) > svg {
-  position: static !important;
-  top: auto !important;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  flex: 0 0 auto;
-  align-self: center;
-  order: -1;
-}
-
-/* Любой контрол с непосредственной иконкой всегда строится в одну строку. */
-[data-admin="true"] :is(button, a, label, summary):has(> svg),
-[data-admin="true"] :is(.admin-badge, .admin-filter):has(> svg) {
-  display: inline-flex;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: center;
-  flex-wrap: nowrap !important;
-  gap: 7px;
-  line-height: 1.2;
-}
-
-[data-admin="true"] :is(button, a, label, summary):has(> svg) > :is(span, strong, small),
-[data-admin="true"] :is(.admin-badge, .admin-filter):has(> svg) > :is(span, strong, small) {
-  min-width: 0;
-  line-height: inherit;
-}
-
-/* Базовые контролы: одинаковая высота и baseline во всех разделах. */
-[data-admin="true"] :is(.admin-btn, .admin-filter, .admin-status__btn, .scan-page__btn) {
-  min-height: 36px;
-  align-items: center !important;
-  justify-content: center;
-  flex-wrap: nowrap !important;
-  line-height: 1 !important;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-[data-admin="true"] .admin-btn--sm,
-[data-admin="true"] .admin-status__btn.admin-btn--sm {
-  min-height: 30px;
-  height: 30px;
-  padding-block: 0;
-}
-
-[data-admin="true"] .admin-btn--icon {
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  min-height: 36px;
-  gap: 0;
-  padding: 0;
-}
-
-[data-admin="true"] :is(.admin-btn, .admin-filter, .admin-status__btn, .scan-page__btn) > svg {
-  width: 14px;
-  height: 14px;
-}
-
-[data-admin="true"] .admin-btn--icon > svg {
-  width: 15px;
-  height: 15px;
-  margin: 0 !important;
-}
-
-/* Бейджи одной высоты: иконка и подпись строго на общей оси. */
-[data-admin="true"] .admin-badge {
-  min-height: 22px;
-  align-items: center !important;
-  justify-content: center;
-  flex-wrap: nowrap !important;
-  padding: 3px 7px;
-  line-height: 1 !important;
-  vertical-align: middle;
-}
-
-[data-admin="true"] .admin-badge > svg {
-  width: 11px;
-  height: 11px;
-}
-
-/* Заголовки страниц/карточек: одна вертикальная ось, без случайных сдвигов. */
+/* Flex/grid-дети могут реально сжиматься внутри доступной колонки. */
 [data-admin="true"] :is(
   .admin-page-head,
   .admin-card__head,
+  .admin-tabs-with-actions,
+  .admin-form-actions,
   .admin-modal__head,
-  .dash-section-head,
-  .stock-summary__head,
-  .stock-summary__section-head,
-  .admin-notify__head,
-  .featured-sort-page__head,
-  .scan-page__head,
-  .qrprint-page__head,
-  .wh-report-head,
-  .wh-report-result__head,
-  .whsal-pop__head
+  .bank-toolbar,
+  .whsal-toolbar,
+  .receipt-head,
+  .bank-pay,
+  .deliv-item,
+  .dash-finance-row,
+  .dash-delivery-row
+) > * {
+  min-width: 0;
+}
+
+/* Иконка остаётся рядом с подписью, но сам контрол свободно растягивается. */
+[data-admin="true"] :is(
+  .admin-btn,
+  .admin-filter,
+  .admin-status__btn,
+  .scan-page__btn,
+  .wh-direction__btn,
+  .cashc-seg__btn,
+  .whsal-seg__btn
 ) {
-  align-items: center !important;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+}
+
+[data-admin="true"] :is(
+  .admin-btn,
+  .admin-filter,
+  .admin-status__btn,
+  .scan-page__btn,
+  .wh-direction__btn,
+  .cashc-seg__btn,
+  .whsal-seg__btn
+) > svg {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+[data-admin="true"] :is(
+  .admin-page-head__actions,
+  .admin-actions,
+  .admin-form-actions,
+  .admin-form-actions__left,
+  .admin-modal__actions,
+  .whsal-toolbar__actions,
+  .order-delivery__actions,
+  .excel-io-actions
+) {
+  align-items: center;
+}
+
+/* Заголовок и действия остаются в своей колонке и не выталкивают карточку. */
+[data-admin="true"] :is(.admin-page-head, .admin-card__head, .admin-modal__head) {
+  max-width: 100%;
 }
 
 [data-admin="true"] :is(.admin-h1, .admin-h2, .admin-card__title, .admin-modal__title) {
-  margin-top: 0;
-  margin-bottom: 0;
-  line-height: 1.2;
-}
-
-[data-admin="true"] :is(.admin-h1, .admin-h2, .admin-card__title, .admin-modal__title):has(> svg) {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-[data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions) {
-  align-items: center;
-  flex-wrap: nowrap;
-}
-
-[data-admin="true"] .admin-page-head {
-  flex-wrap: nowrap;
-}
-
-[data-admin="true"] .admin-page-head > :first-child,
-[data-admin="true"] .admin-card__head > :first-child {
-  min-width: 0;
-}
-
-[data-admin="true"] .admin-page-head__actions,
-[data-admin="true"] .admin-card__head > :last-child {
-  flex: 0 0 auto;
-}
-
-/* Табы всегда одной строкой. Если места мало — скролл, а не ступеньки. */
-[data-admin="true"] .admin-filters {
-  flex-wrap: nowrap;
-  align-items: center;
-  overflow-x: auto;
-  overflow-y: hidden;
-  max-width: 100%;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
-}
-
-[data-admin="true"] .admin-filter {
-  height: 36px;
-  min-height: 36px;
-  flex: 0 0 auto;
-}
-
-[data-admin="true"] .admin-filters--sub {
-  margin-top: 0;
-}
-
-[data-admin="true"] .admin-tabs-with-actions {
-  flex-wrap: nowrap;
-  align-items: center;
-}
-
-[data-admin="true"] .admin-tabs-with-actions .admin-filters {
-  flex: 1 1 auto;
-}
-
-[data-admin="true"] .admin-tabs-with-actions .admin-page-head__actions {
-  align-self: center;
-}
-
-/* Поля форм в одной размерной системе. */
-[data-admin="true"] :is(.admin-input, .admin-select) {
-  min-height: 38px;
-  line-height: 1.2;
-  vertical-align: middle;
-}
-
-[data-admin="true"] .admin-label {
-  min-height: 14px;
+  overflow-wrap: anywhere;
   line-height: 1.25;
 }
 
-[data-admin="true"] .admin-check {
+[data-admin="true"] :is(.admin-h1, .admin-h2, .admin-card__title):has(> svg) {
+  display: flex;
   align-items: center;
+  gap: 0.5em;
 }
 
-[data-admin="true"] .admin-check > span {
-  display: inline-block;
-  margin: 0;
-}
-
-/* Панели инструментов — единая горизонтальная рейка. */
-[data-admin="true"] :is(
-  .bank-toolbar,
-  .cp-toolbar,
-  .bulk-toolbar,
-  .whsal-toolbar,
-  .deliv-table-toolbar,
-  .qrprint__toolbar,
-  .md-editor__head
-) {
-  align-items: center !important;
-}
-
-[data-admin="true"] .bank-toolbar {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-}
-
-[data-admin="true"] .bank-toolbar__date {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 5px;
-  min-width: 190px;
-}
-
-[data-admin="true"] .bank-toolbar__date > span {
-  flex: 0 0 auto;
-  margin: 0;
-  white-space: nowrap;
-}
-
-[data-admin="true"] .bank-toolbar__date .admin-input {
-  width: 132px;
-  height: 36px;
-  min-height: 36px;
-}
-
-[data-admin="true"] .bank-toolbar__select {
-  height: 36px;
-  min-height: 36px;
-}
-
-/* Строки документов: не «ломаем» шапку на две высоты. */
-[data-admin="true"] :is(.receipt-head, .deliv-item__top) {
-  align-items: center !important;
-  flex-wrap: nowrap !important;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-[data-admin="true"] .receipt-head > *,
-[data-admin="true"] .deliv-item__top > * {
-  flex-shrink: 0;
-}
-
-[data-admin="true"] .receipt-head__supplier {
-  flex: 1 1 160px;
-  min-width: 120px;
-}
-
-/* Банк: иконка, описание и сумма на общей горизонтали. */
-[data-admin="true"] .bank-pay {
-  align-items: center;
-}
-
-[data-admin="true"] :is(.bank-pay__row1, .bank-pay__row2, .bank-pay__links) {
-  align-items: center;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-}
-
-[data-admin="true"] .bank-pay__counterparty {
+/* Панели отбора используют доступную ширину, не создавая выступов. */
+[data-admin="true"] :is(.admin-input, .admin-select, .admin-textarea) {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
 }
 
-[data-admin="true"] .bank-pay__side {
-  align-items: flex-end;
-  justify-content: center;
+[data-admin="true"] :is(.bank-toolbar__search, .cp-search, .bulk-search, .wh-picker, .spicker) {
+  min-width: 0;
 }
 
-[data-admin="true"] .bank-pay__side .wh-pay-controls {
-  flex-wrap: nowrap;
-}
-
-/* Таблицы: единый ритм строк и вертикальное центрирование контролов. */
-[data-admin="true"] .admin-table th,
-[data-admin="true"] .admin-table td {
-  vertical-align: middle !important;
-  line-height: 1.35;
+[data-admin="true"] .admin-table-wrap {
+  max-width: 100%;
 }
 
 [data-admin="true"] .admin-table :is(.admin-actions, .admin-row) {
   align-items: center;
-  flex-wrap: nowrap;
 }
 
-[data-admin="true"] .admin-actions {
-  min-height: 36px;
+/* Длинные строки документов переносят второстепенные бейджи, а не вылезают. */
+[data-admin="true"] :is(
+  .receipt-head,
+  .bank-pay__row1,
+  .bank-pay__row2,
+  .deliv-item__top,
+  .dash-finance-row__top,
+  .dash-finance-row__detail,
+  .dash-delivery-row__top,
+  .dash-delivery-row__meta
+) {
+  max-width: 100%;
 }
 
-/* Карточки статистики с иконкой: иконка слева, текст сразу справа. */
-[data-admin="true"] .admin-stat:has(.admin-stat__icon) {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  grid-template-rows: auto auto auto;
-  column-gap: 12px;
-  align-content: center;
-  min-height: 104px;
-}
-
-[data-admin="true"] .admin-stat:has(.admin-stat__icon) .admin-stat__icon {
-  grid-column: 1;
-  grid-row: 1 / 4;
-  align-self: center;
-  width: 42px;
-  height: 42px;
-  margin: 0;
-}
-
-[data-admin="true"] .admin-stat:has(.admin-stat__icon) :is(.admin-stat__value, .admin-stat__label) {
-  grid-column: 2;
+[data-admin="true"] :is(
+  .bank-pay__counterparty,
+  .receipt-head__supplier,
+  .dash-finance-row__main,
+  .dash-delivery-row__main,
+  .popup-admin-item__main
+) {
   min-width: 0;
 }
 
-[data-admin="true"] .admin-stat:has(.admin-stat__icon) > div:last-child:not(.admin-stat__icon) {
-  grid-column: 2;
+/* Модалки: естественный поток и независимый скролл без наложений. */
+[data-admin="true"] .admin-modal {
+  min-width: 0;
 }
 
-/* Остальные карточки: одинаковая высота заголовочных строк. */
-[data-admin="true"] :is(.whsal-card__top, .dash-account-card__head, .popup-admin-preview__bar, .excel-io-report__head) {
-  align-items: center !important;
+[data-admin="true"] .admin-modal > form,
+[data-admin="true"] .admin-modal form > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
-[data-admin="true"] :is(.deal-stock--ok, .deal-stock__title, .excel-io-help, .admin-notify__empty, .admin-notify__error) > svg {
-  align-self: center;
-  margin-top: 0 !important;
+[data-admin="true"] .admin-modal__title {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-/* Убираем hover-подпрыгивания: карточка не должна менять положение. */
-[data-admin="true"] :is(.admin-stat, .whsal-card, .admin-notify__btn):hover {
+[data-admin="true"] .admin-modal__close {
+  flex: 0 0 auto;
+}
+
+[data-admin="true"] :is(.wh-items, .deal-delivery-block, .wh-counterparty-details) {
+  max-width: 100%;
+  min-width: 0;
+}
+
+[data-admin="true"] .wh-item-row > * {
+  min-width: 0;
+}
+
+/* Спокойное поведение карточек: без сдвига соседей при hover. */
+[data-admin="true"] :is(.admin-stat, .whsal-card):hover {
   transform: none;
 }
 
-/* Скругления/внутренние отступы приведены к общей линейке 4/8px. */
-[data-admin="true"] .admin-card__head { min-height: 52px; }
-[data-admin="true"] .admin-modal__head { min-height: 36px; gap: 12px; }
-[data-admin="true"] .admin-modal__close { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; }
-[data-admin="true"] .whsal-monthnav { align-items: center; }
-[data-admin="true"] .whsal-monthnav__btn { width: 36px; height: 36px; }
-[data-admin="true"] .stock-inline-editor { min-height: 36px; align-items: center; }
-
-@media (min-width: 761px) {
-  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-modal__actions, .whsal-toolbar__actions) {
-    flex-wrap: nowrap !important;
+@media (max-width: 640px) {
+  /* Модалка начинается под мобильной панелью и тянется по ширине viewport. */
+  [data-admin="true"].admin-modal-overlay,
+  [data-admin="true"] .admin-modal-overlay {
+    align-items: flex-start;
+    padding-inline: 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
-  [data-admin="true"] .whsal-toolbar {
-    flex-wrap: nowrap;
-  }
-}
-
-@media (max-width: 760px) {
-  [data-admin="true"] .admin-page-head {
-    align-items: stretch !important;
-    flex-direction: column;
-  }
-
-  [data-admin="true"] .admin-page-head__actions {
+  [data-admin="true"] .admin-modal {
     width: 100%;
-    overflow-x: auto;
+    min-width: 0;
+    margin: 0 auto;
+    padding: 14px;
+  }
+
+  [data-admin="true"] .admin-modal__head {
+    gap: 10px;
+  }
+
+  [data-admin="true"] .admin-modal__actions,
+  [data-admin="true"] .admin-form-actions,
+  [data-admin="true"] .wh-form-footer {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  [data-admin="true"] :is(.admin-modal__actions, .admin-form-actions, .wh-form-footer) .admin-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+  }
+
+  /* Корень наложения в заказах: более специфичная desktop-сетка из пяти
+     колонок раньше продолжала действовать поверх мобильных grid-area. */
+  [data-admin="true"] .wh-items--deal .wh-item-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "sum del";
+  }
+
+  [data-admin="true"] .wh-items--deal .wh-item-row__name { grid-area: name; }
+  [data-admin="true"] .wh-items--deal .wh-item-row .admin-input:nth-of-type(1) { grid-area: qty; }
+  [data-admin="true"] .wh-items--deal .wh-item-row .admin-input:nth-of-type(2) { grid-area: price; }
+  [data-admin="true"] .wh-items--deal .wh-item-row__sum { grid-area: sum; justify-self: start; text-align: left; }
+  [data-admin="true"] .wh-items--deal .wh-item-row__del { grid-area: del; justify-self: end; }
+
+  [data-admin="true"] .wh-item-row :is(.admin-input, .admin-select) {
+    width: 100%;
+  }
+
+  [data-admin="true"] .wh-item-row__warn {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* Доставка в заказе не сжимает переключатель и заголовок друг в друга. */
+  [data-admin="true"] .deal-delivery-block {
+    padding: 12px;
+  }
+
+  [data-admin="true"] .deal-delivery-block__head {
+    flex-wrap: wrap;
+  }
+
+  [data-admin="true"] .deal-delivery-block__toggle {
+    flex: 1 1 auto;
+    margin-left: 0;
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+  [data-admin="true"] .deal-delivery-tariff {
+    align-items: flex-start;
+  }
+
+  [data-admin="true"] .deal-delivery-tariff__hint {
+    flex: 1 1 100%;
+  }
+
+  /* Поисковые выпадающие списки остаются внутри границ модалки. */
+  [data-admin="true"] :is(.spicker__list, .wh-picker__list) {
+    max-width: 100%;
+  }
+
+  [data-admin="true"] .spicker__opt {
+    min-width: 0;
+  }
+
+  [data-admin="true"] .spicker__opt-text {
+    min-width: 0;
+  }
+
+  /* Шапки и фильтры переносятся целыми flex-элементами без выступов. */
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-tabs-with-actions, .admin-card__head) {
+    max-width: 100%;
   }
 
   [data-admin="true"] .admin-page-head__actions .admin-btn {
-    flex: 0 0 auto;
-  }
-
-  [data-admin="true"] .admin-tabs-with-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  [data-admin="true"] .admin-tabs-with-actions .admin-page-head__actions {
-    overflow-x: auto;
-  }
-
-  [data-admin="true"] .admin-form-actions,
-  [data-admin="true"] .admin-modal__actions {
-    justify-content: flex-end;
-    overflow-x: auto;
-  }
-
-  [data-admin="true"] .admin-card__head {
-    overflow-x: auto;
-  }
-
-  [data-admin="true"] .bank-toolbar {
-    align-items: center;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-
-  [data-admin="true"] .bank-toolbar__search {
-    flex: 0 0 240px;
-  }
-
-  [data-admin="true"] .bank-toolbar__select,
-  [data-admin="true"] .bank-toolbar__date {
-    flex: 0 0 auto;
-  }
-
-  [data-admin="true"] .bank-pay {
-    align-items: center;
+    min-width: 0;
   }
 
   [data-admin="true"] .bank-pay__side {
-    align-items: center;
-  }
-}
-
-@media (max-width: 430px) {
-  [data-admin="true"] :is(.admin-btn, .admin-filter, .admin-status__btn, .scan-page__btn) {
-    font-size: 11px;
+    min-width: 0;
   }
 
-  [data-admin="true"] .admin-stat:has(.admin-stat__icon) {
-    grid-template-columns: 36px minmax(0, 1fr);
-    column-gap: 9px;
-    min-height: 92px;
-    padding: 13px;
+  [data-admin="true"] .bank-pay__side .wh-pay-controls {
+    min-width: 0;
   }
-
-  [data-admin="true"] .admin-stat:has(.admin-stat__icon) .admin-stat__icon {
-    width: 36px;
-    height: 36px;
-  }
-}
-
-/* Сообщения и пустые состояния: пиктограмма стоит рядом с текстом. */
-[data-admin="true"] :is(
-  .admin-error,
-  .admin-success,
-  .wh-form-error,
-  .scan-page__err,
-  .cashc-hint,
-  .bulk-finished,
-  .deal-stock--ok,
-  .admin-notify__empty,
-  .admin-notify__error
-) {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  line-height: 1.35;
-}
-
-[data-admin="true"] :is(
-  .admin-error,
-  .admin-success,
-  .wh-form-error,
-  .scan-page__err,
-  .cashc-hint,
-  .bulk-finished,
-  .deal-stock--ok,
-  .admin-notify__empty,
-  .admin-notify__error
-) > svg {
-  align-self: center;
-  margin: 0 !important;
-  flex: 0 0 auto;
-}
-
-[data-admin="true"] .admin-empty {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-[data-admin="true"] .admin-empty__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  line-height: 1;
-}
-
-[data-admin="true"] .admin-empty > svg {
-  flex: 0 0 auto;
-  margin: 0 !important;
-}
-
-[data-admin="true"] .admin-empty__hint {
-  flex: 1 0 100%;
-  width: 100%;
-}
-
-/* Иконки в строках адреса/подсказок не поднимаются над первой строкой. */
-[data-admin="true"] :is(
-  .deliv-item__addr,
-  .deliv-item__items,
-  .excel-io-help,
-  .dash-delivery-row__address,
-  .admin-order__meta,
-  .cp-card__info > div
-) {
-  align-items: center !important;
-}
-
-[data-admin="true"] :is(
-  .deliv-item__addr,
-  .deliv-item__items,
-  .excel-io-help,
-  .dash-delivery-row__address,
-  .admin-order__meta,
-  .cp-card__info > div
-) > svg {
-  margin-top: 0 !important;
-  align-self: center;
-}
-
-/* Зона загрузки: крупная иконка слева, обе подписи справа. */
-[data-admin="true"] .admin-upload > div {
-  display: grid !important;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-items: center !important;
-  column-gap: 10px !important;
-  row-gap: 2px !important;
-  text-align: left;
-}
-
-[data-admin="true"] .admin-upload > div > svg {
-  grid-column: 1;
-  grid-row: 1 / 3;
-  align-self: center;
-  margin: 0 !important;
-}
-
-[data-admin="true"] .admin-upload > div > :is(.admin-upload__title, .admin-upload__sub) {
-  grid-column: 2;
-  margin: 0;
-}
-
-/* Ошибка сканера: иконка не висит отдельной строкой над сообщением. */
-[data-admin="true"] .scan-page__notfound {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  justify-content: center;
-  column-gap: 10px;
-  row-gap: 4px;
-  text-align: left;
-}
-
-[data-admin="true"] .scan-page__notfound > svg {
-  grid-column: 1;
-  grid-row: 1 / 3;
-  margin: 0;
-}
-
-[data-admin="true"] .scan-page__notfound > p {
-  grid-column: 2;
-  max-width: none;
 }
