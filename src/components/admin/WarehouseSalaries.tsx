@@ -1175,9 +1175,13 @@ interface GridRow {
   accruedRecords: number;
   plan: number;
   effectivePlan: number;
-  /** ручной долг/доплата из настроек (+ должны сотруднику, − сотрудник должен) */
+  /** Исходный ручной долг/доплата из настроек. */
   manualDebt: number;
-  /** всего к выплате = план + долг */
+  /** Уже выплачено отдельными строками «в счёт долга». */
+  debtPaid: number;
+  /** Остаток отдельного долга после таких выплат. */
+  debtRemaining: number;
+  /** Всего к выплате = план месяца + остаток отдельного долга. */
   totalDue: number;
   /** остаток к выплате = всего к выплате − получено */
   rest: number;
@@ -1302,18 +1306,22 @@ export function WarehouseSalaries({
   );
   const pending = scopedSalaries.filter((s) => !s.isPaid);
   const paid = scopedSalaries.filter((s) => s.isPaid);
+  const paidSalary = paid.filter((s) => !isDebtPaymentSalary(s));
+  const paidDebt = paid.filter(isDebtPaymentSalary);
   const pendingTotal = pending.reduce((s, x) => s + x.amount, 0);
   const accruedTotal = scopedSalaries
     .filter((s) => !isDebtPaymentSalary(s))
     .reduce((s, x) => s + x.amount, 0);
-  const paidTotal = paid.reduce((s, x) => s + x.amount, 0);
-  const paidCash = paid
+  // Выплата долга — реальный расход банка/кассы, но не факт зарплаты месяца.
+  const paidTotal = paidSalary.reduce((s, x) => s + x.amount, 0);
+  const paidDebtTotal = paidDebt.reduce((s, x) => s + x.amount, 0);
+  const paidCash = paidSalary
     .filter((s) => s.source === "cash" && !isRentSalary(s))
     .reduce((s, x) => s + x.amount, 0);
-  const paidBank = paid
+  const paidBank = paidSalary
     .filter((s) => s.source === "bank" && !isRentSalary(s))
     .reduce((s, x) => s + x.amount, 0);
-  const paidRent = paid
+  const paidRent = paidSalary
     .filter((s) => isRentSalary(s))
     .reduce((s, x) => s + x.amount, 0);
 
@@ -1333,7 +1341,11 @@ export function WarehouseSalaries({
           (s) => s.employeeId === employee.id || (!s.employeeId && s.employeeName === employee.name)
         );
         const paidRows = rows.filter((r) => r.isPaid);
-        const received = paidRows.reduce((sum, r) => sum + r.amount, 0);
+        const paidSalaryRows = paidRows.filter((r) => !isDebtPaymentSalary(r));
+        const paidDebtRows = paidRows.filter(isDebtPaymentSalary);
+        // В «Получено за месяц» входят только обычные выплаты зарплаты.
+        const received = paidSalaryRows.reduce((sum, r) => sum + r.amount, 0);
+        const debtPaid = paidDebtRows.reduce((sum, r) => sum + r.amount, 0);
         const salaryRows = rows.filter((r) => !isDebtPaymentSalary(r));
         const accruedRecords = salaryRows.reduce((sum, r) => sum + r.amount, 0);
         const planRaw = settingsRaw[planSettingKey(activeMonth, employee.id)];
@@ -1341,7 +1353,11 @@ export function WarehouseSalaries({
         const effectivePlan = plan > 0 ? plan : accruedRecords;
         const debtRaw = settingsRaw[debtSettingKey(activeMonth, employee.id)];
         const manualDebt = debtRaw !== undefined ? Number(debtRaw) || 0 : 0;
-        const totalDue = effectivePlan + manualDebt;
+        // Положительный долг компании сотруднику погашается отдельными
+        // выплатами с тегом [Долг]. В зарплату/факт месяца они не попадают.
+        const debtRemaining =
+          manualDebt > 0 ? Math.max(0, manualDebt - debtPaid) : manualDebt;
+        const totalDue = effectivePlan + debtRemaining;
         const scheduledDays = parseDayList(
           settingsRaw[scheduleSettingKey(activeMonth, employee.id)],
           daysInMonth(activeMonth)
@@ -1377,6 +1393,8 @@ export function WarehouseSalaries({
           plan,
           effectivePlan,
           manualDebt,
+          debtPaid,
+          debtRemaining,
           totalDue,
           rest,
           cells,
@@ -1397,7 +1415,8 @@ export function WarehouseSalaries({
   }, [employees, monthSalaries, settingsRaw, activeMonth, activeEmployee]);
 
   const totalPlan = gridRows.reduce((s, r) => s + r.effectivePlan, 0);
-  const totalManualDebt = gridRows.reduce((s, r) => s + r.manualDebt, 0);
+  const totalManualDebt = gridRows.reduce((s, r) => s + r.debtRemaining, 0);
+  const totalDebtPaid = gridRows.reduce((s, r) => s + r.debtPaid, 0);
   const totalReceived = gridRows.reduce((s, r) => s + r.received, 0);
   const totalRest = totalPlan + totalManualDebt - totalReceived;
   const restCount = gridRows.filter((r) => r.rest > 0).length;
@@ -1415,7 +1434,9 @@ export function WarehouseSalaries({
       for (const [d, items] of Object.entries(row.cells)) {
         totals[Number(d)] =
           (totals[Number(d)] || 0) +
-          items.filter((item) => item.isPaid).reduce((s, x) => s + x.amount, 0);
+          items
+            .filter((item) => item.isPaid && !isDebtPaymentSalary(item))
+            .reduce((s, x) => s + x.amount, 0);
       }
     }
     return totals;
@@ -1652,11 +1673,18 @@ export function WarehouseSalaries({
           (!s.employeeId && s.employeeName === employee.name))
     );
     const received = rows
-      .filter((r) => r.isPaid)
+      .filter((r) => r.isPaid && !isDebtPaymentSalary(r))
       .reduce((s, r) => s + r.amount, 0);
-    const accrued = rows.reduce((s, r) => s + r.amount, 0);
+    const debtPaid = rows
+      .filter((r) => r.isPaid && isDebtPaymentSalary(r))
+      .reduce((s, r) => s + r.amount, 0);
+    const accrued = rows
+      .filter((r) => !isDebtPaymentSalary(r))
+      .reduce((s, r) => s + r.amount, 0);
     const plan = planNumFor(mkey, employee.id);
-    return (plan > 0 ? plan : accrued) + debtNumFor(mkey, employee.id) - received;
+    const debt = debtNumFor(mkey, employee.id);
+    const debtRemaining = debt > 0 ? Math.max(0, debt - debtPaid) : debt;
+    return (plan > 0 ? plan : accrued) + debtRemaining - received;
   }
 
   async function saveDebt(employeeId: string, value: number): Promise<boolean> {
@@ -1831,10 +1859,10 @@ export function WarehouseSalaries({
       body += `<td style="border:1px solid #D5D2C9;padding:4px 8px;font-size:11px;font-weight:bold;background:#FFFFFF;white-space:nowrap;">${esc(row.employee.name)}</td>`;
       body += num(row.effectivePlan, "background:#F7F5F0;font-weight:bold;");
       const debtColor =
-        row.manualDebt > 0 ? "#C8860A" : row.manualDebt < 0 ? "#1E3A5A" : "#B7B3A9";
+        row.debtRemaining > 0 ? "#C8860A" : row.debtRemaining < 0 ? "#1E3A5A" : "#B7B3A9";
       body += `<td align="right" style="border:1px solid #D5D2C9;padding:4px 6px;font-size:11px;font-weight:bold;color:${debtColor};background:#F7F5F0;">${
-        row.manualDebt || ""
-      }</td>`;
+        row.debtRemaining || ""
+      }${row.debtPaid ? ` (погашено ${row.debtPaid})` : ""}</td>`;
       body += num(row.received, "background:#F7F5F0;");
       for (let d = 1; d <= dayCount; d++) {
         const items = row.cells[d] || [];
@@ -2096,6 +2124,7 @@ export function WarehouseSalaries({
           <div className="whsal-card__sub">
             {progressPct}% от начисленного · касса {fmt(paidCash)} · безнал {fmt(paidBank)}
             {paidRent ? ` · аренда ${fmt(paidRent)}` : ""}
+            {paidDebtTotal > 0 ? ` · в счёт долга ${fmt(paidDebtTotal)} ₽ (не входит в факт месяца)` : ""}
           </div>
         </div>
 
@@ -2111,8 +2140,9 @@ export function WarehouseSalaries({
           </div>
           <div className="whsal-card__sub">
             {totalManualDebt !== 0 && (
-              <>в т.ч. долг {totalManualDebt > 0 ? "+" : ""}{fmt(totalManualDebt)} ₽ · </>
+              <>остаток отдельного долга {totalManualDebt > 0 ? "+" : ""}{fmt(totalManualDebt)} ₽ · </>
             )}
+            {totalDebtPaid > 0 && <>погашено долга {fmt(totalDebtPaid)} ₽ · </>}
             к выплате сейчас: {pending.length} · {fmt(pendingTotal)} ₽
           </div>
         </div>
@@ -2260,20 +2290,27 @@ export function WarehouseSalaries({
                     className={`whsal-td whsal-td--debt whsal-clickable${
                       flashKey === `${row.employee.id}:debt` ? " whsal-day--flash" : ""
                     }${
-                      row.manualDebt > 0
+                      row.debtRemaining > 0
                         ? " whsal-debt--pos"
-                        : row.manualDebt < 0
+                        : row.debtRemaining < 0
                         ? " whsal-debt--neg"
                         : " whsal-debt--zero"
                     }`}
                     title={
                       row.manualDebt
-                        ? `Долг ${row.manualDebt > 0 ? "(компания должна сотруднику)" : "(сотрудник должен компании)"}: ${fmt(row.manualDebt)} ₽. Клик — изменить`
+                        ? `Долг задан: ${fmt(row.manualDebt)} ₽ · погашено отдельными выплатами: ${fmt(row.debtPaid)} ₽ · осталось: ${fmt(row.debtRemaining)} ₽. Клик — изменить`
                         : "Долг/доплата сверх плана. Клик — указать"
                     }
                     onClick={(e) => openDebtPopover(row, e.currentTarget)}
                   >
-                    {row.manualDebt ? `${row.manualDebt > 0 ? "+" : ""}${fmt(row.manualDebt)}` : "—"}
+                    {row.debtRemaining
+                      ? `${row.debtRemaining > 0 ? "+" : ""}${fmt(row.debtRemaining)}`
+                      : "—"}
+                    {row.debtPaid > 0 && (
+                      <span className="whsal-from-records">
+                        погашено {fmt(row.debtPaid)}
+                      </span>
+                    )}
                   </td>
                   <td className="whsal-td whsal-td--received">{fmt(row.received)}</td>
                   {Array.from({ length: dayCount }).map((_, i) => {
@@ -3008,6 +3045,13 @@ export function WarehouseSalaries({
               {popover.kind === "debt" && (
                 <>
                   <div className="whsal-pop__subtitle">Долг за месяц, ₽ (±)</div>
+                  {(popRow.manualDebt !== 0 || popRow.debtPaid > 0) && (
+                    <div className="whsal-debt-summary">
+                      <span>Задано: <b>{fmt(popRow.manualDebt)} ₽</b></span>
+                      <span>Погашено: <b>{fmt(popRow.debtPaid)} ₽</b></span>
+                      <span>Осталось: <b>{fmt(popRow.debtRemaining)} ₽</b></span>
+                    </div>
+                  )}
                   <form
                     className="whsal-qform"
                     onSubmit={async (e) => {
@@ -3039,7 +3083,9 @@ export function WarehouseSalaries({
                       <strong>Плюс</strong> — компания должна сотруднику
                       (недовыплаченный остаток, доплата). <strong>Минус</strong> —
                       сотрудник должен компании (аванс, удержание). Долг
-                      прибавляется к «За месяц» при расчёте остатка к выплате.
+                      прибавляется к «За месяц». Выплата с отметкой «В счёт долга»
+                      уменьшает этот долг, списывается из банка/кассы, но не
+                      попадает в «Получено» и факт зарплаты месяца.
                     </p>
                     <div className="whsal-pop__quick-actions">
                       {(() => {

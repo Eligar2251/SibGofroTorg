@@ -39,12 +39,17 @@ import {
   getCashCarryoverSummary,
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
+  isDebtSalaryComment,
   stripSalaryMetaTags,
   type BankPayment,
   type Salary,
   type CashCollection,
 } from "@/lib/warehouse-shared";
 import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
+import {
+  DashboardFinanceHistory,
+  type DashboardFinanceRow,
+} from "@/components/admin/DashboardFinanceHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -119,50 +124,7 @@ function paymentPurpose(payment: BankPayment): string {
   return payment.direction === "incoming" ? "Прочий приход" : "Прочий расход";
 }
 
-type DashboardFinanceRow = {
-  id: string;
-  date: string;
-  direction: "incoming" | "outgoing";
-  account: "bank" | "cash";
-  category: string;
-  counterparty: string;
-  amount: number;
-  detail: string;
-  href: string;
-  dealLinks?: { id: string; number: number }[];
-  receiptLinks?: { id: string; number: number }[];
-};
-
-export default async function AdminDashboard({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    financeQ?: string;
-    financePeriod?: string;
-    financeFrom?: string;
-    financeTo?: string;
-    financeSort?: string;
-  }>;
-}) {
-  const dashboardParams = await searchParams;
-  const financeQ = String(dashboardParams.financeQ || "").trim();
-  const financePeriod = /^\d{4}-\d{2}$/.test(
-    String(dashboardParams.financePeriod || "")
-  )
-    ? String(dashboardParams.financePeriod)
-    : "all";
-  const financeFrom = /^\d{4}-\d{2}-\d{2}$/.test(
-    String(dashboardParams.financeFrom || "")
-  )
-    ? String(dashboardParams.financeFrom)
-    : "";
-  const financeTo = /^\d{4}-\d{2}-\d{2}$/.test(
-    String(dashboardParams.financeTo || "")
-  )
-    ? String(dashboardParams.financeTo)
-    : "";
-  const financeSort = dashboardParams.financeSort === "asc" ? "asc" : "desc";
-
+export default async function AdminDashboard() {
   // Для дашборда читаем только 50 последних заявок. Общие показатели
   // получаем агрегатами Supabase: это значительно дешевле, чем загружать
   // целиком коллекции users и orders при каждом открытии панели.
@@ -298,11 +260,15 @@ export default async function AdminDashboard({
       date: salary.paidAt || salary.date,
       direction: "outgoing",
       account: salary.source,
-      category: "Зарплата",
+      category: isDebtSalaryComment(salary.comment)
+        ? "Выплата в счёт долга"
+        : "Зарплата",
       counterparty: salary.employeeName,
       amount: salary.amount,
       detail: [
-        `за ${salaryMonthLabel(salary)}`,
+        isDebtSalaryComment(salary.comment)
+          ? "не входит в факт зарплаты месяца"
+          : `за ${salaryMonthLabel(salary)}`,
         stripSalaryMetaTags(salary.comment),
       ]
         .filter(Boolean)
@@ -334,46 +300,11 @@ export default async function AdminDashboard({
     })
     .filter((row) => row.amount > 0);
 
-  const financeRows = [
+  const financeRows: DashboardFinanceRow[] = [
     ...paymentFinanceRows,
     ...salaryFinanceRows,
     ...collectionFinanceRows,
   ];
-  const financePeriodOptions = [
-    ...new Set(financeRows.map((row) => row.date.slice(0, 7)).filter(Boolean)),
-  ].sort((a, b) => b.localeCompare(a));
-  const normalizedFinanceQ = financeQ.toLocaleLowerCase("ru-RU");
-  const filteredFinanceRows = financeRows
-    .filter((row) => {
-      if (financePeriod !== "all" && !row.date.startsWith(financePeriod)) {
-        return false;
-      }
-      if (financeFrom && row.date < financeFrom) return false;
-      if (financeTo && row.date > financeTo) return false;
-      if (!normalizedFinanceQ) return true;
-      const haystack = [
-        row.counterparty,
-        row.category,
-        row.detail,
-        row.account === "cash" ? "касса наличные" : "расчетный счёт банк безнал",
-        ...(row.dealLinks || []).map((deal) => `зк-${deal.number}`),
-        ...(row.receiptLinks || []).map((receipt) => `по-${receipt.number}`),
-      ]
-        .join(" ")
-        .toLocaleLowerCase("ru-RU");
-      return haystack.includes(normalizedFinanceQ);
-    })
-    .sort((a, b) => {
-      const byDate =
-        financeSort === "asc"
-          ? a.date.localeCompare(b.date)
-          : b.date.localeCompare(a.date);
-      if (byDate !== 0) return byDate;
-      return financeSort === "asc"
-        ? a.id.localeCompare(b.id)
-        : b.id.localeCompare(a.id);
-    });
-  const recentFinanceRows = filteredFinanceRows.slice(0, 60);
   const financeIncoming = financeRows
     .filter((row) => row.direction === "incoming")
     .reduce((sum, row) => sum + row.amount, 0);
@@ -556,7 +487,7 @@ export default async function AdminDashboard({
         <div className="dash-section-head">
           <div>
             <span className="dash-section-kicker">Финансовая отчётность</span>
-            <h2>Банковские счета: приход, расход и расшифровки</h2>
+            <h2>Банковские счета: приход и расход</h2>
             <p>Фактические проведённые операции за весь период учёта.</p>
           </div>
           <Link
@@ -564,7 +495,7 @@ export default async function AdminDashboard({
             className="admin-btn admin-btn--ghost"
             prefetch={false}
           >
-            Открыть банк <ExternalLink size={13} />
+            <ExternalLink size={13} /> Открыть банк
           </Link>
         </div>
 
@@ -628,167 +559,10 @@ export default async function AdminDashboard({
           </div>
         </div>
 
-        <form
-          className="dash-finance-filter"
-          method="GET"
-          action={`/${ADMIN_PATH}`}
-        >
-          <label className="dash-finance-filter__search">
-            <span>Поиск</span>
-            <input
-              className="admin-input"
-              type="search"
-              name="financeQ"
-              defaultValue={financeQ}
-              placeholder="Контрагент, назначение, ЗК или ПО…"
-            />
-          </label>
-          <label>
-            <span>Период</span>
-            <select
-              className="admin-select"
-              name="financePeriod"
-              defaultValue={financePeriod}
-            >
-              <option value="all">Все месяцы</option>
-              {financePeriodOptions.map((period) => (
-                <option key={period} value={period}>
-                  {financePeriodLabel(period)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Дата от</span>
-            <input
-              className="admin-input"
-              type="date"
-              name="financeFrom"
-              defaultValue={financeFrom}
-            />
-          </label>
-          <label>
-            <span>Дата до</span>
-            <input
-              className="admin-input"
-              type="date"
-              name="financeTo"
-              defaultValue={financeTo}
-            />
-          </label>
-          <label>
-            <span>Сортировка</span>
-            <select
-              className="admin-select"
-              name="financeSort"
-              defaultValue={financeSort}
-            >
-              <option value="desc">Сначала новые</option>
-              <option value="asc">Сначала старые</option>
-            </select>
-          </label>
-          <div className="dash-finance-filter__actions">
-            <button type="submit" className="admin-btn admin-btn--primary">
-              Показать
-            </button>
-            {(financeQ ||
-              financePeriod !== "all" ||
-              financeFrom ||
-              financeTo ||
-              financeSort !== "desc") && (
-              <Link
-                href={`/${ADMIN_PATH}`}
-                className="admin-btn admin-btn--ghost"
-                prefetch={false}
-              >
-                Сбросить
-              </Link>
-            )}
-          </div>
-        </form>
-
-        <div className="dash-finance-list-head">
-          <strong>Движения с расшифровкой</strong>
-          <span>
-            показано {recentFinanceRows.length} из {filteredFinanceRows.length}
-            {filteredFinanceRows.length !== financeRows.length
-              ? ` · всего ${financeRows.length}`
-              : ""}
-          </span>
-        </div>
-        {recentFinanceRows.length > 0 ? (
-          <div className="dash-finance-list">
-            {recentFinanceRows.map((row) => (
-              <div key={row.id} className="dash-finance-row">
-                <span
-                  className={`dash-finance-row__icon dash-finance-row__icon--${row.direction}`}
-                >
-                  {row.direction === "incoming" ? (
-                    <ArrowDownLeft size={15} />
-                  ) : (
-                    <ArrowUpRight size={15} />
-                  )}
-                </span>
-                <div className="dash-finance-row__main">
-                  <div className="dash-finance-row__top">
-                    <strong>{row.counterparty}</strong>
-                    <span className="admin-badge admin-badge--muted">
-                      {row.account === "cash" ? "касса" : "расчётный счёт"}
-                    </span>
-                    <span className="admin-badge admin-badge--blue">
-                      {row.category}
-                    </span>
-                  </div>
-                  <div className="dash-finance-row__detail">
-                    <span>{formatDate(row.date)}</span>
-                    {row.detail && <span>{row.detail}</span>}
-                    {(row.dealLinks || []).map((deal) => (
-                      <Link
-                        key={`deal-${row.id}-${deal.id}`}
-                        href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
-                        prefetch={false}
-                      >
-                        ЗК-{deal.number || "—"}
-                      </Link>
-                    ))}
-                    {(row.receiptLinks || []).map((receipt) => (
-                      <Link
-                        key={`receipt-${row.id}-${receipt.id}`}
-                        href={`/${ADMIN_PATH}/warehouse?tab=receipts&receipt=${receipt.id}`}
-                        prefetch={false}
-                      >
-                        ПО-{receipt.number || "—"}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-                <div className="dash-finance-row__side">
-                  <strong
-                    className={
-                      row.direction === "incoming"
-                        ? "dash-money-in"
-                        : "dash-money-out"
-                    }
-                  >
-                    {row.direction === "incoming" ? "+" : "−"}
-                    {money(row.amount)}
-                  </strong>
-                  <Link href={row.href} prefetch={false}>
-                    Открыть →
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="admin-empty">
-            <p>
-              {financeRows.length > 0
-                ? "По выбранным фильтрам операций не найдено"
-                : "Проведённых операций пока нет"}
-            </p>
-          </div>
-        )}
+        <DashboardFinanceHistory
+          rows={financeRows}
+          adminPath={ADMIN_PATH}
+        />
       </section>
 
       {/* Оплаченные заказы, которые нужно доставить */}
@@ -804,7 +578,7 @@ export default async function AdminDashboard({
             className="admin-btn admin-btn--ghost"
             prefetch={false}
           >
-            Все доставки <Truck size={13} />
+            <Truck size={13} /> Все доставки
           </Link>
         </div>
         {paidDeliveryDeals.length > 0 ? (

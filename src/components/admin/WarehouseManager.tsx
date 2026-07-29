@@ -49,6 +49,7 @@ import {
   includedVat,
   VAT_RATE,
   isSalaryExcludedFromBalance,
+  isDebtSalaryComment,
   stripSalaryMetaTags,
 } from "@/lib/warehouse-shared";
 import { ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
@@ -2802,6 +2803,14 @@ export function WarehouseManager({
                         <span className="bank-pay__num">
                           {p.entryKind === "salary" ? `ЗП-${p.salary.id.slice(0, 6)}` : (p.invoiceNumber || `ПЛ-${p.number}`)}
                         </span>
+                        {p.entryKind === "salary" && isDebtSalaryComment(p.salary.comment) && (
+                          <span
+                            className="admin-badge admin-badge--amber"
+                            title="Списывает отдельный долг сотруднику и не входит в факт зарплаты месяца"
+                          >
+                            в счёт долга
+                          </span>
+                        )}
                         {p.entryKind === "payment" && p.invoiceNumber && (
                           <span
                             className="admin-badge admin-badge--muted"
@@ -2870,7 +2879,9 @@ export function WarehouseManager({
                           </div>
                         ) : (
                           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-kraft)" }}>
-                            Зарплата за {monthLabel(p.salary.periodMonth || p.salary.date.slice(0, 7))} · {p.source === "cash" ? "касса" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
+                            {isDebtSalaryComment(p.salary.comment)
+                              ? "Выплата в счёт отдельного долга · не входит в факт месяца"
+                              : `Зарплата за ${monthLabel(p.salary.periodMonth || p.salary.date.slice(0, 7))}`} · {p.source === "cash" ? "касса" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
                           </div>
                         )}
                         {p.comment && (

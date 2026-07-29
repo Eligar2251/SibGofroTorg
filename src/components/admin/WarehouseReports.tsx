@@ -22,6 +22,7 @@ import {
   getDealPaidMap,
   getReceiptPaidMap,
   isSalaryExcludedFromBalance,
+  isDebtSalaryComment,
   stripSalaryMetaTags,
   type BankPayment,
   type CashCollection,
@@ -306,12 +307,19 @@ export function WarehouseReports({
       kind: "salary" as const,
       date: salary.paidAt || salary.date,
       counterparty: salary.employeeName,
-      purpose: "Зарплата",
+      purpose: isDebtSalaryComment(salary.comment)
+        ? "Выплата в счёт долга"
+        : "Зарплата",
       direction: "outgoing" as const,
       account: salary.source === "cash" ? "Касса" : "Расчётный счёт",
       amount: salary.amount,
       status: salary.isPaid ? "Выплачена" : "Запланирована",
-      details: [`за ${salaryPeriod(salary)}`, stripSalaryMetaTags(salary.comment)]
+      details: [
+        isDebtSalaryComment(salary.comment)
+          ? "не входит в факт месяца"
+          : `за ${salaryPeriod(salary)}`,
+        stripSalaryMetaTags(salary.comment),
+      ]
         .filter(Boolean)
         .join(" · "),
       href: `/${adminPath}/warehouse?tab=salaries`,
@@ -490,7 +498,7 @@ export function WarehouseReports({
     if (filters.kind === "salaries") {
       return [
         ["Дата", "Сотрудник", "За месяц", "Счёт", "Сумма", "Статус", "Комментарий"],
-        ...salaryRows.map((salary) => [salary.paidAt || salary.date, salary.employeeName, salaryPeriod(salary), salary.source === "cash" ? "Касса" : "Расчётный счёт", salary.amount, salary.isPaid ? "Выплачено" : "Запланировано", stripSalaryMetaTags(salary.comment)]),
+        ...salaryRows.map((salary) => [salary.paidAt || salary.date, salary.employeeName, isDebtSalaryComment(salary.comment) ? "В счёт отдельного долга" : salaryPeriod(salary), salary.source === "cash" ? "Касса" : "Расчётный счёт", salary.amount, salary.isPaid ? "Выплачено" : "Запланировано", stripSalaryMetaTags(salary.comment)]),
       ];
     }
     if (filters.kind === "cash") {
@@ -714,18 +722,18 @@ export function WarehouseReports({
           <>
             <div className="wh-report-summary">
               <div><UsersRound size={15} /><span>Записей</span><strong>{salaryRows.length}</strong></div>
-              <div><Banknote size={15} /><span>Выплачено</span><strong className="wh-report-in">{money(salaryRows.filter((row) => row.isPaid).reduce((sum, row) => sum + row.amount, 0))}</strong></div>
+              <div><Banknote size={15} /><span>Факт зарплаты</span><strong className="wh-report-in">{money(salaryRows.filter((row) => row.isPaid && !isDebtSalaryComment(row.comment)).reduce((sum, row) => sum + row.amount, 0))}</strong></div>
+              <div><CreditCard size={15} /><span>В счёт долга</span><strong>{money(salaryRows.filter((row) => row.isPaid && isDebtSalaryComment(row.comment)).reduce((sum, row) => sum + row.amount, 0))}</strong></div>
               <div><CalendarDays size={15} /><span>Запланировано</span><strong>{money(salaryRows.filter((row) => !row.isPaid).reduce((sum, row) => sum + row.amount, 0))}</strong></div>
-              <div><CreditCard size={15} /><span>Всего</span><strong>{money(salaryRows.reduce((sum, row) => sum + row.amount, 0))}</strong></div>
             </div>
             <ReportTable headers={["Дата", "Сотрудник", "Зарплата за", "Счёт", "Статус", "Комментарий", "Сумма"]} empty={salaryRows.length === 0}>
               {salaryRows.map((salary) => (
                 <tr key={salary.id}>
                   <td>{fmtDate(salary.paidAt || salary.date)}</td>
                   <td><Link href={`/${adminPath}/warehouse?tab=salaries`} prefetch={false}>{salary.employeeName} →</Link></td>
-                  <td>{salaryPeriod(salary)}</td>
+                  <td>{isDebtSalaryComment(salary.comment) ? "В счёт отдельного долга" : salaryPeriod(salary)}</td>
                   <td>{salary.source === "cash" ? "Касса" : "Расчётный счёт"}</td>
-                  <td>{salary.isPaid ? "Выплачено" : "Запланировано"}{isSalaryExcludedFromBalance(salary.comment) ? " · вне баланса" : ""}</td>
+                  <td>{salary.isPaid ? "Выплачено" : "Запланировано"}{isDebtSalaryComment(salary.comment) ? " · не входит в факт месяца" : ""}{isSalaryExcludedFromBalance(salary.comment) ? " · вне баланса" : ""}</td>
                   <td>{stripSalaryMetaTags(salary.comment) || "—"}</td>
                   <td>{money(salary.amount)}</td>
                 </tr>

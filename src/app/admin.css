@@ -2505,6 +2505,10 @@ body:has(.admin-login) > main {
 .dash-finance-filter label { display: grid; gap: 4px; min-width: 0; }
 .dash-finance-filter label > span { color: var(--adm-sand); font-size: 9px; font-weight: 750; text-transform: uppercase; }
 .dash-finance-filter .admin-input, .dash-finance-filter .admin-select { width: 100%; min-width: 0; height: 34px; font-size: 11px; }
+.dash-finance-filter__search-control { position: relative; min-width: 0; }
+.dash-finance-filter__search-control > svg { position: absolute; top: 50%; left: 10px; color: var(--adm-sand); pointer-events: none; transform: translateY(-50%); }
+.dash-finance-filter__search-control .admin-input { padding-left: 31px; }
+.dash-finance-filter__reset { grid-column: 1 / -1; justify-self: end; }
 .dash-finance-filter__actions { display: flex; gap: 6px; grid-column: 1 / -1; justify-content: flex-end; }
 .dash-finance-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 16px 8px; border-top: 1px solid var(--adm-border); }
 .dash-finance-list-head strong { color: var(--adm-ink); font-size: 13px; }
@@ -3876,7 +3880,7 @@ body:has(.admin-modal-overlay) {
 .bank-toolbar {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
   background: var(--adm-card);
   border: 1px solid var(--adm-border);
@@ -3898,9 +3902,9 @@ body:has(.admin-modal-overlay) {
   white-space: nowrap;
 }
 
-.bank-toolbar__date { display: grid; gap: 3px; min-width: 138px; }
-.bank-toolbar__date > span { color: var(--adm-sand); font-size: 8px; font-weight: 750; text-transform: uppercase; }
-.bank-toolbar__date .admin-input { height: 34px; padding: 5px 8px; font-size: 11px; }
+.bank-toolbar__date { display: flex; flex: 1 1 140px; flex-direction: column; gap: 4px; min-width: 0; }
+.bank-toolbar__date > span { min-height: 1em; color: var(--adm-sand); font-size: 9px; font-weight: 750; line-height: 1; text-transform: uppercase; }
+.bank-toolbar__date .admin-input { width: 100%; padding: 9px 10px; font-size: 12px; line-height: 1.2; }
 .bank-period-presets { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 7px; padding: 0 4px; }
 .bank-period-presets > span { margin-right: 3px; color: var(--adm-sand); font-size: 9px; font-weight: 750; text-transform: uppercase; }
 .bank-period-presets button { padding: 3px 8px; color: var(--adm-steel); background: var(--adm-steel-pale); border: 1px solid var(--adm-steel-line); border-radius: 999px; cursor: pointer; font: inherit; font-size: 9px; font-weight: 700; }
@@ -5851,6 +5855,9 @@ body:has(.admin-modal-overlay) {
 .whsal-debt--pos { color: var(--adm-kraft); }
 .whsal-debt--neg { color: var(--adm-steel); }
 .whsal-debt--zero { color: var(--adm-border-mid); font-weight: 600; }
+.whsal-debt-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
+.whsal-debt-summary span { flex: 1 1 110px; padding: 6px 8px; color: var(--adm-sand); background: var(--adm-paper); border: 1px solid var(--adm-border); border-radius: 5px; font-size: 10px; }
+.whsal-debt-summary b { display: block; margin-top: 1px; color: var(--adm-ink); font-size: 12px; }
 
 /* ── Ячейки дней ── */
 .whsal-day {
