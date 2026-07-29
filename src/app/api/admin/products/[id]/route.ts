@@ -55,8 +55,17 @@ export async function PUT(
         { status: 409 }
       );
     }
+    // Отдаём реальный текст ошибки БД — иначе по «Ошибка сервера»
+    // невозможно понять причину (например, занятый slug или
+    // неприменённая миграция со штрихкодом).
+    const detail =
+      (error as any)?.message && String((error as any).message).slice(0, 300);
     return NextResponse.json(
-      { error: "Ошибка сервера при обновлении товара" },
+      {
+        error: detail
+          ? `Не удалось сохранить товар: ${detail}`
+          : "Ошибка сервера при обновлении товара",
+      },
       { status: 500 }
     );
   }

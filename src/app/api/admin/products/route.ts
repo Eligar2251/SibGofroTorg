@@ -88,8 +88,14 @@ export async function POST(request: NextRequest) {
     console.error("Create product error:", error);
     const resp = barcodeErrorResponse(null, error);
     if (resp) return resp;
+    const detail =
+      (error as any)?.message && String((error as any).message).slice(0, 300);
     return NextResponse.json(
-      { error: "Ошибка сервера при создании товара" },
+      {
+        error: detail
+          ? `Не удалось создать товар: ${detail}`
+          : "Ошибка сервера при создании товара",
+      },
       { status: 500 }
     );
   }

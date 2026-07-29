@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getProducts, getProductById } from "@/lib/supabase-queries";
-import { computeQrSlug, computeBarcode } from "@/lib/qr";
+import { computeQrSlug, computeBarcode, computeLegacyQrSlug } from "@/lib/qr";
 import { buildStockLabel, normalizeScanCode } from "@/lib/scan";
 
 /** Минимальная проекция продукта — ровно то, что нужно сканеру. */
@@ -69,9 +69,20 @@ export async function GET(
     }
   }
 
-  if (/^[A-Z0-9]{8,16}$/i.test(code)) {
+  // Верхняя граница 24, а не 16: багованный legacy-slug со словом
+  // «undefined» внутри мог вырасти до 20 символов (см. qr.ts).
+  if (/^[A-Z0-9]{8,24}$/i.test(code)) {
     const upper = code.toUpperCase();
-    const hit = all.find((p) => p.qrSlug === upper);
+    // Регистронезависимо: в старой базе встречаются slug со
+    // строчными буквами (бывший баг base32-алфавита), а QR везде
+    // кодирует код в верхнем регистре. Плюс фоллбек на старый
+    // багованный slug — чтобы уже напечатанные QR-этикетки начали
+    // находиться (см. computeLegacyQrSlug).
+    const hit = all.find(
+      (p) =>
+        (p.qrSlug || "").toUpperCase() === upper ||
+        computeLegacyQrSlug(p.id).toUpperCase() === upper
+    );
     if (hit) {
       return NextResponse.json({ found: true, product: projectForScan(hit) });
     }

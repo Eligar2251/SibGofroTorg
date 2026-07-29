@@ -41,6 +41,39 @@ import {
 
 export const FEATURED_PRODUCTS_ORDER_SETTING_KEY = "featured_products_order";
 
+// ── Переживаем отсутствие колонки products.barcode ──
+// Миграция supabase/migration_product_barcodes.sql применяется вручную
+// и может быть ещё не выполнена в конкретной БД. В таком случае
+// PostgREST отвечает PGRST204 ("Could not find the 'barcode' column
+// of 'products' in the schema cache") на ЛЮБУЮ запись, где присутствует
+// ключ barcode. Сохранение товара ни в коем случае не должно из-за
+// этого падать — поле при ретрае просто опускаем.
+const BARCODE_COLUMN_MISSING_HINT =
+  "[products] Колонки barcode нет в БД — запись сохранена без штрихкода. " +
+  "Выполните миграцию supabase/migration_product_barcodes.sql в Supabase.";
+
+function isMissingBarcodeColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("barcode")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist") ||
+    msg.includes("unknown column")
+  );
+}
+
+/** Дружелюбная ошибка для операций, которым колонка обязательна. */
+function barcodeColumnRequiredError(): Error {
+  return new Error(
+    "В базе данных ещё нет колонки barcode для товаров. " +
+      "Выполните SQL-миграцию supabase/migration_product_barcodes.sql " +
+      "(Supabase Dashboard → SQL Editor) и повторите."
+  );
+}
+
 // ─── Helpers ───────────────────────────────────────────────
 
 function slugify(text: string): string {
@@ -524,7 +557,7 @@ export async function getRelatedProducts(
 export async function createProduct(data: Record<string, any>): Promise<{ id: string }> {
   const db = getAdminDb();
   const slug = data.slug || slugify(data.name || "product");
-  const payload = {
+  const payload: Record<string, any> = {
     name: data.name || "",
     slug,
     category_id: data.categoryId || null,
@@ -559,8 +592,29 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     // если не задан — сгенерируем сразу после вставки.
     barcode: data.barcode || null,
   };
-  const { data: result, error } = await db.from("products").insert(payload).select("id").single();
-  if (error) throw error;
+
+  // Если в БД ещё нет колонки barcode (миграция со штрихкодами не
+  // применена), PostgREST отклоняет insert целиком (PGRST204). В таком
+  // случае ПОВТОРЯЕМ запись без поля barcode — товар должен сохраняться
+  // всегда; штрихкод дозапишется после применения миграции.
+  let result: { id: string } | null = null;
+  let insertErr: any = null;
+  const first = await db.from("products").insert(payload).select("id").single();
+  if (first.error) {
+    insertErr = first.error;
+    if (isMissingBarcodeColumnError(first.error)) {
+      console.warn(BARCODE_COLUMN_MISSING_HINT);
+      const { barcode: _bc, ...payloadNoBarcode } = payload;
+      const retry = await db.from("products").insert(payloadNoBarcode).select("id").single();
+      if (retry.error) throw retry.error;
+      result = retry.data;
+      insertErr = null;
+    }
+  } else {
+    result = first.data;
+  }
+  if (insertErr) throw insertErr;
+  if (!result) throw new Error("Не удалось создать товар");
 
   // Постоянный штрихкод сразу сохраняем в БД. Если админ ввёл свой
   // (уже уехал в insert выше) — ensure увидит его и ничего не
@@ -617,7 +671,14 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       ? null
       : Number(data.packQty);
   }
-  const { error } = await db.from("products").update(payload).eq("id", id);
+  // Ретрай без barcode, если колонки ещё нет в БД (миграция не
+  // применена) — сохранение товара не должно падать из-за этого.
+  let { error } = await db.from("products").update(payload).eq("id", id);
+  if (error && isMissingBarcodeColumnError(error) && "barcode" in payload) {
+    console.warn(BARCODE_COLUMN_MISSING_HINT);
+    const { barcode: _bc, ...payloadNoBarcode } = payload;
+    ({ error } = await db.from("products").update(payloadNoBarcode).eq("id", id));
+  }
   if (error) throw error;
   invalidateProductsCache();
   revalidateTag("products", { expire: 0 });
@@ -641,7 +702,10 @@ async function fetchUsedBarcodes(exceptIds?: Set<string>): Promise<Set<string>> 
     .select("id, barcode")
     .not("barcode", "is", null)
     .limit(100000);
-  if (error) throw error;
+  if (error) {
+    if (isMissingBarcodeColumnError(error)) throw barcodeColumnRequiredError();
+    throw error;
+  }
   const used = new Set<string>();
   for (const row of data || []) {
     if (exceptIds?.has(row.id)) continue;
@@ -666,7 +730,10 @@ export async function ensureProductBarcode(
     .select("id, barcode")
     .eq("id", id)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    if (isMissingBarcodeColumnError(error)) throw barcodeColumnRequiredError();
+    throw error;
+  }
   if (!row) throw new Error("Товар не найден");
   if (row.barcode && isValidBarcode(row.barcode)) {
     return { barcode: row.barcode, created: false };
@@ -678,7 +745,10 @@ export async function ensureProductBarcode(
     .from("products")
     .update({ barcode })
     .eq("id", id);
-  if (upErr) throw upErr;
+  if (upErr) {
+    if (isMissingBarcodeColumnError(upErr)) throw barcodeColumnRequiredError();
+    throw upErr;
+  }
 
   invalidateProductsCache();
   revalidateTag("products", { expire: 0 });
@@ -718,7 +788,10 @@ export async function regenerateProductBarcode(
     .from("products")
     .update({ barcode })
     .eq("id", id);
-  if (upErr) throw upErr;
+  if (upErr) {
+    if (isMissingBarcodeColumnError(upErr)) throw barcodeColumnRequiredError();
+    throw upErr;
+  }
 
   invalidateProductsCache();
   revalidateTag("products", { expire: 0 });
@@ -752,7 +825,10 @@ export async function fixMissingProductBarcodes(): Promise<BarcodeFixReport> {
     .select("id, name, barcode")
     .order("created_at", { ascending: true })
     .limit(100000);
-  if (error) throw error;
+  if (error) {
+    if (isMissingBarcodeColumnError(error)) throw barcodeColumnRequiredError();
+    throw error;
+  }
 
   const report: BarcodeFixReport = {
     total: (rows || []).length,
@@ -1180,8 +1256,8 @@ export async function updateSettings(data: Record<string, string>): Promise<void
   for (const [key, value] of Object.entries(data)) {
     const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
     if (error) throw error;
-  revalidateTag("settings", { expire: 0 });
   }
+  revalidateTag("settings", { expire: 0 });
 }
 
 // ─── Wastepaper Rates ──────────────────────────────────────
