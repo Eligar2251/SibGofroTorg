@@ -1,14 +1,13 @@
 // src/components/admin/CashCollectModal.tsx
-// Сдача кассы: касса показывает ТОЛЬКО наличные платежи, а менеджер
-// размечает, куда каждый из них ушёл.
+// Закрытие смены: касса показывает ТОЛЬКО наличные платежи, а менеджер
+// размечает, что инкассировано и что остаётся физической наличкой.
 //
-// Направления сдачи:
+// Направления:
 //   • «На карту» — инкассация на карту (по умолчанию Юлия Марковна,
-//     имя настраивается в «Настройках»);
-//   • «Наличные» — виртуальная карта «наличка», куда уходит сданная касса.
+//     имя настраивается в «Настройках»), эта часть уходит из кассы;
+//   • «Наличка» — остаётся в кассе и переносится на следующий день.
 //
-// Основной безналичный счёт в банке к кассе не относится и здесь
-// не участвует: его платежи в список не попадают и остаток не меняется.
+// Основной безналичный счёт в банке к кассе не относится.
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -320,12 +319,13 @@ export function CashCollectModal({
     }
     if (
       !confirm(
-        `Сдать кассу за ${fmtDate(activeDate)}.\n` +
+        `Закрыть смену за ${fmtDate(activeDate)}.\n` +
           `Приход: ${fmt(totals.income)} ₽` +
           (expensesTotal > 0.009
             ? `\nТраты налом: −${fmt(expensesTotal)} ₽`
             : "") +
-          `\nИтого к сдаче: ${fmt(totals.total)} ₽`
+          `\nНа карту (${cardHolder}): ${fmt(totals.card)} ₽` +
+          `\nОстанется наличными в кассе: ${fmt(totals.cash)} ₽`
       )
     ) {
       return;
@@ -349,10 +349,10 @@ export function CashCollectModal({
     }
   }
 
-  // Часть остатка кассы, не покрытая размеченными платежами: старые наличные
-  // поступления без разметки или снятые галочки.
-  const uncovered = Math.round((cashBalance - totals.total) * 100) / 100;
-  /** Сколько наличных ждёт сдачи за другие дни — останется в кассе. */
+  // Прогноз остатка после закрытия: вычитается только инкассация на карту,
+  // наличная часть выбранной смены остаётся в кассе.
+  const balanceAfterClose = r2(cashBalance - totals.card);
+  /** Сколько неразмеченных платежей есть за другие дни. */
   const otherDaysTotal = useMemo(
     () =>
       Math.round(
@@ -383,9 +383,10 @@ export function CashCollectModal({
           </div>
 
           <p className="admin-modal__desc">
-            Платежи за наличку сгруппированы по дням. Выберите день и
-            отметьте, куда уходят деньги: инкассацией на карту ({cardHolder})
-            или наличными. Безналичный счёт в банке не затрагивается.
+            Платежи наличкой сгруппированы по дням. На карту ({cardHolder})
+            уходит только отмеченная часть. Всё, что отмечено «Наличка»,
+            остаётся в кассе и переносится на следующий день. Безналичный
+            расчётный счёт не затрагивается.
           </p>
 
           {loading ? (
@@ -436,7 +437,7 @@ export function CashCollectModal({
                 </div>
                 <div className="cashc-total cashc-total--cash">
                   <span className="cashc-total__label">
-                    <Banknote size={13} /> Наличными
+                    <Banknote size={13} /> Останется в кассе
                   </span>
                   <strong>{fmt(totals.cash)} ₽</strong>
                 </div>
@@ -449,21 +450,20 @@ export function CashCollectModal({
                   </div>
                 )}
                 <div className="cashc-total cashc-total--sum">
-                  <span className="cashc-total__label">Итого к сдаче</span>
-                  <strong>{fmt(totals.total)} ₽</strong>
+                  <span className="cashc-total__label">В кассе после закрытия</span>
+                  <strong>{fmt(balanceAfterClose)} ₽</strong>
                 </div>
               </div>
 
               {pending.length === 0 ? (
                 <div className="admin-empty" style={{ padding: 20 }}>
                   <p>
-                    Нет наличных поступлений к сдаче — все платежи за наличку
-                    уже сданы.
+                    Все наличные платежи уже закрыты по сменам.
                     {cashBalance > 0.009 && (
                       <>
                         {" "}
-                        Остаток кассы {fmt(cashBalance)} ₽ — это движения без
-                        привязки к платежам (например, ручные корректировки).
+                        В кассе остаётся {fmt(cashBalance)} ₽ — это перенесённая
+                        наличка прошлых смен и другие движения кассы.
                       </>
                     )}
                   </p>
@@ -490,7 +490,7 @@ export function CashCollectModal({
                       className="admin-btn admin-btn--ghost admin-btn--sm"
                       onClick={() => markAll("cash")}
                     >
-                      Все — наличные
+                      Все — оставить в кассе
                     </button>
                     <button
                       type="button"
@@ -552,9 +552,9 @@ export function CashCollectModal({
                                 kind === "cash" ? " cashc-seg__btn--cash" : ""
                               }`}
                               onClick={() => setKind(p.paymentId, "cash")}
-                              title="Наличные (виртуальная карта «наличка»)"
+                              title="Оставить наличными в кассе и перенести на следующий день"
                             >
-                              <Banknote size={12} /> Наличка
+                              <Banknote size={12} /> В кассе
                             </button>
                             <button
                               type="button"
@@ -679,24 +679,25 @@ export function CashCollectModal({
                       ))}
                       <div className="cashc-spent__foot">
                         Приход {fmt(totals.income)} ₽ − траты{" "}
-                        {fmt(expensesTotal)} ₽ = <b>{fmt(totals.total)} ₽</b> к сдаче
+                        {fmt(expensesTotal)} ₽ = <b>{fmt(totals.total)} ₽</b>:{" "}
+                        {fmt(totals.card)} ₽ на карту, {fmt(totals.cash)} ₽ остаётся в кассе
                       </div>
                     </div>
                   )}
 
-                  {(otherDaysTotal > 0.009 || uncovered < -0.009) && (
+                  {(otherDaysTotal > 0.009 || balanceAfterClose < -0.009) && (
                     <div className="cashc-hint">
                       <AlertTriangle size={13} />
-                      {uncovered < -0.009 ? (
+                      {balanceAfterClose < -0.009 ? (
                         <>
-                          Сумма сдачи превышает остаток кассы на{" "}
-                          <b>{fmt(Math.abs(uncovered))} ₽</b>.
+                          Инкассация на карту превышает остаток кассы на{" "}
+                          <b>{fmt(Math.abs(balanceAfterClose))} ₽</b>.
                         </>
                       ) : (
                         <>
-                          За другие дни ждёт сдачи ещё{" "}
-                          <b>{fmt(otherDaysTotal)} ₽</b> — они останутся
-                          в кассе, сдать их можно отдельно.
+                          За другие дни ещё не размечено{" "}
+                          <b>{fmt(otherDaysTotal)} ₽</b>. Эти платежи и оставленная
+                          наличка продолжат числиться в кассе.
                         </>
                       )}
                     </div>
@@ -743,7 +744,7 @@ export function CashCollectModal({
               ) : (
                 <Check size={14} />
               )}
-              Сдать за {fmtDate(activeDate)} — {fmt(totals.total)} ₽
+              Закрыть {fmtDate(activeDate)} · на карту {fmt(totals.card)} ₽
             </button>
           </div>
         </div>

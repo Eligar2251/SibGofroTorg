@@ -21,11 +21,28 @@ import {
   Pencil,
   Settings,
   AlertTriangle,
+  Banknote,
+  CreditCard,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Truck,
+  MapPin,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminDb } from "@/lib/supabase";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections } from "@/lib/warehouse";
-import { getBankSummary, getDealPaidMap, getReceiptPaidMap } from "@/lib/warehouse-shared";
+import {
+  getBankSummary,
+  getDealPaidMap,
+  getReceiptPaidMap,
+  dealNeedsDelivery,
+  isSalaryExcludedFromBalance,
+  stripSalaryMetaTags,
+  type BankPayment,
+  type Salary,
+  type CashCollection,
+} from "@/lib/warehouse-shared";
 import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +85,48 @@ function formatDate(raw: any): string {
     return new Date(raw.seconds * 1000).toLocaleDateString("ru-RU");
   return "";
 }
+
+const money = (value: number) => `${value.toLocaleString("ru-RU")} ₽`;
+
+function salaryMonthLabel(salary: Salary): string {
+  const key = salary.periodMonth || salary.date.slice(0, 7);
+  const [year, month] = key.split("-").map(Number);
+  if (!year || !month) return key;
+  return new Date(year, month - 1, 1).toLocaleDateString("ru-RU", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function paymentPurpose(payment: BankPayment): string {
+  if (payment.direction === "incoming" && payment.dealIds.length > 0) {
+    return "Оплата заказа";
+  }
+  if (payment.direction === "outgoing" && payment.receiptIds.length > 0) {
+    return "Оплата поставки";
+  }
+  if (payment.type === "refund") return "Возврат";
+  if (payment.type === "deposit") return "Внесение";
+  if (payment.type === "transfer") return "Перевод";
+  if (payment.type === "cash") {
+    return payment.direction === "incoming" ? "Приход наличными" : "Расход наличными";
+  }
+  return payment.direction === "incoming" ? "Прочий приход" : "Прочий расход";
+}
+
+type DashboardFinanceRow = {
+  id: string;
+  date: string;
+  direction: "incoming" | "outgoing";
+  account: "bank" | "cash";
+  category: string;
+  counterparty: string;
+  amount: number;
+  detail: string;
+  href: string;
+  dealLinks?: { id: string; number: number }[];
+  receiptLinks?: { id: string; number: number }[];
+};
 
 export default async function AdminDashboard() {
   // Для дашборда читаем только 50 последних заявок. Общие показатели
@@ -155,6 +214,131 @@ export default async function AdminDashboard() {
     (!p.receiptIds || p.receiptIds.length === 0) &&
     (!p.dealIds || p.dealIds.length === 0)
   );
+
+  // ── Полная лента фактических движений по счетам ────────────────
+  const paymentFinanceRows: DashboardFinanceRow[] = payments
+    .filter((payment) => payment.isPaid && !payment.excludeFromBalance)
+    .map((payment) => ({
+      id: `payment-${payment.id}`,
+      date: payment.paidAt || payment.date,
+      direction: payment.direction,
+      account: payment.type === "cash" ? "cash" : "bank",
+      category: paymentPurpose(payment),
+      counterparty: payment.counterparty || "Без контрагента",
+      amount: payment.amount,
+      detail:
+        payment.comment ||
+        [
+          ...payment.dealNumbers.map((number) => `ЗК-${number}`),
+          ...payment.receiptNumbers.map((number) => `ПО-${number}`),
+        ].join(" · "),
+      href: `/${ADMIN_PATH}/warehouse?tab=bank&payment=${payment.id}`,
+      dealLinks: payment.dealIds.map((id, index) => ({
+        id,
+        number: payment.dealNumbers[index] || 0,
+      })),
+      receiptLinks: payment.receiptIds.map((id, index) => ({
+        id,
+        number: payment.receiptNumbers[index] || 0,
+      })),
+    }));
+
+  const salaryFinanceRows: DashboardFinanceRow[] = salaries
+    .filter(
+      (salary) => salary.isPaid && !isSalaryExcludedFromBalance(salary.comment)
+    )
+    .map((salary) => ({
+      id: `salary-${salary.id}`,
+      date: salary.paidAt || salary.date,
+      direction: "outgoing",
+      account: salary.source,
+      category: "Зарплата",
+      counterparty: salary.employeeName,
+      amount: salary.amount,
+      detail: [
+        `за ${salaryMonthLabel(salary)}`,
+        stripSalaryMetaTags(salary.comment),
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      href: `/${ADMIN_PATH}/warehouse?tab=salaries`,
+    }));
+
+  const collectionFinanceRows: DashboardFinanceRow[] = (
+    cashCollections as CashCollection[]
+  )
+    .map((collection) => {
+      const legacy = collection.cashAmount == null;
+      const amount = legacy
+        ? Number(collection.amount) || 0
+        : Number(collection.transferAmount) || 0;
+      return {
+        id: `collection-${collection.id}`,
+        date: collection.date,
+        direction: "outgoing" as const,
+        account: "cash" as const,
+        category: legacy
+          ? "Сдача кассы (старый учёт)"
+          : "Инкассация на карту ЮМ",
+        counterparty: legacy ? "Сдача кассы" : "Карта ЮМ",
+        amount,
+        detail: collection.note || "Закрытие смены кассы",
+        href: `/${ADMIN_PATH}/warehouse?tab=bank`,
+      };
+    })
+    .filter((row) => row.amount > 0);
+
+  const financeRows = [
+    ...paymentFinanceRows,
+    ...salaryFinanceRows,
+    ...collectionFinanceRows,
+  ].sort(
+    (a, b) =>
+      b.date.localeCompare(a.date) || b.id.localeCompare(a.id)
+  );
+  const recentFinanceRows = financeRows.slice(0, 24);
+  const financeIncoming = financeRows
+    .filter((row) => row.direction === "incoming")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const financeOutgoing = financeRows
+    .filter((row) => row.direction === "outgoing")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const bankIncoming = financeRows
+    .filter((row) => row.account === "bank" && row.direction === "incoming")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const bankOutgoing = financeRows
+    .filter((row) => row.account === "bank" && row.direction === "outgoing")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const cashIncoming = financeRows
+    .filter((row) => row.account === "cash" && row.direction === "incoming")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const cashOutgoing = financeRows
+    .filter((row) => row.account === "cash" && row.direction === "outgoing")
+    .reduce((sum, row) => sum + row.amount, 0);
+
+  const outgoingByCategory = [...financeRows
+    .filter((row) => row.direction === "outgoing")
+    .reduce((map, row) => {
+      map.set(row.category, (map.get(row.category) || 0) + row.amount);
+      return map;
+    }, new Map<string, number>())
+    .entries()]
+    .map(([label, amount]) => ({ label, amount }))
+    .sort((a, b) => b.amount - a.amount);
+
+  // На дашборде нужны только оплаченные заказы, которые ещё действительно
+  // надо доставить. Отменённые и уже полностью отгруженные не показываем.
+  const paidDeliveryDeals = deals
+    .filter((deal) => {
+      if (!deal.hasDelivery || !dealNeedsDelivery(deal)) return false;
+      const paid = dealPaidMap.get(deal.id) || 0;
+      return deal.total > 0 && paid + 0.009 >= deal.total;
+    })
+    .sort((a, b) => {
+      const aDate = a.deliveryPlannedDate || a.date;
+      const bDate = b.deliveryPlannedDate || b.date;
+      return aDate.localeCompare(bDate) || b.number - a.number;
+    });
 
   return (
     <div>
@@ -298,6 +482,224 @@ export default async function AdminDashboard() {
           </Link>
         ))}
       </div>
+
+      {/* Полная аналитика по банку и кассе */}
+      <section className="admin-card dash-finance" style={{ marginBottom: 24 }}>
+        <div className="dash-section-head">
+          <div>
+            <span className="dash-section-kicker">Финансовая отчётность</span>
+            <h2>Банковские счета: приход, расход и расшифровки</h2>
+            <p>Фактические проведённые операции за весь период учёта.</p>
+          </div>
+          <Link
+            href={`/${ADMIN_PATH}/warehouse?tab=bank`}
+            className="admin-btn admin-btn--ghost"
+            prefetch={false}
+          >
+            Открыть банк <ExternalLink size={13} />
+          </Link>
+        </div>
+
+        <div className="dash-finance-totals">
+          <div className="dash-finance-total dash-finance-total--in">
+            <ArrowDownLeft size={18} />
+            <span>Приход всего</span>
+            <strong>+{money(financeIncoming)}</strong>
+          </div>
+          <div className="dash-finance-total dash-finance-total--out">
+            <ArrowUpRight size={18} />
+            <span>Расход всего</span>
+            <strong>−{money(financeOutgoing)}</strong>
+          </div>
+          <div className="dash-finance-total dash-finance-total--bank">
+            <CreditCard size={18} />
+            <span>Расчётный счёт сейчас</span>
+            <strong>{money(bankSummary.bankBalance)}</strong>
+          </div>
+          <div className="dash-finance-total dash-finance-total--cash">
+            <Banknote size={18} />
+            <span>Касса сейчас</span>
+            <strong>{money(bankSummary.cashBalance)}</strong>
+          </div>
+        </div>
+
+        <div className="dash-account-grid">
+          <div className="dash-account-card">
+            <div className="dash-account-card__title">
+              <CreditCard size={15} /> Расчётный счёт
+            </div>
+            <span>Приход <b className="dash-money-in">+{money(bankIncoming)}</b></span>
+            <span>Расход <b className="dash-money-out">−{money(bankOutgoing)}</b></span>
+            <strong>Остаток {money(bankSummary.bankBalance)}</strong>
+          </div>
+          <div className="dash-account-card">
+            <div className="dash-account-card__title">
+              <Banknote size={15} /> Касса и наличные
+            </div>
+            <span>Приход <b className="dash-money-in">+{money(cashIncoming)}</b></span>
+            <span>Расход/инкассация <b className="dash-money-out">−{money(cashOutgoing)}</b></span>
+            <strong>Остаток с переносом {money(bankSummary.cashBalance)}</strong>
+          </div>
+        </div>
+
+        {outgoingByCategory.length > 0 && (
+          <div className="dash-expense-breakdown">
+            <span>Расходы по назначению:</span>
+            {outgoingByCategory.map((item) => (
+              <span key={item.label} className="admin-badge admin-badge--muted">
+                {item.label}: {money(item.amount)}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="dash-finance-list-head">
+          <strong>Последние движения с расшифровкой</strong>
+          <span>показано {recentFinanceRows.length} из {financeRows.length}</span>
+        </div>
+        {recentFinanceRows.length > 0 ? (
+          <div className="dash-finance-list">
+            {recentFinanceRows.map((row) => (
+              <div key={row.id} className="dash-finance-row">
+                <span
+                  className={`dash-finance-row__icon dash-finance-row__icon--${row.direction}`}
+                >
+                  {row.direction === "incoming" ? (
+                    <ArrowDownLeft size={15} />
+                  ) : (
+                    <ArrowUpRight size={15} />
+                  )}
+                </span>
+                <div className="dash-finance-row__main">
+                  <div className="dash-finance-row__top">
+                    <strong>{row.counterparty}</strong>
+                    <span className="admin-badge admin-badge--muted">
+                      {row.account === "cash" ? "касса" : "расчётный счёт"}
+                    </span>
+                    <span className="admin-badge admin-badge--blue">
+                      {row.category}
+                    </span>
+                  </div>
+                  <div className="dash-finance-row__detail">
+                    <span>{formatDate(row.date)}</span>
+                    {row.detail && <span>{row.detail}</span>}
+                    {(row.dealLinks || []).map((deal) => (
+                      <Link
+                        key={`deal-${row.id}-${deal.id}`}
+                        href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                        prefetch={false}
+                      >
+                        ЗК-{deal.number || "—"}
+                      </Link>
+                    ))}
+                    {(row.receiptLinks || []).map((receipt) => (
+                      <Link
+                        key={`receipt-${row.id}-${receipt.id}`}
+                        href={`/${ADMIN_PATH}/warehouse?tab=receipts&receipt=${receipt.id}`}
+                        prefetch={false}
+                      >
+                        ПО-{receipt.number || "—"}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+                <div className="dash-finance-row__side">
+                  <strong
+                    className={
+                      row.direction === "incoming"
+                        ? "dash-money-in"
+                        : "dash-money-out"
+                    }
+                  >
+                    {row.direction === "incoming" ? "+" : "−"}
+                    {money(row.amount)}
+                  </strong>
+                  <Link href={row.href} prefetch={false}>
+                    Открыть →
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="admin-empty"><p>Проведённых операций пока нет</p></div>
+        )}
+      </section>
+
+      {/* Оплаченные заказы, которые нужно доставить */}
+      <section className="admin-card dash-deliveries" style={{ marginBottom: 24 }}>
+        <div className="dash-section-head">
+          <div>
+            <span className="dash-section-kicker">Перевозки</span>
+            <h2>Оплаченные заказы к доставке</h2>
+            <p>Только заказы с доставкой, полной оплатой и остатком к отгрузке.</p>
+          </div>
+          <Link
+            href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
+            className="admin-btn admin-btn--ghost"
+            prefetch={false}
+          >
+            Все доставки <Truck size={13} />
+          </Link>
+        </div>
+        {paidDeliveryDeals.length > 0 ? (
+          <div className="dash-delivery-list">
+            {paidDeliveryDeals.map((deal) => (
+              <div key={deal.id} className="dash-delivery-row">
+                <span className="dash-delivery-row__icon"><Truck size={17} /></span>
+                <div className="dash-delivery-row__main">
+                  <div className="dash-delivery-row__top">
+                    <Link
+                      href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                      prefetch={false}
+                    >
+                      ЗК-{deal.number}
+                    </Link>
+                    <strong>{deal.customerName}</strong>
+                    <span className="admin-badge admin-badge--green">оплачен</span>
+                    {deal.deliveryPlannedDate && (
+                      <span className="admin-badge admin-badge--amber">
+                        план {formatDate(deal.deliveryPlannedDate)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="dash-delivery-row__address">
+                    <MapPin size={13} />
+                    {deal.deliveryAddress || deal.address || "Адрес не указан"}
+                  </div>
+                  <div className="dash-delivery-row__meta">
+                    {(deal.customerPhone || deal.phone) && (
+                      <span>{deal.customerPhone || deal.phone}</span>
+                    )}
+                    <span>{deal.items.reduce((sum, item) => sum + item.quantity, 0)} ед.</span>
+                    <span>{money(deal.total)}</span>
+                    {deal.deliveryNote && <span>{deal.deliveryNote}</span>}
+                  </div>
+                </div>
+                <div className="dash-delivery-row__actions">
+                  <Link
+                    href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                    prefetch={false}
+                  >
+                    Заказ →
+                  </Link>
+                  <Link
+                    href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
+                    prefetch={false}
+                  >
+                    В доставку →
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="admin-empty">
+            <CheckCircle2 size={30} />
+            <p>Оплаченных заказов, ожидающих доставку, нет</p>
+          </div>
+        )}
+      </section>
 
       {/* Воронка статусов */}
       <div

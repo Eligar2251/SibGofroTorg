@@ -2457,6 +2457,81 @@ body:has(.admin-login) > main {
 }
 
 /* ══════════════════════════════════════
+   ДАШБОРД: финансовая отчётность и оплаченные доставки
+   ══════════════════════════════════════ */
+.dash-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--adm-border); }
+.dash-section-head h2 { margin: 2px 0 3px; color: var(--adm-ink); font-family: var(--adm-font-head); font-size: 18px; }
+.dash-section-head p { margin: 0; color: var(--adm-sand); font-size: 11px; }
+.dash-section-kicker { color: var(--adm-steel); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.dash-finance-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px 20px; background: var(--adm-paper); border-bottom: 1px solid var(--adm-border); }
+.dash-finance-total { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; align-items: center; min-width: 0; padding: 11px 12px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
+.dash-finance-total > svg { grid-row: 1 / 3; }
+.dash-finance-total span { color: var(--adm-sand); font-size: 10px; }
+.dash-finance-total strong { color: var(--adm-ink); font-size: 16px; white-space: nowrap; }
+.dash-finance-total--in { color: var(--adm-pine); border-color: var(--adm-pine-line); }
+.dash-finance-total--out { color: var(--adm-rust); border-color: var(--adm-rust-line); }
+.dash-finance-total--bank { color: var(--adm-steel); border-color: var(--adm-steel-line); }
+.dash-finance-total--cash { color: var(--adm-kraft); border-color: var(--adm-kraft-line); }
+.dash-account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 20px 0; }
+.dash-account-card { display: grid; grid-template-columns: repeat(3, auto); align-items: center; gap: 8px 16px; padding: 11px 13px; background: var(--adm-paper); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); font-size: 11px; }
+.dash-account-card__title { display: inline-flex; align-items: center; gap: 6px; color: var(--adm-ink); font-size: 12px; font-weight: 800; }
+.dash-account-card > span { color: var(--adm-sand); }
+.dash-account-card > strong { justify-self: end; color: var(--adm-ink); white-space: nowrap; }
+.dash-money-in { color: var(--adm-pine) !important; }
+.dash-money-out { color: var(--adm-rust) !important; }
+.dash-expense-breakdown { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 10px 20px 0; padding: 9px 11px; background: var(--adm-rust-pale); border: 1px solid var(--adm-rust-line); border-radius: var(--adm-r-sm); }
+.dash-expense-breakdown > span:first-child { color: var(--adm-rust); font-size: 10px; font-weight: 800; }
+.dash-finance-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 8px; }
+.dash-finance-list-head strong { color: var(--adm-ink); font-size: 13px; }
+.dash-finance-list-head span { color: var(--adm-sand); font-size: 10px; }
+.dash-finance-list { max-height: 590px; overflow: auto; border-top: 1px solid var(--adm-border); }
+.dash-finance-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--adm-border); }
+.dash-finance-row:hover { background: var(--adm-paper); }
+.dash-finance-row__icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; }
+.dash-finance-row__icon--incoming { color: var(--adm-pine); background: var(--adm-pine-pale); }
+.dash-finance-row__icon--outgoing { color: var(--adm-rust); background: var(--adm-rust-pale); }
+.dash-finance-row__main { min-width: 0; }
+.dash-finance-row__top { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.dash-finance-row__top > strong { color: var(--adm-ink); font-size: 12px; }
+.dash-finance-row__detail { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 9px; margin-top: 3px; color: var(--adm-sand); font-size: 10px; }
+.dash-finance-row__detail a { color: var(--adm-steel); font-weight: 800; }
+.dash-finance-row__side { display: grid; justify-items: end; gap: 3px; }
+.dash-finance-row__side > strong { font-size: 13px; white-space: nowrap; }
+.dash-finance-row__side > a { color: var(--adm-steel); font-size: 10px; font-weight: 700; }
+.dash-delivery-list { border-top: 1px solid var(--adm-border); }
+.dash-delivery-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--adm-border); }
+.dash-delivery-row:hover { background: var(--adm-paper); }
+.dash-delivery-row__icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; color: var(--adm-steel); background: var(--adm-steel-pale); border-radius: 9px; }
+.dash-delivery-row__main { min-width: 0; }
+.dash-delivery-row__top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.dash-delivery-row__top > a { color: var(--adm-steel); font-size: 12px; font-weight: 850; }
+.dash-delivery-row__top > strong { color: var(--adm-ink); font-size: 12px; }
+.dash-delivery-row__address { display: flex; align-items: flex-start; gap: 5px; margin-top: 5px; color: var(--adm-ink-muted); font-size: 11px; }
+.dash-delivery-row__address svg { margin-top: 1px; flex-shrink: 0; color: var(--adm-kraft); }
+.dash-delivery-row__meta { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 4px; color: var(--adm-sand); font-size: 10px; }
+.dash-delivery-row__actions { display: grid; justify-items: end; gap: 4px; }
+.dash-delivery-row__actions a { color: var(--adm-steel); font-size: 10px; font-weight: 750; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .dash-finance-totals { grid-template-columns: 1fr 1fr; }
+  .dash-account-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .dash-section-head { flex-direction: column; }
+  .dash-section-head .admin-btn { width: 100%; justify-content: center; }
+  .dash-finance-totals { grid-template-columns: 1fr; padding-inline: 12px; }
+  .dash-account-grid { padding-inline: 12px; }
+  .dash-account-card { grid-template-columns: 1fr 1fr; }
+  .dash-account-card__title { grid-column: 1 / -1; }
+  .dash-account-card > strong { grid-column: 1 / -1; justify-self: start; }
+  .dash-expense-breakdown { margin-inline: 12px; }
+  .dash-finance-row, .dash-delivery-row { grid-template-columns: auto minmax(0, 1fr); padding-inline: 12px; }
+  .dash-finance-row__side, .dash-delivery-row__actions { grid-column: 2; justify-items: start; }
+  .dash-finance-row__side { display: flex; align-items: center; gap: 10px; }
+}
+
+/* ══════════════════════════════════════
    УЧЁТ: склад, заказы, банк (warehouse)
    ══════════════════════════════════════ */
 
@@ -7655,7 +7730,8 @@ body:has(.admin-modal-overlay) {
 .scan-page__err {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 12px;
   font-weight: 600;
   color: var(--adm-rust);
@@ -7663,6 +7739,10 @@ body:has(.admin-modal-overlay) {
   border: 1px solid var(--adm-rust-line);
   border-radius: var(--adm-r-sm);
   padding: 8px 12px;
+}
+
+.scan-page__err > span {
+  flex: 1 1 280px;
 }
 
 .scan-page__status {

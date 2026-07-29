@@ -231,7 +231,7 @@ export function WarehouseManager({
   const router = useRouter();
   const [collecting, setCollecting] = useState(false);
   const [showCollect, setShowCollect] = useState(false);
-  /** Раскрытые сдачи кассы: id -> показать детализацию. */
+  /** Раскрытые закрытия смен кассы: id -> показать детализацию. */
   const [openCollections, setOpenCollections] = useState<Set<string>>(new Set());
   const [collectError, setCollectError] = useState("");
 
@@ -424,7 +424,7 @@ export function WarehouseManager({
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
   }, [deals, payments, receipts]);
 
-  // Сданная касса — отчёт (по дате убывания) и итог
+  // Закрытые смены кассы — инкассация на карту и перенос наличного остатка.
   const collectionsSorted = useMemo(
     () =>
       [...cashCollections]
@@ -436,7 +436,7 @@ export function WarehouseManager({
     () => collectionsSorted.reduce((sum, c) => sum + (c.amount || 0), 0),
     [collectionsSorted]
   );
-  // Раскладка сданного: сколько ушло наличными, сколько переводом.
+  // Раскладка смен: сколько перенесено наличными, сколько ушло на карту.
   const collectedBreakdown = useMemo(
     () => getCollectedBreakdown(collectionsSorted),
     [collectionsSorted]
@@ -454,7 +454,7 @@ export function WarehouseManager({
   }
 
   async function handleDeleteCollection(id: string) {
-    if (!confirm("Отменить сдачу кассы? Остаток наличных вернётся в кассу.")) return;
+    if (!confirm("Отменить закрытие смены? Инкассированная сумма вернётся в кассу, а платежи снова появятся для разметки.")) return;
     setCollecting(true);
     try {
       const res = await fetch(`/api/admin/warehouse/cash-collections/${id}`, {
@@ -2149,7 +2149,7 @@ export function WarehouseManager({
               <div className="admin-card__head">
                 <h3 className="admin-card__title">
                   <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                  Отчёт по сданной кассе
+                  Отчёт по закрытым сменам кассы
                 </h3>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <span className="admin-badge admin-badge--muted">
@@ -2159,20 +2159,20 @@ export function WarehouseManager({
                     <CreditCard size={10} /> На карту: {fmt(collectedBreakdown.transfer)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
-                    <Banknote size={10} /> Наличными: {fmt(collectedBreakdown.cash)} ₽
+                    <Banknote size={10} /> Перенесено в кассе: {fmt(collectedBreakdown.cash)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
-                    Сдано всего: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
+                    Размечено по сменам: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
                   </span>
                 </div>
               </div>
               <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
                 <div className="admin-muted" style={{ fontSize: 13 }}>
                   Кнопка «Сдать кассу» находится в верхнем блоке банка рядом с остатком наличных.
-                  В сдачу попадают <b>только наличные платежи</b> — безналичный счёт в банке
-                  к кассе не относится и не затрагивается. При сдаче каждый платёж помечается:
-                  <b> инкассация на карту</b> или <b>наличные</b> (виртуальная карта). Обе части
-                  списываются из кассы.
+                  В смену попадают <b>только наличные платежи</b> — безналичный счёт не
+                  затрагивается. Часть <b>на карту ЮМ</b> вычитается
+                  из кассы, а часть <b>наличными</b> остаётся в кассе и автоматически
+                  переносится на следующий день.
                 </div>
                 {collectionsSorted.length === 0 ? (
                   <div className="admin-empty" style={{ padding: 16 }}>
@@ -2185,8 +2185,8 @@ export function WarehouseManager({
                         <tr>
                           <th>Дата</th>
                           <th style={{ textAlign: "right" }}>На карту</th>
-                          <th style={{ textAlign: "right" }}>Наличными</th>
-                          <th style={{ textAlign: "right" }}>Всего</th>
+                          <th style={{ textAlign: "right" }}>Осталось в кассе</th>
+                          <th style={{ textAlign: "right" }}>Размечено</th>
                           <th>Комментарий</th>
                           <th></th>
                         </tr>
@@ -2403,7 +2403,7 @@ export function WarehouseManager({
                                       </div>
                                       <div className="wh-cc-line">
                                         <span>
-                                          <Banknote size={11} /> Наличными
+                                          <Banknote size={11} /> Осталось в кассе
                                         </span>
                                         <span className="wh-cc-line__val">
                                           {fmt(cashPart)} ₽
@@ -2412,7 +2412,7 @@ export function WarehouseManager({
                                       <div className="wh-cc-total">
                                         Приход {fmt(income)} ₽
                                         {expSum > 0 && <> − траты {fmt(expSum)} ₽</>} ={" "}
-                                        <b>{fmt(Math.round(c.amount * 100) / 100)} ₽</b> сдано
+                                        <b>{fmt(Math.round(c.amount * 100) / 100)} ₽</b> размечено
                                       </div>
                                     </div>
                                   </div>
@@ -2423,7 +2423,7 @@ export function WarehouseManager({
                           );
                         })}
                         <tr className="wh-cashcollect__total">
-                          <td style={{ fontWeight: 800 }}>Итого сдано</td>
+                          <td style={{ fontWeight: 800 }}>Итого по сменам</td>
                           <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-steel)" }}>
                             {fmt(collectedBreakdown.transfer)} ₽
                           </td>

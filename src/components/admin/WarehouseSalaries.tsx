@@ -14,8 +14,8 @@
 //    запись salary через существующий API). Неоплаченная запись — это
 //    план на конкретную дату и сумму.
 //  · Расчётный месяц хранится служебной пометкой [Период:YYYY-MM]:
-//    выплата в июле за июнь относится к июньскому плану, но сохраняет
-//    реальную дату выплаты для банка/кассы.
+//    выплата остаётся в таблице июля, но рядом текстом показано «за июнь».
+//    Реальная дата выплаты используется для банка/кассы.
 //  · Выходные/праздники месяца настраиваются отдельно (ключ
 //    salary_calendar_*) и подсвечиваются жёлтым столбцом.
 //  · Оплата «с аренды на карту» = запись с source=bank и тегом
@@ -400,7 +400,7 @@ function SalaryFormModal({
                 required
               />
               <span className="admin-hint">
-                Например: выплата 15 июля за июнь попадёт в расчёты июня с пометкой «выплата в июле».
+                Например: выплата 15 июля останется в июле, а рядом будет текстовая пометка «зарплата за июнь».
               </span>
               <button
                 type="button"
@@ -444,7 +444,7 @@ function SalaryFormModal({
                 className="admin-input"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Например: зарплата за июль, аванс"
+                placeholder="Например: аванс, премия, комментарий"
               />
             </div>
 
@@ -1202,11 +1202,9 @@ export function WarehouseSalaries({
   const [editing, setEditing] = useState<Salary | null>(null);
   const [empOpen, setEmpOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Зарплату обычно выплачиваем в текущем месяце за предыдущий, поэтому при
-  // входе сразу открываем расчётный месяц назад (в июле — июнь).
-  const [activeMonth, setActiveMonth] = useState(
-    shiftMonth(todayIso().slice(0, 7), -1)
-  );
+  // Таблица всегда относится к месяцу фактического плана/выплаты. Например,
+  // в июле показываем июль, а отдельная текстовая пометка сообщает «за июнь».
+  const [activeMonth, setActiveMonth] = useState(todayIso().slice(0, 7));
   const [activeEmployee, setActiveEmployee] = useState("all");
 
   // Новые состояния Excel-инструмента
@@ -1227,7 +1225,9 @@ export function WarehouseSalaries({
 
   const monthOptions = useMemo(() => {
     const currentMonth = todayIso().slice(0, 7);
-    const keys = new Set<string>(salaries.map(salaryPeriodKey));
+    const keys = new Set<string>(
+      salaries.map((salary) => monthKey(salaryOperationDate(salary)))
+    );
     keys.add(currentMonth);
 
     for (const key of Object.keys(settingsRaw)) {
@@ -1288,7 +1288,10 @@ export function WarehouseSalaries({
   }, [popover]);
 
   const monthSalaries = useMemo(
-    () => salaries.filter((s) => salaryPeriodKey(s) === activeMonth),
+    () =>
+      salaries.filter(
+        (salary) => monthKey(salaryOperationDate(salary)) === activeMonth
+      ),
     [salaries, activeMonth]
   );
   const activeEmployeeName = employees.find((e) => e.id === activeEmployee)?.name || activeEmployee;
@@ -1479,8 +1482,8 @@ export function WarehouseSalaries({
     setBusyId(null);
   }
 
-  async function moveSalaryToPreviousMonth(s: Salary) {
-    const previousMonth = shiftMonth(monthKey(s.date), -1);
+  async function markSalaryAsPreviousMonth(s: Salary) {
+    const previousMonth = shiftMonth(monthKey(salaryOperationDate(s)), -1);
     const nextComment = composeSalaryComment({
       comment: stripSalaryMetaTags(s.comment),
       rent: isRentSalary(s),
@@ -1497,7 +1500,7 @@ export function WarehouseSalaries({
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body.error || "Не удалось перенести зарплату");
+        alert(body.error || "Не удалось сохранить расчётный месяц зарплаты");
         return;
       }
       setSalaries((prev) =>
@@ -1507,7 +1510,8 @@ export function WarehouseSalaries({
             : item
         )
       );
-      setActiveMonth(previousMonth);
+      // Запись остаётся в месяце выплаты; меняется только текстовая пометка
+      // «зарплата за …».
       reload();
     } catch {
       alert("Ошибка сети");
@@ -1643,7 +1647,7 @@ export function WarehouseSalaries({
   function restForMonth(employee: Employee, mkey: string): number {
     const rows = salaries.filter(
       (s) =>
-        salaryPeriodKey(s) === mkey &&
+        monthKey(salaryOperationDate(s)) === mkey &&
         (s.employeeId === employee.id ||
           (!s.employeeId && s.employeeName === employee.name))
     );
@@ -2131,10 +2135,10 @@ export function WarehouseSalaries({
       <div className="admin-card" style={{ marginBottom: 14 }}>
         <div className="admin-card__head">
           <h3 className="admin-card__title">
-            Таблица взаиморасчётов — зарплата за {monthLabel(activeMonth)}
+            Таблица выплат и планов — {monthLabel(activeMonth)}
           </h3>
           <span className="whsal-hint">
-            дни — даты плана/выплаты · подпись «июл» означает выплату в июле за выбранный месяц
+            месяц остаётся месяцем выплаты · подпись «за июн» показывает расчётный месяц зарплаты
           </span>
         </div>
 
@@ -2342,15 +2346,22 @@ export function WarehouseSalaries({
                               {Math.round(entry.amount) === entry.amount
                                 ? String(entry.amount)
                                 : String(entry.amount).replace(".", ",")}
-                              {(monthKey(salaryOperationDate(entry)) !== activeMonth ||
+                              {(salaryPeriodKey(entry) !==
+                                monthKey(salaryOperationDate(entry)) ||
                                 !entry.isPaid) && (
                                 <small>
-                                  {monthKey(salaryOperationDate(entry)) !== activeMonth
-                                    ? monthLabel(monthKey(salaryOperationDate(entry)))
-                                        .split(" ")[0]
-                                        .slice(0, 3)
-                                        .toLowerCase()
-                                    : "план"}
+                                  {[
+                                    salaryPeriodKey(entry) !==
+                                    monthKey(salaryOperationDate(entry))
+                                      ? `за ${monthLabel(salaryPeriodKey(entry))
+                                          .split(" ")[0]
+                                          .slice(0, 3)
+                                          .toLowerCase()}`
+                                      : "",
+                                    !entry.isPaid ? "план" : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
                                 </small>
                               )}
                             </span>
@@ -2642,15 +2653,15 @@ export function WarehouseSalaries({
                       Вернуть
                     </button>
                   )}
-                  {salaryPeriodKey(s) === monthKey(s.date) && (
+                  {salaryPeriodKey(s) === monthKey(salaryOperationDate(s)) && (
                     <button
                       type="button"
                       className="admin-status__btn admin-status__btn--outline"
                       disabled={busyId === s.id}
-                      onClick={() => moveSalaryToPreviousMonth(s)}
-                      title={`Отнести эту выплату к зарплате за ${monthLabel(shiftMonth(monthKey(s.date), -1))}`}
+                      onClick={() => markSalaryAsPreviousMonth(s)}
+                      title={`Оставить выплату в ${monthLabel(monthKey(salaryOperationDate(s)))}, но пометить как зарплату за ${monthLabel(shiftMonth(monthKey(salaryOperationDate(s)), -1))}`}
                     >
-                      <ChevronLeft size={14} /> За предыдущий месяц
+                      <ChevronLeft size={14} /> Пометить: за предыдущий месяц
                     </button>
                   )}
                   <button
@@ -3110,7 +3121,7 @@ export function WarehouseSalaries({
         <SalaryFormModal
           employees={employees}
           initial={editing}
-          defaultPeriodMonth={activeMonth}
+          defaultPeriodMonth={shiftMonth(activeMonth, -1)}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);

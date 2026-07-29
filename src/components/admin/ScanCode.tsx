@@ -112,6 +112,32 @@ function getErrorMessage(error: unknown): string | null {
   return null;
 }
 
+function cameraErrorMessage(error: unknown): string {
+  const name =
+    error instanceof DOMException || error instanceof Error ? error.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return (
+      "Доступ к камере запрещён. Нажмите значок замка слева от адреса → " +
+      "«Разрешения сайта» → «Камера» → «Разрешить», затем обновите страницу. " +
+      "В Android также проверьте: Настройки телефона → Приложения → " +
+      "Chrome/Яндекс Браузер → Разрешения → Камера."
+    );
+  }
+  if (name === "NotReadableError" || name === "AbortError") {
+    return "Камера занята другим приложением. Закройте камеру/мессенджер и попробуйте ещё раз.";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "На устройстве не найдена доступная камера.";
+  }
+  if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
+    return "Браузер не смог подобрать режим камеры. Обновите страницу и попробуйте снова.";
+  }
+  return (
+    getErrorMessage(error) ||
+    "Не удалось включить камеру. Проверьте разрешения браузера и попробуйте снова."
+  );
+}
+
 /**
  * Constraints для камеры сканера.
  *
@@ -283,11 +309,20 @@ export function ScanCode({
     setCameraError(null);
     cancelScanRef.current = false;
 
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setCameraError(
+        "Камера работает только по защищённому HTTPS-соединению. Откройте адрес сайта с https://."
+      );
+      return;
+    }
+
     if (
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia
     ) {
-      setCameraError("Камера недоступна в этом браузере. Введите код вручную.");
+      setCameraError(
+        "Камера недоступна в этом браузере. Обновите Chrome/Яндекс Браузер или введите код вручную."
+      );
       return;
     }
 
@@ -361,13 +396,7 @@ export function ScanCode({
 
         zxingControlsRef.current = controls;
       } catch (err: unknown) {
-        const message = getErrorMessage(err);
-        setCameraError(
-          err instanceof DOMException && err.name === "NotAllowedError"
-            ? "Доступ к камере запрещён. Разрешите камеру в настройках браузера (в Safari: значок «аА» в адресной строке → Камера) и попробуйте ещё раз."
-            : message ||
-              "Не удалось включить камеру. Проверьте разрешения и попробуйте снова."
-        );
+        setCameraError(cameraErrorMessage(err));
         stopCamera();
       }
       return;
@@ -441,13 +470,7 @@ export function ScanCode({
         }, 150);
       }
     } catch (err: unknown) {
-      const message = getErrorMessage(err);
-      setCameraError(
-        err instanceof DOMException && err.name === "NotAllowedError"
-          ? "Доступ к камере запрещён. Разрешите камеру в настройках браузера и попробуйте ещё раз."
-          : message ||
-            "Не удалось включить камеру. Проверьте разрешения и попробуйте снова."
-      );
+      setCameraError(cameraErrorMessage(err));
       stopCamera();
     }
   }
@@ -531,8 +554,10 @@ export function ScanCode({
         <video
           ref={videoRef}
           className="scan-page__video"
+          autoPlay
           playsInline
           muted
+          disablePictureInPicture
         />
         <p className="scan-page__video-hint">
           Наведите на штрихкод или QR — карточка появится ниже
@@ -554,7 +579,15 @@ export function ScanCode({
 
       {cameraError && (
         <div className="scan-page__err">
-          <AlertCircle size={15} /> {cameraError}
+          <AlertCircle size={15} />
+          <span>{cameraError}</span>
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost admin-btn--sm"
+            onClick={() => void startCamera()}
+          >
+            Повторить запрос камеры
+          </button>
         </div>
       )}
 

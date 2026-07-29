@@ -80,7 +80,10 @@ function applySecurityHeaders(response: NextResponse) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+    // Камера разрешена только собственному origin. Само разрешение всё равно
+    // запрашивает браузер у пользователя. `camera=()` полностью блокировал
+    // getUserMedia на Android (Chrome/Яндекс), ещё до показа системного окна.
+    "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
   );
   response.headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   response.headers.set("Cross-Origin-Resource-Policy", "same-site");

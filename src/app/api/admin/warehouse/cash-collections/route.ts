@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Разметка платежей: [{ paymentId, kind: "card" | "cash" }]
-    // "card" — инкассация на карту, "cash" — наличные (виртуальная карта).
+    // "card" — инкассация на карту, "cash" — оставить в кассе на следующий день.
     const items = Array.isArray(body.items)
       ? body.items
           .map((it: any) => ({
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       "create",
       "cash-collection",
       "cash-collection",
-      `Сдана касса на ${result.amount} ₽ (наличными ${result.cashAmount} ₽, на карту ${result.transferAmount} ₽)`,
+      `Закрыта смена на ${result.amount} ₽ (оставлено в кассе ${result.cashAmount} ₽, на карту ${result.transferAmount} ₽)`,
       {
         amount: result.amount,
         cashAmount: result.cashAmount,
