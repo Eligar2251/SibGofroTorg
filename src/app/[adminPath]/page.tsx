@@ -88,14 +88,18 @@ function formatDate(raw: any): string {
 
 const money = (value: number) => `${value.toLocaleString("ru-RU")} ₽`;
 
-function salaryMonthLabel(salary: Salary): string {
-  const key = salary.periodMonth || salary.date.slice(0, 7);
+function financePeriodLabel(key: string): string {
   const [year, month] = key.split("-").map(Number);
   if (!year || !month) return key;
-  return new Date(year, month - 1, 1).toLocaleDateString("ru-RU", {
+  const label = new Date(year, month - 1, 1).toLocaleDateString("ru-RU", {
     month: "long",
     year: "numeric",
   });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function salaryMonthLabel(salary: Salary): string {
+  return financePeriodLabel(salary.periodMonth || salary.date.slice(0, 7));
 }
 
 function paymentPurpose(payment: BankPayment): string {
@@ -128,7 +132,36 @@ type DashboardFinanceRow = {
   receiptLinks?: { id: string; number: number }[];
 };
 
-export default async function AdminDashboard() {
+export default async function AdminDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    financeQ?: string;
+    financePeriod?: string;
+    financeFrom?: string;
+    financeTo?: string;
+    financeSort?: string;
+  }>;
+}) {
+  const dashboardParams = await searchParams;
+  const financeQ = String(dashboardParams.financeQ || "").trim();
+  const financePeriod = /^\d{4}-\d{2}$/.test(
+    String(dashboardParams.financePeriod || "")
+  )
+    ? String(dashboardParams.financePeriod)
+    : "all";
+  const financeFrom = /^\d{4}-\d{2}-\d{2}$/.test(
+    String(dashboardParams.financeFrom || "")
+  )
+    ? String(dashboardParams.financeFrom)
+    : "";
+  const financeTo = /^\d{4}-\d{2}-\d{2}$/.test(
+    String(dashboardParams.financeTo || "")
+  )
+    ? String(dashboardParams.financeTo)
+    : "";
+  const financeSort = dashboardParams.financeSort === "asc" ? "asc" : "desc";
+
   // Для дашборда читаем только 50 последних заявок. Общие показатели
   // получаем агрегатами Supabase: это значительно дешевле, чем загружать
   // целиком коллекции users и orders при каждом открытии панели.
@@ -292,11 +325,42 @@ export default async function AdminDashboard() {
     ...paymentFinanceRows,
     ...salaryFinanceRows,
     ...collectionFinanceRows,
-  ].sort(
-    (a, b) =>
-      b.date.localeCompare(a.date) || b.id.localeCompare(a.id)
-  );
-  const recentFinanceRows = financeRows.slice(0, 24);
+  ];
+  const financePeriodOptions = [
+    ...new Set(financeRows.map((row) => row.date.slice(0, 7)).filter(Boolean)),
+  ].sort((a, b) => b.localeCompare(a));
+  const normalizedFinanceQ = financeQ.toLocaleLowerCase("ru-RU");
+  const filteredFinanceRows = financeRows
+    .filter((row) => {
+      if (financePeriod !== "all" && !row.date.startsWith(financePeriod)) {
+        return false;
+      }
+      if (financeFrom && row.date < financeFrom) return false;
+      if (financeTo && row.date > financeTo) return false;
+      if (!normalizedFinanceQ) return true;
+      const haystack = [
+        row.counterparty,
+        row.category,
+        row.detail,
+        row.account === "cash" ? "касса наличные" : "расчетный счёт банк безнал",
+        ...(row.dealLinks || []).map((deal) => `зк-${deal.number}`),
+        ...(row.receiptLinks || []).map((receipt) => `по-${receipt.number}`),
+      ]
+        .join(" ")
+        .toLocaleLowerCase("ru-RU");
+      return haystack.includes(normalizedFinanceQ);
+    })
+    .sort((a, b) => {
+      const byDate =
+        financeSort === "asc"
+          ? a.date.localeCompare(b.date)
+          : b.date.localeCompare(a.date);
+      if (byDate !== 0) return byDate;
+      return financeSort === "asc"
+        ? a.id.localeCompare(b.id)
+        : b.id.localeCompare(a.id);
+    });
+  const recentFinanceRows = filteredFinanceRows.slice(0, 60);
   const financeIncoming = financeRows
     .filter((row) => row.direction === "incoming")
     .reduce((sum, row) => sum + row.amount, 0);
@@ -315,16 +379,6 @@ export default async function AdminDashboard() {
   const cashOutgoing = financeRows
     .filter((row) => row.account === "cash" && row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
-
-  const outgoingByCategory = [...financeRows
-    .filter((row) => row.direction === "outgoing")
-    .reduce((map, row) => {
-      map.set(row.category, (map.get(row.category) || 0) + row.amount);
-      return map;
-    }, new Map<string, number>())
-    .entries()]
-    .map(([label, amount]) => ({ label, amount }))
-    .sort((a, b) => b.amount - a.amount);
 
   // На дашборде нужны только оплаченные заказы, которые ещё действительно
   // надо доставить. Отменённые и уже полностью отгруженные не показываем.
@@ -483,8 +537,9 @@ export default async function AdminDashboard() {
         ))}
       </div>
 
+      <div className="dash-report-grid">
       {/* Полная аналитика по банку и кассе */}
-      <section className="admin-card dash-finance" style={{ marginBottom: 24 }}>
+      <section className="admin-card dash-finance">
         <div className="dash-section-head">
           <div>
             <span className="dash-section-kicker">Финансовая отчётность</span>
@@ -524,38 +579,129 @@ export default async function AdminDashboard() {
         </div>
 
         <div className="dash-account-grid">
-          <div className="dash-account-card">
-            <div className="dash-account-card__title">
-              <CreditCard size={15} /> Расчётный счёт
+          <div className="dash-account-card dash-account-card--bank">
+            <div className="dash-account-card__head">
+              <span className="dash-account-card__icon"><CreditCard size={16} /></span>
+              <div>
+                <strong>Расчётный счёт</strong>
+                <span>Безналичные операции</span>
+              </div>
             </div>
-            <span>Приход <b className="dash-money-in">+{money(bankIncoming)}</b></span>
-            <span>Расход <b className="dash-money-out">−{money(bankOutgoing)}</b></span>
-            <strong>Остаток {money(bankSummary.bankBalance)}</strong>
+            <div className="dash-account-card__balance">
+              <span>Текущий остаток</span>
+              <strong>{money(bankSummary.bankBalance)}</strong>
+            </div>
+            <div className="dash-account-card__turnover">
+              <span>Приход <b className="dash-money-in">+{money(bankIncoming)}</b></span>
+              <span>Расход <b className="dash-money-out">−{money(bankOutgoing)}</b></span>
+            </div>
           </div>
-          <div className="dash-account-card">
-            <div className="dash-account-card__title">
-              <Banknote size={15} /> Касса и наличные
+          <div className="dash-account-card dash-account-card--cash">
+            <div className="dash-account-card__head">
+              <span className="dash-account-card__icon"><Banknote size={16} /></span>
+              <div>
+                <strong>Касса</strong>
+                <span>Наличные с переносом</span>
+              </div>
             </div>
-            <span>Приход <b className="dash-money-in">+{money(cashIncoming)}</b></span>
-            <span>Расход/инкассация <b className="dash-money-out">−{money(cashOutgoing)}</b></span>
-            <strong>Остаток с переносом {money(bankSummary.cashBalance)}</strong>
+            <div className="dash-account-card__balance">
+              <span>Сейчас в кассе</span>
+              <strong>{money(bankSummary.cashBalance)}</strong>
+            </div>
+            <div className="dash-account-card__turnover">
+              <span>Приход <b className="dash-money-in">+{money(cashIncoming)}</b></span>
+              <span>Расход <b className="dash-money-out">−{money(cashOutgoing)}</b></span>
+            </div>
           </div>
         </div>
 
-        {outgoingByCategory.length > 0 && (
-          <div className="dash-expense-breakdown">
-            <span>Расходы по назначению:</span>
-            {outgoingByCategory.map((item) => (
-              <span key={item.label} className="admin-badge admin-badge--muted">
-                {item.label}: {money(item.amount)}
-              </span>
-            ))}
+        <form
+          className="dash-finance-filter"
+          method="GET"
+          action={`/${ADMIN_PATH}`}
+        >
+          <label className="dash-finance-filter__search">
+            <span>Поиск</span>
+            <input
+              className="admin-input"
+              type="search"
+              name="financeQ"
+              defaultValue={financeQ}
+              placeholder="Контрагент, назначение, ЗК или ПО…"
+            />
+          </label>
+          <label>
+            <span>Период</span>
+            <select
+              className="admin-select"
+              name="financePeriod"
+              defaultValue={financePeriod}
+            >
+              <option value="all">Все месяцы</option>
+              {financePeriodOptions.map((period) => (
+                <option key={period} value={period}>
+                  {financePeriodLabel(period)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Дата от</span>
+            <input
+              className="admin-input"
+              type="date"
+              name="financeFrom"
+              defaultValue={financeFrom}
+            />
+          </label>
+          <label>
+            <span>Дата до</span>
+            <input
+              className="admin-input"
+              type="date"
+              name="financeTo"
+              defaultValue={financeTo}
+            />
+          </label>
+          <label>
+            <span>Сортировка</span>
+            <select
+              className="admin-select"
+              name="financeSort"
+              defaultValue={financeSort}
+            >
+              <option value="desc">Сначала новые</option>
+              <option value="asc">Сначала старые</option>
+            </select>
+          </label>
+          <div className="dash-finance-filter__actions">
+            <button type="submit" className="admin-btn admin-btn--primary">
+              Показать
+            </button>
+            {(financeQ ||
+              financePeriod !== "all" ||
+              financeFrom ||
+              financeTo ||
+              financeSort !== "desc") && (
+              <Link
+                href={`/${ADMIN_PATH}`}
+                className="admin-btn admin-btn--ghost"
+                prefetch={false}
+              >
+                Сбросить
+              </Link>
+            )}
           </div>
-        )}
+        </form>
 
         <div className="dash-finance-list-head">
-          <strong>Последние движения с расшифровкой</strong>
-          <span>показано {recentFinanceRows.length} из {financeRows.length}</span>
+          <strong>Движения с расшифровкой</strong>
+          <span>
+            показано {recentFinanceRows.length} из {filteredFinanceRows.length}
+            {filteredFinanceRows.length !== financeRows.length
+              ? ` · всего ${financeRows.length}`
+              : ""}
+          </span>
         </div>
         {recentFinanceRows.length > 0 ? (
           <div className="dash-finance-list">
@@ -622,12 +768,18 @@ export default async function AdminDashboard() {
             ))}
           </div>
         ) : (
-          <div className="admin-empty"><p>Проведённых операций пока нет</p></div>
+          <div className="admin-empty">
+            <p>
+              {financeRows.length > 0
+                ? "По выбранным фильтрам операций не найдено"
+                : "Проведённых операций пока нет"}
+            </p>
+          </div>
         )}
       </section>
 
       {/* Оплаченные заказы, которые нужно доставить */}
-      <section className="admin-card dash-deliveries" style={{ marginBottom: 24 }}>
+      <section className="admin-card dash-deliveries">
         <div className="dash-section-head">
           <div>
             <span className="dash-section-kicker">Перевозки</span>
@@ -700,6 +852,7 @@ export default async function AdminDashboard() {
           </div>
         )}
       </section>
+      </div>
 
       {/* Воронка статусов */}
       <div

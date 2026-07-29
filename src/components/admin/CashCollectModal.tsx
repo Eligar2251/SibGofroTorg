@@ -118,7 +118,10 @@ export function CashCollectModal({
           )
         );
         const initial: Record<string, CashKind> = {};
-        for (const p of list) initial[p.paymentId] = "card";
+        // Безопасный дефолт: наличный платёж остаётся в кассе. На карту ЮМ
+        // он уйдёт только после явного выбора кассира — иначе повторное
+        // закрытие смены могло случайно обнулить весь новый приход.
+        for (const p of list) initial[p.paymentId] = "cash";
         setKinds(initial);
       } catch (e) {
         if (!cancelled) {
@@ -181,7 +184,7 @@ export function CashCollectModal({
       const raw = splits[p.paymentId];
       if (!raw) {
         // Без ручной разбивки — весь платёж одним направлением.
-        const kind = kinds[p.paymentId] || "card";
+        const kind = kinds[p.paymentId] || "cash";
         return kind === "cash"
           ? { cash: p.amount, card: 0, expense: 0, manual: false }
           : { cash: 0, card: p.amount, expense: 0, manual: false };
@@ -506,7 +509,7 @@ export function CashCollectModal({
                   <div className="cashc-list">
                     {dayItems.map((p) => {
                       const on = selected.has(p.paymentId);
-                      const kind = kinds[p.paymentId] || "card";
+                      const kind = kinds[p.paymentId] || "cash";
                       const sp = splitOf(p);
                       const isSplit = splitOpen.has(p.paymentId);
                       return (
