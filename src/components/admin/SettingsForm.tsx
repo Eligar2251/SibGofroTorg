@@ -5,7 +5,8 @@
 "use client";
 
 import { useState } from "react";
-import { Save, Loader2, CheckCircle, Send } from "lucide-react";
+import { Save, Loader2, CheckCircle, Send, MessageCircle } from "lucide-react";
+import { ImageUploader } from "@/components/admin/ImageUploader";
 import {
   CASH_CARD_HOLDER_SETTING_KEY,
   DEFAULT_CASH_CARD_HOLDER,
@@ -45,6 +46,12 @@ const deliveryFields = [
   },
 ];
 
+const messengerFields = [
+  { id: "telegram", label: "Telegram", placeholder: "https://t.me/username" },
+  { id: "whatsapp", label: "WhatsApp", placeholder: "https://wa.me/79990000000" },
+  { id: "max", label: "MAX", placeholder: "Ссылка на чат в MAX" },
+] as const;
+
 /** Виды макулатуры, цены на которые редактируются в этом блоке */
 const wastepaperFields: { id: WastepaperRateId; label: string }[] = [
   { id: "cardboard", label: "Гофрокартон" },
@@ -60,6 +67,8 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     const defaults: Record<string, string> = {
       delivery_price: "800",
       free_delivery_threshold: "30000",
+      messenger_banner_enabled: "true",
+      messenger_banner_text: "Мы есть в мессенджерах",
       [CASH_CARD_HOLDER_SETTING_KEY]: DEFAULT_CASH_CARD_HOLDER,
     };
     for (const id of WASTEPAPER_RATE_IDS) {
@@ -119,6 +128,30 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     }
 
     setSaving(false);
+  }
+
+  function messengerImages(id: (typeof messengerFields)[number]["id"]) {
+    const url = values[`messenger_${id}_icon_url`] || "";
+    return url
+      ? [
+          {
+            url,
+            publicId: values[`messenger_${id}_icon_public_id`] || "",
+          },
+        ]
+      : [];
+  }
+
+  function setMessengerImages(
+    id: (typeof messengerFields)[number]["id"],
+    images: { url: string; publicId: string }[]
+  ) {
+    const image = images[images.length - 1];
+    setValues((current) => ({
+      ...current,
+      [`messenger_${id}_icon_url`]: image?.url || "",
+      [`messenger_${id}_icon_public_id`]: image?.publicId || "",
+    }));
   }
 
   const cardStyle = { height: "100%", minWidth: 0 } as const;
@@ -249,6 +282,69 @@ export function SettingsForm({ settings }: SettingsFormProps) {
             <p className="admin-hint" style={{ marginTop: "auto" }}>
               В сдачу кассы попадают только наличные платежи. Основной
               безналичный счёт в банке к кассе не относится и не затрагивается.
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-card settings-messenger-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>
+              <MessageCircle size={16} /> Баннер мессенджеров
+            </h2>
+            <label className="admin-check">
+              <input
+                type="checkbox"
+                checked={values.messenger_banner_enabled !== "false"}
+                onChange={(e) =>
+                  setValues({
+                    ...values,
+                    messenger_banner_enabled: e.target.checked ? "true" : "false",
+                  })
+                }
+              />
+              <span>Показывать плавающий баннер на сайте</span>
+            </label>
+            <div className="admin-field">
+              <label className="admin-label">Текст баннера</label>
+              <input
+                className="admin-input"
+                value={values.messenger_banner_text || ""}
+                onChange={(e) =>
+                  setValues({ ...values, messenger_banner_text: e.target.value })
+                }
+                placeholder="Мы есть в мессенджерах"
+              />
+            </div>
+            <div className="settings-messenger-grid">
+              {messengerFields.map((messenger) => (
+                <div key={messenger.id} className="settings-messenger-item">
+                  <strong>{messenger.label}</strong>
+                  <div className="admin-field">
+                    <label className="admin-label">Ссылка на чат</label>
+                    <input
+                      type="url"
+                      className="admin-input"
+                      value={values[`messenger_${messenger.id}_url`] || ""}
+                      onChange={(e) =>
+                        setValues({
+                          ...values,
+                          [`messenger_${messenger.id}_url`]: e.target.value,
+                        })
+                      }
+                      placeholder={messenger.placeholder}
+                    />
+                  </div>
+                  <div className="admin-label">Иконка / фото</div>
+                  <ImageUploader
+                    images={messengerImages(messenger.id)}
+                    onChange={(images) => setMessengerImages(messenger.id, images)}
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="admin-hint">
+              На сайте появится небольшой фиксированный блок с тремя круглыми
+              изображениями. Нажатие откроет соответствующий чат.
             </p>
           </div>
         </div>

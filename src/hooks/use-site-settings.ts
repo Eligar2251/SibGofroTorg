@@ -17,6 +17,19 @@
 
 import { useEffect, useState } from "react";
 
+export interface MessengerChannelSettings {
+  url: string;
+  iconUrl: string;
+}
+
+export interface MessengerBannerSettings {
+  enabled: boolean;
+  text: string;
+  telegram: MessengerChannelSettings;
+  whatsapp: MessengerChannelSettings;
+  max: MessengerChannelSettings;
+}
+
 export interface SiteSettings {
   phone: string;
   phoneHref: string;
@@ -28,10 +41,18 @@ export interface SiteSettings {
   hoursLabel: string;
   /** Дефолт «8:30–17:00» для случая, когда админ задал только свои часы */
   hoursWeekday: string;
+  messengerBanner: MessengerBannerSettings;
   ready: boolean;
 }
 
 const DEFAULT_HOURS_WEEKDAY = "8:30–17:00";
+const EMPTY_MESSENGER_BANNER: MessengerBannerSettings = {
+  enabled: false,
+  text: "Мы есть в мессенджерах",
+  telegram: { url: "", iconUrl: "" },
+  whatsapp: { url: "", iconUrl: "" },
+  max: { url: "", iconUrl: "" },
+};
 
 /** Превращает произвольное значение из БД в SITE_HOURS_LABEL-формат */
 function buildHoursLabel(workingHours: string, weekdayFallback: string): string {
@@ -66,6 +87,25 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
       const workingHours = String(data.workingHours || "").trim();
       const hoursWeekday =
         String(data.hoursWeekday || "").trim() || DEFAULT_HOURS_WEEKDAY;
+      const rawBanner = data.messengerBanner || {};
+      const messengerBanner: MessengerBannerSettings = {
+        enabled: rawBanner.enabled === true,
+        text:
+          String(rawBanner.text || "").trim() ||
+          EMPTY_MESSENGER_BANNER.text,
+        telegram: {
+          url: String(rawBanner.telegram?.url || "").trim(),
+          iconUrl: String(rawBanner.telegram?.iconUrl || "").trim(),
+        },
+        whatsapp: {
+          url: String(rawBanner.whatsapp?.url || "").trim(),
+          iconUrl: String(rawBanner.whatsapp?.iconUrl || "").trim(),
+        },
+        max: {
+          url: String(rawBanner.max?.url || "").trim(),
+          iconUrl: String(rawBanner.max?.iconUrl || "").trim(),
+        },
+      };
       const settings: SiteSettings = {
         phone,
         phoneHref: `tel:${phone.replace(/[^\d+]/g, "")}`,
@@ -74,6 +114,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         workingHours,
         hoursLabel: buildHoursLabel(workingHours, hoursWeekday),
         hoursWeekday,
+        messengerBanner,
         ready: true,
       };
       cache = settings;
@@ -89,6 +130,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         workingHours: "",
         hoursLabel: "",
         hoursWeekday: DEFAULT_HOURS_WEEKDAY,
+        messengerBanner: EMPTY_MESSENGER_BANNER,
         ready: false,
       };
       cache = empty;
@@ -115,6 +157,7 @@ export function useSiteSettings(): SiteSettings {
     workingHours: "",
     hoursLabel: "",
     hoursWeekday: DEFAULT_HOURS_WEEKDAY,
+    messengerBanner: EMPTY_MESSENGER_BANNER,
     ready: false,
   });
 

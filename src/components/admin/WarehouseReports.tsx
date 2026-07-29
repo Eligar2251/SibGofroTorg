@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDownLeft,
@@ -221,7 +221,13 @@ export function WarehouseReports({
     query: "",
     sort: "desc",
   });
-  const [generatedAt, setGeneratedAt] = useState(() => new Date());
+  // SSR и первый клиентский рендер должны совпадать. Текущее локальное время
+  // проставляем только после гидратации, иначе секунды на сервере/клиенте
+  // расходятся и React пересобирает весь конструктор отчётов.
+  const [generatedAt, setGeneratedAt] = useState<string>("");
+  useEffect(() => {
+    setGeneratedAt(new Date().toLocaleString("ru-RU"));
+  }, []);
 
   const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
   const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
@@ -270,7 +276,7 @@ export function WarehouseReports({
       setTo(nextTo);
     }
     setFilters({ kind, from: nextFrom, to: nextTo, query, sort });
-    setGeneratedAt(new Date());
+    setGeneratedAt(new Date().toLocaleString("ru-RU"));
   }
 
   const moneyRows = useMemo(() => {
@@ -542,7 +548,7 @@ export function WarehouseReports({
           <p>Формирование подробных отчётов по документам и движениям — с расшифровкой до исходной записи.</p>
         </div>
         <div className="wh-report-head__stamp">
-          Сформировано {generatedAt.toLocaleString("ru-RU")}
+          Сформировано {generatedAt || "—"}
         </div>
       </div>
 

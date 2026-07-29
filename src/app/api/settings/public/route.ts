@@ -36,6 +36,22 @@ export async function GET() {
           Number.isFinite(freeDeliveryThreshold) && freeDeliveryThreshold > 0
             ? freeDeliveryThreshold
             : 30000,
+        messengerBanner: {
+          enabled: settings.messenger_banner_enabled !== "false",
+          text: (settings.messenger_banner_text || "Мы есть в мессенджерах").trim(),
+          telegram: {
+            url: (settings.messenger_telegram_url || "").trim(),
+            iconUrl: (settings.messenger_telegram_icon_url || "").trim(),
+          },
+          whatsapp: {
+            url: (settings.messenger_whatsapp_url || "").trim(),
+            iconUrl: (settings.messenger_whatsapp_icon_url || "").trim(),
+          },
+          max: {
+            url: (settings.messenger_max_url || "").trim(),
+            iconUrl: (settings.messenger_max_icon_url || "").trim(),
+          },
+        },
       },
       {
         headers: {
@@ -53,6 +69,13 @@ export async function GET() {
         hoursWeekday: SITE_HOURS_WEEKDAY,
         deliveryPrice: 800,
         freeDeliveryThreshold: 30000,
+        messengerBanner: {
+          enabled: false,
+          text: "Мы есть в мессенджерах",
+          telegram: { url: "", iconUrl: "" },
+          whatsapp: { url: "", iconUrl: "" },
+          max: { url: "", iconUrl: "" },
+        },
       },
       {
         headers: {

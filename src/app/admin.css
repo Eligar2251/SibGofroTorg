@@ -8979,6 +8979,16 @@ body:has(.admin-modal-overlay) {
   .wh-report-table th, .wh-report-table td { font-size: 8px; }
 }
 
+/* Настройка плавающего баннера мессенджеров */
+.settings-messenger-card { grid-column: 1 / -1; }
+.settings-messenger-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.settings-messenger-item { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 12px; background: var(--adm-paper); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
+.settings-messenger-item > strong { color: var(--adm-ink); font-size: 13px; }
+.settings-messenger-item .admin-upload { padding: 12px; }
+.settings-messenger-item .admin-upload__icon { width: 24px; height: 24px; }
+.settings-messenger-item .admin-upload-grid { grid-template-columns: minmax(0, 96px); }
+@media (max-width: 800px) { .settings-messenger-grid { grid-template-columns: 1fr; } }
+
 /* ══════════════════════════════════════
    АККУРАТНАЯ АДАПТИВНАЯ СЕТКА АДМИНКИ
    Без жёстких размеров и глобальных запретов: элементы растягиваются,
