@@ -7236,3 +7236,44 @@ body {
   .order-products-wait { margin-left: 52px; }
   .order-products-all { margin-left: auto; }
 }
+
+/* Управление положением плавающего баннера. */
+.messenger-float__drag,
+.messenger-float__collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+}
+
+.messenger-float__drag {
+  cursor: grab;
+  touch-action: none;
+}
+
+.messenger-float--dragging,
+.messenger-float--dragging .messenger-float__drag {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.messenger-float__drag:hover,
+.messenger-float__collapse:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.messenger-float-tab {
+  touch-action: manipulation;
+  transition: padding 0.16s ease, background-color 0.16s ease;
+}
+
+.messenger-float-tab:hover {
+  padding-inline: 10px;
+  background: #f59e0b !important;
+}

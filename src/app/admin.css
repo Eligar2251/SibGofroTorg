@@ -9267,3 +9267,231 @@ body:has(.admin-modal-overlay) {
     min-width: 0;
   }
 }
+
+/* Компактная типографика и контролы админки на телефонах. */
+@media (max-width: 640px) {
+  .admin-main {
+    padding-inline: 12px;
+  }
+
+  .admin-h1 {
+    font-size: clamp(1.25rem, 6vw, 1.55rem);
+    line-height: 1.15;
+  }
+
+  .admin-h2,
+  .admin-card__title,
+  .admin-modal__title {
+    font-size: clamp(0.8rem, 3.8vw, 0.95rem);
+  }
+
+  .admin-sub,
+  .admin-hint,
+  .admin-muted {
+    font-size: clamp(10px, 3vw, 12px);
+    overflow-wrap: anywhere;
+  }
+
+  .admin-card__pad {
+    padding: 13px;
+  }
+
+  .admin-card__head {
+    gap: 8px;
+    padding: 10px 12px;
+    flex-wrap: wrap;
+  }
+
+  .admin-page-head {
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+  }
+
+  .admin-page-head__actions,
+  .admin-form-actions,
+  .admin-modal__actions,
+  .admin-actions {
+    gap: 6px;
+  }
+
+  .admin-btn,
+  .admin-status__btn,
+  .scan-page__btn {
+    gap: 5px;
+    padding: 7px 10px;
+    font-size: clamp(10px, 3vw, 12px);
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-btn--sm {
+    padding: 5px 8px;
+    font-size: clamp(9px, 2.7vw, 11px);
+  }
+
+  .admin-filter {
+    gap: 4px;
+    padding: 5px 9px;
+    font-size: clamp(9px, 2.8vw, 11px);
+    line-height: 1.2;
+  }
+
+  .admin-badge {
+    max-width: 100%;
+    padding: 2px 5px;
+    font-size: clamp(8px, 2.4vw, 9px);
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
+  /* 16px сохраняет защиту iOS от автоматического zoom, высоту уменьшают padding. */
+  .admin-input,
+  .admin-select,
+  .admin-textarea {
+    padding: 8px 10px;
+    font-size: 16px;
+    line-height: 1.2;
+  }
+
+  .admin-label {
+    font-size: 9px;
+    line-height: 1.25;
+  }
+
+  .admin-field {
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .admin-check {
+    gap: 7px;
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+
+  .admin-stat-grid,
+  .whsal-cards,
+  .admin-loading__stats {
+    gap: 8px;
+  }
+
+  .admin-stat,
+  .whsal-card {
+    padding: 12px;
+  }
+
+  .admin-stat__value,
+  .whsal-card__value,
+  .bank-pay__amount {
+    font-size: clamp(1.15rem, 5vw, 1.4rem);
+  }
+
+  .admin-stat__label,
+  .whsal-card__label,
+  .whsal-card__sub {
+    font-size: clamp(9px, 2.7vw, 11px);
+    overflow-wrap: anywhere;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 8px;
+    font-size: 10px;
+  }
+
+  .admin-modal {
+    padding: 13px;
+  }
+
+  .admin-modal__desc,
+  .wh-form-hint,
+  .wh-form-error {
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  .bank-hero {
+    gap: 14px;
+    padding: 15px;
+  }
+
+  .bank-toolbar {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .bank-toolbar__date,
+  .bank-toolbar__select {
+    flex: 1 1 min(100%, 140px);
+  }
+
+  .bank-pay {
+    padding: 10px;
+  }
+
+  .bank-pay__counterparty {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .receipt-head {
+    gap: 6px;
+    padding: 9px 10px;
+  }
+
+  .receipt-head__supplier,
+  .receipt-head__total {
+    font-size: 12px;
+  }
+
+  .deal-delivery-block,
+  .order-delivery,
+  .wh-items {
+    padding: 10px;
+  }
+
+  .cashc-row,
+  .bank-cash-posting,
+  .dash-finance-row,
+  .dash-delivery-row {
+    gap: 7px;
+    padding: 9px 10px;
+  }
+
+  .wh-report-settings,
+  .wh-report-summary,
+  .wh-report-head,
+  .wh-report-result__head {
+    padding: 11px;
+  }
+}
+
+@media (max-width: 380px) {
+  .admin-main {
+    padding-inline: 8px;
+  }
+
+  .admin-card__pad,
+  .admin-modal {
+    padding: 10px;
+  }
+
+  .admin-btn,
+  .admin-status__btn {
+    padding-inline: 7px;
+  }
+
+  .admin-page-head__actions .admin-btn,
+  .admin-form-actions .admin-btn,
+  .admin-modal__actions .admin-btn {
+    flex: 1 1 100%;
+  }
+
+  .admin-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
