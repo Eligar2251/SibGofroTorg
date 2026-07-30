@@ -1483,12 +1483,14 @@ select {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 12px;
+  align-items: start;
 }
 
 .products-grid-4 {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+  align-items: start;
 }
 
 .products-grid-4--loading {
@@ -1501,6 +1503,7 @@ select {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px;
+  align-items: start;
 }
 
 /* ══════════════════════════════════════

@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       vatRate: body.vatRate,
       linkedDealIds: body.linkedDealIds,
       linkedPaymentIds: body.linkedPaymentIds,
+      noPayment: body.noPayment === true,
       paymentSplits: body.paymentSplits,
     });
     return NextResponse.json(result);

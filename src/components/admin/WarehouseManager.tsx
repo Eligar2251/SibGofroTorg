@@ -2147,6 +2147,21 @@ export function WarehouseManager({
                   <strong style={{ fontSize: 22 }}>+{fmt(bankSummary.expectedIn)} ₽</strong>
                 </div>
               </div>
+
+              <div className="bank-hero__stat" style={{ color: '#9de3a5' }}>
+                <Wallet size={16} />
+                <div>
+                  <span style={{ color: 'rgba(157,227,165,0.72)', fontWeight: 700 }}>
+                    Общий приход (факт + будущие)
+                  </span>
+                  <strong style={{ color: '#fff', fontSize: 22 }}>
+                    {fmt(bankSummary.balance + bankSummary.expectedIn)} ₽
+                  </strong>
+                  <small style={{ display: 'block', marginTop: 2, color: 'rgba(245,242,234,0.45)', fontSize: 10 }}>
+                    Касса + безнал + все ожидаемые входящие платежи
+                  </small>
+                </div>
+              </div>
               
               <div className="bank-hero__stat" style={{ color: '#ef8f76' }}>
                 <ArrowUpRight size={16} />

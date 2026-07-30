@@ -849,18 +849,22 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
 
   const total = itemsTotal(items);
-  if (total <= 0) throw new Error("Укажите сумму поступления больше нуля");
+  const noPayment = data.noPayment === true;
+  if (total <= 0 && !noPayment) throw new Error("Укажите сумму поступления больше нуля");
 
   const db = getAdminDb();
 
   const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : [];
   const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
 
-  // Разбивка оплаты на части
-  const paymentSplits = (Array.isArray(data.paymentSplits) ? data.paymentSplits : [])
-    .map((n: any) => round2(Number(n) || 0))
-    .filter((n: number) => n > 0);
-  if (paymentSplits.length === 0) paymentSplits.push(total);
+  // Разбивка оплаты на части. Для «поставки без оплаты» счета поставщику
+  // не создаём — ниже добавится закрывающая запись вне баланса.
+  const paymentSplits = noPayment
+    ? []
+    : (Array.isArray(data.paymentSplits) ? data.paymentSplits : [])
+        .map((n: any) => round2(Number(n) || 0))
+        .filter((n: number) => n > 0);
+  if (!noPayment && paymentSplits.length === 0) paymentSplits.push(total);
 
   // Номера связанных заказов
   const linkedDealNumbers: number[] = [];
@@ -922,27 +926,47 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
   if (receiptError) throw receiptError;
   const receiptId = receiptResult.id;
 
-  // ★ Создаём исходящие платежи (по разбивке)
-  for (let i = 0; i < paymentSplits.length; i++) {
-    const splitAmount = paymentSplits[i];
-    if (splitAmount <= 0) continue;
-    const payNumber = await nextNumber("payment");
-    await db.from("bank_payments").insert({
-      number: payNumber, date,
-      direction: "outgoing", type: "regular",
-      counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
-      deal_ids: [], deal_numbers: [],
-      receipt_ids: [receiptId], receipt_numbers: [number],
-      amount: splitAmount, invoice_number: null,
-      vat_rate: vatRate, vat_amount: includedVat(splitAmount, vatRate),
-      is_paid: false, paid_at: null,
-      exclude_from_balance: false,
-      comment: `Оплата поставщику по приходному ордеру ПО-${number}${paymentSplits.length > 1 ? ` (часть ${i+1})` : ""}`,
-    });
+  if (noPayment) {
+    // Закрываем поступление как «без оплаты»: запись видна в истории как
+    // внебалансовая, не меняет банк/кассу, но не оставляет долг поставщику.
+    if (total > 0) {
+      const payNumber = await nextNumber("payment");
+      await db.from("bank_payments").insert({
+        number: payNumber, date,
+        direction: "outgoing", type: "regular",
+        counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
+        deal_ids: [], deal_numbers: [],
+        receipt_ids: [receiptId], receipt_numbers: [number],
+        amount: total, invoice_number: null,
+        vat_rate: vatRate, vat_amount: vatAmount,
+        is_paid: true, paid_at: date,
+        exclude_from_balance: true,
+        comment: `Поставка без оплаты по приходному ордеру ПО-${number}`,
+      });
+    }
+  } else {
+    // ★ Создаём исходящие платежи (по разбивке)
+    for (let i = 0; i < paymentSplits.length; i++) {
+      const splitAmount = paymentSplits[i];
+      if (splitAmount <= 0) continue;
+      const payNumber = await nextNumber("payment");
+      await db.from("bank_payments").insert({
+        number: payNumber, date,
+        direction: "outgoing", type: "regular",
+        counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
+        deal_ids: [], deal_numbers: [],
+        receipt_ids: [receiptId], receipt_numbers: [number],
+        amount: splitAmount, invoice_number: null,
+        vat_rate: vatRate, vat_amount: includedVat(splitAmount, vatRate),
+        is_paid: false, paid_at: null,
+        exclude_from_balance: false,
+        comment: `Оплата поставщику по приходному ордеру ПО-${number}${paymentSplits.length > 1 ? ` (часть ${i+1})` : ""}`,
+      });
+    }
   }
 
   // Привязываем существующие платежи к поступлению
-  for (const payId of linkedPaymentIds) {
+  for (const payId of noPayment ? [] : linkedPaymentIds) {
     const { data: pay } = await db.from("bank_payments").select("receipt_ids, receipt_numbers").eq("id", payId).maybeSingle();
     if (pay) {
       const receiptIds = Array.isArray(pay.receipt_ids) ? [...pay.receipt_ids, receiptId] : [receiptId];
@@ -990,7 +1014,8 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   if (!data.supplier?.trim()) throw new Error("Укажите поставщика");
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
   const linesTotal = itemsTotal(items);
-  if (linesTotal <= 0) throw new Error("Укажите сумму поступления больше нуля");
+  const noPayment = data.noPayment === true;
+  if (linesTotal <= 0 && !noPayment) throw new Error("Укажите сумму поступления больше нуля");
 
   const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : Number(existing.vat_rate ?? VAT_RATE);
   const linkedDealIds = Array.isArray(data.linkedDealIds) ? data.linkedDealIds : (Array.isArray(existing.linked_deal_ids) ? existing.linked_deal_ids : []);
@@ -1015,7 +1040,17 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
       ? sum + (Number(p.amount) || 0) / links
       : sum;
   }, 0);
-  const total = paidTotal > 0 ? paidTotal : linesTotal;
+  const existingNoPaymentPaid = receiptPayments.reduce((sum: number, p: any) => {
+    const receiptLinks = (p.receipt_ids || []).length;
+    const dealLinks = (p.deal_ids || []).length;
+    if (p.direction !== "outgoing" || p.is_paid !== true || p.exclude_from_balance !== true) return sum;
+    if (receiptLinks !== 1 || dealLinks !== 0) return sum;
+    return sum + (Number(p.amount) || 0);
+  }, 0);
+  const effectivePaidTotal = noPayment
+    ? 0
+    : Math.max(0, round2(paidTotal - existingNoPaymentPaid));
+  const total = effectivePaidTotal > 0 ? effectivePaidTotal : linesTotal;
   const bankAdjustment = round2(total - linesTotal);
 
   const supplier = data.supplier.trim().slice(0, 200);
@@ -1069,7 +1104,68 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
     const dealLinks = (p.deal_ids || []).length;
     return receiptLinks === 1 && dealLinks === 0;
   });
-  const remaining = Math.max(0, round2(linesTotal - paidTotal));
+  const noPaymentClosers = receiptPayments.filter((p: any) => {
+    const receiptLinks = (p.receipt_ids || []).length;
+    const dealLinks = (p.deal_ids || []).length;
+    return p.direction === "outgoing" && p.is_paid === true && p.exclude_from_balance === true && receiptLinks === 1 && dealLinks === 0;
+  });
+  const noPaymentPaidTotal = noPaymentClosers.reduce(
+    (sum: number, p: any) => sum + (Number(p.amount) || 0),
+    0
+  );
+  const paidForRegularSync = noPayment
+    ? paidTotal
+    : Math.max(0, round2(paidTotal - noPaymentPaidTotal));
+  const remaining = Math.max(0, round2(linesTotal - paidForRegularSync));
+
+  if (noPayment) {
+    // Переключили поступление в режим «без оплаты»: убираем обычные
+    // неоплаченные счета и оставляем одну закрывающую запись вне баланса.
+    for (const p of unpaidSoloPayments) {
+      await db.from("bank_payments").delete().eq("id", p.id);
+    }
+    if (linesTotal > 0) {
+      const keep = noPaymentClosers[0];
+      if (keep) {
+        await db.from("bank_payments").update({
+          date: String(data.date || "").slice(0, 10),
+          counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
+          amount: linesTotal,
+          vat_rate: vatRate, vat_amount: includedVat(linesTotal, vatRate),
+          is_paid: true, paid_at: String(data.date || "").slice(0, 10),
+          exclude_from_balance: true,
+          comment: `Поставка без оплаты по приходному ордеру ПО-${existing.number}`,
+        }).eq("id", keep.id);
+      } else {
+        const payNumber = await nextNumber("payment");
+        await db.from("bank_payments").insert({
+          number: payNumber,
+          date: String(data.date || "").slice(0, 10),
+          direction: "outgoing", type: "regular",
+          counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
+          deal_ids: [], deal_numbers: [],
+          receipt_ids: [id], receipt_numbers: [existing.number],
+          amount: linesTotal, invoice_number: null,
+          vat_rate: vatRate, vat_amount: includedVat(linesTotal, vatRate),
+          is_paid: true, paid_at: String(data.date || "").slice(0, 10),
+          exclude_from_balance: true,
+          comment: `Поставка без оплаты по приходному ордеру ПО-${existing.number}`,
+        });
+      }
+      for (const p of noPaymentClosers.slice(1)) {
+        await db.from("bank_payments").delete().eq("id", p.id);
+      }
+    } else {
+      for (const p of noPaymentClosers) {
+        await db.from("bank_payments").delete().eq("id", p.id);
+      }
+    }
+  } else {
+    // Если сняли режим «без оплаты», удаляем старую закрывающую запись,
+    // иначе она продолжит закрывать долг поставщику без реального платежа.
+    for (const p of noPaymentClosers) {
+      await db.from("bank_payments").delete().eq("id", p.id);
+    }
 
   const requested = (Array.isArray(data.paymentSplits) ? data.paymentSplits : [])
     .map((n: any) => round2(Number(n) || 0))
@@ -1121,9 +1217,10 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
       });
     }
   }
+  }
 
   // Привязываем существующие платежи
-  for (const payId of linkedPaymentIds) {
+  for (const payId of noPayment ? [] : linkedPaymentIds) {
     const { data: pay } = await db.from("bank_payments").select("receipt_ids, receipt_numbers").eq("id", payId).maybeSingle();
     if (pay) {
       const receiptIds = Array.isArray(pay.receipt_ids) ? [...new Set([...pay.receipt_ids, id])] : [id];
