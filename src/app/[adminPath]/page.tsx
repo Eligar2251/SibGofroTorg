@@ -552,8 +552,10 @@ export default async function AdminDashboard() {
         <div className="dash-account-grid">
           <div className="dash-account-card dash-account-card--bank">
             <div className="dash-account-card__head">
-              <span className="dash-account-card__icon" aria-hidden="true"><CreditCard size={16} /></span>
-              <div>
+              <div className="dash-account-card__icon" aria-hidden="true">
+                <CreditCard size={18} />
+              </div>
+              <div className="dash-account-card__copy">
                 <strong>Расчётный счёт</strong>
                 <span>Безналичные операции</span>
               </div>
@@ -569,8 +571,10 @@ export default async function AdminDashboard() {
           </div>
           <div className="dash-account-card dash-account-card--cash">
             <div className="dash-account-card__head">
-              <span className="dash-account-card__icon" aria-hidden="true"><Banknote size={16} /></span>
-              <div>
+              <div className="dash-account-card__icon" aria-hidden="true">
+                <Banknote size={18} />
+              </div>
+              <div className="dash-account-card__copy">
                 <strong>Касса</strong>
                 <span>С прошлых дней: {money(cashCarryover.previousDaysRemaining)}</span>
               </div>
