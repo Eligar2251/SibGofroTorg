@@ -30,7 +30,9 @@ import {
   ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getAdminDb } from "@/lib/supabase";
+import { verifySession } from "@/lib/auth";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections } from "@/lib/warehouse";
 import {
   getBankSummary,
@@ -125,6 +127,10 @@ function paymentPurpose(payment: BankPayment): string {
 }
 
 export default async function AdminDashboard() {
+  const session = await verifySession();
+  if (!session) redirect(`/${ADMIN_PATH}/login`);
+  const isLawyer = session.role === "lawyer";
+
   // Для дашборда читаем только 50 последних заявок. Общие показатели
   // получаем агрегатами Supabase: это значительно дешевле, чем загружать
   // целиком коллекции users и orders при каждом открытии панели.
@@ -147,25 +153,25 @@ export default async function AdminDashboard() {
     receipts,
     cashCollections,
   ] = await Promise.all([
-    // includeHidden: считаем ВСЕ товары, как и «Учёт → Остатки»
-    // (getWarehouseStock), чтобы число позиций на дашборде и в учёте
-    // совпадало (раньше тут были только видимые — числа расходились).
-    getProducts({ includeHidden: true }),
-    getOrders({ limit: 50 }),
-    getAllCategories(),
-    getPromotions(),
-    countByStatus("orders", "new"),
-    countByStatus("wastepaper_requests", "new"),
-    countByStatus("orders", "in_progress"),
-    countByStatus("wastepaper_requests", "in_progress"),
-    countByStatus("orders", "completed"),
-    countByStatus("wastepaper_requests", "completed"),
-    countByStatus("orders", "rejected"),
-    countByStatus("wastepaper_requests", "rejected"),
+    // Юристу не показываются товары, заявки, акции и склад, поэтому эти
+    // данные для его ограниченного дашборда даже не запрашиваем.
+    // includeHidden: для остальных ролей считаем ВСЕ товары, как и учёт.
+    isLawyer ? Promise.resolve([]) : getProducts({ includeHidden: true }),
+    isLawyer ? Promise.resolve([]) : getOrders({ limit: 50 }),
+    isLawyer ? Promise.resolve([]) : getAllCategories(),
+    isLawyer ? Promise.resolve([]) : getPromotions(),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "new"),
+    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "new"),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "in_progress"),
+    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "in_progress"),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "completed"),
+    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "completed"),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "rejected"),
+    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "rejected"),
     getPayments(),
     getSalaries(),
     getDeals(),
-    getReceipts(),
+    isLawyer ? Promise.resolve([]) : getReceipts(),
     getCashCollections(),
   ]);
 
@@ -341,7 +347,7 @@ export default async function AdminDashboard() {
 
   return (
     <div>
-      <DashboardRealtime />
+      <DashboardRealtime limited={isLawyer} />
       <div
         style={{
           display: "flex",
@@ -353,7 +359,7 @@ export default async function AdminDashboard() {
         }}
       >
         <h1 className="admin-h1" style={{ margin: 0 }}>
-          Панель управления
+          {isLawyer ? "Финансы и перевозки" : "Панель управления"}
         </h1>
         <div
           style={{ fontSize: 13, color: "var(--adm-muted)" }}
@@ -367,6 +373,7 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Основная статистика */}
+      {!isLawyer && (
       <div className="admin-stat-grid" style={{ marginBottom: 24 }}>
         {[
           {
@@ -481,6 +488,7 @@ export default async function AdminDashboard() {
           </Link>
         ))}
       </div>
+      )}
 
       <div className="dash-report-grid">
       {/* Полная аналитика по банку и кассе */}
@@ -491,13 +499,15 @@ export default async function AdminDashboard() {
             <h2>Банковские счета: приход и расход</h2>
             <p>Фактические проведённые операции за весь период учёта.</p>
           </div>
-          <Link
-            href={`/${ADMIN_PATH}/warehouse?tab=bank`}
-            className="admin-btn admin-btn--ghost"
-            prefetch={false}
-          >
-            <ExternalLink size={13} /> Открыть банк
-          </Link>
+          {!isLawyer && (
+            <Link
+              href={`/${ADMIN_PATH}/warehouse?tab=bank`}
+              className="admin-btn admin-btn--ghost"
+              prefetch={false}
+            >
+              <ExternalLink size={13} /> Открыть банк
+            </Link>
+          )}
         </div>
 
         <div className="dash-finance-totals">
@@ -563,6 +573,7 @@ export default async function AdminDashboard() {
         <DashboardFinanceHistory
           rows={financeRows}
           adminPath={ADMIN_PATH}
+          allowNavigation={!isLawyer}
         />
       </section>
 
@@ -574,13 +585,15 @@ export default async function AdminDashboard() {
             <h2>Оплаченные заказы к доставке</h2>
             <p>Только заказы с доставкой, полной оплатой и остатком к отгрузке.</p>
           </div>
-          <Link
-            href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
-            className="admin-btn admin-btn--ghost"
-            prefetch={false}
-          >
-            <Truck size={13} /> Все доставки
-          </Link>
+          {!isLawyer && (
+            <Link
+              href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
+              className="admin-btn admin-btn--ghost"
+              prefetch={false}
+            >
+              <Truck size={13} /> Все доставки
+            </Link>
+          )}
         </div>
         {paidDeliveryDeals.length > 0 ? (
           <div className="dash-delivery-list">
@@ -589,12 +602,16 @@ export default async function AdminDashboard() {
                 <span className="dash-delivery-row__icon"><Truck size={17} /></span>
                 <div className="dash-delivery-row__main">
                   <div className="dash-delivery-row__top">
-                    <Link
-                      href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
-                      prefetch={false}
-                    >
-                      ЗК-{deal.number}
-                    </Link>
+                    {isLawyer ? (
+                      <strong>ЗК-{deal.number}</strong>
+                    ) : (
+                      <Link
+                        href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                        prefetch={false}
+                      >
+                        ЗК-{deal.number}
+                      </Link>
+                    )}
                     <strong>{deal.customerName}</strong>
                     <span className="admin-badge admin-badge--green">оплачен</span>
                     {deal.deliveryPlannedDate && (
@@ -616,20 +633,22 @@ export default async function AdminDashboard() {
                     {deal.deliveryNote && <span>{deal.deliveryNote}</span>}
                   </div>
                 </div>
-                <div className="dash-delivery-row__actions">
-                  <Link
-                    href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
-                    prefetch={false}
-                  >
-                    Заказ →
-                  </Link>
-                  <Link
-                    href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
-                    prefetch={false}
-                  >
-                    В доставку →
-                  </Link>
-                </div>
+                {!isLawyer && (
+                  <div className="dash-delivery-row__actions">
+                    <Link
+                      href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                      prefetch={false}
+                    >
+                      Заказ →
+                    </Link>
+                    <Link
+                      href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
+                      prefetch={false}
+                    >
+                      В доставку →
+                    </Link>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -642,6 +661,8 @@ export default async function AdminDashboard() {
       </section>
       </div>
 
+      {!isLawyer && (
+        <>
       {/* Воронка статусов */}
       <div
         className="admin-card"
@@ -1060,7 +1081,13 @@ export default async function AdminDashboard() {
                   label: "Настройки сайта",
                   icon: <Settings size={14} />,
                 },
-              ].map((action) => (
+              ]
+                .filter(
+                  (action) =>
+                    session.role === "admin" ||
+                    action.href !== `/${ADMIN_PATH}/settings`
+                )
+                .map((action) => (
                 <Link
                   key={action.href}
                   href={action.href}
@@ -1087,6 +1114,8 @@ export default async function AdminDashboard() {
           </div>
         </div>
       </div>
+        </>
+      )}
 
       <style>{`\n        @media (max-width: 768px) {\n          .admin-dash-grid {\n            grid-template-columns: 1fr !important;\n          }\n        }\n      `}</style>
     </div>

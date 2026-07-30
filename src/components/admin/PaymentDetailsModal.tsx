@@ -55,10 +55,12 @@ export function PaymentDetailsModal({
   paymentId,
   adminPath,
   onClose,
+  allowDocumentNavigation = true,
 }: {
   paymentId: string | null;
   adminPath: string;
   onClose: () => void;
+  allowDocumentNavigation?: boolean;
 }) {
   const [data, setData] = useState<PaymentDetailsPayload | null>(null);
   const [loading, setLoading] = useState(false);
@@ -170,9 +172,13 @@ export function PaymentDetailsModal({
                     <div className="payment-details__document-head">
                       <div>
                         <span>Заказ покупателя</span>
-                        <Link href={`/${adminPath}/warehouse?tab=deals&deal=${deal.id}`} prefetch={false} onClick={onClose}>
-                          ЗК-{deal.number} →
-                        </Link>
+                        {allowDocumentNavigation ? (
+                          <Link href={`/${adminPath}/warehouse?tab=deals&deal=${deal.id}`} prefetch={false} onClick={onClose}>
+                            ЗК-{deal.number} →
+                          </Link>
+                        ) : (
+                          <strong>ЗК-{deal.number}</strong>
+                        )}
                       </div>
                       <span className="admin-badge admin-badge--blue">{dealStatusLabel[deal.status] || deal.status}</span>
                       <strong>{fmt(deal.total)} ₽</strong>
@@ -190,9 +196,13 @@ export function PaymentDetailsModal({
                     <div className="payment-details__document-head">
                       <div>
                         <span>Поступление от поставщика</span>
-                        <Link href={`/${adminPath}/warehouse?tab=receipts&receipt=${receipt.id}`} prefetch={false} onClick={onClose}>
-                          ПО-{receipt.number} →
-                        </Link>
+                        {allowDocumentNavigation ? (
+                          <Link href={`/${adminPath}/warehouse?tab=receipts&receipt=${receipt.id}`} prefetch={false} onClick={onClose}>
+                            ПО-{receipt.number} →
+                          </Link>
+                        ) : (
+                          <strong>ПО-{receipt.number}</strong>
+                        )}
                       </div>
                       <span className={receipt.status === "posted" ? "admin-badge admin-badge--green" : "admin-badge admin-badge--amber"}>
                         {receipt.status === "posted" ? "Проведено" : "Активное"}

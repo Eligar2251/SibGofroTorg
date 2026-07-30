@@ -3,7 +3,7 @@
 -- =========================================================
 
 -- 1. Роли в таблице admins
-ALTER TABLE admins ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'admin' CHECK (role IN ('admin', 'manager'));
+ALTER TABLE admins ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'admin' CHECK (role IN ('admin', 'manager', 'lawyer'));
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS display_name TEXT DEFAULT '';
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
 

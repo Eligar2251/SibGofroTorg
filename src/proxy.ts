@@ -6,30 +6,37 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import {
+  canAccessAdminApi,
+  canAccessAdminPage,
+  parseAdminRole,
+  type AdminRole,
+} from "@/lib/admin-rbac";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
-function getAdminSecret(): Uint8Array {
+function getAdminSecret(): Uint8Array | null {
   const fromEnv = process.env.ADMIN_SESSION_SECRET;
   if (fromEnv && fromEnv.length >= 32) {
     return new TextEncoder().encode(fromEnv);
   }
-  if (process.env.NODE_ENV === "production") {
-    return new TextEncoder().encode("__invalid_prod_secret_force_fail__");
-  }
+  // Без production-секрета нельзя использовать известную заглушку: токен
+  // с ней мог бы подписать кто угодно. Просто отклоняем любую сессию.
+  if (process.env.NODE_ENV === "production") return null;
   return new TextEncoder().encode(
     "dev-only-admin-session-secret-min-32-chars!!"
   );
 }
 
-async function isAdminAuthed(request: NextRequest): Promise<boolean> {
+async function getAdminRole(request: NextRequest): Promise<AdminRole | null> {
   const token = request.cookies.get("admin-session")?.value;
-  if (!token) return false;
+  const secret = getAdminSecret();
+  if (!token || !secret) return null;
   try {
-    const { payload } = await jwtVerify(token, getAdminSecret());
-    return payload.role === "admin";
+    const { payload } = await jwtVerify(token, secret);
+    return parseAdminRole(payload.role);
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -121,10 +128,15 @@ export async function proxy(request: NextRequest) {
   }
 
   // ── Admin API ──
-  if (pathname.startsWith("/api/admin")) {
-    const ok = await isAdminAuthed(request);
-    if (!ok) {
+  if (pathname === "/api/admin" || pathname.startsWith("/api/admin/")) {
+    const role = await getAdminRole(request);
+    if (!role) {
       const res = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      applySecurityHeaders(res);
+      return res;
+    }
+    if (!canAccessAdminApi(role, pathname, request.method)) {
+      const res = NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
       applySecurityHeaders(res);
       return res;
     }
@@ -135,14 +147,27 @@ export async function proxy(request: NextRequest) {
     pathname === `/${ADMIN_PATH}` ||
     pathname.startsWith(`/${ADMIN_PATH}/`)
   ) {
-    if (
-      pathname !== `/${ADMIN_PATH}/login` &&
-      pathname !== `/${ADMIN_PATH}/api/login`
-    ) {
-      const ok = await isAdminAuthed(request);
-      if (!ok) {
+    const loginPath = `/${ADMIN_PATH}/login`;
+    const loginApiPath = `/${ADMIN_PATH}/api/login`;
+    const logoutApiPath = `/${ADMIN_PATH}/api/logout`;
+    const isPublicAuthPath =
+      pathname === loginPath ||
+      pathname === loginApiPath ||
+      pathname === logoutApiPath;
+
+    if (!isPublicAuthPath) {
+      const role = await getAdminRole(request);
+      if (!role) {
+        const res = NextResponse.redirect(new URL(loginPath, request.url));
+        applySecurityHeaders(res);
+        return res;
+      }
+      if (!canAccessAdminPage(role, pathname, ADMIN_PATH)) {
+        // Запрещённые страницы ведут на гарантированно доступный дашборд,
+        // а не на логин. Так валидная manager/lawyer-сессия не попадает
+        // в бесконечный цикл редиректов.
         const res = NextResponse.redirect(
-          new URL(`/${ADMIN_PATH}/login`, request.url)
+          new URL(`/${ADMIN_PATH}`, request.url)
         );
         applySecurityHeaders(res);
         return res;

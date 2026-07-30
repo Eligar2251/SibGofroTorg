@@ -9,6 +9,9 @@ export async function GET(
 ) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
+  if (!hasPermission(auth, "view_payment_details")) {
+    return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const payments = await getPayments();

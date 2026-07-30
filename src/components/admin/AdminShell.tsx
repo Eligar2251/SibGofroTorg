@@ -22,15 +22,23 @@ import {
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
+import {
+  canAccessAdminPage,
+  type AdminRole,
+} from "@/lib/admin-rbac";
 
 const SIDEBAR_PREF_KEY = "admin-sidebar-hidden";
 
 export function AdminShell({
   children,
   adminPath,
+  role,
+  displayName,
 }: {
   children: ReactNode;
   adminPath: string;
+  role: AdminRole | null;
+  displayName: string | null;
 }) {
   const pathname = usePathname() || "";
   const isLogin = pathname === `/${adminPath}/login`;
@@ -104,7 +112,18 @@ export function AdminShell({
       label: "Настройки",
       icon: <Settings size={18} />,
     },
-  ];
+  ].filter((item) =>
+    role ? canAccessAdminPage(role, item.href, adminPath) : false
+  );
+
+  const roleLabel =
+    role === "admin"
+      ? "Администратор"
+      : role === "manager"
+        ? "Менеджер"
+        : role === "lawyer"
+          ? "Юрист"
+          : "";
 
   return (
     <div
@@ -119,7 +138,10 @@ export function AdminShell({
       >
         <div className="admin-sidebar__brand">
           <SiteLogo variant="light" className="admin-sidebar__logo-svg" />
-          <div className="admin-sidebar__sub">Управление</div>
+          <div className="admin-sidebar__sub">
+            {displayName || "Управление"}
+            {roleLabel ? ` · ${roleLabel}` : ""}
+          </div>
           {/* Единственная видимая кнопка сворачивания — на самой
               панели. Скрывать меню на мобильных не нужно: там
               сайдбара нет вовсе, навигация в верхней панели. */}
@@ -224,7 +246,9 @@ export function AdminShell({
       )}
 
       <div className="admin-content">
-        <AdminNotifications adminPath={adminPath} />
+        {role && role !== "lawyer" && (
+          <AdminNotifications adminPath={adminPath} />
+        )}
         <main className="admin-main">{children}</main>
       </div>
     </div>

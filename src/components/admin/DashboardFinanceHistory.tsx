@@ -41,9 +41,11 @@ function periodLabel(key: string): string {
 export function DashboardFinanceHistory({
   rows,
   adminPath,
+  allowNavigation = true,
 }: {
   rows: DashboardFinanceRow[];
   adminPath: string;
+  allowNavigation?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("all");
@@ -109,6 +111,7 @@ export function DashboardFinanceHistory({
         paymentId={detailPaymentId}
         adminPath={adminPath}
         onClose={() => setDetailPaymentId(null)}
+        allowDocumentNavigation={allowNavigation}
       />
       <div className="dash-finance-filter" aria-label="Фильтр истории платежей">
         <label className="dash-finance-filter__search">
@@ -231,24 +234,36 @@ export function DashboardFinanceHistory({
                 <div className="dash-finance-row__detail">
                   <span>{formatDate(row.date)}</span>
                   {row.detail && <span>{row.detail}</span>}
-                  {(row.dealLinks || []).map((deal) => (
-                    <Link
-                      key={`deal-${row.id}-${deal.id}`}
-                      href={`/${adminPath}/warehouse?tab=deals&deal=${deal.id}`}
-                      prefetch={false}
-                    >
-                      ЗК-{deal.number || "—"}
-                    </Link>
-                  ))}
-                  {(row.receiptLinks || []).map((receipt) => (
-                    <Link
-                      key={`receipt-${row.id}-${receipt.id}`}
-                      href={`/${adminPath}/warehouse?tab=receipts&receipt=${receipt.id}`}
-                      prefetch={false}
-                    >
-                      ПО-{receipt.number || "—"}
-                    </Link>
-                  ))}
+                  {(row.dealLinks || []).map((deal) =>
+                    allowNavigation ? (
+                      <Link
+                        key={`deal-${row.id}-${deal.id}`}
+                        href={`/${adminPath}/warehouse?tab=deals&deal=${deal.id}`}
+                        prefetch={false}
+                      >
+                        ЗК-{deal.number || "—"}
+                      </Link>
+                    ) : (
+                      <span key={`deal-${row.id}-${deal.id}`}>
+                        ЗК-{deal.number || "—"}
+                      </span>
+                    )
+                  )}
+                  {(row.receiptLinks || []).map((receipt) =>
+                    allowNavigation ? (
+                      <Link
+                        key={`receipt-${row.id}-${receipt.id}`}
+                        href={`/${adminPath}/warehouse?tab=receipts&receipt=${receipt.id}`}
+                        prefetch={false}
+                      >
+                        ПО-{receipt.number || "—"}
+                      </Link>
+                    ) : (
+                      <span key={`receipt-${row.id}-${receipt.id}`}>
+                        ПО-{receipt.number || "—"}
+                      </span>
+                    )
+                  )}
                 </div>
               </div>
               <div className="dash-finance-row__side">
@@ -270,11 +285,11 @@ export function DashboardFinanceHistory({
                   >
                     Подробнее →
                   </button>
-                ) : (
+                ) : allowNavigation ? (
                   <Link href={row.href} prefetch={false}>
                     Открыть →
                   </Link>
-                )}
+                ) : null}
               </div>
             </div>
           ))}

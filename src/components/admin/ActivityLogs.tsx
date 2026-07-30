@@ -44,6 +44,13 @@ const actionLabels: Record<string, { label: string; color: string; icon: any }> 
   export: { label: "Экспорт", color: "admin-badge--muted", icon: Download },
 };
 
+const adminRoleLabels: Record<string, string> = {
+  admin: "Администратор",
+  manager: "Менеджер",
+  lawyer: "Юрист",
+  system: "Система",
+};
+
 const entityLabels: Record<string, string> = {
   order: "Заявка",
   deal: "Заказ учёта",
@@ -365,7 +372,7 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
                       <td>
                         <div style={{ fontWeight: 700 }}>{log.adminName || "Система"}</div>
                         <div className="admin-muted" style={{ fontSize: 11 }}>
-                          {log.adminRole || "—"}
+                          {adminRoleLabels[log.adminRole] || log.adminRole || "—"}
                         </div>
                       </td>
                       <td style={{ overflow: "hidden" }}>

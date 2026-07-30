@@ -6,12 +6,19 @@ import { getSettings } from "@/lib/supabase-queries";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { ExcelDataManager } from "@/components/admin/ExcelDataManager";
 import { ActivityLogs } from "@/components/admin/ActivityLogs";
+import { redirect } from "next/navigation";
+import { hasPermission, verifySession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export default async function AdminSettingsPage() {
+  const session = await verifySession();
+  if (!session || !hasPermission(session, "view_settings")) {
+    redirect(`/${ADMIN_PATH}`);
+  }
+
   const settings = await getSettings();
 
   const settingsMap: Record<string, string> = {};
