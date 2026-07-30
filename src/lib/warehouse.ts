@@ -42,6 +42,7 @@ import {
   DEFAULT_CASH_CARD_HOLDER,
   getBankSummary,
   getCashCarryoverSummary,
+  getWarehouseBusinessDate,
   getDealPaidMap,
   getReceiptPaidMap,
   getCounterpartyBalances,
@@ -2237,7 +2238,7 @@ export async function getPendingCashPayments(): Promise<{
     payments,
     salaries,
     collections,
-    new Date().toISOString().slice(0, 10)
+    getWarehouseBusinessDate()
   );
   const linkedRemaining = carryover.origins.reduce(
     (sum, origin) => sum + origin.remainingAmount,
@@ -2364,8 +2365,14 @@ function listPendingCashPayments(
       if (it?.paymentId) collected.add(String(it.paymentId));
     }
   }
+  const today = getWarehouseBusinessDate();
   return payments
-    .filter((p) => isCashDeskIncome(p) && !collected.has(String(p.id)))
+    .filter(
+      (p) =>
+        isCashDeskIncome(p) &&
+        String(p.date || "").slice(0, 10) <= today &&
+        !collected.has(String(p.id))
+    )
     .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
 }
 
@@ -2429,7 +2436,7 @@ export async function collectCash(
     payments,
     salaries,
     collections,
-    new Date().toISOString().slice(0, 10)
+    getWarehouseBusinessDate()
   );
   const linkedCash = carryover.origins.reduce(
     (sum, origin) => sum + origin.remainingAmount,

@@ -549,6 +549,18 @@ function collectionCashOutflow(collection: CashCollection): number {
     : Math.max(0, Number(collection.amount) || 0);
 }
 
+/** Рабочая дата компании — Новосибирск, а не UTC сервера/Vercel. */
+export function getWarehouseBusinessDate(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Novosibirsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
 /**
  * Детальный кассовый регистр: остаток, перенос с прошлых дней и источники.
  *
@@ -561,7 +573,7 @@ export function getCashCarryoverSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
   collections: CashCollection[] = [],
-  date = new Date().toISOString().slice(0, 10)
+  date = getWarehouseBusinessDate()
 ): CashCarryoverSummary {
   type CashLot = CashCarryoverOrigin;
   type CashEvent =
@@ -581,7 +593,10 @@ export function getCashCarryoverSummary(
     }
     const amount = Math.max(0, Number(payment.amount) || 0);
     if (amount <= 0) continue;
-    const operationDate = String(payment.paidAt || payment.date || "").slice(0, 10);
+    // Именно дата платежа определяет, в какой дневной баланс он входит.
+    // paidAt — техническая дата проведения и не должна возвращать платёж
+    // в сегодняшний остаток после ручного переноса документа на завтра.
+    const operationDate = String(payment.date || "").slice(0, 10);
     if (payment.direction === "incoming") {
       events.push({
         date: operationDate,
@@ -678,6 +693,11 @@ export function getCashCarryoverSummary(
   };
 
   for (const event of events) {
+    // Будущие документы могут быть уже проведены, но в фактический баланс
+    // на выбранную дату попадут только в свой день. Это защищает кассу от
+    // случайного платежа «за 30-е», пока сегодня ещё 29-е.
+    if (!event.date || event.date > date) continue;
+
     const signed = event.type === "in" ? event.amount : -event.amount;
     currentBalance += signed;
     if (event.date < date) openingBalance += signed;
@@ -730,7 +750,8 @@ export function getCashCarryoverSummary(
 export function getBankSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
-  collections: CashCollection[] = []
+  collections: CashCollection[] = [],
+  asOfDate = getWarehouseBusinessDate()
 ) {
   let bankBalance = 0;
   let cashBalance = 0;
@@ -742,6 +763,8 @@ export function getBankSummary(
     if (p.excludeFromBalance) continue;
 
     if (p.isPaid) {
+      const paymentDate = String(p.date || "").slice(0, 10);
+      if (!paymentDate || paymentDate > asOfDate) continue;
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
       // Касса ниже считается единым кассовым регистром, чтобы перенос и
       // источники использовали ту же формулу, что и число на дашборде.
@@ -757,6 +780,8 @@ export function getBankSummary(
     const bypassBalance = isSalaryExcludedFromBalance(s.comment);
     if (s.isPaid) {
       if (bypassBalance) continue;
+      const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
+      if (!salaryDate || salaryDate > asOfDate) continue;
       if (s.source === "bank") bankBalance -= s.amount;
     } else {
       if (bypassBalance) continue;
@@ -768,13 +793,16 @@ export function getBankSummary(
   cashBalance = getCashCarryoverSummary(
     payments,
     salaries,
-    collections
+    collections,
+    asOfDate
   ).currentBalance;
 
   let collectedCash = 0;
   let collectedCashOnly = 0;
   let collectedTransfer = 0;
   for (const c of collections) {
+    const collectionDate = String(c.date || "").slice(0, 10);
+    if (!collectionDate || collectionDate > asOfDate) continue;
     collectedCash += c.amount;
     collectedCashOnly += Math.max(0, Number(c.cashAmount) || 0);
     collectedTransfer += collectionCashOutflow(c);
