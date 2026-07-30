@@ -2106,7 +2106,7 @@ export interface CashCollectionRow {
   id: string;
   date: string;
   amount: number;
-  /** Часть, оставленная наличными в кассе; undefined у старых записей */
+  /** Зафиксированный остаток кассы после смены; undefined у старых записей */
   cashAmount?: number;
   /** Часть, сданная инкассацией на карту (вне расчётного счёта) */
   transferAmount: number;
@@ -2641,7 +2641,11 @@ export async function collectCash(
     );
   }
 
-  cashAmount = cashPart;
+  // cash_amount — не «часть выбранных платежей», а итоговый остаток кассы
+  // после инкассации. Это контрольная цифра документа и источник истины для
+  // следующего дня (графа «Осталось в кассе»).
+  const closingCashBalance = Math.max(0, round2(cashBalance - cardPart));
+  cashAmount = closingCashBalance;
   cardAmount = cardPart;
 
   // Траты сохраняем в самой записи сдачи: тогда детализация останется
