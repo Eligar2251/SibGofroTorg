@@ -380,7 +380,7 @@ export interface CashCollection {
   date: string;
   /** Общая размеченная сумма смены (перенос наличных + инкассация) */
   amount: number;
-  /** Зафиксированный остаток кассы после закрытия смены */
+  /** Часть, оставленная наличными в кассе для переноса на следующий день */
   cashAmount?: number;
   /** Часть, сданная инкассацией на карту (к расчётному счёту не относится) */
   transferAmount?: number;
@@ -549,17 +549,6 @@ function collectionCashOutflow(collection: CashCollection): number {
     : Math.max(0, Number(collection.amount) || 0);
 }
 
-/**
- * В актуальных документах «cashAmount» — зафиксированный остаток кассы
- * после закрытия смены. Нулевые записи «без учёта» не являются снимком.
- */
-function collectionClosingBalance(collection: CashCollection): number | null {
-  if (collection.cashAmount == null) return null;
-  const items = Array.isArray(collection.items) ? collection.items : [];
-  if (items.length === 0 || items.every((item) => item.noAccounting)) return null;
-  return Math.max(0, Number(collection.cashAmount) || 0);
-}
-
 /** Рабочая дата компании — Новосибирск, а не UTC сервера/Vercel. */
 export function getWarehouseBusinessDate(date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -588,16 +577,13 @@ export function getCashCarryoverSummary(
 ): CashCarryoverSummary {
   type CashLot = CashCarryoverOrigin;
   type CashEvent =
-    | { date: string; order: string; priority: number; type: "in"; amount: number; lot: CashLot }
+    | { date: string; priority: number; type: "in"; amount: number; lot: CashLot }
     | {
         date: string;
-        order: string;
         priority: number;
         type: "out" | "card";
         amount: number;
         targets?: { paymentId: string; amount: number }[];
-        /** Зафиксированный остаток после закрытия смены. */
-        closingBalance?: number | null;
       };
 
   const events: CashEvent[] = [];
@@ -614,7 +600,6 @@ export function getCashCarryoverSummary(
     if (payment.direction === "incoming") {
       events.push({
         date: operationDate,
-        order: `${operationDate}T00:00:00-${String(payment.number).padStart(10, "0")}`,
         priority: 0,
         type: "in",
         amount,
@@ -628,13 +613,7 @@ export function getCashCarryoverSummary(
         },
       });
     } else {
-      events.push({
-        date: operationDate,
-        order: `${operationDate}T00:00:00-${String(payment.number).padStart(10, "0")}`,
-        priority: 1,
-        type: "out",
-        amount,
-      });
+      events.push({ date: operationDate, priority: 1, type: "out", amount });
     }
   }
 
@@ -649,7 +628,6 @@ export function getCashCarryoverSummary(
     }
     events.push({
       date: String(salary.paidAt || salary.date || "").slice(0, 10),
-      order: String(salary.paidAt || salary.date || ""),
       priority: 1,
       type: "out",
       amount: Math.max(0, Number(salary.amount) || 0),
@@ -658,8 +636,7 @@ export function getCashCarryoverSummary(
 
   for (const collection of collections) {
     const amount = collectionCashOutflow(collection);
-    const closingBalance = collectionClosingBalance(collection);
-    if (amount <= 0 && closingBalance == null) continue;
+    if (amount <= 0) continue;
     const rawTargets = (collection.items || [])
       .map((item) => ({
         paymentId: String(item.paymentId || ""),
@@ -679,11 +656,9 @@ export function getCashCarryoverSummary(
     const factor = rawTotal > 0 ? Math.min(1, amount / rawTotal) : 0;
     events.push({
       date: String(collection.date || "").slice(0, 10),
-      order: String(collection.createdAt || collection.date || ""),
       priority: 2,
       type: "card",
       amount,
-      closingBalance,
       targets: rawTargets.map((item) => ({
         paymentId: item.paymentId,
         amount: item.amount * factor,
@@ -693,9 +668,7 @@ export function getCashCarryoverSummary(
 
   events.sort(
     (a, b) =>
-      a.date.localeCompare(b.date) ||
-      a.priority - b.priority ||
-      a.order.localeCompare(b.order)
+      a.date.localeCompare(b.date) || a.priority - b.priority
   );
 
   const lots: CashLot[] = [];
@@ -725,37 +698,28 @@ export function getCashCarryoverSummary(
     // случайного платежа «за 30-е», пока сегодня ещё 29-е.
     if (!event.date || event.date > date) continue;
 
-    if (event.type === "in") {
-      currentBalance += event.amount;
-      lots.push({ ...event.lot });
-      if (event.date === date) todayIncoming += event.amount;
-    } else {
-      currentBalance -= event.amount;
-      if (event.date === date) {
-        if (event.type === "card") todayCardTransfers += event.amount;
-        else todayOutgoing += event.amount;
-      }
-
-      let targeted = 0;
-      for (const target of event.targets || []) {
-        const lot = lots.find(
-          (item) => item.paymentId === target.paymentId && item.remainingAmount > 0
-        );
-        if (lot) targeted += consumeLot(lot, target.amount);
-      }
-      consumeFifo(Math.max(0, event.amount - targeted));
-
-      if (event.closingBalance != null) {
-        const adjustment = event.closingBalance - currentBalance;
-        // Если снимок ниже расчётного остатка — погашаем старые источники FIFO.
-        // Если выше — разница остаётся «старым остатком без ПЛ» и будет
-        // показана отдельно, но итог всегда равен графе «Осталось в кассе».
-        if (adjustment < -0.009) consumeFifo(-adjustment);
-        currentBalance = event.closingBalance;
-      }
+    const signed = event.type === "in" ? event.amount : -event.amount;
+    currentBalance += signed;
+    if (event.date < date) openingBalance += signed;
+    if (event.date === date) {
+      if (event.type === "in") todayIncoming += event.amount;
+      else if (event.type === "card") todayCardTransfers += event.amount;
+      else todayOutgoing += event.amount;
     }
 
-    if (event.date < date) openingBalance = currentBalance;
+    if (event.type === "in") {
+      lots.push({ ...event.lot });
+      continue;
+    }
+
+    let targeted = 0;
+    for (const target of event.targets || []) {
+      const lot = lots.find(
+        (item) => item.paymentId === target.paymentId && item.remainingAmount > 0
+      );
+      if (lot) targeted += consumeLot(lot, target.amount);
+    }
+    consumeFifo(Math.max(0, event.amount - targeted));
   }
 
   const origins = lots
@@ -765,10 +729,9 @@ export function getCashCarryoverSummary(
       originalAmount: Math.round(lot.originalAmount * 100) / 100,
       remainingAmount: Math.round(lot.remainingAmount * 100) / 100,
     }));
-  // Перенос на начало дня — это сам зафиксированный остаток, включая
-  // старую наличку без ПЛ. Сумма origins может быть меньше из-за такой
-  // ручной/исторической части.
-  const previousDaysRemaining = Math.max(0, openingBalance);
+  const previousDaysRemaining = origins
+    .filter((origin) => origin.date < date)
+    .reduce((sum, origin) => sum + origin.remainingAmount, 0);
 
   return {
     date,
@@ -879,7 +842,6 @@ export function getCollectedBreakdown(
 ): { cash: number; transfer: number; total: number } {
   let cash = 0;
   let transfer = 0;
-  let latestSnapshotDate = "";
   for (const c of collections) {
     const hasSplit = c.cashAmount != null;
     // Старые записи целиком уменьшали кассу. В новой расшифровке относим их
@@ -887,11 +849,9 @@ export function getCollectedBreakdown(
     const t = hasSplit
       ? Number(c.transferAmount) || 0
       : Number(c.amount) || 0;
+    const cashPart = hasSplit ? Number(c.cashAmount) || 0 : 0;
+    cash += cashPart;
     transfer += t;
-    if (collectionClosingBalance(c) != null && c.date >= latestSnapshotDate) {
-      latestSnapshotDate = c.date;
-      cash = Number(c.cashAmount) || 0;
-    }
   }
   return {
     cash: Math.round(cash * 100) / 100,

@@ -398,7 +398,7 @@ export function CashCollectModal({
             ? `\nТраты налом: −${fmt(expensesTotal)} ₽`
             : "") +
           `\nНа карту (${cardHolder}): ${fmt(totals.card)} ₽` +
-          `\nОстаток кассы после закрытия: ${fmt(balanceAfterClose)} ₽`
+          `\nОстанется наличными в кассе: ${fmt(totals.cash)} ₽`
       )
     ) {
       return;
@@ -619,7 +619,7 @@ export function CashCollectModal({
                 </div>
                 <div className="cashc-total cashc-total--cash">
                   <span className="cashc-total__label">
-                    <Banknote size={13} /> Из выбранного останется
+                    <Banknote size={13} /> Останется в кассе
                   </span>
                   <strong>{fmt(totals.cash)} ₽</strong>
                 </div>
@@ -869,7 +869,7 @@ export function CashCollectModal({
                       <div className="cashc-spent__foot">
                         Приход {fmt(totals.income)} ₽ − траты{" "}
                         {fmt(expensesTotal)} ₽ = <b>{fmt(totals.total)} ₽</b>:{" "}
-                        {fmt(totals.card)} ₽ на карту, итоговый остаток кассы {fmt(balanceAfterClose)} ₽
+                        {fmt(totals.card)} ₽ на карту, {fmt(totals.cash)} ₽ остаётся в кассе
                       </div>
                     </div>
                   )}
