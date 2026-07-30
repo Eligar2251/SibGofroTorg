@@ -2008,3 +2008,67 @@ body {
     aspect-ratio: 1 / 0.86;
   }
 }
+
+/* ══════════════════════════════════════
+   HOTFIX: точечные мобильные правки каталога/кабинета/карты
+   ══════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Плашка «Мало товара? Привезём…» не растягивается на всю строку. */
+  .catalog-heading-row .catalog-order-note,
+  .home-catalog-unified__top .catalog-order-note {
+    width: fit-content;
+    max-width: min(100%, 290px);
+    flex: 0 1 auto;
+    align-self: flex-start;
+  }
+
+  .catalog-order-note > span {
+    min-width: 0;
+  }
+
+  /* Кабинет: карточки «Мои заказы» занимают всю доступную ширину экрана. */
+  .cab-layout,
+  .cab-layout > *,
+  .cab-sidebar,
+  .cab-orders,
+  .cab-sidebar__card,
+  .cab-sidebar__contact,
+  .cab-orders__list,
+  .cab-order,
+  .cab-empty {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .cab-order__head-left,
+  .cab-order__head-right,
+  .cab-order__item,
+  .cab-order__total,
+  .cab-order__meta-row {
+    min-width: 0;
+  }
+
+  .cab-order__item {
+    flex-wrap: wrap;
+  }
+
+  .cab-order__item-right {
+    margin-left: auto;
+  }
+
+  /* Текст в кнопках карты центрируется внутри существующего блока. */
+  .map-cta,
+  .map-facade__cta {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
+  }
+
+  .map-cta > svg {
+    display: block;
+    flex: 0 0 auto;
+  }
+}
