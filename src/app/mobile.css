@@ -2072,3 +2072,61 @@ body {
     flex: 0 0 auto;
   }
 }
+
+/* Каталог: сортировка на мобильной — компактные чипы, без вертикального растягивания. */
+@media (max-width: 768px) {
+  .catalog-layout .fsort {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .catalog-layout .fsort::-webkit-scrollbar {
+    display: none;
+  }
+
+  .catalog-layout .fsort__item {
+    width: auto !important;
+    min-width: max-content;
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 6px 11px;
+    line-height: 1;
+    text-align: center !important;
+    white-space: nowrap;
+  }
+
+  .catalog-layout .catalog-toolbar2 {
+    align-items: flex-start;
+  }
+
+  .catalog-layout .catalog-sort-links {
+    align-items: center;
+    min-height: 32px;
+    padding-bottom: 1px;
+  }
+
+  .catalog-layout .catalog-sort-link {
+    width: auto !important;
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 6px 11px;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+  }
+}
