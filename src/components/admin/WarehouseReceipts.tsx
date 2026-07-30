@@ -165,6 +165,17 @@ export function ReceiptForm({
     );
   }, [payments, initialReceipt]);
 
+  const initialNoPayment = Boolean(
+    initialReceipt &&
+      payments.some(
+        (p) =>
+          p.direction === "outgoing" &&
+          p.isPaid &&
+          p.excludeFromBalance &&
+          (p.receiptIds || []).includes(initialReceipt.id)
+      )
+  );
+  const [noPayment, setNoPayment] = useState(initialNoPayment);
   const [paymentCount, setPaymentCount] = useState(
     initialReceipt && existingUnpaid.length > 1 ? existingUnpaid.length : 1
   );
@@ -195,6 +206,7 @@ export function ReceiptForm({
 
   /** Итоговый массив сумм платежей, который уходит на сервер */
   function buildPaymentSplits(): number[] {
+    if (noPayment) return [];
     if (paymentCount <= 1) return [roundKopeck(total)];
     const parts = splitAmounts
       .map((v) => roundKopeck(Number(v) || 0))
@@ -217,6 +229,7 @@ export function ReceiptForm({
     setItems(initialReceipt?.items || []);
     setSelectedDeals(initialReceipt?.linkedDealIds || []);
     setSelectedPayments([]);
+    setNoPayment(initialNoPayment);
     setPaymentCount(1);
     setSplitAmounts([""]);
     setSplitTouched(false);
@@ -397,7 +410,8 @@ export function ReceiptForm({
           })),
           vatRate,
           linkedDealIds: selectedDeals,
-          linkedPaymentIds: selectedPayments,
+          linkedPaymentIds: noPayment ? [] : selectedPayments,
+          noPayment,
           paymentSplits: buildPaymentSplits(),
         }),
       });
@@ -508,22 +522,38 @@ export function ReceiptForm({
               </div>
 
               <div className="admin-field" style={{ marginTop: 12 }}>
-                <label className="admin-label">Оплата (разбить на части?)</label>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  {[1, 2, 3].map(count => (
-                    <button
-                      key={count}
-                      type="button"
-                      className={`admin-btn ${paymentCount === count ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
-                      style={{ flex: 1 }}
-                      onClick={() => handleSplitCountChange(count)}
-                    >
-                      {count} {count === 1 ? 'платеж' : 'платежа'}
-                    </button>
-                  ))}
-                </div>
+                <label className="admin-label">Оплата поставщику</label>
+                <label className="admin-check" style={{ marginBottom: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={noPayment}
+                    onChange={(e) => setNoPayment(e.target.checked)}
+                  />
+                  Поставка без оплаты — товар добавится на склад, долг поставщику не создаётся
+                </label>
+                {!noPayment && (
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    {[1, 2, 3].map(count => (
+                      <button
+                        key={count}
+                        type="button"
+                        className={`admin-btn ${paymentCount === count ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                        style={{ flex: 1 }}
+                        onClick={() => handleSplitCountChange(count)}
+                      >
+                        {count} {count === 1 ? 'платеж' : 'платежа'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {noPayment && (
+                  <div className="wh-form-hint" style={{ margin: "0 0 8px" }}>
+                    В банке будет создана закрывающая запись «вне баланса»: она не изменит кассу/счёт,
+                    но поступление будет считаться оплаченным.
+                  </div>
+                )}
                 
-                {paymentCount > 1 && (
+                {!noPayment && paymentCount > 1 && (
                   <>
                     <div className="wh-form-grid" style={{ marginTop: 8 }}>
                       {splitAmounts.map((val, idx) => (
@@ -581,20 +611,22 @@ export function ReceiptForm({
                 )}
               </div>
 
-              <div className="admin-field" style={{ marginTop: 12 }}>
-                <label className="admin-label">Привязать существующую оплату</label>
-                {availablePayments.length === 0 ? (
-                  <div className="wh-deal-pick__empty">Нет свободных платежей для этого поставщика</div>
-                ) : (
-                  <SearchMultiSelect
-                    options={paymentOptions}
-                    selectedIds={selectedPayments}
-                    onToggle={togglePayment}
-                    placeholder="Поиск платежа по номеру или сумме…"
-                    emptyText="Платежи не найдены"
-                  />
-                )}
-              </div>
+              {!noPayment && (
+                <div className="admin-field" style={{ marginTop: 12 }}>
+                  <label className="admin-label">Привязать существующую оплату</label>
+                  {availablePayments.length === 0 ? (
+                    <div className="wh-deal-pick__empty">Нет свободных платежей для этого поставщика</div>
+                  ) : (
+                    <SearchMultiSelect
+                      options={paymentOptions}
+                      selectedIds={selectedPayments}
+                      onToggle={togglePayment}
+                      placeholder="Поиск платежа по номеру или сумме…"
+                      emptyText="Платежи не найдены"
+                    />
+                  )}
+                </div>
+              )}
 
               {items.length > 0 && (
                 <div className="wh-items wh-items--receipt">
@@ -750,7 +782,14 @@ export function ReceiptCard({
   payments: BankPayment[];
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isFullyPaid = r.total > 0 && paidAmount >= r.total;
+  const hasNoPayment = payments.some(
+    (p) =>
+      p.direction === "outgoing" &&
+      p.isPaid &&
+      p.excludeFromBalance &&
+      (p.receiptIds || []).includes(r.id)
+  );
+  const isFullyPaid = r.total <= 0 || paidAmount >= r.total;
   const hasDebt = r.status === "posted" && !isFullyPaid;
 
   return (
@@ -769,7 +808,9 @@ export function ReceiptCard({
         >
           {r.status === "posted" ? "На складе" : "Не проведено"}
         </span>
-        {isFullyPaid ? (
+        {hasNoPayment ? (
+          <span className="admin-badge admin-badge--blue">Без оплаты</span>
+        ) : isFullyPaid ? (
           <span className="admin-badge admin-badge--green">Оплачен</span>
         ) : paidAmount > 0 ? (
           <span className="admin-badge admin-badge--blue">

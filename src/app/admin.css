@@ -9709,3 +9709,70 @@ body:has(.admin-modal-overlay) {
   .payment-details__items > div { grid-template-columns: minmax(0, 1fr) auto; }
   .payment-details__items strong { grid-column: 2; }
 }
+
+/* ══════════════════════════════════════
+   HOTFIX: мобильная админка без разъезжания
+   ══════════════════════════════════════ */
+@media (max-width: 640px) {
+  [data-admin="true"],
+  [data-admin="true"] .admin-shell,
+  [data-admin="true"] .admin-content,
+  [data-admin="true"] .admin-main {
+    width: 100%;
+    max-width: 100vw;
+    min-width: 0;
+    overflow-x: clip;
+  }
+
+  [data-admin="true"] .admin-main {
+    padding-inline: 10px;
+  }
+
+  [data-admin="true"] :is(.admin-card, .admin-order, .admin-empty, .admin-table-wrap, .wh-items, .wh-form-grid, .admin-filters) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  [data-admin="true"] .admin-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [data-admin="true"] :is(.admin-card__head, .admin-page-head, .admin-tabs-with-actions, .admin-filters) {
+    flex-wrap: wrap;
+  }
+
+  [data-admin="true"] .receipt-head {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  [data-admin="true"] .receipt-head__supplier {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] .receipt-head__total {
+    grid-column: 3;
+    justify-self: start;
+  }
+
+  [data-admin="true"] .receipt-head__chevron {
+    grid-column: 4;
+    grid-row: 1 / span 2;
+  }
+
+  [data-admin="true"] .wh-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  [data-admin="true"] .wh-items--receipt .wh-item-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "del del";
+  }
+}

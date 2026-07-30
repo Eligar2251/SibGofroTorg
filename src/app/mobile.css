@@ -1962,3 +1962,49 @@ body {
     transition-duration: 0.01ms;
   }
 }
+/* ══════════════════════════════════════
+   HOTFIX: каталог на телефонах — без растянутых пустых карточек
+   ══════════════════════════════════════ */
+@media (max-width: 768px) {
+  .product-grid,
+  .product-grid-compact,
+  .products-grid-4 {
+    align-items: start;
+  }
+
+  .product-grid > *,
+  .product-grid-compact > *,
+  .products-grid-4 > * {
+    align-self: start;
+  }
+
+  .catalog-layout > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .catalog-layout .filter-block {
+    margin-bottom: 6px;
+  }
+
+  .catalog-layout .filter-block__body {
+    padding: 8px 10px;
+  }
+
+  .catalog-layout .filter-block__body--cats {
+    display: none;
+  }
+
+  .catalog-toolbar2 {
+    margin-bottom: 10px;
+  }
+
+  .pcc {
+    align-self: start;
+    height: auto;
+  }
+
+  .pcc__img {
+    aspect-ratio: 1 / 0.86;
+  }
+}

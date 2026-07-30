@@ -26,6 +26,7 @@ export async function PUT(
       vatRate: body.vatRate,
       linkedDealIds: body.linkedDealIds,
       linkedPaymentIds: body.linkedPaymentIds,
+      noPayment: body.noPayment === true,
       paymentSplits: Array.isArray(body.paymentSplits)
         ? body.paymentSplits
         : undefined,
