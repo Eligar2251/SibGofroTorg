@@ -82,6 +82,9 @@ export function CashCollectModal({
   const [detailPaymentId, setDetailPaymentId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingCashPayment[]>([]);
   const [closed, setClosed] = useState<PendingCashPayment[]>([]);
+  const [unlinkedCashBalance, setUnlinkedCashBalance] = useState(0);
+  const [includeUnlinkedCash, setIncludeUnlinkedCash] = useState(false);
+  const [unlinkedCashKind, setUnlinkedCashKind] = useState<CashKind>("cash");
   const [expenses, setExpenses] = useState<CashExpense[]>([]);
   /** Ручная разбивка платежа: paymentId -> сколько наличкой и сколько на расход. */
   const [splits, setSplits] = useState<
@@ -95,6 +98,7 @@ export function CashCollectModal({
   const [cardHolder, setCardHolder] = useState(DEFAULT_CASH_CARD_HOLDER);
   /** Выбранная дата (YYYY-MM-DD). Работаем с платежами одного дня. */
   const [activeDate, setActiveDate] = useState<string>("");
+  const [collectionDate, setCollectionDate] = useState<string>(todayIso());
 
   // Загружаем наличные поступления, ещё не вошедшие в сдачу
   useEffect(() => {
@@ -110,6 +114,9 @@ export function CashCollectModal({
         const list: PendingCashPayment[] = data.pending || [];
         setPending(list);
         setClosed(data.closed || []);
+        const oldBalance = Math.max(0, Number(data.unlinkedCashBalance) || 0);
+        setUnlinkedCashBalance(oldBalance);
+        setIncludeUnlinkedCash(oldBalance > 0.009);
         setExpenses(data.expenses || []);
         if (data.cardHolder) setCardHolder(String(data.cardHolder));
         // Открываем на самой свежей дате: обычно сдают кассу за сегодня.
@@ -118,6 +125,7 @@ export function CashCollectModal({
           list[0]?.date || ""
         );
         setActiveDate(latest);
+        if (latest) setCollectionDate(latest);
         // Отмечены только платежи выбранного дня.
         setSelected(
           new Set(
@@ -169,6 +177,7 @@ export function CashCollectModal({
   /** Переключение дня: выделяем все платежи нового дня, прочие снимаем. */
   function pickDate(date: string) {
     setActiveDate(date);
+    setCollectionDate(date);
     const ids = pending.filter((p) => p.date === date).map((p) => p.paymentId);
     setSelected(new Set(ids));
     setError("");
@@ -215,6 +224,10 @@ export function CashCollectModal({
       card += sp.card;
       covered += sp.expense;
     }
+    if (includeUnlinkedCash && unlinkedCashBalance > 0.009) {
+      if (unlinkedCashKind === "card") card += unlinkedCashBalance;
+      else cash += unlinkedCashBalance;
+    }
     covered = r2(covered);
     // Траты, расписанные вручную по платежам, уже вычтены из cash/card —
     // второй раз их вычитать нельзя.
@@ -236,7 +249,15 @@ export function CashCollectModal({
       /** Сколько трат расписано вручную по платежам */
       covered,
     };
-  }, [dayItems, selected, splitOf, expensesTotal]);
+  }, [
+    dayItems,
+    selected,
+    splitOf,
+    expensesTotal,
+    includeUnlinkedCash,
+    unlinkedCashBalance,
+    unlinkedCashKind,
+  ]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -265,12 +286,15 @@ export function CashCollectModal({
   async function closeDay() {
     const ids = dayItems.map((p) => p.paymentId);
     if (ids.length === 0) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(collectionDate)) {
+      setError("Укажите дату закрытия смены");
+      return;
+    }
     const sum = r2(dayItems.reduce((s2, p) => s2 + p.amount, 0));
     if (
       !confirm(
-        `Закрыть ${ids.length} платеж(ей) за ${fmtDate(activeDate)} на ${fmt(
-          sum
-        )} ₽ без учёта и инкассации?\n\n` +
+        `Скрыть ${ids.length} старых платеж(ей) на ${fmt(sum)} ₽ ` +
+          `документом от ${fmtDate(collectionDate)} без учёта и инкассации?\n\n` +
           "Они только скроются из списка сдачи. Баланс кассы, оплаты, " +
           "платежи и история банка вообще не изменятся."
       )
@@ -283,7 +307,11 @@ export function CashCollectModal({
       const res = await fetch("/api/admin/warehouse/cash-collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "close", paymentIds: ids }),
+        body: JSON.stringify({
+          action: "close",
+          date: collectionDate,
+          paymentIds: ids,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Не удалось закрыть платежи");
@@ -353,13 +381,18 @@ export function CashCollectModal({
         };
       });
 
-    if (items.length === 0) {
-      setError("Выберите хотя бы один платёж");
+    const manualAmount = includeUnlinkedCash ? unlinkedCashBalance : 0;
+    if (items.length === 0 && manualAmount <= 0.009) {
+      setError("Выберите хотя бы один платёж или старый остаток кассы");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(collectionDate)) {
+      setError("Укажите дату закрытия смены");
       return;
     }
     if (
       !confirm(
-        `Закрыть смену за ${fmtDate(activeDate)}.\n` +
+        `Закрыть смену за ${fmtDate(collectionDate)}.\n` +
           `Приход: ${fmt(totals.income)} ₽` +
           (expensesTotal > 0.009
             ? `\nТраты налом: −${fmt(expensesTotal)} ₽`
@@ -377,7 +410,13 @@ export function CashCollectModal({
       const res = await fetch("/api/admin/warehouse/cash-collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: note.trim() || null, items }),
+        body: JSON.stringify({
+          date: collectionDate,
+          note: note.trim() || null,
+          items,
+          unlinkedCashAmount: manualAmount,
+          unlinkedCashKind,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Не удалось сдать кассу");
@@ -429,6 +468,61 @@ export function CashCollectModal({
             остаётся в кассе и переносится на следующий день. Безналичный
             расчётный счёт не затрагивается.
           </p>
+
+          <div className="cashc-close-date">
+            <label className="admin-field">
+              <span className="admin-label">Дата закрытия смены</span>
+              <input
+                type="date"
+                className="admin-input"
+                value={collectionDate}
+                onChange={(event) => setCollectionDate(event.target.value)}
+              />
+            </label>
+            <span className="admin-hint">
+              Можно выбрать старую дату — документ не будет принудительно закрыт сегодняшним числом.
+            </span>
+          </div>
+
+          {unlinkedCashBalance > 0.009 && (
+            <div className="cashc-unlinked">
+              <label className="cashc-unlinked__main">
+                <input
+                  type="checkbox"
+                  checked={includeUnlinkedCash}
+                  onChange={(event) => setIncludeUnlinkedCash(event.target.checked)}
+                />
+                <span>
+                  <strong>Старый остаток кассы без привязки к ПЛ</strong>
+                  <small>
+                    {fmt(unlinkedCashBalance)} ₽ — например, отменённая старая касса без расшифровки платежей
+                  </small>
+                </span>
+              </label>
+              <div className="cashc-seg">
+                <button
+                  type="button"
+                  className={`cashc-seg__btn${unlinkedCashKind === "card" ? " cashc-seg__btn--transfer" : ""}`}
+                  onClick={() => {
+                    setIncludeUnlinkedCash(true);
+                    setUnlinkedCashKind("card");
+                  }}
+                >
+                  <CreditCard size={12} /> На карту
+                </button>
+                <button
+                  type="button"
+                  className={`cashc-seg__btn${unlinkedCashKind === "cash" ? " cashc-seg__btn--cash" : ""}`}
+                  onClick={() => {
+                    setIncludeUnlinkedCash(true);
+                    setUnlinkedCashKind("cash");
+                  }}
+                >
+                  <Banknote size={12} /> Оставить в кассе
+                </button>
+              </div>
+            </div>
+          )}
 
           {closed.length > 0 && (
             <details className="cashc-closed-settings">
@@ -832,14 +926,19 @@ export function CashCollectModal({
               type="button"
               className="admin-btn admin-btn--primary"
               onClick={submit}
-              disabled={saving || loading || selected.size === 0}
+              disabled={
+                saving ||
+                loading ||
+                (selected.size === 0 &&
+                  !(includeUnlinkedCash && unlinkedCashBalance > 0.009))
+              }
             >
               {saving ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
                 <Check size={14} />
               )}
-              Закрыть {fmtDate(activeDate)} · на карту {fmt(totals.card)} ₽
+              Закрыть {fmtDate(collectionDate)} · на карту {fmt(totals.card)} ₽
             </button>
           </div>
         </div>

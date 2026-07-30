@@ -6450,6 +6450,16 @@ body:has(.admin-modal-overlay) {
    СДАЧА КАССЫ: разметка нал / перевод
    ══════════════════════════════════════ */
 .cashc-modal { max-width: 46rem; }
+.cashc-close-date { display: flex; align-items: end; gap: 10px; margin-bottom: 12px; padding: 10px 12px; background: var(--adm-steel-pale); border: 1px solid var(--adm-steel-line); border-radius: var(--adm-r-sm); }
+.cashc-close-date .admin-field { flex: 0 1 190px; }
+.cashc-close-date .admin-hint { flex: 1 1 240px; padding-bottom: 8px; }
+.cashc-unlinked { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 12px; margin-bottom: 12px; padding: 10px 12px; background: var(--adm-pine-pale); border: 1px solid var(--adm-pine-line); border-radius: var(--adm-r-sm); }
+.cashc-unlinked__main { display: flex; align-items: center; gap: 9px; flex: 1 1 300px; cursor: pointer; }
+.cashc-unlinked__main > span { min-width: 0; }
+.cashc-unlinked__main strong, .cashc-unlinked__main small { display: block; }
+.cashc-unlinked__main strong { color: var(--adm-pine); font-size: 11px; }
+.cashc-unlinked__main small { margin-top: 2px; color: var(--adm-ink-muted); font-size: 10px; line-height: 1.35; }
+@media (max-width: 560px) { .cashc-close-date { align-items: stretch; flex-direction: column; } .cashc-close-date .admin-field, .cashc-close-date .admin-hint { flex-basis: auto; padding-bottom: 0; } .cashc-unlinked .cashc-seg { width: 100%; } .cashc-unlinked .cashc-seg__btn { flex: 1; } }
 .cashc-closed-settings { margin-bottom: 12px; padding: 10px 12px; background: var(--adm-kraft-pale); border: 1px solid var(--adm-kraft-line); border-radius: var(--adm-r-sm); }
 .cashc-closed-settings summary { display: flex; align-items: center; gap: 6px; color: var(--adm-kraft); cursor: pointer; font-size: 11px; font-weight: 800; }
 .cashc-closed-settings[open] summary { margin-bottom: 8px; }
