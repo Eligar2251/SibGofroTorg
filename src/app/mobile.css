@@ -2241,3 +2241,42 @@ body {
     color: #fff;
   }
 }
+
+/* Финальная структура сортировки в шапке мобильного каталога: без пустых grid-ячеек и сдвигов. */
+@media (max-width: 768px) {
+  .catalog-layout .catalog-sort-links {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    align-content: flex-start;
+    gap: 6px;
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .catalog-layout .catalog-sort-link {
+    width: auto !important;
+    min-width: 0;
+    min-height: 30px;
+    flex: 0 0 auto;
+    padding: 7px 10px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .catalog-layout .catalog-sort-link:nth-child(2),
+  .catalog-layout .catalog-sort-link:nth-child(3) {
+    flex-basis: calc(50% - 3px);
+  }
+
+  .catalog-layout .catalog-sort-link:first-child,
+  .catalog-layout .catalog-sort-link:last-child {
+    flex-basis: auto;
+  }
+}
