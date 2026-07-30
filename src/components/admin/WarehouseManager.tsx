@@ -68,6 +68,7 @@ import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSumma
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import { StockRevision } from "@/components/admin/StockRevision";
 import { CashCollectModal } from "@/components/admin/CashCollectModal";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
   CounterpartiesManager,
   type CounterpartyDocument,
@@ -260,6 +261,62 @@ export function WarehouseManager({
   const [orderVat, setOrderVat] = useState<number>(22);
   const [orderSaving, setOrderSaving] = useState(false);
   const [orderError, setOrderError] = useState("");
+
+  async function handleCreateOrderSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!orderingProduct) return;
+    if (!orderSupplierName.trim()) {
+      setOrderError("Укажите поставщика");
+      return;
+    }
+    if (orderQty <= 0) {
+      setOrderError("Укажите количество больше нуля");
+      return;
+    }
+    setOrderSaving(true);
+    setOrderError("");
+
+    try {
+      const cp = counterpartyOptions.find(c => c.id === orderSupplierId || c.name === orderSupplierName);
+      const res = await fetch("/api/admin/warehouse/receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: getWarehouseBusinessDate(new Date()),
+          supplier: orderSupplierName.trim(),
+          phone: cp?.phone || null,
+          email: cp?.email || null,
+          inn: cp?.inn || null,
+          kpp: cp?.kpp || null,
+          address: cp?.address || null,
+          contactName: cp?.contactName || null,
+          comment: orderComment,
+          items: [{
+            productId: orderingProduct.id,
+            name: orderingProduct.name,
+            sku: orderingProduct.sku,
+            quantity: Number(orderQty),
+            lineTotal: Number(orderPrice) * Number(orderQty),
+          }],
+          vatRate: orderVat,
+          noPayment: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setOrderError(errData.error || "Не удалось создать заказ");
+        setOrderSaving(false);
+        return;
+      }
+
+      setOrderingProduct(null);
+      router.refresh();
+    } catch (err) {
+      setOrderError("Ошибка сети при отправке заказа");
+    }
+    setOrderSaving(false);
+  }
   const [suppliesSub, setSuppliesSub] = useState<SuppliesSub>("receipts");
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
@@ -1251,7 +1308,7 @@ export function WarehouseManager({
 
 
 
-      {/* ════════════ ВКЛАДКА: СКЛАД ════════════ */}
+      {/* ============ ВКЛАДКА: СКЛАД ============ */}
       {activeTab === "stock" && (
         <>
           <div className="admin-stat-grid wh-stat-grid">
@@ -1721,10 +1778,8 @@ export function WarehouseManager({
           )}
         </>
       )}
-        </>
-      )}
 
-      {/* ════════════ ВКЛАДКА: ПОСТАВКИ (Поступления + Поставщики) ════════════ */}
+      {/* ============ ВКЛАДКА: ПОСТАВКИ (Поступления + Поставщики) ============ */}
       {activeTab === "receipts" && (
         <>
           <div className="admin-filters admin-filters--sub">
@@ -1961,7 +2016,7 @@ export function WarehouseManager({
         </>
       )}
 
-      {/* ════════════ ВКЛАДКА: ДОСТАВКИ ════════════ */}
+      {/* ============ ВКЛАДКА: ДОСТАВКИ ============ */}
       {activeTab === "deliveries" && (
         <TransportManager
           transports={transports}
@@ -1973,7 +2028,7 @@ export function WarehouseManager({
         />
       )}
 
-      {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}      {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}
+      {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}      {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}
       {activeTab === "deals" && (
         <>
           <div className="admin-filters admin-filters--sub">
@@ -2288,12 +2343,12 @@ export function WarehouseManager({
         </>
       )}
 
-      {/* ════════════ ВКЛАДКА: ЗАРПЛАТЫ ════════════ */}
+      {/* ============ ВКЛАДКА: ЗАРПЛАТЫ ============ */}
       {activeTab === "salaries" && (
         <WarehouseSalaries employees={employees} salaries={salaries} />
       )}
 
-      {/* ════════════ ВКЛАДКА: ОТЧЁТЫ ════════════ */}
+      {/* ============ ВКЛАДКА: ОТЧЁТЫ ============ */}
       {activeTab === "reports" && (
         <WarehouseReports
           adminPath={adminPath}
@@ -2307,7 +2362,7 @@ export function WarehouseManager({
         />
       )}
 
-      {/* ════════════ ВКЛАДКА: КОНТРАГЕНТЫ ════════════ */}
+      {/* ============ ВКЛАДКА: КОНТРАГЕНТЫ ============ */}
       {activeTab === "counterparties" && (
         <CounterpartiesManager
           initialCounterparties={counterpartyOptions}
@@ -2315,10 +2370,10 @@ export function WarehouseManager({
         />
       )}
 
-      {/* ════════════ ВКЛАДКА: КЛИЕНТЫ ════════════ */}
+      {/* ============ ВКЛАДКА: КЛИЕНТЫ ============ */}
       {activeTab === "clients" && <ClientsManager clients={clients} />}
 
-      {/* ════════════ ВКЛАДКА: ПОСТАВЩИКИ ════════════ */}
+      {/* ============ ВКЛАДКА: ПОСТАВЩИКИ ============ */}
       {activeTab === "suppliers" && (
         <div style={{ display: "grid", gap: 16 }}>
           <div className="admin-card">
@@ -2546,7 +2601,7 @@ export function WarehouseManager({
         </div>
       )}
 
-      {/* ════════════ ВКЛАДКА: БАНК ════════════ */}
+      {/* ============ ВКЛАДКА: БАНК ============ */}
       {activeTab === "bank" && bankSummary && (
         <div className="bank">
           <div className="bank-hero">

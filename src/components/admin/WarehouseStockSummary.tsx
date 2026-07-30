@@ -83,7 +83,7 @@ export function ProductStockSummaryPanel({
   const hasOwnStock = summary.ownStockQty > 0.009;
   const hasAccountingShortage = summary.ownStockQty < -0.009;
 
-  // ════════════ РАСЧЁТ ХРОНОЛОГИИ ДВИЖЕНИЯ ТОВАРА ════════════
+  // ============ РАСЧЁТ ХРОНОЛОГИИ ДВИЖЕНИЯ ТОВАРА ============
   const postedReceiptEvents = summary.receipts
     .filter((r) => r.status === "posted")
     .map((r) => ({
