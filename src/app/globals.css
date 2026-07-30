@@ -4,7 +4,6 @@
    admin.css и pdp.css больше не грузятся на всех страницах:
    admin.css — только в админке ([adminPath]/layout.tsx),
    pdp.css — только на странице товара. */
-@import "./mobile.css";
 @import "tailwindcss";
 
 /* ══════════════════════════════════════
@@ -6174,11 +6173,6 @@ select {
 
   .consult-title {
     font-size: 22px;
-  }
-
-  /* Каталог: одна колонка карточек товаров */
-  .products-grid-4 {
-    grid-template-columns: 1fr;
   }
 
   /* Hero h1: гарантируем влезание */

@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/supabase-queries";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { ExcelDataManager } from "@/components/admin/ExcelDataManager";
 import { ActivityLogs } from "@/components/admin/ActivityLogs";
+import { AdminUsersManager } from "@/components/admin/AdminUsersManager";
 import { redirect } from "next/navigation";
 import { hasPermission, verifySession } from "@/lib/auth";
 
@@ -29,7 +30,11 @@ export default async function AdminSettingsPage() {
   return (
     <div>
       <h1 className="admin-h1">Настройки</h1>
-      <SettingsForm settings={settingsMap} />
+      <AdminUsersManager />
+
+      <div className="admin-settings-section">
+        <SettingsForm settings={settingsMap} />
+      </div>
 
       <div style={{ marginTop: "2.5rem" }}>
         <ExcelDataManager />

@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    MOBILE DESIGN LAYER — СибГофроТорг
-   Импорт в конце globals.css: @import "./mobile.css";
+   Подключается в app/layout.tsx после globals.css, чтобы адаптивные
+   правила не перекрывались базовыми desktop-стилями.
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── База (все ширины) ── */
@@ -695,10 +696,19 @@ body {
   .products-grid-4,
   .product-grid-compact,
   .product-grid {
+    display: grid;
     width: 100%;
+    min-width: 0;
     max-width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .products-grid-4 > *,
+  .product-grid-compact > *,
+  .product-grid > * {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .pcc,
@@ -779,6 +789,18 @@ body {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .catalog-layout > *,
+  .shop-layout > *,
+  .sidebar,
+  .shop-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .sidebar,
@@ -786,8 +808,37 @@ body {
     position: static;
   }
 
+  .filter-block,
+  .filter-block__body,
+  .catalog-toolbar2 {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .filter-block {
     border-radius: 8px;
+  }
+
+  .sidebar-search-form,
+  .catalog-search-wrap,
+  .search-panel-form,
+  .search-panel-form-wrap {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .sidebar-search-form,
+  .search-panel-form {
+    display: flex;
+  }
+
+  .sidebar-search-form .catalog-search-input,
+  .search-panel-form .search-panel-input {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
   }
 
   .filter-block__title {
@@ -835,10 +886,15 @@ body {
 
   .catalog-sort-links {
     display: flex;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
+    overflow-y: hidden;
     flex-wrap: nowrap;
     gap: 6px;
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
 
   .catalog-sort-links::-webkit-scrollbar {
@@ -1748,7 +1804,11 @@ body {
   }
 
   .search-panel {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     padding: 16px;
+    overflow: visible;
   }
 
   .search-panel-title {

@@ -35,7 +35,7 @@ export function parseAdminRole(value: unknown): AdminRole | null {
  * Точечные права, которые дополнительно проверяются внутри API.
  *
  * manager может выполнять все рабочие операции, включая удаление, но не
- * может читать журнал действий и настройки сайта или менять их.
+ * может читать журнал действий, менять аккаунты и настройки сайта.
  * lawyer имеет только обзор финансов, движений средств и перевозок на
  * дашборде; единственный доступный ему API — карточка платежа для чтения.
  */
@@ -49,6 +49,7 @@ export function hasAdminPermission(
     return ![
       "view_settings",
       "manage_settings",
+      "manage_users",
       "view_logs",
     ].includes(permission);
   }
@@ -106,6 +107,8 @@ export function canAccessAdminApi(
   if (role === "manager") {
     if (pathname === "/api/admin/activity-logs") return false;
     if (pathname.startsWith("/api/admin/activity-logs/")) return false;
+    if (pathname === "/api/admin/admin-users") return false;
+    if (pathname.startsWith("/api/admin/admin-users/")) return false;
 
     // Точный маршрут нужен рабочим модулям (зарплаты и порядок товаров).
     // Сам route фильтрует ключи и не отдаёт менеджеру настройки сайта.

@@ -10,6 +10,7 @@ import { verifySession } from "@/lib/auth";
 // Стили админки грузятся только здесь, а не на всём сайте (раньше
 // admin.css импортировался в globals.css и попадал в бандл каждой страницы).
 import "../admin.css";
+import "../admin-users.css";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
