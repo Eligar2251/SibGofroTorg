@@ -186,11 +186,9 @@ export function TransportManager({
           <p className="admin-sub">Формирование, печать бланков, отгрузка и архив</p>
         </div>
         <div className="admin-page-head__actions">
-          {pendingDeals.length > 0 && (
-            <button className="admin-btn admin-btn--primary" onClick={() => setShowCreate(true)}>
-              <Plus size={15} /> Новая перевозка ({stats.pending})
-            </button>
-          )}
+          <button className="admin-btn admin-btn--primary" onClick={() => setShowCreate(true)}>
+            <Plus size={15} /> Новая перевозка
+          </button>
         </div>
       </div>
 
@@ -276,10 +274,10 @@ export function TransportManager({
 
                     {expanded && (
                       <div style={{ marginTop: 12, borderTop: "1px solid var(--adm-border)", paddingTop: 12 }}>
-                        {t.items.map((deal) => (
-                          <div key={deal.dealId} style={{ marginBottom: 14, padding: "10px 12px", background: "var(--adm-paper)", borderRadius: 8, border: "1px solid var(--adm-border)" }}>
+                        {t.items.map((deal, idx) => (
+                          <div key={deal.dealId || `custom-${deal.customerName}-${idx}`} style={{ marginBottom: 14, padding: "10px 12px", background: "var(--adm-paper)", borderRadius: 8, border: "1px solid var(--adm-border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                              <span className="admin-order__id">ЗК-{deal.dealNumber}</span>
+                              <span className="admin-order__id">{deal.dealNumber ? `ЗК-${deal.dealNumber}` : "Самостоятельная перевозка"}</span>
                               <strong style={{ fontSize: 13 }}>{deal.customerName}</strong>
                       {deal.phone && (
                         <a href={`tel:${deal.phone}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--adm-steel)", whiteSpace: "nowrap" }}>
@@ -292,8 +290,8 @@ export function TransportManager({
                         </span>
                       )}
                             </div>
-                            {deal.items.map((item) => (
-                              <div key={item.productId} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", color: "var(--adm-ink-soft)" }}>
+                            {deal.items.map((item, itemIdx) => (
+                              <div key={item.productId || `it-${item.name}-${itemIdx}`} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", color: "var(--adm-ink-soft)" }}>
                                 <span>{item.name} × {item.transportQty} из {item.orderedQty}</span>
                                 <span style={{ color: "var(--adm-sand)" }}>
                                   {item.transportQty < item.orderedQty && (
@@ -354,6 +352,16 @@ export function TransportManager({
 }
 
 /* ── Модалка создания перевозки ── */
+interface CustomIndependentTrip {
+  id: string;
+  customerName: string;
+  contactName: string;
+  phone: string;
+  address: string;
+  deliveryNote: string;
+  items: { name: string; transportQty: number }[];
+}
+
 function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
   deals: TransportDeal[];
   drivers: DriverOption[];
@@ -368,6 +376,7 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
   // {dealId: {productId: qty}}
   const [selectedDeals, setSelectedDeals] = useState<Set<string>>(new Set());
   const [qtys, setQtys] = useState<Record<string, Record<string, number>>>({});
+  const [customTrips, setCustomTrips] = useState<CustomIndependentTrip[]>([]);
 
   function toggleDeal(dealId: string) {
     setSelectedDeals((prev) => {
@@ -396,13 +405,19 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
   }
 
   async function handleSubmit() {
-    if (selectedDeals.size === 0) { setError("Выберите заказы"); return; }
+    if (selectedDeals.size === 0 && customTrips.length === 0) {
+      setError("Выберите хотя бы один заказ или добавьте самостоятельную поездку");
+      return;
+    }
     const driver = drivers.find((d) => d.id === driverId);
 
-    const items = [...selectedDeals].map((dealId) => {
+    const items = [];
+
+    // 1. Process selected deals
+    for (const dealId of selectedDeals) {
       const deal = deals.find((d) => d.id === dealId)!;
       const dealQtys = qtys[dealId] || {};
-      return {
+      items.push({
         dealId: deal.id,
         dealNumber: deal.number,
         customerName: deal.customerName,
@@ -417,8 +432,41 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
           transportQty: dealQtys[item.productId] || 0,
         })),
         totalSum: deal.totalSum || null,
-      };
-    });
+      });
+    }
+
+    // 2. Process custom independent trips
+    for (const trip of customTrips) {
+      if (!trip.customerName.trim()) {
+        setError("Укажите контрагента для самостоятельной поездки");
+        return;
+      }
+      if (!trip.address.trim()) {
+        setError("Укажите адрес (куда ехать) для самостоятельной поездки");
+        return;
+      }
+      const tripItems = trip.items.filter(it => it.name.trim() && it.transportQty > 0);
+      if (tripItems.length === 0) {
+        setError("Добавьте хотя бы один товар/груз в самостоятельной поездке");
+        return;
+      }
+      items.push({
+        dealId: null,
+        dealNumber: null,
+        customerName: trip.customerName.trim(),
+        contactName: trip.contactName.trim() || null,
+        address: trip.address.trim() || null,
+        phone: trip.phone.trim() || null,
+        deliveryNote: trip.deliveryNote.trim() || null,
+        items: tripItems.map(it => ({
+          productId: null,
+          name: it.name.trim(),
+          orderedQty: it.transportQty,
+          transportQty: it.transportQty,
+        })),
+        totalSum: null,
+      });
+    }
 
     setSaving(true);
     setError("");
@@ -518,13 +566,232 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
             })}
           </div>
 
+          {/* Раздел самостоятельных перевозок (без заказа) */}
+          <div style={{ marginTop: 16, borderTop: "1px solid var(--adm-border)", paddingTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <label className="admin-label" style={{ margin: 0 }}>Самостоятельные поездки (без привязки к заказам)</label>
+              <button
+                type="button"
+                className="admin-btn admin-btn--outline admin-btn--sm"
+                onClick={() => {
+                  setCustomTrips(prev => [
+                    ...prev,
+                    {
+                      id: Math.random().toString(36).substring(7),
+                      customerName: "",
+                      contactName: "",
+                      phone: "",
+                      address: "",
+                      deliveryNote: "",
+                      items: [{ name: "Макулатура", transportQty: 100 }],
+                    }
+                  ]);
+                }}
+              >
+                <Plus size={13} style={{ marginRight: 4 }} /> Добавить поездку без заказа
+              </button>
+            </div>
+
+            {customTrips.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: "35vh", overflowY: "auto", paddingRight: 4 }}>
+                {customTrips.map((trip, tripIdx) => (
+                  <div
+                    key={trip.id}
+                    style={{
+                      border: "1px solid var(--adm-kraft)",
+                      borderRadius: 8,
+                      padding: 12,
+                      background: "rgba(224, 155, 18, 0.03)",
+                      position: "relative",
+                    }}
+                  >
+                    {/* Кнопка удаления поездки */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomTrips(prev => prev.filter(t => t.id !== trip.id));
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: 10,
+                        right: 10,
+                        background: "none",
+                        border: "none",
+                        color: "var(--adm-rust)",
+                        cursor: "pointer",
+                      }}
+                      title="Удалить поездку"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+
+                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: "var(--adm-kraft)" }}>
+                      🚗 Поездка без заказа #{tripIdx + 1}
+                    </div>
+
+                    <div className="wh-form-grid" style={{ marginBottom: 12 }}>
+                      <div className="admin-field">
+                        <label className="admin-label">Контрагент / Клиент *</label>
+                        <input
+                          type="text"
+                          className="admin-input"
+                          value={trip.customerName}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, customerName: val } : t));
+                          }}
+                          placeholder="ООО 'Приемка', Магазин..."
+                          required
+                        />
+                      </div>
+
+                      <div className="admin-field">
+                        <label className="admin-label">Куда ехать (Адрес) *</label>
+                        <input
+                          type="text"
+                          className="admin-input"
+                          value={trip.address}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, address: val } : t));
+                          }}
+                          placeholder="ул. Сибирская, 10..."
+                          required
+                        />
+                      </div>
+
+                      <div className="admin-field">
+                        <label className="admin-label">Контактное лицо</label>
+                        <input
+                          type="text"
+                          className="admin-input"
+                          value={trip.contactName}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, contactName: val } : t));
+                          }}
+                          placeholder="Имя получателя"
+                        />
+                      </div>
+
+                      <div className="admin-field">
+                        <label className="admin-label">Телефон</label>
+                        <input
+                          type="text"
+                          className="admin-input"
+                          value={trip.phone}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, phone: val } : t));
+                          }}
+                          placeholder="+7..."
+                        />
+                      </div>
+
+                      <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                        <label className="admin-label">Заметка водителю / Заметка курьеру</label>
+                        <input
+                          type="text"
+                          className="admin-input"
+                          value={trip.deliveryNote}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, deliveryNote: val } : t));
+                          }}
+                          placeholder="Сдать макулатуру, забрать коробки..."
+                        />
+                      </div>
+                    </div>
+
+                    {/* Товары для этой самостоятельной поездки */}
+                    <div style={{ borderTop: "1px dashed var(--adm-border)", paddingTop: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700 }}>📦 Груз / Товары:</span>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost admin-btn--sm"
+                          onClick={() => {
+                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                              ...t,
+                              items: [...t.items, { name: "", transportQty: 10 }]
+                            } : t));
+                          }}
+                        >
+                          + Добавить строку груза
+                        </button>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {trip.items.map((item, itemIdx) => (
+                          <div key={itemIdx} style={{ display: "grid", gridTemplateColumns: "1fr 100px 30px", gap: 8, alignItems: "center" }}>
+                            <input
+                              type="text"
+                              className="admin-input"
+                              value={item.name}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                  ...t,
+                                  items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, name: val } : it)
+                                } : t));
+                              }}
+                              placeholder="Название (например, Макулатура, Поддоны)"
+                              required
+                            />
+                            <input
+                              type="number"
+                              className="admin-input"
+                              min={1}
+                              value={item.transportQty || ""}
+                              onChange={(e) => {
+                                const val = Math.max(1, Number(e.target.value) || 0);
+                                setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                  ...t,
+                                  items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, transportQty: val } : it)
+                                } : t));
+                              }}
+                              style={{ textAlign: "right" }}
+                              required
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                  ...t,
+                                  items: t.items.filter((_, iIdx) => iIdx !== itemIdx)
+                                } : t));
+                              }}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "var(--adm-rust)",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center"
+                              }}
+                              disabled={trip.items.length <= 1}
+                              title="Удалить товар"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {error && <div className="admin-error" style={{ marginTop: 10 }}>{error}</div>}
 
           <div className="admin-modal__actions" style={{ marginTop: 14 }}>
             <button type="button" onClick={onClose} className="admin-btn admin-btn--ghost" disabled={saving}>Отмена</button>
-            <button type="button" onClick={handleSubmit} className="admin-btn admin-btn--primary" disabled={saving || selectedDeals.size === 0}>
+            <button type="button" onClick={handleSubmit} className="admin-btn admin-btn--primary" disabled={saving || (selectedDeals.size === 0 && customTrips.length === 0)}>
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
-              Создать перевозку ({selectedDeals.size})
+              Создать перевозку ({selectedDeals.size + customTrips.length})
             </button>
           </div>
         </div>
