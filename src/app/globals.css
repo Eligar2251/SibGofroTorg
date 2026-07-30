@@ -4,7 +4,6 @@
    admin.css и pdp.css больше не грузятся на всех страницах:
    admin.css — только в админке ([adminPath]/layout.tsx),
    pdp.css — только на странице товара. */
-@import "./mobile.css";
 @import "tailwindcss";
 
 /* ══════════════════════════════════════
@@ -942,7 +941,48 @@ select {
   color: rgba(255, 255, 255, 0.55);
   line-height: 1.65;
   max-width: 400px;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
+}
+
+.hero__reserve-note {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  max-width: 500px;
+  margin-bottom: 24px;
+  padding: 11px 14px;
+  color: #fff;
+  background: linear-gradient(100deg, rgba(93, 203, 97, 0.18), rgba(93, 203, 97, 0.07));
+  border: 1px solid rgba(93, 203, 97, 0.42);
+  border-radius: 10px;
+  box-shadow: inset 3px 0 0 var(--green-lime);
+}
+
+.hero__reserve-note > svg {
+  flex: 0 0 auto;
+  color: var(--green-lime);
+}
+
+.hero__reserve-note > div {
+  min-width: 0;
+}
+
+.hero__reserve-note strong,
+.hero__reserve-note span {
+  display: block;
+}
+
+.hero__reserve-note strong {
+  color: var(--green-lime);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.hero__reserve-note span {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .hero__perks {
@@ -1389,6 +1429,51 @@ select {
   font-weight: 400;
   color: var(--ink-muted);
   margin-left: 10px;
+}
+
+.catalog-heading-row {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.catalog-heading-row--page {
+  align-items: baseline;
+}
+
+.catalog-toolbar2__heading {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.catalog-order-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 9px;
+  color: var(--green-dark);
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.catalog-order-note > svg {
+  flex: 0 0 auto;
+  display: block;
+}
+
+.catalog-order-note > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ══════════════════════════════════════
@@ -6135,11 +6220,6 @@ select {
     font-size: 22px;
   }
 
-  /* Каталог: одна колонка карточек товаров */
-  .products-grid-4 {
-    grid-template-columns: 1fr;
-  }
-
   /* Hero h1: гарантируем влезание */
   .hero__h1 {
     font-size: 32px;
@@ -7049,5 +7129,312 @@ body {
 
   .pi-auth__actions {
     flex-direction: column;
+  }
+}
+
+/* Плавающий баннер мессенджеров — настройки приходят из админки. */
+.messenger-float {
+  position: fixed;
+  z-index: 850;
+  top: max(18px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  bottom: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 28px);
+  padding: 9px 11px 9px 14px;
+  color: #fff;
+  background: rgba(27, 43, 75, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 8px 28px rgba(17, 29, 52, 0.24);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.messenger-float__text {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.messenger-float__links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.messenger-float__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  overflow: hidden;
+  color: #1b2b4b;
+  background: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  text-decoration: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.messenger-float__link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 13px rgba(0, 0, 0, 0.22);
+}
+
+.messenger-float__link img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.messenger-float__link > span {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.messenger-float__link--disabled {
+  opacity: 0.38;
+  filter: grayscale(1);
+}
+
+@media (max-width: 640px) {
+  .messenger-float {
+    top: max(72px, calc(env(safe-area-inset-top) + 56px));
+    right: max(8px, env(safe-area-inset-right));
+    bottom: auto;
+    gap: 8px;
+    padding: 7px 8px 7px 11px;
+  }
+
+  .messenger-float__text {
+    max-width: 105px;
+    white-space: normal;
+    font-size: 10px;
+  }
+
+  .messenger-float__link {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messenger-float__link { transition: none; }
+  .messenger-float__link:hover { transform: none; }
+}
+
+/* Товары, которые закончились на складе, но доступны с поставкой 2–3 дня. */
+.order-products-section {
+  padding: 34px 0 42px;
+  background: linear-gradient(180deg, #fff 0%, var(--kraft-light) 100%);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.order-products-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 18px;
+  padding: 15px 18px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--kraft-border);
+  border-radius: var(--radius-lg);
+}
+
+.order-products-head__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  color: var(--kraft-dark);
+  background: var(--kraft-light);
+  border-radius: 50%;
+}
+
+.order-products-head__main {
+  flex: 1 1 380px;
+  min-width: 0;
+}
+
+.order-products-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--kraft-dark);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.order-products-head .section-title {
+  margin: 0;
+}
+
+.order-products-head p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.order-products-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  color: var(--green-dark);
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.order-products-all {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.order-products-grid .pcc {
+  border-color: var(--kraft-border);
+}
+
+@media (max-width: 640px) {
+  .order-products-section { padding: 24px 0 30px; }
+  .order-products-head { align-items: flex-start; padding: 13px; }
+  .order-products-head__main { flex-basis: calc(100% - 56px); }
+  .order-products-wait { margin-left: 52px; }
+  .order-products-all { margin-left: auto; }
+}
+
+/* Управление положением плавающего баннера. */
+.messenger-float__drag,
+.messenger-float__collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+}
+
+.messenger-float__drag {
+  cursor: grab;
+  touch-action: none;
+}
+
+.messenger-float--dragging,
+.messenger-float--dragging .messenger-float__drag {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.messenger-float__drag:hover,
+.messenger-float__collapse:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.messenger-float-tab {
+  touch-action: manipulation;
+  transition: padding 0.16s ease, background-color 0.16s ease;
+}
+
+.messenger-float-tab:hover {
+  padding-inline: 10px;
+  filter: brightness(1.12);
+}
+
+/* 60 FPS drag: двигается только compositor transform, без layout React. */
+.messenger-float {
+  cursor: grab;
+  contain: layout paint;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.messenger-float--dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.messenger-float__link,
+.messenger-float__collapse {
+  touch-action: manipulation;
+}
+
+/* Иконка и подпись публичных контролов всегда остаются одной группой. */
+:is(
+  .btn,
+  .btn-primary,
+  .btn-outline,
+  .btn-hero-primary,
+  .btn-hero-ghost,
+  .text-link,
+  .deal-card__cta,
+  .map-cta,
+  .consult-phone,
+  .pcc__inquiry-btn
+) {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+:is(
+  .btn,
+  .btn-primary,
+  .btn-outline,
+  .btn-hero-primary,
+  .btn-hero-ghost,
+  .text-link,
+  .deal-card__cta,
+  .map-cta,
+  .consult-phone,
+  .pcc__inquiry-btn
+) > svg {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --mobile-action-font: clamp(9px, 2.85vw, 12px);
+    --mobile-action-gap: clamp(4px, 1.3vw, 6px);
+    --mobile-action-pad: clamp(7px, 2.2vw, 10px);
+  }
+
+  :is(
+    .btn,
+    .btn-primary,
+    .btn-outline,
+    .btn-hero-primary,
+    .btn-hero-ghost,
+    .text-link,
+    .deal-card__cta,
+    .map-cta,
+    .consult-phone,
+    .pcc__inquiry-btn
+  ) {
+    gap: var(--mobile-action-gap);
+    padding-inline: var(--mobile-action-pad);
+    font-size: var(--mobile-action-font);
   }
 }

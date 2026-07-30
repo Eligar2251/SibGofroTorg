@@ -158,6 +158,57 @@ export interface WarehouseStockRow {
   dimensionUnit?: string | null;
 }
 
+/** Строка поступления в расширенной складской сводке товара. */
+export interface ProductStockReceiptHistory {
+  id: string;
+  number: number;
+  date: string;
+  supplier: string;
+  status: ReceiptStatus;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+/** Строка заказа в расширенной складской сводке товара. */
+export interface ProductStockDealHistory {
+  id: string;
+  number: number;
+  date: string;
+  customerName: string;
+  status: DealStatus;
+  orderedQty: number;
+  shippedQty: number;
+  /** Сколько ещё нужно отгрузить. Для отменённого заказа всегда 0. */
+  remainingQty: number;
+}
+
+/**
+ * Полная история одной складской позиции.
+ *
+ * `ownStockQty` — расчётный остаток, который не объясняется проведёнными
+ * поступлениями: текущий остаток + все отгрузки − проведённые поступления.
+ * Положительное значение показываем как «Наши остатки» (товар внесли
+ * вручную/он был до начала учёта), отрицательное — как недостачу по учёту.
+ */
+export interface ProductStockSummary {
+  productId: string;
+  productName: string;
+  sku: string | null;
+  currentStockQty: number;
+  receipts: ProductStockReceiptHistory[];
+  deals: ProductStockDealHistory[];
+  postedReceiptQty: number;
+  draftReceiptQty: number;
+  orderedQty: number;
+  shippedQty: number;
+  pendingOrderQty: number;
+  /** Нехватка текущего остатка для всех ещё не отгруженных заказов. */
+  shortageQty: number;
+  /** Ручной/начальный остаток; отрицательное значение = расхождение. */
+  ownStockQty: number;
+}
+
 export interface CounterpartyBalance {
   name: string;
   type: "customer" | "supplier";
@@ -187,7 +238,10 @@ export interface Salary {
   employeeId: string | null;
   employeeName: string;
   amount: number;
+  /** Плановая/фактическая дата выплаты. */
   date: string;
+  /** Расчётный месяц зарплаты (YYYY-MM), может отличаться от даты выплаты. */
+  periodMonth?: string | null;
   /** cash = касса (наличные), bank = расчётный счёт (безнал) */
   source: SalarySource;
   isPaid: boolean;
@@ -200,6 +254,9 @@ export interface Salary {
 export const SALARY_RENT_TAG = "[Аренда]";
 export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
 export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
+/** Расчётный месяц хранится служебной пометкой — миграция БД не нужна. */
+export const SALARY_PERIOD_TAG_PREFIX = "Период:";
+const SALARY_PERIOD_TAG_RE = /\[Период:(\d{4}-\d{2})\]/g;
 
 function salaryHasTag(comment: string | null | undefined, tag: string): boolean {
   return (comment || "").includes(tag);
@@ -220,12 +277,26 @@ export function isDebtSalaryComment(comment: string | null | undefined): boolean
   return salaryHasTag(comment, SALARY_DEBT_PAYMENT_TAG);
 }
 
+/**
+ * Расчётный месяц зарплаты. Для старых записей без пометки совпадает с
+ * месяцем даты — их учёт остаётся ровно таким, каким был раньше.
+ */
+export function getSalaryPeriodMonth(
+  comment: string | null | undefined,
+  fallbackDate?: string | null
+): string {
+  const match = String(comment || "").match(/\[Период:(\d{4}-\d{2})\]/);
+  if (match?.[1]) return match[1];
+  return String(fallbackDate || "").slice(0, 7);
+}
+
 /** Убирает служебные теги из комментария для отображения в UI. */
 export function stripSalaryMetaTags(comment: string | null | undefined): string {
   return String(comment || "")
     .replaceAll(SALARY_RENT_TAG, "")
     .replaceAll(SALARY_EXCLUDE_BALANCE_TAG, "")
     .replaceAll(SALARY_DEBT_PAYMENT_TAG, "")
+    .replace(SALARY_PERIOD_TAG_RE, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -236,23 +307,29 @@ export function composeSalaryComment(options: {
   rent?: boolean;
   excludeFromBalance?: boolean;
   debtPayment?: boolean;
+  /** Расчётный месяц YYYY-MM: например, выплата в июле за июнь. */
+  periodMonth?: string | null;
 }): string | null {
   const tags: string[] = [];
   if (options.rent) tags.push(SALARY_RENT_TAG);
   if (options.excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
   if (options.debtPayment) tags.push(SALARY_DEBT_PAYMENT_TAG);
+  if (/^\d{4}-\d{2}$/.test(options.periodMonth || "")) {
+    tags.push(`[${SALARY_PERIOD_TAG_PREFIX}${options.periodMonth}]`);
+  }
   const clean = stripSalaryMetaTags(options.comment);
   const joined = [...tags, clean].filter(Boolean).join(" ").trim();
   return joined || null;
 }
 
 /**
- * Куда уходит наличный платёж при сдаче кассы:
- *  - "card" — инкассация на карту (по умолчанию Юлия Марковна);
- *  - "cash" — наличными (виртуальная карта «наличка», куда уходит сданная касса).
+ * Куда относится наличный платёж при закрытии смены:
+ *  - "card" — инкассация на карту (по умолчанию Юлия Марковна), эта часть
+ *    физически уходит из кассы;
+ *  - "cash" — остаётся наличными в кассе и переносится на следующий день.
  *
  * Это НЕ способ поступления денег и НЕ основной расчётный счёт: безналичный
- * счёт в банке к кассе не относится и в сдаче не участвует вообще.
+ * счёт в банке к кассе не относится и в закрытии смены не участвует.
  * Значение "transfer" — устаревший псевдоним "card" (старые записи в БД).
  */
 export type CashKind = "cash" | "card";
@@ -283,6 +360,8 @@ export interface CashCollectionItem {
   cardAmount?: number;
   /** Сколько из платежа забрали на расходы (ЗП и прочее) */
   expenseAmount?: number;
+  /** Старый платёж скрыт из сдачи без движения по кассе. */
+  noAccounting?: boolean;
 }
 
 /** Наличный расход, вычтенный при сдаче кассы (ЗП или платёж налом). */
@@ -294,14 +373,14 @@ export interface CashCollectionExpense {
   comment?: string | null;
 }
 
-/** Сдача кассы (инкассация): списание остатка наличных из кассы */
+/** Закрытие смены кассы: инкассация на карту + перенос наличного остатка */
 export interface CashCollection {
   id: string;
-  /** Дата сдачи (YYYY-MM-DD) */
+  /** Дата закрытия смены (YYYY-MM-DD) */
   date: string;
-  /** Общая сумма, сданная из кассы (наличные + перевод) */
+  /** Общая размеченная сумма смены (перенос наличных + инкассация) */
   amount: number;
-  /** Часть, сданная наличными (виртуальная карта «наличка») */
+  /** Часть, оставленная наличными в кассе для переноса на следующий день */
   cashAmount?: number;
   /** Часть, сданная инкассацией на карту (к расчётному счёту не относится) */
   transferAmount?: number;
@@ -439,12 +518,240 @@ export function dealNeedsDelivery(deal: {
   return dealRemainingQty(items, deal.shippedItems) > 0;
 }
 
+export interface CashCarryoverOrigin {
+  paymentId: string;
+  number: number;
+  date: string;
+  counterparty: string;
+  originalAmount: number;
+  remainingAmount: number;
+}
+
+export interface CashCarryoverSummary {
+  date: string;
+  /** Остаток на начало выбранного дня. */
+  openingBalance: number;
+  todayIncoming: number;
+  todayOutgoing: number;
+  todayCardTransfers: number;
+  /** Текущий остаток кассы по всем проведённым движениям. */
+  currentBalance: number;
+  /** Сколько текущего остатка пришло до выбранного дня. */
+  previousDaysRemaining: number;
+  origins: CashCarryoverOrigin[];
+}
+
+function collectionCashOutflow(collection: CashCollection): number {
+  // У новых смен из кассы уходит только перевод на карту. У действительно
+  // старых записей без поля разбивки сохраняем прежнее списание всей суммы.
+  return collection.cashAmount != null
+    ? Math.max(0, Number(collection.transferAmount) || 0)
+    : Math.max(0, Number(collection.amount) || 0);
+}
+
+/** Рабочая дата компании — Новосибирск, а не UTC сервера/Vercel. */
+export function getWarehouseBusinessDate(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Novosibirsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+/**
+ * Детальный кассовый регистр: остаток, перенос с прошлых дней и источники.
+ *
+ * Инкассация по возможности гасит именно те платежи, которые в закрытии
+ * смены помечены «на карту». Остальные расходы списываются FIFO. Поэтому
+ * перенесённая наличка не только входит в баланс, но и сохраняет ссылку на
+ * исходный ПЛ и контрагента.
+ */
+export function getCashCarryoverSummary(
+  payments: BankPayment[],
+  salaries: Salary[] = [],
+  collections: CashCollection[] = [],
+  date = getWarehouseBusinessDate()
+): CashCarryoverSummary {
+  type CashLot = CashCarryoverOrigin;
+  type CashEvent =
+    | { date: string; priority: number; type: "in"; amount: number; lot: CashLot }
+    | {
+        date: string;
+        priority: number;
+        type: "out" | "card";
+        amount: number;
+        targets?: { paymentId: string; amount: number }[];
+      };
+
+  const events: CashEvent[] = [];
+  for (const payment of payments) {
+    if (!payment.isPaid || payment.excludeFromBalance || payment.type !== "cash") {
+      continue;
+    }
+    const amount = Math.max(0, Number(payment.amount) || 0);
+    if (amount <= 0) continue;
+    // Именно дата платежа определяет, в какой дневной баланс он входит.
+    // paidAt — техническая дата проведения и не должна возвращать платёж
+    // в сегодняшний остаток после ручного переноса документа на завтра.
+    const operationDate = String(payment.date || "").slice(0, 10);
+    if (payment.direction === "incoming") {
+      events.push({
+        date: operationDate,
+        priority: 0,
+        type: "in",
+        amount,
+        lot: {
+          paymentId: String(payment.id),
+          number: payment.number,
+          date: operationDate,
+          counterparty: payment.counterparty || "Без контрагента",
+          originalAmount: amount,
+          remainingAmount: amount,
+        },
+      });
+    } else {
+      events.push({ date: operationDate, priority: 1, type: "out", amount });
+    }
+  }
+
+  for (const salary of salaries) {
+    if (
+      !salary.isPaid ||
+      salary.source !== "cash" ||
+      salary.amount <= 0 ||
+      isSalaryExcludedFromBalance(salary.comment)
+    ) {
+      continue;
+    }
+    events.push({
+      date: String(salary.paidAt || salary.date || "").slice(0, 10),
+      priority: 1,
+      type: "out",
+      amount: Math.max(0, Number(salary.amount) || 0),
+    });
+  }
+
+  for (const collection of collections) {
+    const amount = collectionCashOutflow(collection);
+    if (amount <= 0) continue;
+    const rawTargets = (collection.items || [])
+      .map((item) => ({
+        paymentId: String(item.paymentId || ""),
+        amount: Math.max(
+          0,
+          Number(
+            item.cardAmount != null
+              ? item.cardAmount
+              : item.kind === "card"
+                ? item.amount
+                : 0
+          ) || 0
+        ),
+      }))
+      .filter((item) => item.paymentId && item.amount > 0);
+    const rawTotal = rawTargets.reduce((sum, item) => sum + item.amount, 0);
+    const factor = rawTotal > 0 ? Math.min(1, amount / rawTotal) : 0;
+    events.push({
+      date: String(collection.date || "").slice(0, 10),
+      priority: 2,
+      type: "card",
+      amount,
+      targets: rawTargets.map((item) => ({
+        paymentId: item.paymentId,
+        amount: item.amount * factor,
+      })),
+    });
+  }
+
+  events.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) || a.priority - b.priority
+  );
+
+  const lots: CashLot[] = [];
+  let openingBalance = 0;
+  let currentBalance = 0;
+  let todayIncoming = 0;
+  let todayOutgoing = 0;
+  let todayCardTransfers = 0;
+
+  const consumeLot = (lot: CashLot, requested: number): number => {
+    const used = Math.min(lot.remainingAmount, Math.max(0, requested));
+    lot.remainingAmount = Math.round((lot.remainingAmount - used) * 100) / 100;
+    return used;
+  };
+
+  const consumeFifo = (requested: number): void => {
+    let left = Math.max(0, requested);
+    for (const lot of lots) {
+      if (left <= 0.009) break;
+      left -= consumeLot(lot, left);
+    }
+  };
+
+  for (const event of events) {
+    // Будущие документы могут быть уже проведены, но в фактический баланс
+    // на выбранную дату попадут только в свой день. Это защищает кассу от
+    // случайного платежа «за 30-е», пока сегодня ещё 29-е.
+    if (!event.date || event.date > date) continue;
+
+    const signed = event.type === "in" ? event.amount : -event.amount;
+    currentBalance += signed;
+    if (event.date < date) openingBalance += signed;
+    if (event.date === date) {
+      if (event.type === "in") todayIncoming += event.amount;
+      else if (event.type === "card") todayCardTransfers += event.amount;
+      else todayOutgoing += event.amount;
+    }
+
+    if (event.type === "in") {
+      lots.push({ ...event.lot });
+      continue;
+    }
+
+    let targeted = 0;
+    for (const target of event.targets || []) {
+      const lot = lots.find(
+        (item) => item.paymentId === target.paymentId && item.remainingAmount > 0
+      );
+      if (lot) targeted += consumeLot(lot, target.amount);
+    }
+    consumeFifo(Math.max(0, event.amount - targeted));
+  }
+
+  const origins = lots
+    .filter((lot) => lot.remainingAmount > 0.009)
+    .map((lot) => ({
+      ...lot,
+      originalAmount: Math.round(lot.originalAmount * 100) / 100,
+      remainingAmount: Math.round(lot.remainingAmount * 100) / 100,
+    }));
+  const previousDaysRemaining = origins
+    .filter((origin) => origin.date < date)
+    .reduce((sum, origin) => sum + origin.remainingAmount, 0);
+
+  return {
+    date,
+    openingBalance: Math.round(openingBalance * 100) / 100,
+    todayIncoming: Math.round(todayIncoming * 100) / 100,
+    todayOutgoing: Math.round(todayOutgoing * 100) / 100,
+    todayCardTransfers: Math.round(todayCardTransfers * 100) / 100,
+    currentBalance: Math.round(currentBalance * 100) / 100,
+    previousDaysRemaining: Math.round(previousDaysRemaining * 100) / 100,
+    origins,
+  };
+}
+
 /** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
  *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
 export function getBankSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
-  collections: CashCollection[] = []
+  collections: CashCollection[] = [],
+  asOfDate = getWarehouseBusinessDate()
 ) {
   let bankBalance = 0;
   let cashBalance = 0;
@@ -456,9 +763,12 @@ export function getBankSummary(
     if (p.excludeFromBalance) continue;
 
     if (p.isPaid) {
+      const paymentDate = String(p.date || "").slice(0, 10);
+      if (!paymentDate || paymentDate > asOfDate) continue;
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
-      if (p.type === "cash") cashBalance += amt;
-      else bankBalance += amt;
+      // Касса ниже считается единым кассовым регистром, чтобы перенос и
+      // источники использовали ту же формулу, что и число на дашборде.
+      if (p.type !== "cash") bankBalance += amt;
     } else {
       if (p.direction === "incoming") expectedIn += p.amount;
       else expectedOut += p.amount;
@@ -470,28 +780,32 @@ export function getBankSummary(
     const bypassBalance = isSalaryExcludedFromBalance(s.comment);
     if (s.isPaid) {
       if (bypassBalance) continue;
-      if (s.source === "cash") cashBalance -= s.amount;
-      else bankBalance -= s.amount;
+      const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
+      if (!salaryDate || salaryDate > asOfDate) continue;
+      if (s.source === "bank") bankBalance -= s.amount;
     } else {
       if (bypassBalance) continue;
       expectedOut += s.amount;
     }
   }
-  // Сдача кассы: деньги уходят из текущей кассы в отдельный журнал сдач.
-  // В безналичный банковский счёт их НЕ прибавляем — ни наличную часть,
-  // ни инкассацию на карту: расчётный счёт к кассе отношения не имеет.
+  // Единый кассовый регистр — тот же расчёт используется для переноса и
+  // детальной расшифровки источников налички.
+  cashBalance = getCashCarryoverSummary(
+    payments,
+    salaries,
+    collections,
+    asOfDate
+  ).currentBalance;
+
   let collectedCash = 0;
   let collectedCashOnly = 0;
   let collectedTransfer = 0;
   for (const c of collections) {
-    cashBalance -= c.amount;
+    const collectionDate = String(c.date || "").slice(0, 10);
+    if (!collectionDate || collectionDate > asOfDate) continue;
     collectedCash += c.amount;
-    // Старые записи без разбивки считаем полностью наличными.
-    const transfer = Number(c.transferAmount) || 0;
-    const cashPart =
-      c.cashAmount != null ? Number(c.cashAmount) || 0 : c.amount - transfer;
-    collectedCashOnly += cashPart;
-    collectedTransfer += transfer;
+    collectedCashOnly += Math.max(0, Number(c.cashAmount) || 0);
+    collectedTransfer += collectionCashOutflow(c);
   }
   return {
     balance: bankBalance + cashBalance,
@@ -505,9 +819,9 @@ export function getBankSummary(
      */
     cashBalanceNegative: cashBalance < -0.009,
     collectedCash,
-    /** Из сданного — наличными (виртуальная карта «наличка») */
+    /** Из закрытых смен — оставлено наличными и перенесено дальше */
     collectedCashOnly,
-    /** Из сданного — инкассацией на карту (вне расчётного счёта) */
+    /** Из закрытых смен — инкассацией на карту (вне расчётного счёта) */
     collectedTransfer,
     expectedIn,
     expectedOut,
@@ -515,10 +829,11 @@ export function getBankSummary(
 }
 
 /**
- * Сводка по уже сданной кассе: сколько ушло наличными, сколько на карту.
+ * Сводка закрытых смен: сколько оставлено наличными для переноса и сколько
+ * инкассировано на карту.
  *
- * Важно: направление сдачи (карта/наличка) проставляется вручную в момент
- * сдачи кассы, а не берётся из типа платежа. Тип "transfer" в банке
+ * Направление (карта/наличка) проставляется вручную при закрытии смены,
+ * а не берётся из типа платежа. Тип "transfer" в банке
  * означает другое — исходящий перевод физлицу с расчётного счёта.
  * Поле `transfer` здесь = инкассация на карту.
  */
@@ -528,10 +843,13 @@ export function getCollectedBreakdown(
   let cash = 0;
   let transfer = 0;
   for (const c of collections) {
-    const t = Number(c.transferAmount) || 0;
-    // Старые сдачи без разбивки считаем полностью наличными.
-    const cashPart =
-      c.cashAmount != null ? Number(c.cashAmount) || 0 : (c.amount || 0) - t;
+    const hasSplit = c.cashAmount != null;
+    // Старые записи целиком уменьшали кассу. В новой расшифровке относим их
+    // к выбывшей части, а не к перенесённой наличке.
+    const t = hasSplit
+      ? Number(c.transferAmount) || 0
+      : Number(c.amount) || 0;
+    const cashPart = hasSplit ? Number(c.cashAmount) || 0 : 0;
     cash += cashPart;
     transfer += t;
   }

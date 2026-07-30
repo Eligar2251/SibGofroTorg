@@ -361,9 +361,9 @@ export function ProductListClient({
                     </td>
                     <td>
                       <Link
-                        href={`/${adminPath}/warehouse?tab=stock&product=${product.id}#stock-origins`}
+                        href={`/${adminPath}/warehouse?tab=stock&product=${product.id}`}
                         prefetch={false}
-                        title="Открыть историю поступлений товара"
+                        title="Открыть расширенную сводку: заказы, поступления и недостача"
                       >
                         <span
                           className={`admin-stock-count${

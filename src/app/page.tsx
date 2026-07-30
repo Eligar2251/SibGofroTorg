@@ -11,7 +11,14 @@ import { formatRate } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
+import { HomeOrderProductsSection } from "@/components/home/HomeOrderProductsSection";
 import { DealsRow } from "@/components/home/DealsRow";
+import {
+  ORDER_PRODUCTS_ORDER_SETTING_KEY,
+  parseProductOrder,
+  sortByProductOrder,
+} from "@/lib/home-product-order";
+import { isProductAvailable } from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import {
   ArrowRight,
@@ -21,6 +28,7 @@ import {
   Truck,
   Zap,
   Package,
+  PackageCheck,
   Recycle,
   ChevronRight,
 } from "lucide-react";
@@ -69,16 +77,24 @@ export const revalidate = 120;
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [categories, featuredProducts, promotions, wpRates, settings] = await Promise.all([
+  const [categories, featuredProductsRaw, allVisibleProducts, promotions, wpRates, settings] = await Promise.all([
     getCategories(),
-    getProducts({
-      featuredOnly: true,
-      limitCount: 12,
-    }),
+    // Берём с запасом: закончившиеся популярные позиции уходят в отдельный
+    // блок «Под заказ», а основная секция остаётся складской.
+    getProducts({ featuredOnly: true, limitCount: 500 }),
+    getProducts({}),
     getPromotions(),
     getWastepaperRates(),
     getSettings().catch(() => ({} as Record<string, string>)),
   ]);
+
+  const featuredProducts = featuredProductsRaw
+    .filter(isProductAvailable)
+    .slice(0, 12);
+  const orderProducts = sortByProductOrder(
+    allVisibleProducts.filter((product) => !isProductAvailable(product)),
+    parseProductOrder(settings[ORDER_PRODUCTS_ORDER_SETTING_KEY])
+  ).slice(0, 12);
 
   // Берём контактные данные из настроек (админка «Настройки →
   // Контактная информация»), с дефолтами из site-config.ts.
@@ -138,7 +154,7 @@ export default async function HomePage() {
     icon: cat.icon ?? "box",
   }));
 
-  const serializedProducts = featuredProducts.map((p: FirestoreProduct) => ({
+  const serializeHomeProduct = (p: FirestoreProduct) => ({
     id: p.id,
     name: p.name,
     slug: p.slug,
@@ -157,7 +173,14 @@ export default async function HomePage() {
     dimensionHeight: p.dimensionHeight ?? null,
     dimensionUnit: p.dimensionUnit ?? null,
     material: p.material ?? null,
-  }));
+    hasVariants: p.hasVariants ?? false,
+    variantCount: p.variantCount ?? 0,
+    variantPriceMin: p.variantPriceMin ?? null,
+    variantPriceMax: p.variantPriceMax ?? null,
+    variantTotalStock: p.variantTotalStock ?? 0,
+  });
+  const serializedProducts = featuredProducts.map(serializeHomeProduct);
+  const serializedOrderProducts = orderProducts.map(serializeHomeProduct);
 
   return (
     <div className="page-home">
@@ -180,6 +203,16 @@ export default async function HomePage() {
               <br />
               Минимальный заказ — 1 шт. Оптовые цены от 50 шт.
             </p>
+
+            <div className="hero__reserve-note">
+              <PackageCheck size={20} />
+              <div>
+                <strong>Забронируйте товар без предоплаты</strong>
+                <span>
+                  Оформите заказ на сайте, приезжайте на склад и оплатите при получении.
+                </span>
+              </div>
+            </div>
 
             <div className="hero__perks">
               <div className="hero__perk">
@@ -338,6 +371,9 @@ export default async function HomePage() {
         categories={serializedCategories}
         initialProducts={serializedProducts}
       />
+
+      {/* Закончившиеся, но доступные к поставке позиции */}
+      <HomeOrderProductsSection products={serializedOrderProducts} />
 
       {/* Консультация */}
       <section className="consult-section">

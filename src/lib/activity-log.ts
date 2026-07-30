@@ -31,6 +31,7 @@ export type EntityType =
   | "review"
   | "counterparty"
   | "salary"
+  | "admin-user"
   | "cash-collection";
 
 interface LogEntry {

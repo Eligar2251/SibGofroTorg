@@ -23,6 +23,9 @@ import type {
   BankPaymentType,
   BankPayment,
   WarehouseStockRow,
+  ProductStockReceiptHistory,
+  ProductStockDealHistory,
+  ProductStockSummary,
   CounterpartyBalance,
   Employee,
   Salary,
@@ -38,6 +41,8 @@ import {
   CASH_CARD_HOLDER_SETTING_KEY,
   DEFAULT_CASH_CARD_HOLDER,
   getBankSummary,
+  getCashCarryoverSummary,
+  getWarehouseBusinessDate,
   getDealPaidMap,
   getReceiptPaidMap,
   getCounterpartyBalances,
@@ -49,6 +54,8 @@ import {
   isDealFullyShipped,
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
+  getSalaryPeriodMonth,
+  stripSalaryMetaTags,
 } from "./warehouse-shared";
 
 export {
@@ -68,6 +75,9 @@ export {
   type BankPaymentType,
   type BankPayment,
   type WarehouseStockRow,
+  type ProductStockReceiptHistory,
+  type ProductStockDealHistory,
+  type ProductStockSummary,
   type CounterpartyBalance,
   type Employee,
   type Salary,
@@ -309,6 +319,7 @@ function mapSalaryRow(row: any): Salary {
     employeeName: row.employee_name,
     amount: Number(row.amount || 0),
     date: row.date,
+    periodMonth: getSalaryPeriodMonth(row.comment, row.date),
     source: row.source,
     isPaid: row.is_paid ?? false,
     paidAt: row.paid_at ?? null,
@@ -2095,8 +2106,8 @@ export interface CashCollectionRow {
   id: string;
   date: string;
   amount: number;
-  /** Часть, сданная наличными (виртуальная карта «наличка») */
-  cashAmount: number;
+  /** Часть, оставленная наличными в кассе; undefined у старых записей */
+  cashAmount?: number;
   /** Часть, сданная инкассацией на карту (вне расчётного счёта) */
   transferAmount: number;
   /** Разметка платежей, вошедших в сдачу */
@@ -2121,11 +2132,10 @@ async function fetchCashCollections(): Promise<CashCollectionRow[]> {
   return (data || []).map((row: any) => {
     const amount = Number(row.amount) || 0;
     const transferAmount = Number(row.transfer_amount) || 0;
-    // Старые записи (до разделения) считаем полностью наличными.
+    // undefined отличает старые записи до появления разбивки. Для них
+    // баланс сохраняет прежнюю семантику «вся сумма ушла из кассы».
     const cashAmount =
-      row.cash_amount != null
-        ? Number(row.cash_amount) || 0
-        : amount - transferAmount;
+      row.cash_amount != null ? Number(row.cash_amount) || 0 : undefined;
     return {
       id: row.id,
       date: row.date,
@@ -2195,7 +2205,7 @@ function computeCashBalance(
  * деньги с расчётного счёта.
  *
  * Менеджер размечает каждый платёж: уходит он инкассацией на карту или
- * остаётся наличными (виртуальная карта «наличка»).
+ * остаётся наличными в кассе с переносом на следующий день.
  */
 export async function getPendingCashPayments(): Promise<{
   pending: {
@@ -2206,6 +2216,17 @@ export async function getPendingCashPayments(): Promise<{
     amount: number;
     comment: string | null;
   }[];
+  /** Ранее скрытые старые наличные платежи (старой версией функции). */
+  closed: {
+    paymentId: string;
+    number: number;
+    date: string;
+    counterparty: string;
+    amount: number;
+    comment: string | null;
+  }[];
+  /** Наличные в балансе без исходного ПЛ (старый ручной учёт). */
+  unlinkedCashBalance: number;
   expenses: CashExpenseRow[];
 }> {
   const [payments, salaries, collections] = await Promise.all([
@@ -2213,6 +2234,21 @@ export async function getPendingCashPayments(): Promise<{
     fetchSalaries(),
     fetchCashCollections(),
   ]);
+  const carryover = getCashCarryoverSummary(
+    payments,
+    salaries,
+    collections,
+    getWarehouseBusinessDate()
+  );
+  const linkedRemaining = carryover.origins.reduce(
+    (sum, origin) => sum + origin.remainingAmount,
+    0
+  );
+  const unlinkedCashBalance = Math.max(
+    0,
+    round2(carryover.currentBalance - linkedRemaining)
+  );
+
   return {
     pending: listPendingCashPayments(payments, collections).map((p) => ({
       paymentId: String(p.id),
@@ -2222,6 +2258,25 @@ export async function getPendingCashPayments(): Promise<{
       amount: p.amount,
       comment: p.comment ?? null,
     })),
+    closed: payments
+      .filter(
+        (p) =>
+          p.isPaid &&
+          p.excludeFromBalance &&
+          p.type === "cash" &&
+          p.direction === "incoming" &&
+          p.amount > 0
+      )
+      .map((p) => ({
+        paymentId: String(p.id),
+        number: p.number,
+        date: p.date,
+        counterparty: p.counterparty,
+        amount: p.amount,
+        comment: p.comment ?? null,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number),
+    unlinkedCashBalance,
     // Наличные траты (ЗП и прочие расходы налом) — их вычитаем из
     // прихода, потому что эти деньги уже ушли из кассы.
     expenses: listCashExpenses(payments, salaries),
@@ -2272,7 +2327,7 @@ function listCashExpenses(
       date: (s.paidAt || s.date || "").slice(0, 10),
       title: `Зарплата — ${s.employeeName || "сотрудник"}`,
       amount: s.amount,
-      comment: s.comment ?? null,
+      comment: stripSalaryMetaTags(s.comment) || null,
     });
   }
 
@@ -2310,22 +2365,28 @@ function listPendingCashPayments(
       if (it?.paymentId) collected.add(String(it.paymentId));
     }
   }
+  const today = getWarehouseBusinessDate();
   return payments
-    .filter((p) => isCashDeskIncome(p) && !collected.has(String(p.id)))
+    .filter(
+      (p) =>
+        isCashDeskIncome(p) &&
+        String(p.date || "").slice(0, 10) <= today &&
+        !collected.has(String(p.id))
+    )
     .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
 }
 
 /**
- * Сдача кассы (инкассация).
+ * Закрытие смены кассы (инкассация + перенос остатка).
  *
- * Из кассы уходят ТОЛЬКО наличные платежи. Основной безналичный счёт в банке
- * при этом не затрагивается ни в какую сторону: он к кассе не относится.
- * Каждый наличный платёж размечается, куда он ушёл:
- *   - "card" — инкассация на карту (Юлия Марковна / кто указан в настройках);
- *   - "cash" — наличные (виртуальная карта, куда уходит сданная касса).
+ * Основной безналичный счёт к кассе не относится. Каждый наличный платёж
+ * размечается:
+ *   - "card" — инкассация на карту (Юлия Марковна / настройка), эта сумма
+ *     физически вычитается из кассы;
+ *   - "cash" — остаётся в кассе и переносится на следующий день.
  *
  * Суммы считаются на сервере из самих платежей, чтобы исключить гонку
- * с клиентом и «сдачу» денег, которых в кассе нет.
+ * с клиентом и инкассацию денег, которых в кассе нет.
  */
 export async function collectCash(
   note?: string | null,
@@ -2338,8 +2399,12 @@ export async function collectCash(
     cardAmount?: number;
     /** Ручная разбивка: сколько забрать на расходы (ЗП и прочее) */
     expenseAmount?: number;
-  }[]
-): Promise<{ amount: number; cashAmount: number; transferAmount: number }> {
+  }[],
+  /** Дата закрытия смены, которую явно выбрал кассир. */
+  collectionDate?: string | null,
+  /** Старый остаток кассы без исходного платежа. */
+  unlinkedCash?: { amount: number; kind: CashKind } | null
+): Promise<{ amount: number; cashAmount: number; transferAmount: number; date: string }> {
   const db = getAdminDb();
   const [payments, salaries, collections] = await Promise.all([
     fetchPayments(),
@@ -2367,6 +2432,28 @@ export async function collectCash(
 
   const cleanNote = note ? cleanText(note, 500) : null;
   const pending = listPendingCashPayments(payments, collections);
+  const carryover = getCashCarryoverSummary(
+    payments,
+    salaries,
+    collections,
+    getWarehouseBusinessDate()
+  );
+  const linkedCash = carryover.origins.reduce(
+    (sum, origin) => sum + origin.remainingAmount,
+    0
+  );
+  const availableUnlinkedCash = Math.max(
+    0,
+    round2(carryover.currentBalance - linkedCash)
+  );
+  const requestedUnlinkedAmount = round2(
+    Math.max(0, Number(unlinkedCash?.amount) || 0)
+  );
+  if (requestedUnlinkedAmount > availableUnlinkedCash + 0.009) {
+    throw new Error(
+      `Старый остаток без ПЛ (${requestedUnlinkedAmount} ₽) больше доступного (${availableUnlinkedCash} ₽)`
+    );
+  }
 
   // ── Без разметки: сдаём все неразмеченные наличные платежи как «наличные».
   // Раньше здесь списывался весь остаток кассы одной суммой без привязки
@@ -2380,11 +2467,11 @@ export async function collectCash(
     expenseAmount?: number;
   };
   const requested: RequestedItem[] =
-    items && items.length > 0
+    items !== undefined
       ? items
       : pending.map((p) => ({ paymentId: String(p.id), kind: "cash" as const }));
 
-  if (requested.length === 0) {
+  if (requested.length === 0 && requestedUnlinkedAmount <= 0.009) {
     throw new Error(
       "Нет наличных поступлений для сдачи: все наличные платежи уже сданы"
     );
@@ -2467,23 +2554,48 @@ export async function collectCash(
       expenseAmount: itemExpense,
     });
   }
-  coveredByItems = round2(coveredByItems);
 
-  if (rows.length === 0) {
-    throw new Error("Выберите хотя бы один платёж для сдачи");
+  if (requestedUnlinkedAmount > 0.009) {
+    const kind = normalizeCashKind(unlinkedCash?.kind);
+    const manualCash = kind === "cash" ? requestedUnlinkedAmount : 0;
+    const manualCard = kind === "card" ? requestedUnlinkedAmount : 0;
+    cashAmount += manualCash;
+    cardAmount += manualCard;
+    rows.push({
+      paymentId: `manual:${Date.now()}`,
+      number: 0,
+      counterparty: "Старый остаток кассы без ПЛ",
+      amount: requestedUnlinkedAmount,
+      kind,
+      cashAmount: manualCash,
+      cardAmount: manualCard,
+      expenseAmount: 0,
+    });
   }
 
-  // Сдача кассы идёт за конкретный день, поэтому дата записи — это дата
-  // самих платежей, а не «сегодня». Иначе отчёт за 27.07 попадал бы в 28.07.
+  coveredByItems = round2(coveredByItems);
+
+  if (rows.length === 0 && requestedUnlinkedAmount <= 0.009) {
+    throw new Error("Выберите хотя бы один платёж или старый остаток кассы");
+  }
+
   const payDates = [
     ...new Set(rows.map((r) => payById.get(String(r.paymentId))?.date || "")),
   ].filter(Boolean);
-  if (payDates.length > 1) {
-    throw new Error(
-      "В одну сдачу можно включать платежи только за один день. Сдайте каждый день отдельно."
-    );
+  const requestedDate = String(collectionDate || "").slice(0, 10);
+  if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    throw new Error("Укажите корректную дату закрытия смены");
   }
-  const date = payDates[0] || new Date().toISOString().slice(0, 10);
+  // Дата документа задаётся явно. Если кассир её не указал, сохраняем
+  // обратную совместимость и берём дату единственного дня платежей.
+  const date =
+    requestedDate ||
+    (payDates.length === 1 ? payDates[0] : "") ||
+    new Date().toISOString().slice(0, 10);
+  // Расходы относятся к дню фактических платежей. При смешанных старых
+  // платежах используем выбранную дату документа — это единственная
+  // однозначная дата закрываемой смены.
+  const expenseDate = payDates.length === 1 ? payDates[0] : date;
 
   cashAmount = Math.round(cashAmount * 100) / 100;
   cardAmount = Math.round(cardAmount * 100) / 100;
@@ -2493,7 +2605,7 @@ export async function collectCash(
   // приход МИНУС траты. Иначе сдали бы больше, чем есть, и остаток
   // кассы ушёл бы в минус ровно на сумму трат.
   const expensesOfDay = listCashExpenses(payments, salaries).filter(
-    (e) => e.date === date
+    (e) => e.date === expenseDate
   );
   const expensesTotal =
     Math.round(expensesOfDay.reduce((sum, e) => sum + e.amount, 0) * 100) / 100;
@@ -2517,13 +2629,15 @@ export async function collectCash(
 
   if (amount <= 0.009) {
     throw new Error(
-      `Наличные траты за ${date} (${expensesTotal} ₽) покрывают весь приход — сдавать нечего`
+      `Наличные траты за ${expenseDate} (${expensesTotal} ₽) покрывают весь приход — сдавать нечего`
     );
   }
 
-  if (amount > cashBalance + 0.009) {
+  // Из кассы уходит только часть «на карту». Наличная часть остаётся и
+  // станет входящим остатком следующего дня.
+  if (cardPart > cashBalance + 0.009) {
     throw new Error(
-      `Сумма сдачи (${amount} ₽) больше остатка кассы (${cashBalance} ₽)`
+      `Инкассация на карту (${cardPart} ₽) больше остатка кассы (${cashBalance} ₽)`
     );
   }
 
@@ -2556,23 +2670,24 @@ export async function collectCash(
   revalidateTag("warehouse-cash-collections", { expire: 0 });
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-salaries", { expire: 0 });
-  return { amount, cashAmount, transferAmount: cardAmount };
+  return { amount, cashAmount, transferAmount: cardAmount, date };
 }
 
 /**
  * Закрыть старые наличные платежи без инкассации.
  *
- * Инкассация ведётся с определённой даты, а в кассе висят более ранние
- * платежи — их не нужно сдавать, нужно просто убрать из списка и из
- * остатка кассы. Помечаем их exclude_from_balance: документ остаётся
- * в истории, но на баланс не влияет.
+ * Инкассация ведётся с определённой даты, а в списке висят более ранние
+ * платежи времён, когда кассовый учёт не вёлся. Их нужно только скрыть из
+ * будущей сдачи. Создаём нулевую служебную запись: никаких оплат, списаний,
+ * внесений и изменений текущего остатка не происходит.
  *
- * Затрагиваются ТОЛЬКО наличные приходы (type='cash'). Безналичный
- * расчётный счёт не трогается.
+ * Затрагивается только видимость наличных приходов (type='cash'). Сам
+ * платёж и его влияние на баланс не изменяются.
  */
 export async function closeOldCashPayments(
-  paymentIds: string[]
-): Promise<{ closed: number; amount: number }> {
+  paymentIds: string[],
+  collectionDate?: string | null
+): Promise<{ closed: number; amount: number; date: string }> {
   const db = getAdminDb();
   const ids = [...new Set(paymentIds.map((x) => String(x || "").trim()))].filter(
     Boolean
@@ -2594,21 +2709,109 @@ export async function closeOldCashPayments(
     amount += p.amount;
   }
 
+  const selected = ids.map((id) => byId.get(id)!);
+  const requestedDate = String(collectionDate || "").slice(0, 10);
+  if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    throw new Error("Укажите корректную дату закрытия смены");
+  }
+  const closedAt = requestedDate || new Date().toISOString().slice(0, 10);
+  // Нулевая запись закрытия используется только как настройка видимости:
+  // listPendingCashPayments увидит paymentId в items и уберёт старый платёж
+  // из списка сдачи. amount/transfer/cash = 0, поэтому баланс, банк и касса
+  // вообще не меняются.
+  const { error } = await db.from("cash_collections").insert({
+    date: closedAt,
+    amount: 0,
+    cash_amount: 0,
+    transfer_amount: 0,
+    income_amount: 0,
+    expenses_amount: 0,
+    expenses: [],
+    items: selected.map((p) => ({
+      paymentId: String(p.id),
+      number: p.number,
+      counterparty: p.counterparty,
+      amount: p.amount,
+      kind: "cash",
+      cashAmount: 0,
+      cardAmount: 0,
+      expenseAmount: 0,
+      noAccounting: true,
+    })),
+    note: `Закрыто без учёта и инкассации: ${selected.length} плат. на ${round2(amount)} ₽`,
+  });
+  if (error) throw error;
+
+  revalidateTag("warehouse-cash-collections", { expire: 0 });
+  return { closed: ids.length, amount: round2(amount), date: closedAt };
+}
+
+/**
+ * Откат старой версии «закрыть без инкассации», которая ошибочно ставила
+ * exclude_from_balance и тем самым вычитала весь наличный приход из кассы.
+ */
+export async function restoreClosedOldCashPayments(
+  paymentIds: string[]
+): Promise<{ restored: number; amount: number }> {
+  const db = getAdminDb();
+  const ids = [...new Set(paymentIds.map((id) => String(id || "").trim()))].filter(Boolean);
+  if (ids.length === 0) throw new Error("Не выбрано ни одного платежа");
+
+  const payments = await fetchPayments();
+  const selected = payments.filter(
+    (payment) =>
+      ids.includes(String(payment.id)) &&
+      payment.isPaid &&
+      payment.excludeFromBalance &&
+      payment.type === "cash" &&
+      payment.direction === "incoming"
+  );
+  if (selected.length !== ids.length) {
+    throw new Error("Один из закрытых наличных платежей не найден");
+  }
+
   const { error } = await db
     .from("bank_payments")
-    .update({ exclude_from_balance: true })
+    .update({ exclude_from_balance: false })
     .in("id", ids);
   if (error) throw error;
 
+  const amount = selected.reduce((sum, payment) => sum + payment.amount, 0);
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-cash-collections", { expire: 0 });
-  return { closed: ids.length, amount: round2(amount) };
+  return { restored: selected.length, amount: round2(amount) };
 }
 
 export async function deleteCashCollection(id: string): Promise<void> {
   const db = getAdminDb();
+  const { data: existing, error: readError } = await db
+    .from("cash_collections")
+    .select("items")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) throw readError;
+
   const { error } = await db.from("cash_collections").delete().eq("id", id);
   if (error) throw error;
+
+  // Старая версия закрытия могла одновременно поставить платежам
+  // exclude_from_balance. При отмене документа гарантированно возвращаем
+  // его ПЛ в баланс и список сдачи. Для обычных платежей update идемпотентен.
+  const paymentIds = [
+    ...new Set(
+      (Array.isArray(existing?.items) ? existing.items : [])
+        .map((item: any) => String(item?.paymentId || ""))
+        .filter((paymentId: string) => paymentId && !paymentId.startsWith("manual:"))
+    ),
+  ];
+  if (paymentIds.length > 0) {
+    const { error: restoreError } = await db
+      .from("bank_payments")
+      .update({ exclude_from_balance: false })
+      .in("id", paymentIds);
+    if (restoreError) throw restoreError;
+  }
+
   revalidateTag("warehouse-cash-collections", { expire: 0 });
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-salaries", { expire: 0 });
@@ -3103,6 +3306,200 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     dimensionHeight: row.dimension_height != null ? Number(row.dimension_height) : null,
     dimensionUnit: row.dimension_unit ?? null,
   }));
+}
+
+/**
+ * Читает все документы с товаром постранично. PostgREST обычно ограничивает
+ * ответ 1000 строками, а в этой истории нужны в том числе старые архивные
+ * документы без обрезания.
+ */
+async function fetchProductReceiptRows(productId: string): Promise<any[]> {
+  const db = getAdminDb();
+  const rows: any[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db
+      .from("warehouse_receipts")
+      .select("id, number, date, supplier, status, items")
+      // Для JSONB-массива PostgREST нужен сериализованный JSON. Если передать
+      // массив объектов напрямую, supabase-js превратит его в [object Object].
+      .contains("items", JSON.stringify([{ productId }]))
+      .order("date", { ascending: false })
+      .order("number", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function fetchProductDealRows(productId: string): Promise<any[]> {
+  const db = getAdminDb();
+  const rows: any[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db
+      .from("customer_deals")
+      .select("id, number, date, customer_name, status, items, shipped_items")
+      .contains("items", JSON.stringify([{ productId }]))
+      .order("date", { ascending: false })
+      .order("number", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+function productItemQuantity(items: unknown, productId: string): number {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum: number, item: any) => {
+    if (String(item?.productId || "") !== productId) return sum;
+    return sum + Math.max(0, Number(item?.quantity) || 0);
+  }, 0);
+}
+
+function productShippedQuantity(items: unknown, productId: string): number {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum: number, item: any) => {
+    if (String(item?.productId || "") !== productId) return sum;
+    return sum + Math.max(0, Number(item?.shippedQty) || 0);
+  }, 0);
+}
+
+/**
+ * Расширенная сводка товара: все поступления и все заказы, включая архив.
+ * Загружается по кнопке конкретной строки склада, поэтому открытие вкладки
+ * «Склад» не тянет целиком многолетнюю историю документов.
+ */
+async function fetchProductStockSummary(productId: string): Promise<ProductStockSummary> {
+  const db = getAdminDb();
+  const [{ data: product, error: productError }, receiptRows, dealRows] =
+    await Promise.all([
+      db
+        .from("products")
+        .select("id, name, sku, stock_qty")
+        .eq("id", productId)
+        .maybeSingle(),
+      fetchProductReceiptRows(productId),
+      fetchProductDealRows(productId),
+    ]);
+
+  if (productError) throw productError;
+  if (!product) throw new Error("Товар не найден");
+
+  const receipts: ProductStockReceiptHistory[] = receiptRows.map((row: any) => {
+    const matchingItems = (Array.isArray(row.items) ? row.items : []).filter(
+      (item: any) => String(item?.productId || "") === productId
+    );
+    const quantity = productItemQuantity(matchingItems, productId);
+    const lineTotal = round2(
+      matchingItems.reduce((sum: number, item: any) => {
+        const itemQty = Math.max(0, Number(item?.quantity) || 0);
+        const rawTotal = item?.lineTotal;
+        const total = Number(rawTotal);
+        const hasLineTotal =
+          rawTotal !== null &&
+          rawTotal !== undefined &&
+          rawTotal !== "" &&
+          Number.isFinite(total);
+        return sum +
+          (hasLineTotal
+            ? Math.max(0, total)
+            : itemQty * Math.max(0, Number(item?.price) || 0));
+      }, 0)
+    );
+    return {
+      id: String(row.id),
+      number: Number(row.number) || 0,
+      date: String(row.date || ""),
+      supplier: String(row.supplier || ""),
+      status: row.status === "posted" ? "posted" : "draft",
+      quantity,
+      unitPrice: quantity > 0 ? round2(lineTotal / quantity) : 0,
+      lineTotal,
+    };
+  });
+
+  const deals: ProductStockDealHistory[] = dealRows.map((row: any) => {
+    const status: DealStatus =
+      row.status === "completed" || row.status === "cancelled"
+        ? row.status
+        : "new";
+    const orderedQty = productItemQuantity(row.items, productId);
+    const recordedShipped = productShippedQuantity(row.shipped_items, productId);
+    // Старые проведённые заказы не имели shipped_items, но при проведении
+    // весь состав уже списывался. Поэтому completed = отгружено полностью.
+    const shippedQty =
+      status === "cancelled"
+        ? 0
+        : status === "completed"
+          ? orderedQty
+          : Math.min(orderedQty, recordedShipped);
+    return {
+      id: String(row.id),
+      number: Number(row.number) || 0,
+      date: String(row.date || ""),
+      customerName: String(row.customer_name || ""),
+      status,
+      orderedQty,
+      shippedQty,
+      remainingQty:
+        status === "cancelled" ? 0 : Math.max(0, orderedQty - shippedQty),
+    };
+  });
+
+  const postedReceiptQty = receipts
+    .filter((receipt) => receipt.status === "posted")
+    .reduce((sum, receipt) => sum + receipt.quantity, 0);
+  const draftReceiptQty = receipts
+    .filter((receipt) => receipt.status !== "posted")
+    .reduce((sum, receipt) => sum + receipt.quantity, 0);
+  const activeDeals = deals.filter((deal) => deal.status !== "cancelled");
+  const orderedQty = activeDeals.reduce((sum, deal) => sum + deal.orderedQty, 0);
+  const shippedQty = activeDeals.reduce((sum, deal) => sum + deal.shippedQty, 0);
+  const pendingOrderQty = activeDeals.reduce(
+    (sum, deal) => sum + deal.remainingQty,
+    0
+  );
+  const currentStockQty = Number(product.stock_qty || 0);
+
+  return {
+    productId,
+    productName: String(product.name || ""),
+    sku: product.sku ? String(product.sku) : null,
+    currentStockQty,
+    receipts,
+    deals,
+    postedReceiptQty,
+    draftReceiptQty,
+    orderedQty,
+    shippedQty,
+    pendingOrderQty,
+    shortageQty: Math.max(0, pendingOrderQty - currentStockQty),
+    // Балансовая формула: остаток = наши остатки + поступления − отгрузки.
+    // Положительный хвост — товар занесли руками/он был до начала учёта.
+    ownStockQty: currentStockQty + shippedQty - postedReceiptQty,
+  };
+}
+
+export async function getProductStockSummary(
+  rawProductId: string
+): Promise<ProductStockSummary> {
+  const productId = String(rawProductId || "").trim();
+  if (!productId) throw new Error("Не указан товар");
+  return unstable_cache(
+    () => fetchProductStockSummary(productId),
+    ["warehouse-product-stock-summary", productId],
+    {
+      revalidate: 60,
+      tags: ["products", "warehouse-receipts", "warehouse-deals"],
+    }
+  )();
 }
 
 export async function getReceiptById(id: string): Promise<WarehouseReceipt | null> {

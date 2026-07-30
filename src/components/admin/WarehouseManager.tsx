@@ -28,6 +28,8 @@ import {
   Gift,
   Trash2,
   ChevronRight,
+  RotateCcw,
+  BarChart3,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -36,7 +38,9 @@ import {
   getCollectedBreakdown,
   getDealPaidMap,
   getReceiptPaidMap,
+  getCashCarryoverSummary,
   type WarehouseStockRow,
+  type ProductStockSummary,
   type WarehouseReceipt,
   type CustomerDeal,
   type Counterparty,
@@ -46,6 +50,7 @@ import {
   includedVat,
   VAT_RATE,
   isSalaryExcludedFromBalance,
+  isDebtSalaryComment,
   stripSalaryMetaTags,
 } from "@/lib/warehouse-shared";
 import { ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
@@ -58,6 +63,8 @@ import {
 } from "@/components/admin/WarehousePayments";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
+import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
+import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import { StockRevision } from "@/components/admin/StockRevision";
 import { CashCollectModal } from "@/components/admin/CashCollectModal";
 import {
@@ -66,6 +73,7 @@ import {
   type CounterpartyOption,
 } from "@/components/admin/WarehouseCounterparties";
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
+import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
 
@@ -82,11 +90,52 @@ function fmtDate(raw: string | null | undefined): string {
   });
 }
 
+function fmtDateTime(raw: string | null | undefined): string {
+  if (!raw) return "—";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return fmtDate(raw);
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+async function requestProductStockSummary(
+  productId: string
+): Promise<ProductStockSummary> {
+  const response = await fetch(
+    `/api/admin/warehouse/stock/${encodeURIComponent(productId)}`,
+    { cache: "no-store" }
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || "Не удалось загрузить сводку товара");
+  }
+  return body as ProductStockSummary;
+}
+
 function monthLabel(key: string): string {
   const [y, m] = key.split("-");
   const d = new Date(Number(y), Number(m) - 1, 1);
   const s = d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function localDateIso(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function calendarMonthRange(offset = 0): { from: string; to: string } {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  return { from: localDateIso(first), to: localDateIso(last) };
 }
 
 const dealStatusBadge: Record<string, string> = {
@@ -109,7 +158,7 @@ const paymentTypeLabels: Record<string, string> = {
   deposit: "Внесение",
 };
 
-type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries";
+type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers";
 type ReceiptSub = "active" | "archive";
@@ -142,6 +191,7 @@ interface WarehouseManagerProps {
   focusReceiptId?: string | null;
   focusProductId?: string | null;
   focusPaymentId?: string | null;
+  focusTransportId?: string | null;
   stock: WarehouseStockRow[];
   receipts: WarehouseReceipt[];
   deals: CustomerDeal[];
@@ -171,6 +221,7 @@ export function WarehouseManager({
   focusReceiptId,
   focusProductId,
   focusPaymentId,
+  focusTransportId,
   stock,
   receipts,
   deals,
@@ -197,6 +248,13 @@ export function WarehouseManager({
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
   const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
+  /** Раскрытые расширенные сводки в таблице склада. */
+  const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(
+    () => new Set(focusProductId ? [focusProductId] : [])
+  );
+  const [stockSummaries, setStockSummaries] = useState<Record<string, ProductStockSummary>>({});
+  const [stockSummaryLoading, setStockSummaryLoading] = useState<Set<string>>(new Set());
+  const [stockSummaryErrors, setStockSummaryErrors] = useState<Record<string, string>>({});
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [procurementQuery, setProcurementQuery] = useState("");
   const [supplierPriceQuery, setSupplierPriceQuery] = useState("");
@@ -205,10 +263,13 @@ export function WarehouseManager({
   const [procurementCart, setProcurementCart] = useState<ProcurementCartItem[]>([]);
   const [procurementSaving, setProcurementSaving] = useState(false);
   const [bankSub, setBankSub] = useState<BankSub>("pending");
+  const [detailPaymentId, setDetailPaymentId] = useState<string | null>(
+    focusPaymentId || null
+  );
   const router = useRouter();
   const [collecting, setCollecting] = useState(false);
   const [showCollect, setShowCollect] = useState(false);
-  /** Раскрытые сдачи кассы: id -> показать детализацию. */
+  /** Раскрытые закрытия смен кассы: id -> показать детализацию. */
   const [openCollections, setOpenCollections] = useState<Set<string>>(new Set());
   const [collectError, setCollectError] = useState("");
 
@@ -227,26 +288,108 @@ export function WarehouseManager({
     } else if (focusProductId) {
       setActiveTab("stock");
       setStockSub("stock");
+      setExpandedStockIds((prev) => new Set(prev).add(focusProductId));
+      setStockSummaryLoading((prev) => new Set(prev).add(focusProductId));
+      setStockSummaryErrors((prev) => {
+        const next = { ...prev };
+        delete next[focusProductId];
+        return next;
+      });
+      void requestProductStockSummary(focusProductId)
+        .then((summary) =>
+          setStockSummaries((prev) => ({ ...prev, [focusProductId]: summary }))
+        )
+        .catch((error) =>
+          setStockSummaryErrors((prev) => ({
+            ...prev,
+            [focusProductId]:
+              error instanceof Error ? error.message : "Не удалось загрузить сводку",
+          }))
+        )
+        .finally(() =>
+          setStockSummaryLoading((prev) => {
+            const next = new Set(prev);
+            next.delete(focusProductId);
+            return next;
+          })
+        );
       window.setTimeout(() => document.getElementById(`stock-${focusProductId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     } else if (focusPaymentId) {
       setActiveTab("bank");
+      setDetailPaymentId(focusPaymentId);
       const payment = payments.find((item) => item.id === focusPaymentId);
       setBankSub(payment?.isPaid ? "history" : "pending");
       window.setTimeout(() => document.getElementById(`payment-${focusPaymentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     }
   }, [deals, focusDealId, focusPaymentId, focusProductId, focusReceiptId, payments, receipts]);
 
+  async function loadStockSummary(productId: string, force = false) {
+    if (
+      !force &&
+      (stockSummaries[productId] || stockSummaryLoading.has(productId))
+    ) {
+      return;
+    }
+    setStockSummaryLoading((prev) => new Set(prev).add(productId));
+    setStockSummaryErrors((prev) => {
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+    try {
+      const summary = await requestProductStockSummary(productId);
+      setStockSummaries((prev) => ({ ...prev, [productId]: summary }));
+    } catch (error) {
+      setStockSummaryErrors((prev) => ({
+        ...prev,
+        [productId]:
+          error instanceof Error ? error.message : "Не удалось загрузить сводку",
+      }));
+    } finally {
+      setStockSummaryLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+    }
+  }
+
+  function toggleStockSummary(productId: string) {
+    const isExpanded = expandedStockIds.has(productId);
+    setExpandedStockIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+    if (!isExpanded) void loadStockSummary(productId);
+  }
+
+  function handleStockQuantitySaved(productId: string) {
+    setStockSummaries((prev) => {
+      if (!prev[productId]) return prev;
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+    if (expandedStockIds.has(productId)) {
+      void loadStockSummary(productId, true);
+    }
+  }
+
   // Filters
   const [q, setQ] = useState(""); // Stock/Deals query
   const [bq, setBq] = useState(""); // Bank query
   const [rq, setRq] = useState(""); // Receipts query (поставщик/номер/товар)
   const [bdir, setBdir] = useState("all");
+  const [bankDateFrom, setBankDateFrom] = useState("");
+  const [bankDateTo, setBankDateTo] = useState("");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
   const [historyDaysPage, setHistoryDaysPage] = useState(0);
 
   useEffect(() => {
     setHistoryDaysPage(0);
-  }, [bankSub, bq, bdir, bsort]);
+  }, [bankSub, bq, bdir, bsort, bankDateFrom, bankDateTo]);
 
   useEffect(() => {
     if (!selectedSupplierId) return;
@@ -276,6 +419,16 @@ export function WarehouseManager({
   }, [payments]);
   const bankSummary = useMemo(
     () => getBankSummary(payments, salaries, cashCollections),
+    [payments, salaries, cashCollections]
+  );
+  const cashCarryover = useMemo(
+    () =>
+      getCashCarryoverSummary(
+        payments,
+        salaries,
+        cashCollections,
+        localDateIso()
+      ),
     [payments, salaries, cashCollections]
   );
   
@@ -322,7 +475,7 @@ export function WarehouseManager({
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
   }, [deals, payments, receipts]);
 
-  // Сданная касса — отчёт (по дате убывания) и итог
+  // Закрытые смены кассы — инкассация на карту и перенос наличного остатка.
   const collectionsSorted = useMemo(
     () =>
       [...cashCollections]
@@ -334,11 +487,52 @@ export function WarehouseManager({
     () => collectionsSorted.reduce((sum, c) => sum + (c.amount || 0), 0),
     [collectionsSorted]
   );
-  // Раскладка сданного: сколько ушло наличными, сколько переводом.
+  // Раскладка смен: сколько перенесено наличными, сколько ушло на карту.
   const collectedBreakdown = useMemo(
     () => getCollectedBreakdown(collectionsSorted),
     [collectionsSorted]
   );
+
+  // Старая версия «закрыть без инкассации» не создавала документ сдачи,
+  // а просто ставила платежам «вне баланса». Восстанавливаем виртуальные
+  // документы по общему updatedAt, чтобы они были видны в проведённых и
+  // отменялись одной кнопкой, как обычная сдача кассы.
+  const legacyCashClosures = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        id: string;
+        date: string;
+        paymentIds: string[];
+        numbers: number[];
+        amount: number;
+      }
+    >();
+    for (const payment of payments) {
+      if (
+        !payment.isPaid ||
+        !payment.excludeFromBalance ||
+        payment.type !== "cash" ||
+        payment.direction !== "incoming"
+      ) {
+        continue;
+      }
+      const stamp = payment.updatedAt || payment.paidAt || payment.date;
+      const key = String(stamp || "legacy").slice(0, 16);
+      const current = groups.get(key) || {
+        id: `legacy-${key}`,
+        date: String(stamp || payment.date),
+        paymentIds: [],
+        numbers: [],
+        amount: 0,
+      };
+      current.paymentIds.push(payment.id);
+      current.numbers.push(payment.number);
+      current.amount += payment.amount;
+      groups.set(key, current);
+    }
+    return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date));
+  }, [payments]);
 
   // Сдача кассы идёт через модалку: там каждый платёж помечается
   // «наличные / перевод», чтобы в отчёте было видно, сколько куда ушло.
@@ -351,8 +545,42 @@ export function WarehouseManager({
     setShowCollect(true);
   }
 
-  async function handleDeleteCollection(id: string) {
-    if (!confirm("Отменить сдачу кассы? Остаток наличных вернётся в кассу.")) return;
+  async function handleRestoreLegacyClosure(paymentIds: string[], amount: number) {
+    if (
+      !confirm(
+        `Отменить проведение старой сдачи без инкассации на ${fmt(amount)} ₽?\n\n` +
+          "Платежи вернутся в баланс кассы и снова появятся в настройках сдачи."
+      )
+    ) {
+      return;
+    }
+    setCollecting(true);
+    setCollectError("");
+    try {
+      const response = await fetch("/api/admin/warehouse/cash-collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore", paymentIds }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error || "Не удалось отменить проведение");
+      }
+      router.refresh();
+    } catch (error) {
+      setCollectError(
+        error instanceof Error ? error.message : "Не удалось отменить проведение"
+      );
+    } finally {
+      setCollecting(false);
+    }
+  }
+
+  async function handleDeleteCollection(id: string, noAccounting = false) {
+    const message = noAccounting
+      ? "Вернуть скрытые старые платежи в список сдачи? Баланс кассы не изменится."
+      : "Отменить закрытие смены? Инкассированная сумма вернётся в кассу, а платежи снова появятся для разметки.";
+    if (!confirm(message)) return;
     setCollecting(true);
     try {
       const res = await fetch(`/api/admin/warehouse/cash-collections/${id}`, {
@@ -438,6 +666,9 @@ export function WarehouseManager({
       const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
       if (!matchesTab) return false;
       if (bdir !== "all" && p.direction !== bdir) return false;
+      const operationDate = String(p.date || "").slice(0, 10);
+      if (bankDateFrom && operationDate < bankDateFrom) return false;
+      if (bankDateTo && operationDate > bankDateTo) return false;
       if (query) {
         const hay = p.entryKind === "payment"
           ? [
@@ -475,7 +706,16 @@ export function WarehouseManager({
         : String(b.id).localeCompare(String(a.id));
     });
     return list;
-  }, [payments, salaries, bankSub, bq, bdir, bsort]);
+  }, [
+    payments,
+    salaries,
+    bankSub,
+    bq,
+    bdir,
+    bsort,
+    bankDateFrom,
+    bankDateTo,
+  ]);
 
   const bankFilteredTotals = useMemo(() => {
     let inSum = 0;
@@ -565,6 +805,7 @@ export function WarehouseManager({
     { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
     { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
+    { key: "reports", label: "Отчёты", icon: <BarChart3 size={13} /> },
     {
       key: "counterparties",
       label: "Контрагенты",
@@ -821,6 +1062,11 @@ export function WarehouseManager({
 
   return (
     <div>
+      <PaymentDetailsModal
+        paymentId={detailPaymentId}
+        adminPath={adminPath}
+        onClose={() => setDetailPaymentId(null)}
+      />
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Учёт</h1>
@@ -942,58 +1188,87 @@ export function WarehouseManager({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredStock.map((p) => (
-                      <tr key={p.id} id={`stock-${p.id}`}>
-                        <td>
-                          <Link href={`/${adminPath}/products/${p.id}`} prefetch={false} className="wh-stock-product-name">
-                            {p.name}
-                          </Link>
-                          <Link
-                            href={`/${adminPath}/warehouse?tab=stock&product=${p.id}#stock-origins`}
-                            prefetch={false}
-                            className="wh-stock-origin-link"
-                          >
-                            Откуда поступил →
-                          </Link>
-                          {!p.isVisible && (
-                            <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>скрыт</span>
+                    {filteredStock.map((p) => {
+                      const summaryExpanded = expandedStockIds.has(p.id);
+                      return (
+                        <React.Fragment key={p.id}>
+                          <tr id={`stock-${p.id}`} className={summaryExpanded ? "wh-stock-row--expanded" : undefined}>
+                            <td>
+                              <Link href={`/${adminPath}/products/${p.id}`} prefetch={false} className="wh-stock-product-name">
+                                {p.name}
+                              </Link>
+                              <button
+                                type="button"
+                                className="wh-stock-origin-link"
+                                onClick={() => toggleStockSummary(p.id)}
+                                aria-expanded={summaryExpanded}
+                                aria-controls={`stock-summary-${p.id}`}
+                              >
+                                <History size={11} />
+                                {summaryExpanded ? "Скрыть сводку" : "Расширенная сводка"}
+                                <ChevronRight
+                                  size={11}
+                                  className={summaryExpanded ? "wh-stock-origin-link__chevron wh-stock-origin-link__chevron--open" : "wh-stock-origin-link__chevron"}
+                                />
+                              </button>
+                              {!p.isVisible && (
+                                <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>скрыт</span>
+                              )}
+                              {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
+                                <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
+                              )}
+                              {p.stockQty <= 0 && (
+                                <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
+                              )}
+                            </td>
+                            <td>{p.sku || "—"}</td>
+                            <td>
+                              {(suppliersByProduct.get(p.id) || []).length > 0 ? (
+                                <div style={{ display: "grid", gap: 3 }}>
+                                  {(suppliersByProduct.get(p.id) || []).slice(0, 2).map((row) => (
+                                    <button
+                                      key={row.supplier.id}
+                                      type="button"
+                                      onClick={() => { setActiveTab("suppliers"); setSelectedSupplierId(row.supplier.id); }}
+                                      className="admin-badge admin-badge--blue"
+                                      style={{ border: 0, cursor: "pointer", justifyContent: "flex-start" }}
+                                    >
+                                      {row.supplier.name} · {fmt(row.price)} ₽
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : "—"}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <StockQtyEditor
+                                productId={p.id}
+                                initialQty={p.stockQty}
+                                onSaved={() => handleStockQuantitySaved(p.id)}
+                              />
+                            </td>
+                            <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                              {p.price != null ? `${fmt(p.price)} ₽` : "—"}
+                            </td>
+                            <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                              {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
+                            </td>
+                          </tr>
+                          {summaryExpanded && (
+                            <tr id={`stock-summary-${p.id}`} className="stock-summary-row">
+                              <td colSpan={6}>
+                                <ProductStockSummaryPanel
+                                  adminPath={adminPath}
+                                  summary={stockSummaries[p.id]}
+                                  loading={stockSummaryLoading.has(p.id)}
+                                  error={stockSummaryErrors[p.id]}
+                                  onRetry={() => void loadStockSummary(p.id, true)}
+                                />
+                              </td>
+                            </tr>
                           )}
-                          {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
-                            <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
-                          )}
-                          {p.stockQty <= 0 && (
-                            <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
-                          )}
-                        </td>
-                        <td>{p.sku || "—"}</td>
-                        <td>
-                          {(suppliersByProduct.get(p.id) || []).length > 0 ? (
-                            <div style={{ display: "grid", gap: 3 }}>
-                              {(suppliersByProduct.get(p.id) || []).slice(0, 2).map((row) => (
-                                <button
-                                  key={row.supplier.id}
-                                  type="button"
-                                  onClick={() => { setActiveTab("suppliers"); setSelectedSupplierId(row.supplier.id); }}
-                                  className="admin-badge admin-badge--blue"
-                                  style={{ border: 0, cursor: "pointer", justifyContent: "flex-start" }}
-                                >
-                                  {row.supplier.name} · {fmt(row.price)} ₽
-                                </button>
-                              ))}
-                            </div>
-                          ) : "—"}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <StockQtyEditor productId={p.id} initialQty={p.stockQty} />
-                        </td>
-                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                          {p.price != null ? `${fmt(p.price)} ₽` : "—"}
-                        </td>
-                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                          {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
-                        </td>
-                      </tr>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1249,6 +1524,7 @@ export function WarehouseManager({
           drivers={drivers}
           companyPhone={companyPhone}
           companyAddress={companyAddress}
+          focusTransportId={focusTransportId}
         />
       )}
 
@@ -1540,6 +1816,20 @@ export function WarehouseManager({
         <WarehouseSalaries employees={employees} salaries={salaries} />
       )}
 
+      {/* ════════════ ВКЛАДКА: ОТЧЁТЫ ════════════ */}
+      {activeTab === "reports" && (
+        <WarehouseReports
+          adminPath={adminPath}
+          payments={payments}
+          salaries={salaries}
+          deals={deals}
+          receipts={receipts}
+          transports={transports}
+          cashCollections={cashCollections}
+          stock={stock}
+        />
+      )}
+
       {/* ════════════ ВКЛАДКА: КОНТРАГЕНТЫ ════════════ */}
       {activeTab === "counterparties" && (
         <CounterpartiesManager
@@ -1802,6 +2092,17 @@ export function WarehouseManager({
                 >
                   {fmt(bankSummary.cashBalance)} ₽
                 </div>
+                <div className="cash-carryover-hero">
+                  <span>
+                    С прошлых дней: <b>{fmt(cashCarryover.previousDaysRemaining)} ₽</b>
+                  </span>
+                  <span>
+                    На начало дня: <b>{fmt(cashCarryover.openingBalance)} ₽</b>
+                  </span>
+                  <span>
+                    Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
+                  </span>
+                </div>
                 {bankSummary.cashBalanceNegative && (
                   <div
                     style={{
@@ -1870,6 +2171,7 @@ export function WarehouseManager({
           {showCollect && (
             <CashCollectModal
               cashBalance={bankSummary.cashBalance}
+              adminPath={adminPath}
               onClose={() => setShowCollect(false)}
             />
           )}
@@ -1889,7 +2191,23 @@ export function WarehouseManager({
               <div className="admin-card__pad">
                 <div className="bank-month__list">
                   {pendingSupplierPayments.slice(0, 6).map((p) => (
-                    <div key={p.id} className="bank-pay" style={{ background: "#fff", padding: "10px 14px" }}>
+                    <div
+                      key={p.id}
+                      className="bank-pay payment-clickable"
+                      style={{ background: "#fff", padding: "10px 14px" }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        if ((event.target as HTMLElement).closest("a,button")) return;
+                        setDetailPaymentId(p.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setDetailPaymentId(p.id);
+                        }
+                      }}
+                    >
                       <div className="bank-pay__icon bank-pay__icon--out" style={{ width: 32, height: 32 }}>
                         <Truck size={15} />
                       </div>
@@ -2014,11 +2332,80 @@ export function WarehouseManager({
           </div>
 
           {bankSub === "cash" ? (
+            <>
+            <div className="admin-card cash-carryover" style={{ marginTop: 12 }}>
+              <div className="admin-card__head">
+                <div>
+                  <h3 className="admin-card__title">
+                    <History size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
+                    Перенос налички и источники остатка
+                  </h3>
+                  <div className="admin-muted" style={{ marginTop: 4, fontSize: 10 }}>
+                    Наличка с прошлых дней автоматически входит в текущий баланс кассы.
+                  </div>
+                </div>
+                <span className="admin-badge admin-badge--green">
+                  С прошлых дней: {fmt(cashCarryover.previousDaysRemaining)} ₽
+                </span>
+              </div>
+              <div className="cash-carryover__stats">
+                <div><span>На начало дня</span><strong>{fmt(cashCarryover.openingBalance)} ₽</strong></div>
+                <div><span>Приход сегодня</span><strong className="bank-totalbar__in">+{fmt(cashCarryover.todayIncoming)} ₽</strong></div>
+                <div><span>Расход сегодня</span><strong className="bank-totalbar__out">−{fmt(cashCarryover.todayOutgoing + cashCarryover.todayCardTransfers)} ₽</strong></div>
+                <div><span>Сейчас в кассе</span><strong>{fmt(cashCarryover.currentBalance)} ₽</strong></div>
+              </div>
+              {cashCarryover.origins.length > 0 ? (
+                <div className="admin-table-wrap cash-carryover__origins">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Откуда поступило</th>
+                        <th>Дата</th>
+                        <th>Плательщик</th>
+                        <th style={{ textAlign: "right" }}>Было</th>
+                        <th style={{ textAlign: "right" }}>Осталось в кассе</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cashCarryover.origins.map((origin) => (
+                        <tr key={origin.paymentId}>
+                          <td>
+                            <Link
+                              href={`/${adminPath}/warehouse?tab=bank&payment=${origin.paymentId}`}
+                              prefetch={false}
+                              className="stock-origin-link"
+                            >
+                              ПЛ-{origin.number} →
+                            </Link>
+                            {origin.date < cashCarryover.date && (
+                              <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>
+                                с прошлых дней
+                              </span>
+                            )}
+                          </td>
+                          <td>{fmtDate(origin.date)}</td>
+                          <td>{origin.counterparty}</td>
+                          <td style={{ textAlign: "right" }}>{fmt(origin.originalAmount)} ₽</td>
+                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-pine)" }}>
+                            {fmt(origin.remainingAmount)} ₽
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="admin-empty" style={{ padding: 18 }}>
+                  <p>Остатка по наличным платежам нет</p>
+                </div>
+              )}
+            </div>
+
             <div className="admin-card wh-cashcollect" style={{ marginTop: 12 }}>
               <div className="admin-card__head">
                 <h3 className="admin-card__title">
                   <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                  Отчёт по сданной кассе
+                  Отчёт по закрытым сменам кассы
                 </h3>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <span className="admin-badge admin-badge--muted">
@@ -2028,20 +2415,20 @@ export function WarehouseManager({
                     <CreditCard size={10} /> На карту: {fmt(collectedBreakdown.transfer)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
-                    <Banknote size={10} /> Наличными: {fmt(collectedBreakdown.cash)} ₽
+                    <Banknote size={10} /> Перенесено в кассе: {fmt(collectedBreakdown.cash)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
-                    Сдано всего: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
+                    Размечено по сменам: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
                   </span>
                 </div>
               </div>
               <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
                 <div className="admin-muted" style={{ fontSize: 13 }}>
                   Кнопка «Сдать кассу» находится в верхнем блоке банка рядом с остатком наличных.
-                  В сдачу попадают <b>только наличные платежи</b> — безналичный счёт в банке
-                  к кассе не относится и не затрагивается. При сдаче каждый платёж помечается:
-                  <b> инкассация на карту</b> или <b>наличные</b> (виртуальная карта). Обе части
-                  списываются из кассы.
+                  В смену попадают <b>только наличные платежи</b> — безналичный счёт не
+                  затрагивается. Часть <b>на карту ЮМ</b> вычитается
+                  из кассы, а часть <b>наличными</b> остаётся в кассе и автоматически
+                  переносится на следующий день.
                 </div>
                 {collectionsSorted.length === 0 ? (
                   <div className="admin-empty" style={{ padding: 16 }}>
@@ -2054,23 +2441,31 @@ export function WarehouseManager({
                         <tr>
                           <th>Дата</th>
                           <th style={{ textAlign: "right" }}>На карту</th>
-                          <th style={{ textAlign: "right" }}>Наличными</th>
-                          <th style={{ textAlign: "right" }}>Всего</th>
+                          <th style={{ textAlign: "right" }}>Осталось в кассе</th>
+                          <th style={{ textAlign: "right" }}>Размечено</th>
                           <th>Комментарий</th>
                           <th></th>
                         </tr>
                       </thead>
                       <tbody>
                         {collectionsSorted.map((c) => {
-                          const transfer = Math.round((c.transferAmount || 0) * 100) / 100;
-                          // Старые записи без разбивки — полностью наличные.
+                          const legacyCollection = c.cashAmount == null;
+                          const transfer =
+                            Math.round(
+                              (legacyCollection
+                                ? c.amount || 0
+                                : c.transferAmount || 0) * 100
+                            ) / 100;
+                          // У старых записей разбивки не было и вся сумма
+                          // уменьшала кассу — не считаем её переносом.
                           const cashPart =
                             Math.round(
-                              (c.cashAmount != null
-                                ? c.cashAmount
-                                : (c.amount || 0) - transfer) * 100
+                              (legacyCollection ? 0 : c.cashAmount || 0) * 100
                             ) / 100;
                           const marked = (c.items || []).length;
+                          const noAccounting = (c.items || []).some(
+                            (item) => item.noAccounting
+                          );
                           const exp = c.expenses || [];
                           const expSum =
                             Math.round((c.expensesAmount || 0) * 100) / 100;
@@ -2110,6 +2505,24 @@ export function WarehouseManager({
                                   />
                                 )}
                                 {fmtDate(c.date)}
+                                {noAccounting && (
+                                  <span
+                                    className="admin-badge admin-badge--amber"
+                                    style={{ marginLeft: 6 }}
+                                    title="Платежи только скрыты из списка сдачи; баланс не менялся"
+                                  >
+                                    без учёта и движения денег
+                                  </span>
+                                )}
+                                {legacyCollection && (
+                                  <span
+                                    className="admin-badge admin-badge--muted"
+                                    style={{ marginLeft: 6 }}
+                                    title="Старая запись без разбивки: вся сумма была вычтена из кассы"
+                                  >
+                                    старый учёт
+                                  </span>
+                                )}
                                 {marked > 0 && (
                                   <span
                                     className="admin-badge admin-badge--muted"
@@ -2146,10 +2559,10 @@ export function WarehouseManager({
                                   disabled={collecting}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDeleteCollection(c.id);
+                                    handleDeleteCollection(c.id, noAccounting);
                                   }}
                                 >
-                                  <Trash2 size={13} /> Удалить
+                                  <Trash2 size={13} /> {noAccounting ? "Вернуть в список" : "Отменить закрытие"}
                                 </button>
                               </td>
                             </tr>
@@ -2172,10 +2585,14 @@ export function WarehouseManager({
                                       ) : (
                                         (c.items || []).map((it, i) => (
                                           <div key={`${c.id}-i${i}`} className="wh-cc-line">
-                                            <span>
+                                            <button
+                                              type="button"
+                                              className="wh-cc-payment-link"
+                                              onClick={() => setDetailPaymentId(it.paymentId)}
+                                            >
                                               {it.number ? `ПЛ-${it.number} · ` : ""}
                                               {it.counterparty || "Без контрагента"}
-                                            </span>
+                                            </button>
                                             <span className="wh-cc-line__val">
                                               {fmt(it.amount)} ₽
                                               {/* Разбитый платёж: показываем все части */}
@@ -2272,7 +2689,7 @@ export function WarehouseManager({
                                       </div>
                                       <div className="wh-cc-line">
                                         <span>
-                                          <Banknote size={11} /> Наличными
+                                          <Banknote size={11} /> Осталось в кассе
                                         </span>
                                         <span className="wh-cc-line__val">
                                           {fmt(cashPart)} ₽
@@ -2281,7 +2698,7 @@ export function WarehouseManager({
                                       <div className="wh-cc-total">
                                         Приход {fmt(income)} ₽
                                         {expSum > 0 && <> − траты {fmt(expSum)} ₽</>} ={" "}
-                                        <b>{fmt(Math.round(c.amount * 100) / 100)} ₽</b> сдано
+                                        <b>{fmt(Math.round(c.amount * 100) / 100)} ₽</b> размечено
                                       </div>
                                     </div>
                                   </div>
@@ -2292,7 +2709,7 @@ export function WarehouseManager({
                           );
                         })}
                         <tr className="wh-cashcollect__total">
-                          <td style={{ fontWeight: 800 }}>Итого сдано</td>
+                          <td style={{ fontWeight: 800 }}>Итого по сменам</td>
                           <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-steel)" }}>
                             {fmt(collectedBreakdown.transfer)} ₽
                           </td>
@@ -2310,8 +2727,112 @@ export function WarehouseManager({
                 )}
               </div>
             </div>
+            </>
           ) : (
             <>
+          {bankSub === "history" &&
+            (collectionsSorted.length > 0 || legacyCashClosures.length > 0) && (
+              <div className="admin-card bank-cash-postings">
+                <div className="admin-card__head">
+                  <div>
+                    <h3 className="admin-card__title">
+                      <Banknote size={15} style={{ verticalAlign: "middle", marginRight: 7 }} />
+                      Проведённые сдачи кассы
+                    </h3>
+                    <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
+                      Отдельные документы кассы — не банковские платежи
+                    </div>
+                  </div>
+                  <span className="admin-badge admin-badge--muted">
+                    {collectionsSorted.length + legacyCashClosures.length} док.
+                  </span>
+                </div>
+                <div className="bank-cash-postings__list">
+                  {legacyCashClosures.map((closure) => (
+                    <div key={closure.id} className="bank-cash-posting bank-cash-posting--legacy">
+                      <span className="bank-cash-posting__icon"><Archive size={15} /></span>
+                      <div className="bank-cash-posting__main">
+                        <div className="bank-cash-posting__top">
+                          <strong>Сдача кассы без инкассации · старое проведение</strong>
+                          <span className="admin-badge admin-badge--green">проведено</span>
+                          <span className="admin-badge admin-badge--amber">вне баланса</span>
+                        </div>
+                        <div className="bank-cash-posting__meta">
+                          <span>{fmtDateTime(closure.date)}</span>
+                          <span>{closure.paymentIds.length} платежей</span>
+                          <span>ПЛ-{closure.numbers.join(", ПЛ-")}</span>
+                        </div>
+                      </div>
+                      <strong className="bank-cash-posting__amount">{fmt(closure.amount)} ₽</strong>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        disabled={collecting}
+                        onClick={() =>
+                          handleRestoreLegacyClosure(
+                            closure.paymentIds,
+                            closure.amount
+                          )
+                        }
+                      >
+                        <RotateCcw size={12} /> Отменить проведение
+                      </button>
+                    </div>
+                  ))}
+                  {collectionsSorted.map((collection) => {
+                    const noAccounting = (collection.items || []).some(
+                      (item) => item.noAccounting
+                    );
+                    const documentAmount = noAccounting
+                      ? (collection.items || []).reduce(
+                          (sum, item) => sum + (item.amount || 0),
+                          0
+                        )
+                      : collection.amount;
+                    return (
+                      <div key={collection.id} className="bank-cash-posting">
+                        <span className="bank-cash-posting__icon"><Banknote size={15} /></span>
+                        <div className="bank-cash-posting__main">
+                          <div className="bank-cash-posting__top">
+                            <strong>
+                              {noAccounting
+                                ? "Закрытие старых платежей без движения денег"
+                                : "Сдача кассы"}
+                            </strong>
+                            <span className="admin-badge admin-badge--green">проведено</span>
+                            {noAccounting && (
+                              <span className="admin-badge admin-badge--blue">без учёта</span>
+                            )}
+                          </div>
+                          <div className="bank-cash-posting__meta">
+                            <span>{fmtDate(collection.date)}</span>
+                            <span>{(collection.items || []).length} платежей</span>
+                            {!noAccounting && (
+                              <>
+                                <span>на карту {fmt(collection.transferAmount || 0)} ₽</span>
+                                <span>в кассе {fmt(collection.cashAmount || 0)} ₽</span>
+                              </>
+                            )}
+                            {collection.note && <span>{collection.note}</span>}
+                          </div>
+                        </div>
+                        <strong className="bank-cash-posting__amount">{fmt(documentAmount)} ₽</strong>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost admin-btn--sm"
+                          disabled={collecting}
+                          onClick={() =>
+                            handleDeleteCollection(collection.id, noAccounting)
+                          }
+                        >
+                          <RotateCcw size={12} /> Отменить проведение
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           <div className="bank-toolbar">
             <div className="bank-toolbar__search" style={{ position: "relative" }}>
               <Search
@@ -2342,6 +2863,26 @@ export function WarehouseManager({
               <option value="incoming">Только приход</option>
               <option value="outgoing">Только расход</option>
             </select>
+            <label className="bank-toolbar__date">
+              <span>Дата от</span>
+              <input
+                type="date"
+                className="admin-input"
+                value={bankDateFrom}
+                max={bankDateTo || undefined}
+                onChange={(e) => setBankDateFrom(e.target.value)}
+              />
+            </label>
+            <label className="bank-toolbar__date">
+              <span>Дата до</span>
+              <input
+                type="date"
+                className="admin-input"
+                value={bankDateTo}
+                min={bankDateFrom || undefined}
+                onChange={(e) => setBankDateTo(e.target.value)}
+              />
+            </label>
             <button
               onClick={() => setBsort(bsort === "asc" ? "desc" : "asc")}
               className="admin-btn admin-btn--ghost"
@@ -2352,17 +2893,62 @@ export function WarehouseManager({
                 <ArrowUpNarrowWide size={14} />
               )}
             </button>
-            {(bq || bdir !== "all") && (
+            {(bq || bdir !== "all" || bankDateFrom || bankDateTo) && (
               <button
                 onClick={() => {
                   setBq("");
                   setBdir("all");
+                  setBankDateFrom("");
+                  setBankDateTo("");
                 }}
                 className="admin-btn admin-btn--ghost"
               >
                 <X size={14} />
               </button>
             )}
+          </div>
+
+          <div className="bank-period-presets">
+            <span>Быстрый период:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const today = localDateIso();
+                setBankDateFrom(today);
+                setBankDateTo(today);
+              }}
+            >
+              Сегодня
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const range = calendarMonthRange();
+                setBankDateFrom(range.from);
+                setBankDateTo(localDateIso());
+              }}
+            >
+              Этот месяц
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const range = calendarMonthRange(-1);
+                setBankDateFrom(range.from);
+                setBankDateTo(range.to);
+              }}
+            >
+              Прошлый месяц
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBankDateFrom("");
+                setBankDateTo("");
+              }}
+            >
+              Весь период
+            </button>
           </div>
 
           <div className="bank-totalbar">
@@ -2412,7 +2998,20 @@ export function WarehouseManager({
                   <div
                     key={p.id}
                     id={`payment-${p.id}`}
-                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}`}
+                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}`}
+                    role={p.entryKind === "payment" ? "button" : undefined}
+                    tabIndex={p.entryKind === "payment" ? 0 : undefined}
+                    onClick={(event) => {
+                      if (p.entryKind !== "payment") return;
+                      if ((event.target as HTMLElement).closest("a,button,input,label,select")) return;
+                      setDetailPaymentId(p.id);
+                    }}
+                    onKeyDown={(event) => {
+                      if (p.entryKind === "payment" && (event.key === "Enter" || event.key === " ")) {
+                        event.preventDefault();
+                        setDetailPaymentId(p.id);
+                      }
+                    }}
                   >
                     <div
                       className={`bank-pay__icon ${
@@ -2452,6 +3051,14 @@ export function WarehouseManager({
                         <span className="bank-pay__num">
                           {p.entryKind === "salary" ? `ЗП-${p.salary.id.slice(0, 6)}` : (p.invoiceNumber || `ПЛ-${p.number}`)}
                         </span>
+                        {p.entryKind === "salary" && isDebtSalaryComment(p.salary.comment) && (
+                          <span
+                            className="admin-badge admin-badge--amber"
+                            title="Списывает отдельный долг сотруднику и не входит в факт зарплаты месяца"
+                          >
+                            в счёт долга
+                          </span>
+                        )}
                         {p.entryKind === "payment" && p.invoiceNumber && (
                           <span
                             className="admin-badge admin-badge--muted"
@@ -2520,7 +3127,9 @@ export function WarehouseManager({
                           </div>
                         ) : (
                           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-kraft)" }}>
-                            Зарплата · {p.source === "cash" ? "касса" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
+                            {isDebtSalaryComment(p.salary.comment)
+                              ? "Выплата в счёт отдельного долга · не входит в факт месяца"
+                              : `Зарплата за ${monthLabel(p.salary.periodMonth || p.salary.date.slice(0, 7))}`} · {p.source === "cash" ? "касса" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
                           </div>
                         )}
                         {p.comment && (

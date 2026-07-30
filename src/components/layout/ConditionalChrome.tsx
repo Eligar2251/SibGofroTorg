@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { MessengerFloatingBanner } from "@/components/layout/MessengerFloatingBanner";
 import { PromotionPopups } from "@/components/promotions/PromotionPopups";
 import type { PublicPopupCampaign } from "@/lib/popup-campaign";
 
@@ -33,6 +34,7 @@ export function ConditionalChrome({
       <Header />
       <main style={{ minHeight: "60vh" }}>{children}</main>
       <Footer />
+      <MessengerFloatingBanner />
       <PromotionPopups initialCampaigns={popupCampaigns} />
     </>
   );

@@ -3,6 +3,10 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+// Адаптивный слой подключается после базовых стилей. Раньше mobile.css
+// импортировался в начале globals.css, поэтому последующие desktop-правила
+// перекрывали мобильную сетку и растягивали карточки на всю ширину.
+import "./mobile.css";
 
 import { CartProvider } from "@/context/CartContext";
 import { ConditionalChrome } from "@/components/layout/ConditionalChrome";

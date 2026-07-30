@@ -6,6 +6,12 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import {
+  hasAdminPermission,
+  parseAdminRole,
+  type AdminPermission,
+  type AdminRole,
+} from "@/lib/admin-rbac";
 
 function getAdminSecret(): Uint8Array {
   const fromEnv = process.env.ADMIN_SESSION_SECRET;
@@ -29,19 +35,19 @@ const COOKIE = "admin-session";
 
 export interface AdminSession {
   username: string;
-  role: string;
+  role: AdminRole;
   displayName: string;
 }
 
 export async function createSession(data: {
   username: string;
-  role: string;
+  role: AdminRole;
   displayName?: string;
 }) {
   const secret = getAdminSecret();
   const token = await new SignJWT({
     username: data.username,
-    role: data.role || "admin",
+    role: data.role,
     displayName: data.displayName || data.username,
   })
     .setProtectedHeader({ alg: "HS256" })
@@ -66,10 +72,13 @@ export async function verifySession(): Promise<AdminSession | null> {
 
   try {
     const { payload } = await jwtVerify(token, getAdminSecret());
+    const role = parseAdminRole(payload.role);
+    if (!role) return null;
     return {
       username: (payload.username as string) || "",
-      role: (payload.role as string) || "admin",
-      displayName: (payload.displayName as string) || (payload.username as string) || "",
+      role,
+      displayName:
+        (payload.displayName as string) || (payload.username as string) || "",
     };
   } catch {
     return null;
@@ -91,12 +100,10 @@ export async function requireAdminApi(): Promise<
   return session;
 }
 
-/** Проверка роли: менеджер не может удалять и видеть логи */
-export function hasPermission(session: AdminSession, action: string): boolean {
-  if (session.role === "admin") return true;
-  // Менеджер: может всё кроме удаления и просмотра логов
-  if (session.role === "manager") {
-    return !["delete", "view_logs", "manage_users"].includes(action);
-  }
-  return false;
+/** Единая проверка точечных прав для API-маршрутов. */
+export function hasPermission(
+  session: AdminSession,
+  action: AdminPermission | string
+): boolean {
+  return hasAdminPermission(session.role, action);
 }

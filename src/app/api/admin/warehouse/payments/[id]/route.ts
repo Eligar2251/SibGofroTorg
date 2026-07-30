@@ -1,7 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updatePayment, deletePayment } from "@/lib/warehouse";
+import { updatePayment, deletePayment, getPayments, getDeals, getReceipts } from "@/lib/warehouse";
 import { requireAdminApi, hasPermission } from "@/lib/auth";
 import { logAdminAction } from "@/lib/activity-log";
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+  if (!hasPermission(auth, "view_payment_details")) {
+    return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
+  }
+  try {
+    const { id } = await params;
+    const payments = await getPayments();
+    const payment = payments.find((item) => item.id === id);
+    if (!payment) {
+      return NextResponse.json({ error: "Платёж не найден" }, { status: 404 });
+    }
+    const [allDeals, allReceipts] = await Promise.all([
+      payment.dealIds.length ? getDeals() : Promise.resolve([]),
+      payment.receiptIds.length ? getReceipts() : Promise.resolve([]),
+    ]);
+    const dealIds = new Set(payment.dealIds.map(String));
+    const receiptIds = new Set(payment.receiptIds.map(String));
+    return NextResponse.json({
+      payment,
+      deals: allDeals.filter((deal) => dealIds.has(String(deal.id))),
+      receipts: allReceipts.filter((receipt) =>
+        receiptIds.has(String(receipt.id))
+      ),
+    });
+  } catch (error) {
+    console.error("Get payment details error:", error);
+    return NextResponse.json(
+      { error: "Не удалось загрузить платёж" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function PATCH(
   request: NextRequest,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   collectCash,
   closeOldCashPayments,
+  restoreClosedOldCashPayments,
   getCashCollections,
   getPendingCashPayments,
   normalizeCashKind,
@@ -33,6 +34,10 @@ export async function GET(request: NextRequest) {
         DEFAULT_CASH_CARD_HOLDER;
       return NextResponse.json({
         pending: cashData.pending,
+        // Платежи, которые старая версия ошибочно убрала из баланса.
+        // Показываем их в настройках сдачи с возможностью возврата.
+        closed: cashData.closed,
+        unlinkedCashBalance: cashData.unlinkedCashBalance,
         // Наличные траты (ЗП и прочее): уменьшают сумму к сдаче.
         expenses: cashData.expenses,
         cardHolder,
@@ -55,26 +60,42 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    // action=close — закрыть старые наличные платежи без инкассации.
-    // Нужно, когда инкассация ведётся с определённой даты, а в кассе
-    // висят более ранние платежи: сдавать их не надо, надо убрать.
+    // Откат ошибочного закрытия старой версии: возвращает наличный приход
+    // в баланс и снова показывает его в списке настройки смены.
+    if (body.action === "restore") {
+      const ids = Array.isArray(body.paymentIds) ? body.paymentIds : [];
+      const result = await restoreClosedOldCashPayments(ids);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "cash-collection",
+        "cash-restore",
+        `Возвращено ${result.restored} старых наличных платежей на ${result.amount} ₽`,
+        result
+      );
+      return NextResponse.json({ success: true, ...result });
+    }
+
+    // action=close — только убрать старые платежи из списка сдачи.
+    // Баланс и сами платежи новая версия не меняет.
     if (body.action === "close") {
       const ids = Array.isArray(body.paymentIds) ? body.paymentIds : [];
-      const res = await closeOldCashPayments(ids);
+      const res = await closeOldCashPayments(ids, body.date || null);
       await logAdminAction(
         auth.displayName,
         auth.role,
         "update",
         "cash-collection",
         "cash-close",
-        `Закрыто ${res.closed} наличных платежей на ${res.amount} ₽ без инкассации`,
-        { closed: res.closed, amount: res.amount }
+        `Закрыто ${res.closed} наличных платежей за ${res.date} на ${res.amount} ₽ без инкассации`,
+        { closed: res.closed, amount: res.amount, date: res.date }
       );
       return NextResponse.json({ success: true, ...res });
     }
 
     // Разметка платежей: [{ paymentId, kind: "card" | "cash" }]
-    // "card" — инкассация на карту, "cash" — наличные (виртуальная карта).
+    // "card" — инкассация на карту, "cash" — оставить в кассе на следующий день.
     const items = Array.isArray(body.items)
       ? body.items
           .map((it: any) => ({
@@ -92,7 +113,17 @@ export async function POST(request: NextRequest) {
           .filter((it: { paymentId: string }) => it.paymentId)
       : undefined;
 
-    const result = await collectCash(body.note || null, items);
+    const result = await collectCash(
+      body.note || null,
+      items,
+      body.date || null,
+      body.unlinkedCashAmount != null
+        ? {
+            amount: Number(body.unlinkedCashAmount) || 0,
+            kind: normalizeCashKind(body.unlinkedCashKind),
+          }
+        : null
+    );
 
     await logAdminAction(
       auth.displayName,
@@ -100,8 +131,9 @@ export async function POST(request: NextRequest) {
       "create",
       "cash-collection",
       "cash-collection",
-      `Сдана касса на ${result.amount} ₽ (наличными ${result.cashAmount} ₽, на карту ${result.transferAmount} ₽)`,
+      `Закрыта смена за ${result.date} на ${result.amount} ₽ (оставлено в кассе ${result.cashAmount} ₽, на карту ${result.transferAmount} ₽)`,
       {
+        date: result.date,
         amount: result.amount,
         cashAmount: result.cashAmount,
         cardAmount: result.transferAmount,

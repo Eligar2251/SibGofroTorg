@@ -10,6 +10,7 @@ import { ArrowRight, Loader2 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
+import { CatalogOrderNote } from "@/components/catalog/CatalogOrderNote";
 import { MobileCategorySelect } from "@/components/catalog/MobileCategorySelect";
 
 interface CategoryItem {
@@ -70,6 +71,7 @@ export function HomeCatalogSection({
           params.set("limit", "12");
         } else {
           params.set("featured", "1");
+          params.set("stock", "yes");
           params.set("limit", "12");
         }
 
@@ -179,12 +181,15 @@ export function HomeCatalogSection({
           {/* Правая колонка: товары */}
           <div className="home-catalog-unified__main">
             <div className="catalog-top home-catalog-unified__top">
-              <h2 className="section-title" style={{ margin: 0 }}>
-                {title}
-                <span className="catalog-top__count" style={{ marginLeft: 8 }}>
-                  {loading ? "…" : `${products.length}`}
-                </span>
-              </h2>
+              <div className="catalog-heading-row">
+                <h2 className="section-title" style={{ margin: 0 }}>
+                  {title}
+                  <span className="catalog-top__count" style={{ marginLeft: 8 }}>
+                    {loading ? "…" : `${products.length}`}
+                  </span>
+                </h2>
+                <CatalogOrderNote />
+              </div>
               {activeSlug && (
                 <Link
                   href={`/catalog/${activeSlug}`}

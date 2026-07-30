@@ -9,9 +9,19 @@
 
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
 
-export function DashboardRealtime() {
+export function DashboardRealtime({ limited = false }: { limited?: boolean }) {
   useAdminRealtime({
-    tables: ["orders", "wastepaper_requests", "bank_payments"],
+    tables: limited
+      ? ["bank_payments", "salaries", "cash_collections", "customer_deals"]
+      : [
+          "orders",
+          "wastepaper_requests",
+          "bank_payments",
+          "salaries",
+          "cash_collections",
+          "customer_deals",
+          "warehouse_receipts",
+        ],
     pollIntervalMs: 30_000,
   });
 

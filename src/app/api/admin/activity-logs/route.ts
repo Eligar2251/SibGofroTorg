@@ -1,6 +1,6 @@
 // src/app/api/admin/activity-logs/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminApi } from "@/lib/auth";
+import { hasPermission, requireAdminApi } from "@/lib/auth";
 import { getAdminDb } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,9 @@ function mapLog(row: any) {
 export async function GET(request: NextRequest) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
+  if (!hasPermission(auth, "view_logs")) {
+    return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
+  }
 
   try {
     const { searchParams } = new URL(request.url);

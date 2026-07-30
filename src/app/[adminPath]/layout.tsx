@@ -6,9 +6,11 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { verifySession } from "@/lib/auth";
 // Стили админки грузятся только здесь, а не на всём сайте (раньше
 // admin.css импортировался в globals.css и попадал в бандл каждой страницы).
 import "../admin.css";
+import "../admin-users.css";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
@@ -30,5 +32,15 @@ export default async function AdminLayout({
     notFound();
   }
 
-  return <AdminShell adminPath={ADMIN_PATH}>{children}</AdminShell>;
+  const session = await verifySession();
+
+  return (
+    <AdminShell
+      adminPath={ADMIN_PATH}
+      role={session?.role ?? null}
+      displayName={session?.displayName ?? null}
+    >
+      {children}
+    </AdminShell>
+  );
 }

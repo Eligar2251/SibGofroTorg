@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
+import { CatalogOrderNote } from "@/components/catalog/CatalogOrderNote";
 import { MobileCategorySelect } from "@/components/catalog/MobileCategorySelect";
 
 interface CategoryItem {
@@ -346,8 +347,11 @@ export function CatalogShopClient({
 
           <div>
             <div className="catalog-toolbar2">
-              <div>
-                <h1 className="catalog-title">{title}</h1>
+              <div className="catalog-toolbar2__heading">
+                <div className="catalog-heading-row catalog-heading-row--page">
+                  <h1 className="catalog-title">{title}</h1>
+                  <CatalogOrderNote />
+                </div>
                 <p className="catalog-count">
                   {loading ? "Загрузка..." : `${products.length} товаров`}
                   {q ? <span> по запросу «{q}»</span> : null}

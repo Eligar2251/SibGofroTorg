@@ -8,6 +8,7 @@ import { getAdminDb } from "@/lib/supabase";
 import { hashPassword, verifyPassword } from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { logActivity } from "@/lib/activity-log";
+import { parseAdminRole } from "@/lib/admin-rbac";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
@@ -95,15 +96,26 @@ export async function POST(
       );
     }
 
+    // У старых администраторов колонка role могла быть пустой — это admin.
+    // Неизвестную роль никогда не повышаем до admin: такой аккаунт должен
+    // быть исправлен в БД, иначе JWT мог бы получить лишние права.
+    const role = parseAdminRole(admin.role ?? "admin");
+    if (!role) {
+      return NextResponse.json(
+        { error: "Для аккаунта указана неизвестная роль" },
+        { status: 403 }
+      );
+    }
+
     await createSession({
       username,
-      role: admin.role || "admin",
+      role,
       displayName: admin.display_name || username,
     });
 
     await logActivity({
       adminName: admin.display_name || username,
-      adminRole: admin.role || "admin",
+      adminRole: role,
       action: "login",
       entityType: "settings",
       entityId: admin.id,
@@ -111,7 +123,7 @@ export async function POST(
       ipAddress: clientIp(request),
     });
 
-    return NextResponse.json({ success: true, role: admin.role || "admin" });
+    return NextResponse.json({ success: true, role });
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });

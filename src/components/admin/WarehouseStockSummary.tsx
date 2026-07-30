@@ -1,0 +1,325 @@
+"use client";
+
+import Link from "next/link";
+import {
+  AlertTriangle,
+  Boxes,
+  Loader2,
+  PackageCheck,
+} from "lucide-react";
+import type { ProductStockSummary } from "@/lib/warehouse-shared";
+
+const fmt = (value: number) => value.toLocaleString("ru-RU");
+
+function fmtDate(raw: string | null | undefined): string {
+  if (!raw) return "—";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+const dealStatusBadge: Record<string, string> = {
+  new: "admin-badge admin-badge--amber",
+  completed: "admin-badge admin-badge--green",
+  cancelled: "admin-badge admin-badge--red",
+};
+
+const dealStatusLabel: Record<string, string> = {
+  new: "Новый",
+  completed: "Отпущен",
+  cancelled: "Отменён",
+};
+
+export function ProductStockSummaryPanel({
+  adminPath,
+  summary,
+  loading,
+  error,
+  onRetry,
+}: {
+  adminPath: string;
+  summary?: ProductStockSummary;
+  loading: boolean;
+  error?: string;
+  onRetry: () => void;
+}) {
+  if (loading && !summary) {
+    return (
+      <div className="stock-summary__state" role="status">
+        <Loader2 size={17} className="animate-spin" />
+        Загружаем все заказы и поступления…
+      </div>
+    );
+  }
+
+  if (error && !summary) {
+    return (
+      <div className="stock-summary__state stock-summary__state--error">
+        <AlertTriangle size={17} />
+        <span>{error}</span>
+        <button
+          type="button"
+          className="admin-btn admin-btn--ghost admin-btn--sm"
+          onClick={onRetry}
+        >
+          Повторить
+        </button>
+      </div>
+    );
+  }
+
+  if (!summary) return null;
+
+  const hasOwnStock = summary.ownStockQty > 0.009;
+  const hasAccountingShortage = summary.ownStockQty < -0.009;
+
+  return (
+    <div className="stock-summary">
+      <div className="stock-summary__head">
+        <div>
+          <span className="stock-summary__eyebrow">Расширенная сводка товара</span>
+          <strong>Все заказы и поступления, включая архивные</strong>
+        </div>
+        <span className="admin-badge admin-badge--muted">
+          {summary.deals.length} зак. · {summary.receipts.length} пост.
+        </span>
+      </div>
+
+      <div className="stock-summary__stats">
+        <div>
+          <span>Сейчас на складе</span>
+          <strong>{fmt(summary.currentStockQty)} шт.</strong>
+        </div>
+        <div>
+          <span>Ещё отгрузить по заказам</span>
+          <strong>{fmt(summary.pendingOrderQty)} шт.</strong>
+        </div>
+        <div
+          className={
+            summary.shortageQty > 0
+              ? "stock-summary__stat--danger"
+              : "stock-summary__stat--ok"
+          }
+        >
+          <span>Недостача для заказов</span>
+          <strong>
+            {summary.shortageQty > 0
+              ? `${fmt(summary.shortageQty)} шт.`
+              : "Нет"}
+          </strong>
+        </div>
+        <div>
+          <span>В активных поступлениях</span>
+          <strong>{fmt(summary.draftReceiptQty)} шт.</strong>
+        </div>
+      </div>
+
+      <div
+        className={`stock-summary__balance${
+          hasAccountingShortage
+            ? " stock-summary__balance--danger"
+            : hasOwnStock
+              ? " stock-summary__balance--own"
+              : " stock-summary__balance--ok"
+        }`}
+      >
+        {hasAccountingShortage ? (
+          <>
+            <AlertTriangle size={15} />
+            <span>
+              <b>Недостача по учёту: {fmt(Math.abs(summary.ownStockQty))} шт.</b>
+              Проведённые поступления, отгрузки и текущий остаток не сходятся —
+              проверьте ручные правки или ревизию.
+            </span>
+          </>
+        ) : hasOwnStock ? (
+          <>
+            <Boxes size={15} />
+            <span>
+              <b>Наши остатки: {fmt(summary.ownStockQty)} шт.</b>
+              Эта часть не привязана к поступлениям: товар внесли руками или он
+              был на складе до начала учёта.
+            </span>
+          </>
+        ) : (
+          <>
+            <PackageCheck size={15} />
+            <span>
+              <b>Остаток сходится.</b> Текущий склад подтверждён проведёнными
+              поступлениями и отгрузками.
+            </span>
+          </>
+        )}
+        <small>
+          {hasAccountingShortage ? (
+            <>
+              Проверка: {fmt(summary.postedReceiptQty)} поступило −{" "}
+              {fmt(summary.shippedQty)} отгружено −{" "}
+              {fmt(Math.abs(summary.ownStockQty))} недостача ={" "}
+              {fmt(summary.currentStockQty)} на складе.
+            </>
+          ) : (
+            <>
+              Проверка: {fmt(summary.postedReceiptQty)} поступило −{" "}
+              {fmt(summary.shippedQty)} отгружено + {fmt(summary.ownStockQty)} наши
+              остатки = {fmt(summary.currentStockQty)} на складе.
+            </>
+          )}
+        </small>
+      </div>
+
+      <section className="stock-summary__section">
+        <div className="stock-summary__section-head">
+          <div>
+            <strong>Заказы с этим товаром</strong>
+            <span>Показываются активные, отпущенные и отменённые</span>
+          </div>
+          <span>
+            Заказано {fmt(summary.orderedQty)} · отгружено{" "}
+            {fmt(summary.shippedQty)} · осталось {fmt(summary.pendingOrderQty)} шт.
+          </span>
+        </div>
+        {summary.deals.length > 0 ? (
+          <div className="admin-table-wrap stock-summary__table-wrap">
+            <table className="admin-table stock-summary__table">
+              <thead>
+                <tr>
+                  <th>Заказ</th>
+                  <th>Дата</th>
+                  <th>Покупатель</th>
+                  <th>Статус</th>
+                  <th style={{ textAlign: "right" }}>Заказано</th>
+                  <th style={{ textAlign: "right" }}>Отгружено</th>
+                  <th style={{ textAlign: "right" }}>Не отгружено</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.deals.map((deal) => (
+                  <tr key={deal.id}>
+                    <td>
+                      <Link
+                        href={`/${adminPath}/warehouse?tab=deals&deal=${deal.id}`}
+                        prefetch={false}
+                        className="stock-origin-link"
+                      >
+                        ЗК-{deal.number} →
+                      </Link>
+                    </td>
+                    <td>{fmtDate(deal.date)}</td>
+                    <td>{deal.customerName || "—"}</td>
+                    <td>
+                      <span
+                        className={
+                          dealStatusBadge[deal.status] ||
+                          "admin-badge admin-badge--muted"
+                        }
+                      >
+                        {dealStatusLabel[deal.status] || deal.status}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {fmt(deal.orderedQty)} шт.
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {fmt(deal.shippedQty)} шт.
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {deal.status === "cancelled" ? (
+                        <span className="admin-muted">отменён</span>
+                      ) : deal.remainingQty > 0 ? (
+                        <strong className="stock-summary__missing">
+                          {fmt(deal.remainingQty)} шт.
+                        </strong>
+                      ) : (
+                        <span className="stock-summary__done">✓ всё</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="stock-summary__empty">
+            Заказов с этим товаром пока нет.
+          </div>
+        )}
+      </section>
+
+      <section className="stock-summary__section">
+        <div className="stock-summary__section-head">
+          <div>
+            <strong>Все поступления</strong>
+            <span>Архивные поступления не скрываются</span>
+          </div>
+          <span>
+            На склад проведено {fmt(summary.postedReceiptQty)} · ожидается{" "}
+            {fmt(summary.draftReceiptQty)} шт.
+          </span>
+        </div>
+        {summary.receipts.length > 0 ? (
+          <div className="admin-table-wrap stock-summary__table-wrap">
+            <table className="admin-table stock-summary__table">
+              <thead>
+                <tr>
+                  <th>Поступление</th>
+                  <th>Дата</th>
+                  <th>Поставщик</th>
+                  <th>Статус</th>
+                  <th style={{ textAlign: "right" }}>Количество</th>
+                  <th style={{ textAlign: "right" }}>Цена за шт.</th>
+                  <th style={{ textAlign: "right" }}>Сумма</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.receipts.map((receipt) => (
+                  <tr key={receipt.id}>
+                    <td>
+                      <Link
+                        href={`/${adminPath}/warehouse?tab=receipts&receipt=${receipt.id}`}
+                        prefetch={false}
+                        className="stock-origin-link"
+                      >
+                        ПО-{receipt.number} →
+                      </Link>
+                    </td>
+                    <td>{fmtDate(receipt.date)}</td>
+                    <td>{receipt.supplier || "—"}</td>
+                    <td>
+                      {receipt.status === "posted" ? (
+                        <span className="admin-badge admin-badge--green">
+                          проведено · архив
+                        </span>
+                      ) : (
+                        <span className="admin-badge admin-badge--amber">
+                          активное
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <strong>{fmt(receipt.quantity)} шт.</strong>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {fmt(receipt.unitPrice)} ₽
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {fmt(receipt.lineTotal)} ₽
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="stock-summary__empty">
+            Поступлений с этим товаром пока нет.
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}

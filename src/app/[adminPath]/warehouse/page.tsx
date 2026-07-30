@@ -94,6 +94,7 @@ export default async function AdminWarehousePage({
     receipt?: string;
     deal?: string;
     payment?: string;
+    transport?: string;
   }>;
 }) {
   const { adminPath } = await params;
@@ -107,16 +108,23 @@ export default async function AdminWarehousePage({
   // Раньше при открытии «Склад» читались сразу поставки, заказы, банк,
   // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
   // только необходимые ей коллекции.
-  const needStock = ["stock", "deals", "supplies", "receipts"].includes(initialTab) || !!sp.product;
-  const needReceipts = ["supplies", "receipts", "bank", "counterparties"].includes(initialTab) || !!sp.receipt;
-  const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries"].includes(initialTab) || !!sp.deal;
-  const needPayments = ["bank", "deals", "supplies"].includes(initialTab) || !!sp.payment;
+  const needStock = ["stock", "deals", "supplies", "receipts", "reports"].includes(initialTab) || !!sp.product;
+  const needReceipts = ["supplies", "receipts", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
+  const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
+  // Платежи нужны и на актуальной вкладке `receipts`: по ним карточки
+  // активных и архивных поступлений получают пометки «Оплачен/Оплачено».
+  // Старый ключ `supplies` оставляем для совместимости со ссылками.
+  const needPayments =
+    ["bank", "deals", "supplies", "receipts", "reports"].includes(initialTab) ||
+    !!sp.payment ||
+    !!sp.receipt;
   const needEmployees = initialTab === "salaries" || initialTab === "deliveries";
-  const needSalaries = initialTab === "salaries" || initialTab === "bank";
+  const needSalaries = initialTab === "salaries" || initialTab === "bank" || initialTab === "reports";
   const needCounterparties = ["counterparties", "supplies", "deals", "receipts", "bank"].includes(initialTab);
   const needClients = initialTab === "counterparties";
-  const needTransports = initialTab === "deliveries";
-  const needCashCollections = initialTab === "bank";
+  const needTransports =
+    initialTab === "deliveries" || initialTab === "reports" || !!sp.transport;
+  const needCashCollections = initialTab === "bank" || initialTab === "reports";
 
   const [
     stock,
@@ -140,7 +148,9 @@ export default async function AdminWarehousePage({
     needCounterparties ? getCounterparties({ includeSupplierPrices: initialTab === "suppliers" || initialTab === "receipts" || initialTab === "deals" || initialTab === "bank" }) : Promise.resolve([]),
     sp.receipt ? getReceiptById(sp.receipt) : Promise.resolve(null),
     needClients ? getClientsForWarehouse() : Promise.resolve([]),
-    needTransports ? getTransports({ limit: 200 }) : Promise.resolve([]),
+    needTransports
+      ? getTransports({ limit: initialTab === "reports" ? 1000 : 200 })
+      : Promise.resolve([]),
     needCashCollections ? getCashCollections() : Promise.resolve([]),
   ]);
 
@@ -285,6 +295,7 @@ export default async function AdminWarehousePage({
       focusReceiptId={sp.receipt || null}
       focusProductId={sp.product || null}
       focusPaymentId={sp.payment || null}
+      focusTransportId={sp.transport || null}
       stock={stock}
       receipts={receipts}
       deals={deals}

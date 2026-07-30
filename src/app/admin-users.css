@@ -1,0 +1,260 @@
+/* Управление аккаунтами админ-панели. Подключается только admin-layout. */
+.admin-settings-section {
+  margin-top: 2.5rem;
+}
+
+.admin-users-card {
+  overflow: hidden;
+}
+
+.admin-users-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.admin-users-card__head > div:first-child {
+  min-width: 0;
+  max-width: 760px;
+}
+
+.admin-users-card__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  color: var(--adm-steel);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-users-card__head .admin-h2 {
+  margin-bottom: 5px;
+}
+
+.admin-users-card__head .admin-sub {
+  margin: 0;
+}
+
+.admin-users-card__actions,
+.admin-user-row__buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.admin-users-card__actions {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.admin-users-card__message {
+  margin: 14px 18px 0;
+}
+
+.admin-users-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  padding: 24px;
+  color: var(--adm-sand);
+  font-size: 12px;
+}
+
+.admin-users-list {
+  display: grid;
+}
+
+.admin-user-row {
+  display: grid;
+  grid-template-columns:
+    auto
+    minmax(150px, 0.8fr)
+    minmax(220px, 1.25fr)
+    minmax(150px, 0.75fr)
+    auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 13px 18px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.admin-user-row:first-child {
+  border-top: 0;
+}
+
+.admin-user-row--disabled {
+  background: var(--adm-paper);
+  opacity: 0.72;
+}
+
+.admin-user-row__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px;
+  color: var(--adm-steel);
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+  border-radius: 50%;
+}
+
+.admin-user-row__identity,
+.admin-user-row__role,
+.admin-user-row__status {
+  min-width: 0;
+}
+
+.admin-user-row__identity > span,
+.admin-user-row__role small,
+.admin-user-row__status small {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--adm-sand);
+  font-size: 9px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.admin-user-row__identity > span {
+  white-space: nowrap;
+}
+
+.admin-user-row__name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-user-row__name strong {
+  overflow: hidden;
+  color: var(--adm-ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-row__buttons {
+  justify-content: flex-end;
+}
+
+.admin-user-modal {
+  max-width: 720px;
+}
+
+.admin-user-form {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-user-passwords {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-user-password-control {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.admin-user-password-control .admin-input {
+  min-width: 0;
+  padding-right: 42px;
+}
+
+.admin-user-password-control > button {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  color: var(--adm-sand);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  transform: translateY(-50%);
+}
+
+.admin-user-password-control > button:hover {
+  color: var(--adm-ink);
+  background: var(--adm-paper-deep);
+}
+
+.admin-user-security-note {
+  padding: 10px 12px;
+  color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+  border: 1px solid var(--adm-pine-line);
+  border-radius: var(--adm-r-sm);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1120px) {
+  .admin-user-row {
+    grid-template-columns: auto minmax(150px, 1fr) minmax(210px, 1.2fr);
+  }
+
+  .admin-user-row__status {
+    grid-column: 2;
+  }
+
+  .admin-user-row__buttons {
+    grid-column: 3;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-users-card__head {
+    flex-direction: column;
+    padding: 15px;
+  }
+
+  .admin-users-card__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .admin-user-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    padding: 13px 14px;
+  }
+
+  .admin-user-row__role,
+  .admin-user-row__status,
+  .admin-user-row__buttons {
+    grid-column: 2;
+  }
+
+  .admin-user-row__buttons {
+    justify-content: flex-start;
+  }
+
+  .admin-user-passwords {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .admin-users-card__actions .admin-btn,
+  .admin-user-row__buttons .admin-btn {
+    flex: 1 1 auto;
+  }
+}

@@ -21,12 +21,37 @@ import {
   Pencil,
   Settings,
   AlertTriangle,
+  Banknote,
+  CreditCard,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Truck,
+  MapPin,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getAdminDb } from "@/lib/supabase";
+import { verifySession } from "@/lib/auth";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections } from "@/lib/warehouse";
-import { getBankSummary, getDealPaidMap, getReceiptPaidMap } from "@/lib/warehouse-shared";
+import {
+  getBankSummary,
+  getDealPaidMap,
+  getReceiptPaidMap,
+  getCashCarryoverSummary,
+  dealNeedsDelivery,
+  isSalaryExcludedFromBalance,
+  isDebtSalaryComment,
+  stripSalaryMetaTags,
+  type BankPayment,
+  type Salary,
+  type CashCollection,
+} from "@/lib/warehouse-shared";
 import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
+import {
+  DashboardFinanceHistory,
+  type DashboardFinanceRow,
+} from "@/components/admin/DashboardFinanceHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +94,43 @@ function formatDate(raw: any): string {
   return "";
 }
 
+const money = (value: number) => `${value.toLocaleString("ru-RU")} ₽`;
+
+function financePeriodLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  if (!year || !month) return key;
+  const label = new Date(year, month - 1, 1).toLocaleDateString("ru-RU", {
+    month: "long",
+    year: "numeric",
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function salaryMonthLabel(salary: Salary): string {
+  return financePeriodLabel(salary.periodMonth || salary.date.slice(0, 7));
+}
+
+function paymentPurpose(payment: BankPayment): string {
+  if (payment.direction === "incoming" && payment.dealIds.length > 0) {
+    return "Оплата заказа";
+  }
+  if (payment.direction === "outgoing" && payment.receiptIds.length > 0) {
+    return "Оплата поставки";
+  }
+  if (payment.type === "refund") return "Возврат";
+  if (payment.type === "deposit") return "Внесение";
+  if (payment.type === "transfer") return "Перевод";
+  if (payment.type === "cash") {
+    return payment.direction === "incoming" ? "Приход наличными" : "Расход наличными";
+  }
+  return payment.direction === "incoming" ? "Прочий приход" : "Прочий расход";
+}
+
 export default async function AdminDashboard() {
+  const session = await verifySession();
+  if (!session) redirect(`/${ADMIN_PATH}/login`);
+  const isLawyer = session.role === "lawyer";
+
   // Для дашборда читаем только 50 последних заявок. Общие показатели
   // получаем агрегатами Supabase: это значительно дешевле, чем загружать
   // целиком коллекции users и orders при каждом открытии панели.
@@ -92,25 +153,25 @@ export default async function AdminDashboard() {
     receipts,
     cashCollections,
   ] = await Promise.all([
-    // includeHidden: считаем ВСЕ товары, как и «Учёт → Остатки»
-    // (getWarehouseStock), чтобы число позиций на дашборде и в учёте
-    // совпадало (раньше тут были только видимые — числа расходились).
-    getProducts({ includeHidden: true }),
-    getOrders({ limit: 50 }),
-    getAllCategories(),
-    getPromotions(),
-    countByStatus("orders", "new"),
-    countByStatus("wastepaper_requests", "new"),
-    countByStatus("orders", "in_progress"),
-    countByStatus("wastepaper_requests", "in_progress"),
-    countByStatus("orders", "completed"),
-    countByStatus("wastepaper_requests", "completed"),
-    countByStatus("orders", "rejected"),
-    countByStatus("wastepaper_requests", "rejected"),
+    // Юристу не показываются товары, заявки, акции и склад, поэтому эти
+    // данные для его ограниченного дашборда даже не запрашиваем.
+    // includeHidden: для остальных ролей считаем ВСЕ товары, как и учёт.
+    isLawyer ? Promise.resolve([]) : getProducts({ includeHidden: true }),
+    isLawyer ? Promise.resolve([]) : getOrders({ limit: 50 }),
+    isLawyer ? Promise.resolve([]) : getAllCategories(),
+    isLawyer ? Promise.resolve([]) : getPromotions(),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "new"),
+    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "new"),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "in_progress"),
+    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "in_progress"),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "completed"),
+    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "completed"),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "rejected"),
+    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "rejected"),
     getPayments(),
     getSalaries(),
     getDeals(),
-    getReceipts(),
+    isLawyer ? Promise.resolve([]) : getReceipts(),
     getCashCollections(),
   ]);
 
@@ -122,6 +183,18 @@ export default async function AdminDashboard() {
     newOrdersCount + inProgressOrdersCount + completedOrdersCount + rejectedOrdersCount;
   // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
   const bankSummary = getBankSummary(payments, salaries, cashCollections);
+  const dashboardDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Novosibirsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const cashCarryover = getCashCarryoverSummary(
+    payments,
+    salaries,
+    cashCollections,
+    dashboardDate
+  );
   const totalRevenue = bankSummary.balance;
   const recentOrders = recentOrderPool.slice(0, 8);
   const dealPaidMap = getDealPaidMap(payments);
@@ -156,9 +229,125 @@ export default async function AdminDashboard() {
     (!p.dealIds || p.dealIds.length === 0)
   );
 
+  // ── Полная лента фактических движений по счетам ────────────────
+  const paymentFinanceRows: DashboardFinanceRow[] = payments
+    .filter((payment) => payment.isPaid && !payment.excludeFromBalance)
+    .map((payment) => ({
+      id: `payment-${payment.id}`,
+      date: payment.paidAt || payment.date,
+      direction: payment.direction,
+      account: payment.type === "cash" ? "cash" : "bank",
+      category: paymentPurpose(payment),
+      counterparty: payment.counterparty || "Без контрагента",
+      amount: payment.amount,
+      detail:
+        payment.comment ||
+        [
+          ...payment.dealNumbers.map((number) => `ЗК-${number}`),
+          ...payment.receiptNumbers.map((number) => `ПО-${number}`),
+        ].join(" · "),
+      href: `/${ADMIN_PATH}/warehouse?tab=bank&payment=${payment.id}`,
+      paymentId: payment.id,
+      dealLinks: payment.dealIds.map((id, index) => ({
+        id,
+        number: payment.dealNumbers[index] || 0,
+      })),
+      receiptLinks: payment.receiptIds.map((id, index) => ({
+        id,
+        number: payment.receiptNumbers[index] || 0,
+      })),
+    }));
+
+  const salaryFinanceRows: DashboardFinanceRow[] = salaries
+    .filter(
+      (salary) => salary.isPaid && !isSalaryExcludedFromBalance(salary.comment)
+    )
+    .map((salary) => ({
+      id: `salary-${salary.id}`,
+      date: salary.paidAt || salary.date,
+      direction: "outgoing",
+      account: salary.source,
+      category: isDebtSalaryComment(salary.comment)
+        ? "Выплата в счёт долга"
+        : "Зарплата",
+      counterparty: salary.employeeName,
+      amount: salary.amount,
+      detail: [
+        isDebtSalaryComment(salary.comment)
+          ? "не входит в факт зарплаты месяца"
+          : `за ${salaryMonthLabel(salary)}`,
+        stripSalaryMetaTags(salary.comment),
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      href: `/${ADMIN_PATH}/warehouse?tab=salaries`,
+    }));
+
+  const collectionFinanceRows: DashboardFinanceRow[] = (
+    cashCollections as CashCollection[]
+  )
+    .map((collection) => {
+      const legacy = collection.cashAmount == null;
+      const amount = legacy
+        ? Number(collection.amount) || 0
+        : Number(collection.transferAmount) || 0;
+      return {
+        id: `collection-${collection.id}`,
+        date: collection.date,
+        direction: "outgoing" as const,
+        account: "cash" as const,
+        category: legacy
+          ? "Сдача кассы (старый учёт)"
+          : "Инкассация на карту ЮМ",
+        counterparty: legacy ? "Сдача кассы" : "Карта ЮМ",
+        amount,
+        detail: collection.note || "Закрытие смены кассы",
+        href: `/${ADMIN_PATH}/warehouse?tab=bank`,
+      };
+    })
+    .filter((row) => row.amount > 0);
+
+  const financeRows: DashboardFinanceRow[] = [
+    ...paymentFinanceRows,
+    ...salaryFinanceRows,
+    ...collectionFinanceRows,
+  ];
+  const financeIncoming = financeRows
+    .filter((row) => row.direction === "incoming")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const financeOutgoing = financeRows
+    .filter((row) => row.direction === "outgoing")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const bankIncoming = financeRows
+    .filter((row) => row.account === "bank" && row.direction === "incoming")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const bankOutgoing = financeRows
+    .filter((row) => row.account === "bank" && row.direction === "outgoing")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const cashIncoming = financeRows
+    .filter((row) => row.account === "cash" && row.direction === "incoming")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const cashOutgoing = financeRows
+    .filter((row) => row.account === "cash" && row.direction === "outgoing")
+    .reduce((sum, row) => sum + row.amount, 0);
+
+  // На дашборде нужны только оплаченные заказы, которые ещё действительно
+  // надо доставить. Отменённые и уже полностью отгруженные не показываем.
+  const paidDeliveryDeals = deals
+    .filter((deal) => {
+      if (!deal.hasDelivery || !dealNeedsDelivery(deal)) return false;
+      const paid = dealPaidMap.get(deal.id) || 0;
+      return deal.total > 0 && paid + 0.009 >= deal.total;
+    })
+    .sort((a, b) => {
+      const aDate = a.deliveryPlannedDate || a.date;
+      const bDate = b.deliveryPlannedDate || b.date;
+      return aDate.localeCompare(bDate) || b.number - a.number;
+    });
+
   return (
     <div>
-      <DashboardRealtime />
+      <DashboardRealtime limited={isLawyer} />
       <div
         style={{
           display: "flex",
@@ -170,7 +359,7 @@ export default async function AdminDashboard() {
         }}
       >
         <h1 className="admin-h1" style={{ margin: 0 }}>
-          Панель управления
+          {isLawyer ? "Финансы и перевозки" : "Панель управления"}
         </h1>
         <div
           style={{ fontSize: 13, color: "var(--adm-muted)" }}
@@ -184,6 +373,7 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Основная статистика */}
+      {!isLawyer && (
       <div className="admin-stat-grid" style={{ marginBottom: 24 }}>
         {[
           {
@@ -298,7 +488,201 @@ export default async function AdminDashboard() {
           </Link>
         ))}
       </div>
+      )}
 
+      <div className="dash-report-grid">
+      {/* Полная аналитика по банку и кассе */}
+      <section className="admin-card dash-finance">
+        <div className="dash-section-head">
+          <div>
+            <span className="dash-section-kicker">Финансовая отчётность</span>
+            <h2>Банковские счета: приход и расход</h2>
+            <p>Фактические проведённые операции за весь период учёта.</p>
+          </div>
+          {!isLawyer && (
+            <Link
+              href={`/${ADMIN_PATH}/warehouse?tab=bank`}
+              className="admin-btn admin-btn--ghost"
+              prefetch={false}
+            >
+              <ExternalLink size={13} /> Открыть банк
+            </Link>
+          )}
+        </div>
+
+        <div className="dash-finance-totals">
+          <div className="dash-finance-total dash-finance-total--in">
+            <span className="dash-finance-total__icon" aria-hidden="true">
+              <ArrowDownLeft size={18} />
+            </span>
+            <span className="dash-finance-total__content">
+              <span>Приход всего</span>
+              <strong>+{money(financeIncoming)}</strong>
+            </span>
+          </div>
+          <div className="dash-finance-total dash-finance-total--out">
+            <span className="dash-finance-total__icon" aria-hidden="true">
+              <ArrowUpRight size={18} />
+            </span>
+            <span className="dash-finance-total__content">
+              <span>Расход всего</span>
+              <strong>−{money(financeOutgoing)}</strong>
+            </span>
+          </div>
+          <div className="dash-finance-total dash-finance-total--bank">
+            <span className="dash-finance-total__icon" aria-hidden="true">
+              <CreditCard size={18} />
+            </span>
+            <span className="dash-finance-total__content">
+              <span>Расчётный счёт сейчас</span>
+              <strong>{money(bankSummary.bankBalance)}</strong>
+            </span>
+          </div>
+          <div className="dash-finance-total dash-finance-total--cash">
+            <span className="dash-finance-total__icon" aria-hidden="true">
+              <Banknote size={18} />
+            </span>
+            <span className="dash-finance-total__content">
+              <span>Касса сейчас</span>
+              <strong>{money(bankSummary.cashBalance)}</strong>
+            </span>
+          </div>
+        </div>
+
+        <div className="dash-account-grid">
+          <div className="dash-account-card dash-account-card--bank">
+            <div className="dash-account-card__head">
+              <div className="dash-account-card__icon" aria-hidden="true">
+                <CreditCard size={18} />
+              </div>
+              <div className="dash-account-card__copy">
+                <strong>Расчётный счёт</strong>
+                <span>Безналичные операции</span>
+              </div>
+            </div>
+            <div className="dash-account-card__balance">
+              <span>Текущий остаток</span>
+              <strong>{money(bankSummary.bankBalance)}</strong>
+            </div>
+            <div className="dash-account-card__turnover">
+              <span>Приход <b className="dash-money-in">+{money(bankIncoming)}</b></span>
+              <span>Расход <b className="dash-money-out">−{money(bankOutgoing)}</b></span>
+            </div>
+          </div>
+          <div className="dash-account-card dash-account-card--cash">
+            <div className="dash-account-card__head">
+              <div className="dash-account-card__icon" aria-hidden="true">
+                <Banknote size={18} />
+              </div>
+              <div className="dash-account-card__copy">
+                <strong>Касса</strong>
+                <span>С прошлых дней: {money(cashCarryover.previousDaysRemaining)}</span>
+              </div>
+            </div>
+            <div className="dash-account-card__balance">
+              <span>Сейчас в кассе</span>
+              <strong>{money(bankSummary.cashBalance)}</strong>
+            </div>
+            <div className="dash-account-card__turnover">
+              <span>Приход <b className="dash-money-in">+{money(cashIncoming)}</b></span>
+              <span>Расход <b className="dash-money-out">−{money(cashOutgoing)}</b></span>
+            </div>
+          </div>
+        </div>
+
+        <DashboardFinanceHistory
+          rows={financeRows}
+          adminPath={ADMIN_PATH}
+          allowNavigation={!isLawyer}
+        />
+      </section>
+
+      {/* Оплаченные заказы, которые нужно доставить */}
+      <section className="admin-card dash-deliveries">
+        <div className="dash-section-head">
+          <div>
+            <span className="dash-section-kicker">Перевозки</span>
+            <h2>Оплаченные заказы к доставке</h2>
+            <p>Только заказы с доставкой, полной оплатой и остатком к отгрузке.</p>
+          </div>
+          {!isLawyer && (
+            <Link
+              href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
+              className="admin-btn admin-btn--ghost"
+              prefetch={false}
+            >
+              <Truck size={13} /> Все доставки
+            </Link>
+          )}
+        </div>
+        {paidDeliveryDeals.length > 0 ? (
+          <div className="dash-delivery-list">
+            {paidDeliveryDeals.map((deal) => (
+              <div key={deal.id} className="dash-delivery-row">
+                <span className="dash-delivery-row__icon" aria-hidden="true"><Truck size={17} /></span>
+                <div className="dash-delivery-row__main">
+                  <div className="dash-delivery-row__top">
+                    {isLawyer ? (
+                      <strong>ЗК-{deal.number}</strong>
+                    ) : (
+                      <Link
+                        href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                        prefetch={false}
+                      >
+                        ЗК-{deal.number}
+                      </Link>
+                    )}
+                    <strong>{deal.customerName}</strong>
+                    <span className="admin-badge admin-badge--green">оплачен</span>
+                    {deal.deliveryPlannedDate && (
+                      <span className="admin-badge admin-badge--amber">
+                        план {formatDate(deal.deliveryPlannedDate)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="dash-delivery-row__address">
+                    <MapPin size={13} />
+                    {deal.deliveryAddress || deal.address || "Адрес не указан"}
+                  </div>
+                  <div className="dash-delivery-row__meta">
+                    {(deal.customerPhone || deal.phone) && (
+                      <span>{deal.customerPhone || deal.phone}</span>
+                    )}
+                    <span>{deal.items.reduce((sum, item) => sum + item.quantity, 0)} ед.</span>
+                    <span>{money(deal.total)}</span>
+                    {deal.deliveryNote && <span>{deal.deliveryNote}</span>}
+                  </div>
+                </div>
+                {!isLawyer && (
+                  <div className="dash-delivery-row__actions">
+                    <Link
+                      href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                      prefetch={false}
+                    >
+                      Заказ →
+                    </Link>
+                    <Link
+                      href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
+                      prefetch={false}
+                    >
+                      В доставку →
+                    </Link>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="admin-empty">
+            <CheckCircle2 size={30} />
+            <p>Оплаченных заказов, ожидающих доставку, нет</p>
+          </div>
+        )}
+      </section>
+      </div>
+
+      {!isLawyer && (
+        <>
       {/* Воронка статусов */}
       <div
         className="admin-card"
@@ -717,7 +1101,13 @@ export default async function AdminDashboard() {
                   label: "Настройки сайта",
                   icon: <Settings size={14} />,
                 },
-              ].map((action) => (
+              ]
+                .filter(
+                  (action) =>
+                    session.role === "admin" ||
+                    action.href !== `/${ADMIN_PATH}/settings`
+                )
+                .map((action) => (
                 <Link
                   key={action.href}
                   href={action.href}
@@ -744,6 +1134,8 @@ export default async function AdminDashboard() {
           </div>
         </div>
       </div>
+        </>
+      )}
 
       <style>{`\n        @media (max-width: 768px) {\n          .admin-dash-grid {\n            grid-template-columns: 1fr !important;\n          }\n        }\n      `}</style>
     </div>
