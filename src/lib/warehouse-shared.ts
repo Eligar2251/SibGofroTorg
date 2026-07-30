@@ -181,6 +181,7 @@ export interface ProductStockDealHistory {
   shippedQty: number;
   /** Сколько ещё нужно отгрузить. Для отменённого заказа всегда 0. */
   remainingQty: number;
+  unitPrice: number;
 }
 
 /**

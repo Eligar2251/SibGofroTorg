@@ -3537,6 +3537,12 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
         : status === "completed"
           ? orderedQty
           : Math.min(orderedQty, recordedShipped);
+
+    const matchingItems = (Array.isArray(row.items) ? row.items : []).filter(
+      (item: any) => String(item?.productId || "") === productId
+    );
+    const unitPrice = matchingItems.length > 0 ? Number(matchingItems[0]?.price) || 0 : 0;
+
     return {
       id: String(row.id),
       number: Number(row.number) || 0,
@@ -3547,6 +3553,7 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
       shippedQty,
       remainingQty:
         status === "cancelled" ? 0 : Math.max(0, orderedQty - shippedQty),
+      unitPrice,
     };
   });
 
