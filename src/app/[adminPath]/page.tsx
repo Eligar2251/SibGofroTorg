@@ -33,7 +33,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminDb } from "@/lib/supabase";
 import { verifySession } from "@/lib/auth";
-import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections } from "@/lib/warehouse";
+import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
 import {
   getBankSummary,
   getDealPaidMap,
@@ -152,6 +152,7 @@ export default async function AdminDashboard() {
     deals,
     receipts,
     cashCollections,
+    transports,
   ] = await Promise.all([
     // Юристу не показываются товары, заявки, акции и склад, поэтому эти
     // данные для его ограниченного дашборда даже не запрашиваем.
@@ -173,6 +174,7 @@ export default async function AdminDashboard() {
     getDeals(),
     isLawyer ? Promise.resolve([]) : getReceipts(),
     getCashCollections(),
+    getTransports(),
   ]);
 
   const newOrdersCount = newOrdersAgg + newWastepaperAgg;
@@ -338,12 +340,55 @@ export default async function AdminDashboard() {
       if (!deal.hasDelivery || !dealNeedsDelivery(deal)) return false;
       const paid = dealPaidMap.get(deal.id) || 0;
       return deal.total > 0 && paid + 0.009 >= deal.total;
-    })
-    .sort((a, b) => {
-      const aDate = a.deliveryPlannedDate || a.date;
-      const bDate = b.deliveryPlannedDate || b.date;
-      return aDate.localeCompare(bDate) || b.number - a.number;
     });
+
+  // Получаем активные самостоятельные перевозки (которые не привязаны к заказам)
+  const activeTransports = transports.filter(t => t.status === "draft" || t.status === "active");
+  const independentTrips: any[] = [];
+  for (const t of activeTransports) {
+    if (t.items) {
+      for (const item of t.items) {
+        if (item.dealId === null) {
+          independentTrips.push({
+            id: `trip-${t.id}-${item.customerName}`,
+            type: "independent",
+            number: `ПЕР-${t.number}`,
+            customerName: item.customerName,
+            address: item.address || "Адрес не указан",
+            phone: item.phone,
+            note: item.deliveryNote,
+            date: t.plannedDate || t.date,
+            itemCount: item.items?.reduce((sum: number, i: any) => sum + (Number(i.transportQty) || 0), 0) || 0,
+            totalSum: null,
+            isPaid: false,
+            link: `/${ADMIN_PATH}/warehouse?tab=deliveries&transport=${t.id}`,
+          });
+        }
+      }
+    }
+  }
+
+  const dashboardDeliveries = [
+    ...paidDeliveryDeals.map(deal => ({
+      id: `deal-${deal.id}`,
+      type: "deal",
+      number: `ЗК-${deal.number}`,
+      customerName: deal.customerName,
+      address: deal.deliveryAddress || deal.address || "Адрес не указан",
+      phone: deal.customerPhone || deal.phone,
+      note: deal.deliveryNote,
+      date: deal.deliveryPlannedDate,
+      itemCount: deal.items.reduce((sum, item) => sum + item.quantity, 0),
+      totalSum: deal.total,
+      isPaid: true,
+      link: `/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`,
+    })),
+    ...independentTrips
+  ].sort((a, b) => {
+    const aDate = a.date || "";
+    const bDate = b.date || "";
+    return aDate.localeCompare(bDate) || a.number.localeCompare(b.number);
+  });
 
   return (
     <div>
@@ -602,8 +647,8 @@ export default async function AdminDashboard() {
         <div className="dash-section-head">
           <div>
             <span className="dash-section-kicker">Перевозки</span>
-            <h2>Оплаченные заказы к доставке</h2>
-            <p>Только заказы с доставкой, полной оплатой и остатком к отгрузке.</p>
+            <h2>Доставки и перевозки к выполнению</h2>
+            <p>Заказы к доставке и самостоятельные рейсы (вывоз макулатуры, отправки и т.д.).</p>
           </div>
           {!isLawyer && (
             <Link
@@ -611,61 +656,59 @@ export default async function AdminDashboard() {
               className="admin-btn admin-btn--ghost"
               prefetch={false}
             >
-              <Truck size={13} /> Все доставки
+              <Truck size={13} /> Все перевозки
             </Link>
           )}
         </div>
-        {paidDeliveryDeals.length > 0 ? (
+        {dashboardDeliveries.length > 0 ? (
           <div className="dash-delivery-list">
-            {paidDeliveryDeals.map((deal) => (
-              <div key={deal.id} className="dash-delivery-row">
+            {dashboardDeliveries.map((del) => (
+              <div key={del.id} className="dash-delivery-row">
                 <span className="dash-delivery-row__icon" aria-hidden="true"><Truck size={17} /></span>
                 <div className="dash-delivery-row__main">
                   <div className="dash-delivery-row__top">
                     {isLawyer ? (
-                      <strong>ЗК-{deal.number}</strong>
+                      <strong>{del.number}</strong>
                     ) : (
                       <Link
-                        href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                        href={del.link}
                         prefetch={false}
                       >
-                        ЗК-{deal.number}
+                        {del.number}
                       </Link>
                     )}
-                    <strong>{deal.customerName}</strong>
-                    <span className="admin-badge admin-badge--green">оплачен</span>
-                    {deal.deliveryPlannedDate && (
+                    <strong>{del.customerName}</strong>
+                    {del.isPaid ? (
+                      <span className="admin-badge admin-badge--green">оплачен</span>
+                    ) : (
+                      <span className="admin-badge admin-badge--blue">перевозка</span>
+                    )}
+                    {del.date && (
                       <span className="admin-badge admin-badge--amber">
-                        план {formatDate(deal.deliveryPlannedDate)}
+                        план {formatDate(del.date)}
                       </span>
                     )}
                   </div>
                   <div className="dash-delivery-row__address">
                     <MapPin size={13} />
-                    {deal.deliveryAddress || deal.address || "Адрес не указан"}
+                    {del.address}
                   </div>
                   <div className="dash-delivery-row__meta">
-                    {(deal.customerPhone || deal.phone) && (
-                      <span>{deal.customerPhone || deal.phone}</span>
+                    {del.phone && (
+                      <span>{del.phone}</span>
                     )}
-                    <span>{deal.items.reduce((sum, item) => sum + item.quantity, 0)} ед.</span>
-                    <span>{money(deal.total)}</span>
-                    {deal.deliveryNote && <span>{deal.deliveryNote}</span>}
+                    <span>{del.itemCount} ед.</span>
+                    {del.totalSum !== null && <span>{money(del.totalSum)}</span>}
+                    {del.note && <span>{del.note}</span>}
                   </div>
                 </div>
                 {!isLawyer && (
                   <div className="dash-delivery-row__actions">
                     <Link
-                      href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`}
+                      href={del.link}
                       prefetch={false}
                     >
-                      Заказ →
-                    </Link>
-                    <Link
-                      href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
-                      prefetch={false}
-                    >
-                      В доставку →
+                      Открыть →
                     </Link>
                   </div>
                 )}
@@ -675,7 +718,7 @@ export default async function AdminDashboard() {
         ) : (
           <div className="admin-empty">
             <CheckCircle2 size={30} />
-            <p>Оплаченных заказов, ожидающих доставку, нет</p>
+            <p>Оплаченных заказов и самостоятельных перевозок к выполнению нет</p>
           </div>
         )}
       </section>

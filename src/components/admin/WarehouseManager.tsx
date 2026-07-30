@@ -249,6 +249,13 @@ export function WarehouseManager({
   
   // --- States for Financial Summary (Feature 1) ---
   const [financePeriod, setFinancePeriod] = useState<"today" | "week" | "month">("today");
+  const [financeNotes, setFinanceNotes] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setFinanceNotes(localStorage.getItem("sgt_finance_notes") || "");
+    }
+  }, []);
 
   // --- States for Critical Stock Alerts (Feature 2) ---
   const [attentionCategory, setAttentionCategory] = useState<"outofstock" | "lowstock" | "popular" | "stagnant">("outofstock");
@@ -2988,39 +2995,28 @@ export function WarehouseManager({
                     </div>
                   </div>
 
-                  {/* Правая колонка: Текущие остатки и Прогноз */}
+                  {/* Правая колонка: Заметки и напоминания */}
                   <div className="admin-card" style={{ padding: 16 }}>
                     <div className="admin-card__head" style={{ borderBottom: "1px solid var(--adm-sand-pale)", paddingBottom: 10, marginBottom: 12 }}>
                       <h3 className="admin-card__title" style={{ fontSize: 14, fontWeight: 700 }}>
-                        💰 Баланс и прогноз оплат (сейчас)
+                        📝 Заметки и напоминания
                       </h3>
                     </div>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "var(--adm-ink-soft)" }}>Реально в кассе (наличные):</span>
-                        <strong style={{ color: bankSummary.cashBalanceNegative ? '#ef8f76' : 'inherit' }}>
-                          {fmt(bankSummary.cashBalance)} ₽
-                        </strong>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "var(--adm-ink-soft)" }}>Реально на безнале:</span>
-                        <strong>{fmt(bankSummary.bankBalance)} ₽</strong>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 6, borderTop: "1px solid var(--adm-sand-pale)" }}>
-                        <span style={{ color: "var(--adm-ink-soft)" }}>Ожидаем оплат от клиентов:</span>
-                        <strong style={{ color: "var(--adm-pine)" }}>+{fmt(bankSummary.expectedIn)} ₽</strong>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "var(--adm-ink-soft)" }}>Надо оплатить (долги):</span>
-                        <strong style={{ color: "var(--adm-rust)" }}>−{fmt(bankSummary.expectedOut)} ₽</strong>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, borderTop: "1px dashed var(--adm-sand-pale)" }}>
-                        <span style={{ fontWeight: 700 }}>Прогноз после всех оплат:</span>
-                        <strong style={{ fontSize: 14, color: "var(--adm-ink)" }}>
-                          {fmt(bankSummary.balance + bankSummary.expectedIn - bankSummary.expectedOut)} ₽
-                        </strong>
-                      </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <textarea
+                        className="admin-input"
+                        style={{ width: "100%", height: "135px", resize: "vertical", fontSize: 13, background: "rgba(245, 242, 234, 0.15)" }}
+                        value={financeNotes}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFinanceNotes(val);
+                          localStorage.setItem("sgt_finance_notes", val);
+                        }}
+                        placeholder="Запишите здесь напоминания, важные суммы, долги или любой другой рабочий текст..."
+                      />
+                      <span style={{ fontSize: 10, color: "var(--adm-sand)", textAlign: "right" }}>
+                        💾 Сохраняется автоматически на этом устройстве
+                      </span>
                     </div>
                   </div>
                 </div>
