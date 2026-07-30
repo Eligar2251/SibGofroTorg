@@ -1249,57 +1249,7 @@ export function WarehouseManager({
         </div>
       </div>
 
-      {/* ════════════ ВКЛАДКА: СКЛАД ════════════ */}
-      {activeTab === "stock" && (
-        <>
-          <div className="admin-stat-grid wh-stat-grid">
-            <div className="admin-stat">
-              <div className="admin-stat__value">{stock.length}</div>
-              <div className="admin-stat__label">Позиций номенклатуры</div>
-            </div>
-            <div className="admin-stat">
-              <div className="admin-stat__value">{fmt(totalUnits)}</div>
-              <div className="admin-stat__label">Единиц на складе</div>
-            </div>
-            <div className="admin-stat">
-              <div className="admin-stat__value">{fmt(stockValue)} ₽</div>
-              <div className="admin-stat__label">Оценка по ценам продажи</div>
-            </div>
-            <div className="admin-stat">
-              <div className="admin-stat__value">{zeroStock}</div>
-              <div className="admin-stat__label">С нулевым остатком</div>
-            </div>
-          </div>
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <Search
-                size={16}
-                style={{
-                  position: "absolute",
-                  left: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "var(--adm-sand)",
-                }}
-              />
-              <input
-                type="text"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Поиск по названию или артикулу..."
-                className="admin-input"
-                style={{ paddingLeft: 36 }}
-              />
-            </div>
-            {q && (
-              <button onClick={() => setQ("")} className="admin-btn admin-btn--ghost">
-                Сбросить
-              </button>
-            )}
-            {/* Ревизия: бланк для пересчёта + сверка фактических остатков */}
-            <StockRevision stock={stock} />
-          </div>
 
       {/* ════════════ ВКЛАДКА: СКЛАД ════════════ */}
       {activeTab === "stock" && (
@@ -1508,162 +1458,111 @@ export function WarehouseManager({
                 </button>
               </div>
 
-              {/* Products list for selected category */}
-              <div className="admin-card">
+              {/* Products list for selected category using highly responsive cards instead of tables */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {(() => {
                   let list: React.ReactNode = null;
                   
                   if (attentionCategory === "outofstock") {
                     list = criticalProducts.outOfStock.length > 0 ? (
-                      <div className="admin-table-wrap">
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Товар</th>
-                              <th>Артикул</th>
-                              <th style={{ textAlign: "right" }}>Действия</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {criticalProducts.outOfStock.map((p) => (
-                              <tr key={p.id}>
-                                <td>
-                                  <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600 }}>
-                                    {p.name}
-                                  </Link>
-                                </td>
-                                <td>{p.sku || "—"}</td>
-                                <td style={{ textAlign: "right" }}>
-                                  <button
-                                    onClick={() => setOrderingProduct(p)}
-                                    className="admin-btn admin-btn--primary admin-btn--sm"
-                                  >
-                                    Заказать у поставщика
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {criticalProducts.outOfStock.map((p) => (
+                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 200, flex: "1 1 auto" }}>
+                              <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
+                                {p.name}
+                              </Link>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>Артикул: {p.sku || "—"}</span>
+                            </div>
+                            <div>
+                              <button
+                                onClick={() => setOrderingProduct(p)}
+                                className="admin-btn admin-btn--primary admin-btn--sm"
+                                style={{ whiteSpace: "nowrap" }}
+                              >
+                                Заказать у поставщика
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <div className="admin-empty"><p>Все товары в наличии!</p></div>
                     );
                   } else if (attentionCategory === "lowstock") {
                     list = criticalProducts.lowStock.length > 0 ? (
-                      <div className="admin-table-wrap">
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Товар</th>
-                              <th>Артикул</th>
-                              <th style={{ textAlign: "right" }}>Остаток</th>
-                              <th style={{ textAlign: "right" }}>Минимум</th>
-                              <th style={{ textAlign: "right" }}>Действия</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {criticalProducts.lowStock.map((p) => (
-                              <tr key={p.id}>
-                                <td>
-                                  <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600 }}>
-                                    {p.name}
-                                  </Link>
-                                </td>
-                                <td>{p.sku || "—"}</td>
-                                <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 700 }}>
-                                  {p.stockQty} шт.
-                                </td>
-                                <td style={{ textAlign: "right" }}>{p.stockWarnQty} шт.</td>
-                                <td style={{ textAlign: "right" }}>
-                                  <button
-                                    onClick={() => setOrderingProduct(p)}
-                                    className="admin-btn admin-btn--primary admin-btn--sm"
-                                  >
-                                    Заказать у поставщика
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {criticalProducts.lowStock.map((p) => (
+                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 200, flex: "1 1 auto" }}>
+                              <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
+                                {p.name}
+                              </Link>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>
+                                Артикул: {p.sku || "—"} · Остаток: <b style={{ color: "var(--adm-rust)" }}>{p.stockQty} шт.</b> (минимальный лимит: {p.stockWarnQty} шт.)
+                              </span>
+                            </div>
+                            <div>
+                              <button
+                                onClick={() => setOrderingProduct(p)}
+                                className="admin-btn admin-btn--primary admin-btn--sm"
+                                style={{ whiteSpace: "nowrap" }}
+                              >
+                                Заказать у поставщика
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : (
-                      <div className="admin-empty"><p>Нет товаров с остатком меньше минимального.</p></div>
+                      <div className="admin-empty"><p>Нет товаров с остатком меньше минимального лимита.</p></div>
                     );
                   } else if (attentionCategory === "popular") {
                     list = criticalProducts.frequentlyOrderedAbsent.length > 0 ? (
-                      <div className="admin-table-wrap">
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Товар</th>
-                              <th>Артикул</th>
-                              <th style={{ textAlign: "right" }}>Кол-во заказов</th>
-                              <th style={{ textAlign: "right" }}>Действия</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {criticalProducts.frequentlyOrderedAbsent.map(({ product: p, orderCount }) => (
-                              <tr key={p.id}>
-                                <td>
-                                  <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600 }}>
-                                    {p.name}
-                                  </Link>
-                                </td>
-                                <td>{p.sku || "—"}</td>
-                                <td style={{ textAlign: "right", fontWeight: 700, color: "var(--adm-pine)" }}>
-                                  {orderCount} раз заказывали
-                                </td>
-                                <td style={{ textAlign: "right" }}>
-                                  <button
-                                    onClick={() => setOrderingProduct(p)}
-                                    className="admin-btn admin-btn--primary admin-btn--sm"
-                                  >
-                                    Заказать у поставщика
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {criticalProducts.frequentlyOrderedAbsent.map(({ product: p, orderCount }) => (
+                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 200, flex: "1 1 auto" }}>
+                              <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
+                                {p.name}
+                              </Link>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)", display: "block", marginTop: 4 }}>
+                                Артикул: {p.sku || "—"} · <b style={{ color: "var(--adm-pine)" }}>Заказывали {orderCount} раз</b>
+                              </span>
+                            </div>
+                            <div>
+                              <button
+                                onClick={() => setOrderingProduct(p)}
+                                className="admin-btn admin-btn--primary admin-btn--sm"
+                                style={{ whiteSpace: "nowrap" }}
+                              >
+                                Заказать у поставщика
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <div className="admin-empty"><p>Нет отсутствующих популярных товаров.</p></div>
                     );
                   } else if (attentionCategory === "stagnant") {
                     list = criticalProducts.stagnantStock.length > 0 ? (
-                      <div className="admin-table-wrap">
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Товар</th>
-                              <th>Артикул</th>
-                              <th style={{ textAlign: "right" }}>Текущий остаток</th>
-                              <th style={{ textAlign: "right" }}>Дней без продаж</th>
-                              <th style={{ textAlign: "right" }}>Последняя продажа</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {criticalProducts.stagnantStock.map(({ product: p, lastSaleDays, lastSaleDate }) => (
-                              <tr key={p.id}>
-                                <td>
-                                  <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600 }}>
-                                    {p.name}
-                                  </Link>
-                                </td>
-                                <td>{p.sku || "—"}</td>
-                                <td style={{ textAlign: "right" }}>{p.stockQty} шт.</td>
-                                <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 700 }}>
-                                  {lastSaleDays === null ? "Никогда не продавался" : `${lastSaleDays} дн.`}
-                                </td>
-                                <td style={{ textAlign: "right" }}>
-                                  {lastSaleDate ? fmtDate(lastSaleDate) : "—"}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {criticalProducts.stagnantStock.map(({ product: p, lastSaleDays, lastSaleDate }) => (
+                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 200, flex: "1 1 auto" }}>
+                              <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
+                                {p.name}
+                              </Link>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>
+                                Артикул: {p.sku || "—"} · Остаток: <b>{p.stockQty} шт.</b> · Дней без продаж: <b style={{ color: "var(--adm-rust)" }}>{lastSaleDays === null ? "Никогда" : `${lastSaleDays} дн.`}</b>
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>
+                              Последняя продажа: {lastSaleDate ? fmtDate(lastSaleDate) : "—"}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <div className="admin-empty"><p>Нет залежавшихся товаров на складе.</p></div>
@@ -1674,11 +1573,11 @@ export function WarehouseManager({
                 })()}
               </div>
 
-              {/* Beautiful Ordering Modal */}
+              {/* Native centered responsive ordering modal */}
               {orderingProduct && (
                 <ModalPortal>
                   <div className="admin-modal-overlay" onClick={() => setOrderingProduct(null)}>
-                    <div className="admin-modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
+                    <div className="admin-modal wh-modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
                       <div className="admin-modal__head">
                         <h3 className="admin-modal__title">Заказать у поставщика</h3>
                         <button onClick={() => setOrderingProduct(null)} className="admin-modal__close" aria-label="Закрыть">
@@ -1686,7 +1585,7 @@ export function WarehouseManager({
                         </button>
                       </div>
                       <p className="admin-modal__desc">
-                        Создание проекта/черновика поступления для товара: <br />
+                        Создание черновика поступления для товара: <br />
                         <b>{orderingProduct.name}</b> {orderingProduct.sku ? `(арт. ${orderingProduct.sku})` : ""}
                       </p>
 
@@ -1697,9 +1596,9 @@ export function WarehouseManager({
                           </div>
                         )}
 
-                        <div className="wh-form-grid" style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
-                          <div>
-                            <label className="wh-form-label">Поставщик (выберите из базы):</label>
+                        <div className="wh-form-grid">
+                          <div className="admin-field">
+                            <label className="admin-label">Поставщик из базы</label>
                             <select
                               value={orderSupplierId}
                               onChange={(e) => {
@@ -1715,7 +1614,7 @@ export function WarehouseManager({
                                   }
                                 }
                               }}
-                              className="admin-input"
+                              className="admin-select"
                             >
                               <option value="">-- Выберите поставщика --</option>
                               {counterpartyOptions
@@ -1727,8 +1626,8 @@ export function WarehouseManager({
                             </select>
                           </div>
 
-                          <div>
-                            <label className="wh-form-label">Имя поставщика (можно ввести вручную):</label>
+                          <div className="admin-field">
+                            <label className="admin-label">Или имя поставщика вручную *</label>
                             <input
                               type="text"
                               value={orderSupplierName}
@@ -1739,38 +1638,37 @@ export function WarehouseManager({
                             />
                           </div>
 
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            <div>
-                              <label className="wh-form-label">Цена закупки (₽):</label>
-                              <input
-                                type="number"
-                                step="any"
-                                value={orderPrice || ""}
-                                onChange={(e) => setOrderPrice(Number(e.target.value) || 0)}
-                                placeholder="Закупочная цена"
-                                className="admin-input"
-                                required
-                              />
-                            </div>
-                            <div>
-                              <label className="wh-form-label">Количество (шт.):</label>
-                              <input
-                                type="number"
-                                value={orderQty || ""}
-                                onChange={(e) => setOrderQty(Number(e.target.value) || 0)}
-                                placeholder="Кол-во для заказа"
-                                className="admin-input"
-                                required
-                              />
-                            </div>
+                          <div className="admin-field">
+                            <label className="admin-label">Цена закупки (₽) *</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={orderPrice || ""}
+                              onChange={(e) => setOrderPrice(Number(e.target.value) || 0)}
+                              placeholder="Закупочная цена"
+                              className="admin-input"
+                              required
+                            />
                           </div>
 
-                          <div>
-                            <label className="wh-form-label">Ставка НДС:</label>
+                          <div className="admin-field">
+                            <label className="admin-label">Количество (шт.) *</label>
+                            <input
+                              type="number"
+                              value={orderQty || ""}
+                              onChange={(e) => setOrderQty(Number(e.target.value) || 0)}
+                              placeholder="Кол-во для заказа"
+                              className="admin-input"
+                              required
+                            />
+                          </div>
+
+                          <div className="admin-field">
+                            <label className="admin-label">Ставка НДС</label>
                             <select
                               value={orderVat}
                               onChange={(e) => setOrderVat(Number(e.target.value))}
-                              className="admin-input"
+                              className="admin-select"
                             >
                               <option value={22}>22% (Стандартная)</option>
                               <option value={20}>20%</option>
@@ -1780,8 +1678,8 @@ export function WarehouseManager({
                             </select>
                           </div>
 
-                          <div>
-                            <label className="wh-form-label">Комментарий к заказу:</label>
+                          <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                            <label className="admin-label">Комментарий к заказу</label>
                             <textarea
                               value={orderComment}
                               onChange={(e) => setOrderComment(e.target.value)}
@@ -1789,14 +1687,14 @@ export function WarehouseManager({
                               rows={2}
                             />
                           </div>
-
-                          <div style={{ background: "rgba(224, 155, 18, 0.05)", padding: 10, borderRadius: 4, fontSize: 12, color: "var(--adm-sink-soft)" }}>
-                            Сумма заказа составит: <b>{fmt(orderPrice * orderQty)} ₽</b>. <br />
-                            После создания заказ появится как <b>«Черновик»</b> в разделе «Поставки». Остатки не изменятся до тех пор, пока вы не проведёте поставку.
-                          </div>
                         </div>
 
-                        <div className="admin-modal__actions">
+                        <div style={{ marginTop: 14, background: "rgba(224, 155, 18, 0.05)", padding: 10, borderRadius: 4, fontSize: 12, color: "var(--adm-ink-soft)" }}>
+                          Сумма заказа составит: <b>{fmt(orderPrice * orderQty)} ₽</b>. <br />
+                          После создания заказ появится как <b>«Черновик»</b> в разделе «Поставки». Остатки не изменятся до тех пор, пока вы не проведёте поставку.
+                        </div>
+
+                        <div className="admin-modal__actions" style={{ marginTop: 16 }}>
                           <button
                             type="button"
                             className="admin-btn admin-btn--ghost"
@@ -1810,7 +1708,7 @@ export function WarehouseManager({
                             className="admin-btn admin-btn--primary"
                             disabled={orderSaving}
                           >
-                            {orderSaving ? <Loader2 size={13} className="animate-spin" /> : null}
+                            {orderSaving ? <Loader2 size={13} className="animate-spin" style={{ marginRight: 6 }} /> : null}
                             Создать черновик заказа
                           </button>
                         </div>
