@@ -214,6 +214,7 @@ export function DashboardFinanceHistory({
             >
               <span
                 className={`dash-finance-row__icon dash-finance-row__icon--${row.direction}`}
+                aria-hidden="true"
               >
                 {row.direction === "incoming" ? (
                   <ArrowDownLeft size={15} />

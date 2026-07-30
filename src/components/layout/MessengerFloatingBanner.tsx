@@ -21,7 +21,8 @@ import { useSiteSettings } from "@/hooks/use-site-settings";
 type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 type CollapsedSide = "left" | "right" | null;
 
-const STORAGE_KEY = "messenger-floating-banner-position-v2";
+const STORAGE_KEY = "messenger-floating-banner-position-v3";
+const AUTO_COLLAPSE_DELAY_MS = 5_000;
 
 function safeMessengerUrl(raw: string): string | null {
   const value = String(raw || "").trim();
@@ -59,6 +60,17 @@ function nearestCorner(rect: DOMRect): Corner {
   return `${vertical}-${horizontal}` as Corner;
 }
 
+function persistPosition(corner: Corner, side: CollapsedSide) {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ corner, collapsedSide: side })
+    );
+  } catch {
+    // localStorage может быть недоступен в приватном режиме.
+  }
+}
+
 const linksStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -89,7 +101,9 @@ const imageStyle: CSSProperties = {
 export function MessengerFloatingBanner() {
   const { messengerBanner, ready } = useSiteSettings();
   const [mounted, setMounted] = useState(false);
-  const [corner, setCorner] = useState<Corner>("bottom-right");
+  // Стандартное положение — сверху справа. Новый ключ localStorage сбрасывает
+  // старый нижний дефолт, но после ручного перетаскивания позиция сохраняется.
+  const [corner, setCorner] = useState<Corner>("top-right");
   const [collapsedSide, setCollapsedSide] = useState<CollapsedSide>(null);
   const [dragging, setDragging] = useState(false);
   const bannerRef = useRef<HTMLElement | null>(null);
@@ -144,27 +158,50 @@ export function MessengerFloatingBanner() {
     { id: "whatsapp", label: "WhatsApp", short: "WA", ...messengerBanner.whatsapp },
     { id: "max", label: "MAX", short: "MAX", ...messengerBanner.max },
   ].map((channel) => ({ ...channel, href: safeMessengerUrl(channel.url) }));
+  const hasActiveChannel = channels.some((channel) => channel.href);
 
-  function persist(nextCorner: Corner, side: CollapsedSide) {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ corner: nextCorner, collapsedSide: side })
-      );
-    } catch {
-      // localStorage может быть недоступен в приватном режиме.
+  useEffect(() => {
+    if (
+      !mounted ||
+      !ready ||
+      !messengerBanner.enabled ||
+      !hasActiveChannel ||
+      collapsedSide ||
+      dragging
+    ) {
+      return;
     }
-  }
+
+    const timeoutId = window.setTimeout(() => {
+      // Во время активного pointer-drag баннер не должен исчезнуть из-под пальца.
+      if (dragRef.current) return;
+      const side = corner.endsWith("left") ? "left" : "right";
+      // Автосворачивание не сохраняем: при следующем полном открытии сайта
+      // баннер снова будет виден пять секунд. Ручное скрытие по-прежнему
+      // запоминается отдельно через collapse().
+      setCollapsedSide(side);
+    }, AUTO_COLLAPSE_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    collapsedSide,
+    corner,
+    dragging,
+    hasActiveChannel,
+    messengerBanner.enabled,
+    mounted,
+    ready,
+  ]);
 
   function collapse(side?: Exclude<CollapsedSide, null>) {
     const target = side || (corner.endsWith("left") ? "left" : "right");
     setCollapsedSide(target);
-    persist(corner, target);
+    persistPosition(corner, target);
   }
 
   function expand() {
     setCollapsedSide(null);
-    persist(corner, null);
+    persistPosition(corner, null);
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLElement>) {
@@ -241,15 +278,15 @@ export function MessengerFloatingBanner() {
     setCorner(nextCorner);
     if (rect.left <= 8 && horizontalMove < -24) {
       setCollapsedSide("left");
-      persist(nextCorner, "left");
+      persistPosition(nextCorner, "left");
       return;
     }
     if (window.innerWidth - rect.right <= 8 && horizontalMove > 24) {
       setCollapsedSide("right");
-      persist(nextCorner, "right");
+      persistPosition(nextCorner, "right");
       return;
     }
-    persist(nextCorner, null);
+    persistPosition(nextCorner, null);
   }
 
   if (

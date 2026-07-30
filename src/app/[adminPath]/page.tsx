@@ -512,31 +512,47 @@ export default async function AdminDashboard() {
 
         <div className="dash-finance-totals">
           <div className="dash-finance-total dash-finance-total--in">
-            <ArrowDownLeft size={18} />
-            <span>Приход всего</span>
-            <strong>+{money(financeIncoming)}</strong>
+            <span className="dash-finance-total__icon" aria-hidden="true">
+              <ArrowDownLeft size={18} />
+            </span>
+            <span className="dash-finance-total__content">
+              <span>Приход всего</span>
+              <strong>+{money(financeIncoming)}</strong>
+            </span>
           </div>
           <div className="dash-finance-total dash-finance-total--out">
-            <ArrowUpRight size={18} />
-            <span>Расход всего</span>
-            <strong>−{money(financeOutgoing)}</strong>
+            <span className="dash-finance-total__icon" aria-hidden="true">
+              <ArrowUpRight size={18} />
+            </span>
+            <span className="dash-finance-total__content">
+              <span>Расход всего</span>
+              <strong>−{money(financeOutgoing)}</strong>
+            </span>
           </div>
           <div className="dash-finance-total dash-finance-total--bank">
-            <CreditCard size={18} />
-            <span>Расчётный счёт сейчас</span>
-            <strong>{money(bankSummary.bankBalance)}</strong>
+            <span className="dash-finance-total__icon" aria-hidden="true">
+              <CreditCard size={18} />
+            </span>
+            <span className="dash-finance-total__content">
+              <span>Расчётный счёт сейчас</span>
+              <strong>{money(bankSummary.bankBalance)}</strong>
+            </span>
           </div>
           <div className="dash-finance-total dash-finance-total--cash">
-            <Banknote size={18} />
-            <span>Касса сейчас</span>
-            <strong>{money(bankSummary.cashBalance)}</strong>
+            <span className="dash-finance-total__icon" aria-hidden="true">
+              <Banknote size={18} />
+            </span>
+            <span className="dash-finance-total__content">
+              <span>Касса сейчас</span>
+              <strong>{money(bankSummary.cashBalance)}</strong>
+            </span>
           </div>
         </div>
 
         <div className="dash-account-grid">
           <div className="dash-account-card dash-account-card--bank">
             <div className="dash-account-card__head">
-              <span className="dash-account-card__icon"><CreditCard size={16} /></span>
+              <span className="dash-account-card__icon" aria-hidden="true"><CreditCard size={16} /></span>
               <div>
                 <strong>Расчётный счёт</strong>
                 <span>Безналичные операции</span>
@@ -553,7 +569,7 @@ export default async function AdminDashboard() {
           </div>
           <div className="dash-account-card dash-account-card--cash">
             <div className="dash-account-card__head">
-              <span className="dash-account-card__icon"><Banknote size={16} /></span>
+              <span className="dash-account-card__icon" aria-hidden="true"><Banknote size={16} /></span>
               <div>
                 <strong>Касса</strong>
                 <span>С прошлых дней: {money(cashCarryover.previousDaysRemaining)}</span>
@@ -599,7 +615,7 @@ export default async function AdminDashboard() {
           <div className="dash-delivery-list">
             {paidDeliveryDeals.map((deal) => (
               <div key={deal.id} className="dash-delivery-row">
-                <span className="dash-delivery-row__icon"><Truck size={17} /></span>
+                <span className="dash-delivery-row__icon" aria-hidden="true"><Truck size={17} /></span>
                 <div className="dash-delivery-row__main">
                   <div className="dash-delivery-row__top">
                     {isLawyer ? (

@@ -7091,8 +7091,9 @@ body {
 .messenger-float {
   position: fixed;
   z-index: 850;
+  top: max(18px, env(safe-area-inset-top));
   right: max(14px, env(safe-area-inset-right));
-  bottom: max(22px, env(safe-area-inset-bottom));
+  bottom: auto;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -7161,8 +7162,9 @@ body {
 
 @media (max-width: 640px) {
   .messenger-float {
+    top: max(72px, calc(env(safe-area-inset-top) + 56px));
     right: max(8px, env(safe-area-inset-right));
-    bottom: max(72px, calc(env(safe-area-inset-bottom) + 10px));
+    bottom: auto;
     gap: 8px;
     padding: 7px 8px 7px 11px;
   }
