@@ -7,6 +7,7 @@
 // Примеры:
 //   npx tsx scripts/create-admin.ts admin mypassword admin "Иван Иванов"
 //   npx tsx scripts/create-admin.ts manager1 pass123 manager "Менеджер Оля"
+//   npx tsx scripts/create-admin.ts lawyer1 pass12345 lawyer "Юрист"
 // =========================================================
 
 import { createClient } from "@supabase/supabase-js";
@@ -25,7 +26,7 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.length < 2) {
     console.log("Использование: npx tsx scripts/create-admin.ts <username> <password> [role] [display_name]");
-    console.log("  role: admin (по умолчанию) | manager");
+    console.log("  role: admin (по умолчанию) | manager | lawyer");
     console.log("Примеры:");
     console.log('  npx tsx scripts/create-admin.ts admin mypass123 admin "Иван Иванов"');
     console.log('  npx tsx scripts/create-admin.ts manager1 pass123 manager "Оля Менеджер"');
@@ -36,6 +37,10 @@ async function main() {
   const password = args[1];
   const role = args[2] || "admin";
   const displayName = args[3] || username;
+  if (!["admin", "manager", "lawyer"].includes(role)) {
+    console.error("ОШИБКА: роль должна быть admin, manager или lawyer");
+    process.exit(1);
+  }
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -96,8 +101,8 @@ async function main() {
 
   console.log(`\nДанные для входа:`);
   console.log(`  Логин: ${username}`);
-  console.log(`  Пароль: ${password}`);
   console.log(`  Роль: ${role}`);
+  console.log("  Пароль не выводится в целях безопасности.");
 }
 
 main().catch(console.error);

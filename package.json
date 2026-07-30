@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "node node_modules/next/dist/bin/next start -H 0.0.0.0 -p ${PORT:-3000}",
+    "admin:sql": "node scripts/generate-admin-sql.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
