@@ -1431,6 +1431,51 @@ select {
   margin-left: 10px;
 }
 
+.catalog-heading-row {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.catalog-heading-row--page {
+  align-items: baseline;
+}
+
+.catalog-toolbar2__heading {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.catalog-order-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 9px;
+  color: var(--green-dark);
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.catalog-order-note > svg {
+  flex: 0 0 auto;
+  display: block;
+}
+
+.catalog-order-note > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ══════════════════════════════════════
    PRODUCT CARDS
    ══════════════════════════════════════ */

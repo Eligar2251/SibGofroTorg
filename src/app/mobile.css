@@ -671,6 +671,30 @@ body {
     width: 100%;
   }
 
+  .catalog-heading-row,
+  .catalog-toolbar2__heading {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .catalog-heading-row {
+    align-items: center;
+    gap: 7px;
+  }
+
+  .catalog-order-note {
+    max-width: 100%;
+    padding: 4px 8px;
+    gap: 5px;
+    font-size: clamp(8.5px, 2.55vw, 10px);
+  }
+
+  .catalog-order-note > svg {
+    width: 1.25em;
+    height: 1.25em;
+  }
+
   .home-catalog-unified__top .section-title,
   .catalog-top .section-title,
   .home-products .section-title {
