@@ -423,7 +423,7 @@ export function CounterpartiesManager({
               <div className="admin-grid-2">
                 <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={form.contactName} onChange={(e) => patch("contactName", e.target.value)} /></div>
                 <div className="admin-field"><label className="admin-label">Телефон</label><input className="admin-input" value={form.phone} onChange={(e) => patch("phone", e.target.value)} /></div>
-                <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={form.email} onChange={(e) => patch("email", e.target.value)} /></div>
+                <div className="admin-field"><label className="admin-label">Email</label><input type="text" className="admin-input" value={form.email} onChange={(e) => patch("email", e.target.value)} /></div>
                 <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={form.inn} onChange={(e) => patch("inn", e.target.value)} /></div>
                 <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={form.kpp} onChange={(e) => patch("kpp", e.target.value)} /></div>
                 <div className="admin-field"><label className="admin-label">ОГРН</label><input className="admin-input" value={form.ogrn} onChange={(e) => patch("ogrn", e.target.value)} /></div>
