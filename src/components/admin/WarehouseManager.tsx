@@ -1540,11 +1540,12 @@ export function WarehouseManager({
                             </div>
                             <div>
                               <button
+                                type="button"
                                 onClick={() => setOrderingProduct(p)}
                                 className="admin-btn admin-btn--primary admin-btn--sm"
-                                style={{ whiteSpace: "nowrap" }}
+                                style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
                               >
-                                Заказать у поставщика
+                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
                               </button>
                             </div>
                           </div>
@@ -1568,11 +1569,12 @@ export function WarehouseManager({
                             </div>
                             <div>
                               <button
+                                type="button"
                                 onClick={() => setOrderingProduct(p)}
                                 className="admin-btn admin-btn--primary admin-btn--sm"
-                                style={{ whiteSpace: "nowrap" }}
+                                style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
                               >
-                                Заказать у поставщика
+                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
                               </button>
                             </div>
                           </div>
@@ -1596,11 +1598,12 @@ export function WarehouseManager({
                             </div>
                             <div>
                               <button
+                                type="button"
                                 onClick={() => setOrderingProduct(p)}
                                 className="admin-btn admin-btn--primary admin-btn--sm"
-                                style={{ whiteSpace: "nowrap" }}
+                                style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
                               >
-                                Заказать у поставщика
+                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
                               </button>
                             </div>
                           </div>

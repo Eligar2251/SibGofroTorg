@@ -2773,7 +2773,9 @@ select {
 }
 
 .pcc__inquiry-btn {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   text-align: center;
   padding: 6px;
