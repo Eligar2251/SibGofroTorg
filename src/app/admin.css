@@ -2498,14 +2498,14 @@ body:has(.admin-login) > main {
 .dash-account-card--bank { border-color: var(--adm-steel-line); }
 .dash-account-card--cash { border-color: var(--adm-kraft-line); }
 .dash-account-card__head { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 11px 12px; background: var(--adm-paper); border-bottom: 1px solid var(--adm-border); }
-.dash-account-card__icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; line-height: 0; }
+.dash-account-card__icon { display: inline-flex; align-self: center; align-items: center; justify-content: center; width: 34px; height: 34px; flex: 0 0 34px; margin: 0; padding: 0; border-radius: 9px; line-height: 0; }
 .dash-account-card__icon > svg { display: block; width: 16px; height: 16px; margin: 0; }
 .dash-account-card--bank .dash-account-card__icon { color: var(--adm-steel); background: var(--adm-steel-pale); }
 .dash-account-card--cash .dash-account-card__icon { color: var(--adm-kraft); background: var(--adm-kraft-pale); }
 .dash-account-card__head > div { min-width: 0; overflow: hidden; }
-.dash-account-card__head strong, .dash-account-card__head span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dash-account-card__head strong { color: var(--adm-ink); font-size: 12px; }
-.dash-account-card__head span { margin-top: 1px; color: var(--adm-sand); font-size: 9px; }
+.dash-account-card__head > div strong, .dash-account-card__head > div span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-account-card__head > div strong { color: var(--adm-ink); font-size: 12px; }
+.dash-account-card__head > div span { margin-top: 1px; color: var(--adm-sand); font-size: 9px; }
 .dash-account-card__balance { display: grid; gap: 2px; padding: 12px; }
 .dash-account-card__balance span { overflow: hidden; color: var(--adm-sand); font-size: 9px; font-weight: 700; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .dash-account-card__balance strong { overflow: hidden; color: var(--adm-ink); font-family: var(--adm-font-head); font-size: 21px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
