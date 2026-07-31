@@ -16,6 +16,7 @@ import {
   Boxes,
   Truck,
   QrCode,
+  ShieldCheck,
   PanelLeftClose,
   ChevronRight,
 } from "lucide-react";
@@ -98,6 +99,11 @@ export function AdminShell({
       href: `/${adminPath}/warehouse`,
       label: "Учёт",
       icon: <Boxes size={18} />,
+    },
+    {
+      href: `/${adminPath}/duty-schedule`,
+      label: "Охрана",
+      icon: <ShieldCheck size={18} />,
     },
     {
       // Отдельная страница сканера /admin/scan (без [code] — это
