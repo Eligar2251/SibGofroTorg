@@ -440,7 +440,9 @@
   gap: 8px;
 }
 .ds-print-sheet {
-  max-width: 210mm;
+  /* Альбомная ориентация A4 — лист шире, чтобы график 1..31
+     помещался в одну строку и в предпросмотре на экране */
+  max-width: 297mm;
   margin: 0 auto;
   background: #fff;
   padding: 8mm;
@@ -498,60 +500,73 @@
   font-weight: 800;
 }
 
-.ds-print-calendar {
+/* ── График дежурств на печать: дни 1..31 в одну строку ── */
+.ds-print-grid {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
+  break-inside: avoid;
 }
-.ds-print-calendar th,
-.ds-print-calendar td {
+.ds-print-grid th,
+.ds-print-grid td {
   border: 1px solid #bbb;
-  padding: 1.5mm 2mm;
-  font-size: 11px;
+  padding: 1mm 1mm;
+  font-size: 9px;
   text-align: center;
-  vertical-align: top;
+  vertical-align: middle;
+  overflow: hidden;
+  white-space: nowrap;
 }
-.ds-print-calendar th {
+.ds-print-grid thead th {
   background: #f1f1ee;
   font-weight: 700;
 }
-.ds-print-week-col {
+.ds-grid-days-head {
+  background: #e8e6df !important;
+  font-size: 10px !important;
+  letter-spacing: 0.04em;
+}
+.ds-grid-name {
+  width: 38mm;
+  text-align: left !important;
+  padding: 1mm 2mm !important;
   font-weight: 700;
-  background: #f7f6f2;
-  white-space: nowrap;
+  font-size: 10px !important;
+}
+.ds-grid-phone {
+  font-size: 8px;
+  color: #666;
+  font-weight: 400;
+}
+.ds-grid-col-total {
+  width: 11mm;
+  font-size: 9px !important;
+}
+.ds-grid-wd {
+  font-size: 8px;
+  color: #555;
+  font-weight: 400;
+  line-height: 1.1;
 }
 .ds-print-weekend {
   background: #fff3b0 !important;
-  color: #8b4513;
-}
-.ds-print-empty {
-  background: #fafaf8;
-}
-.ds-print-daynum {
-  font-weight: 700;
-  font-size: 12px;
-}
-.ds-print-who {
-  font-size: 11px;
-  min-height: 4mm;
-  line-height: 1.2;
-}
-.ds-print-hours {
-  font-size: 10px;
-  color: #555;
+  color: #7a5a12;
 }
 .ds-print-missed {
-  background: #dbe7f5;
-}
-.ds-print-missed .ds-print-who {
   color: #b91c1c;
   font-weight: 700;
+  background: #fdecea !important;
+  text-decoration: line-through;
 }
 .ds-print-temporary {
-  background: #ffe4e1;
-}
-.ds-print-temporary .ds-print-who {
   color: #8b0000;
   font-weight: 700;
+  background: #ffe4e1 !important;
+}
+.ds-print-grid tfoot td {
+  font-weight: 700;
+  text-align: right;
+  background: #f7f6f2;
 }
 
 .ds-print-legend {
@@ -576,8 +591,9 @@
 }
 
 @media print {
+  /* Альбомная ориентация: график 1..31 в одну строку на всю ширину */
   @page {
-    size: A4 portrait;
+    size: A4 landscape;
     margin: 8mm 10mm;
   }
   html,
@@ -619,7 +635,14 @@
     box-shadow: none !important;
     border-radius: 0 !important;
   }
-  .ds-print-calendar tr {
+  /* График не разрывается: все дни в одной строке на листе */
+  .ds-print-grid {
+    break-inside: avoid;
+  }
+  .ds-print-grid tr {
+    break-inside: avoid;
+  }
+  .ds-print-summary {
     break-inside: avoid;
   }
 }

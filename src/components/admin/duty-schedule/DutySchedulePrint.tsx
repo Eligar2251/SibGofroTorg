@@ -1,21 +1,16 @@
 // =========================================================
 // FILE: src/components/admin/duty-schedule/DutySchedulePrint.tsx
-// Печатная версия табеля дежурств охраны: A4, недели по строкам,
-// сводка по сотрудникам и общая сумма зарплаты за месяц.
+// Печатная версия табеля дежурств охраны: A4 альбомная,
+// график дежурств в одну строку — дни с 1-го по 31-е на всю
+// ширину листа (без переносов и «календарного» вида), сводка
+// по сотрудникам и общее число зарплаты за месяц.
 // =========================================================
 
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Employee, DayAssignment } from "./types";
-import {
-  MONTHS_RU,
-  WEEKDAYS_SHORT_RU,
-  daysInMonth,
-  formatDate,
-  getWeekday,
-  isWeekend,
-} from "./scheduleGenerator";
+import { MONTHS_RU, WEEKDAYS_SHORT_RU, isWeekend } from "./scheduleGenerator";
 import { SITE_NAME } from "@/lib/seo";
 
 interface Props {
@@ -26,28 +21,6 @@ interface Props {
   companyPhone?: string;
   companyAddress?: string;
   onDone: () => void;
-}
-
-interface WeekRow {
-  key: string;
-  label: string;
-  /** Пн..Вс; null — день не принадлежит этому месяцу */
-  days: (DayAssignment | null)[];
-  weekHours: number;
-}
-
-function shortName(full: string): string {
-  const parts = String(full || "")
-    .trim()
-    .split(/\s+/);
-  return parts[0] || full;
-}
-
-function statusMark(day: DayAssignment | undefined): string {
-  if (!day) return "";
-  if (day.status === "missed") return " ✕";
-  if (day.status === "temporary") return " †";
-  return "";
 }
 
 export function DutySchedulePrint({
@@ -62,50 +35,13 @@ export function DutySchedulePrint({
   const [printing, setPrinting] = useState(false);
   const triggered = useRef(false);
 
-  const byDate = new Map(schedule.map((d) => [d.date, d]));
-  const empById = new Map(employees.map((e) => [e.id, e]));
   const activeEmployees = employees.filter((e) => e.active);
 
-  const total = daysInMonth(year, month);
-
-  // Строки-недели (Пн..Вс) с пропусками по краям месяца.
-  const weeks: WeekRow[] = [];
-  {
-    let week: (DayAssignment | null)[] = [];
-    let weekStartDay = 1;
-    for (let day = 1; day <= total; day++) {
-      const weekday = getWeekday(year, month, day);
-      if (day === 1) {
-        const lead = weekday === 0 ? 6 : weekday - 1;
-        for (let i = 0; i < lead; i++) week.push(null);
-      }
-      week.push(byDate.get(formatDate(year, month, day)) ?? null);
-      if (weekday === 0) {
-        weeks.push({
-          key: `w${weeks.length + 1}`,
-          label: `${weekStartDay}–${day}`,
-          days: week,
-          weekHours: week.reduce(
-            (s, d) => s + (d && d.status !== "missed" ? d.hours || 0 : 0),
-            0
-          ),
-        });
-        week = [];
-        weekStartDay = day + 1;
-      }
-    }
-    if (week.length) {
-      weeks.push({
-        key: `w${weeks.length + 1}`,
-        label: `${weekStartDay}–${total}`,
-        days: week,
-        weekHours: week.reduce(
-          (s, d) => s + (d && d.status !== "missed" ? d.hours || 0 : 0),
-          0
-        ),
-      });
-    }
-  }
+  // Дни месяца по порядку (1..31), с учётом фактической длины месяца.
+  const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+  const days = schedule
+    .filter((d) => d.date.startsWith(monthPrefix))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const totals = activeEmployees.map((emp) => {
     const hours = schedule
@@ -199,57 +135,86 @@ export function DutySchedulePrint({
           </tfoot>
         </table>
 
-        {/* Календарь по неделям */}
-        <table className="ds-print-calendar">
+        {/* График дежурств: строки — сотрудники, столбцы — дни 1..31
+            в одну строку на всю ширину листа (альбомная ориентация) */}
+        <table className="ds-print-grid">
           <thead>
             <tr>
-              <th className="ds-print-week-col">Неделя</th>
-              {WEEKDAYS_SHORT_RU.map((w, idx) => (
+              <th className="ds-grid-name" rowSpan={2}>
+                Сотрудник
+              </th>
+              <th className="ds-grid-days-head" colSpan={days.length}>
+                Дни месяца
+              </th>
+              <th rowSpan={2} className="ds-grid-col-total">
+                Часов
+              </th>
+              <th rowSpan={2} className="ds-grid-col-total">
+                Сумма, ₽
+              </th>
+            </tr>
+            <tr>
+              {days.map((d) => (
                 <th
-                  key={w}
-                  className={isWeekend(idx) ? "ds-print-weekend" : ""}
+                  key={d.date}
+                  className={isWeekend(d.weekday) ? "ds-print-weekend" : ""}
                 >
-                  {w}
+                  {Number(d.date.slice(-2))}
+                  <div className="ds-grid-wd">{WEEKDAYS_SHORT_RU[d.weekday]}</div>
                 </th>
               ))}
-              <th className="ds-print-week-col">Часов</th>
             </tr>
           </thead>
           <tbody>
-            {weeks.map((week) => (
-              <tr key={week.key}>
-                <td className="ds-print-week-col">{week.label}</td>
-                {week.days.map((day, idx) => {
-                  if (!day) {
-                    return <td key={`e${idx}`} className="ds-print-empty" />;
-                  }
-                  const emp = day.employeeId ? empById.get(day.employeeId) : null;
-                  const cellCls = [
-                    isWeekend(day.weekday) ? "ds-print-weekend" : "",
-                    day.status === "missed" ? "ds-print-missed" : "",
-                    day.status === "temporary" ? "ds-print-temporary" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
-                  return (
-                    <td key={day.date} className={cellCls}>
-                      <div className="ds-print-daynum">{Number(day.date.slice(-2))}</div>
-                      <div className="ds-print-who">
-                        {emp ? shortName(emp.name) : "—"}
-                        {day.employeeId && statusMark(day)}
-                      </div>
-                      <div className="ds-print-hours">
-                        {day.employeeId ? `${day.hours}ч` : ""}
-                      </div>
-                    </td>
-                  );
-                })}
-                <td className="ds-print-week-col ds-print-num">
-                  {week.weekHours}
-                </td>
-              </tr>
-            ))}
+            {activeEmployees.map((emp) => {
+              const totalsRow = totals.find((t) => t.emp.id === emp.id)!;
+              return (
+                <tr key={emp.id}>
+                  <td className="ds-grid-name">
+                    <div>{emp.name}</div>
+                    {emp.phone && <div className="ds-grid-phone">{emp.phone}</div>}
+                  </td>
+                  {days.map((day) => {
+                    const mine = day.employeeId === emp.id;
+                    const cls = [
+                      isWeekend(day.weekday) ? "ds-print-weekend" : "",
+                      mine && day.status === "missed" ? "ds-print-missed" : "",
+                      mine && day.status === "temporary"
+                        ? "ds-print-temporary"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
+                    return (
+                      <td key={day.date} className={cls}>
+                        {mine
+                          ? day.status === "missed"
+                            ? `✕${day.hours}`
+                            : day.status === "temporary"
+                              ? `${day.hours}†`
+                              : day.hours
+                          : ""}
+                      </td>
+                    );
+                  })}
+                  <td className="ds-print-num">{totalsRow.hours}</td>
+                  <td className="ds-print-num">
+                    {totalsRow.amount.toLocaleString("ru-RU")}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
+          <tfoot>
+            <tr>
+              <td className="ds-grid-name">Общее число зарплаты за месяц</td>
+              <td colSpan={days.length} />
+              <td className="ds-print-num">{grandHours}</td>
+              <td className="ds-print-num ds-print-total">
+                {grandTotal.toLocaleString("ru-RU")} ₽
+              </td>
+            </tr>
+          </tfoot>
         </table>
 
         <div className="ds-print-legend">
