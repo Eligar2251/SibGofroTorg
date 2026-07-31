@@ -20,7 +20,8 @@ interface Props {
 }
 
 const statusClass: Record<CellStatus, string> = {
-  normal: "",
+  // Рабочая смена выделяется жёлтым, чтобы охранники сразу видели свои дни
+  normal: "ds-cell--work",
   missed: "ds-cell--missed",
   temporary: "ds-cell--temporary",
 };

@@ -1,9 +1,11 @@
 // =========================================================
 // FILE: src/components/admin/duty-schedule/DutySchedulePrint.tsx
-// Печатная версия табеля дежурств охраны: A4 альбомная,
-// график дежурств в одну строку — дни с 1-го по 31-е на всю
-// ширину листа (без переносов и «календарного» вида), сводка
-// по сотрудникам и общее число зарплаты за месяц.
+// Печатная версия табеля дежурств охраны: A4 альбомная.
+// Главная и самая крупная таблица на листе — сам табель:
+// дни 1..31 идут по горизонтали на всю ширину листа,
+// фамилии и рабочие часы крупные, без переносов, рабочие
+// смены выделены жёлтым. Сводка и прочая информация —
+// ниже и заметно мельче.
 // =========================================================
 
 "use client";
@@ -101,68 +103,28 @@ export function DutySchedulePrint({
           </div>
         </div>
 
-        {/* Сводка по сотрудникам */}
-        <table className="ds-print-summary">
-          <thead>
-            <tr>
-              <th>Сотрудник</th>
-              <th>Телефон</th>
-              <th>Часов</th>
-              <th>Ставка, ₽/ч</th>
-              <th>Сумма, ₽</th>
-            </tr>
-          </thead>
-          <tbody>
-            {totals.map(({ emp, hours, amount }) => (
-              <tr key={emp.id}>
-                <td>{emp.name}</td>
-                <td>{emp.phone || "—"}</td>
-                <td className="ds-print-num">{hours}</td>
-                <td className="ds-print-num">{emp.rate}</td>
-                <td className="ds-print-num">{amount.toLocaleString("ru-RU")}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={2}>Общее число зарплаты за месяц</td>
-              <td className="ds-print-num">{grandHours}</td>
-              <td />
-              <td className="ds-print-num ds-print-total">
-                {grandTotal.toLocaleString("ru-RU")} ₽
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-
-        {/* График дежурств: строки — сотрудники, столбцы — дни 1..31
-            в одну строку на всю ширину листа (альбомная ориентация) */}
+        {/* ГЛАВНАЯ ТАБЛИЦА — сам табель: строки — охранники,
+            столбцы — дни 1..31 по горизонтали на всю ширину
+            листа (альбомная ориентация). Рабочие смены жёлтые. */}
         <table className="ds-print-grid">
           <thead>
             <tr>
-              <th className="ds-grid-name" rowSpan={2}>
-                Сотрудник
-              </th>
-              <th className="ds-grid-days-head" colSpan={days.length}>
-                Дни месяца
-              </th>
-              <th rowSpan={2} className="ds-grid-col-total">
-                Часов
-              </th>
-              <th rowSpan={2} className="ds-grid-col-total">
-                Сумма, ₽
-              </th>
-            </tr>
-            <tr>
+              <th className="ds-grid-name">Сотрудник</th>
               {days.map((d) => (
                 <th
                   key={d.date}
                   className={isWeekend(d.weekday) ? "ds-print-weekend" : ""}
                 >
-                  {Number(d.date.slice(-2))}
-                  <div className="ds-grid-wd">{WEEKDAYS_SHORT_RU[d.weekday]}</div>
+                  <span className="ds-grid-day-num">
+                    {Number(d.date.slice(-2))}
+                  </span>
+                  <span className="ds-grid-wd">
+                    {WEEKDAYS_SHORT_RU[d.weekday]}
+                  </span>
                 </th>
               ))}
+              <th className="ds-grid-col-hours">Часов</th>
+              <th className="ds-grid-col-sum">Сумма, ₽</th>
             </tr>
           </thead>
           <tbody>
@@ -170,14 +132,12 @@ export function DutySchedulePrint({
               const totalsRow = totals.find((t) => t.emp.id === emp.id)!;
               return (
                 <tr key={emp.id}>
-                  <td className="ds-grid-name">
-                    <div>{emp.name}</div>
-                    {emp.phone && <div className="ds-grid-phone">{emp.phone}</div>}
-                  </td>
+                  <td className="ds-grid-name">{emp.name}</td>
                   {days.map((day) => {
                     const mine = day.employeeId === emp.id;
                     const cls = [
                       isWeekend(day.weekday) ? "ds-print-weekend" : "",
+                      mine && day.status === "normal" ? "ds-print-work" : "",
                       mine && day.status === "missed" ? "ds-print-missed" : "",
                       mine && day.status === "temporary"
                         ? "ds-print-temporary"
@@ -197,8 +157,10 @@ export function DutySchedulePrint({
                       </td>
                     );
                   })}
-                  <td className="ds-print-num">{totalsRow.hours}</td>
-                  <td className="ds-print-num">
+                  <td className="ds-print-num ds-grid-total-cell">
+                    {totalsRow.hours}
+                  </td>
+                  <td className="ds-print-num ds-grid-total-cell">
                     {totalsRow.amount.toLocaleString("ru-RU")}
                   </td>
                 </tr>
@@ -207,7 +169,9 @@ export function DutySchedulePrint({
           </tbody>
           <tfoot>
             <tr>
-              <td className="ds-grid-name">Общее число зарплаты за месяц</td>
+              <td className="ds-grid-name ds-grid-grand-label">
+                Общее число зарплаты за месяц
+              </td>
               <td colSpan={days.length} />
               <td className="ds-print-num">{grandHours}</td>
               <td className="ds-print-num ds-print-total">
@@ -218,12 +182,54 @@ export function DutySchedulePrint({
         </table>
 
         <div className="ds-print-legend">
+          <span className="ds-print-legend-item">
+            <i className="ds-print-swatch ds-print-swatch--work" /> рабочая
+            смена (жёлтая)
+          </span>
           <span>✕ — пропустил смену</span>
           <span>† — временный охранник</span>
           <span className="ds-print-legend-note">
-            Суббота/воскресенье — смена 24ч, будни — 15ч (можно изменить вручную).
+            Суббота/воскресенье — смена 24ч, будни — 15ч (можно изменить
+            вручную).
           </span>
         </div>
+
+        {/* Сводка по сотрудникам — ниже табеля и мельче */}
+        <div className="ds-print-subhead">Сводка по сотрудникам</div>
+        <table className="ds-print-summary">
+          <thead>
+            <tr>
+              <th>Сотрудник</th>
+              <th>Телефон</th>
+              <th>Часов</th>
+              <th>Ставка, ₽/ч</th>
+              <th>Сумма, ₽</th>
+            </tr>
+          </thead>
+          <tbody>
+            {totals.map(({ emp, hours, amount }) => (
+              <tr key={emp.id}>
+                <td>{emp.name}</td>
+                <td>{emp.phone || "—"}</td>
+                <td className="ds-print-num">{hours}</td>
+                <td className="ds-print-num">{emp.rate}</td>
+                <td className="ds-print-num">
+                  {amount.toLocaleString("ru-RU")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={2}>Общее число зарплаты за месяц</td>
+              <td className="ds-print-num">{grandHours}</td>
+              <td />
+              <td className="ds-print-num ds-print-total">
+                {grandTotal.toLocaleString("ru-RU")} ₽
+              </td>
+            </tr>
+          </tfoot>
+        </table>
 
         <div className="ds-print-sign">
           <span>Ответственный: ______________________</span>

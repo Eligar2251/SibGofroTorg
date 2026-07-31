@@ -243,6 +243,9 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
 
       <div className="ds-legend">
         <span className="ds-legend-item">
+          <i className="ds-swatch ds-swatch--work" /> Рабочая смена (жёлтая)
+        </span>
+        <span className="ds-legend-item">
           <i className="ds-swatch ds-swatch--missed" /> Пропустил смену
         </span>
         <span className="ds-legend-item">
