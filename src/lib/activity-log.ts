@@ -32,7 +32,8 @@ export type EntityType =
   | "counterparty"
   | "salary"
   | "admin-user"
-  | "cash-collection";
+  | "cash-collection"
+  | "client-request";
 
 interface LogEntry {
   adminId?: string;

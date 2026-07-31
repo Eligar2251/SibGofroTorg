@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   PanelLeftClose,
   ChevronRight,
+  Headset,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
@@ -94,6 +95,11 @@ export function AdminShell({
       href: `/${adminPath}/orders`,
       label: "Заявки",
       icon: <ClipboardList size={18} />,
+    },
+    {
+      href: `/${adminPath}/client-requests`,
+      label: "Заявки клиентов",
+      icon: <Headset size={18} />,
     },
     {
       href: `/${adminPath}/warehouse`,

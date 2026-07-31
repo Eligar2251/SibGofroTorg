@@ -862,3 +862,31 @@ DROP TRIGGER IF EXISTS trg_pv_updated_at ON product_variants;
 CREATE TRIGGER trg_pv_updated_at
   BEFORE UPDATE ON product_variants
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =========================================================
+-- РУЧНЫЕ ЗАЯВКИ КЛИЕНТОВ (CRM-обращения, не связаны с заказами)
+-- См. также migration_client_requests.sql
+-- =========================================================
+CREATE TABLE IF NOT EXISTS client_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_name TEXT NOT NULL DEFAULT '',
+  customer_phone TEXT NOT NULL DEFAULT '',
+  contact_method TEXT NOT NULL DEFAULT 'call'
+    CHECK (contact_method IN ('call', 'whatsapp', 'telegram', 'max', 'email', 'visit', 'other')),
+  subject TEXT NOT NULL DEFAULT '',
+  comment TEXT,
+  status TEXT NOT NULL DEFAULT 'new'
+    CHECK (status IN ('new', 'in_progress', 'completed', 'rejected')),
+  close_reason TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_client_requests_status ON client_requests(status);
+CREATE INDEX IF NOT EXISTS idx_client_requests_created ON client_requests(created_at DESC);
+DROP TRIGGER IF EXISTS trg_client_requests_updated ON client_requests;
+CREATE TRIGGER trg_client_requests_updated
+  BEFORE UPDATE ON client_requests
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE client_requests ENABLE ROW LEVEL SECURITY;
+-- Политик нет: чтение/запись только с сервера (service_role).
