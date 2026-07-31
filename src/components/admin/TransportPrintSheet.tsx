@@ -28,10 +28,17 @@ export interface TransportPrintData {
     phone: string | null;
     deliveryNote?: string | null;
     items: { name: string; transportQty: number }[];
+    tripType?: "delivery" | "pickup" | "handover" | null;
   }[];
   companyPhone?: string;
   companyAddress?: string;
 }
+
+const TRIP_TYPE_LABEL: Record<string, string> = {
+  delivery: "Доставка клиенту",
+  pickup: "Забор груза",
+  handover: "Сдача груза",
+};
 
 function fmtDate(iso?: string | null): string {
   if (!iso) return "—";
@@ -132,6 +139,11 @@ export function TransportPrintSheet({
                     <span className="strip-per">
                       ПЕР-{data.transportNumber} · {fmtDate(data.date)}
                     </span>
+                    {deal.tripType && deal.tripType !== "delivery" && (
+                      <span className="strip-trip-type">
+                        {TRIP_TYPE_LABEL[deal.tripType] || "Перевозка"}
+                      </span>
+                    )}
                   </div>
                   <div className="strip-top__right">
                     <span className="strip-boxes">{totalQty}</span>
@@ -258,6 +270,7 @@ const PRINT_CSS = `
 .strip-top { display: flex; justify-content: space-between; align-items: flex-start; }
 .strip-top__left { display: flex; flex-direction: column; gap: 1mm; }
 .strip-deal { font-size: 19px; font-weight: 700; letter-spacing: 0.01em; line-height: 1; color: #2b2b28; }
+.strip-trip-type { font-size: 11px; font-weight: 700; color: #fff; background: #1d4ed8; border-radius: 2mm; padding: 1mm 2.5mm; display: inline-block; width: fit-content; }
 .strip-per { font-size: 9px; color: #9a948a; font-weight: 500; }
 .strip-top__right { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
 .strip-boxes { font-size: 22px; font-weight: 700; line-height: 1; color: #2b2b28; }

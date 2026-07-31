@@ -1684,8 +1684,7 @@ export function WarehouseManager({
                               className="admin-select"
                             >
                               <option value="">-- Выберите поставщика --</option>
-                              {counterpartyOptions
-                                .filter(c => c.roles.includes("supplier"))
+                              {[...new Map(counterpartyOptions.filter(c => c.roles.includes("supplier")).map(c => [c.id, c])).values()]
                                 .map(c => (
                                   <option key={c.id} value={c.id}>{c.name}</option>
                                 ))
@@ -2035,6 +2034,7 @@ export function WarehouseManager({
           companyPhone={companyPhone}
           companyAddress={companyAddress}
           focusTransportId={focusTransportId}
+          products={pickerProducts}
         />
       )}
 

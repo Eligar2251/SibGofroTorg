@@ -7,10 +7,25 @@ import { useRouter } from "next/navigation";
 import {
   Truck, Calendar, User, MapPin, Phone, Package, CheckCircle2,
   Clock, Loader2, Plus, Trash2, Printer, X, Archive, RotateCcw,
-  ChevronDown, ChevronUp, AlertTriangle, Banknote,
+  ChevronDown, ChevronUp, AlertTriangle, Banknote, PackageSearch,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { ProductPicker, type PickerProduct } from "@/components/admin/ProductPicker";
 import { TransportPrintSheet, type TransportPrintData } from "./TransportPrintSheet";
+
+export type TripType = "delivery" | "pickup" | "handover";
+
+export const TRIP_TYPE_LABEL: Record<TripType, string> = {
+  delivery: "Доставка клиенту",
+  pickup: "Забор груза",
+  handover: "Сдача груза",
+};
+
+export const TRIP_TYPE_SHORT: Record<TripType, string> = {
+  delivery: "Доставка",
+  pickup: "Забор груза",
+  handover: "Сдача груза",
+};
 
 type FilterTab = "active" | "completed" | "archived" | "all";
 
@@ -47,8 +62,9 @@ export interface TransportRow {
     address: string | null;
     phone: string | null;
     deliveryNote?: string | null;
-    items: { productId: string; name: string; orderedQty: number; transportQty: number }[];
+    items: { productId: string | null; name: string; orderedQty: number; transportQty: number }[];
     totalSum: number | null;
+    tripType?: TripType | null;
   }[];
   totalItems: number;
   completedAt?: string | null;
@@ -80,6 +96,7 @@ export function TransportManager({
   companyPhone,
   companyAddress,
   focusTransportId,
+  products = [],
 }: {
   transports: TransportRow[];
   pendingDeals: TransportDeal[];
@@ -87,6 +104,8 @@ export function TransportManager({
   companyPhone?: string;
   companyAddress?: string;
   focusTransportId?: string | null;
+  /** Товары каталога сайта — для выбора груза в самостоятельных поездках */
+  products?: PickerProduct[];
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<FilterTab>("active");
@@ -278,6 +297,11 @@ export function TransportManager({
                           <div key={deal.dealId || `custom-${deal.customerName}-${idx}`} style={{ marginBottom: 14, padding: "10px 12px", background: "var(--adm-paper)", borderRadius: 8, border: "1px solid var(--adm-border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                               <span className="admin-order__id">{deal.dealNumber ? `ЗК-${deal.dealNumber}` : "Самостоятельная перевозка"}</span>
+                              {!deal.dealNumber && deal.tripType && deal.tripType !== "delivery" && (
+                                <span className={`admin-badge ${deal.tripType === "pickup" ? "admin-badge--blue" : "admin-badge--indigo"}`}>
+                                  {TRIP_TYPE_SHORT[deal.tripType]}
+                                </span>
+                              )}
                               <strong style={{ fontSize: 13 }}>{deal.customerName}</strong>
                       {deal.phone && (
                         <a href={`tel:${deal.phone}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--adm-steel)", whiteSpace: "nowrap" }}>
@@ -343,6 +367,7 @@ export function TransportManager({
         <CreateTransportModal
           deals={pendingDeals}
           drivers={drivers}
+          products={products}
           onClose={() => setShowCreate(false)}
           onCreated={() => { setShowCreate(false); router.refresh(); }}
         />
@@ -352,22 +377,31 @@ export function TransportManager({
 }
 
 /* ── Модалка создания перевозки ── */
+interface CustomCargoRow {
+  productId: string | null;
+  name: string;
+  transportQty: number;
+}
+
 interface CustomIndependentTrip {
   id: string;
+  tripType: TripType;
   customerName: string;
   contactName: string;
   phone: string;
   address: string;
   deliveryNote: string;
-  items: { name: string; transportQty: number }[];
+  items: CustomCargoRow[];
 }
 
-function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
+function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: {
   deals: TransportDeal[];
   drivers: DriverOption[];
+  products?: PickerProduct[];
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const [rowPicker, setRowPicker] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -450,6 +484,7 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
         setError("Добавьте хотя бы один товар/груз в самостоятельной поездке");
         return;
       }
+      const tripType = trip.tripType || "delivery";
       items.push({
         dealId: null,
         dealNumber: null,
@@ -459,12 +494,15 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
         phone: trip.phone.trim() || null,
         deliveryNote: trip.deliveryNote.trim() || null,
         items: tripItems.map(it => ({
-          productId: null,
+          productId: it.productId || null,
           name: it.name.trim(),
           orderedQty: it.transportQty,
           transportQty: it.transportQty,
         })),
         totalSum: null,
+        // Тип поездки: доставка клиенту / забор груза / сдача груза.
+        // Для поездок по заказам всегда "delivery" (не задаём — по умолчанию).
+        tripType,
       });
     }
 
@@ -569,7 +607,7 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
           {/* Раздел самостоятельных перевозок (без заказа) */}
           <div style={{ marginTop: 16, borderTop: "1px solid var(--adm-border)", paddingTop: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <label className="admin-label" style={{ margin: 0 }}>Самостоятельные поездки (без привязки к заказам)</label>
+              <label className="admin-label" style={{ margin: 0 }}>Самостоятельные перевозки (без привязки к заказам)</label>
               <button
                 type="button"
                 className="admin-btn admin-btn--outline admin-btn--sm"
@@ -578,17 +616,18 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
                     ...prev,
                     {
                       id: Math.random().toString(36).substring(7),
+                      tripType: "delivery",
                       customerName: "",
                       contactName: "",
                       phone: "",
                       address: "",
                       deliveryNote: "",
-                      items: [{ name: "Макулатура", transportQty: 100 }],
+                      items: [{ productId: null, name: "Макулатура", transportQty: 100 }],
                     }
                   ]);
                 }}
               >
-                <Plus size={13} style={{ marginRight: 4 }} /> Добавить поездку без заказа
+                <Plus size={13} style={{ marginRight: 4 }} /> Добавить самостоятельную перевозку
               </button>
             </div>
 
@@ -625,13 +664,48 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
                       <Trash2 size={15} />
                     </button>
 
-                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: "var(--adm-kraft)" }}>
-                      🚗 Поездка без заказа #{tripIdx + 1}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: "var(--adm-kraft)" }}>
+                        🚗 Самостоятельная перевозка #{tripIdx + 1}
+                      </span>
+                      <span className={`admin-badge ${trip.tripType === "pickup" ? "admin-badge--blue" : trip.tripType === "handover" ? "admin-badge--indigo" : "admin-badge--green"}`}>
+                        {TRIP_TYPE_SHORT[trip.tripType || "delivery"]}
+                      </span>
+                    </div>
+
+                    {/* Тип поездки: доставка / забор груза / сдача груза */}
+                    <div className="admin-field" style={{ marginBottom: 12 }}>
+                      <label className="admin-label">Тип поездки</label>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {([
+                          { id: "delivery" as TripType, label: "🚚 Доставка клиенту", hint: "везём товар клиенту" },
+                          { id: "pickup" as TripType, label: "📥 Забор груза", hint: "забираем груз у контрагента" },
+                          { id: "handover" as TripType, label: "📤 Сдача груза", hint: "сдаём груз (напр. на переработку)" },
+                        ]).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            className={`admin-btn ${(trip.tripType || "delivery") === opt.id ? "admin-btn--primary" : "admin-btn--ghost"}`}
+                            style={{ flex: 1, minWidth: 150 }}
+                            title={opt.hint}
+                            onClick={() => {
+                              setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, tripType: opt.id } : t));
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="wh-form-hint" style={{ margin: "4px 0 0" }}>
+                        Забор — забираем груз у контрагента, сдача — привозим груз (например, на переработку).
+                      </span>
                     </div>
 
                     <div className="wh-form-grid" style={{ marginBottom: 12 }}>
                       <div className="admin-field">
-                        <label className="admin-label">Контрагент / Клиент *</label>
+                        <label className="admin-label">
+                          {trip.tripType === "pickup" ? "Откуда забираем (Контрагент) *" : trip.tripType === "handover" ? "Куда сдаём (Контрагент) *" : "Контрагент / Клиент *"}
+                        </label>
                         <input
                           type="text"
                           className="admin-input"
@@ -646,7 +720,7 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
                       </div>
 
                       <div className="admin-field">
-                        <label className="admin-label">Куда ехать (Адрес) *</label>
+                        <label className="admin-label">Адрес *</label>
                         <input
                           type="text"
                           className="admin-input"
@@ -689,7 +763,7 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
                       </div>
 
                       <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
-                        <label className="admin-label">Заметка водителю / Заметка курьеру</label>
+                        <label className="admin-label">Заметка водителю</label>
                         <input
                           type="text"
                           className="admin-input"
@@ -705,78 +779,146 @@ function CreateTransportModal({ deals, drivers, onClose, onCreated }: {
 
                     {/* Товары для этой самостоятельной поездки */}
                     <div style={{ borderTop: "1px dashed var(--adm-border)", paddingTop: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 12, fontWeight: 700 }}>📦 Груз / Товары:</span>
-                        <button
-                          type="button"
-                          className="admin-btn admin-btn--ghost admin-btn--sm"
-                          onClick={() => {
-                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                              ...t,
-                              items: [...t.items, { name: "", transportQty: 10 }]
-                            } : t));
-                          }}
-                        >
-                          + Добавить строку груза
-                        </button>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--outline admin-btn--sm"
+                            disabled={!products || products.length === 0}
+                            title={!products || products.length === 0 ? "Каталог не загружен" : "Выбрать товар из каталога сайта"}
+                            onClick={() => setRowPicker(`${trip.id}:new`)}
+                          >
+                            <PackageSearch size={13} /> Из каталога
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--ghost admin-btn--sm"
+                            onClick={() => {
+                              setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                ...t,
+                                items: [...t.items, { productId: null, name: "", transportQty: 10 }]
+                              } : t));
+                            }}
+                          >
+                            + Добавить строку груза
+                          </button>
+                        </div>
                       </div>
 
+                      {/* Выбор товара из каталога сайта */}
+                      {rowPicker === `${trip.id}:new` && (
+                        <div style={{ marginBottom: 8 }}>
+                          <ProductPicker
+                            products={products || []}
+                            onPick={(p) => {
+                              setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                ...t,
+                                items: [...t.items, { productId: p.id, name: p.name, transportQty: 10 }],
+                              } : t));
+                              setRowPicker(null);
+                            }}
+                            placeholder="Поиск товара по каталогу сайта..."
+                          />
+                        </div>
+                      )}
+
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {trip.items.map((item, itemIdx) => (
-                          <div key={itemIdx} style={{ display: "grid", gridTemplateColumns: "1fr 100px 30px", gap: 8, alignItems: "center" }}>
-                            <input
-                              type="text"
-                              className="admin-input"
-                              value={item.name}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                  ...t,
-                                  items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, name: val } : it)
-                                } : t));
-                              }}
-                              placeholder="Название (например, Макулатура, Поддоны)"
-                              required
-                            />
-                            <input
-                              type="number"
-                              className="admin-input"
-                              min={1}
-                              value={item.transportQty || ""}
-                              onChange={(e) => {
-                                const val = Math.max(1, Number(e.target.value) || 0);
-                                setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                  ...t,
-                                  items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, transportQty: val } : it)
-                                } : t));
-                              }}
-                              style={{ textAlign: "right" }}
-                              required
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                  ...t,
-                                  items: t.items.filter((_, iIdx) => iIdx !== itemIdx)
-                                } : t));
-                              }}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "var(--adm-rust)",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center"
-                              }}
-                              disabled={trip.items.length <= 1}
-                              title="Удалить товар"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
+                        {trip.items.map((item, itemIdx) => {
+                          const pickerKey = `${trip.id}:${itemIdx}`;
+                          return (
+                            <div key={`${trip.id}-${itemIdx}`} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 30px", gap: 8, alignItems: "center" }}>
+                                <input
+                                  type="text"
+                                  className="admin-input"
+                                  value={item.name}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                      ...t,
+                                      // Пользователь правит название вручную — привязка к товару каталога сбрасывается
+                                      items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, name: val, productId: null } : it)
+                                    } : t));
+                                  }}
+                                  placeholder="Название (например, Макулатура, Поддоны)"
+                                  required
+                                />
+                                <input
+                                  type="number"
+                                  className="admin-input"
+                                  min={1}
+                                  value={item.transportQty || ""}
+                                  onChange={(e) => {
+                                    const val = Math.max(1, Number(e.target.value) || 0);
+                                    setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                      ...t,
+                                      items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, transportQty: val } : it)
+                                    } : t));
+                                  }}
+                                  style={{ textAlign: "right" }}
+                                  required
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                      ...t,
+                                      items: t.items.filter((_, iIdx) => iIdx !== itemIdx)
+                                    } : t));
+                                  }}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "var(--adm-rust)",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center"
+                                  }}
+                                  disabled={trip.items.length <= 1}
+                                  title="Удалить товар"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                {item.productId ? (
+                                  <span className="admin-badge admin-badge--green" style={{ fontSize: 11 }}>
+                                    ✓ из каталога: {item.name}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: 11, color: "var(--adm-sand)" }}>
+                                    свободное описание груза
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                                  style={{ padding: "2px 8px", fontSize: 11 }}
+                                  onClick={() => setRowPicker(rowPicker === pickerKey ? null : pickerKey)}
+                                >
+                                  {item.productId ? "Заменить из каталога" : "Выбрать из каталога"}
+                                </button>
+                              </div>
+                              {rowPicker === pickerKey && (
+                                <div style={{ marginBottom: 4 }}>
+                                  <ProductPicker
+                                    products={products || []}
+                                    onPick={(p) => {
+                                      setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
+                                        ...t,
+                                        items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, productId: p.id, name: p.name } : it)
+                                      } : t));
+                                      setRowPicker(null);
+                                    }}
+                                    placeholder="Поиск товара по каталогу сайта..."
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
