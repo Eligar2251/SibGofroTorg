@@ -1,0 +1,724 @@
+/* =========================================================
+   FILE: src/components/admin/duty-schedule/DutySchedule.css
+   Стили табеля дежурств охраны (префикс ds-), включая печать.
+   ========================================================= */
+
+.ds-root {
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: #1f2933;
+  padding: 16px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid var(--adm-border, #dbd8d0);
+}
+
+.ds-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ds-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.ds-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ds-month-label {
+  font-weight: 600;
+  min-width: 140px;
+  text-align: center;
+}
+
+.ds-toolbar {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+.ds-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ds-toolbar-group label {
+  font-size: 13px;
+  color: #374151;
+}
+
+.ds-btn {
+  border: 1px solid #cbd2d9;
+  background: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ds-btn:hover {
+  background: #f0f2f5;
+}
+.ds-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ds-btn--primary {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.ds-btn--primary:hover {
+  background: #1d4ed8;
+}
+.ds-btn--success {
+  background: #16a34a;
+  color: #fff;
+  border-color: #16a34a;
+}
+.ds-btn--success:hover {
+  background: #15803d;
+}
+.ds-btn--danger {
+  background: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+.ds-btn--danger:hover {
+  background: #dc2626;
+}
+
+.ds-message {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.ds-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+}
+.ds-table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+}
+.ds-table th,
+.ds-table td {
+  border: 1px solid #d0d7de;
+  text-align: center;
+  padding: 6px 8px;
+  font-size: 13px;
+  min-width: 40px;
+}
+.ds-table thead th {
+  background: #fafbfc;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.ds-weekend-header {
+  background: #fff3b0 !important;
+  color: #c0392b;
+}
+.ds-weekday-label {
+  font-size: 10px;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.ds-sticky-col {
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 1;
+  text-align: left;
+  min-width: 160px;
+}
+.ds-sticky-col-right {
+  position: sticky;
+  right: 0;
+  background: #fafbfc;
+  font-weight: 600;
+}
+
+.ds-employee-cell .ds-employee-name {
+  font-weight: 600;
+}
+.ds-employee-cell .ds-employee-phone {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.ds-cell {
+  cursor: pointer;
+  font-weight: 700;
+}
+.ds-cell:hover {
+  background: #eef2ff;
+}
+.ds-cell--weekend {
+  background: #fff9db;
+}
+.ds-cell--missed {
+  background: #1d4e89 !important;
+  color: #fff;
+}
+.ds-cell--temporary {
+  color: #8b0000;
+  background: #ffe4e1;
+}
+.ds-cell--conflict {
+  outline: 2px solid #f59e0b;
+  outline-offset: -2px;
+}
+/* Ячейка с рабочей сменой — выделена жёлтым */
+.ds-cell--work {
+  background: #ffe135;
+  color: #1a1a1a;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
+.ds-total-cell {
+  font-weight: 700;
+}
+.ds-grand-label {
+  text-align: right;
+  font-weight: 700;
+}
+.ds-grand-total {
+  font-weight: 800;
+  font-size: 15px;
+  color: #1d4ed8;
+}
+
+.ds-legend {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.ds-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+.ds-swatch--work {
+  background: #ffe135;
+  border: 1px solid #d4b400;
+}
+.ds-swatch--missed {
+  background: #1d4e89;
+}
+.ds-swatch--temporary {
+  background: #ffe4e1;
+  border: 1px solid #8b0000;
+}
+.ds-swatch--conflict {
+  background: #fff;
+  outline: 2px solid #f59e0b;
+}
+.ds-legend-transfer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #b45309;
+}
+.ds-legend-transfer--done {
+  color: #15803d;
+}
+.ds-legend-rate {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+/* ── Модалки ── */
+.ds-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.ds-modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  width: 360px;
+  max-width: 90vw;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+.ds-modal--wide {
+  width: 760px;
+  max-width: 95vw;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.ds-modal--transfer {
+  width: 480px;
+}
+.ds-modal h3 {
+  margin-top: 0;
+}
+
+.ds-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.ds-field select,
+.ds-field input {
+  padding: 6px 8px;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+}
+
+.ds-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.ds-emp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+.ds-emp-table th,
+.ds-emp-table td {
+  border: 1px solid #e5e7eb;
+  padding: 6px;
+  font-size: 13px;
+}
+.ds-emp-table input,
+.ds-emp-table select {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.ds-weekday-picker {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.ds-weekday-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+.ds-weekday-chip.active {
+  background: #dbeafe;
+  border-color: #2563eb;
+}
+.ds-weekday-chip span {
+  cursor: pointer;
+  font-weight: 600;
+}
+.ds-weekday-chip input {
+  width: 36px;
+  margin-top: 2px;
+  font-size: 11px;
+  padding: 1px 2px;
+}
+
+.ds-add-employee-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.ds-add-employee-row input,
+.ds-add-employee-row select {
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.ds-muted {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+/* ── Модалка переноса в зарплату ── */
+.ds-transfer-warning {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.ds-transfer-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+.ds-transfer-table th,
+.ds-transfer-table td {
+  border: 1px solid #e5e7eb;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: left;
+}
+.ds-transfer-table th {
+  background: #fafbfc;
+}
+.ds-transfer-table tfoot td {
+  font-weight: 700;
+  text-align: right;
+}
+.ds-transfer-total {
+  color: #16a34a;
+  font-size: 15px;
+  font-weight: 800;
+}
+.ds-transfer-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 8px;
+}
+.ds-transfer-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+/* ── Печать ── */
+.ds-print-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-print-root {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #f5f3ee;
+  overflow: auto;
+  padding: 24px;
+}
+.ds-print-toolbar {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 100000;
+  display: flex;
+  gap: 8px;
+}
+.ds-print-sheet {
+  /* Альбомная ориентация A4 — лист шире, чтобы график 1..31
+     помещался в одну строку и в предпросмотре на экране */
+  max-width: 297mm;
+  margin: 0 auto;
+  background: #fff;
+  padding: 8mm;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #2b2b28;
+}
+/* Жёлтая заливка и прочие фоны обязаны попадать в печать */
+.ds-print-sheet,
+.ds-print-sheet * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.ds-print-head {
+  text-align: center;
+  margin-bottom: 5mm;
+  border-bottom: 2px solid #2b2b28;
+  padding-bottom: 3mm;
+}
+.ds-print-title {
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ds-print-month {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 1mm;
+}
+.ds-print-company {
+  font-size: 11px;
+  color: #555;
+  margin-top: 1mm;
+}
+
+.ds-print-summary {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 3mm;
+}
+.ds-print-summary th,
+.ds-print-summary td {
+  border: 1px solid #bbb;
+  padding: 1.2mm 2mm;
+  font-size: 10px;
+  text-align: left;
+  line-height: 1.15;
+}
+.ds-print-summary th {
+  background: #f1f1ee;
+  font-weight: 700;
+}
+.ds-print-summary tfoot td {
+  font-weight: 700;
+  text-align: right;
+}
+.ds-print-total {
+  font-size: 12px;
+  font-weight: 800;
+}
+.ds-print-subhead {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #2b2b28;
+  margin: 4mm 0 1.5mm;
+}
+
+/* ── ГЛАВНАЯ ТАБЛИЦА: табель. Дни 1..31 по горизонтали ──
+   в одну строку на всю ширину альбомного листа, крупно. */
+.ds-print-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  break-inside: avoid;
+}
+.ds-print-grid th,
+.ds-print-grid td {
+  border: 1px solid #8a8880;
+  padding: 1.1mm 0.5mm;
+  font-size: 12px;
+  line-height: 1.1;
+  text-align: center;
+  vertical-align: middle;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ds-print-grid thead th {
+  background: #f1f1ee;
+  font-weight: 700;
+}
+.ds-print-grid tbody td {
+  font-weight: 700;
+  height: 8mm;
+}
+.ds-grid-day-num {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+.ds-grid-wd {
+  display: block;
+  font-size: 8px;
+  color: #555;
+  font-weight: 400;
+  line-height: 1.1;
+}
+.ds-grid-name {
+  /* Фамилия крупно, в одну строку, без переноса */
+  width: 46mm;
+  text-align: left !important;
+  padding: 1mm 2mm !important;
+  font-weight: 700;
+  font-size: 13px !important;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ds-grid-col-hours {
+  width: 10mm;
+  font-size: 10px !important;
+}
+.ds-grid-col-sum {
+  width: 16mm;
+  font-size: 10px !important;
+}
+.ds-grid-total-cell {
+  font-size: 11px !important;
+  font-weight: 800;
+  background: #f7f6f2;
+}
+/* Рабочая смена — яркая жёлтая заливка */
+.ds-print-work {
+  background: #ffe135 !important;
+  color: #111;
+  font-weight: 800;
+}
+.ds-print-weekend {
+  background: #fff3b0 !important;
+  color: #7a5a12;
+}
+/* Рабочая смена в выходной тоже остаётся ярко-жёлтой «рабочей» */
+.ds-print-weekend.ds-print-work {
+  background: #ffe135 !important;
+  color: #111;
+}
+.ds-print-missed {
+  color: #b91c1c;
+  font-weight: 700;
+  background: #fdecea !important;
+  text-decoration: line-through;
+}
+.ds-print-temporary {
+  color: #8b0000;
+  font-weight: 700;
+  background: #ffe4e1 !important;
+}
+.ds-print-grid tfoot td {
+  font-weight: 700;
+  text-align: right;
+  background: #f7f6f2;
+  font-size: 10px;
+  padding: 1mm 2mm;
+}
+.ds-grid-grand-label {
+  font-size: 10px !important;
+  text-align: left !important;
+  white-space: normal !important;
+  line-height: 1.15;
+}
+
+.ds-print-legend {
+  display: flex;
+  gap: 5mm;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 9px;
+  color: #555;
+  margin-top: 2.5mm;
+  padding-top: 1.5mm;
+  border-top: 1px solid #ccc;
+}
+.ds-print-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5mm;
+}
+.ds-print-swatch {
+  display: inline-block;
+  width: 3.2mm;
+  height: 3.2mm;
+  border: 1px solid #999;
+  border-radius: 0.6mm;
+}
+.ds-print-swatch--work {
+  background: #ffe135;
+  border-color: #d4b400;
+}
+.ds-print-legend-note {
+  margin-left: auto;
+}
+
+.ds-print-sign {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8mm;
+  font-size: 11px;
+}
+
+@media print {
+  /* Альбомная ориентация: график 1..31 в одну строку на всю ширину */
+  @page {
+    size: A4 landscape;
+    margin: 8mm 10mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .admin-sidebar,
+  .admin-mobile-bar,
+  .NavigationProgress {
+    display: none !important;
+  }
+  .admin-content,
+  .admin-main {
+    visibility: hidden !important;
+  }
+  .ds-print-root,
+  .ds-print-root * {
+    visibility: visible !important;
+  }
+  .ds-print-root {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: 999999 !important;
+    overflow: visible !important;
+  }
+  .ds-print-toolbar {
+    display: none !important;
+  }
+  .ds-print-sheet {
+    max-width: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  /* График не разрывается: все дни в одной строке на листе */
+  .ds-print-grid {
+    break-inside: avoid;
+  }
+  .ds-print-grid tr {
+    break-inside: avoid;
+  }
+  .ds-print-summary {
+    break-inside: avoid;
+  }
+}

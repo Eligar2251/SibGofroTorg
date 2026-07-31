@@ -328,7 +328,21 @@ export function DealForm({
         item.name.toLocaleLowerCase("ru-RU") ===
           value.trim().toLocaleLowerCase("ru-RU")
     );
-    if (!found) return;
+    if (!found) {
+      // Новый (не найденный) покупатель: сбрасываем реквизиты предыдущего
+      // контрагента, чтобы заказ не сохранился с чужим телефоном/ИНН.
+      // Сам контрагент создастся на сервере при сохранении заказа.
+      if (value.trim()) {
+        setCustomerPhone("");
+        setEmail("");
+        setInn("");
+        setKpp("");
+        setAddress("");
+        setContactName("");
+        setDeliveryAddress("");
+      }
+      return;
+    }
     setCustomerPhone(found.phone || "");
     setEmail(found.email || "");
     setInn(found.inn || "");

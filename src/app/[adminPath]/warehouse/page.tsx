@@ -108,7 +108,7 @@ export default async function AdminWarehousePage({
   // Раньше при открытии «Склад» читались сразу поставки, заказы, банк,
   // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
   // только необходимые ей коллекции.
-  const needStock = ["stock", "deals", "supplies", "receipts", "reports"].includes(initialTab) || !!sp.product;
+  const needStock = ["stock", "deals", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
   const needReceipts = ["supplies", "receipts", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
   const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
   // Платежи нужны и на актуальной вкладке `receipts`: по ним карточки

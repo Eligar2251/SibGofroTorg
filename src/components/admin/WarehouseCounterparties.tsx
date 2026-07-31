@@ -96,6 +96,18 @@ const EMPTY: FormState = {
 const fmt = (value: number) => value.toLocaleString("ru-RU");
 const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
+/** Убирает дубли по id — защита от «two children with the same key». */
+function uniqueById(list: CounterpartyOption[]): CounterpartyOption[] {
+  const seen = new Set<string>();
+  const out: CounterpartyOption[] = [];
+  for (const item of list) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
+
 export function CounterpartiesManager({
   initialCounterparties,
   documents,
@@ -104,7 +116,7 @@ export function CounterpartiesManager({
   documents: Record<string, CounterpartyDocument[]>;
 }) {
   const router = useRouter();
-  const [items, setItems] = useState(initialCounterparties);
+  const [items, setItems] = useState(() => uniqueById(initialCounterparties));
   const [search, setSearch] = useState("");
   const [role, setRole] = useState<"all" | CounterpartyRole>("all");
   const [sort, setSort] = useState<"name" | "documents" | "turnover">("name");
@@ -224,11 +236,18 @@ export function CounterpartiesManager({
         contactName: form.contactName || null,
         comment: form.comment || null,
       };
-      setItems((current) =>
-        isNew
-          ? [...current, updated].sort((a, b) => a.name.localeCompare(b.name, "ru"))
-          : current.map((item) => (item.id === editingId ? updated : item))
-      );
+      setItems((current) => {
+        // Если контрагент с таким id уже есть в списке (тот же name после
+        // нормализации) — заменяем, а не добавляем второй раз: иначе в списке
+        // появлялись дубли с одним id и React ругался на одинаковые key.
+        const exists = current.some((item) => item.id === updated.id);
+        const next = isNew
+          ? exists
+            ? current.map((item) => (item.id === updated.id ? updated : item))
+            : [...current, updated]
+          : current.map((item) => (item.id === editingId ? updated : item));
+        return uniqueById(next).sort((a, b) => a.name.localeCompare(b.name, "ru"));
+      });
       setEditingId(null);
       router.refresh();
     } catch (saveError) {

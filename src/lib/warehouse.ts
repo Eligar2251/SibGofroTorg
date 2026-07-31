@@ -117,12 +117,27 @@ function cleanText(value: unknown, max: number): string | null {
   return result || null;
 }
 
-function normalizeCounterpartyName(name: string): string {
+/**
+ * Чистит имя контрагента от «невидимого» мусора из буфера обмена:
+ *  - схлопывает любые пробелы (в т.ч. неразрывные \u00A0) в один обычный;
+ *  - вырезает zero-width символы (\u200B\u200C\u200D\u2060), которые
+ *    попадают в буфер при копировании с сайтов/из Excel и незаметно
+ *    меняют хэш-id контрагента (из-за этого «вставленный» контрагент
+ *    не находился и создавался заново при каждом копировании);
+ *  - обрезает до 200 символов.
+ */
+function sanitizeCounterpartyName(name: string): string {
   return String(name || "")
+    .replace(/[\u200B-\u200D\u2060]/g, "")
     .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 200);
+}
+
+function normalizeCounterpartyName(name: string): string {
+  return sanitizeCounterpartyName(name)
     .toLocaleLowerCase("ru-RU")
-    .replace(/[«»\"']/g, "")
-    .replace(/\s+/g, " ");
+    .replace(/[«»\"']/g, "");
 }
 
 function counterpartyIdForName(name: string): string {
@@ -355,7 +370,17 @@ async function fetchCounterpartyRows(): Promise<Counterparty[]> {
     const db = getAdminDb();
     const { data, error } = await db.from("counterparties").select("*");
     if (error) throw error;
-    const mapped = (data || []).map(mapCounterpartyRow);
+    // Страховка от дублей: если в БД по какой-то причине завелось две
+    // строки с одним id (старые версии без PRIMARY KEY), отдаём только
+    // одну — иначе React падает с «two children with the same key».
+    const seen = new Set<string>();
+    const mapped = (data || [])
+      .map(mapCounterpartyRow)
+      .filter((row) => {
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
     memoryCounterpartiesCache = { at: now, data: mapped };
     return mapped;
   } catch (error: any) {
@@ -416,6 +441,14 @@ const getCachedSupplierPriceRows = unstable_cache(
 );
 
 function invalidateCounterpartyCache(includeSupplierPrices = false) {
+  // Сбрасываем и memory-кэш: иначе после создания контрагента из модалки
+  // он до 60 секунд «не появлялся» в списках (unstable_cache перезапускал
+  // fetchCounterpartyRows, а тот возвращал старый memory-кэш) — выглядело
+  // как «контрагент не сохранился».
+  memoryCounterpartiesCache = null;
+  if (includeSupplierPrices) {
+    memorySupplierPricesCache = null;
+  }
   revalidateTag("warehouse-counterparties", { expire: 0 });
   if (includeSupplierPrices) {
     revalidateTag("warehouse-supplier-prices", { expire: 0 });
@@ -429,13 +462,20 @@ export async function getCounterparties(options?: { includeSupplierPrices?: bool
     getCachedCounterpartyRows(),
     options?.includeSupplierPrices ? getCachedSupplierPriceRows() : Promise.resolve([]),
   ]);
-  if (!priceRows.length) return baseRows;
+  // Дубли по id убираем и здесь — списки контрагентов идут в React-ключи.
+  const seen = new Set<string>();
+  const unique = baseRows.filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+  if (!priceRows.length) return unique;
   const priceMap = new Map<string, Record<string, number>>();
   for (const row of priceRows) {
     if (!priceMap.has(row.counterpartyId)) priceMap.set(row.counterpartyId, {});
     priceMap.get(row.counterpartyId)![row.productId] = row.price;
   }
-  return baseRows.map((c) => ({
+  return unique.map((c) => ({
     ...c,
     supplierPrices: priceMap.get(c.id) || c.supplierPrices || {},
   }));
@@ -444,6 +484,10 @@ export async function getCounterparties(options?: { includeSupplierPrices?: bool
 /**
  * Создаёт или обновляет контрагента. Возвращает ID.
  * Автоматически добавляет роль (customer/supplier) если её нет.
+ *
+ * Устойчив к дублям: если в таблице завелось несколько строк с одним id
+ * (старые версии без PRIMARY KEY), схлопывает их в одну — иначе `maybeSingle`
+ * падал на дубле, а `upsert` оставлял мусор, и контрагент «не сохранялся».
  */
 async function ensureCounterparty(
   name: string,
@@ -451,11 +495,19 @@ async function ensureCounterparty(
   details: CounterpartyDetails & { comment?: string | null } = {}
 ): Promise<string> {
   const db = getAdminDb();
-  const id = counterpartyIdForName(name);
-  const normalizedName = normalizeCounterpartyName(name);
+  const cleanName = sanitizeCounterpartyName(name);
+  const id = counterpartyIdForName(cleanName);
+  const normalizedName = normalizeCounterpartyName(cleanName);
 
-  // Проверяем существование
-  const { data: existing } = await db.from("counterparties").select("roles").eq("id", id).maybeSingle();
+  // Проверяем существование. limit(1) вместо maybeSingle(): при дублях
+  // maybeSingle вернул бы ошибку «more than one row», которую код молча
+  // проглатывал, и контрагент не обновлялся.
+  const { data: existing } = await db
+    .from("counterparties")
+    .select("roles")
+    .eq("id", id)
+    .limit(1)
+    .maybeSingle();
 
   let roles: string[] = [];
   if (existing && Array.isArray(existing.roles)) {
@@ -467,7 +519,7 @@ async function ensureCounterparty(
 
   const payload: Record<string, any> = {
     id,
-    name: name.trim().slice(0, 200),
+    name: cleanName,
     normalized_name: normalizedName,
     roles,
     updated_at: new Date().toISOString(),
@@ -487,7 +539,30 @@ async function ensureCounterparty(
   }
   if (details.comment) payload.comment = cleanText(details.comment, 1000);
 
-  await db.from("counterparties").upsert(payload);
+  // Лечим дубли: если строк с этим id больше одной — пересоздаём одну чистую.
+  const { data: dupRows } = await db
+    .from("counterparties")
+    .select("id")
+    .eq("id", id)
+    .limit(2);
+  if ((dupRows || []).length > 1) {
+    const { error: delErr } = await db.from("counterparties").delete().eq("id", id);
+    if (!delErr) {
+      const { error: insErr } = await db.from("counterparties").insert(payload);
+      if (insErr) {
+        // Вставилась не сразу — пробуем обычный upsert (не блокируем документ).
+        await db.from("counterparties").upsert(payload);
+      }
+    } else {
+      await db.from("counterparties").upsert(payload);
+    }
+  } else {
+    const { error } = await db.from("counterparties").upsert(payload);
+    if (error) {
+      console.error("ensureCounterparty upsert error:", error?.message || error);
+    }
+  }
+
   invalidateCounterpartyCache();
   return id;
 }
@@ -514,7 +589,7 @@ export async function saveCounterparty(data: {
   comment?: string | null;
 }): Promise<{ id: string }> {
   const db = getAdminDb();
-  const name = data.name.trim().slice(0, 200);
+  const name = sanitizeCounterpartyName(data.name);
   const id = data.id || counterpartyIdForName(name);
   const normalizedName = normalizeCounterpartyName(name);
 
@@ -875,7 +950,7 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
 
   const number = await nextNumber("receipt");
   const date = data.date || new Date().toISOString().slice(0, 10);
-  const supplier = String(data.supplier || "").slice(0, 200);
+  const supplier = sanitizeCounterpartyName(String(data.supplier || ""));
   const vatRate = data.vatRate !== undefined ? Number(data.vatRate) : VAT_RATE;
   const vatAmount = includedVat(total, vatRate);
 
@@ -1053,7 +1128,7 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   const total = effectivePaidTotal > 0 ? effectivePaidTotal : linesTotal;
   const bankAdjustment = round2(total - linesTotal);
 
-  const supplier = data.supplier.trim().slice(0, 200);
+  const supplier = sanitizeCounterpartyName(data.supplier);
   const details = {
     phone: cleanText(data.phone, 60),
     email: cleanText(data.email, 160),
@@ -1287,7 +1362,7 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   const number = await nextNumber("deal");
   const paymentNumber = await nextNumber("payment");
   const date = data.date || new Date().toISOString().slice(0, 10);
-  const customerName = String(data.customerName).slice(0, 200);
+  const customerName = sanitizeCounterpartyName(String(data.customerName));
   const vatRate =
     data.vatRate !== undefined && data.vatRate !== null
       ? Number(data.vatRate)
@@ -1606,7 +1681,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
   }
   const total = round2(linesTotal + (delivery.delivery_cost || 0));
   const vatAmount = includedVat(total, vatRate);
-  const customerName = String(data.customerName).slice(0, 200);
+  const customerName = sanitizeCounterpartyName(String(data.customerName));
   const date = String(data.date || "").slice(0, 10);
 
   const details = {
@@ -2027,11 +2102,23 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
   const vatRate = data.vatRate != null ? Number(data.vatRate) : VAT_RATE;
   const vatAmount = includedVat(data.amount || 0, vatRate);
 
+  const counterparty = sanitizeCounterpartyName(String(data.counterparty || ""));
+  // ★ Создаём/обновляем контрагента: раньше платежи никогда не заводили
+  //   контрагентов (counterparty_id всегда был null), из-за чего вставленный
+  //   в модалку платежа новый контрагент «не сохранялся» в справочнике.
+  const role: CounterpartyRole = data.direction === "outgoing" ? "supplier" : "customer";
+  let counterpartyId: string | null = null;
+  if (counterparty) {
+    counterpartyId = await ensureCounterparty(counterparty, role, {
+      comment: data.comment,
+    });
+  }
+
   const { data: result, error } = await db.from("bank_payments").insert({
     number, date: String(data.date || "").slice(0, 10),
     direction: data.direction, type: data.type || "regular",
-    counterparty: String(data.counterparty || "").slice(0, 200),
-    counterparty_id: data.counterpartyId || null,
+    counterparty,
+    counterparty_id: counterpartyId,
     deal_ids: data.dealIds || [], deal_numbers: [],
     receipt_ids: data.receiptIds || [], receipt_numbers: [],
     amount: Number(data.amount || 0), invoice_number: data.invoiceNumber ?? null,
@@ -2043,6 +2130,7 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
   }).select("id").single();
   if (error) throw error;
   revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-counterparties", { expire: 0 });
   return { id: result.id, number };
 }
 
@@ -2073,13 +2161,37 @@ export async function updatePayment(id: string, data: any): Promise<void> {
   if (data.date !== undefined && payload.date === undefined) {
     payload.date = String(data.date).slice(0, 10);
   }
-  if (data.counterparty !== undefined) payload.counterparty = String(data.counterparty).slice(0, 200);
+  if (data.counterparty !== undefined) {
+    const counterparty = sanitizeCounterpartyName(String(data.counterparty));
+    payload.counterparty = counterparty;
+    // Меняется контрагент — заводим/обновляем его в справочнике и привязываем.
+    // Роль определяем по направлению платежа (из БД, если не передано).
+    if (counterparty) {
+      let direction: string = data.direction;
+      if (direction === undefined) {
+        const { data: existing } = await db
+          .from("bank_payments")
+          .select("direction")
+          .eq("id", id)
+          .maybeSingle();
+        direction = existing?.direction;
+      }
+      const role: CounterpartyRole =
+        direction === "outgoing" ? "supplier" : "customer";
+      payload.counterparty_id = await ensureCounterparty(counterparty, role, {
+        comment: data.comment,
+      });
+    } else {
+      payload.counterparty_id = null;
+    }
+  }
   if (data.invoiceNumber !== undefined) payload.invoice_number = data.invoiceNumber;
   if (data.dealIds !== undefined) payload.deal_ids = data.dealIds;
   if (data.receiptIds !== undefined) payload.receipt_ids = data.receiptIds;
   const { error } = await db.from("bank_payments").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-payments", { expire: 0 });
+  revalidateTag("warehouse-counterparties", { expire: 0 });
 }
 
 export async function deletePayment(id: string): Promise<void> {
@@ -3627,6 +3739,14 @@ export interface TransportItem {
   deliveryNote?: string | null;
   items: { productId: string; name: string; orderedQty: number; transportQty: number }[];
   totalSum: number | null;
+  /**
+   * Тип поездки (для самостоятельных перевозок без заказа):
+   *  - "delivery" — доставка клиенту (по умолчанию);
+   *  - "pickup"   — забор груза у контрагента;
+   *  - "handover" — сдача груза (например, на переработку).
+   * Для поездок по заказам всегда "delivery".
+   */
+  tripType?: "delivery" | "pickup" | "handover" | null;
 }
 
 export interface Transport {

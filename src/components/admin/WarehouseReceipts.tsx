@@ -244,7 +244,19 @@ export function ReceiptForm({
         item.name.toLocaleLowerCase("ru-RU") ===
           value.trim().toLocaleLowerCase("ru-RU")
     );
-    if (!found) return;
+    if (!found) {
+      // Новый поставщик: сбрасываем реквизиты предыдущего, чтобы поступление
+      // не сохранилось с чужим телефоном/ИНН. Контрагент создастся на сервере.
+      if (value.trim()) {
+        setPhone("");
+        setEmail("");
+        setInn("");
+        setKpp("");
+        setAddress("");
+        setContactName("");
+      }
+      return;
+    }
     setPhone(found.phone || "");
     setEmail(found.email || "");
     setInn(found.inn || "");

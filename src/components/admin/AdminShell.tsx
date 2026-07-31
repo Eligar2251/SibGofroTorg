@@ -16,8 +16,10 @@ import {
   Boxes,
   Truck,
   QrCode,
+  ShieldCheck,
   PanelLeftClose,
   ChevronRight,
+  Headset,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
@@ -95,9 +97,19 @@ export function AdminShell({
       icon: <ClipboardList size={18} />,
     },
     {
+      href: `/${adminPath}/client-requests`,
+      label: "Заявки клиентов",
+      icon: <Headset size={18} />,
+    },
+    {
       href: `/${adminPath}/warehouse`,
       label: "Учёт",
       icon: <Boxes size={18} />,
+    },
+    {
+      href: `/${adminPath}/duty-schedule`,
+      label: "Охрана",
+      icon: <ShieldCheck size={18} />,
     },
     {
       // Отдельная страница сканера /admin/scan (без [code] — это

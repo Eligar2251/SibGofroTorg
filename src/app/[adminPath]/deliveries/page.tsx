@@ -1,8 +1,9 @@
 // src/app/[adminPath]/deliveries/page.tsx
 import { notFound } from "next/navigation";
-import { getDealDeliveries, getEmployees, getTransports } from "@/lib/warehouse";
+import { getDealDeliveries, getEmployees, getTransports, getWarehouseStock } from "@/lib/warehouse";
 import { getSettings } from "@/lib/supabase-queries";
 import { TransportManager, type TransportDeal } from "@/components/admin/TransportManager";
+import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { DeliveriesRealtime } from "@/components/admin/DeliveriesRealtime";
 import { SITE_ADDRESS, SITE_PHONE } from "@/lib/site-config";
 
@@ -22,16 +23,26 @@ export default async function AdminDeliveriesPage({
   let transports: Awaited<ReturnType<typeof getTransports>> = [];
   let dealOrders: Awaited<ReturnType<typeof getDealDeliveries>> = [];
   let employees: Awaited<ReturnType<typeof getEmployees>> = [];
+  let products: PickerProduct[] = [];
 
   try {
-    const [trs, deals, emps] = await Promise.all([
+    const [trs, deals, emps, stock] = await Promise.all([
       getTransports({ limit: 200 }),
       getDealDeliveries({ filter: "all", limit: 500 }),
       getEmployees().catch(() => []),
+      getWarehouseStock().catch(() => []),
     ]);
     transports = trs;
     dealOrders = deals;
     employees = emps;
+    products = stock.map((p) => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      price: p.price,
+      priceWholesale: p.priceWholesale,
+      stockQty: p.stockQty,
+    }));
   } catch (e) {
     console.error("deliveries page:", e);
     const msg = e instanceof Error ? e.message : String(e);
@@ -105,6 +116,7 @@ export default async function AdminDeliveriesPage({
         drivers={drivers}
         companyPhone={companyPhone}
         companyAddress={companyAddress}
+        products={products}
       />
     </div>
   );

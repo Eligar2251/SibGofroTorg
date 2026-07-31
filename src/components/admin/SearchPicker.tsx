@@ -59,6 +59,32 @@ function matches(option: PickerOption, q: string): boolean {
 }
 
 /**
+ * Чистит введённое/вставленное имя: схлопывает пробелы (в т.ч. неразрывные),
+ * вырезает zero-width символы из буфера обмена. Без этого вставленный из
+ * сайта/Excel контрагент отличался от набранного вручную и не находился
+ * при сохранении (хэш-id не совпадал).
+ */
+function sanitizeName(value: string): string {
+  return String(value || "")
+    .replace(/[\u200B-\u200D\u2060]/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+/** Убирает дубли опций по id — защита от «two children with the same key». */
+function uniqueOptions(options: PickerOption[]): PickerOption[] {
+  const seen = new Set<string>();
+  const out: PickerOption[] = [];
+  for (const o of options) {
+    const key = o.id || o.title;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(o);
+  }
+  return out;
+}
+
+/**
  * Комбобокс: ввод + выпадающий список. Значение — произвольная строка,
  * поэтому можно выбрать существующий вариант ИЛИ вписать новый.
  */
@@ -83,7 +109,7 @@ export function SearchCombobox({
 
   const q = value.trim().toLocaleLowerCase("ru-RU");
   const results = useMemo(
-    () => options.filter((o) => matches(o, q)).slice(0, 50),
+    () => uniqueOptions(options.filter((o) => matches(o, q)).slice(0, 50)),
     [options, q]
   );
 
@@ -98,7 +124,9 @@ export function SearchCombobox({
           placeholder={placeholder}
           required={required}
           onChange={(e) => {
-            onChange(e.target.value);
+            // Сразу нормализуем значение: вставленный из буфера контрагент
+            // (с переносами, NBSP, zero-width) становится идентичен набранному.
+            onChange(sanitizeName(e.target.value));
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
@@ -168,15 +196,17 @@ export function SearchMultiSelect({
   const q = query.trim().toLocaleLowerCase("ru-RU");
 
   const results = useMemo(
-    () => options.filter((o) => matches(o, q)),
+    () => uniqueOptions(options.filter((o) => matches(o, q))),
     [options, q]
   );
 
   const selectedOptions = useMemo(
     () =>
-      selectedIds
-        .map((id) => options.find((o) => o.id === id))
-        .filter((o): o is PickerOption => Boolean(o)),
+      uniqueOptions(
+        selectedIds
+          .map((id) => options.find((o) => o.id === id))
+          .filter((o): o is PickerOption => Boolean(o))
+      ),
     [options, selectedIds]
   );
 

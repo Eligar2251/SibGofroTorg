@@ -66,6 +66,7 @@ const entityLabels: Record<string, string> = {
   salary: "Зарплата",
   "admin-user": "Пользователь админки",
   "cash-collection": "Сдача кассы",
+  "client-request": "Заявка клиента",
 };
 
 function fmtDateTime(raw: string | null): string {
@@ -226,6 +227,8 @@ function getEntityHref(log: LogEntry, adminPath: string): string | null {
   if (log.entityType === "counterparty") return `/${adminPath}/warehouse?tab=counterparties`;
   if (log.entityType === "salary") return `/${adminPath}/warehouse?tab=salaries`;
   if (log.entityType === "cash-collection") return `/${adminPath}/warehouse?tab=bank`;
+  if (log.entityType === "client-request")
+    return `/${adminPath}/client-requests?q=${encodeURIComponent(id)}`;
   return null;
 }
 

@@ -1832,3 +1832,109 @@ export async function createCategory(data: Record<string, any>): Promise<{ id: s
   revalidateTag("categories", { expire: 0 });
   return { id: result.id, slug: result.slug || slug };
 }
+
+// ─── Client Requests: ручные заявки клиентов (CRM) ─────────
+// Не связаны с заказами сайта: фиксируют обращение клиента
+// (звонок/мессенджер/визит), что нужно и ход работы.
+
+export interface ClientRequest {
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  contactMethod: string;
+  subject: string;
+  comment: string;
+  status: string;
+  closeReason: string | null;
+  createdBy: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+function mapClientRequest(row: any): ClientRequest {
+  return {
+    id: row.id,
+    customerName: row.customer_name || "",
+    customerPhone: row.customer_phone || "",
+    contactMethod: row.contact_method || "call",
+    subject: row.subject || "",
+    comment: row.comment || "",
+    status: row.status || "new",
+    closeReason: row.close_reason ?? null,
+    createdBy: row.created_by || "",
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+export async function getClientRequests(
+  opts: { limit?: number; status?: string } = {}
+): Promise<ClientRequest[]> {
+  const db = getAdminDb();
+  let q = db
+    .from("client_requests")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
+  const { data, error } = await q.limit(opts.limit || 500);
+  if (error) throw error;
+  return (data || []).map(mapClientRequest);
+}
+
+export async function createClientRequest(data: {
+  customerName: string;
+  customerPhone?: string;
+  contactMethod?: string;
+  subject: string;
+  comment?: string;
+  createdBy?: string;
+}): Promise<{ id: string }> {
+  const db = getAdminDb();
+  const { data: result, error } = await db
+    .from("client_requests")
+    .insert({
+      customer_name: data.customerName,
+      customer_phone: data.customerPhone || "",
+      contact_method: data.contactMethod || "call",
+      subject: data.subject,
+      comment: data.comment || null,
+      status: "new",
+      created_by: data.createdBy || null,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return { id: result.id };
+}
+
+export async function updateClientRequest(
+  id: string,
+  patch: {
+    customerName?: string;
+    customerPhone?: string;
+    contactMethod?: string;
+    subject?: string;
+    comment?: string;
+    status?: string;
+    closeReason?: string | null;
+  }
+): Promise<void> {
+  const db = getAdminDb();
+  const row: Record<string, any> = {};
+  if (patch.customerName !== undefined) row.customer_name = patch.customerName;
+  if (patch.customerPhone !== undefined) row.customer_phone = patch.customerPhone;
+  if (patch.contactMethod !== undefined) row.contact_method = patch.contactMethod;
+  if (patch.subject !== undefined) row.subject = patch.subject;
+  if (patch.comment !== undefined) row.comment = patch.comment || null;
+  if (patch.status !== undefined) row.status = patch.status;
+  if (patch.closeReason !== undefined) row.close_reason = patch.closeReason || null;
+  if (Object.keys(row).length === 0) return;
+  const { error } = await db.from("client_requests").update(row).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteClientRequest(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { error } = await db.from("client_requests").delete().eq("id", id);
+  if (error) throw error;
+}
