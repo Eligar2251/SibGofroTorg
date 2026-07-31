@@ -52,6 +52,7 @@ import {
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
   stripSalaryMetaTags,
+  getWarehouseBusinessDate,
 } from "@/lib/warehouse-shared";
 import { ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
 import { DealForm, DealActions } from "@/components/admin/WarehouseDeals";
@@ -67,6 +68,7 @@ import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSumma
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import { StockRevision } from "@/components/admin/StockRevision";
 import { CashCollectModal } from "@/components/admin/CashCollectModal";
+import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
   CounterpartiesManager,
   type CounterpartyDocument,
@@ -163,7 +165,7 @@ type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers";
 type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
-type BankSub = "pending" | "history" | "cash";
+type BankSub = "summary" | "pending" | "history" | "cash";
 type ProcurementCartItem = { productId: string; supplierId: string; quantity: number; price: number; vatRate: number };
 type BankEntry =
   | (BankPayment & { entryKind: "payment" })
@@ -243,7 +245,85 @@ export function WarehouseManager({
   companyAddress,
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
-  const [stockSub, setStockSub] = useState<StockSub>(initialSub);
+  const [stockSub, setStockSub] = useState<string>(initialSub);
+  
+  // --- States for Financial Summary (Feature 1) ---
+  const [financePeriod, setFinancePeriod] = useState<"today" | "week" | "month">("today");
+  const [financeNotes, setFinanceNotes] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setFinanceNotes(localStorage.getItem("sgt_finance_notes") || "");
+    }
+  }, []);
+
+  // --- States for Critical Stock Alerts (Feature 2) ---
+  const [attentionCategory, setAttentionCategory] = useState<"outofstock" | "lowstock" | "popular" | "stagnant">("outofstock");
+  const [orderingProduct, setOrderingProduct] = useState<WarehouseStockRow | null>(null);
+  const [orderSupplierId, setOrderSupplierId] = useState("");
+  const [orderSupplierName, setOrderSupplierName] = useState("");
+  const [orderPrice, setOrderPrice] = useState<number>(0);
+  const [orderQty, setOrderQty] = useState<number>(10);
+  const [orderComment, setOrderComment] = useState("Автозаказ из уведомлений о критичных остатках");
+  const [orderVat, setOrderVat] = useState<number>(22);
+  const [orderSaving, setOrderSaving] = useState(false);
+  const [orderError, setOrderError] = useState("");
+
+  async function handleCreateOrderSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!orderingProduct) return;
+    if (!orderSupplierName.trim()) {
+      setOrderError("Укажите поставщика");
+      return;
+    }
+    if (orderQty <= 0) {
+      setOrderError("Укажите количество больше нуля");
+      return;
+    }
+    setOrderSaving(true);
+    setOrderError("");
+
+    try {
+      const cp = counterpartyOptions.find(c => c.id === orderSupplierId || c.name === orderSupplierName);
+      const res = await fetch("/api/admin/warehouse/receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: getWarehouseBusinessDate(new Date()),
+          supplier: orderSupplierName.trim(),
+          phone: cp?.phone || null,
+          email: cp?.email || null,
+          inn: cp?.inn || null,
+          kpp: cp?.kpp || null,
+          address: cp?.address || null,
+          contactName: cp?.contactName || null,
+          comment: orderComment,
+          items: [{
+            productId: orderingProduct.id,
+            name: orderingProduct.name,
+            sku: orderingProduct.sku,
+            quantity: Number(orderQty),
+            lineTotal: Number(orderPrice) * Number(orderQty),
+          }],
+          vatRate: orderVat,
+          noPayment: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setOrderError(errData.error || "Не удалось создать заказ");
+        setOrderSaving(false);
+        return;
+      }
+
+      setOrderingProduct(null);
+      router.refresh();
+    } catch (err) {
+      setOrderError("Ошибка сети при отправке заказа");
+    }
+    setOrderSaving(false);
+  }
   const [suppliesSub, setSuppliesSub] = useState<SuppliesSub>("receipts");
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
@@ -262,7 +342,7 @@ export function WarehouseManager({
   const [supplierPriceSaving, setSupplierPriceSaving] = useState(false);
   const [procurementCart, setProcurementCart] = useState<ProcurementCartItem[]>([]);
   const [procurementSaving, setProcurementSaving] = useState(false);
-  const [bankSub, setBankSub] = useState<BankSub>("pending");
+  const [bankSub, setBankSub] = useState<BankSub>("summary");
   const [detailPaymentId, setDetailPaymentId] = useState<string | null>(
     focusPaymentId || null
   );
@@ -431,6 +511,118 @@ export function WarehouseManager({
       ),
     [payments, salaries, cashCollections]
   );
+
+  // --- Helper to get purchase price for any product ---
+  const getProductPurchasePrice = (productId: string) => {
+    // 1. Check counterparties supplierPrices
+    for (const cp of counterpartyOptions) {
+      if (cp.supplierPrices && cp.supplierPrices[productId] !== undefined) {
+        return cp.supplierPrices[productId];
+      }
+    }
+    // 2. Fallback: Check receipts
+    let lastDate = "";
+    let lastPrice = 0;
+    for (const r of receipts) {
+      const rit = r.items?.find((item) => item.productId === productId);
+      if (rit) {
+        if (!lastDate || r.date > lastDate) {
+          lastDate = r.date;
+          lastPrice = rit.price;
+        }
+      }
+    }
+    return lastPrice || 0;
+  };
+
+  // --- Helper to find last supplier and price for critical stock alerts (Feature 2) ---
+  const findLastSupplierAndPrice = (productId: string) => {
+    let lastSupplierName = "";
+    let lastSupplierId = "";
+    let lastPrice = 0;
+    let lastDate = "";
+
+    // 1. Search in receipts
+    for (const r of receipts) {
+      const item = r.items?.find((it) => it.productId === productId);
+      if (item) {
+        if (!lastDate || r.date > lastDate) {
+          lastDate = r.date;
+          lastSupplierName = r.supplier;
+          lastSupplierId = r.counterpartyId || "";
+          lastPrice = item.price;
+        }
+      }
+    }
+
+    // 2. Search in supplierPrices of counterparties
+    if (!lastSupplierName) {
+      for (const cp of counterpartyOptions) {
+        if (cp.supplierPrices && cp.supplierPrices[productId] !== undefined) {
+          lastSupplierName = cp.name;
+          lastSupplierId = cp.id;
+          lastPrice = cp.supplierPrices[productId];
+          break;
+        }
+      }
+    }
+
+    return { supplierName: lastSupplierName, supplierId: lastSupplierId, price: lastPrice };
+  };
+
+  // --- Critical Products Calculation (Feature 2) ---
+  const criticalProducts = useMemo(() => {
+    const outOfStock: WarehouseStockRow[] = [];
+    const lowStock: WarehouseStockRow[] = [];
+    const frequentlyOrderedAbsent: { product: WarehouseStockRow; orderCount: number }[] = [];
+    const stagnantStock: { product: WarehouseStockRow; lastSaleDays: number | null; lastSaleDate: string | null }[] = [];
+
+    const todayStr = getWarehouseBusinessDate(new Date());
+
+    for (const p of stock) {
+      // Find all deals containing this product
+      const productDeals = deals.filter(d => d.items?.some(it => it.productId === p.id));
+      const orderCount = productDeals.length;
+
+      // Find last sale date
+      let lastSaleDate: string | null = null;
+      let lastSaleDays: number | null = null;
+      if (orderCount > 0) {
+        const sorted = [...productDeals].sort((a, b) => b.date.localeCompare(a.date));
+        lastSaleDate = sorted[0].date;
+        const diffTime = new Date(todayStr).getTime() - new Date(lastSaleDate).getTime();
+        lastSaleDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+      }
+
+      if (p.stockQty <= 0) {
+        outOfStock.push(p);
+        if (orderCount >= 2) {
+          frequentlyOrderedAbsent.push({ product: p, orderCount });
+        }
+      } else {
+        if (p.stockWarnQty != null && p.stockWarnQty > 0 && p.stockQty <= p.stockWarnQty) {
+          lowStock.push(p);
+        }
+        if (orderCount === 0 || (lastSaleDays !== null && lastSaleDays >= 60)) {
+          stagnantStock.push({ product: p, lastSaleDays, lastSaleDate });
+        }
+      }
+    }
+
+    return { outOfStock, lowStock, frequentlyOrderedAbsent, stagnantStock };
+  }, [stock, deals, counterpartyOptions, receipts]);
+
+  // Autopopulate order supplier and price when ordering product changes
+  useEffect(() => {
+    if (orderingProduct) {
+      const info = findLastSupplierAndPrice(orderingProduct.id);
+      setOrderSupplierName(info.supplierName);
+      setOrderSupplierId(info.supplierId);
+      setOrderPrice(info.price || orderingProduct.priceWholesale || 0);
+      setOrderQty(10); // Default to a standard 10 units
+      setOrderError("");
+    }
+  }, [orderingProduct]);
   
   const allCounterparties = useMemo(
     () => getPendingPaymentCounterpartyBalances(payments),
@@ -1121,7 +1313,9 @@ export function WarehouseManager({
         </div>
       </div>
 
-      {/* ════════════ ВКЛАДКА: СКЛАД ════════════ */}
+
+
+      {/* ============ ВКЛАДКА: СКЛАД ============ */}
       {activeTab === "stock" && (
         <>
           <div className="admin-stat-grid wh-stat-grid">
@@ -1143,143 +1337,459 @@ export function WarehouseManager({
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <Search
-                size={16}
-                style={{
-                  position: "absolute",
-                  left: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "var(--adm-sand)",
-                }}
-              />
-              <input
-                type="text"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Поиск по названию или артикулу..."
-                className="admin-input"
-                style={{ paddingLeft: 36 }}
-              />
-            </div>
-            {q && (
-              <button onClick={() => setQ("")} className="admin-btn admin-btn--ghost">
-                Сбросить
-              </button>
-            )}
-            {/* Ревизия: бланк для пересчёта + сверка фактических остатков */}
-            <StockRevision stock={stock} />
+          <div className="admin-filters admin-filters--sub" style={{ marginBottom: 14 }}>
+            <button
+              onClick={() => setStockSub("stock")}
+              className={`admin-filter${stockSub === "stock" ? " admin-filter--active" : ""}`}
+            >
+              <Boxes size={12} />
+              Остатки на складе
+            </button>
+            <button
+              onClick={() => setStockSub("attention")}
+              className={`admin-filter${stockSub === "attention" ? " admin-filter--active" : ""}`}
+            >
+              <AlertTriangle size={12} />
+              Требуют внимания ({(criticalProducts.outOfStock.length + criticalProducts.lowStock.length + criticalProducts.frequentlyOrderedAbsent.length + criticalProducts.stagnantStock.length)})
+            </button>
           </div>
 
-          <div className="admin-card">
-            {filteredStock.length > 0 ? (
-              <div className="admin-table-wrap">
-                <table className="admin-table wh-stock-table">
-                  <thead>
-                    <tr>
-                      <th>Товар</th>
-                      <th>Артикул</th>
-                      <th>Поставщик</th>
-                      <th style={{ textAlign: "right" }}>Остаток</th>
-                      <th style={{ textAlign: "right" }}>Цена продажи</th>
-                      <th style={{ textAlign: "right" }}>Сумма</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStock.map((p) => {
-                      const summaryExpanded = expandedStockIds.has(p.id);
-                      return (
-                        <React.Fragment key={p.id}>
-                          <tr id={`stock-${p.id}`} className={summaryExpanded ? "wh-stock-row--expanded" : undefined}>
-                            <td>
-                              <Link href={`/${adminPath}/products/${p.id}`} prefetch={false} className="wh-stock-product-name">
+          {stockSub === "stock" && (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                <div style={{ position: "relative", flex: 1 }}>
+                  <Search
+                    size={16}
+                    style={{
+                      position: "absolute",
+                      left: 12,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--adm-sand)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Поиск по названию или артикулу..."
+                    className="admin-input"
+                    style={{ paddingLeft: 36 }}
+                  />
+                </div>
+                {q && (
+                  <button onClick={() => setQ("")} className="admin-btn admin-btn--ghost">
+                    Сбросить
+                  </button>
+                )}
+                {/* Ревизия: бланк для пересчёта + сверка фактических остатков */}
+                <StockRevision stock={stock} />
+              </div>
+
+              <div className="admin-card">
+                {filteredStock.length > 0 ? (
+                  <div className="admin-table-wrap">
+                    <table className="admin-table wh-stock-table">
+                      <thead>
+                        <tr>
+                          <th>Товар</th>
+                          <th>Артикул</th>
+                          <th>Поставщик</th>
+                          <th style={{ textAlign: "right" }}>Остаток</th>
+                          <th style={{ textAlign: "right" }}>Цена продажи</th>
+                          <th style={{ textAlign: "right" }}>Сумма</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredStock.map((p) => {
+                          const summaryExpanded = expandedStockIds.has(p.id);
+                          return (
+                            <React.Fragment key={p.id}>
+                              <tr id={`stock-${p.id}`} className={summaryExpanded ? "wh-stock-row--expanded" : undefined}>
+                                <td>
+                                  <Link href={`/${adminPath}/products/${p.id}`} prefetch={false} className="wh-stock-product-name">
+                                    {p.name}
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    className="wh-stock-origin-link"
+                                    onClick={() => toggleStockSummary(p.id)}
+                                    aria-expanded={summaryExpanded}
+                                    aria-controls={`stock-summary-${p.id}`}
+                                  >
+                                    <History size={11} />
+                                    {summaryExpanded ? "Скрыть сводку" : "Расширенная сводка"}
+                                    <ChevronRight
+                                      size={11}
+                                      className={summaryExpanded ? "wh-stock-origin-link__chevron wh-stock-origin-link__chevron--open" : "wh-stock-origin-link__chevron"}
+                                    />
+                                  </button>
+                                  {!p.isVisible && (
+                                    <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>скрыт</span>
+                                  )}
+                                  {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
+                                    <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
+                                  )}
+                                  {p.stockQty <= 0 && (
+                                    <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
+                                  )}
+                                </td>
+                                <td>{p.sku || "—"}</td>
+                                <td>
+                                  {(suppliersByProduct.get(p.id) || []).length > 0 ? (
+                                    <div style={{ display: "grid", gap: 3 }}>
+                                      {(suppliersByProduct.get(p.id) || []).slice(0, 2).map((row) => (
+                                        <button
+                                          key={row.supplier.id}
+                                          type="button"
+                                          onClick={() => { setActiveTab("suppliers"); setSelectedSupplierId(row.supplier.id); }}
+                                          className="admin-badge admin-badge--blue"
+                                          style={{ border: 0, cursor: "pointer", justifyContent: "flex-start" }}
+                                        >
+                                          {row.supplier.name} · {fmt(row.price)} ₽
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : "—"}
+                                </td>
+                                <td style={{ textAlign: "right" }}>
+                                  <StockQtyEditor
+                                    productId={p.id}
+                                    initialQty={p.stockQty}
+                                    onSaved={() => handleStockQuantitySaved(p.id)}
+                                  />
+                                </td>
+                                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                                  {p.price != null ? `${fmt(p.price)} ₽` : "—"}
+                                </td>
+                                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                                  {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
+                                </td>
+                              </tr>
+                              {summaryExpanded && (
+                                <tr id={`stock-summary-${p.id}`} className="stock-summary-row">
+                                  <td colSpan={6}>
+                                    <ProductStockSummaryPanel
+                                      adminPath={adminPath}
+                                      summary={stockSummaries[p.id]}
+                                      loading={stockSummaryLoading.has(p.id)}
+                                      error={stockSummaryErrors[p.id]}
+                                      onRetry={() => void loadStockSummary(p.id, true)}
+                                    />
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="admin-empty"><p>Товары не найдены</p></div>
+                )}
+              </div>
+            </>
+          )}
+
+          {stockSub === "attention" && (
+            <div style={{ marginTop: 12 }}>
+              {/* Category selector inside attention tab */}
+              <div className="admin-filters admin-filters--sub" style={{ marginBottom: 16 }}>
+                <button
+                  onClick={() => setAttentionCategory("outofstock")}
+                  className={`admin-filter${attentionCategory === "outofstock" ? " admin-filter--active" : ""}`}
+                >
+                  Нет в наличии ({criticalProducts.outOfStock.length})
+                </button>
+                <button
+                  onClick={() => setAttentionCategory("lowstock")}
+                  className={`admin-filter${attentionCategory === "lowstock" ? " admin-filter--active" : ""}`}
+                >
+                  Мало товара ({criticalProducts.lowStock.length})
+                </button>
+                <button
+                  onClick={() => setAttentionCategory("popular")}
+                  className={`admin-filter${attentionCategory === "popular" ? " admin-filter--active" : ""}`}
+                >
+                  Часто заказывают, но нет ({criticalProducts.frequentlyOrderedAbsent.length})
+                </button>
+                <button
+                  onClick={() => setAttentionCategory("stagnant")}
+                  className={`admin-filter${attentionCategory === "stagnant" ? " admin-filter--active" : ""}`}
+                >
+                  Давно без продаж ({criticalProducts.stagnantStock.length})
+                </button>
+              </div>
+
+              {/* Products list for selected category using highly responsive cards instead of tables */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(() => {
+                  let list: React.ReactNode = null;
+                  
+                  if (attentionCategory === "outofstock") {
+                    list = criticalProducts.outOfStock.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {criticalProducts.outOfStock.map((p) => (
+                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 200, flex: "1 1 auto" }}>
+                              <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
                                 {p.name}
                               </Link>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>Артикул: {p.sku || "—"}</span>
+                            </div>
+                            <div>
                               <button
                                 type="button"
-                                className="wh-stock-origin-link"
-                                onClick={() => toggleStockSummary(p.id)}
-                                aria-expanded={summaryExpanded}
-                                aria-controls={`stock-summary-${p.id}`}
+                                onClick={() => setOrderingProduct(p)}
+                                className="admin-btn admin-btn--primary admin-btn--sm"
+                                style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
                               >
-                                <History size={11} />
-                                {summaryExpanded ? "Скрыть сводку" : "Расширенная сводка"}
-                                <ChevronRight
-                                  size={11}
-                                  className={summaryExpanded ? "wh-stock-origin-link__chevron wh-stock-origin-link__chevron--open" : "wh-stock-origin-link__chevron"}
-                                />
+                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
                               </button>
-                              {!p.isVisible && (
-                                <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>скрыт</span>
-                              )}
-                              {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
-                                <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
-                              )}
-                              {p.stockQty <= 0 && (
-                                <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
-                              )}
-                            </td>
-                            <td>{p.sku || "—"}</td>
-                            <td>
-                              {(suppliersByProduct.get(p.id) || []).length > 0 ? (
-                                <div style={{ display: "grid", gap: 3 }}>
-                                  {(suppliersByProduct.get(p.id) || []).slice(0, 2).map((row) => (
-                                    <button
-                                      key={row.supplier.id}
-                                      type="button"
-                                      onClick={() => { setActiveTab("suppliers"); setSelectedSupplierId(row.supplier.id); }}
-                                      className="admin-badge admin-badge--blue"
-                                      style={{ border: 0, cursor: "pointer", justifyContent: "flex-start" }}
-                                    >
-                                      {row.supplier.name} · {fmt(row.price)} ₽
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : "—"}
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              <StockQtyEditor
-                                productId={p.id}
-                                initialQty={p.stockQty}
-                                onSaved={() => handleStockQuantitySaved(p.id)}
-                              />
-                            </td>
-                            <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                              {p.price != null ? `${fmt(p.price)} ₽` : "—"}
-                            </td>
-                            <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                              {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
-                            </td>
-                          </tr>
-                          {summaryExpanded && (
-                            <tr id={`stock-summary-${p.id}`} className="stock-summary-row">
-                              <td colSpan={6}>
-                                <ProductStockSummaryPanel
-                                  adminPath={adminPath}
-                                  summary={stockSummaries[p.id]}
-                                  loading={stockSummaryLoading.has(p.id)}
-                                  error={stockSummaryErrors[p.id]}
-                                  onRetry={() => void loadStockSummary(p.id, true)}
-                                />
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="admin-empty"><p>Все товары в наличии!</p></div>
+                    );
+                  } else if (attentionCategory === "lowstock") {
+                    list = criticalProducts.lowStock.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {criticalProducts.lowStock.map((p) => (
+                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 200, flex: "1 1 auto" }}>
+                              <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
+                                {p.name}
+                              </Link>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>
+                                Артикул: {p.sku || "—"} · Остаток: <b style={{ color: "var(--adm-rust)" }}>{p.stockQty} шт.</b> (минимальный лимит: {p.stockWarnQty} шт.)
+                              </span>
+                            </div>
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => setOrderingProduct(p)}
+                                className="admin-btn admin-btn--primary admin-btn--sm"
+                                style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
+                              >
+                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="admin-empty"><p>Нет товаров с остатком меньше минимального лимита.</p></div>
+                    );
+                  } else if (attentionCategory === "popular") {
+                    list = criticalProducts.frequentlyOrderedAbsent.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {criticalProducts.frequentlyOrderedAbsent.map(({ product: p, orderCount }) => (
+                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 200, flex: "1 1 auto" }}>
+                              <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
+                                {p.name}
+                              </Link>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)", display: "block", marginTop: 4 }}>
+                                Артикул: {p.sku || "—"} · <b style={{ color: "var(--adm-pine)" }}>Заказывали {orderCount} раз</b>
+                              </span>
+                            </div>
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => setOrderingProduct(p)}
+                                className="admin-btn admin-btn--primary admin-btn--sm"
+                                style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
+                              >
+                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="admin-empty"><p>Нет отсутствующих популярных товаров.</p></div>
+                    );
+                  } else if (attentionCategory === "stagnant") {
+                    list = criticalProducts.stagnantStock.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {criticalProducts.stagnantStock.map(({ product: p, lastSaleDays, lastSaleDate }) => (
+                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 200, flex: "1 1 auto" }}>
+                              <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
+                                {p.name}
+                              </Link>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>
+                                Артикул: {p.sku || "—"} · Остаток: <b>{p.stockQty} шт.</b> · Дней без продаж: <b style={{ color: "var(--adm-rust)" }}>{lastSaleDays === null ? "Никогда" : `${lastSaleDays} дн.`}</b>
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>
+                              Последняя продажа: {lastSaleDate ? fmtDate(lastSaleDate) : "—"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="admin-empty"><p>Нет залежавшихся товаров на складе.</p></div>
+                    );
+                  }
+
+                  return list;
+                })()}
               </div>
-            ) : (
-              <div className="admin-empty"><p>Товары не найдены</p></div>
-            )}
-          </div>
+
+              {/* Native centered responsive ordering modal */}
+              {orderingProduct && (
+                <ModalPortal>
+                  <div className="admin-modal-overlay" onClick={() => setOrderingProduct(null)}>
+                    <div className="admin-modal wh-modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
+                      <div className="admin-modal__head">
+                        <h3 className="admin-modal__title">Заказать у поставщика</h3>
+                        <button onClick={() => setOrderingProduct(null)} className="admin-modal__close" aria-label="Закрыть">
+                          <X size={16} />
+                        </button>
+                      </div>
+                      <p className="admin-modal__desc">
+                        Создание черновика поступления для товара: <br />
+                        <b>{orderingProduct.name}</b> {orderingProduct.sku ? `(арт. ${orderingProduct.sku})` : ""}
+                      </p>
+
+                      <form onSubmit={handleCreateOrderSubmit}>
+                        {orderError && (
+                          <div className="wh-form-error" style={{ marginBottom: 12 }}>
+                            {orderError}
+                          </div>
+                        )}
+
+                        <div className="wh-form-grid">
+                          <div className="admin-field">
+                            <label className="admin-label">Поставщик из базы</label>
+                            <select
+                              value={orderSupplierId}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setOrderSupplierId(val);
+                                if (val) {
+                                  const found = counterpartyOptions.find(c => c.id === val);
+                                  if (found) {
+                                    setOrderSupplierName(found.name);
+                                    if (found.supplierPrices && found.supplierPrices[orderingProduct.id]) {
+                                      setOrderPrice(found.supplierPrices[orderingProduct.id]);
+                                    }
+                                  }
+                                }
+                              }}
+                              className="admin-select"
+                            >
+                              <option value="">-- Выберите поставщика --</option>
+                              {counterpartyOptions
+                                .filter(c => c.roles.includes("supplier"))
+                                .map(c => (
+                                  <option key={c.id} value={c.id}>{c.name}</option>
+                                ))
+                              }
+                            </select>
+                          </div>
+
+                          <div className="admin-field">
+                            <label className="admin-label">Или имя поставщика вручную *</label>
+                            <input
+                              type="text"
+                              value={orderSupplierName}
+                              onChange={(e) => setOrderSupplierName(e.target.value)}
+                              placeholder="Имя поставщика"
+                              className="admin-input"
+                              required
+                            />
+                          </div>
+
+                          <div className="admin-field">
+                            <label className="admin-label">Цена закупки (₽) *</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={orderPrice || ""}
+                              onChange={(e) => setOrderPrice(Number(e.target.value) || 0)}
+                              placeholder="Закупочная цена"
+                              className="admin-input"
+                              required
+                            />
+                          </div>
+
+                          <div className="admin-field">
+                            <label className="admin-label">Количество (шт.) *</label>
+                            <input
+                              type="number"
+                              value={orderQty || ""}
+                              onChange={(e) => setOrderQty(Number(e.target.value) || 0)}
+                              placeholder="Кол-во для заказа"
+                              className="admin-input"
+                              required
+                            />
+                          </div>
+
+                          <div className="admin-field">
+                            <label className="admin-label">Ставка НДС</label>
+                            <select
+                              value={orderVat}
+                              onChange={(e) => setOrderVat(Number(e.target.value))}
+                              className="admin-select"
+                            >
+                              <option value={22}>22% (Стандартная)</option>
+                              <option value={20}>20%</option>
+                              <option value={10}>10%</option>
+                              <option value={0}>0%</option>
+                              <option value={-1}>Без НДС</option>
+                            </select>
+                          </div>
+
+                          <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                            <label className="admin-label">Комментарий к заказу</label>
+                            <textarea
+                              value={orderComment}
+                              onChange={(e) => setOrderComment(e.target.value)}
+                              className="admin-input"
+                              rows={2}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: 14, background: "rgba(224, 155, 18, 0.05)", padding: 10, borderRadius: 4, fontSize: 12, color: "var(--adm-ink-soft)" }}>
+                          Сумма заказа составит: <b>{fmt(orderPrice * orderQty)} ₽</b>. <br />
+                          После создания заказ появится как <b>«Черновик»</b> в разделе «Поставки». Остатки не изменятся до тех пор, пока вы не проведёте поставку.
+                        </div>
+
+                        <div className="admin-modal__actions" style={{ marginTop: 16 }}>
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--ghost"
+                            onClick={() => setOrderingProduct(null)}
+                            disabled={orderSaving}
+                          >
+                            Отмена
+                          </button>
+                          <button
+                            type="submit"
+                            className="admin-btn admin-btn--primary"
+                            disabled={orderSaving}
+                          >
+                            {orderSaving ? <Loader2 size={13} className="animate-spin" style={{ marginRight: 6 }} /> : null}
+                            Создать черновик заказа
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </ModalPortal>
+              )}
+            </div>
+          )}
         </>
       )}
 
-      {/* ════════════ ВКЛАДКА: ПОСТАВКИ (Поступления + Поставщики) ════════════ */}
+      {/* ============ ВКЛАДКА: ПОСТАВКИ (Поступления + Поставщики) ============ */}
       {activeTab === "receipts" && (
         <>
           <div className="admin-filters admin-filters--sub">
@@ -1516,7 +2026,7 @@ export function WarehouseManager({
         </>
       )}
 
-      {/* ════════════ ВКЛАДКА: ДОСТАВКИ ════════════ */}
+      {/* ============ ВКЛАДКА: ДОСТАВКИ ============ */}
       {activeTab === "deliveries" && (
         <TransportManager
           transports={transports}
@@ -1528,7 +2038,7 @@ export function WarehouseManager({
         />
       )}
 
-      {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}      {/* ════════════ ВКЛАДКА: ЗАКАЗЫ ════════════ */}
+      {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}      {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}
       {activeTab === "deals" && (
         <>
           <div className="admin-filters admin-filters--sub">
@@ -1727,6 +2237,38 @@ export function WarehouseManager({
                                   : ""}
                               </div>
                             )}
+                            
+                            {(() => {
+                              const totalPurchaseCost = d.items.reduce((sum: number, it: any) => {
+                                const pPrice = getProductPurchasePrice(it.productId);
+                                return sum + pPrice * it.quantity;
+                              }, 0);
+                              const deliveryCostForMargin = d.hasDelivery ? (d.deliveryCost || 0) : 0;
+                              const profit = d.total - totalPurchaseCost - deliveryCostForMargin;
+                              const marginPercent = d.total > 0 ? Math.round((profit / d.total) * 100) : 0;
+                              return (
+                                <div className="admin-order__margin-box" style={{
+                                  marginTop: 14,
+                                  padding: 12,
+                                  borderRadius: 6,
+                                  border: "1px solid var(--adm-sand-pale)",
+                                  background: "rgba(245, 242, 234, 0.25)"
+                                }}>
+                                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "var(--adm-ink)" }}>
+                                    📊 Анализ прибыльности заказа:
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: 12 }}>
+                                    <div>Сумма продажи: <b>{fmt(d.total)} ₽</b></div>
+                                    <div>Себестоимость: <b>{fmt(totalPurchaseCost)} ₽</b></div>
+                                    <div>Доставка: <b>{d.hasDelivery ? `${fmt(deliveryCostForMargin)} ₽` : "нет"}</b></div>
+                                    <div>Прибыль: <b style={{ color: profit >= 0 ? "var(--adm-pine)" : "var(--adm-rust)" }}>{fmt(profit)} ₽</b></div>
+                                    <div style={{ gridColumn: "span 2", marginTop: 4, paddingTop: 4, borderTop: "1px dashed var(--adm-sand-pale)" }}>
+                                      Маржа: <b style={{ fontSize: 13, color: profit >= 0 ? "var(--adm-pine)" : "var(--adm-rust)" }}>{marginPercent}%</b>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {d.status === "new" &&
@@ -1811,12 +2353,12 @@ export function WarehouseManager({
         </>
       )}
 
-      {/* ════════════ ВКЛАДКА: ЗАРПЛАТЫ ════════════ */}
+      {/* ============ ВКЛАДКА: ЗАРПЛАТЫ ============ */}
       {activeTab === "salaries" && (
         <WarehouseSalaries employees={employees} salaries={salaries} />
       )}
 
-      {/* ════════════ ВКЛАДКА: ОТЧЁТЫ ════════════ */}
+      {/* ============ ВКЛАДКА: ОТЧЁТЫ ============ */}
       {activeTab === "reports" && (
         <WarehouseReports
           adminPath={adminPath}
@@ -1830,7 +2372,7 @@ export function WarehouseManager({
         />
       )}
 
-      {/* ════════════ ВКЛАДКА: КОНТРАГЕНТЫ ════════════ */}
+      {/* ============ ВКЛАДКА: КОНТРАГЕНТЫ ============ */}
       {activeTab === "counterparties" && (
         <CounterpartiesManager
           initialCounterparties={counterpartyOptions}
@@ -1838,10 +2380,10 @@ export function WarehouseManager({
         />
       )}
 
-      {/* ════════════ ВКЛАДКА: КЛИЕНТЫ ════════════ */}
+      {/* ============ ВКЛАДКА: КЛИЕНТЫ ============ */}
       {activeTab === "clients" && <ClientsManager clients={clients} />}
 
-      {/* ════════════ ВКЛАДКА: ПОСТАВЩИКИ ════════════ */}
+      {/* ============ ВКЛАДКА: ПОСТАВЩИКИ ============ */}
       {activeTab === "suppliers" && (
         <div style={{ display: "grid", gap: 16 }}>
           <div className="admin-card">
@@ -2069,7 +2611,7 @@ export function WarehouseManager({
         </div>
       )}
 
-      {/* ════════════ ВКЛАДКА: БАНК ════════════ */}
+      {/* ============ ВКЛАДКА: БАНК ============ */}
       {activeTab === "bank" && bankSummary && (
         <div className="bank">
           <div className="bank-hero">
@@ -2324,6 +2866,13 @@ export function WarehouseManager({
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
             <button
+              onClick={() => setBankSub("summary")}
+              className={`admin-filter${bankSub === "summary" ? " admin-filter--active" : ""}`}
+            >
+              <BarChart3 size={12} />
+              Финансовая сводка
+            </button>
+            <button
               onClick={() => setBankSub("pending")}
               className={`admin-filter${bankSub === "pending" ? " admin-filter--active" : ""}`}
             >
@@ -2345,6 +2894,138 @@ export function WarehouseManager({
               Касса
             </button>
           </div>
+
+          {bankSub === "summary" && (() => {
+            const todayStr = getWarehouseBusinessDate(new Date());
+            
+            // Get period start date
+            let periodStartStr = todayStr;
+            let periodLabel = "Сегодня";
+            
+            if (financePeriod === "week") {
+              periodLabel = "Эта неделя (с Пн)";
+              const parts = todayStr.split("-").map(Number);
+              const localToday = new Date(parts[0], parts[1] - 1, parts[2]);
+              const dayOfWeek = localToday.getDay(); // 0 is Sunday, 1 is Monday
+              const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+              const localMonday = new Date(localToday);
+              localMonday.setDate(localToday.getDate() + diffToMonday);
+              periodStartStr = `${localMonday.getFullYear()}-${String(localMonday.getMonth() + 1).padStart(2, "0")}-${String(localMonday.getDate()).padStart(2, "0")}`;
+            } else if (financePeriod === "month") {
+              periodLabel = "Этот месяц";
+              const parts = todayStr.split("-").map(Number);
+              periodStartStr = `${parts[0]}-${String(parts[1]).padStart(2, "0")}-01`;
+            }
+
+            // Calculations
+            let periodIncoming = 0;
+            let periodOutgoing = 0;
+
+            for (const p of payments) {
+              if (p.excludeFromBalance) continue;
+              if (p.isPaid) {
+                const pDate = String(p.date || "").slice(0, 10);
+                if (pDate >= periodStartStr && pDate <= todayStr) {
+                  if (p.direction === "incoming") {
+                    periodIncoming += p.amount;
+                  } else {
+                    periodOutgoing += p.amount;
+                  }
+                }
+              }
+            }
+
+            for (const s of salaries) {
+              const bypassBalance = isSalaryExcludedFromBalance(s.comment);
+              if (s.isPaid && !bypassBalance) {
+                const sDate = String(s.paidAt || s.date || "").slice(0, 10);
+                if (sDate >= periodStartStr && sDate <= todayStr) {
+                  periodOutgoing += s.amount;
+                }
+              }
+            }
+
+            const periodNet = periodIncoming - periodOutgoing;
+
+            return (
+              <div style={{ marginTop: 12 }}>
+                {/* Селектор периода */}
+                <div className="admin-filters admin-filters--sub" style={{ marginBottom: 14 }}>
+                  <button
+                    onClick={() => setFinancePeriod("today")}
+                    className={`admin-filter${financePeriod === "today" ? " admin-filter--active" : ""}`}
+                  >
+                    Сегодня
+                  </button>
+                  <button
+                    onClick={() => setFinancePeriod("week")}
+                    className={`admin-filter${financePeriod === "week" ? " admin-filter--active" : ""}`}
+                  >
+                    Неделя
+                  </button>
+                  <button
+                    onClick={() => setFinancePeriod("month")}
+                    className={`admin-filter${financePeriod === "month" ? " admin-filter--active" : ""}`}
+                  >
+                    Месяц
+                  </button>
+                </div>
+
+                <div className="admin-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+                  {/* Левая колонка: Финансовые операции за период */}
+                  <div className="admin-card" style={{ padding: 16 }}>
+                    <div className="admin-card__head" style={{ borderBottom: "1px solid var(--adm-sand-pale)", paddingBottom: 10, marginBottom: 12 }}>
+                      <h3 className="admin-card__title" style={{ fontSize: 14, fontWeight: 700 }}>
+                        📊 Операции за период: <span style={{ color: "var(--adm-rust)" }}>{periodLabel}</span>
+                      </h3>
+                    </div>
+                    
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
+                        <span style={{ color: "var(--adm-ink-soft)" }}>Продажи оплачено (Приход):</span>
+                        <strong style={{ color: "var(--adm-pine)" }}>+{fmt(periodIncoming)} ₽</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
+                        <span style={{ color: "var(--adm-ink-soft)" }}>Поставщикам & ЗП оплачено (Расход):</span>
+                        <strong style={{ color: "var(--adm-rust)" }}>−{fmt(periodOutgoing)} ₽</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, paddingTop: 10, borderTop: "1px dashed var(--adm-sand-pale)" }}>
+                        <span style={{ fontWeight: 700 }}>Чистый итог:</span>
+                        <strong style={{ fontSize: 15, color: periodNet >= 0 ? "var(--adm-pine)" : "var(--adm-rust)" }}>
+                          {periodNet >= 0 ? "+" : ""}{fmt(periodNet)} ₽
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Правая колонка: Заметки и напоминания */}
+                  <div className="admin-card" style={{ padding: 16 }}>
+                    <div className="admin-card__head" style={{ borderBottom: "1px solid var(--adm-sand-pale)", paddingBottom: 10, marginBottom: 12 }}>
+                      <h3 className="admin-card__title" style={{ fontSize: 14, fontWeight: 700 }}>
+                        📝 Заметки и напоминания
+                      </h3>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <textarea
+                        className="admin-input"
+                        style={{ width: "100%", height: "135px", resize: "vertical", fontSize: 13, background: "rgba(245, 242, 234, 0.15)" }}
+                        value={financeNotes}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFinanceNotes(val);
+                          localStorage.setItem("sgt_finance_notes", val);
+                        }}
+                        placeholder="Запишите здесь напоминания, важные суммы, долги или любой другой рабочий текст..."
+                      />
+                      <span style={{ fontSize: 10, color: "var(--adm-sand)", textAlign: "right" }}>
+                        💾 Сохраняется автоматически на этом устройстве
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {bankSub === "cash" ? (
             <>

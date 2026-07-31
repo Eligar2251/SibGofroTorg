@@ -123,12 +123,12 @@ export function TransportPrintSheet({
               : null;
           const isLast = idx === lastIdx;
           return (
-            <Fragment key={`${deal.dealNumber}-${idx}`}>
+            <Fragment key={`${deal.dealNumber || "self"}-${idx}`}>
               <div className="transport-strip">
                 {/* Шапка: номер заказа + количество товара */}
                 <div className="strip-top">
                   <div className="strip-top__left">
-                    <span className="strip-deal">ЗК-{deal.dealNumber}</span>
+                    <span className="strip-deal">{deal.dealNumber ? `ЗК-${deal.dealNumber}` : "Самостоятельная перевозка"}</span>
                     <span className="strip-per">
                       ПЕР-{data.transportNumber} · {fmtDate(data.date)}
                     </span>

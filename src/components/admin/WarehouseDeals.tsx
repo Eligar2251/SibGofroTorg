@@ -593,7 +593,7 @@ export function DealForm({
                 <summary>Полная информация о покупателе</summary>
                 <div className="wh-form-grid">
                   <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
-                  <div className="admin-field"><label className="admin-label">Email</label><input type="email" className="admin-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                  <div className="admin-field"><label className="admin-label">Email</label><input type="text" className="admin-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
                   <div className="admin-field"><label className="admin-label">ИНН</label><input className="admin-input" value={inn} onChange={(e) => setInn(e.target.value)} /></div>
                   <div className="admin-field"><label className="admin-label">КПП</label><input className="admin-input" value={kpp} onChange={(e) => setKpp(e.target.value)} /></div>
                   <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
