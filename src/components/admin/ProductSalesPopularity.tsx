@@ -1,0 +1,14 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import { BarChart3 } from "lucide-react";
+import type { CustomerDeal, WarehouseReceipt } from "@/lib/warehouse-shared";
+const r=(n:number)=>Math.round(n*100)/100; const m=(n:number)=>`${r(n).toLocaleString("ru-RU")} ₽`;
+export function ProductSalesPopularity({deals,receipts,from,to}:{deals:CustomerDeal[];receipts:WarehouseReceipt[];from:string;to:string}){
+ const [manual,setManual]=useState<Record<string,string>>({});
+ useEffect(()=>{try{setManual(JSON.parse(localStorage.getItem("sgt-manual-product-costs")||"{}"))}catch{}},[]);
+ const costs=useMemo(()=>{const map=new Map<string,number>(); for(const receipt of [...receipts].sort((a,b)=>b.date.localeCompare(a.date))){for(const item of receipt.items)if(!map.has(item.productId)&&item.price>0)map.set(item.productId,item.price)} return map},[receipts]);
+ const rows=useMemo(()=>{const map=new Map<string,{id:string;name:string;qty:number;revenue:number}>(); for(const d of deals)if(d.status==="completed"&&(!from||d.date>=from)&&(!to||d.date<=to))for(const i of d.items){const x=map.get(i.productId)||{id:i.productId,name:i.name,qty:0,revenue:0};x.qty+=i.quantity;x.revenue+=i.lineTotal;map.set(i.productId,x)} return [...map.values()].map(x=>{const cost=Number(manual[x.id])||costs.get(x.id)||0;return {...x,cost,profit:r(x.revenue-x.qty*cost)}}).sort((a,b)=>b.qty-a.qty||b.revenue-a.revenue)},[deals,from,to,manual,costs]);
+ function setCost(id:string,v:string){const next={...manual,[id]:v};setManual(next);localStorage.setItem("sgt-manual-product-costs",JSON.stringify(next))}
+ if(!rows.length)return <div className="admin-empty"><BarChart3 size={28}/><p>За выбранный период отпущенных товаров нет.</p></div>;
+ return <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Продано, шт.</th><th>Выручка</th><th>Закупочная цена</th><th>Прибыль</th></tr></thead><tbody>{rows.map((x,i)=><tr key={x.id}><td><b>#{i+1} · {x.name}</b></td><td>{x.qty}</td><td>{m(x.revenue)}</td><td>{x.cost>0?m(x.cost):<input className="admin-input" type="number" min="0" step="0.01" placeholder="Укажите цену" value={manual[x.id]||""} onChange={e=>setCost(x.id,e.target.value)}/>}</td><td style={{fontWeight:800,color:x.cost>0?"var(--adm-pine)":"var(--adm-sand)"}}>{x.cost>0?m(x.profit):"Нужна цена"}</td></tr>)}</tbody></table></div>;
+}
