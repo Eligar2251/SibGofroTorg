@@ -27,6 +27,7 @@ export async function PUT(
       linkedDealIds: body.linkedDealIds,
       linkedPaymentIds: body.linkedPaymentIds,
       noPayment: body.noPayment === true,
+      isConsignment: body.isConsignment === true,
       paymentSplits: Array.isArray(body.paymentSplits)
         ? body.paymentSplits
         : undefined,

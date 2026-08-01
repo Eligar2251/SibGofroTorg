@@ -59,6 +59,8 @@ export interface WarehouseReceipt extends CounterpartyDetails {
   status: ReceiptStatus;
   counterpartyId?: string | null;
   comment?: string | null;
+  /** Поставка товара на реализацию: продажи учитываются по закупочной цене. */
+  isConsignment?: boolean;
   items: StockDocItem[];
   total: number;
   bankAdjustment: number;

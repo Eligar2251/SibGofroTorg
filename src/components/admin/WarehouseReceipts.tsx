@@ -57,6 +57,7 @@ export interface EditableReceipt {
   comment?: string | null;
   items: ReceiptItemDraft[];
   vatRate?: number;
+  isConsignment?: boolean;
 }
 
 function todayIso(): string {
@@ -176,6 +177,7 @@ export function ReceiptForm({
       )
   );
   const [noPayment, setNoPayment] = useState(initialNoPayment);
+  const [isConsignment, setIsConsignment] = useState(Boolean(initialReceipt?.isConsignment));
   const [paymentCount, setPaymentCount] = useState(
     initialReceipt && existingUnpaid.length > 1 ? existingUnpaid.length : 1
   );
@@ -424,6 +426,7 @@ export function ReceiptForm({
           linkedDealIds: selectedDeals,
           linkedPaymentIds: noPayment ? [] : selectedPayments,
           noPayment,
+          isConsignment,
           paymentSplits: buildPaymentSplits(),
         }),
       });
@@ -534,6 +537,10 @@ export function ReceiptForm({
               </div>
 
               <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-check" style={{ marginBottom: 10 }}>
+                  <input type="checkbox" checked={isConsignment} onChange={(e) => setIsConsignment(e.target.checked)} />
+                  Товар на реализации — отслеживать продажи и сумму по закупочной цене поставщика
+                </label>
                 <label className="admin-label">Оплата поставщику</label>
                 <label className="admin-check" style={{ marginBottom: 8 }}>
                   <input
@@ -958,6 +965,7 @@ export function ReceiptCard({
                   lineTotal: item.lineTotal,
                 })),
                 vatRate: r.vatRate,
+                isConsignment: r.isConsignment,
                 linkedDealIds: r.linkedDealIds,
               }}
             />

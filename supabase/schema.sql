@@ -459,6 +459,7 @@ CREATE TABLE IF NOT EXISTS warehouse_receipts (
   vat_amount NUMERIC DEFAULT 0,
   linked_deal_ids JSONB DEFAULT '[]'::jsonb,
   linked_deal_numbers JSONB DEFAULT '[]'::jsonb,
+  is_consignment BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -77,6 +77,7 @@ import {
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
 import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { ClientsManager } from "@/components/admin/ClientsManager";
+import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
@@ -162,7 +163,7 @@ const paymentTypeLabels: Record<string, string> = {
 
 type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
-type SuppliesSub = "receipts" | "suppliers";
+type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
 type BankSub = "summary" | "pending" | "history" | "cash";
@@ -342,7 +343,8 @@ export function WarehouseManager({
   const [supplierPriceSaving, setSupplierPriceSaving] = useState(false);
   const [procurementCart, setProcurementCart] = useState<ProcurementCartItem[]>([]);
   const [procurementSaving, setProcurementSaving] = useState(false);
-  const [bankSub, setBankSub] = useState<BankSub>("summary");
+  // В банке в первую очередь показываем документы, требующие действия.
+  const [bankSub, setBankSub] = useState<BankSub>("pending");
   const [detailPaymentId, setDetailPaymentId] = useState<string | null>(
     focusPaymentId || null
   );
@@ -679,6 +681,21 @@ export function WarehouseManager({
     () => collectionsSorted.reduce((sum, c) => sum + (c.amount || 0), 0),
     [collectionsSorted]
   );
+  // Для каждой смены отдельно показываем остаток, пришедший на её начало.
+  // Это важно: «осталось в кассе» включает не только платежи этой смены,
+  // но и наличность, перенесённую с предыдущих дней.
+  const cashOpeningByCollectionId = useMemo(() => {
+    const opening = new Map<string, number>();
+    for (const collection of cashCollections) {
+      const date = String(collection.date || "").slice(0, 10);
+      if (!date) continue;
+      opening.set(
+        collection.id,
+        getCashCarryoverSummary(payments, salaries, cashCollections, date).openingBalance
+      );
+    }
+    return opening;
+  }, [payments, salaries, cashCollections]);
   // Раскладка смен: сколько перенесено наличными, сколько ушло на карту.
   const collectedBreakdown = useMemo(
     () => getCollectedBreakdown(collectionsSorted),
@@ -729,10 +746,12 @@ export function WarehouseManager({
   // Сдача кассы идёт через модалку: там каждый платёж помечается
   // «наличные / перевод», чтобы в отчёте было видно, сколько куда ушло.
   function handleCollectCash() {
-    if (bankSummary.cashBalance <= 0.009) {
-      setCollectError("Касса пуста — нечего сдавать");
+    if (bankSummary.cashBalance < -0.009) {
+      setCollectError("Остаток кассы отрицательный — сначала проверьте учёт прошлых операций.");
       return;
     }
+    // Сдача кассы — это закрытие смены. Нулевая смена тоже должна попасть
+    // в журнал, а перенесённый остаток при этом остаётся в кассе.
     setCollectError("");
     setShowCollect(true);
   }
@@ -1798,7 +1817,14 @@ export function WarehouseManager({
             <button onClick={() => setSuppliesSub("suppliers")} className={`admin-filter${suppliesSub === "suppliers" ? " admin-filter--active" : ""}`}>
               <UsersRound size={12} /> Поставщики
             </button>
+            <button onClick={() => setSuppliesSub("consignment")} className={`admin-filter${suppliesSub === "consignment" ? " admin-filter--active" : ""}`}>
+              <Wallet size={12} /> Товар на реализации
+            </button>
           </div>
+
+          {suppliesSub === "consignment" && (
+            <div className="admin-card" style={{ marginTop: 12 }}><div className="admin-card__head"><h3 className="admin-card__title">Товар на реализации</h3></div><div className="admin-card__pad"><ConsignmentTracker receipts={receipts} deals={deals} payments={payments} /></div></div>
+          )}
 
           {suppliesSub === "receipts" && (
             <>
@@ -2668,7 +2694,7 @@ export function WarehouseManager({
                 <button
                   type="button"
                   className="admin-btn admin-btn--primary admin-btn--sm"
-                  disabled={collecting || bankSummary.cashBalance <= 0.009}
+                  disabled={collecting || bankSummary.cashBalance < -0.009}
                   onClick={handleCollectCash}
                   style={{ marginTop: 10 }}
                 >
@@ -2866,13 +2892,6 @@ export function WarehouseManager({
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
             <button
-              onClick={() => setBankSub("summary")}
-              className={`admin-filter${bankSub === "summary" ? " admin-filter--active" : ""}`}
-            >
-              <BarChart3 size={12} />
-              Финансовая сводка
-            </button>
-            <button
               onClick={() => setBankSub("pending")}
               className={`admin-filter${bankSub === "pending" ? " admin-filter--active" : ""}`}
             >
@@ -2892,6 +2911,13 @@ export function WarehouseManager({
             >
               <Banknote size={12} />
               Касса
+            </button>
+            <button
+              onClick={() => setBankSub("summary")}
+              className={`admin-filter${bankSub === "summary" ? " admin-filter--active" : ""}`}
+            >
+              <BarChart3 size={12} />
+              Финансовая сводка
             </button>
           </div>
 
@@ -3137,7 +3163,7 @@ export function WarehouseManager({
                         <tr>
                           <th>Дата</th>
                           <th style={{ textAlign: "right" }}>На карту</th>
-                          <th style={{ textAlign: "right" }}>Осталось в кассе</th>
+                          <th style={{ textAlign: "right" }}>В кассе после смены</th>
                           <th style={{ textAlign: "right" }}>Размечено</th>
                           <th>Комментарий</th>
                           <th></th>
@@ -3158,6 +3184,26 @@ export function WarehouseManager({
                             Math.round(
                               (legacyCollection ? 0 : c.cashAmount || 0) * 100
                             ) / 100;
+                          const carriedFromPreviousDays = Math.max(
+                            0,
+                            Math.round((cashOpeningByCollectionId.get(c.id) || 0) * 100) / 100
+                          );
+                          // В кассовом приходе отделяем реальные платежи смены
+                          // от технической строки старого остатка (manual:*).
+                          const cashFromShiftPayments = Math.round(
+                            (c.items || [])
+                              .filter((item) => !String(item.paymentId || "").startsWith("manual:"))
+                              .reduce(
+                                (sum, item) =>
+                                  sum +
+                                  (item.cashAmount != null
+                                    ? Number(item.cashAmount) || 0
+                                    : item.kind === "cash"
+                                      ? Number(item.amount) || 0
+                                      : 0),
+                                0
+                              ) * 100
+                          ) / 100;
                           const marked = (c.items || []).length;
                           const noAccounting = (c.items || []).some(
                             (item) => item.noAccounting
@@ -3243,6 +3289,22 @@ export function WarehouseManager({
                               </td>
                               <td style={{ textAlign: "right", fontWeight: 600 }}>
                                 {cashPart > 0 ? `${fmt(cashPart)} ₽` : "—"}
+                                {carriedFromPreviousDays > 0.009 && (
+                                  <small
+                                    style={{ display: "block", marginTop: 3, color: "var(--adm-muted)", fontWeight: 500 }}
+                                    title="Наличность, которая была в кассе на начало дня"
+                                  >
+                                    +{fmt(carriedFromPreviousDays)} ₽ с прошлого дня
+                                  </small>
+                                )}
+                                {cashFromShiftPayments > 0.009 && (
+                                  <small
+                                    style={{ display: "block", marginTop: 2, color: "var(--adm-pine)", fontWeight: 500 }}
+                                    title="Наличная часть платежей, размеченных в этой смене"
+                                  >
+                                    +{fmt(cashFromShiftPayments)} ₽ по платежам смены
+                                  </small>
+                                )}
                               </td>
                               <td style={{ textAlign: "right", fontWeight: 700, color: "var(--adm-pine)" }}>
                                 +{fmt(Math.round(c.amount * 100) / 100)} ₽
@@ -3272,8 +3334,18 @@ export function WarehouseManager({
                                     <div className="wh-cc-box">
                                       <div className="wh-cc-box__head">
                                         <Banknote size={13} /> Платежи за наличку
-                                        <b>{fmt(income)} ₽</b>
+                                        <b>+{fmt(cashFromShiftPayments)} ₽</b>
                                       </div>
+                                      {carriedFromPreviousDays > 0.009 && (
+                                        <div className="wh-cc-line">
+                                          <span>
+                                            <History size={11} /> Наличка с прошлого дня
+                                          </span>
+                                          <span className="wh-cc-line__val">
+                                            +{fmt(carriedFromPreviousDays)} ₽
+                                          </span>
+                                        </div>
+                                      )}
                                       {marked === 0 ? (
                                         <div className="wh-cc-empty">
                                           Платежи не размечены (старая сдача)
@@ -3383,18 +3455,31 @@ export function WarehouseManager({
                                           {fmt(transfer)} ₽
                                         </span>
                                       </div>
+                                      {carriedFromPreviousDays > 0.009 && (
+                                        <div className="wh-cc-line">
+                                          <span>
+                                            <History size={11} /> Перенесено с прошлого дня
+                                          </span>
+                                          <span className="wh-cc-line__val">
+                                            {fmt(carriedFromPreviousDays)} ₽
+                                          </span>
+                                        </div>
+                                      )}
                                       <div className="wh-cc-line">
                                         <span>
-                                          <Banknote size={11} /> Осталось в кассе
+                                          <Banknote size={11} /> Осталось после смены
                                         </span>
                                         <span className="wh-cc-line__val">
                                           {fmt(cashPart)} ₽
                                         </span>
                                       </div>
                                       <div className="wh-cc-total">
-                                        Приход {fmt(income)} ₽
-                                        {expSum > 0 && <> − траты {fmt(expSum)} ₽</>} ={" "}
-                                        <b>{fmt(Math.round(c.amount * 100) / 100)} ₽</b> размечено
+                                        В наличных: {carriedFromPreviousDays > 0.009 && (
+                                          <>+{fmt(carriedFromPreviousDays)} ₽ с прошлого дня, </>
+                                        )}
+                                        +{fmt(cashFromShiftPayments)} ₽ по платежам смены.
+                                        {expSum > 0 && <> Траты наличными: −{fmt(expSum)} ₽.</>}
+                                        {" "}<b>После смены: {fmt(cashPart)} ₽</b>
                                       </div>
                                     </div>
                                   </div>

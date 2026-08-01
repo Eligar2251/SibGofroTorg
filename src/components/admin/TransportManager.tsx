@@ -328,7 +328,7 @@ export function TransportManager({
                         ))}
                         {t.note && <div style={{ fontSize: 12, color: "var(--adm-sand)", marginBottom: 8 }}>📝 {t.note}</div>}
 
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <div className="transport-modal__trip-types" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           {isActive && (
                             <button className="admin-btn admin-btn--primary admin-btn--sm" disabled={saving} onClick={() => handleComplete(t.id)}>
                               <CheckCircle2 size={13} /> Завершить перевозку
@@ -533,8 +533,8 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay">
-        <div className="admin-modal wh-modal" style={{ maxWidth: 700 }} onClick={(e) => e.stopPropagation()}>
+      <div className="admin-modal-overlay" data-admin="true">
+        <div className="admin-modal wh-modal transport-modal" style={{ maxWidth: 700 }} onClick={(e) => e.stopPropagation()}>
           <div className="admin-modal__head">
             <h3 className="admin-modal__title">Новая перевозка</h3>
             <button type="button" onClick={onClose} className="admin-modal__close"><X size={14} /></button>
@@ -559,19 +559,19 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
           </div>
 
           <label className="admin-label" style={{ marginBottom: 8 }}>Заказы для перевозки</label>
-          <div style={{ maxHeight: "45vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
+          <div className="transport-modal__orders" style={{ maxHeight: "45vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
             {deals.length === 0 ? (
               <div className="admin-empty" style={{ padding: 20 }}>Нет заказов с доставкой</div>
             ) : deals.map((deal) => {
               const sel = selectedDeals.has(deal.id);
               return (
-                <div key={deal.id} style={{ border: `1px solid ${sel ? "var(--adm-kraft)" : "var(--adm-border)"}`, borderRadius: 8, padding: 12, background: sel ? "var(--adm-kraft-pale)" : "var(--adm-card)", transition: "all 0.12s" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: sel ? 10 : 0 }}>
+                <div key={deal.id} className="transport-modal__order" style={{ border: `1px solid ${sel ? "var(--adm-kraft)" : "var(--adm-border)"}`, borderRadius: 8, padding: 12, background: sel ? "var(--adm-kraft-pale)" : "var(--adm-card)", transition: "all 0.12s" }}>
+                  <label className="transport-modal__order-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: sel ? 10 : 0 }}>
                     <input type="checkbox" checked={sel} onChange={() => toggleDeal(deal.id)} />
                     <strong style={{ fontSize: 13 }}>ЗК-{deal.number}</strong>
                     <span style={{ fontSize: 13 }}>{deal.customerName}</span>
                     {deal.deliveryAddress && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
+                      <span className="transport-modal__address" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
                         <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.deliveryAddress}</span>
                       </span>
                     )}
@@ -584,7 +584,7 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
                         const maxQty = item.quantity - alreadyShipped - alreadyPlanned;
                         const curQty = qtys[deal.id]?.[item.productId] ?? maxQty;
                         return (
-                          <div key={item.productId} style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, alignItems: "center" }}>
+                          <div key={item.productId} className="transport-modal__deal-item" style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, alignItems: "center" }}>
                             <span style={{ fontSize: 12 }}>
                               {item.name} <span style={{ color: "var(--adm-sand)" }}>(заказано: {item.quantity}{alreadyShipped > 0 ? `, отгружено: ${alreadyShipped}` : ""}{alreadyPlanned > 0 ? `, в перевозках: ${alreadyPlanned}` : ""})</span>
                             </span>
@@ -606,11 +606,11 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
 
           {/* Раздел самостоятельных перевозок (без заказа) */}
           <div style={{ marginTop: 16, borderTop: "1px solid var(--adm-border)", paddingTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div className="transport-modal__custom-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <label className="admin-label" style={{ margin: 0 }}>Самостоятельные перевозки (без привязки к заказам)</label>
               <button
                 type="button"
-                className="admin-btn admin-btn--outline admin-btn--sm"
+                className="admin-btn admin-btn--outline admin-btn--sm transport-modal__add-trip"
                 onClick={() => {
                   setCustomTrips(prev => [
                     ...prev,
@@ -676,7 +676,7 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
                     {/* Тип поездки: доставка / забор груза / сдача груза */}
                     <div className="admin-field" style={{ marginBottom: 12 }}>
                       <label className="admin-label">Тип поездки</label>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div className="transport-modal__trip-types" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {([
                           { id: "delivery" as TripType, label: "🚚 Доставка клиенту", hint: "везём товар клиенту" },
                           { id: "pickup" as TripType, label: "📥 Забор груза", hint: "забираем груз у контрагента" },
@@ -828,7 +828,7 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
                           const pickerKey = `${trip.id}:${itemIdx}`;
                           return (
                             <div key={`${trip.id}-${itemIdx}`} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 30px", gap: 8, alignItems: "center" }}>
+                              <div className="transport-modal__cargo-row" style={{ display: "grid", gridTemplateColumns: "1fr 100px 30px", gap: 8, alignItems: "center" }}>
                                 <input
                                   type="text"
                                   className="admin-input"
@@ -882,7 +882,7 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
                                   <X size={14} />
                                 </button>
                               </div>
-                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <div className="transport-modal__cargo-actions" style={{ display: "flex", gap: 6, alignItems: "center" }}>
                                 {item.productId ? (
                                   <span className="admin-badge admin-badge--green" style={{ fontSize: 11 }}>
                                     ✓ из каталога: {item.name}

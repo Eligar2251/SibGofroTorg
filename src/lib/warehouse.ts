@@ -192,6 +192,7 @@ function mapReceiptRow(row: any): WarehouseReceipt {
     address: row.address ?? null,
     contactName: row.contact_name ?? null,
     comment: row.comment ?? null,
+    isConsignment: row.is_consignment === true,
     items: Array.isArray(row.items) ? row.items : [],
     total: Number(row.total || 0),
     bankAdjustment: Number(row.bank_adjustment || 0),
@@ -997,6 +998,7 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items, total, bank_adjustment: 0, vat_rate: vatRate, vat_amount: vatAmount,
     linked_deal_ids: linkedDealIds, linked_deal_numbers: linkedDealNumbers,
+    is_consignment: data.isConsignment === true,
   }).select("id").single();
   if (receiptError) throw receiptError;
   const receiptId = receiptResult.id;
@@ -1149,6 +1151,7 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
     items, total, bank_adjustment: bankAdjustment,
     vat_rate: vatRate, vat_amount: includedVat(total, vatRate),
     linked_deal_ids: linkedDealIds, linked_deal_numbers: linkedDealNumbers,
+    is_consignment: data.isConsignment === true,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
@@ -2635,10 +2638,6 @@ export async function collectCash(
         "Сдача заблокирована: сначала проверьте типы платежей и суммы прошлых сдач."
     );
   }
-  if (cashBalance <= 0.009) {
-    throw new Error("Касса пуста — нечего сдавать");
-  }
-
   const cleanNote = note ? cleanText(note, 500) : null;
   const pending = listPendingCashPayments(payments, collections);
   const carryover = getCashCarryoverSummary(
@@ -2680,11 +2679,10 @@ export async function collectCash(
       ? items
       : pending.map((p) => ({ paymentId: String(p.id), kind: "cash" as const }));
 
-  if (requested.length === 0 && requestedUnlinkedAmount <= 0.009) {
-    throw new Error(
-      "Нет наличных поступлений для сдачи: все наличные платежи уже сданы"
-    );
-  }
+  // Сдача кассы — это закрытие смены, поэтому нулевой документ допустим:
+  // например, когда за день не было наличных операций. Он не меняет
+  // остаток, включая перенесённую с прошлого дня наличность, но фиксирует
+  // факт закрытия смены в журнале.
 
   const alreadyCollected = new Set<string>();
   for (const c of collections) {
@@ -2784,9 +2782,7 @@ export async function collectCash(
 
   coveredByItems = round2(coveredByItems);
 
-  if (rows.length === 0 && requestedUnlinkedAmount <= 0.009) {
-    throw new Error("Выберите хотя бы один платёж или старый остаток кассы");
-  }
+  const isZeroShift = rows.length === 0 && requestedUnlinkedAmount <= 0.009;
 
   const payDates = [
     ...new Set(rows.map((r) => payById.get(String(r.paymentId))?.date || "")),
@@ -2813,9 +2809,12 @@ export async function collectCash(
   // Эти деньги физически ушли из кассы до сдачи, поэтому сдаётся
   // приход МИНУС траты. Иначе сдали бы больше, чем есть, и остаток
   // кассы ушёл бы в минус ровно на сумму трат.
-  const expensesOfDay = listCashExpenses(payments, salaries).filter(
-    (e) => e.date === expenseDate
-  );
+  // Пустая смена не должна повторно прикреплять расходы дня: без прихода
+  // они уже учтены в кассовом регистре, а нулевое закрытие лишь фиксирует
+  // отсутствие операций.
+  const expensesOfDay = isZeroShift
+    ? []
+    : listCashExpenses(payments, salaries).filter((e) => e.date === expenseDate);
   const expensesTotal =
     Math.round(expensesOfDay.reduce((sum, e) => sum + e.amount, 0) * 100) / 100;
 
@@ -2836,11 +2835,8 @@ export async function collectCash(
 
   const amount = Math.round((cashPart + cardPart) * 100) / 100;
 
-  if (amount <= 0.009) {
-    throw new Error(
-      `Наличные траты за ${expenseDate} (${expensesTotal} ₽) покрывают весь приход — сдавать нечего`
-    );
-  }
+  // Если траты полностью покрыли приход, amount может быть нулевым.
+  // Такой документ тоже нужен как закрытие смены и не влияет на остаток.
 
   // Из кассы уходит только часть «на карту». Наличная часть остаётся и
   // станет входящим остатком следующего дня.
