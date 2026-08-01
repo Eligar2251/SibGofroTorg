@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       linkedDealIds: body.linkedDealIds,
       linkedPaymentIds: body.linkedPaymentIds,
       noPayment: body.noPayment === true,
+      isConsignment: body.isConsignment === true,
       paymentSplits: body.paymentSplits,
     });
     return NextResponse.json(result);

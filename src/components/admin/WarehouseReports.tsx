@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  BarChart3,
   Banknote,
   Boxes,
   CalendarDays,
@@ -21,6 +22,7 @@ import {
 import {
   getDealPaidMap,
   getReceiptPaidMap,
+  getCashCarryoverSummary,
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
   stripSalaryMetaTags,
@@ -33,6 +35,7 @@ import {
 } from "@/lib/warehouse-shared";
 import type { TransportRow } from "@/components/admin/TransportManager";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
+import { ProductSalesPopularity } from "@/components/admin/ProductSalesPopularity";
 
 type ReportKind =
   | "payments"
@@ -41,6 +44,7 @@ type ReportKind =
   | "transports"
   | "salaries"
   | "cash"
+  | "product-sales"
   | "stock";
 type SortDirection = "asc" | "desc";
 
@@ -104,6 +108,12 @@ const REPORTS: {
     label: "Кассовые смены",
     description: "Инкассация, перенос наличных, расходы и закрытия смен",
     icon: <Banknote size={15} />,
+  },
+  {
+    kind: "product-sales",
+    label: "Популярность продаж",
+    description: "Что отпускают чаще всего, выручка и прибыль по товарам",
+    icon: <BarChart3 size={15} />,
   },
   {
     kind: "stock",
@@ -462,6 +472,42 @@ export function WarehouseReports({
     [cashCollections, filters]
   );
 
+  // Остаток на начало каждой смены — это перенос наличности с прошлых дней.
+  // Показываем его отдельно, чтобы итог «в кассе» не выглядел как приход
+  // только от платежей текущей смены.
+  const cashOpeningByCollectionId = useMemo(() => {
+    const opening = new Map<string, number>();
+    for (const collection of cashCollections) {
+      const date = String(collection.date || "").slice(0, 10);
+      if (!date) continue;
+      opening.set(
+        collection.id,
+        getCashCarryoverSummary(payments, salaries, cashCollections, date).openingBalance
+      );
+    }
+    return opening;
+  }, [cashCollections, payments, salaries]);
+
+  const cashPaymentsByCollectionId = useMemo(() => {
+    const amounts = new Map<string, number>();
+    for (const collection of cashCollections) {
+      const amount = (collection.items || [])
+        .filter((item) => !String(item.paymentId || "").startsWith("manual:"))
+        .reduce(
+          (sum, item) =>
+            sum +
+            (item.cashAmount != null
+              ? Number(item.cashAmount) || 0
+              : item.kind === "cash"
+                ? Number(item.amount) || 0
+                : 0),
+          0
+        );
+      amounts.set(collection.id, Math.round(amount * 100) / 100);
+    }
+    return amounts;
+  }, [cashCollections]);
+
   const stockRows = useMemo(
     () =>
       [...stock]
@@ -511,15 +557,15 @@ export function WarehouseReports({
     }
     if (filters.kind === "cash") {
       return [
-        ["Дата", "Размечено", "На карту", "Осталось в кассе", "Расходы", "Комментарий"],
-        ...cashRows.map((collection) => [collection.date, collection.amount, collection.transferAmount || 0, collection.cashAmount || 0, collection.expensesAmount || 0, collection.note || ""]),
+        ["Дата", "Размечено", "На карту", "С прошлого дня", "Наличными по платежам смены", "Осталось в кассе", "Расходы", "Комментарий"],
+        ...cashRows.map((collection) => [collection.date, collection.amount, collection.transferAmount || 0, cashOpeningByCollectionId.get(collection.id) || 0, cashPaymentsByCollectionId.get(collection.id) || 0, collection.cashAmount || 0, collection.expensesAmount || 0, collection.note || ""]),
       ];
     }
     return [
       ["Товар", "Артикул", "Остаток", "Порог", "Цена", "Стоимость", "Видимость"],
       ...stockRows.map((product) => [product.name, product.sku || "", product.stockQty, product.stockWarnQty ?? "", product.price ?? "", product.stockQty * (product.price || 0), product.isVisible ? "Виден" : "Скрыт"]),
     ];
-  }, [cashRows, dealPaidMap, dealRows, filters.kind, moneyRows, receiptPaidMap, receiptRows, salaryRows, stockRows, transportRows]);
+  }, [cashOpeningByCollectionId, cashPaymentsByCollectionId, cashRows, dealPaidMap, dealRows, filters.kind, moneyRows, receiptPaidMap, receiptRows, salaryRows, stockRows, transportRows]);
 
   function exportReport() {
     const safeName = activeMeta.label.replace(/\s+/g, "_");
@@ -783,7 +829,7 @@ export function WarehouseReports({
               <div><Banknote size={15} /><span>Осталось в кассе</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.cashAmount || 0), 0))}</strong></div>
               <div><ArrowUpRight size={15} /><span>Расходы</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.expensesAmount || 0), 0))}</strong></div>
             </div>
-            <ReportTable headers={["Дата", "Платежи", "Расшифровка", "На карту", "Осталось в кассе", "Расходы", "Комментарий"]} empty={cashRows.length === 0}>
+            <ReportTable headers={["Дата", "Платежи", "Расшифровка", "На карту", "С прошлого дня", "Наличными по платежам смены", "Осталось после смены", "Расходы", "Комментарий"]} empty={cashRows.length === 0}>
               {cashRows.map((collection) => (
                 <tr key={collection.id}>
                   <td>{fmtDate(collection.date)}</td>
@@ -807,6 +853,8 @@ export function WarehouseReports({
                     )}
                   </td>
                   <td>{money(collection.transferAmount || 0)}</td>
+                  <td>+{money(Math.max(0, cashOpeningByCollectionId.get(collection.id) || 0))}</td>
+                  <td>+{money(cashPaymentsByCollectionId.get(collection.id) || 0)}</td>
                   <td>{money(collection.cashAmount || 0)}</td>
                   <td>{money(collection.expensesAmount || 0)}</td>
                   <td>{collection.note || "—"}</td>
@@ -814,6 +862,10 @@ export function WarehouseReports({
               ))}
             </ReportTable>
           </>
+        )}
+
+        {filters.kind === "product-sales" && (
+          <ProductSalesPopularity deals={deals} receipts={receipts} from={filters.from} to={filters.to} />
         )}
 
         {filters.kind === "stock" && (

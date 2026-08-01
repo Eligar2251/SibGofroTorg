@@ -382,10 +382,8 @@ export function CashCollectModal({
       });
 
     const manualAmount = includeUnlinkedCash ? unlinkedCashBalance : 0;
-    if (items.length === 0 && manualAmount <= 0.009) {
-      setError("Выберите хотя бы один платёж или старый остаток кассы");
-      return;
-    }
+    // Пустая сдача допустима: это закрытие смены без наличных операций.
+    // Перенесённый остаток кассы при этом не списывается и остаётся на месте.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(collectionDate)) {
       setError("Укажите дату закрытия смены");
       return;
@@ -640,7 +638,8 @@ export function CashCollectModal({
               {pending.length === 0 ? (
                 <div className="admin-empty" style={{ padding: 20 }}>
                   <p>
-                    Все наличные платежи уже закрыты по сменам.
+                    За выбранную дату нет новых наличных платежей. Можно закрыть
+                    нулевую смену — она будет записана в журнал и не изменит остаток кассы.
                     {cashBalance > 0.009 && (
                       <>
                         {" "}
@@ -926,12 +925,7 @@ export function CashCollectModal({
               type="button"
               className="admin-btn admin-btn--primary"
               onClick={submit}
-              disabled={
-                saving ||
-                loading ||
-                (selected.size === 0 &&
-                  !(includeUnlinkedCash && unlinkedCashBalance > 0.009))
-              }
+              disabled={saving || loading}
             >
               {saving ? (
                 <Loader2 size={14} className="animate-spin" />

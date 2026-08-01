@@ -9776,3 +9776,251 @@ body:has(.admin-modal-overlay) {
       "del del";
   }
 }
+
+/* ── Перевозки: компактная и удобная форма на телефоне ── */
+@media (max-width: 600px) {
+  .transport-modal {
+    width: calc(100vw - 16px);
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .transport-modal .admin-modal__title {
+    font-size: 14px;
+  }
+
+  .transport-modal__orders {
+    max-height: 36dvh !important;
+    padding-right: 0 !important;
+  }
+
+  .transport-modal__order {
+    padding: 10px !important;
+  }
+
+  .transport-modal__order-label {
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+    padding-right: 0;
+  }
+
+  .transport-modal__address {
+    flex-basis: 100%;
+    margin-left: 24px !important;
+    margin-top: 2px;
+  }
+
+  .transport-modal__deal-item {
+    grid-template-columns: minmax(0, 1fr) 76px !important;
+  }
+
+  .transport-modal__add-trip {
+    width: 100%;
+    justify-content: center;
+    min-height: 40px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .transport-modal__trip-types {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 6px !important;
+  }
+
+  .transport-modal__trip-types .admin-btn {
+    width: 100%;
+    min-width: 0 !important;
+    min-height: 40px;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .transport-modal__cargo-row {
+    grid-template-columns: minmax(0, 1fr) 68px 30px !important;
+    gap: 6px !important;
+  }
+
+  .transport-modal__cargo-actions {
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+  }
+
+  .transport-modal__cargo-actions .admin-btn {
+    min-height: 32px;
+    white-space: normal;
+  }
+
+  .transport-modal .admin-modal__actions {
+    position: sticky;
+    bottom: -14px;
+    z-index: 2;
+    margin: 14px -14px -14px !important;
+    padding: 10px 14px;
+    background: var(--adm-card);
+    border-top: 1px solid var(--adm-border);
+    justify-content: stretch;
+  }
+
+  .transport-modal .admin-modal__actions .admin-btn {
+    flex: 1 1 130px;
+    min-height: 42px;
+    justify-content: center;
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+/* ══════════════════════════════════════
+   МОБИЛЬНАЯ АДМИНКА — финальное ограничение ширины
+   Только административные классы: публичный сайт не затрагивается.
+   ══════════════════════════════════════ */
+@media (max-width: 640px) {
+  /* Ни один flex/grid-потомок не может растянуть страницу шире viewport. */
+  .admin-shell,
+  .admin-content,
+  .admin-main,
+  .admin-main > *,
+  .admin-card,
+  .admin-card__pad,
+  .admin-page-head,
+  .admin-page-head > *,
+  .admin-filters,
+  .admin-tabs,
+  .admin-modal,
+  .admin-modal > *,
+  .admin-modal form,
+  .admin-modal form > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .admin-shell,
+  .admin-content,
+  .admin-main {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip;
+  }
+
+  /* Таблицы сохраняют горизонтальную прокрутку только внутри своей рамки. */
+  .admin-table-wrap,
+  .admin-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Кнопки всегда помещаются: текст по центру, в одну строку; при очень
+     длинной подписи показывается многоточие, а не выход за экран. */
+  .admin-btn,
+  .admin-status__btn,
+  .scan-page__btn,
+  .admin-filter {
+    box-sizing: border-box;
+    min-width: 0 !important;
+    max-width: 100%;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .admin-btn > span,
+  .admin-status__btn > span,
+  .scan-page__btn > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Диалоги всегда помещаются в экран, включая безопасные зоны iPhone. */
+  .admin-modal-overlay {
+    /* 56px мобильная навигация + запас, чтобы заголовок модалки не
+       оказывался под ней. */
+    padding: max(72px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+  }
+
+  .admin-modal {
+    box-sizing: border-box;
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(100dvh - 88px);
+    margin: 0 auto;
+    overflow-x: clip;
+  }
+
+  /* В инлайн-стилях ряда старых форм встречается minWidth. В модалках он
+     не должен выталкивать поля за экран. */
+  .admin-modal [style*="minWidth"] {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .admin-modal__actions,
+  .admin-form-actions,
+  .admin-page-head__actions {
+    width: 100%;
+  }
+
+  /* На узких телефонах действия идут по одному: подпись не переносится и
+     не превращает кнопку в неровную плашку. */
+  .admin-modal__actions .admin-btn,
+  .admin-form-actions .admin-btn {
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .delivery-plan-modal__list {
+    max-height: 48dvh !important;
+    padding-right: 0 !important;
+  }
+
+  .delivery-plan-modal__order {
+    padding: 10px !important;
+  }
+
+  .delivery-plan-modal__item {
+    grid-template-columns: minmax(0, 1fr) 72px !important;
+    gap: 6px !important;
+  }
+
+  .delivery-plan-modal__item > span {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (min-width: 421px) and (max-width: 640px) {
+  /* На более широком телефоне две короткие кнопки в футере допустимы. */
+  .admin-modal__actions .admin-btn,
+  .admin-form-actions .admin-btn {
+    flex-basis: 0;
+    width: auto;
+  }
+}
+
+/* Заголовок самостоятельных перевозок: на узком экране длинная кнопка
+   не делит строку с подписью и поэтому не выталкивает модалку вправо. */
+@media (max-width: 640px) {
+  .transport-modal__custom-head {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px;
+  }
+
+  .transport-modal__custom-head .admin-label {
+    width: 100%;
+  }
+
+  .transport-modal__custom-head .transport-modal__add-trip {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0 !important;
+    box-sizing: border-box;
+    justify-content: center;
+  }
+}

@@ -836,8 +836,8 @@ export function DeliveriesManager({
         {/* ── Модалка планирования с указанием количества ── */}
         {showPlanModal && (
           <ModalPortal>
-            <div className="admin-modal-overlay">
-              <div className="admin-modal wh-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-overlay" data-admin="true">
+              <div className="admin-modal wh-modal delivery-plan-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="admin-modal__head">
                   <h3 className="admin-modal__title">Планирование доставки на {formatRuDate(planDate)}</h3>
                   <button type="button" onClick={() => setShowPlanModal(false)} className="admin-modal__close" aria-label="Закрыть">
@@ -848,12 +848,12 @@ export function DeliveriesManager({
                   Укажите количество товара для отгрузки. Остаток останется в заказе.
                 </p>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: "60vh", overflowY: "auto", paddingRight: 4 }}>
+                <div className="delivery-plan-modal__list" style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: "60vh", overflowY: "auto", paddingRight: 4 }}>
                   {[...selected].map((key) => {
                     const row = byKey.get(key);
                     if (!row || !row.items || row.items.length === 0) return null;
                     return (
-                      <div key={key} style={{ border: "1px solid var(--adm-border)", borderRadius: 8, padding: 12 }}>
+                      <div key={key} className="delivery-plan-modal__order" style={{ border: "1px solid var(--adm-border)", borderRadius: 8, padding: 12 }}>
                         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
                           {row.label} — {row.customerName}
                         </div>
@@ -864,7 +864,7 @@ export function DeliveriesManager({
                           const maxQty = Math.max(0, item.quantity - shippedQty - existingDelQty);
                           const curQty = planQtys[row.id]?.[pid] ?? maxQty;
                           return (
-                            <div key={pid} style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                            <div key={pid} className="delivery-plan-modal__item" style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, alignItems: "center", marginBottom: 6 }}>
                               <span style={{ fontSize: 12, color: "var(--adm-ink-soft)" }}>
                                 {item.name}{" "}
                                 <span style={{ color: "var(--adm-sand)" }}>
