@@ -95,6 +95,12 @@ export function DashboardFinanceHistory({
       });
   }, [dateFrom, dateTo, period, query, rows, sort]);
 
+  const filteredIncoming = filtered
+    .filter((row) => row.direction === "incoming")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const filteredOutgoing = filtered
+    .filter((row) => row.direction === "outgoing")
+    .reduce((sum, row) => sum + row.amount, 0);
   const visible = filtered.slice(0, 60);
   const hasFilters =
     query || period !== "all" || dateFrom || dateTo || sort !== "desc";
@@ -115,6 +121,12 @@ export function DashboardFinanceHistory({
         onClose={() => setDetailPaymentId(null)}
         allowDocumentNavigation={allowNavigation}
       />
+      <div className="dash-finance-filter-summary" aria-live="polite">
+        <span>По выбранному фильтру</span>
+        <b className="dash-money-in">+{money(filteredIncoming)}</b>
+        <b className="dash-money-out">−{money(filteredOutgoing)}</b>
+        <strong>{money(filteredIncoming - filteredOutgoing)}</strong>
+      </div>
       <div className="dash-finance-filter" aria-label="Фильтр истории платежей">
         <label className="dash-finance-filter__search">
           <span>Поиск</span>

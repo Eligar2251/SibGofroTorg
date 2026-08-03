@@ -10233,3 +10233,6 @@ body:has(.admin-modal-overlay) {
   .wh-linkmode__btn { font-size: 11px; }
   .wh-direction--compact { grid-template-columns: 1fr; }
 }
+.dash-finance-filter-summary { display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px; margin:0 0 10px; padding:10px 12px; border:1px solid var(--adm-border); border-radius:8px; background:var(--adm-card); font-size:12px; }
+.dash-finance-filter-summary > span { color:var(--adm-ink-muted); font-weight:600; }
+.dash-finance-filter-summary > strong { margin-left:auto; color:var(--adm-ink); }
