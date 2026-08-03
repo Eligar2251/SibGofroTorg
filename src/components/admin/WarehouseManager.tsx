@@ -3945,6 +3945,7 @@ export function WarehouseManager({
                           edit={{
                             date: p.date,
                             type: p.type,
+                            cashDestination: p.cashDestination,
                             counterparty: p.counterparty,
                             amount: p.amount,
                             invoiceNumber: p.invoiceNumber ?? null,

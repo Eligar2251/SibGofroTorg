@@ -640,6 +640,7 @@ export function PaymentControls({
   edit: {
     date: string;
     type?: BankPaymentType;
+    cashDestination?: "cash" | "card" | null;
     counterparty: string;
     amount: number;
     invoiceNumber: string | null;
@@ -655,6 +656,9 @@ export function PaymentControls({
   const [editDate, setEditDate] = useState(edit.date);
   const [editType, setEditType] = useState<BankPaymentType>(
     edit.type || "regular"
+  );
+  const [editCashDestination, setEditCashDestination] = useState<"cash" | "card">(
+    edit.cashDestination === "card" || edit.type === "transfer" ? "card" : "cash"
   );
   const [editCounterparty, setEditCounterparty] = useState(edit.counterparty);
   const [editAmount, setEditAmount] = useState(
@@ -778,6 +782,9 @@ export function PaymentControls({
         body: JSON.stringify({
           date: editDate,
           type: editType,
+          cashDestination: edit.direction === "incoming" && (editType === "cash" || editType === "transfer")
+            ? (editType === "transfer" ? "card" : editCashDestination)
+            : null,
           counterparty: editCounterparty.trim(),
           amount: amountNum,
           invoiceNumber: editInvoiceNumber.trim() || null,
@@ -904,8 +911,8 @@ export function PaymentControls({
                   {([
                     { value: "regular", label: "Оплата счёта (расчётный счёт)", icon: CheckCircle },
                     { value: "refund", label: "Возврат", icon: RotateCcw },
-                    { value: "cash", label: "Наличные", icon: Banknote },
-                    { value: "transfer", label: "Перевод", icon: UserRound },
+                    { value: "cash", label: "Наличка (в кассу)", icon: Banknote },
+                    { value: "transfer", label: "Безнал на карту (в кассу)", icon: CreditCard },
                     { value: "deposit", label: "Внесение", icon: Download },
                   ] as const).map((t) => (
                     <button
@@ -920,6 +927,16 @@ export function PaymentControls({
                   ))}
                 </div>
               </div>
+
+              {edit.direction === "incoming" && editType === "cash" && (
+                <div className="admin-field">
+                  <label className="admin-label">После сдачи кассы</label>
+                  <div className="wh-direction wh-direction--compact">
+                    <button type="button" className={`wh-direction__btn${editCashDestination === "cash" ? " wh-direction__btn--active" : ""}`} onClick={() => setEditCashDestination("cash")}><Banknote size={13} /> Оставить в кассе</button>
+                    <button type="button" className={`wh-direction__btn${editCashDestination === "card" ? " wh-direction__btn--active" : ""}`} onClick={() => setEditCashDestination("card")}><CreditCard size={13} /> На карту Ю. М.</button>
+                  </div>
+                </div>
+              )}
 
               <div className="admin-field">
                 <label className="admin-label">Привязка к документам</label>

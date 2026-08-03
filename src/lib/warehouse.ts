@@ -2174,8 +2174,14 @@ export async function updatePayment(id: string, data: any): Promise<void> {
   }
 
   if (data.excludeFromBalance !== undefined) payload.exclude_from_balance = data.excludeFromBalance;
-  if (data.type !== undefined) payload.type = data.type;
-  if (data.cashDestination !== undefined) payload.cash_destination = data.cashDestination === "card" || data.cashDestination === "cash" ? data.cashDestination : null;
+  if (data.type !== undefined) {
+    payload.type = data.type;
+    // Тип платежа — источник истины: наличка по умолчанию остаётся в кассе,
+    // безнал на карту всегда сдаётся инкассацией, расчётный счёт не кассовый.
+    if (data.direction === "incoming" || data.cashDestination !== undefined) {
+      payload.cash_destination = data.type === "transfer" ? "card" : data.type === "cash" ? (data.cashDestination === "card" ? "card" : "cash") : null;
+    }
+  } else if (data.cashDestination !== undefined) payload.cash_destination = data.cashDestination === "card" || data.cashDestination === "cash" ? data.cashDestination : null;
   if (data.amount !== undefined) payload.amount = Number(data.amount);
   if (data.comment !== undefined) payload.comment = cleanText(data.comment, 500);
   if (data.date !== undefined && payload.date === undefined) {

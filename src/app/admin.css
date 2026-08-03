@@ -10216,3 +10216,20 @@ body:has(.admin-modal-overlay) {
   scrollbar-width: thin;
 }
 .cash-carryover-hero span { display: inline-block; flex: 0 0 auto; }
+
+/* Редактирование платежа: у вариантов оплаты иконка и подпись — одна строка. */
+.wh-linkmode__btn,
+.wh-direction--compact .wh-direction__btn {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.wh-linkmode__btn svg,
+.wh-direction--compact .wh-direction__btn svg { flex: 0 0 auto; }
+@media (max-width: 640px) {
+  .wh-linkmode__btn { font-size: 11px; }
+  .wh-direction--compact { grid-template-columns: 1fr; }
+}
