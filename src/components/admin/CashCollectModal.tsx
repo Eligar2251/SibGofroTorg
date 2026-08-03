@@ -286,16 +286,32 @@ export function CashCollectModal({
   }
 
   function setKind(id: string, kind: CashKind) {
+    // Кнопки «На карту» / «В кассе» означают полную сумму платежа.
+    // Ранее открытая ручная разбивка продолжала иметь приоритет над кнопкой,
+    // поэтому визуально выбор менялся, а итог оставался нулевым или старым.
+    setSplits((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setSplitOpen((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     setKinds((prev) => ({ ...prev, [id]: kind }));
-    // Отметка направления автоматически включает платёж в сдачу
+    // Отметка направления автоматически включает платёж в сдачу.
     setSelected((prev) => new Set(prev).add(id));
   }
 
   function markAll(kind: CashKind) {
+    const ids = new Set(dayItems.filter((p) => selected.has(p.paymentId)).map((p) => p.paymentId));
     const next: Record<string, CashKind> = { ...kinds };
-    for (const p of dayItems) {
-      if (selected.has(p.paymentId)) next[p.paymentId] = kind;
-    }
+    for (const id of ids) next[id] = kind;
+    // Массовая кнопка также должна отменять старые ручные разбивки, иначе
+    // выбранное направление не влияет на рассчитанную сумму.
+    setSplits((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => !ids.has(id))));
+    setSplitOpen((prev) => new Set([...prev].filter((id) => !ids.has(id))));
     setKinds(next);
   }
 
