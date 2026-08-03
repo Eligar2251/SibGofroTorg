@@ -10160,3 +10160,18 @@ body:has(.admin-modal-overlay) {
     overflow-y: auto;
   }
 }
+
+.cashc-unclassified {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #f2bd68;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: var(--adm-ink);
+  font-size: 12px;
+}
+.cashc-unclassified > span { color: var(--adm-ink-muted); }
+.cashc-unclassified__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+@media (max-width: 480px) { .cashc-unclassified__row { align-items: stretch; flex-direction: column; } }

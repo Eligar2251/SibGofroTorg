@@ -42,6 +42,15 @@ interface PendingCashPayment {
 }
 
 /** Наличный расход из кассы: ЗП или исходящий платёж налом. */
+interface UnclassifiedPayment {
+  paymentId: string;
+  number: number;
+  date: string;
+  counterparty: string;
+  amount: number;
+  type: string;
+}
+
 interface CashExpense {
   kind: "salary" | "payment";
   id: string;
@@ -82,6 +91,7 @@ export function CashCollectModal({
   const [detailPaymentId, setDetailPaymentId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingCashPayment[]>([]);
   const [closed, setClosed] = useState<PendingCashPayment[]>([]);
+  const [unclassified, setUnclassified] = useState<UnclassifiedPayment[]>([]);
   const [unlinkedCashBalance, setUnlinkedCashBalance] = useState(0);
   const [includeUnlinkedCash, setIncludeUnlinkedCash] = useState(false);
   const [unlinkedCashKind, setUnlinkedCashKind] = useState<CashKind>("cash");
@@ -114,15 +124,16 @@ export function CashCollectModal({
         const list: PendingCashPayment[] = data.pending || [];
         setPending(list);
         setClosed(data.closed || []);
+        setUnclassified(data.unclassified || []);
         const oldBalance = Math.max(0, Number(data.unlinkedCashBalance) || 0);
         setUnlinkedCashBalance(oldBalance);
         setIncludeUnlinkedCash(oldBalance > 0.009);
         setExpenses(data.expenses || []);
         if (data.cardHolder) setCardHolder(String(data.cardHolder));
         // Открываем на самой свежей дате: обычно сдают кассу за сегодня.
-        const latest = list.reduce(
+        const latest = [...list, ...(data.unclassified || [])].reduce(
           (max, p) => (p.date > max ? p.date : max),
-          list[0]?.date || ""
+          list[0]?.date || data.unclassified?.[0]?.date || ""
         );
         setActiveDate(latest);
         if (latest) setCollectionDate(latest);
@@ -159,6 +170,12 @@ export function CashCollectModal({
       if (arr) arr.push(p);
       else map.set(p.date, [p]);
     }
+    // Показываем и даты «неопознанных» поступлений: иначе кассир не мог
+    // выбрать старую смену, если все её платежи были ошибочно созданы как
+    // обычная оплата, а не наличные.
+    for (const p of unclassified) {
+      if (!map.has(p.date)) map.set(p.date, []);
+    }
     return [...map.entries()]
       .map(([date, items]) => ({
         date,
@@ -166,7 +183,7 @@ export function CashCollectModal({
         total: Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100,
       }))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [pending]);
+  }, [pending, unclassified]);
 
   /** Платежи выбранного дня — с ними и работает кассир. */
   const dayItems = useMemo(
@@ -345,6 +362,27 @@ export function CashCollectModal({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Не удалось вернуть платежи");
+      router.refresh();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сети");
+      setSaving(false);
+    }
+  }
+
+  async function markAsCash(payment: UnclassifiedPayment) {
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/warehouse/payments/${encodeURIComponent(payment.paymentId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "cash" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Не удалось изменить тип платежа");
+      // Данные модалки загружены один раз; после смены типа безопаснее
+      // открыть её заново, чтобы сервер пересчитал кассовые лоты и суммы.
       router.refresh();
       onClose();
     } catch (e) {
@@ -567,6 +605,21 @@ export function CashCollectModal({
                 <RotateCcw size={12} /> Вернуть все в кассу
               </button>
             </details>
+          )}
+
+          {unclassified.filter((payment) => payment.date === activeDate).length > 0 && (
+            <div className="cashc-unclassified" role="alert">
+              <strong>Есть проведённые поступления, не попавшие в кассу</strong>
+              <span>У них выбран тип не «Наличные», поэтому они не учитываются в сдаче смены.</span>
+              {unclassified.filter((payment) => payment.date === activeDate).map((payment) => (
+                <div key={payment.paymentId} className="cashc-unclassified__row">
+                  <span>ПЛ-{payment.number} · {payment.counterparty || "Без контрагента"} · {fmt(payment.amount)} ₽</span>
+                  <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" disabled={saving} onClick={() => markAsCash(payment)}>
+                    Учесть как наличные
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
 
           {loading ? (
