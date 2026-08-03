@@ -48,6 +48,8 @@ export function Header() {
   const [userLoaded, setUserLoaded] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileMenuRef = useRef<HTMLDivElement | null>(null);
   const { totalItems } = useCart();
   // Подхватываем телефон/email/адрес из БД (админ-панель «Настройки»).
   // Пока запрос идёт, показываем дефолты из site-config.ts.
@@ -115,6 +117,51 @@ export function Header() {
   function closeCatalogDelayed() {
     hoverTimeout.current = setTimeout(() => setIsCatalogOpen(false), 150);
   }
+
+  function closeMobileMenu({ returnFocus = false } = {}) {
+    setIsMobileMenuOpen(false);
+    if (returnFocus) requestAnimationFrame(() => mobileMenuButtonRef.current?.focus());
+  }
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    mobileMenuRef.current?.focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMobileMenu({ returnFocus: true });
+        return;
+      }
+      if (event.key !== "Tab" || !mobileMenuRef.current) return;
+      const focusable = Array.from(mobileMenuRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      if (document.activeElement === document.body) previouslyFocused?.focus();
+    };
+  }, [isMobileMenuOpen]);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
 
   return (
     <>
@@ -231,8 +278,12 @@ export function Header() {
             </Link>
 
             <button
+              ref={mobileMenuButtonRef}
               className="mobile-burger"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              onClick={() => setIsMobileMenuOpen((open) => !open)}
+              aria-label={isMobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="mobile-navigation"
             >
               {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
@@ -242,9 +293,15 @@ export function Header() {
       </div>
 
       {isMobileMenuOpen && (
-        <div className="mobile-menu-panel">
-          <SearchBar variant="compact" placeholder="Поиск товаров..." />
-
+        <div
+          ref={mobileMenuRef}
+          id="mobile-navigation"
+          className="mobile-menu-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Мобильное меню"
+          tabIndex={-1}
+        >
           <div
             style={{
               fontSize: 11,
@@ -262,7 +319,7 @@ export function Header() {
               key={cat.id}
               href={`/catalog/${cat.slug}`}
               className="mobile-cat-link"
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={() => closeMobileMenu()}
             >
               <GlyphIcon value={cat.icon} size={20} />
               {cat.name}
@@ -274,7 +331,7 @@ export function Header() {
               <Link
                 href="/cabinet"
                 className="mobile-simple-link"
-                onClick={() => setIsMobileMenuOpen(false)}
+                onClick={() => closeMobileMenu()}
               >
                 <User size={15} /> Мои заказы
               </Link>
@@ -282,7 +339,7 @@ export function Header() {
               <Link
                 href="/login?next=/cabinet"
                 className="mobile-simple-link"
-                onClick={() => setIsMobileMenuOpen(false)}
+                onClick={() => closeMobileMenu()}
               >
                 <LogIn size={15} /> Войти / Регистрация
               </Link>
@@ -291,28 +348,28 @@ export function Header() {
               href="/wastepaper"
               className="mobile-simple-link"
               style={{ color: "var(--green)", fontWeight: 600 }}
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={() => closeMobileMenu()}
             >
               <Recycle size={15} /> Приём макулатуры
             </Link>
             <Link
               href="/delivery"
               className="mobile-simple-link"
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={() => closeMobileMenu()}
             >
               Доставка и оплата
             </Link>
             <Link
               href="/about"
               className="mobile-simple-link"
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={() => closeMobileMenu()}
             >
               О компании
             </Link>
             <Link
               href="/contacts"
               className="mobile-simple-link"
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={() => closeMobileMenu()}
             >
               Контакты
             </Link>

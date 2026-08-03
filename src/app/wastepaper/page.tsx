@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { WastepaperCalculator } from "@/components/wastepaper/WastepaperCalculator";
 import { CheckCircle, Truck, Coins, ShieldCheck, ArrowRight } from "lucide-react";
@@ -48,11 +49,13 @@ export default async function WastepaperPage() {
       {/* Hero-баннер макулатуры */}
       <div className="wp-hero">
         <div className="wp-hero__overlay" />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           src="https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=1400&q=80"
           alt="Приём макулатуры"
           className="wp-hero__bg"
+          fill
+          priority
+          sizes="100vw"
         />
         <div className="container-wide wp-hero__inner">
           <div className="wp-hero__content">
