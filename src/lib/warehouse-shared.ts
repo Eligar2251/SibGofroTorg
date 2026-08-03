@@ -748,8 +748,8 @@ export function getCashCarryoverSummary(
   };
 }
 
-/** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
- *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
+/** Сводка по банку и кассе. Зарплата влияет только после фактической
+ *  выплаты; начисленная зарплата не является ожидаемым банковским платежом. */
 export function getBankSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
@@ -786,9 +786,6 @@ export function getBankSummary(
       const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
       if (!salaryDate || salaryDate > asOfDate) continue;
       if (s.source === "bank") bankBalance -= s.amount;
-    } else {
-      if (bypassBalance) continue;
-      expectedOut += s.amount;
     }
   }
   // Единый кассовый регистр — тот же расчёт используется для переноса и
