@@ -48,7 +48,9 @@ export function DashboardFinanceHistory({
   allowNavigation?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const [period, setPeriod] = useState("all");
+  // По умолчанию журнал открывается за текущий месяц; прошлые периоды
+  // остаются доступны в селекте и не смешивают июль с августом.
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sort, setSort] = useState<"asc" | "desc">("desc");

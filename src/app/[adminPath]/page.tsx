@@ -314,22 +314,27 @@ export default async function AdminDashboard() {
     ...salaryFinanceRows,
     ...collectionFinanceRows,
   ];
-  const financeIncoming = financeRows
+  // Карточки дашборда — только текущий календарный месяц. История ниже
+  // остаётся полной и позволяет выбрать любой предыдущий месяц.
+  const currentMonthFinanceRows = financeRows.filter((row) =>
+    row.date.startsWith(dashboardDate.slice(0, 7))
+  );
+  const financeIncoming = currentMonthFinanceRows
     .filter((row) => row.direction === "incoming")
     .reduce((sum, row) => sum + row.amount, 0);
-  const financeOutgoing = financeRows
+  const financeOutgoing = currentMonthFinanceRows
     .filter((row) => row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
-  const bankIncoming = financeRows
+  const bankIncoming = currentMonthFinanceRows
     .filter((row) => row.account === "bank" && row.direction === "incoming")
     .reduce((sum, row) => sum + row.amount, 0);
-  const bankOutgoing = financeRows
+  const bankOutgoing = currentMonthFinanceRows
     .filter((row) => row.account === "bank" && row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
-  const cashIncoming = financeRows
+  const cashIncoming = currentMonthFinanceRows
     .filter((row) => row.account === "cash" && row.direction === "incoming")
     .reduce((sum, row) => sum + row.amount, 0);
-  const cashOutgoing = financeRows
+  const cashOutgoing = currentMonthFinanceRows
     .filter((row) => row.account === "cash" && row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
 
@@ -452,14 +457,14 @@ export default async function AdminDashboard() {
           {
             label: "Выручка",
             value:
-              totalRevenue !== 0
-                ? `${(totalRevenue / 1000).toFixed(0)}К ₽`
+              financeIncoming - financeOutgoing !== 0
+                ? `${((financeIncoming - financeOutgoing) / 1000).toFixed(0)}К ₽`
                 : "—",
             icon: <BarChart3 size={20} />,
             href: `/${ADMIN_PATH}/orders?status=completed`,
             iconBg: "rgba(16,185,129,0.1)",
             iconColor: "#10b981",
-            sub: "оплаты минус расходы из учёта",
+            sub: `оплаты минус расходы · ${dashboardDate.slice(0, 7)}`,
           },
           {
             label: "К оплате нам",
