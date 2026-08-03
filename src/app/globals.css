@@ -7443,3 +7443,11 @@ body {
     font-size: var(--mobile-action-font);
   }
 }
+
+.map-load-fallback {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.map-load-fallback a { color: var(--green); text-decoration: underline; }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -538,7 +538,7 @@ export function WarehouseManager({
   };
 
   // --- Helper to find last supplier and price for critical stock alerts (Feature 2) ---
-  const findLastSupplierAndPrice = (productId: string) => {
+  const findLastSupplierAndPrice = useCallback((productId: string) => {
     let lastSupplierName = "";
     let lastSupplierId = "";
     let lastPrice = 0;
@@ -570,7 +570,7 @@ export function WarehouseManager({
     }
 
     return { supplierName: lastSupplierName, supplierId: lastSupplierId, price: lastPrice };
-  };
+  }, [receipts, counterpartyOptions]);
 
   // --- Critical Products Calculation (Feature 2) ---
   const criticalProducts = useMemo(() => {
@@ -612,7 +612,7 @@ export function WarehouseManager({
     }
 
     return { outOfStock, lowStock, frequentlyOrderedAbsent, stagnantStock };
-  }, [stock, deals, counterpartyOptions, receipts]);
+  }, [stock, deals]);
 
   // Autopopulate order supplier and price when ordering product changes
   useEffect(() => {
@@ -624,7 +624,7 @@ export function WarehouseManager({
       setOrderQty(10); // Default to a standard 10 units
       setOrderError("");
     }
-  }, [orderingProduct]);
+  }, [orderingProduct, findLastSupplierAndPrice]);
   
   const allCounterparties = useMemo(
     () => getPendingPaymentCounterpartyBalances(payments),

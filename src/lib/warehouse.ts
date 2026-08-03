@@ -2139,16 +2139,26 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
 
 export async function updatePayment(id: string, data: any): Promise<void> {
   const db = getAdminDb();
-  const today = new Date().toISOString().slice(0, 10);
   const payload: Record<string, any> = { updated_at: new Date().toISOString() };
 
   if (data.isPaid !== undefined) {
     payload.is_paid = data.isPaid;
     if (data.isPaid) {
-      const paidDate = data.date ? String(data.date).slice(0, 10) : today;
-      // При проведении платежа дата операции должна стать фактической
-      // датой поступления/списания денег, а не датой документа.
-      // Иначе приход от 27.07 продолжал жить под 24.07 и ломал кассу/архив.
+      // Проведение не должно самовольно переносить документ на сегодняшнюю
+      // дату. Это особенно важно для кассы: платёж за закрытую смену должен
+      // попасть именно в выбранный день. Если форма не передала дату,
+      // сохраняем уже указанную дату документа.
+      let paidDate = data.date ? String(data.date).slice(0, 10) : "";
+      if (!paidDate) {
+        const { data: existing, error: readError } = await db
+          .from("bank_payments")
+          .select("date")
+          .eq("id", id)
+          .maybeSingle();
+        if (readError) throw readError;
+        paidDate = String(existing?.date || "").slice(0, 10);
+      }
+      if (!paidDate) throw new Error("Укажите дату платежа перед проведением");
       payload.date = paidDate;
       payload.paid_at = paidDate;
     } else {
