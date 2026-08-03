@@ -263,7 +263,6 @@ export function CashCollectModal({
     dayItems,
     selected,
     splitOf,
-    expensesTotal,
     includeUnlinkedCash,
     unlinkedCashBalance,
     unlinkedCashKind,
