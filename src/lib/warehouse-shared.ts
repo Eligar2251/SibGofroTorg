@@ -121,6 +121,8 @@ export interface BankPayment {
   date: string;
   direction: "incoming" | "outgoing";
   type?: BankPaymentType;
+  /** Предвыбор сдачи кассы для наличного входящего платежа. */
+  cashDestination?: CashKind | null;
   counterparty: string;
   counterpartyId?: string | null;
   dealIds: string[];

@@ -54,6 +54,7 @@ export async function PATCH(
       isPaid: body.isPaid,
       excludeFromBalance: body.excludeFromBalance,
       type: body.type,
+      cashDestination: body.cashDestination,
       amount: body.amount !== undefined ? Number(body.amount) : undefined,
       comment: body.comment,
       date: body.date,

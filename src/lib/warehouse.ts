@@ -298,6 +298,7 @@ function mapPaymentRow(row: any): BankPayment {
     date: row.date,
     direction: row.direction,
     type: row.type || "regular",
+    cashDestination: row.cash_destination === "card" || row.cash_destination === "cash" ? row.cash_destination : null,
     counterparty: row.counterparty,
     counterpartyId: row.counterparty_id || null,
     dealIds: Array.isArray(row.deal_ids) ? row.deal_ids : [],
@@ -2127,6 +2128,7 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     amount: Number(data.amount || 0), invoice_number: data.invoiceNumber ?? null,
     vat_rate: vatRate, vat_amount: vatAmount,
     is_paid: data.isPaid ?? false,
+    cash_destination: data.type === "cash" && data.direction === "incoming" ? (data.cashDestination === "card" ? "card" : "cash") : null,
     paid_at: data.isPaid ? new Date().toISOString().slice(0, 10) : null,
     exclude_from_balance: data.excludeFromBalance ?? false,
     comment: cleanText(data.comment, 500),
@@ -2169,6 +2171,7 @@ export async function updatePayment(id: string, data: any): Promise<void> {
 
   if (data.excludeFromBalance !== undefined) payload.exclude_from_balance = data.excludeFromBalance;
   if (data.type !== undefined) payload.type = data.type;
+  if (data.cashDestination !== undefined) payload.cash_destination = data.cashDestination === "card" || data.cashDestination === "cash" ? data.cashDestination : null;
   if (data.amount !== undefined) payload.amount = Number(data.amount);
   if (data.comment !== undefined) payload.comment = cleanText(data.comment, 500);
   if (data.date !== undefined && payload.date === undefined) {
@@ -2479,6 +2482,7 @@ export async function getPendingCashPayments(): Promise<{
       counterparty: p.counterparty,
       amount: p.amount,
       comment: p.comment ?? null,
+      cashDestination: p.cashDestination ?? null,
     })),
     closed: payments
       .filter(

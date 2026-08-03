@@ -81,6 +81,7 @@ export function PaymentForm({
     "incoming"
   );
   const [type, setType] = useState<BankPaymentType>("regular");
+  const [cashDestination, setCashDestination] = useState<"cash" | "card">("cash");
   const [linkMode, setLinkMode] = useState<LinkMode>("deals");
   const [date, setDate] = useState(todayIso());
   const [counterparty, setCounterparty] = useState("");
@@ -326,6 +327,7 @@ export function PaymentForm({
           date,
           direction,
           type,
+          cashDestination: type === "cash" && direction === "incoming" ? cashDestination : null,
           counterparty: counterparty.trim(),
           dealIds: linkMode === "deals" ? selectedDeals : [],
           receiptIds: linkMode === "receipts" ? selectedReceipts : [],
@@ -525,6 +527,16 @@ export function PaymentForm({
                     emptyText="Не найдено — можно вписать вручную"
                   />
                 </div>
+                {direction === "incoming" && type === "cash" && (
+                  <div className="admin-field">
+                    <label className="admin-label">Сдача наличных</label>
+                    <div className="wh-direction">
+                      <button type="button" className={`wh-direction__btn${cashDestination === "cash" ? " wh-direction__btn--active" : ""}`} onClick={() => setCashDestination("cash")}>Оставить в кассе</button>
+                      <button type="button" className={`wh-direction__btn${cashDestination === "card" ? " wh-direction__btn--active" : ""}`} onClick={() => setCashDestination("card")}>Инкассировать на карту</button>
+                    </div>
+                    <span className="admin-hint">Выбор будет автоматически подставлен в сдаче кассы.</span>
+                  </div>
+                )}
                 <div className="admin-field">
                   <label className="admin-label">Сумма, ₽ *</label>
                   <input

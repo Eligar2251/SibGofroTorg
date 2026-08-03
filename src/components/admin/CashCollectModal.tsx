@@ -39,6 +39,7 @@ interface PendingCashPayment {
   counterparty: string;
   amount: number;
   comment: string | null;
+  cashDestination?: CashKind | null;
 }
 
 /** Наличный расход из кассы: ЗП или исходящий платёж налом. */
@@ -147,7 +148,7 @@ export function CashCollectModal({
         // Безопасный дефолт: наличный платёж остаётся в кассе. На карту ЮМ
         // он уйдёт только после явного выбора кассира — иначе повторное
         // закрытие смены могло случайно обнулить весь новый приход.
-        for (const p of list) initial[p.paymentId] = "cash";
+        for (const p of list) initial[p.paymentId] = p.cashDestination === "card" ? "card" : "cash";
         setKinds(initial);
       } catch (e) {
         if (!cancelled) {
