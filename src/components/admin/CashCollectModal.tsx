@@ -246,24 +246,17 @@ export function CashCollectModal({
       else cash += unlinkedCashBalance;
     }
     covered = r2(covered);
-    // Траты, расписанные вручную по платежам, уже вычтены из cash/card —
-    // второй раз их вычитать нельзя.
-    const rest = Math.max(0, r2(expensesTotal - covered));
-    let c = r2(cash - rest);
-    let k = r2(card);
-    if (c < 0) {
-      k = r2(k + c);
-      c = 0;
-    }
-    if (k < 0) k = 0;
+    // Выбранное кассиром направление должно отражать сумму платежа один к
+    // одному. Раньше сюда неявно вычитались ВСЕ расходы дня, из-за чего
+    // «На карту» могло показывать 0 ₽, хотя у выбранного ПЛ была сумма.
+    // Расход влияет на общий остаток кассы, но не меняет разметку прихода.
+    const c = r2(cash);
+    const k = r2(card);
     return {
       cash: c,
       card: k,
-      /** Приход за день до вычета трат */
-      income: r2(c + k + expensesTotal),
-      /** Фактически к сдаче */
+      income: r2(c + k + covered),
       total: r2(c + k),
-      /** Сколько трат расписано вручную по платежам */
       covered,
     };
   }, [

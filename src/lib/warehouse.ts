@@ -2833,15 +2833,11 @@ export async function collectCash(
   // cashAmount/cardAmount, поэтому второй раз их вычитать нельзя.
   const remainingExpenses = Math.max(0, round2(expensesTotal - coveredByItems));
 
-  // Остаток трат покрывается физической наличкой; если её не хватило —
-  // списывается с инкассируемой на карту части.
-  let cashPart = round2(cashAmount - remainingExpenses);
-  let cardPart = cardAmount;
-  if (cashPart < 0) {
-    cardPart = round2(cardPart + cashPart);
-    cashPart = 0;
-  }
-  if (cardPart < 0) cardPart = 0;
+  // Расходы не меняют направление выбранного платежа. Если кассир отметил
+  // ПЛ «на карту», в документе обязана остаться его полная сумма, а не 0 ₽.
+  // Фактическую достаточность наличности ниже проверяет общий остаток кассы.
+  const cashPart = round2(cashAmount);
+  const cardPart = round2(cardAmount);
 
   const amount = Math.round((cashPart + cardPart) * 100) / 100;
 
@@ -2855,9 +2851,6 @@ export async function collectCash(
       `Инкассация на карту (${cardPart} ₽) больше остатка кассы (${cashBalance} ₽)`
     );
   }
-
-  cashAmount = cashPart;
-  cardAmount = cardPart;
 
   // Траты сохраняем в самой записи сдачи: тогда детализация останется
   // верной, даже если зарплату или платёж потом отредактируют.
