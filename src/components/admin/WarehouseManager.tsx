@@ -2656,6 +2656,17 @@ export function WarehouseManager({
               </div>
               <div>
                 <div className="bank-hero__label">
+                  <CreditCard size={14} /> Карта инкассации
+                </div>
+                <div className="bank-hero__value" style={{ color: '#fff' }}>
+                  {fmt(bankSummary.cashCardBalance)} ₽
+                </div>
+                <small style={{ display: 'block', marginTop: 3, color: 'rgba(245,242,234,.55)', fontSize: 10 }}>
+                  Наличность, сданная на карту · не расчётный счёт
+                </small>
+              </div>
+              <div>
+                <div className="bank-hero__label">
                   <Banknote size={14} /> Касса (наличные)
                 </div>
                 <div
@@ -2707,7 +2718,7 @@ export function WarehouseManager({
                 </button>
               </div>
               <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-                Общий итог (факт): <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
+                Расчётный счёт + касса: <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
               </div>
             </div>
 

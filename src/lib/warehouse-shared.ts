@@ -825,6 +825,9 @@ export function getBankSummary(
     collectedCashOnly,
     /** Из закрытых смен — инкассацией на карту (вне расчётного счёта) */
     collectedTransfer,
+    // Деньги, уже инкассированные из наличной кассы на карту. Это отдельный
+    // контур от расчётного счёта: не смешиваем его с bankBalance.
+    cashCardBalance: collectedTransfer,
     expectedIn,
     expectedOut,
   };

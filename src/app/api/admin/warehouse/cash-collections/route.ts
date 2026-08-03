@@ -5,7 +5,6 @@ import {
   restoreClosedOldCashPayments,
   getCashCollections,
   getPendingCashPayments,
-  getPayments,
   normalizeCashKind,
 } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
@@ -25,10 +24,9 @@ export async function GET(request: NextRequest) {
     // При сдаче их размечают: «на карту (инкассация)» или «наличными».
     const { searchParams } = new URL(request.url);
     if (searchParams.get("pending")) {
-      const [cashData, settings, allPayments] = await Promise.all([
+      const [cashData, settings] = await Promise.all([
         getPendingCashPayments(),
-        getSettings().catch(() => ({} as Record<string, string>)),
-        getPayments(),
+        getSettings().catch(() => ({} as Record<string, string>))
       ]);
       // Имя получателя инкассации на карту настраивается в «Настройках».
       const cardHolder =
@@ -42,12 +40,6 @@ export async function GET(request: NextRequest) {
         unlinkedCashBalance: cashData.unlinkedCashBalance,
         // Наличные траты (ЗП и прочее): уменьшают сумму к сдаче.
         expenses: cashData.expenses,
-        // Проведённые входящие с типом «Оплата» не являются кассой.
-        // Возвращаем их отдельно, чтобы кассир сразу видел, почему сумма
-        // не попала в сдачу, и мог одним действием исправить тип.
-        unclassified: allPayments
-          .filter((p) => p.isPaid && !p.excludeFromBalance && p.direction === "incoming" && p.amount > 0 && p.type !== "cash")
-          .map((p) => ({ paymentId: String(p.id), number: p.number, date: p.date, counterparty: p.counterparty, amount: p.amount, type: p.type })),
         cardHolder,
       });
     }
