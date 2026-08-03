@@ -593,7 +593,7 @@ export function getCashCarryoverSummary(
 
   const events: CashEvent[] = [];
   for (const payment of payments) {
-    if (!payment.isPaid || payment.excludeFromBalance || payment.type !== "cash") {
+    if (!payment.isPaid || payment.excludeFromBalance || (payment.type !== "cash" && payment.type !== "transfer")) {
       continue;
     }
     const amount = Math.max(0, Number(payment.amount) || 0);
@@ -773,7 +773,7 @@ export function getBankSummary(
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
       // Касса ниже считается единым кассовым регистром, чтобы перенос и
       // источники использовали ту же формулу, что и число на дашборде.
-      if (p.type !== "cash") bankBalance += amt;
+      if (p.type !== "cash" && p.type !== "transfer") bankBalance += amt;
     } else {
       if (p.direction === "incoming") expectedIn += p.amount;
       else expectedOut += p.amount;

@@ -2128,7 +2128,11 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     amount: Number(data.amount || 0), invoice_number: data.invoiceNumber ?? null,
     vat_rate: vatRate, vat_amount: vatAmount,
     is_paid: data.isPaid ?? false,
-    cash_destination: data.type === "cash" && data.direction === "incoming" ? (data.cashDestination === "card" ? "card" : "cash") : null,
+    // Наличка остаётся в кассе, а безнал на карту физлица сдаётся
+    // инкассацией. Оба вида входят в кассовый регистр, но с разной меткой.
+    cash_destination: data.direction === "incoming" && (data.type === "cash" || data.type === "transfer")
+      ? (data.type === "transfer" ? "card" : "cash")
+      : null,
     paid_at: data.isPaid ? new Date().toISOString().slice(0, 10) : null,
     exclude_from_balance: data.excludeFromBalance ?? false,
     comment: cleanText(data.comment, 500),
@@ -2514,7 +2518,7 @@ function isCashDeskIncome(p: BankPayment): boolean {
   return (
     p.isPaid &&
     !p.excludeFromBalance &&
-    p.type === "cash" &&
+    (p.type === "cash" || p.type === "transfer") &&
     p.direction === "incoming" &&
     p.amount > 0
   );

@@ -22,6 +22,7 @@ import {
   Pencil,
   RotateCcw,
   Banknote,
+  CreditCard,
   UserRound,
   Download,
 } from "lucide-react";
@@ -81,7 +82,6 @@ export function PaymentForm({
     "incoming"
   );
   const [type, setType] = useState<BankPaymentType>("regular");
-  const [cashDestination, setCashDestination] = useState<"cash" | "card">("cash");
   const [linkMode, setLinkMode] = useState<LinkMode>("deals");
   const [date, setDate] = useState(todayIso());
   const [counterparty, setCounterparty] = useState("");
@@ -327,7 +327,6 @@ export function PaymentForm({
           date,
           direction,
           type,
-          cashDestination: type === "cash" && direction === "incoming" ? cashDestination : null,
           counterparty: counterparty.trim(),
           dealIds: linkMode === "deals" ? selectedDeals : [],
           receiptIds: linkMode === "receipts" ? selectedReceipts : [],
@@ -367,10 +366,10 @@ export function PaymentForm({
         ];
 
   const paymentTypes: { value: BankPaymentType; label: string; icon: any }[] = [
-    { value: "regular", label: "Оплата", icon: CheckCircle },
+    { value: "regular", label: "Оплата счёта (расчётный счёт)", icon: CheckCircle },
     { value: "refund", label: "Возврат", icon: RotateCcw },
-    { value: "cash", label: "Наличные", icon: Banknote },
-    { value: "transfer", label: "Перевод", icon: UserRound },
+    { value: "cash", label: "Наличка (в кассу)", icon: Banknote },
+    { value: "transfer", label: "Безнал на карту (в кассу)", icon: CreditCard },
     { value: "deposit", label: "Внесение", icon: Download },
   ];
 
@@ -527,16 +526,6 @@ export function PaymentForm({
                     emptyText="Не найдено — можно вписать вручную"
                   />
                 </div>
-                {direction === "incoming" && type === "cash" && (
-                  <div className="admin-field">
-                    <label className="admin-label">Сдача наличных</label>
-                    <div className="wh-direction">
-                      <button type="button" className={`wh-direction__btn${cashDestination === "cash" ? " wh-direction__btn--active" : ""}`} onClick={() => setCashDestination("cash")}>Оставить в кассе</button>
-                      <button type="button" className={`wh-direction__btn${cashDestination === "card" ? " wh-direction__btn--active" : ""}`} onClick={() => setCashDestination("card")}>Инкассировать на карту</button>
-                    </div>
-                    <span className="admin-hint">Выбор будет автоматически подставлен в сдаче кассы.</span>
-                  </div>
-                )}
                 <div className="admin-field">
                   <label className="admin-label">Сумма, ₽ *</label>
                   <input
@@ -913,7 +902,7 @@ export function PaymentControls({
                 <label className="admin-label">Тип платежа</label>
                 <div className="wh-linkmode">
                   {([
-                    { value: "regular", label: "Оплата", icon: CheckCircle },
+                    { value: "regular", label: "Оплата счёта (расчётный счёт)", icon: CheckCircle },
                     { value: "refund", label: "Возврат", icon: RotateCcw },
                     { value: "cash", label: "Наличные", icon: Banknote },
                     { value: "transfer", label: "Перевод", icon: UserRound },
