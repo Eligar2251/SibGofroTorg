@@ -10024,3 +10024,139 @@ body:has(.admin-modal-overlay) {
     justify-content: center;
   }
 }
+
+/* ══════════════════════════════════════
+   ADMIN NAVIGATION — accessible compact layout
+   ══════════════════════════════════════ */
+@media (max-width: 1099px) {
+  .admin-sidebar { display: none; }
+  .admin-content { margin-left: 0 !important; }
+  .admin-mobile-bar {
+    display: block;
+    height: 104px;
+    padding: 8px 12px 6px;
+  }
+  .admin-mobile-bar__title {
+    display: block;
+    max-width: calc(100% - 84px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    line-height: 24px;
+  }
+  .admin-mobile-bar__nav {
+    position: absolute;
+    right: 8px;
+    bottom: 6px;
+    left: 8px;
+    display: flex;
+    width: auto;
+    max-width: none;
+    gap: 5px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .admin-mobile-bar__nav::-webkit-scrollbar { display: none; }
+  .admin-mobile-bar__link {
+    width: auto;
+    min-width: max-content;
+    height: 54px;
+    padding: 5px 9px;
+    gap: 4px;
+    flex: 0 0 auto;
+    flex-direction: column;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.05;
+  }
+  .admin-mobile-bar__link span {
+    display: block;
+    max-width: 76px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .admin-mobile-bar__actions {
+    position: absolute;
+    top: 7px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .admin-mobile-bar__actions form { display: contents; }
+  .admin-mobile-bar__action {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 8px;
+    background: transparent;
+    color: rgba(255,255,255,.8);
+  }
+  .admin-main { padding-top: 120px; }
+  .admin-sidebar-handle { display: none !important; }
+}
+
+/* На малом десктопе сохраняем широкую рабочую область вместо резкого
+   появления 240px сайдбара. */
+@media (min-width: 1024px) and (max-width: 1099px) {
+  .admin-mobile-bar { display: block; }
+}
+
+@media (max-width: 380px) {
+  .admin-mobile-bar { height: 100px; }
+  .admin-mobile-bar__link { min-width: 52px; padding-inline: 7px; }
+  .admin-mobile-bar__link span { max-width: 58px; font-size: 8px; }
+  .admin-main { padding-top: 116px; }
+}
+
+/* Таблицы остаются прокручиваемыми, а подсказка делает это очевидным на touch.
+   Ничего не обрезается у правого края. */
+@media (max-width: 767px) {
+  .admin-table-wrap {
+    position: relative;
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .admin-table-wrap::after {
+    content: "↔ Прокрутите таблицу";
+    position: sticky;
+    left: 8px;
+    display: block;
+    width: max-content;
+    margin: 4px 0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--adm-paper-warm);
+    color: var(--adm-ink-muted);
+    font-size: 10px;
+  }
+  .admin-product-name {
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Возврат сайдбара должен оставаться очевидным и доступным с клавиатуры. */
+@media (min-width: 1100px) and (hover: hover) and (pointer: fine) {
+  .admin-sidebar-handle { width: 30px; opacity: .85; }
+  .admin-sidebar-handle svg { opacity: 1; }
+}
+
+/* Popover занимает доступное окно и не зависит от жёсткой высоты верхней
+   панели: при появлении виртуальной клавиатуры остаётся прокручиваемым. */
+@media (max-width: 640px) {
+  .whsal-pop {
+    top: max(8px, env(safe-area-inset-top, 0px)) !important;
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    max-height: none;
+    overflow-y: auto;
+  }
+}
