@@ -874,6 +874,10 @@ export function WarehouseManager({
       ...salaryEntries,
     ].filter((p) => {
       if (bankSub === "cash") return false;
+      // ЗП ведётся в отдельном разделе «Зарплаты». В «Ожидают оплаты»
+      // банка показываем только реальные платёжные поручения, а не
+      // начисления сотрудникам.
+      if (bankSub === "pending" && p.entryKind === "salary") return false;
       const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
       if (!matchesTab) return false;
       if (bdir !== "all" && p.direction !== bdir) return false;
