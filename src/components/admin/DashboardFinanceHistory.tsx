@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, Search, X } from "lucide-react";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
@@ -101,7 +101,21 @@ export function DashboardFinanceHistory({
   const filteredOutgoing = filtered
     .filter((row) => row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
+  const filteredBankIncoming = filtered.filter((row) => row.account === "bank" && row.direction === "incoming").reduce((sum, row) => sum + row.amount, 0);
+  const filteredBankOutgoing = filtered.filter((row) => row.account === "bank" && row.direction === "outgoing").reduce((sum, row) => sum + row.amount, 0);
+  const filteredCashIncoming = filtered.filter((row) => row.account === "cash" && row.direction === "incoming").reduce((sum, row) => sum + row.amount, 0);
+  const filteredCashOutgoing = filtered.filter((row) => row.account === "cash" && row.direction === "outgoing").reduce((sum, row) => sum + row.amount, 0);
   const visible = filtered.slice(0, 60);
+  useEffect(() => {
+    const put = (id: string, value: string) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    const label = period === "all" ? "все месяцы" : periodLabel(period);
+    put("dash-finance-period-label", `Фактические проведённые операции: ${label}, с учётом выбранных фильтров.`);
+    put("dash-finance-in-label", "Приход по фильтру"); put("dash-finance-out-label", "Расход по фильтру");
+    put("dash-finance-in-value", `+${money(filteredIncoming)}`); put("dash-finance-out-value", `−${money(filteredOutgoing)}`);
+    put("dash-finance-bank-in", `+${money(filteredBankIncoming)}`); put("dash-finance-bank-out", `−${money(filteredBankOutgoing)}`);
+    put("dash-finance-cash-in", `+${money(filteredCashIncoming)}`); put("dash-finance-cash-out", `−${money(filteredCashOutgoing)}`);
+  }, [filteredBankIncoming, filteredBankOutgoing, filteredCashIncoming, filteredCashOutgoing, filteredIncoming, filteredOutgoing, period]);
+
   const hasFilters =
     query || period !== "all" || dateFrom || dateTo || sort !== "desc";
 
