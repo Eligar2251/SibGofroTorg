@@ -10175,3 +10175,44 @@ body:has(.admin-modal-overlay) {
 .cashc-unclassified > span { color: var(--adm-ink-muted); }
 .cashc-unclassified__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 @media (max-width: 480px) { .cashc-unclassified__row { align-items: stretch; flex-direction: column; } }
+
+/* Банк и модалка платежа: иконка всегда остаётся слева от подписи.
+   Для длинных вариантов оплаты расширяем строку, а не переносим слово под SVG. */
+.wh-direction__btn,
+.bank-hero__label,
+.bank-hero__stat,
+.bank-pay__row1,
+.bank-pay__row2,
+.bank-pay__side .wh-pay-controls .admin-status__btn {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.wh-direction__btn > svg,
+.bank-hero__label > svg,
+.bank-hero__stat > svg,
+.bank-pay__row1 > svg,
+.bank-pay__row2 > svg,
+.bank-pay__side .wh-pay-controls .admin-status__btn > svg {
+  flex: 0 0 auto;
+}
+
+/* В форме платежа названия способов оплаты остаются одной строкой и не
+   становятся узкими колонками на планшете/телефоне. */
+@media (max-width: 800px) {
+  .wh-direction { grid-template-columns: 1fr; }
+  .wh-direction__btn { justify-content: flex-start; font-size: clamp(11px, 3.1vw, 13px); }
+}
+
+/* Кассовая строка — компактный однострочный регистр, без иконок и
+   вертикальных переносов. При нехватке места прокручивается целиком. */
+.cash-carryover-hero {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px 10px;
+  max-width: none;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+.cash-carryover-hero span { display: inline-block; flex: 0 0 auto; }

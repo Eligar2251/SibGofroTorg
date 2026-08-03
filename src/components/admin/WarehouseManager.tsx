@@ -2675,7 +2675,7 @@ export function WarehouseManager({
                     Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
                   </span>
                   <span>
-                    <CreditCard size={11} /> Инкассация за день: <b>{fmt(cashCarryover.todayCardTransfers)} ₽</b>
+                    Инкассация за день: <b>{fmt(cashCarryover.todayCardTransfers)} ₽</b>
                   </span>
                 </div>
                 {bankSummary.cashBalanceNegative && (
