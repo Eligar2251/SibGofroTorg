@@ -2656,17 +2656,6 @@ export function WarehouseManager({
               </div>
               <div>
                 <div className="bank-hero__label">
-                  <CreditCard size={14} /> Карта инкассации
-                </div>
-                <div className="bank-hero__value" style={{ color: '#fff' }}>
-                  {fmt(bankSummary.cashCardBalance)} ₽
-                </div>
-                <small style={{ display: 'block', marginTop: 3, color: 'rgba(245,242,234,.55)', fontSize: 10 }}>
-                  Наличность, сданная на карту · не расчётный счёт
-                </small>
-              </div>
-              <div>
-                <div className="bank-hero__label">
                   <Banknote size={14} /> Касса (наличные)
                 </div>
                 <div
@@ -2684,6 +2673,9 @@ export function WarehouseManager({
                   </span>
                   <span>
                     Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
+                  </span>
+                  <span>
+                    <CreditCard size={11} /> Инкассация за день: <b>{fmt(cashCarryover.todayCardTransfers)} ₽</b>
                   </span>
                 </div>
                 {bankSummary.cashBalanceNegative && (
