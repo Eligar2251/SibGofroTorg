@@ -8,9 +8,21 @@
 // «админка → логин → админка» для ролей, отличных от admin.
 // =========================================================
 
-export const ADMIN_ROLES = ["admin", "manager", "lawyer"] as const;
+export const ADMIN_ROLES = ["admin", "manager", "lawyer", "wastepaper"] as const;
 
 export type AdminRole = (typeof ADMIN_ROLES)[number];
+
+/**
+ * Стартовая страница роли после входа / при запрете страницы.
+ * Макулатурщик работает только в отдельном модуле учёта макулатуры.
+ */
+export function getAdminLandingPath(
+  role: AdminRole | null,
+  adminPath: string
+): string {
+  if (role === "wastepaper") return `/${adminPath}/wastepaper-account`;
+  return `/${adminPath}`;
+}
 
 export type AdminPermission =
   | "view_dashboard"
@@ -82,10 +94,22 @@ export function canAccessAdminPage(
 
   if (role === "admin") return true;
 
+  // Макулатурщик работает только в отдельном модуле учёта макулатуры —
+  // сайт, заявки, основной учёт и дашборд ему недоступны.
+  if (role === "wastepaper") {
+    return (
+      relativePath === "/wastepaper-account" ||
+      relativePath.startsWith("/wastepaper-account/")
+    );
+  }
+
   if (role === "manager") {
     return !(
       relativePath === "/settings" ||
-      relativePath.startsWith("/settings/")
+      relativePath.startsWith("/settings/") ||
+      // Отдельный учёт макулатуры доступен только admin и макулатурщику.
+      relativePath === "/wastepaper-account" ||
+      relativePath.startsWith("/wastepaper-account/")
     );
   }
 
@@ -104,7 +128,14 @@ export function canAccessAdminApi(
 ): boolean {
   if (role === "admin") return true;
 
+  // Макулатурщику доступны только API отдельного учёта макулатуры.
+  if (role === "wastepaper") {
+    return pathname === "/api/admin/wp" || pathname.startsWith("/api/admin/wp/");
+  }
+
   if (role === "manager") {
+    // Отдельный учёт макулатуры — только admin и макулатурщик.
+    if (pathname === "/api/admin/wp" || pathname.startsWith("/api/admin/wp/")) return false;
     if (pathname === "/api/admin/activity-logs") return false;
     if (pathname.startsWith("/api/admin/activity-logs/")) return false;
     if (pathname === "/api/admin/admin-users") return false;

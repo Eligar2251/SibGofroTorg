@@ -4,6 +4,7 @@
 
 import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/auth";
+import { getAdminLandingPath } from "@/lib/admin-rbac";
 import { LoginForm } from "@/components/admin/LoginForm";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
@@ -21,7 +22,8 @@ export default async function AdminLoginPage({
 
   const user = await verifySession();
   if (user) {
-    redirect(`/${ADMIN_PATH}`);
+    // Стартовая страница зависит от роли (макулатурщик — сразу в свой модуль).
+    redirect(getAdminLandingPath(user.role, ADMIN_PATH));
   }
 
   return (

@@ -33,7 +33,12 @@ export type EntityType =
   | "salary"
   | "admin-user"
   | "cash-collection"
-  | "client-request";
+  | "client-request"
+  | "wp-intake"
+  | "wp-shipment"
+  | "wp-payment"
+  | "wp-transport"
+  | "wp-counterparty";
 
 interface LogEntry {
   adminId?: string;

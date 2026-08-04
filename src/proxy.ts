@@ -9,6 +9,7 @@ import { jwtVerify } from "jose";
 import {
   canAccessAdminApi,
   canAccessAdminPage,
+  getAdminLandingPath,
   parseAdminRole,
   type AdminRole,
 } from "@/lib/admin-rbac";
@@ -163,11 +164,12 @@ export async function proxy(request: NextRequest) {
         return res;
       }
       if (!canAccessAdminPage(role, pathname, ADMIN_PATH)) {
-        // Запрещённые страницы ведут на гарантированно доступный дашборд,
-        // а не на логин. Так валидная manager/lawyer-сессия не попадает
+        // Запрещённые страницы ведут на гарантированно доступную стартовую
+        // страницу роли (для макулатурщика это его модуль, для остальных —
+        // дашборд), а не на логин. Так валидная сессия не попадает
         // в бесконечный цикл редиректов.
         const res = NextResponse.redirect(
-          new URL(`/${ADMIN_PATH}`, request.url)
+          new URL(getAdminLandingPath(role, ADMIN_PATH), request.url)
         );
         applySecurityHeaders(res);
         return res;

@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   ChevronRight,
   Headset,
+  Recycle,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
@@ -107,6 +108,13 @@ export function AdminShell({
       icon: <Boxes size={18} />,
     },
     {
+      // Отдельный учёт макулатуры: виден admin и макулатурщику
+      // (остальным пункт скроет canAccessAdminPage).
+      href: `/${adminPath}/wastepaper-account`,
+      label: "Макулатура (учёт)",
+      icon: <Recycle size={18} />,
+    },
+    {
       href: `/${adminPath}/duty-schedule`,
       label: "Охрана",
       icon: <ShieldCheck size={18} />,
@@ -135,7 +143,9 @@ export function AdminShell({
         ? "Менеджер"
         : role === "lawyer"
           ? "Юрист"
-          : "";
+          : role === "wastepaper"
+            ? "Макулатурщик"
+            : "";
 
   return (
     <div
@@ -273,7 +283,9 @@ export function AdminShell({
       )}
 
       <div className="admin-content">
-        {role && role !== "lawyer" && (
+        {/* Уведомления тянут API основной админки — макулатурщику,
+            как и юристу, эта панель не нужна (и недоступна). */}
+        {role && role !== "lawyer" && role !== "wastepaper" && (
           <AdminNotifications adminPath={adminPath} />
         )}
         <main className="admin-main">{children}</main>
