@@ -12,7 +12,10 @@ import { verifySession } from "@/lib/auth";
 import "../admin.css";
 import "../admin-users.css";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
+// Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому
+// единственный источник истины — публичная переменная. Legacy-переменная
+// оставлена только как fallback для существующих окружений.
+const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 export const metadata: Metadata = {
   title: "Админ-панель — СибГофроТорг",

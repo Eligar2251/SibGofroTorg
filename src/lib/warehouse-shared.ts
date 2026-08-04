@@ -121,6 +121,8 @@ export interface BankPayment {
   date: string;
   direction: "incoming" | "outgoing";
   type?: BankPaymentType;
+  /** Предвыбор сдачи кассы для наличного входящего платежа. */
+  cashDestination?: CashKind | null;
   counterparty: string;
   counterpartyId?: string | null;
   dealIds: string[];
@@ -591,7 +593,7 @@ export function getCashCarryoverSummary(
 
   const events: CashEvent[] = [];
   for (const payment of payments) {
-    if (!payment.isPaid || payment.excludeFromBalance || payment.type !== "cash") {
+    if (!payment.isPaid || payment.excludeFromBalance || (payment.type !== "cash" && payment.type !== "transfer")) {
       continue;
     }
     const amount = Math.max(0, Number(payment.amount) || 0);
@@ -748,8 +750,8 @@ export function getCashCarryoverSummary(
   };
 }
 
-/** Сводка по банку (и кассе). Выплаченные зарплаты списываются с того
- *  счёта, откуда платили (касса/безнал); ожидающие — в «к оплате». */
+/** Сводка по банку и кассе. Зарплата влияет только после фактической
+ *  выплаты; начисленная зарплата не является ожидаемым банковским платежом. */
 export function getBankSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
@@ -771,7 +773,7 @@ export function getBankSummary(
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
       // Касса ниже считается единым кассовым регистром, чтобы перенос и
       // источники использовали ту же формулу, что и число на дашборде.
-      if (p.type !== "cash") bankBalance += amt;
+      if (p.type !== "cash" && p.type !== "transfer") bankBalance += amt;
     } else {
       if (p.direction === "incoming") expectedIn += p.amount;
       else expectedOut += p.amount;
@@ -786,9 +788,6 @@ export function getBankSummary(
       const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
       if (!salaryDate || salaryDate > asOfDate) continue;
       if (s.source === "bank") bankBalance -= s.amount;
-    } else {
-      if (bypassBalance) continue;
-      expectedOut += s.amount;
     }
   }
   // Единый кассовый регистр — тот же расчёт используется для переноса и

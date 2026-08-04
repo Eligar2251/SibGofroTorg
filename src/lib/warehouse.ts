@@ -298,6 +298,7 @@ function mapPaymentRow(row: any): BankPayment {
     date: row.date,
     direction: row.direction,
     type: row.type || "regular",
+    cashDestination: row.cash_destination === "card" || row.cash_destination === "cash" ? row.cash_destination : null,
     counterparty: row.counterparty,
     counterpartyId: row.counterparty_id || null,
     dealIds: Array.isArray(row.deal_ids) ? row.deal_ids : [],
@@ -2127,6 +2128,11 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     amount: Number(data.amount || 0), invoice_number: data.invoiceNumber ?? null,
     vat_rate: vatRate, vat_amount: vatAmount,
     is_paid: data.isPaid ?? false,
+    // Наличка остаётся в кассе, а безнал на карту физлица сдаётся
+    // инкассацией. Оба вида входят в кассовый регистр, но с разной меткой.
+    cash_destination: data.direction === "incoming" && (data.type === "cash" || data.type === "transfer")
+      ? (data.type === "transfer" ? "card" : "cash")
+      : null,
     paid_at: data.isPaid ? new Date().toISOString().slice(0, 10) : null,
     exclude_from_balance: data.excludeFromBalance ?? false,
     comment: cleanText(data.comment, 500),
@@ -2139,16 +2145,26 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
 
 export async function updatePayment(id: string, data: any): Promise<void> {
   const db = getAdminDb();
-  const today = new Date().toISOString().slice(0, 10);
   const payload: Record<string, any> = { updated_at: new Date().toISOString() };
 
   if (data.isPaid !== undefined) {
     payload.is_paid = data.isPaid;
     if (data.isPaid) {
-      const paidDate = data.date ? String(data.date).slice(0, 10) : today;
-      // При проведении платежа дата операции должна стать фактической
-      // датой поступления/списания денег, а не датой документа.
-      // Иначе приход от 27.07 продолжал жить под 24.07 и ломал кассу/архив.
+      // Проведение не должно самовольно переносить документ на сегодняшнюю
+      // дату. Это особенно важно для кассы: платёж за закрытую смену должен
+      // попасть именно в выбранный день. Если форма не передала дату,
+      // сохраняем уже указанную дату документа.
+      let paidDate = data.date ? String(data.date).slice(0, 10) : "";
+      if (!paidDate) {
+        const { data: existing, error: readError } = await db
+          .from("bank_payments")
+          .select("date")
+          .eq("id", id)
+          .maybeSingle();
+        if (readError) throw readError;
+        paidDate = String(existing?.date || "").slice(0, 10);
+      }
+      if (!paidDate) throw new Error("Укажите дату платежа перед проведением");
       payload.date = paidDate;
       payload.paid_at = paidDate;
     } else {
@@ -2158,7 +2174,14 @@ export async function updatePayment(id: string, data: any): Promise<void> {
   }
 
   if (data.excludeFromBalance !== undefined) payload.exclude_from_balance = data.excludeFromBalance;
-  if (data.type !== undefined) payload.type = data.type;
+  if (data.type !== undefined) {
+    payload.type = data.type;
+    // Тип платежа — источник истины: наличка по умолчанию остаётся в кассе,
+    // безнал на карту всегда сдаётся инкассацией, расчётный счёт не кассовый.
+    if (data.direction === "incoming" || data.cashDestination !== undefined) {
+      payload.cash_destination = data.type === "transfer" ? "card" : data.type === "cash" ? (data.cashDestination === "card" ? "card" : "cash") : null;
+    }
+  } else if (data.cashDestination !== undefined) payload.cash_destination = data.cashDestination === "card" || data.cashDestination === "cash" ? data.cashDestination : null;
   if (data.amount !== undefined) payload.amount = Number(data.amount);
   if (data.comment !== undefined) payload.comment = cleanText(data.comment, 500);
   if (data.date !== undefined && payload.date === undefined) {
@@ -2469,6 +2492,7 @@ export async function getPendingCashPayments(): Promise<{
       counterparty: p.counterparty,
       amount: p.amount,
       comment: p.comment ?? null,
+      cashDestination: p.cashDestination ?? null,
     })),
     closed: payments
       .filter(
@@ -2500,7 +2524,7 @@ function isCashDeskIncome(p: BankPayment): boolean {
   return (
     p.isPaid &&
     !p.excludeFromBalance &&
-    p.type === "cash" &&
+    (p.type === "cash" || p.type === "transfer") &&
     p.direction === "incoming" &&
     p.amount > 0
   );
@@ -2823,15 +2847,11 @@ export async function collectCash(
   // cashAmount/cardAmount, поэтому второй раз их вычитать нельзя.
   const remainingExpenses = Math.max(0, round2(expensesTotal - coveredByItems));
 
-  // Остаток трат покрывается физической наличкой; если её не хватило —
-  // списывается с инкассируемой на карту части.
-  let cashPart = round2(cashAmount - remainingExpenses);
-  let cardPart = cardAmount;
-  if (cashPart < 0) {
-    cardPart = round2(cardPart + cashPart);
-    cashPart = 0;
-  }
-  if (cardPart < 0) cardPart = 0;
+  // Расходы не меняют направление выбранного платежа. Если кассир отметил
+  // ПЛ «на карту», в документе обязана остаться его полная сумма, а не 0 ₽.
+  // Фактическую достаточность наличности ниже проверяет общий остаток кассы.
+  const cashPart = round2(cashAmount);
+  const cardPart = round2(cardAmount);
 
   const amount = Math.round((cashPart + cardPart) * 100) / 100;
 
@@ -2845,9 +2865,6 @@ export async function collectCash(
       `Инкассация на карту (${cardPart} ₽) больше остатка кассы (${cashBalance} ₽)`
     );
   }
-
-  cashAmount = cashPart;
-  cardAmount = cardPart;
 
   // Траты сохраняем в самой записи сдачи: тогда детализация останется
   // верной, даже если зарплату или платёж потом отредактируют.

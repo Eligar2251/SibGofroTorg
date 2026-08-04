@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, Search, X } from "lucide-react";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
@@ -48,7 +48,9 @@ export function DashboardFinanceHistory({
   allowNavigation?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const [period, setPeriod] = useState("all");
+  // По умолчанию журнал открывается за текущий месяц; прошлые периоды
+  // остаются доступны в селекте и не смешивают июль с августом.
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sort, setSort] = useState<"asc" | "desc">("desc");
@@ -93,7 +95,27 @@ export function DashboardFinanceHistory({
       });
   }, [dateFrom, dateTo, period, query, rows, sort]);
 
+  const filteredIncoming = filtered
+    .filter((row) => row.direction === "incoming")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const filteredOutgoing = filtered
+    .filter((row) => row.direction === "outgoing")
+    .reduce((sum, row) => sum + row.amount, 0);
+  const filteredBankIncoming = filtered.filter((row) => row.account === "bank" && row.direction === "incoming").reduce((sum, row) => sum + row.amount, 0);
+  const filteredBankOutgoing = filtered.filter((row) => row.account === "bank" && row.direction === "outgoing").reduce((sum, row) => sum + row.amount, 0);
+  const filteredCashIncoming = filtered.filter((row) => row.account === "cash" && row.direction === "incoming").reduce((sum, row) => sum + row.amount, 0);
+  const filteredCashOutgoing = filtered.filter((row) => row.account === "cash" && row.direction === "outgoing").reduce((sum, row) => sum + row.amount, 0);
   const visible = filtered.slice(0, 60);
+  useEffect(() => {
+    const put = (id: string, value: string) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    const label = period === "all" ? "все месяцы" : periodLabel(period);
+    put("dash-finance-period-label", `Фактические проведённые операции: ${label}, с учётом выбранных фильтров.`);
+    put("dash-finance-in-label", "Приход по фильтру"); put("dash-finance-out-label", "Расход по фильтру");
+    put("dash-finance-in-value", `+${money(filteredIncoming)}`); put("dash-finance-out-value", `−${money(filteredOutgoing)}`);
+    put("dash-finance-bank-in", `+${money(filteredBankIncoming)}`); put("dash-finance-bank-out", `−${money(filteredBankOutgoing)}`);
+    put("dash-finance-cash-in", `+${money(filteredCashIncoming)}`); put("dash-finance-cash-out", `−${money(filteredCashOutgoing)}`);
+  }, [filteredBankIncoming, filteredBankOutgoing, filteredCashIncoming, filteredCashOutgoing, filteredIncoming, filteredOutgoing, period]);
+
   const hasFilters =
     query || period !== "all" || dateFrom || dateTo || sort !== "desc";
 
@@ -113,6 +135,12 @@ export function DashboardFinanceHistory({
         onClose={() => setDetailPaymentId(null)}
         allowDocumentNavigation={allowNavigation}
       />
+      <div className="dash-finance-filter-summary" aria-live="polite">
+        <span>По выбранному фильтру</span>
+        <b className="dash-money-in">+{money(filteredIncoming)}</b>
+        <b className="dash-money-out">−{money(filteredOutgoing)}</b>
+        <strong>{money(filteredIncoming - filteredOutgoing)}</strong>
+      </div>
       <div className="dash-finance-filter" aria-label="Фильтр истории платежей">
         <label className="dash-finance-filter__search">
           <span>Поиск</span>

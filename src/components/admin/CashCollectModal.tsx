@@ -39,6 +39,7 @@ interface PendingCashPayment {
   counterparty: string;
   amount: number;
   comment: string | null;
+  cashDestination?: CashKind | null;
 }
 
 /** Наличный расход из кассы: ЗП или исходящий платёж налом. */
@@ -136,7 +137,7 @@ export function CashCollectModal({
         // Безопасный дефолт: наличный платёж остаётся в кассе. На карту ЮМ
         // он уйдёт только после явного выбора кассира — иначе повторное
         // закрытие смены могло случайно обнулить весь новый приход.
-        for (const p of list) initial[p.paymentId] = "cash";
+        for (const p of list) initial[p.paymentId] = p.cashDestination === "card" ? "card" : "cash";
         setKinds(initial);
       } catch (e) {
         if (!cancelled) {
@@ -229,31 +230,23 @@ export function CashCollectModal({
       else cash += unlinkedCashBalance;
     }
     covered = r2(covered);
-    // Траты, расписанные вручную по платежам, уже вычтены из cash/card —
-    // второй раз их вычитать нельзя.
-    const rest = Math.max(0, r2(expensesTotal - covered));
-    let c = r2(cash - rest);
-    let k = r2(card);
-    if (c < 0) {
-      k = r2(k + c);
-      c = 0;
-    }
-    if (k < 0) k = 0;
+    // Выбранное кассиром направление должно отражать сумму платежа один к
+    // одному. Раньше сюда неявно вычитались ВСЕ расходы дня, из-за чего
+    // «На карту» могло показывать 0 ₽, хотя у выбранного ПЛ была сумма.
+    // Расход влияет на общий остаток кассы, но не меняет разметку прихода.
+    const c = r2(cash);
+    const k = r2(card);
     return {
       cash: c,
       card: k,
-      /** Приход за день до вычета трат */
-      income: r2(c + k + expensesTotal),
-      /** Фактически к сдаче */
+      income: r2(c + k + covered),
       total: r2(c + k),
-      /** Сколько трат расписано вручную по платежам */
       covered,
     };
   }, [
     dayItems,
     selected,
     splitOf,
-    expensesTotal,
     includeUnlinkedCash,
     unlinkedCashBalance,
     unlinkedCashKind,
@@ -269,16 +262,32 @@ export function CashCollectModal({
   }
 
   function setKind(id: string, kind: CashKind) {
+    // Кнопки «На карту» / «В кассе» означают полную сумму платежа.
+    // Ранее открытая ручная разбивка продолжала иметь приоритет над кнопкой,
+    // поэтому визуально выбор менялся, а итог оставался нулевым или старым.
+    setSplits((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setSplitOpen((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     setKinds((prev) => ({ ...prev, [id]: kind }));
-    // Отметка направления автоматически включает платёж в сдачу
+    // Отметка направления автоматически включает платёж в сдачу.
     setSelected((prev) => new Set(prev).add(id));
   }
 
   function markAll(kind: CashKind) {
+    const ids = new Set(dayItems.filter((p) => selected.has(p.paymentId)).map((p) => p.paymentId));
     const next: Record<string, CashKind> = { ...kinds };
-    for (const p of dayItems) {
-      if (selected.has(p.paymentId)) next[p.paymentId] = kind;
-    }
+    for (const id of ids) next[id] = kind;
+    // Массовая кнопка также должна отменять старые ручные разбивки, иначе
+    // выбранное направление не влияет на рассчитанную сумму.
+    setSplits((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => !ids.has(id))));
+    setSplitOpen((prev) => new Set([...prev].filter((id) => !ids.has(id))));
     setKinds(next);
   }
 
@@ -568,6 +577,7 @@ export function CashCollectModal({
               </button>
             </details>
           )}
+
 
           {loading ? (
             <div className="admin-empty" style={{ padding: 24 }}>

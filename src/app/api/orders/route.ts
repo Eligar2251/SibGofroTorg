@@ -266,7 +266,12 @@ export async function POST(request: NextRequest) {
       }).catch((e) => console.error("profile after order:", e));
     }
 
-    sendNotifications({
+    // В serverless нельзя отправлять уведомление fire-and-forget: после
+    // возврата HTTP-ответа рантайм может завершить процесс раньше fetch к
+    // Telegram. Тест работает, потому что его маршрут ожидает отправку.
+    // Заявку не отменяем при ошибке мессенджера, но дожидаемся попытки.
+    try {
+      await sendNotifications({
       id: createdOrder.id,
       type: (orderData.type as "order" | "inquiry") || "order",
       customerType,
@@ -286,7 +291,10 @@ export async function POST(request: NextRequest) {
       ogrn,
       legalAddress,
       actualAddress,
-    }).catch((err) => console.error("notify bots:", err));
+      });
+    } catch (err) {
+      console.error("notify bots for order:", err);
+    }
 
     return NextResponse.json({ success: true, orderId: createdOrder.id });
   } catch (error: unknown) {

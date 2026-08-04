@@ -119,18 +119,7 @@ export default async function RootLayout({
           crossOrigin="anonymous"
         />
         <link rel="preconnect" href="https://res.cloudinary.com" />
-        {/* Шрифты НЕ блокируют отрисовку: stylesheet вставляется
-            динамически (async CSS), текст сразу показывается
-            fallback-шрифтами, при загрузке — swap (display=swap).
-            На медленных мобильных сетях это убирает ~1–2 c из FCP/LCP. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var l=document.createElement('link');l.rel='stylesheet';l.href='${FONTS_CSS_URL}';document.head.appendChild(l);}catch(e){}})();`,
-          }}
-        />
-        <noscript>
-          <link rel="stylesheet" href={FONTS_CSS_URL} />
-        </noscript>
+        <link rel="stylesheet" href={FONTS_CSS_URL} />
         <JsonLd
           data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}
         />

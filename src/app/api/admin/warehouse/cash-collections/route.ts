@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     if (searchParams.get("pending")) {
       const [cashData, settings] = await Promise.all([
         getPendingCashPayments(),
-        getSettings().catch(() => ({} as Record<string, string>)),
+        getSettings().catch(() => ({} as Record<string, string>))
       ]);
       // Имя получателя инкассации на карту настраивается в «Настройках».
       const cardHolder =

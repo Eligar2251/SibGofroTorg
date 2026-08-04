@@ -1,7 +1,7 @@
 // src/components/admin/OrderDeliveryControls.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Truck,
@@ -46,6 +46,15 @@ export function OrderDeliveryControls({
     hasDelivery && deliveryCost != null ? String(deliveryCost) : ""
   );
   const [note, setNote] = useState(deliveryNote || "");
+  // После router.refresh синхронизируем форму с сохранёнными значениями,
+  // но не перетираем ручной ввод, пока пользователь открыт в режиме edit.
+  useEffect(() => {
+    if (mode !== "idle") return;
+    setAddress(deliveryAddress || "");
+    setCost(hasDelivery && deliveryCost != null ? String(deliveryCost) : "");
+    setNote(deliveryNote || "");
+  }, [deliveryAddress, deliveryCost, deliveryNote, hasDelivery, mode]);
+
   const endpoint =
     source === "deal"
       ? `/api/admin/warehouse/deals/${orderId}/delivery`

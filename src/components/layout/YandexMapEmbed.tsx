@@ -8,7 +8,7 @@
 // запросов на первой загрузке страниц (главная, контакты).
 // =========================================================
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MapPin } from "lucide-react";
 
 export function YandexMapEmbed({
@@ -21,17 +21,33 @@ export function YandexMapEmbed({
   address?: string;
 }) {
   const [active, setActive] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!active || mapLoaded) return;
+    const timer = window.setTimeout(() => setTimedOut(true), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [active, mapLoaded]);
 
   if (active) {
     return (
+      <>
       <iframe
         src={src}
         title={title}
         className="contacts-map__iframe"
-        loading="eager"
+        loading="lazy"
         referrerPolicy="no-referrer-when-downgrade"
         allowFullScreen
+        onLoad={() => setMapLoaded(true)}
       />
+      {timedOut && !mapLoaded && (
+        <p className="map-load-fallback" role="status">
+          Карта долго загружается. <a href="https://yandex.ru/maps/" target="_blank" rel="noopener noreferrer">Открыть Яндекс Карты</a>
+        </p>
+      )}
+      </>
     );
   }
 

@@ -31,6 +31,8 @@
 
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- SVG codes must be rendered at native vector URLs for print fidelity. */
+
 import { useEffect, useMemo, useState } from "react";
 import {
   Printer,

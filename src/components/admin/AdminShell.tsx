@@ -147,6 +147,7 @@ export function AdminShell({
         id="admin-sidebar"
         className={`admin-sidebar${sidebarHidden ? " admin-sidebar--hidden" : ""}`}
         aria-hidden={sidebarHidden}
+        inert={sidebarHidden}
       >
         <div className="admin-sidebar__brand">
           <SiteLogo variant="light" className="admin-sidebar__logo-svg" />
@@ -163,7 +164,7 @@ export function AdminShell({
             onClick={toggleSidebar}
             aria-label="Скрыть боковую панель"
             title="Скрыть боковую панель"
-            aria-expanded
+            aria-expanded={!sidebarHidden}
             aria-controls="admin-sidebar"
           >
             <PanelLeftClose size={15} aria-hidden="true" />
@@ -206,7 +207,10 @@ export function AdminShell({
         </div>
       </aside>
 
-      <div className="admin-mobile-bar">
+      <div className="admin-mobile-bar" role="navigation" aria-label="Навигация админ-панели">
+        <span className="admin-mobile-bar__title" aria-live="polite">
+          {nav.find((link) => link.href === `/${adminPath}` ? pathname === link.href : pathname.startsWith(link.href))?.label || "Управление"}
+        </span>
         <div className="admin-mobile-bar__nav">
           {nav.map((link) => {
             const active =
@@ -226,9 +230,20 @@ export function AdminShell({
                 aria-current={active ? "page" : undefined}
               >
                 {link.icon}
+                <span>{link.label}</span>
               </Link>
             );
           })}
+        </div>
+        <div className="admin-mobile-bar__actions">
+          <Link href="/" prefetch={false} target="_blank" className="admin-mobile-bar__action" aria-label="Открыть сайт" title="Открыть сайт">
+            <ExternalLink size={17} aria-hidden="true" />
+          </Link>
+          <form action={`/${adminPath}/api/logout`}>
+            <button type="submit" className="admin-mobile-bar__action" aria-label="Выйти из аккаунта" title="Выйти из аккаунта">
+              <LogOut size={17} aria-hidden="true" />
+            </button>
+          </form>
         </div>
       </div>
 

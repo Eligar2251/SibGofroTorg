@@ -1,7 +1,8 @@
 // src/components/admin/ReviewsManager.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import NextImage from "next/image";
+import { useState, useEffect, useCallback } from "react";
 import { Eye, Edit2, Trash2, Check, X, Filter, Star, ShieldCheck, AlertTriangle, Loader2, MessageSquare, Image, Download, ChevronRight, ChevronLeft } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ModalPortal } from "@/components/admin/ModalPortal";
@@ -55,7 +56,7 @@ export function ReviewsManager() {
     note: string;
   } | null>(null);
 
-  async function fetchReviews() {
+  const fetchReviews = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -75,11 +76,11 @@ export function ReviewsManager() {
       console.error(e);
     }
     setLoading(false);
-  }
+  }, [currentPage, filterStatus, searchQuery]);
 
   useEffect(() => {
-    fetchReviews();
-  }, [currentPage, filterStatus, searchQuery]);
+    void fetchReviews();
+  }, [fetchReviews]);
 
   // ... rest of the component remains the same
 
@@ -344,7 +345,7 @@ export function ReviewsManager() {
                       <p style={{ fontWeight: 600, marginBottom: 8 }}>Фото ({r.images.length}):</p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {r.images.map((img, i) => (
-                          <img key={i} src={img.url} alt="" style={{ width: 100, height: 100, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }} />
+                          <NextImage key={i} src={img.url} alt="" width={100} height={100} sizes="100px" style={{ width: 100, height: 100, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }} />
                         ))}
                       </div>
                     </div>

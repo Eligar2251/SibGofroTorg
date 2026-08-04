@@ -67,7 +67,9 @@ function matches(option: PickerOption, q: string): boolean {
 function sanitizeName(value: string): string {
   return String(value || "")
     .replace(/[\u200B-\u200D\u2060]/g, "")
-    .trim()
+    // Не trim() здесь: контролируемый input перерисовывается после
+    // каждого символа, и trim удалял пробел сразу после первого слова.
+    // Конечная нормализация всё равно выполняется на сервере при сохранении.
     .replace(/\s+/g, " ");
 }
 

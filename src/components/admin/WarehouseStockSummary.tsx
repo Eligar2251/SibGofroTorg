@@ -115,10 +115,17 @@ export function ProductStockSummaryPanel({
     return a.docNumber.localeCompare(b.docNumber);
   });
 
-  // Рассчитываем бегущий остаток
-  let runningBalance = summary.ownStockQty;
-  const chronologicalHistory = allEvents.map((ev) => {
-    runningBalance += ev.qtyChange;
+  // Рассчитываем бегущий остаток без мутации переменных во время рендера.
+  // reduce возвращает новый аккумулятор для каждой операции, поэтому React
+  // может безопасно повторно или прерванно отрисовывать компонент.
+  const { chronologicalHistory } = allEvents.reduce<{
+    runningBalance: number;
+    chronologicalHistory: Array<(typeof allEvents)[number] & {
+      balanceAfter: number;
+      marginStr: string;
+    }>;
+  }>((acc, ev) => {
+    const runningBalance = acc.runningBalance + ev.qtyChange;
 
     // Вычисляем маржу для продаж
     let marginStr = "—";
@@ -137,12 +144,13 @@ export function ProductStockSummaryPanel({
       }
     }
 
-    return {
+    acc.chronologicalHistory.push({
       ...ev,
       balanceAfter: runningBalance,
       marginStr,
-    };
-  });
+    });
+    return { ...acc, runningBalance };
+  }, { runningBalance: summary.ownStockQty, chronologicalHistory: [] });
 
   // Разворачиваем для отображения (свежие операции сверху)
   const displayedHistory = [...chronologicalHistory].reverse();

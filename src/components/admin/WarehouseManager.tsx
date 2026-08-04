@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -538,7 +538,7 @@ export function WarehouseManager({
   };
 
   // --- Helper to find last supplier and price for critical stock alerts (Feature 2) ---
-  const findLastSupplierAndPrice = (productId: string) => {
+  const findLastSupplierAndPrice = useCallback((productId: string) => {
     let lastSupplierName = "";
     let lastSupplierId = "";
     let lastPrice = 0;
@@ -570,7 +570,7 @@ export function WarehouseManager({
     }
 
     return { supplierName: lastSupplierName, supplierId: lastSupplierId, price: lastPrice };
-  };
+  }, [receipts, counterpartyOptions]);
 
   // --- Critical Products Calculation (Feature 2) ---
   const criticalProducts = useMemo(() => {
@@ -612,7 +612,7 @@ export function WarehouseManager({
     }
 
     return { outOfStock, lowStock, frequentlyOrderedAbsent, stagnantStock };
-  }, [stock, deals, counterpartyOptions, receipts]);
+  }, [stock, deals]);
 
   // Autopopulate order supplier and price when ordering product changes
   useEffect(() => {
@@ -624,7 +624,7 @@ export function WarehouseManager({
       setOrderQty(10); // Default to a standard 10 units
       setOrderError("");
     }
-  }, [orderingProduct]);
+  }, [orderingProduct, findLastSupplierAndPrice]);
   
   const allCounterparties = useMemo(
     () => getPendingPaymentCounterpartyBalances(payments),
@@ -874,6 +874,10 @@ export function WarehouseManager({
       ...salaryEntries,
     ].filter((p) => {
       if (bankSub === "cash") return false;
+      // ЗП ведётся в отдельном разделе «Зарплаты». В «Ожидают оплаты»
+      // банка показываем только реальные платёжные поручения, а не
+      // начисления сотрудникам.
+      if (bankSub === "pending" && p.entryKind === "salary") return false;
       const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
       if (!matchesTab) return false;
       if (bdir !== "all" && p.direction !== bdir) return false;
@@ -2670,6 +2674,9 @@ export function WarehouseManager({
                   <span>
                     Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
                   </span>
+                  <span>
+                    Инкассация за день: <b>{fmt(cashCarryover.todayCardTransfers)} ₽</b>
+                  </span>
                 </div>
                 {bankSummary.cashBalanceNegative && (
                   <div
@@ -2703,7 +2710,7 @@ export function WarehouseManager({
                 </button>
               </div>
               <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-                Общий итог (факт): <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
+                Расчётный счёт + касса: <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
               </div>
             </div>
 
@@ -3938,6 +3945,7 @@ export function WarehouseManager({
                           edit={{
                             date: p.date,
                             type: p.type,
+                            cashDestination: p.cashDestination,
                             counterparty: p.counterparty,
                             amount: p.amount,
                             invoiceNumber: p.invoiceNumber ?? null,

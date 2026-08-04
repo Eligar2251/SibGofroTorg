@@ -10024,3 +10024,215 @@ body:has(.admin-modal-overlay) {
     justify-content: center;
   }
 }
+
+/* ══════════════════════════════════════
+   ADMIN NAVIGATION — accessible compact layout
+   ══════════════════════════════════════ */
+@media (max-width: 1099px) {
+  .admin-sidebar { display: none; }
+  .admin-content { margin-left: 0 !important; }
+  .admin-mobile-bar {
+    display: block;
+    height: 104px;
+    padding: 8px 12px 6px;
+  }
+  .admin-mobile-bar__title {
+    display: block;
+    max-width: calc(100% - 84px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    line-height: 24px;
+  }
+  .admin-mobile-bar__nav {
+    position: absolute;
+    right: 8px;
+    bottom: 6px;
+    left: 8px;
+    display: flex;
+    width: auto;
+    max-width: none;
+    gap: 5px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .admin-mobile-bar__nav::-webkit-scrollbar { display: none; }
+  .admin-mobile-bar__link {
+    width: auto;
+    min-width: max-content;
+    height: 54px;
+    padding: 5px 9px;
+    gap: 4px;
+    flex: 0 0 auto;
+    flex-direction: column;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.05;
+  }
+  .admin-mobile-bar__link span {
+    display: block;
+    max-width: 76px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .admin-mobile-bar__actions {
+    position: absolute;
+    top: 7px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .admin-mobile-bar__actions form { display: contents; }
+  .admin-mobile-bar__action {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 8px;
+    background: transparent;
+    color: rgba(255,255,255,.8);
+  }
+  .admin-main { padding-top: 120px; }
+  .admin-sidebar-handle { display: none !important; }
+}
+
+/* На малом десктопе сохраняем широкую рабочую область вместо резкого
+   появления 240px сайдбара. */
+@media (min-width: 1024px) and (max-width: 1099px) {
+  .admin-mobile-bar { display: block; }
+}
+
+@media (max-width: 380px) {
+  .admin-mobile-bar { height: 100px; }
+  .admin-mobile-bar__link { min-width: 52px; padding-inline: 7px; }
+  .admin-mobile-bar__link span { max-width: 58px; font-size: 8px; }
+  .admin-main { padding-top: 116px; }
+}
+
+/* Таблицы остаются прокручиваемыми, а подсказка делает это очевидным на touch.
+   Ничего не обрезается у правого края. */
+@media (max-width: 767px) {
+  .admin-table-wrap {
+    position: relative;
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .admin-table-wrap::after {
+    content: "↔ Прокрутите таблицу";
+    position: sticky;
+    left: 8px;
+    display: block;
+    width: max-content;
+    margin: 4px 0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--adm-paper-warm);
+    color: var(--adm-ink-muted);
+    font-size: 10px;
+  }
+  .admin-product-name {
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Возврат сайдбара должен оставаться очевидным и доступным с клавиатуры. */
+@media (min-width: 1100px) and (hover: hover) and (pointer: fine) {
+  .admin-sidebar-handle { width: 30px; opacity: .85; }
+  .admin-sidebar-handle svg { opacity: 1; }
+}
+
+/* Popover занимает доступное окно и не зависит от жёсткой высоты верхней
+   панели: при появлении виртуальной клавиатуры остаётся прокручиваемым. */
+@media (max-width: 640px) {
+  .whsal-pop {
+    top: max(8px, env(safe-area-inset-top, 0px)) !important;
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    max-height: none;
+    overflow-y: auto;
+  }
+}
+
+.cashc-unclassified {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #f2bd68;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: var(--adm-ink);
+  font-size: 12px;
+}
+.cashc-unclassified > span { color: var(--adm-ink-muted); }
+.cashc-unclassified__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+@media (max-width: 480px) { .cashc-unclassified__row { align-items: stretch; flex-direction: column; } }
+
+/* Банк и модалка платежа: иконка всегда остаётся слева от подписи.
+   Для длинных вариантов оплаты расширяем строку, а не переносим слово под SVG. */
+.wh-direction__btn,
+.bank-hero__label,
+.bank-hero__stat,
+.bank-pay__row1,
+.bank-pay__row2,
+.bank-pay__side .wh-pay-controls .admin-status__btn {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.wh-direction__btn > svg,
+.bank-hero__label > svg,
+.bank-hero__stat > svg,
+.bank-pay__row1 > svg,
+.bank-pay__row2 > svg,
+.bank-pay__side .wh-pay-controls .admin-status__btn > svg {
+  flex: 0 0 auto;
+}
+
+/* В форме платежа названия способов оплаты остаются одной строкой и не
+   становятся узкими колонками на планшете/телефоне. */
+@media (max-width: 800px) {
+  .wh-direction { grid-template-columns: 1fr; }
+  .wh-direction__btn { justify-content: flex-start; font-size: clamp(11px, 3.1vw, 13px); }
+}
+
+/* Кассовая строка — компактный однострочный регистр, без иконок и
+   вертикальных переносов. При нехватке места прокручивается целиком. */
+.cash-carryover-hero {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px 10px;
+  max-width: none;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+.cash-carryover-hero span { display: inline-block; flex: 0 0 auto; }
+
+/* Редактирование платежа: у вариантов оплаты иконка и подпись — одна строка. */
+.wh-linkmode__btn,
+.wh-direction--compact .wh-direction__btn {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.wh-linkmode__btn svg,
+.wh-direction--compact .wh-direction__btn svg { flex: 0 0 auto; }
+@media (max-width: 640px) {
+  .wh-linkmode__btn { font-size: 11px; }
+  .wh-direction--compact { grid-template-columns: 1fr; }
+}
+.dash-finance-filter-summary { display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px; margin:0 0 10px; padding:10px 12px; border:1px solid var(--adm-border); border-radius:8px; background:var(--adm-card); font-size:12px; }
+.dash-finance-filter-summary > span { color:var(--adm-ink-muted); font-weight:600; }
+.dash-finance-filter-summary > strong { margin-left:auto; color:var(--adm-ink); }

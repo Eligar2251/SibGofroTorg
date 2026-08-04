@@ -314,22 +314,27 @@ export default async function AdminDashboard() {
     ...salaryFinanceRows,
     ...collectionFinanceRows,
   ];
-  const financeIncoming = financeRows
+  // Карточки дашборда — только текущий календарный месяц. История ниже
+  // остаётся полной и позволяет выбрать любой предыдущий месяц.
+  const currentMonthFinanceRows = financeRows.filter((row) =>
+    row.date.startsWith(dashboardDate.slice(0, 7))
+  );
+  const financeIncoming = currentMonthFinanceRows
     .filter((row) => row.direction === "incoming")
     .reduce((sum, row) => sum + row.amount, 0);
-  const financeOutgoing = financeRows
+  const financeOutgoing = currentMonthFinanceRows
     .filter((row) => row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
-  const bankIncoming = financeRows
+  const bankIncoming = currentMonthFinanceRows
     .filter((row) => row.account === "bank" && row.direction === "incoming")
     .reduce((sum, row) => sum + row.amount, 0);
-  const bankOutgoing = financeRows
+  const bankOutgoing = currentMonthFinanceRows
     .filter((row) => row.account === "bank" && row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
-  const cashIncoming = financeRows
+  const cashIncoming = currentMonthFinanceRows
     .filter((row) => row.account === "cash" && row.direction === "incoming")
     .reduce((sum, row) => sum + row.amount, 0);
-  const cashOutgoing = financeRows
+  const cashOutgoing = currentMonthFinanceRows
     .filter((row) => row.account === "cash" && row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
 
@@ -452,14 +457,14 @@ export default async function AdminDashboard() {
           {
             label: "Выручка",
             value:
-              totalRevenue !== 0
-                ? `${(totalRevenue / 1000).toFixed(0)}К ₽`
+              financeIncoming - financeOutgoing !== 0
+                ? `${((financeIncoming - financeOutgoing) / 1000).toFixed(0)}К ₽`
                 : "—",
             icon: <BarChart3 size={20} />,
             href: `/${ADMIN_PATH}/orders?status=completed`,
             iconBg: "rgba(16,185,129,0.1)",
             iconColor: "#10b981",
-            sub: "оплаты минус расходы из учёта",
+            sub: `оплаты минус расходы · ${dashboardDate.slice(0, 7)}`,
           },
           {
             label: "К оплате нам",
@@ -542,7 +547,7 @@ export default async function AdminDashboard() {
           <div>
             <span className="dash-section-kicker">Финансовая отчётность</span>
             <h2>Банковские счета: приход и расход</h2>
-            <p>Фактические проведённые операции за весь период учёта.</p>
+            <p id="dash-finance-period-label">Фактические проведённые операции за текущий месяц.</p>
           </div>
           {!isLawyer && (
             <Link
@@ -561,8 +566,8 @@ export default async function AdminDashboard() {
               <ArrowDownLeft size={18} />
             </span>
             <span className="dash-finance-total__content">
-              <span>Приход всего</span>
-              <strong>+{money(financeIncoming)}</strong>
+              <span id="dash-finance-in-label">Приход за месяц</span>
+              <strong id="dash-finance-in-value">+{money(financeIncoming)}</strong>
             </span>
           </div>
           <div className="dash-finance-total dash-finance-total--out">
@@ -570,8 +575,8 @@ export default async function AdminDashboard() {
               <ArrowUpRight size={18} />
             </span>
             <span className="dash-finance-total__content">
-              <span>Расход всего</span>
-              <strong>−{money(financeOutgoing)}</strong>
+              <span id="dash-finance-out-label">Расход за месяц</span>
+              <strong id="dash-finance-out-value">−{money(financeOutgoing)}</strong>
             </span>
           </div>
           <div className="dash-finance-total dash-finance-total--bank">
@@ -610,8 +615,8 @@ export default async function AdminDashboard() {
               <strong>{money(bankSummary.bankBalance)}</strong>
             </div>
             <div className="dash-account-card__turnover">
-              <span>Приход <b className="dash-money-in">+{money(bankIncoming)}</b></span>
-              <span>Расход <b className="dash-money-out">−{money(bankOutgoing)}</b></span>
+              <span>Приход <b id="dash-finance-bank-in" className="dash-money-in">+{money(bankIncoming)}</b></span>
+              <span>Расход <b id="dash-finance-bank-out" className="dash-money-out">−{money(bankOutgoing)}</b></span>
             </div>
           </div>
           <div className="dash-account-card dash-account-card--cash">
@@ -629,8 +634,8 @@ export default async function AdminDashboard() {
               <strong>{money(bankSummary.cashBalance)}</strong>
             </div>
             <div className="dash-account-card__turnover">
-              <span>Приход <b className="dash-money-in">+{money(cashIncoming)}</b></span>
-              <span>Расход <b className="dash-money-out">−{money(cashOutgoing)}</b></span>
+              <span>Приход <b id="dash-finance-cash-in" className="dash-money-in">+{money(cashIncoming)}</b></span>
+              <span>Расход <b id="dash-finance-cash-out" className="dash-money-out">−{money(cashOutgoing)}</b></span>
             </div>
           </div>
         </div>

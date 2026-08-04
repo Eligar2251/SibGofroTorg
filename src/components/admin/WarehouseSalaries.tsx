@@ -1453,6 +1453,47 @@ export function WarehouseSalaries({
     router.refresh();
   }
 
+  async function createScheduledSalaryPayments() {
+    const plans = gridRows.flatMap((row) =>
+      Object.entries(row.scheduledPlanByDay)
+        .filter(([day]) => !(row.cells[Number(day)] || []).length)
+        .map(([day, amount]) => ({ row, day: Number(day), amount }))
+    ).filter((item) => item.amount > 0.009);
+
+    if (!plans.length) {
+      alert("Нет новых плановых выплат: задайте месячный план и дни выплат для сотрудников.");
+      return;
+    }
+    const total = plans.reduce((sum, item) => sum + item.amount, 0);
+    if (!confirm(`Создать ${plans.length} плановых выплат на ${fmt(total)} ₽? Выплаты будут сохранены как непроведённые и останутся в разделе «Зарплаты».`)) return;
+    setScheduleBusy(true);
+    try {
+      for (const item of plans) {
+        const date = `${activeMonth}-${String(item.day).padStart(2, "0")}`;
+        const res = await fetch("/api/admin/warehouse/salaries", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            employeeId: item.row.employee.id,
+            employeeName: item.row.employee.name,
+            amount: item.amount,
+            date,
+            source: "bank",
+            isPaid: false,
+            comment: composeSalaryComment({ periodMonth: activeMonth }),
+          }),
+        });
+        if (!res.ok) throw new Error(`Не удалось создать выплату для ${item.row.employee.name}`);
+      }
+      reload();
+      alert(`Создано плановых выплат: ${plans.length}.`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось создать плановые выплаты");
+    } finally {
+      setScheduleBusy(false);
+    }
+  }
+
   function openCreate() {
     setEditing(null);
     setFormOpen(true);
@@ -2042,6 +2083,15 @@ export function WarehouseSalaries({
         </div>
 
         <div className="whsal-toolbar__actions">
+          <button
+            className="admin-btn admin-btn--ghost"
+            onClick={createScheduledSalaryPayments}
+            disabled={scheduleBusy}
+            title="Создать сохранённые плановые выплаты по месячному плану и отмеченным датам"
+          >
+            {scheduleBusy ? <Loader2 size={15} className="animate-spin" /> : <CalendarDays size={15} />}
+            Создать выплаты по графику
+          </button>
           <button
             className="admin-btn admin-btn--ghost"
             onClick={() => setSetupOpen(true)}
