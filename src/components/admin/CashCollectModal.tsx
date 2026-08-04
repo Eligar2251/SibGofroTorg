@@ -922,7 +922,7 @@ export function CashCollectModal({
             </div>
           )}
 
-          <div className="admin-modal__actions" style={{ flexWrap: "wrap" }}>
+          <div className="admin-modal__actions" style={{gap: 10,  flexWrap: "wrap" }}>
             <button
               type="button"
               className="admin-btn admin-btn--ghost"

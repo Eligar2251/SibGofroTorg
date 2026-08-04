@@ -929,7 +929,7 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
 
           {error && <div className="admin-error" style={{ marginTop: 10 }}>{error}</div>}
 
-          <div className="admin-modal__actions" style={{ marginTop: 14 }}>
+          <div className="admin-modal__actions" style={{gap: 10,  marginTop: 14 }}>
             <button type="button" onClick={onClose} className="admin-btn admin-btn--ghost" disabled={saving}>Отмена</button>
             <button type="button" onClick={handleSubmit} className="admin-btn admin-btn--primary" disabled={saving || (selectedDeals.size === 0 && customTrips.length === 0)}>
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
