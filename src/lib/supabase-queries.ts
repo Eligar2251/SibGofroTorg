@@ -971,11 +971,26 @@ function mapOrderRow(row: any): FirestoreOrder {
   };
 }
 
+// ── Фильтр заявок по статусу ──
+// «all»      — без фильтра;
+// «active»   — рабочий список менеджера: новые + в работе (ничего не
+//              «исчезает» после кнопки «В работу»);
+// «archived» — закрытые: проведённые + отменённые;
+// конкретный статус или список через запятую — точный фильтр.
+function applyOrderStatusFilter(q: any, status?: string): any {
+  if (!status || status === "all") return q;
+  if (status === "active") return q.in("status", ["new", "in_progress"]);
+  if (status === "archived") return q.in("status", ["completed", "rejected"]);
+  const parts = status.split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return q;
+  if (parts.length === 1) return q.eq("status", parts[0]);
+  return q.in("status", parts);
+}
+
 export async function getOrders(opts: { limit?: number; status?: string } = {}): Promise<FirestoreOrder[]> {
   const db = getAdminDb();
   let q = db.from("orders").select("*").order("created_at", { ascending: false });
-  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
-  if (opts.limit) q = q.limit(opts.limit);
+  q = applyOrderStatusFilter(q, opts.status);
   const { data, error } = await q.limit(opts.limit || 500);
   if (error) throw error;
   return (data || []).map(mapOrderRow);
@@ -1676,8 +1691,7 @@ export async function getProductViewCount(productId: string): Promise<number> {
 export async function getWastepaperRequests(opts: { limit?: number; status?: string } = {}): Promise<any[]> {
   const db = getAdminDb();
   let q = db.from("wastepaper_requests").select("*").order("created_at", { ascending: false });
-  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
-  if (opts.limit) q = q.limit(opts.limit);
+  q = applyOrderStatusFilter(q, opts.status);
   const { data, error } = await q.limit(opts.limit || 200);
   if (error) throw error;
   return (data || []).map((row: any) => ({
@@ -1875,7 +1889,7 @@ export async function getClientRequests(
     .from("client_requests")
     .select("*")
     .order("created_at", { ascending: false });
-  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
+  q = applyOrderStatusFilter(q, opts.status);
   const { data, error } = await q.limit(opts.limit || 500);
   if (error) throw error;
   return (data || []).map(mapClientRequest);

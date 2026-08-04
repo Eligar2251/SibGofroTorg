@@ -15,6 +15,8 @@ const statusLabels: Record<string, string> = {
   in_progress: "В работе",
   completed: "Проведена",
   rejected: "Отменена",
+  // Фильтр-агрегат: заявки, с которыми менеджеры сейчас работают.
+  active: "Активные",
 };
 
 const statusBadge: Record<string, string> = {
@@ -41,8 +43,10 @@ const paymentLabels: Record<string, { token: string; text: string }> = {
 };
 
 const filterOptions = [
+  { value: "active", label: "Активные" },
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
+  { value: "completed", label: "Проведённые (архив)" },
   { value: "rejected", label: "Отменённые" },
   { value: "all", label: "Все" },
 ];
@@ -96,9 +100,11 @@ export default async function AdminOrdersPage({
 }) {
   const params = await searchParams;
   const requestedStatus = firstParam(params.status);
-  const activeFilter = ["new", "in_progress", "rejected", "all"].includes(requestedStatus)
+  // По умолчанию — «active»: показываем и новые, и в работе, чтобы заявка
+  // не исчезала из списка сразу после кнопки «В работу».
+  const activeFilter = ["active", "new", "in_progress", "completed", "rejected", "all"].includes(requestedStatus)
     ? requestedStatus
-    : "new";
+    : "active";
   const searchQuery = firstParam(params.q);
   const query = searchQuery.toLowerCase().trim();
 

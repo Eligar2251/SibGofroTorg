@@ -15,8 +15,12 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    if (!body.status) {
-      return NextResponse.json({ error: "Статус обязателен" }, { status: 400 });
+    const ALLOWED_STATUSES = ["new", "in_progress", "completed", "rejected"];
+    if (!body.status || !ALLOWED_STATUSES.includes(body.status)) {
+      return NextResponse.json(
+        { error: "Недопустимый статус заявки" },
+        { status: 400 }
+      );
     }
     const oldStatus = body.oldStatus || "";
 
@@ -43,6 +47,28 @@ export async function PATCH(
         { oldStatus, newStatus: "new", rollback }
       );
       return NextResponse.json({ success: true, rollback });
+    }
+
+    // Заявка, уже переданная в учёт, живёт в одном статусе с заказом ЗК:
+    // вручную закрыть её со страницы заявок нельзя — закрытие/отмена придут
+    // автоматически из учёта (проведение или отмена заказа ЗК).
+    if ((body.status === "completed" || body.status === "rejected") && orderRow?.deal_id) {
+      const { data: linkedDeal } = await db
+        .from("customer_deals")
+        .select("status")
+        .eq("id", orderRow.deal_id)
+        .maybeSingle();
+      if (linkedDeal && linkedDeal.status !== "completed" && linkedDeal.status !== "cancelled") {
+        return NextResponse.json(
+          {
+            error:
+              body.status === "completed"
+                ? "Заявка связана с заказом в учёте — она закроется автоматически после его проведения."
+                : "Заявка связана с активным заказом в учёте — сначала уберите её из работы или отмените заказ в учёте.",
+          },
+          { status: 409 }
+        );
+      }
     }
 
     let deal: Awaited<ReturnType<typeof convertOrderToDeal>> | undefined;

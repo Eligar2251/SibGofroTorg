@@ -140,22 +140,43 @@ export function OrderStatusUpdater({
         </div>
       )}
 
-      {currentStatus === "in_progress" && !endpoint && (
+      {currentStatus === "in_progress" && (
         <div className="admin-status__btns">
-          <button
-            type="button"
-            onClick={() => updateStatus("new", { removeFromWork: true })}
-            disabled={saving}
-            className="admin-status__btn admin-status__btn--outline"
-            title="Вернуть заявку в новые и убрать созданные документы из учёта"
-          >
-            {saving ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RotateCcw size={14} />
-            )}
-            Убрать из работы
-          </button>
+          {/* Заявка не передана в учёт (уточнение цены, макулатура) —
+              менеджер закрывает её прямо здесь. Заявке со связью ЗК
+              статус «Проведена» придёт автоматически из учёта. */}
+          {dealNumber == null && (
+            <button
+              type="button"
+              onClick={() => updateStatus("completed")}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--primary"
+              title="Закрыть заявку как проведённую (у клиента в кабинете статус тоже обновится)"
+            >
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <CheckCircle size={14} />
+              )}
+              Проведена
+            </button>
+          )}
+          {!endpoint && (
+            <button
+              type="button"
+              onClick={() => updateStatus("new", { removeFromWork: true })}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--outline"
+              title="Вернуть заявку в новые и убрать созданные документы из учёта"
+            >
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RotateCcw size={14} />
+              )}
+              Убрать из работы
+            </button>
+          )}
         </div>
       )}
 

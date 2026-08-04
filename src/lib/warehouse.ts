@@ -1480,6 +1480,35 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   return { id: dealResult.id, number };
 }
 
+/**
+ * Прямая связь «заказ в учёте ↔ заявка на сайте».
+ * Любое изменение жизненного цикла заказа покупателя (ЗК) отражаем
+ * в исходной заявке сайта: менеджер видит актуальный статус на странице
+ * заявок, а клиент — в личном кабинете (кабинет читает ту же строку orders).
+ * Ошибка синхронизации не должна откатывать операцию учёта — только логируем.
+ */
+async function syncWebsiteOrderFromDeal(
+  dealId: string,
+  status: "new" | "in_progress" | "completed" | "rejected",
+  closeReason: string | null = null
+): Promise<void> {
+  try {
+    const db = getAdminDb();
+    const { error } = await db
+      .from("orders")
+      .update({
+        status,
+        close_reason: closeReason,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("deal_id", dealId);
+    if (error) throw error;
+    revalidateTag("orders", { expire: 0 });
+  } catch (e) {
+    console.error(`syncWebsiteOrderFromDeal(ЗК ${dealId} → ${status}):`, e);
+  }
+}
+
 export async function postDeal(id: string, shippedItems?: { productId: string; quantity: number }[]): Promise<{ fullyShipped: boolean }> {
   const db = getAdminDb();
   const { data: deal } = await db.from("customer_deals").select("*").eq("id", id).single();
@@ -1567,6 +1596,13 @@ export async function postDeal(id: string, shippedItems?: { productId: string; q
   // Перевозки должны видеть новый остаток: уменьшаем плановые количества,
   // а полностью отгруженный заказ убираем из активных перевозок.
   await syncDealTransportState(id);
+  // ★ Заявка на сайте (и в ЛК клиента): полностью проведённый заказ —
+  //   заявка закрывается («Проведена» → архив), частичная отгрузка — «В работе».
+  await syncWebsiteOrderFromDeal(
+    id,
+    fullyShipped ? "completed" : "in_progress",
+    null
+  );
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("products", { expire: 0 });
   revalidateTag("deliveries", { expire: 0 });
@@ -1599,6 +1635,8 @@ export async function unshipDeal(id: string): Promise<void> {
   }).eq("id", id);
 
   await syncDealTransportState(id);
+  // ★ Заявка на сайте возвращается из архива в «В работе».
+  await syncWebsiteOrderFromDeal(id, "in_progress", null);
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("products", { expire: 0 });
   revalidateTag("deliveries", { expire: 0 });
@@ -1629,6 +1667,8 @@ export async function cancelDeal(id: string, reason: string | null = null): Prom
   }).eq("id", id);
   // Отменённый заказ убираем из активных перевозок.
   await removeDealFromActiveTransports(id);
+  // ★ Заявка на сайте (и в ЛК клиента) тоже закрывается: «Отменена».
+  await syncWebsiteOrderFromDeal(id, "rejected", reason || "Заказ отменён");
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("products", { expire: 0 });
   revalidateTag("deliveries", { expire: 0 });
@@ -1900,6 +1940,7 @@ export async function deleteDeal(id: string): Promise<void> {
           deal_number: null,
           payment_id: null,
           status: "new",
+          close_reason: null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", sourceOrderId)
@@ -3427,6 +3468,11 @@ export async function reviseWebsiteOrderByCustomer(
   const { data: order } = await db.from("orders").select("*").eq("id", orderId).single();
   if (!order) throw new Error("Заказ не найден");
   if (order.type !== "order") throw new Error("Можно менять только заказ из корзины");
+  // Закрытая заявка (проведена или отменена) меняется у нас и у клиента
+  // одновременно — «воскрешать» её редактированием из ЛК нельзя.
+  if (order.status === "completed" || order.status === "rejected") {
+    throw new Error("Заявка уже закрыта. Для нового заказа оформите заявку заново.");
+  }
 
   const items = await buildOrderItemsFromProducts(data.items);
   if (items.length === 0) throw new Error("В заказе должен быть хотя бы один товар");
@@ -3487,20 +3533,35 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
   const db = getAdminDb();
   const { data: order } = await db.from("orders").select("*").eq("id", orderId).maybeSingle();
   if (!order) throw new Error("Заказ не найден");
-  
-  // Если есть связанный deal — отменяем его
+
+  // Закрытая заявка не отменяется повторно.
+  if (order.status === "rejected") throw new Error("Заявка уже отменена");
+  if (order.status === "completed") {
+    throw new Error(
+      "Заказ уже проведён. Для возврата свяжитесь с менеджером по телефону."
+    );
+  }
+
+  // Если есть связанный заказ в учёте — отменяем и его
+  // (отменённая отгрузка вернёт товары на склад).
   if (order.deal_id) {
     try {
-      await cancelDeal(String(order.deal_id), "Клиент отменил заказ из личного кабинета");
+      await cancelDeal(String(order.deal_id), "Клиент отменил заявку из личного кабинета");
     } catch (e) {
       console.error("cancelWebsiteOrderByCustomer: ошибка отмены deal:", e);
     }
   }
-  
-  // Полностью удаляем заказ из БД
-  const { error } = await db.from("orders").delete().eq("id", orderId);
+
+  // ★ Заявку НЕ удаляем из БД: переводим в «Отменена» — прямая связь
+  //   статусов: у клиента в ЛК она закрывается («Отменён»), а менеджер видит
+  //   отмену во вкладке «Отменённые», а не теряет заявку бесследно.
+  const { error } = await db.from("orders").update({
+    status: "rejected",
+    close_reason: "Клиент отменил заявку из личного кабинета",
+    updated_at: new Date().toISOString(),
+  }).eq("id", orderId);
   if (error) throw error;
-  
+
   revalidateTag("orders", { expire: 0 });
   revalidateTag("warehouse-deals", { expire: 0 });
 }
@@ -4137,11 +4198,19 @@ export async function completeTransport(id: string): Promise<void> {
     );
 
     const updatePayload: any = { shipped_items: newShipped, updated_at: new Date().toISOString() };
-    if (isDealFullyShipped(dealItems, newShipped)) {
+    const dealFullyShipped = isDealFullyShipped(dealItems, newShipped);
+    if (dealFullyShipped) {
       updatePayload.status = "completed";
       updatePayload.delivery_released_at = new Date().toISOString();
     }
     await db.from("customer_deals").update(updatePayload).eq("id", ti.dealId);
+    // ★ Заявка на сайте: полностью отгруженный заказ — «Проведена» (закрыта),
+    //   частичная отгрузка — «В работе».
+    await syncWebsiteOrderFromDeal(
+      String(ti.dealId),
+      dealFullyShipped ? "completed" : "in_progress",
+      null
+    );
   }
 
   await db.from("transports").update({

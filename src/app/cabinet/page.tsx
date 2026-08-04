@@ -61,6 +61,8 @@ interface Order {
   productInfo?: string;
   quantity?: number;
   comment?: string;
+  /** Итог/причина закрытия заявки (если закрыта). */
+  closeReason?: string | null;
   createdAt?: any;
 }
 
@@ -145,6 +147,9 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
   const [loadingProducts, setLoadingProducts] = useState(false);
   const st = statusStyles[order.status || "new"] || statusStyles.new;
   const isOrder = order.type === "order";
+  // Заявка закрыта (проведена или отменена): статус синхронизирован с сайтом,
+  // менять/отменять её нельзя ни у нас, ни у клиента.
+  const isClosed = order.status === "completed" || order.status === "rejected";
 
   async function loadProducts(q = "") {
     setLoadingProducts(true);
@@ -225,7 +230,7 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
   }
 
   async function cancelOrder() {
-    if (!confirm("Отменить заказ? Это можно сделать на любом этапе.")) return;
+    if (!confirm("Отменить заявку? Она закроется и останется в истории со статусом «Отменён».")) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/cabinet/orders/${order.id}`, { method: "DELETE" });
@@ -342,19 +347,44 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
             </div>
           )}
 
+          {/* Итог закрытия: заявка «связана» с сайтом — если менеджер закрыл
+              её у себя (провёл или отменил), клиент видит тот же финал. */}
+          {isClosed && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: "10px 14px",
+                borderRadius: 10,
+                fontSize: 13,
+                lineHeight: 1.5,
+                background: order.status === "completed" ? "#f0fdf4" : "#fef2f2",
+                color: order.status === "completed" ? "#15803d" : "#dc2626",
+                border: `1px solid ${order.status === "completed" ? "#bbf7d0" : "#fecaca"}`,
+              }}
+            >
+              <strong>
+                {order.status === "completed"
+                  ? "Заявка выполнена и закрыта."
+                  : "Заявка отменена."}
+              </strong>
+              {order.closeReason ? ` Причина: ${order.closeReason}` : ""}
+            </div>
+          )}
+
           {/* Редактирование состава — только для заявок-заказов (есть позиции).
-              Отмена/удаление доступна для ЛЮБОЙ заявки (заказ или запрос на уточнение)
-              по единой логике. */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-            {isOrder && (
-              <button type="button" className="btn-primary" onClick={startEdit} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-                <Package size={14} /> <span>Изменить / добавить товар</span>
+              Отмена доступна любой НЕ закрытой заявке. */}
+          {!isClosed && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+              {isOrder && (
+                <button type="button" className="btn-primary" onClick={startEdit} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                  <Package size={14} /> <span>Изменить / добавить товар</span>
+                </button>
+              )}
+              <button type="button" className="btn-back" onClick={cancelOrder} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", border: "1.5px solid #ef4444", color: "#dc2626", background: "#fff", borderRadius: 8, fontWeight: 700 }}>
+                <X size={14} /> <span>Отменить заявку</span>
               </button>
-            )}
-            <button type="button" className="btn-back" onClick={cancelOrder} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", border: "1.5px solid #ef4444", color: "#dc2626", background: "#fff", borderRadius: 8, fontWeight: 700 }}>
-              <X size={14} /> <span>Отменить заявку</span>
-            </button>
-          </div>
+            </div>
+          )}
 
           {editing && (
             <div style={{ marginTop: 16, border: "1px solid var(--border)", borderRadius: 14, padding: 14, background: "var(--bg-card)" }}>
