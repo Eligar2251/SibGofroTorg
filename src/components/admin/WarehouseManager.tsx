@@ -1790,7 +1790,7 @@ export function WarehouseManager({
                           После создания заказ появится как <b>«Черновик»</b> в разделе «Поставки». Остатки не изменятся до тех пор, пока вы не проведёте поставку.
                         </div>
 
-                        <div className="admin-modal__actions" style={{ marginTop: 16 }}>
+                        <div className="admin-modal__actions" style={{gap: 10,  marginTop: 16 }}>
                           <button
                             type="button"
                             className="admin-btn admin-btn--ghost"

@@ -888,7 +888,7 @@ export function DeliveriesManager({
                   })}
                 </div>
 
-                <div className="admin-modal__actions" style={{ marginTop: 14 }}>
+                <div className="admin-modal__actions" style={{gap: 10,  marginTop: 14 }}>
                   <button type="button" onClick={() => setShowPlanModal(false)} className="admin-btn admin-btn--ghost" disabled={saving}>Отмена</button>
                   <button type="button" onClick={submitPlan} className="admin-btn admin-btn--primary" disabled={saving}>
                     {saving ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />}
