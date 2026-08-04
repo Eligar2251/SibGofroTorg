@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle, Clock, XCircle, Loader2, Send, RotateCcw } from "lucide-react";
+import { CheckCircle, Clock, XCircle, Loader2, Send, RotateCcw, PackageCheck } from "lucide-react";
 
 const STATUSES = [
   {
@@ -20,6 +20,12 @@ const STATUSES = [
     label: "В работе",
     badge: "admin-badge admin-badge--blue",
     icon: <Clock size={13} />,
+  },
+  {
+    value: "ready",
+    label: "Готов к выдаче",
+    badge: "admin-badge admin-badge--indigo",
+    icon: <PackageCheck size={13} />,
   },
   {
     value: "completed",
@@ -140,8 +146,27 @@ export function OrderStatusUpdater({
         </div>
       )}
 
-      {currentStatus === "in_progress" && (
+      {(currentStatus === "in_progress" || currentStatus === "ready") && (
         <div className="admin-status__btns">
+          {/* «Готов к выдаче» — только для заявок сайта (у макулатуры свой
+              процесс): заказ собран, клиент в кабинете видит тот же статус.
+              После отпуска товара в учёте заявка закроется сама. */}
+          {!endpoint && currentStatus === "in_progress" && (
+            <button
+              type="button"
+              onClick={() => updateStatus("ready")}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--primary"
+              title="Заказ собран — клиент может забирать (статус виден и в его кабинете)"
+            >
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <PackageCheck size={14} />
+              )}
+              Готов к выдаче
+            </button>
+          )}
           {/* Заявка не передана в учёт (уточнение цены, макулатура) —
               менеджер закрывает её прямо здесь. Заявке со связью ЗК
               статус «Проведена» придёт автоматически из учёта. */}
@@ -159,6 +184,22 @@ export function OrderStatusUpdater({
                 <CheckCircle size={14} />
               )}
               Проведена
+            </button>
+          )}
+          {!endpoint && currentStatus === "ready" && (
+            <button
+              type="button"
+              onClick={() => updateStatus("in_progress")}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--outline"
+              title="Вернуть заявку в работу (заказ ещё не отдан клиенту)"
+            >
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Clock size={14} />
+              )}
+              Вернуть в работу
             </button>
           )}
           {!endpoint && (

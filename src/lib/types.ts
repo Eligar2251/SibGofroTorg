@@ -316,7 +316,13 @@ export interface FirestoreOrder {
   quantity?: number | null;
   comment?: string | null;
   channel?: string | null;
-  status: "new" | "in_progress" | "completed" | "rejected";
+  /**
+   * Жизненный цикл заявки:
+   * new (обработка) → in_progress (в работе) → ready (готов к выдаче)
+   * → completed (проведена/архив) либо rejected (отменена).
+   * Статусы синхронизированы между сайтом и личным кабинетом клиента.
+   */
+  status: "new" | "in_progress" | "ready" | "completed" | "rejected";
   closeReason?: string | null;
   /** Связь с учётом: создаётся при «Передать в работу» */
   dealId?: string | null;

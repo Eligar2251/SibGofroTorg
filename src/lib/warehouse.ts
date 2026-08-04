@@ -1489,12 +1489,13 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
  */
 async function syncWebsiteOrderFromDeal(
   dealId: string,
-  status: "new" | "in_progress" | "completed" | "rejected",
-  closeReason: string | null = null
+  status: "new" | "in_progress" | "ready" | "completed" | "rejected",
+  closeReason: string | null = null,
+  opts?: { fromStatuses?: string[] }
 ): Promise<void> {
   try {
     const db = getAdminDb();
-    const { error } = await db
+    let q = db
       .from("orders")
       .update({
         status,
@@ -1502,6 +1503,12 @@ async function syncWebsiteOrderFromDeal(
         updated_at: new Date().toISOString(),
       })
       .eq("deal_id", dealId);
+    // Не откатываем заявку назад по воронке: например, частичная отгрузка
+    // не должна сбрасывать «Готов к выдаче» обратно в «В работе».
+    if (opts?.fromStatuses?.length) {
+      q = q.in("status", opts.fromStatuses);
+    }
+    const { error } = await q;
     if (error) throw error;
     revalidateTag("orders", { expire: 0 });
   } catch (e) {
@@ -1597,11 +1604,13 @@ export async function postDeal(id: string, shippedItems?: { productId: string; q
   // а полностью отгруженный заказ убираем из активных перевозок.
   await syncDealTransportState(id);
   // ★ Заявка на сайте (и в ЛК клиента): полностью проведённый заказ —
-  //   заявка закрывается («Проведена» → архив), частичная отгрузка — «В работе».
+  //   заявка закрывается («Проведена» → архив), частичная отгрузка — «В работе»
+  //   (но не сбрасываем «Готов к выдаче», если менеджер уже собрал заказ).
   await syncWebsiteOrderFromDeal(
     id,
     fullyShipped ? "completed" : "in_progress",
-    null
+    null,
+    fullyShipped ? undefined : { fromStatuses: ["new", "in_progress"] }
   );
   revalidateTag("warehouse-deals", { expire: 0 });
   revalidateTag("products", { expire: 0 });
@@ -4205,11 +4214,12 @@ export async function completeTransport(id: string): Promise<void> {
     }
     await db.from("customer_deals").update(updatePayload).eq("id", ti.dealId);
     // ★ Заявка на сайте: полностью отгруженный заказ — «Проведена» (закрыта),
-    //   частичная отгрузка — «В работе».
+    //   частичная отгрузка — «В работе» (не сбрасывая «Готов к выдаче»).
     await syncWebsiteOrderFromDeal(
       String(ti.dealId),
       dealFullyShipped ? "completed" : "in_progress",
-      null
+      null,
+      dealFullyShipped ? undefined : { fromStatuses: ["new", "in_progress"] }
     );
   }
 

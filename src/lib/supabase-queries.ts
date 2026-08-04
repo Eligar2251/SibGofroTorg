@@ -973,13 +973,13 @@ function mapOrderRow(row: any): FirestoreOrder {
 
 // ── Фильтр заявок по статусу ──
 // «all»      — без фильтра;
-// «active»   — рабочий список менеджера: новые + в работе (ничего не
-//              «исчезает» после кнопки «В работу»);
+// «active»   — рабочий список менеджера: новые + в работе + готовые к выдаче
+//              (ничего не «исчезает» по мере продвижения заявки);
 // «archived» — закрытые: проведённые + отменённые;
 // конкретный статус или список через запятую — точный фильтр.
 function applyOrderStatusFilter(q: any, status?: string): any {
   if (!status || status === "all") return q;
-  if (status === "active") return q.in("status", ["new", "in_progress"]);
+  if (status === "active") return q.in("status", ["new", "in_progress", "ready"]);
   if (status === "archived") return q.in("status", ["completed", "rejected"]);
   const parts = status.split(",").map((s) => s.trim()).filter(Boolean);
   if (parts.length === 0) return q;
@@ -1730,7 +1730,7 @@ export async function hasUserPurchasedProduct(userId: string, productId: string)
   const { data } = await db.from("orders")
     .select("items")
     .eq("user_id", userId)
-    .in("status", ["completed", "in_progress"])
+    .in("status", ["completed", "in_progress", "ready"])
     .eq("type", "order")
     .limit(100);
   if (!data) return false;
@@ -1747,7 +1747,7 @@ export async function getUserOrderWithProduct(userId: string, productId: string)
   const { data } = await db.from("orders")
     .select("*")
     .eq("user_id", userId)
-    .in("status", ["completed", "in_progress"])
+    .in("status", ["completed", "in_progress", "ready"])
     .eq("type", "order")
     .limit(100);
   if (!data) return null;

@@ -75,6 +75,7 @@ interface UserInfo {
 const statusLabels: Record<string, string> = {
   new: "В обработке",
   in_progress: "Сборка заказа",
+  ready: "Готов к выдаче",
   completed: "Выполнен",
   rejected: "Отменён",
 };
@@ -82,6 +83,7 @@ const statusLabels: Record<string, string> = {
 const statusStyles: Record<string, { bg: string; color: string; dot: string }> = {
   new: { bg: "#fff7ed", color: "#c2410c", dot: "#f97316" },
   in_progress: { bg: "#eff6ff", color: "#1d4ed8", dot: "#3b82f6" },
+  ready: { bg: "#f5f3ff", color: "#6d28d9", dot: "#8b5cf6" },
   completed: { bg: "#f0fdf4", color: "#15803d", dot: "#22c55e" },
   rejected: { bg: "#fef2f2", color: "#dc2626", dot: "#ef4444" },
 };
@@ -344,6 +346,26 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
             <div className="cab-order__comment">
               <span className="cab-order__comment-label">Комментарий:</span>
               <span className="cab-order__comment-val">«{order.comment}»</span>
+            </div>
+          )}
+
+          {/* Менеджер собрал заказ и отметил «Готов к выдаче» на сайте —
+              здесь видно то же самое (прямая связь статусов). */}
+          {order.status === "ready" && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: "10px 14px",
+                borderRadius: 10,
+                fontSize: 13,
+                lineHeight: 1.5,
+                background: "#f5f3ff",
+                color: "#5b21b6",
+                border: "1px solid #ddd6fe",
+              }}
+            >
+              <strong>Заказ собран и готов к выдаче.</strong> Можно забирать —
+              при необходимости уточните детали у менеджера.
             </div>
           )}
 

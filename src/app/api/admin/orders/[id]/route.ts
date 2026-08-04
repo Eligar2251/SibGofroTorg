@@ -15,7 +15,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const ALLOWED_STATUSES = ["new", "in_progress", "completed", "rejected"];
+    const ALLOWED_STATUSES = ["new", "in_progress", "ready", "completed", "rejected"];
     if (!body.status || !ALLOWED_STATUSES.includes(body.status)) {
       return NextResponse.json(
         { error: "Недопустимый статус заявки" },
@@ -72,7 +72,13 @@ export async function PATCH(
     }
 
     let deal: Awaited<ReturnType<typeof convertOrderToDeal>> | undefined;
-    if (body.status === "in_progress" && isOrderWithItems) {
+    // «В работу» и «Готов к выдаче» для заявки-заказа (есть позиции)
+    // гарантируют передачу в учёт: по такой заявке создаётся/существует
+    // заказ ЗК, и отпуск товара в учёте потом закроет заявку автоматически.
+    if (
+      (body.status === "in_progress" || body.status === "ready") &&
+      isOrderWithItems
+    ) {
       try {
         deal = await convertOrderToDeal(id);
       } catch (convertError) {

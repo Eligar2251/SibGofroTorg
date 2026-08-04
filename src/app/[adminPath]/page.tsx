@@ -143,6 +143,7 @@ export default async function AdminDashboard() {
     newWastepaperAgg,
     inProgressAgg,
     inProgressWastepaperAgg,
+    readyAgg,
     completedAgg,
     completedWastepaperAgg,
     rejectedAgg,
@@ -165,6 +166,7 @@ export default async function AdminDashboard() {
     isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "new"),
     isLawyer ? Promise.resolve(0) : countByStatus("orders", "in_progress"),
     isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "in_progress"),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "ready"),
     isLawyer ? Promise.resolve(0) : countByStatus("orders", "completed"),
     isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "completed"),
     isLawyer ? Promise.resolve(0) : countByStatus("orders", "rejected"),
@@ -179,10 +181,15 @@ export default async function AdminDashboard() {
 
   const newOrdersCount = newOrdersAgg + newWastepaperAgg;
   const inProgressOrdersCount = inProgressAgg + inProgressWastepaperAgg;
+  const readyOrdersCount = readyAgg;
   const completedOrdersCount = completedAgg + completedWastepaperAgg;
   const rejectedOrdersCount = rejectedAgg + rejectedWastepaperAgg;
   const totalOrdersCount =
-    newOrdersCount + inProgressOrdersCount + completedOrdersCount + rejectedOrdersCount;
+    newOrdersCount +
+    inProgressOrdersCount +
+    readyOrdersCount +
+    completedOrdersCount +
+    rejectedOrdersCount;
   // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
   const bankSummary = getBankSummary(payments, salaries, cashCollections);
   const dashboardDate = new Intl.DateTimeFormat("en-CA", {
@@ -770,6 +777,14 @@ export default async function AdminDashboard() {
               color: "#3b82f6",
               bg: "#eff6ff",
               status: "in_progress",
+            },
+            {
+              label: "Готов к выдаче",
+              count: readyOrdersCount,
+              icon: <Package size={16} />,
+              color: "#7c3aed",
+              bg: "#f5f3ff",
+              status: "ready",
             },
             {
               label: "Выполнены",
