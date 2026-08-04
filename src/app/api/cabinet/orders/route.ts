@@ -38,6 +38,9 @@ function serializeOrder(row: any) {
     productInfo: row.product_info ?? null,
     quantity: row.quantity ?? null,
     comment: row.comment ?? null,
+    // Итог/причина закрытия — клиент видит, чем закончилась заявка.
+    closeReason: row.close_reason ?? null,
+    dealNumber: row.deal_number ?? null,
     companyName: row.company_name ?? null,
     inn: row.inn ?? null,
     kpp: row.kpp ?? null,
@@ -62,10 +65,13 @@ export async function GET() {
     const user = await getUserById(uid);
     const accountCreatedMs = user?.createdAt ? new Date(toIso((user as any).createdAt) || 0).getTime() : 0;
 
+    // Прямая связь со статусами сайта: показываем ВСЕ заявки, включая
+    // отменённые («Отменён») и проведённые («Выполнен»), — клиент видит
+    // ровно то, что видит менеджер на странице заявок.
     const [byUserRes, byPhoneDigitsRes, byPhoneDisplayRes] = await Promise.all([
-      db.from("orders").select("*").eq("user_id", uid).neq("status", "rejected"),
-      db.from("orders").select("*").eq("customer_phone_digits", phoneDigits).neq("status", "rejected"),
-      db.from("orders").select("*").eq("customer_phone", phoneDisplay).neq("status", "rejected"),
+      db.from("orders").select("*").eq("user_id", uid),
+      db.from("orders").select("*").eq("customer_phone_digits", phoneDigits),
+      db.from("orders").select("*").eq("customer_phone", phoneDisplay),
     ]);
 
     const map = new Map<string, ReturnType<typeof serializeOrder>>();

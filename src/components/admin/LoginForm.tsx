@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn, Loader2 } from "lucide-react";
+import { getAdminLandingPath, parseAdminRole } from "@/lib/admin-rbac";
 
 export function LoginForm({ adminPath }: { adminPath: string }) {
   const router = useRouter();
@@ -34,7 +35,11 @@ export function LoginForm({ adminPath }: { adminPath: string }) {
         throw new Error(data.error || "Ошибка входа");
       }
 
-      router.push(`/${adminPath}`);
+      // Стартовая страница зависит от роли: макулатурщик попадает сразу
+      // в отдельный учёт макулатуры, остальные — на дашборд.
+      const { role: rawRole } = await res.json().catch(() => ({ role: null }));
+      const role = parseAdminRole(rawRole);
+      router.push(getAdminLandingPath(role, adminPath));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Неверный логин или пароль");

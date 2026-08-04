@@ -16,8 +16,12 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    if (!body.status) {
-      return NextResponse.json({ error: "Статус обязателен" }, { status: 400 });
+    const ALLOWED_STATUSES = ["new", "in_progress", "completed", "rejected"];
+    if (!body.status || !ALLOWED_STATUSES.includes(body.status)) {
+      return NextResponse.json(
+        { error: "Недопустимый статус заявки" },
+        { status: 400 }
+      );
     }
     await updateWastepaperRequestStatus(id, body.status);
     await logAdminAction(

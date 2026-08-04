@@ -54,6 +54,7 @@ const contactLabels: Record<string, { token: string; text: string }> = {
 };
 
 const filterOptions = [
+  { value: "active", label: "Активные" },
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
   { value: "completed", label: "Обработанные" },
@@ -270,7 +271,9 @@ export function ClientRequestsManager({
   const [items, setItems] = useState<ClientRequest[]>(initialItems);
   // Если пришли по ссылке с поиском (например, из журнала действий) —
   // ищем сразу по всем статусам, иначе запись может быть скрыта фильтром.
-  const [filter, setFilter] = useState(initialQuery ? "all" : "new");
+  // По умолчанию — «Активные»: и новые, и в работе, чтобы заявка не
+  // «исчезала» из списка сразу после кнопки «В работу».
+  const [filter, setFilter] = useState(initialQuery ? "all" : "active");
   const [query, setQuery] = useState(initialQuery);
 
   // Модалки
@@ -298,7 +301,11 @@ export function ClientRequestsManager({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((r) => {
-      if (filter !== "all" && r.status !== filter) return false;
+      if (filter === "active") {
+        if (r.status !== "new" && r.status !== "in_progress") return false;
+      } else if (filter !== "all" && r.status !== filter) {
+        return false;
+      }
       if (!q) return true;
       return (
         r.customerName.toLowerCase().includes(q) ||
@@ -312,8 +319,11 @@ export function ClientRequestsManager({
   }, [items, filter, query]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: items.length };
-    for (const r of items) c[r.status] = (c[r.status] || 0) + 1;
+    const c: Record<string, number> = { all: items.length, active: 0 };
+    for (const r of items) {
+      c[r.status] = (c[r.status] || 0) + 1;
+      if (r.status === "new" || r.status === "in_progress") c.active++;
+    }
     return c;
   }, [items]);
 

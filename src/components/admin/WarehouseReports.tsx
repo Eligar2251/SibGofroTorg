@@ -48,12 +48,20 @@ type ReportKind =
   | "stock";
 type SortDirection = "asc" | "desc";
 
+/** Счёт движения денег: расчётный счёт / безнал на карту / наличка. */
+type AccountFilter = "all" | "bank" | "transfer" | "cash";
+type DirectionFilter = "all" | "incoming" | "outgoing";
+type StatusFilter = "all" | "paid" | "pending";
+
 type AppliedFilters = {
   kind: ReportKind;
   from: string;
   to: string;
   query: string;
   sort: SortDirection;
+  account: AccountFilter;
+  direction: DirectionFilter;
+  status: StatusFilter;
 };
 
 interface WarehouseReportsProps {
@@ -106,7 +114,7 @@ const REPORTS: {
   {
     kind: "cash",
     label: "Кассовые смены",
-    description: "Инкассация, перенос наличных, расходы и закрытия смен",
+    description: "Переводы на карту, перенос наличных, расходы и закрытия смен",
     icon: <Banknote size={15} />,
   },
   {
@@ -143,6 +151,19 @@ function fmtDate(raw: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) return raw;
   return date.toLocaleDateString("ru-RU");
 }
+
+/** Вид счёта платежа для фильтров и колонки «Счёт». */
+function paymentAccountKey(payment: BankPayment): "cash" | "transfer" | "bank" {
+  if (payment.type === "cash") return "cash";
+  if (payment.type === "transfer") return "transfer";
+  return "bank";
+}
+
+const ACCOUNT_LABEL: Record<"cash" | "transfer" | "bank", string> = {
+  cash: "Наличка",
+  transfer: "Безнал (на карту)",
+  bank: "Расчётный счёт",
+};
 
 function salaryPeriod(salary: Salary): string {
   const key = salary.periodMonth || salary.date.slice(0, 7);
@@ -209,6 +230,12 @@ const transportStatusLabel: Record<string, string> = {
   archived: "Архив",
 };
 
+const ACCOUNT_BADGE: Record<"cash" | "transfer" | "bank", string> = {
+  cash: "admin-badge admin-badge--teal",
+  transfer: "admin-badge admin-badge--indigo",
+  bank: "admin-badge admin-badge--muted",
+};
+
 export function WarehouseReports({
   adminPath,
   payments,
@@ -225,12 +252,19 @@ export function WarehouseReports({
   const [to, setTo] = useState(today);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortDirection>("desc");
+  // Гибкие отборы для отчёта по платежам: счёт, направление, статус.
+  const [account, setAccount] = useState<AccountFilter>("all");
+  const [direction, setDirection] = useState<DirectionFilter>("all");
+  const [status, setStatus] = useState<StatusFilter>("all");
   const [filters, setFilters] = useState<AppliedFilters>({
     kind: "payments",
     from: monthStartIso(),
     to: today,
     query: "",
     sort: "desc",
+    account: "all",
+    direction: "all",
+    status: "all",
   });
   // SSR и первый клиентский рендер должны совпадать. Текущее локальное время
   // проставляем только после гидратации, иначе секунды на сервере/клиенте
@@ -287,65 +321,80 @@ export function WarehouseReports({
       setFrom(nextFrom);
       setTo(nextTo);
     }
-    setFilters({ kind, from: nextFrom, to: nextTo, query, sort });
+    setFilters({ kind, from: nextFrom, to: nextTo, query, sort, account, direction, status });
     setGeneratedAt(new Date().toLocaleString("ru-RU"));
   }
 
   const moneyRows = useMemo(() => {
-    const bankRows = payments.map((payment) => ({
-      id: `payment-${payment.id}`,
-      sourceId: payment.id,
-      kind: "payment" as const,
-      date: payment.paidAt || payment.date,
-      counterparty: payment.counterparty,
-      purpose:
-        payment.direction === "incoming"
-          ? payment.dealIds.length
-            ? "Оплата заказа"
-            : "Приход"
-          : payment.receiptIds.length
-            ? "Оплата поставки"
-            : "Расход",
-      direction: payment.direction,
-      account: payment.type === "cash" ? "Касса" : "Расчётный счёт",
-      amount: payment.amount,
-      status: payment.isPaid ? "Проведён" : "Ожидается",
-      details: [
-        payment.comment,
-        ...payment.dealNumbers.map((number) => `ЗК-${number}`),
-        ...payment.receiptNumbers.map((number) => `ПО-${number}`),
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      href: `/${adminPath}/warehouse?tab=bank&payment=${payment.id}`,
-    }));
-    const salaryRows = salaries.map((salary) => ({
-      id: `salary-${salary.id}`,
-      sourceId: salary.id,
-      kind: "salary" as const,
-      date: salary.paidAt || salary.date,
-      counterparty: salary.employeeName,
-      purpose: isDebtSalaryComment(salary.comment)
-        ? "Выплата в счёт долга"
-        : "Зарплата",
-      direction: "outgoing" as const,
-      account: salary.source === "cash" ? "Касса" : "Расчётный счёт",
-      amount: salary.amount,
-      status: salary.isPaid ? "Выплачена" : "Запланирована",
-      details: [
-        isDebtSalaryComment(salary.comment)
-          ? "не входит в факт месяца"
-          : `за ${salaryPeriod(salary)}`,
-        stripSalaryMetaTags(salary.comment),
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      href: `/${adminPath}/warehouse?tab=salaries`,
-    }));
+    const bankRows = payments.map((payment) => {
+      const accountKey = paymentAccountKey(payment);
+      return {
+        id: `payment-${payment.id}`,
+        sourceId: payment.id,
+        kind: "payment" as const,
+        date: payment.paidAt || payment.date,
+        counterparty: payment.counterparty,
+        purpose:
+          payment.direction === "incoming"
+            ? payment.dealIds.length
+              ? "Оплата заказа"
+              : "Приход"
+            : payment.receiptIds.length
+              ? "Оплата поставки"
+              : "Расход",
+        direction: payment.direction,
+        accountKey,
+        account: ACCOUNT_LABEL[accountKey],
+        amount: payment.amount,
+        paid: payment.isPaid,
+        status: payment.isPaid ? "Проведён" : "Ожидается",
+        details: [
+          payment.comment,
+          ...payment.dealNumbers.map((number) => `ЗК-${number}`),
+          ...payment.receiptNumbers.map((number) => `ПО-${number}`),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/${adminPath}/warehouse?tab=bank&payment=${payment.id}`,
+      };
+    });
+    const salaryRowsLocal = salaries.map((salary) => {
+      const accountKey = salary.source === "cash" ? ("cash" as const) : ("bank" as const);
+      return {
+        id: `salary-${salary.id}`,
+        sourceId: salary.id,
+        kind: "salary" as const,
+        date: salary.paidAt || salary.date,
+        counterparty: salary.employeeName,
+        purpose: isDebtSalaryComment(salary.comment)
+          ? "Выплата в счёт долга"
+          : "Зарплата",
+        direction: "outgoing" as const,
+        accountKey,
+        account: ACCOUNT_LABEL[accountKey],
+        amount: salary.amount,
+        paid: salary.isPaid,
+        status: salary.isPaid ? "Выплачена" : "Запланирована",
+        details: [
+          isDebtSalaryComment(salary.comment)
+            ? "не входит в факт месяца"
+            : `за ${salaryPeriod(salary)}`,
+          stripSalaryMetaTags(salary.comment),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/${adminPath}/warehouse?tab=salaries`,
+      };
+    });
     return sortByDate(
-      [...bankRows, ...salaryRows].filter(
+      [...bankRows, ...salaryRowsLocal].filter(
         (row) =>
           inPeriod(row.date, filters) &&
+          // Гибкий отбор по всем выбранным параметрам одновременно:
+          (filters.account === "all" || row.accountKey === filters.account) &&
+          (filters.direction === "all" || row.direction === filters.direction) &&
+          (filters.status === "all" ||
+            (filters.status === "paid" ? row.paid : !row.paid)) &&
           includesQuery(
             [row.counterparty, row.purpose, row.account, row.status, row.details],
             filters.query
@@ -552,7 +601,7 @@ export function WarehouseReports({
     if (filters.kind === "salaries") {
       return [
         ["Дата", "Сотрудник", "За месяц", "Счёт", "Сумма", "Статус", "Комментарий"],
-        ...salaryRows.map((salary) => [salary.paidAt || salary.date, salary.employeeName, isDebtSalaryComment(salary.comment) ? "В счёт отдельного долга" : salaryPeriod(salary), salary.source === "cash" ? "Касса" : "Расчётный счёт", salary.amount, salary.isPaid ? "Выплачено" : "Запланировано", stripSalaryMetaTags(salary.comment)]),
+        ...salaryRows.map((salary) => [salary.paidAt || salary.date, salary.employeeName, isDebtSalaryComment(salary.comment) ? "В счёт отдельного долга" : salaryPeriod(salary), salary.source === "cash" ? "Наличка" : "Расчётный счёт", salary.amount, salary.isPaid ? "Выплачено" : "Запланировано", stripSalaryMetaTags(salary.comment)]),
       ];
     }
     if (filters.kind === "cash") {
@@ -650,6 +699,37 @@ export function WarehouseReports({
                 <option value="asc">Сначала старые</option>
               </select>
             </label>
+            {/* Гибкие отборы платежей: действуют вместе с периодом,
+                поиском и сортировкой — все выбранные параметры применяются разом. */}
+            {kind === "payments" && (
+              <>
+                <label>
+                  <span>Счёт</span>
+                  <select className="admin-select" value={account} onChange={(event) => setAccount(event.target.value as AccountFilter)}>
+                    <option value="all">Все (нал + безнал)</option>
+                    <option value="bank">Расчётный счёт</option>
+                    <option value="transfer">Безнал (на карту)</option>
+                    <option value="cash">Наличка</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Направление</span>
+                  <select className="admin-select" value={direction} onChange={(event) => setDirection(event.target.value as DirectionFilter)}>
+                    <option value="all">Приход и расход</option>
+                    <option value="incoming">Только приход</option>
+                    <option value="outgoing">Только расход</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Статус</span>
+                  <select className="admin-select" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
+                    <option value="all">Все статусы</option>
+                    <option value="paid">Проведённые</option>
+                    <option value="pending">Ожидаемые</option>
+                  </select>
+                </label>
+              </>
+            )}
           </div>
           <div className="wh-report-actions">
             <button type="button" className="admin-btn admin-btn--primary" onClick={generate}>
@@ -696,7 +776,7 @@ export function WarehouseReports({
                   <td>{fmtDate(row.date)}</td>
                   <td><strong>{row.counterparty || "—"}</strong></td>
                   <td>{row.purpose}</td>
-                  <td><span className="admin-badge admin-badge--muted">{row.account}</span></td>
+                  <td><span className={ACCOUNT_BADGE[row.accountKey]}>{row.account}</span></td>
                   <td>{row.status}</td>
                   <td>
                     {row.kind === "payment" ? (
@@ -811,7 +891,7 @@ export function WarehouseReports({
                   <td>{fmtDate(salary.paidAt || salary.date)}</td>
                   <td><Link href={`/${adminPath}/warehouse?tab=salaries`} prefetch={false}>{salary.employeeName} →</Link></td>
                   <td>{isDebtSalaryComment(salary.comment) ? "В счёт отдельного долга" : salaryPeriod(salary)}</td>
-                  <td>{salary.source === "cash" ? "Касса" : "Расчётный счёт"}</td>
+                  <td>{salary.source === "cash" ? "Наличка" : "Расчётный счёт"}</td>
                   <td>{salary.isPaid ? "Выплачено" : "Запланировано"}{isDebtSalaryComment(salary.comment) ? " · не входит в факт месяца" : ""}{isSalaryExcludedFromBalance(salary.comment) ? " · вне баланса" : ""}</td>
                   <td>{stripSalaryMetaTags(salary.comment) || "—"}</td>
                   <td>{money(salary.amount)}</td>
@@ -838,6 +918,13 @@ export function WarehouseReports({
                     {(collection.items || []).length > 0 ? (
                       <div className="wh-report-payment-links">
                         {(collection.items || []).map((item) => (
+                          /* Технические строки manual:* — не платёж,
+                             карточки у них нет; показываем как текст. */
+                          String(item.paymentId || "").startsWith("manual:") ? (
+                            <span key={item.paymentId} className="wh-report-payment-open">
+                              ПЛ-{item.number || "—"} · {item.counterparty || ""} · {money(item.amount)}
+                            </span>
+                          ) : (
                           <button
                             key={item.paymentId}
                             type="button"
@@ -846,6 +933,7 @@ export function WarehouseReports({
                           >
                             ПЛ-{item.number || "—"} · {item.counterparty || ""} · {money(item.amount)}
                           </button>
+                          )
                         ))}
                       </div>
                     ) : (

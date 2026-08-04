@@ -28,12 +28,21 @@ import {
   Truck,
   MapPin,
   ExternalLink,
+  Recycle,
 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminDb } from "@/lib/supabase";
 import { verifySession } from "@/lib/auth";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
+import { getWpFinanceData } from "@/lib/wastepaper-account";
+import {
+  getWpBalance,
+  getWpForecast,
+  getWpStock,
+  wpCollectMoneyEvents,
+  wpEventEffectiveDate,
+} from "@/lib/wastepaper-account-shared";
 import {
   getBankSummary,
   getDealPaidMap,
@@ -129,6 +138,9 @@ function paymentPurpose(payment: BankPayment): string {
 export default async function AdminDashboard() {
   const session = await verifySession();
   if (!session) redirect(`/${ADMIN_PATH}/login`);
+  // Макулатурщик работает только в отдельном модуле учёта макулатуры;
+  // proxy его и так перенаправит, здесь — явная подстраховка.
+  if (session.role === "wastepaper") redirect(`/${ADMIN_PATH}/wastepaper-account`);
   const isLawyer = session.role === "lawyer";
 
   // Для дашборда читаем только 50 последних заявок. Общие показатели
@@ -143,6 +155,7 @@ export default async function AdminDashboard() {
     newWastepaperAgg,
     inProgressAgg,
     inProgressWastepaperAgg,
+    readyAgg,
     completedAgg,
     completedWastepaperAgg,
     rejectedAgg,
@@ -165,6 +178,7 @@ export default async function AdminDashboard() {
     isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "new"),
     isLawyer ? Promise.resolve(0) : countByStatus("orders", "in_progress"),
     isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "in_progress"),
+    isLawyer ? Promise.resolve(0) : countByStatus("orders", "ready"),
     isLawyer ? Promise.resolve(0) : countByStatus("orders", "completed"),
     isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "completed"),
     isLawyer ? Promise.resolve(0) : countByStatus("orders", "rejected"),
@@ -177,12 +191,25 @@ export default async function AdminDashboard() {
     getTransports(),
   ]);
 
+  // Отдельный учёт макулатуры: своя финансовая сводка на дашборде.
+  // Баланс НЕ смешивается с банком/кассой товарного учёта. При сбое
+  // (например, миграция модуля ещё не применена) просто прячем блок.
+  const wpFinance = await getWpFinanceData().catch((error) => {
+    console.error("dashboard: финансы макулатуры:", error);
+    return null;
+  });
+
   const newOrdersCount = newOrdersAgg + newWastepaperAgg;
   const inProgressOrdersCount = inProgressAgg + inProgressWastepaperAgg;
+  const readyOrdersCount = readyAgg;
   const completedOrdersCount = completedAgg + completedWastepaperAgg;
   const rejectedOrdersCount = rejectedAgg + rejectedWastepaperAgg;
   const totalOrdersCount =
-    newOrdersCount + inProgressOrdersCount + completedOrdersCount + rejectedOrdersCount;
+    newOrdersCount +
+    inProgressOrdersCount +
+    readyOrdersCount +
+    completedOrdersCount +
+    rejectedOrdersCount;
   // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
   const bankSummary = getBankSummary(payments, salaries, cashCollections);
   const dashboardDate = new Intl.DateTimeFormat("en-CA", {
@@ -199,6 +226,33 @@ export default async function AdminDashboard() {
   );
   const totalRevenue = bankSummary.balance;
   const recentOrders = recentOrderPool.slice(0, 8);
+
+  // Финансы макулатуры: нал/безнал отдельно и вместе + прогноз.
+  const wpEvents = wpFinance
+    ? wpCollectMoneyEvents(
+        wpFinance.intakes,
+        wpFinance.shipments,
+        wpFinance.manualPayments
+      )
+    : [];
+  const wpBalance = getWpBalance(wpEvents, dashboardDate);
+  const wpForecast = getWpForecast(wpEvents);
+  const wpMonthKeys = dashboardDate.slice(0, 7);
+  const wpMonthPaid = wpEvents.filter(
+    (e) => !e.cancelled && e.isPaid && wpEventEffectiveDate(e).startsWith(wpMonthKeys)
+  );
+  const wpMonthIncoming = wpMonthPaid
+    .filter((e) => e.direction === "incoming")
+    .reduce((sum, e) => sum + e.amount, 0);
+  const wpMonthOutgoing = wpMonthPaid
+    .filter((e) => e.direction === "outgoing")
+    .reduce((sum, e) => sum + e.amount, 0);
+  const wpStockTotalKg = wpFinance
+    ? getWpStock(wpFinance.intakes, wpFinance.shipments).reduce(
+        (sum, row) => sum + Math.max(0, row.stockKg),
+        0
+      )
+    : 0;
   const dealPaidMap = getDealPaidMap(payments);
   const receiptPaidMap = getReceiptPaidMap(payments);
   const stockValue = allProducts.reduce(
@@ -300,7 +354,7 @@ export default async function AdminDashboard() {
         account: "cash" as const,
         category: legacy
           ? "Сдача кассы (старый учёт)"
-          : "Инкассация на карту ЮМ",
+          : "Перевод на карту ЮМ",
         counterparty: legacy ? "Сдача кассы" : "Карта ЮМ",
         amount,
         detail: collection.note || "Закрытие смены кассы",
@@ -729,6 +783,120 @@ export default async function AdminDashboard() {
       </section>
       </div>
 
+      {/* Финансовая отчётность по макулатуре — отдельно от основной */}
+      {wpFinance && (
+        <section className="admin-card dash-finance" style={{ marginBottom: 24 }}>
+          <div className="dash-section-head">
+            <div>
+              <span className="dash-section-kicker">Отдельный учёт макулатуры</span>
+              <h2>Макулатура: наличка и безнал</h2>
+              <p>
+                Финансы отдельного учёта макулатуры — не смешиваются с банком и
+                кассой выше.
+              </p>
+            </div>
+            {session.role === "admin" && (
+              <Link
+                href={`/${ADMIN_PATH}/wastepaper-account`}
+                className="admin-btn admin-btn--ghost"
+                prefetch={false}
+              >
+                <Recycle size={13} /> Открыть учёт макулатуры
+              </Link>
+            )}
+          </div>
+
+          <div className="dash-finance-totals">
+            <div className="dash-finance-total dash-finance-total--in">
+              <span className="dash-finance-total__icon" aria-hidden="true">
+                <ArrowDownLeft size={18} />
+              </span>
+              <span className="dash-finance-total__content">
+                <span>Приход за месяц (макулатура)</span>
+                <strong>+{money(wpMonthIncoming)}</strong>
+              </span>
+            </div>
+            <div className="dash-finance-total dash-finance-total--out">
+              <span className="dash-finance-total__icon" aria-hidden="true">
+                <ArrowUpRight size={18} />
+              </span>
+              <span className="dash-finance-total__content">
+                <span>Расход за месяц (макулатура)</span>
+                <strong>−{money(wpMonthOutgoing)}</strong>
+              </span>
+            </div>
+            <div className="dash-finance-total dash-finance-total--in">
+              <span className="dash-finance-total__icon" aria-hidden="true">
+                <ArrowDownLeft size={18} />
+              </span>
+              <span className="dash-finance-total__content">
+                <span>Прогноз прихода</span>
+                <strong>+{money(wpForecast.inTotal)}</strong>
+              </span>
+            </div>
+            <div className="dash-finance-total dash-finance-total--out">
+              <span className="dash-finance-total__icon" aria-hidden="true">
+                <ArrowUpRight size={18} />
+              </span>
+              <span className="dash-finance-total__content">
+                <span>Прогноз расхода</span>
+                <strong>−{money(wpForecast.outTotal)}</strong>
+              </span>
+            </div>
+          </div>
+
+          <div className="dash-account-grid">
+            <div className="dash-account-card dash-account-card--cash">
+              <div className="dash-account-card__head">
+                <div className="dash-account-card__icon" aria-hidden="true">
+                  <Banknote size={18} />
+                </div>
+                <div className="dash-account-card__copy">
+                  <strong>Наличка макулатуры</strong>
+                  <span>
+                    Прогноз: +{money(wpForecast.inCash)} / −{money(wpForecast.outCash)}
+                  </span>
+                </div>
+              </div>
+              <div className="dash-account-card__balance">
+                <span>Сейчас наличкой</span>
+                <strong>{money(wpBalance.cash)}</strong>
+              </div>
+              <div className="dash-account-card__turnover">
+                <span>
+                  Итого по учёту <b>{money(wpBalance.total)}</b>
+                </span>
+              </div>
+            </div>
+            <div className="dash-account-card dash-account-card--bank">
+              <div className="dash-account-card__head">
+                <div className="dash-account-card__icon" aria-hidden="true">
+                  <CreditCard size={18} />
+                </div>
+                <div className="dash-account-card__copy">
+                  <strong>Безнал макулатуры</strong>
+                  <span>
+                    Прогноз: +{money(wpForecast.inBank)} / −{money(wpForecast.outBank)}
+                  </span>
+                </div>
+              </div>
+              <div className="dash-account-card__balance">
+                <span>Сейчас безналом</span>
+                <strong>{money(wpBalance.bank)}</strong>
+              </div>
+              <div className="dash-account-card__turnover">
+                <span>
+                  Макулатуры на площадке{" "}
+                  <b>
+                    {(Math.round(wpStockTotalKg * 10) / 10).toLocaleString("ru-RU")} кг
+                  </b>
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {!isLawyer && (
         <>
       {/* Воронка статусов */}
@@ -770,6 +938,14 @@ export default async function AdminDashboard() {
               color: "#3b82f6",
               bg: "#eff6ff",
               status: "in_progress",
+            },
+            {
+              label: "Готов к выдаче",
+              count: readyOrdersCount,
+              icon: <Package size={16} />,
+              color: "#7c3aed",
+              bg: "#f5f3ff",
+              status: "ready",
             },
             {
               label: "Выполнены",

@@ -4,8 +4,8 @@
 
 "use client";
 
-import { useState } from "react";
-import { Save, Loader2, CheckCircle, Send, MessageCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Save, Loader2, CheckCircle, Send, MessageCircle, AlertTriangle, Bot, RefreshCw } from "lucide-react";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import {
   CASH_CARD_HOLDER_SETTING_KEY,
@@ -81,6 +81,35 @@ export function SettingsForm({ settings }: SettingsFormProps) {
   const [saved, setSaved] = useState(false);
   const [testingTg, setTestingTg] = useState(false);
   const [tgResult, setTgResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  // Диагностика подключения бота: откуда взяты токен/chat_id и жив ли токен.
+  const [tgDiag, setTgDiag] = useState<null | {
+    configured: boolean;
+    tokenSource: "env" | "settings" | "none";
+    chatIdSource: "env" | "settings" | "none";
+    tokenMasked: string | null;
+    chatIdMasked: string | null;
+    chatIdNormalized: string | null;
+    getMe?: { ok: boolean; username?: string | null; error?: string };
+  }>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+
+  async function loadTgDiag() {
+    setDiagLoading(true);
+    try {
+      const res = await fetch("/api/admin/settings/test-telegram", { cache: "no-store" });
+      if (res.ok) {
+        setTgDiag(await res.json());
+      }
+    } catch {
+      /* диагностика — вспомогательная, молча оставляем прошлое состояние */
+    } finally {
+      setDiagLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadTgDiag();
+  }, []);
 
   async function testTelegram() {
     setTestingTg(true);
@@ -96,6 +125,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           ok: false,
           error: body.error || "Не удалось отправить тестовое сообщение",
         });
+      loadTgDiag();
     } catch {
       setTgResult({ ok: false, error: "Сетевая ошибка" });
     } finally {
@@ -263,7 +293,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           <div className="admin-card__pad" style={cardPadStyle}>
             <h2 className="admin-h2" style={{ margin: 0 }}>Сдача кассы</h2>
             <div className="admin-field">
-              <label className="admin-label">Получатель инкассации на карту</label>
+              <label className="admin-label">Получатель перевода на карту</label>
               <input
                 type="text"
                 value={values[CASH_CARD_HOLDER_SETTING_KEY] ?? ""}
@@ -376,13 +406,168 @@ export function SettingsForm({ settings }: SettingsFormProps) {
 
         <div className="admin-card" style={cardStyle}>
           <div className="admin-card__pad" style={cardPadStyle}>
-            <h2 className="admin-h2" style={{ margin: 0 }}>Проверка уведомлений</h2>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Уведомления в Telegram</h2>
             <div style={{ color: "var(--adm-muted)", fontSize: 13, overflowWrap: "anywhere" }}>
-              Бот берёт токен и chat_id из переменных окружения{" "}
-              <code>TELEGRAM_BOT_TOKEN</code> и{" "}
-              <code>TELEGRAM_ADMIN_CHAT_ID</code>. Если уведомления перестали
-              приходить — нажмите кнопку, чтобы проверить подключение.
+              Сюда приходят новые заявки с сайта. Бот берёт токен и chat_id из
+              переменных окружения <code>TELEGRAM_BOT_TOKEN</code> и{" "}
+              <code>TELEGRAM_ADMIN_CHAT_ID</code>; если их нет — используются
+              поля ниже (хранятся в настройках сайта). Переменные окружения имеют приоритет.
             </div>
+
+            {/* Живая диагностика: видно, откуда взята конфигурация и рабочий ли токен */}
+            <div
+              style={{
+                marginTop: 10,
+                border: "1px solid rgba(200,196,188,0.5)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                fontSize: 13,
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Bot size={15} /> Состояние подключения
+                </strong>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                  onClick={loadTgDiag}
+                  disabled={diagLoading}
+                  title="Обновить диагностику"
+                >
+                  {diagLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                </button>
+              </div>
+              {!tgDiag && !diagLoading && (
+                <span style={{ color: "var(--adm-muted)" }}>Нет данных — нажмите «Обновить».</span>
+              )}
+              {diagLoading && !tgDiag && (
+                <span style={{ color: "var(--adm-muted)" }}>Проверяем…</span>
+              )}
+              {tgDiag && (
+                <>
+                  <span>
+                    Токен:{" "}
+                    {tgDiag.tokenSource === "none" ? (
+                      <b style={{ color: "#dc2626" }}>не задан</b>
+                    ) : (
+                      <>
+                        <b>{tgDiag.tokenMasked}</b>{" "}
+                        <span style={{ color: "var(--adm-muted)" }}>
+                          ({tgDiag.tokenSource === "env" ? "переменные окружения" : "настройки сайта"})
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span>
+                    Chat ID:{" "}
+                    {tgDiag.chatIdSource === "none" ? (
+                      <b style={{ color: "#dc2626" }}>не задан</b>
+                    ) : (
+                      <>
+                        <b>{tgDiag.chatIdNormalized || tgDiag.chatIdMasked}</b>{" "}
+                        <span style={{ color: "var(--adm-muted)" }}>
+                          ({tgDiag.chatIdSource === "env" ? "переменные окружения" : "настройки сайта"})
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  {tgDiag.getMe && (
+                    <span>
+                      Проверка токена:{" "}
+                      {tgDiag.getMe.ok ? (
+                        <b style={{ color: "#15803d" }}>
+                          OK{tgDiag.getMe.username ? ` — @${tgDiag.getMe.username}` : ""}
+                        </b>
+                      ) : (
+                        <b style={{ color: "#dc2626" }}>
+                          ошибка{tgDiag.getMe.error ? `: ${tgDiag.getMe.error}` : ""}
+                        </b>
+                      )}
+                    </span>
+                  )}
+                  {!tgDiag.configured && (
+                    <span style={{ color: "#b45309", display: "inline-flex", gap: 6 }}>
+                      <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                      Подключение не готово — заполните поля ниже и сохраните (или задайте
+                      переменные окружения на хостинге) и нажмите «Проверить Telegram».
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="settings-messenger-grid" style={{ marginTop: 10 }}>
+              <div className="settings-messenger-item">
+                <strong>Telegram-бот</strong>
+                <div className="admin-field">
+                  <label className="admin-label">Токен бота</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={values["telegram_bot_token"] || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, telegram_bot_token: e.target.value.trim() })
+                    }
+                    placeholder="123456789:ABC-… (от @BotFather)"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Chat ID получателя</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={values["telegram_admin_chat_id"] || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, telegram_admin_chat_id: e.target.value.trim() })
+                    }
+                    placeholder="числовой id или @username чата"
+                    autoComplete="off"
+                  />
+                </div>
+                <p className="admin-hint" style={{ margin: 0 }}>
+                  Chat ID — НЕ номер телефона: числовой id сообщит бот{" "}
+                  <code>@userinfobot</code> / <code>@getmyid_bot</code>, для канала или группы —{" "}
+                  <code>@username</code> (бот должен быть участником и иметь право писать).
+                </p>
+              </div>
+              <div className="settings-messenger-item">
+                <strong>MAX-бот</strong>
+                <div className="admin-field">
+                  <label className="admin-label">Токен бота</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={values["max_bot_token"] || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, max_bot_token: e.target.value.trim() })
+                    }
+                    placeholder="токен MAX-бота (если используется)"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">Chat ID получателя</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={values["max_admin_chat_id"] || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, max_admin_chat_id: e.target.value.trim() })
+                    }
+                    placeholder="id чата в MAX (если используется)"
+                    autoComplete="off"
+                  />
+                </div>
+                <p className="admin-hint" style={{ margin: 0 }}>
+                  Необязательно: если заполнено — уведомления дублируются в MAX.
+                </p>
+              </div>
+            </div>
+
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: "auto" }}>
               <button
                 type="button"

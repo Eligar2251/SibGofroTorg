@@ -750,6 +750,58 @@ export function getCashCarryoverSummary(
   };
 }
 
+export interface PendingTransfersSummary {
+  /** Неразмеченные к переводу поступления за выбранную дату. */
+  today: number;
+  /** То же за прошлые дни (если смену давно не закрывали). */
+  older: number;
+  total: number;
+}
+
+/**
+ * Наличка, которую ещё предстоит перевести на карту: поступления в кассу,
+ * помеченные «к переводу» (тип «Безнал на карту» или наличка с
+ * cashDestination="card"), ещё не вошедшие ни в одну сдачу кассы.
+ *
+ * После сдачи кассы эта сумма обнуляется — так кассир видит «Перевод:
+ * сколько ещё нужно перевести», а не исторический факт переводов.
+ */
+export function getPendingTransfersSummary(
+  payments: BankPayment[],
+  collections: CashCollection[] = [],
+  date = getWarehouseBusinessDate()
+): PendingTransfersSummary {
+  const collected = new Set<string>();
+  for (const collection of collections) {
+    for (const item of collection.items || []) {
+      if (item?.paymentId) collected.add(String(item.paymentId));
+    }
+  }
+  let today = 0;
+  let older = 0;
+  for (const payment of payments) {
+    if (!payment.isPaid || payment.excludeFromBalance) continue;
+    if (payment.direction !== "incoming") continue;
+    if (payment.type !== "cash" && payment.type !== "transfer") continue;
+    // К переводу относится: безналичный перевод на карту или наличка,
+    // которую менеджер предпочёл инкассировать.
+    const toCard =
+      payment.type === "transfer" || payment.cashDestination === "card";
+    if (!toCard) continue;
+    if (collected.has(String(payment.id))) continue;
+    const amount = Math.max(0, Number(payment.amount) || 0);
+    if (amount <= 0) continue;
+    const day = String(payment.date || "").slice(0, 10);
+    if (day === date) today += amount;
+    else if (day < date) older += amount;
+  }
+  return {
+    today: Math.round(today * 100) / 100,
+    older: Math.round(older * 100) / 100,
+    total: Math.round((today + older) * 100) / 100,
+  };
+}
+
 /** Сводка по банку и кассе. Зарплата влияет только после фактической
  *  выплаты; начисленная зарплата не является ожидаемым банковским платежом. */
 export function getBankSummary(

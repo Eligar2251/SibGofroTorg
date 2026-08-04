@@ -67,28 +67,141 @@ export interface NotifyResult {
   detail?: unknown;
 }
 
+type SettingSource = "env" | "settings" | "none";
+
+export interface TelegramConfig {
+  token?: string;
+  chatId?: string;
+  tokenSource: SettingSource;
+  chatIdSource: SettingSource;
+}
+
+/** Разрешает конфиг Telegram: env имеет приоритет, настройки из БД — fallback. */
+export async function resolveTelegramConfig(): Promise<TelegramConfig> {
+  const envToken = env("TELEGRAM_BOT_TOKEN");
+  const envChatId = env("TELEGRAM_ADMIN_CHAT_ID");
+  let tokenSource: SettingSource = envToken ? "env" : "none";
+  let chatIdSource: SettingSource = envChatId ? "env" : "none";
+  let token = envToken;
+  let chatId = envChatId;
+  if (!token) {
+    const s = await setting("telegram_bot_token");
+    if (s) {
+      token = s;
+      tokenSource = "settings";
+    }
+  }
+  if (!chatId) {
+    const s = await setting("telegram_admin_chat_id");
+    if (s) {
+      chatId = s;
+      chatIdSource = "settings";
+    }
+  }
+  return { token, chatId, tokenSource, chatIdSource };
+}
+
+/**
+ * Приводит chat_id к рабочему виду: username канала/группы без «@»
+ * дополняем префиксом (иначе Telegram отвечает «chat not found»),
+ * номера телефонов API не принимает вовсе — об этом явно говорим.
+ */
+export function normalizeTelegramChatId(raw: string): string {
+  const v = String(raw || "").trim().replace(/\s+/g, "");
+  if (!v) return v;
+  // Числовой id (пользователь/группа) или уже с @ — оставляем как есть.
+  if (/^-?\d+$/.test(v) || v.startsWith("@")) return v;
+  return `@${v}`;
+}
+
+/** chat_id в виде +79… — это номер телефона: Telegram таких адресатов не знает. */
+function looksLikePhoneNumber(chatId: string): boolean {
+  return /^\+[0-9()\-\s]+$/.test(chatId.trim());
+}
+
+function mask(value: string | undefined, visible = 4): string | null {
+  if (!value) return null;
+  const v = String(value);
+  if (v.length <= visible * 2) return `${v.slice(0, 2)}…${v.slice(-2)}`;
+  return `${v.slice(0, visible)}…${v.slice(-visible)}`;
+}
+
+export interface TelegramDiagnostics {
+  configured: boolean;
+  tokenSource: SettingSource;
+  chatIdSource: SettingSource;
+  tokenMasked: string | null;
+  chatIdMasked: string | null;
+  chatIdNormalized: string | null;
+  getMe?: { ok: boolean; username?: string | null; error?: string };
+}
+
+/**
+ * Диагностика подключения: показывает, ОТКУДА взяты токен/chat_id
+ * (env или настройки), не светя их целиком, и проверяет токен вызовом getMe.
+ */
+export async function diagnoseTelegram(): Promise<TelegramDiagnostics> {
+  const cfg = await resolveTelegramConfig();
+  const diag: TelegramDiagnostics = {
+    configured: Boolean(cfg.token && cfg.chatId),
+    tokenSource: cfg.tokenSource,
+    chatIdSource: cfg.chatIdSource,
+    tokenMasked: mask(cfg.token),
+    chatIdMasked: mask(cfg.chatId),
+    chatIdNormalized: cfg.chatId ? normalizeTelegramChatId(cfg.chatId) : null,
+  };
+  if (!cfg.token) return diag;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${cfg.token}/getMe`, {
+      method: "GET",
+    });
+    const data = await res.json().catch(() => ({} as any));
+    if (res.ok && data?.ok) {
+      diag.getMe = { ok: true, username: data.result?.username ?? null };
+    } else {
+      diag.getMe = {
+        ok: false,
+        error: data?.description || `HTTP ${res.status}`,
+      };
+    }
+  } catch (err) {
+    diag.getMe = {
+      ok: false,
+      error: err instanceof Error ? err.message : "Сетевая ошибка",
+    };
+  }
+  return diag;
+}
+
 export async function sendTelegramNotification(
   text: string
 ): Promise<NotifyResult> {
   try {
-    const token = env("TELEGRAM_BOT_TOKEN") || (await setting("telegram_bot_token"));
-    const chatId =
-      env("TELEGRAM_ADMIN_CHAT_ID") ||
-      (await setting("telegram_admin_chat_id"));
+    const cfg = await resolveTelegramConfig();
+    const { token, chatId } = cfg;
     if (!token || !chatId) {
       console.warn(
-        "[notify] Telegram не настроен: нет TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID (ни в env, ни в settings)"
+        `[notify] Telegram не настроен: token=${cfg.tokenSource}, chatId=${cfg.chatIdSource} (нет ни в env, ни в настройках сайта)`
       );
       return {
         ok: false,
         error:
-          "Telegram не настроен: не заданы TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID",
+          "Telegram не настроен: не заданы TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID (ни в переменных окружения, ни в настройках сайта)",
       };
     }
+    if (looksLikePhoneNumber(chatId)) {
+      console.error("[notify] TELEGRAM_ADMIN_CHAT_ID похож на номер телефона — Telegram требует числовой chat_id или @username");
+      return {
+        ok: false,
+        error:
+          "TELEGRAM_ADMIN_CHAT_ID выглядит как номер телефона. Укажите числовой chat_id (его сообщит бот @userinfobot / @getmyid_bot) или @username канала/группы.",
+      };
+    }
+    const normalizedChatId = normalizeTelegramChatId(chatId);
     const parts = chunkText(text, TELEGRAM_LIMIT);
     for (let i = 0; i < parts.length; i++) {
       const body = JSON.stringify({
-        chat_id: chatId,
+        chat_id: normalizedChatId,
         text:
           parts.length > 1
             ? `${parts[i]}\n\n(часть ${i + 1}/${parts.length})`

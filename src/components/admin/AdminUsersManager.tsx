@@ -31,12 +31,14 @@ const roleLabels: Record<AdminRole, string> = {
   admin: "Администратор",
   manager: "Менеджер",
   lawyer: "Юрист",
+  wastepaper: "Макулатурщик",
 };
 
 const roleDescriptions: Record<AdminRole, string> = {
   admin: "Полный доступ, включая настройки и журнал действий",
   manager: "Все рабочие разделы, кроме настроек и журнала действий",
   lawyer: "Только финансы, движение средств и перевозки на дашборде",
+  wastepaper: "Только отдельный учёт макулатуры (без доступа к сайту и основному учёту)",
 };
 
 function formatDate(raw: string | null): string {
@@ -343,7 +345,9 @@ export function AdminUsersManager() {
                       ? "admin-badge--indigo"
                       : user.role === "manager"
                         ? "admin-badge--blue"
-                        : "admin-badge--amber"
+                        : user.role === "wastepaper"
+                          ? "admin-badge--teal"
+                          : "admin-badge--amber"
                   }`}
                 >
                   {roleLabels[user.role]}

@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         "update",
         "cash-collection",
         "cash-close",
-        `Закрыто ${res.closed} наличных платежей за ${res.date} на ${res.amount} ₽ без инкассации`,
+        `Закрыто ${res.closed} наличных платежей за ${res.date} на ${res.amount} ₽ без перевода`,
         { closed: res.closed, amount: res.amount, date: res.date }
       );
       return NextResponse.json({ success: true, ...res });
