@@ -297,8 +297,10 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
 
   return (
     <div className="admin-stack">
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap", overflowX: "auto", paddingBottom: 4 }}>
-        <div style={{ position: "relative", flex: "1 1 360px", minWidth: 260 }}>
+      {/* На мобильном (≤640px) панель перестраивается в сетку:
+          поиск на всю ширину, селекты по 2 в ряд (.logs-toolbar в admin.css) */}
+      <div className="logs-toolbar">
+        <div className="logs-toolbar__search">
           <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
           <input
             className="admin-input"
@@ -308,15 +310,15 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
             style={{ paddingLeft: 32 }}
           />
         </div>
-        <select className="admin-select" value={filterAdmin} onChange={(e) => setFilterAdmin(e.target.value)} style={{ width: 150, flex: "0 0 150px" }}>
+        <select className="admin-select logs-toolbar__select" value={filterAdmin} onChange={(e) => setFilterAdmin(e.target.value)}>
           <option value="">Пользователь: все</option>
           {admins.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
-        <select className="admin-select" value={filterAction} onChange={(e) => setFilterAction(e.target.value)} style={{ width: 145, flex: "0 0 145px" }}>
+        <select className="admin-select logs-toolbar__select" value={filterAction} onChange={(e) => setFilterAction(e.target.value)}>
           <option value="">Действие: все</option>
           {Object.entries(actionLabels).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
-        <select className="admin-select" value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)} style={{ width: 145, flex: "0 0 145px" }}>
+        <select className="admin-select logs-toolbar__select" value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)}>
           <option value="">Объект: все</option>
           {Object.entries(entityLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
@@ -324,7 +326,7 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
           {refreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           Обновить
         </button>
-        <span className="admin-muted" style={{ fontSize: 12, flex: "0 0 auto" }}>
+        <span className="admin-muted logs-toolbar__note" style={{ fontSize: 12, flex: "0 0 auto" }}>
           авто 5 сек.
         </span>
       </div>
@@ -343,7 +345,7 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
       ) : (
         <div className="admin-card">
           <div className="admin-table-wrap" style={{ overflowX: "auto" }}>
-            <table className="admin-table" style={{ minWidth: 1120, tableLayout: "fixed" }}>
+            <table className="admin-table logs-table" style={{ minWidth: 1120, tableLayout: "fixed" }}>
               <colgroup>
                 <col style={{ width: 142 }} />
                 <col style={{ width: 150 }} />

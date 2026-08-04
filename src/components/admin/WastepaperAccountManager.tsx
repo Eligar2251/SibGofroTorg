@@ -894,9 +894,9 @@ function DaysTab({
       <div className="admin-card" style={{ marginBottom: 18 }}>
         <div className="admin-card__head">
           <span className="admin-card__title">Движение денег по дням</span>
-          <div
-            style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
-          >
+          {/* На мобильном (≤480px) перестраивается в сетку:
+              фильтры-счёт на всю ширину, даты по 50% (.wp-days-filters) */}
+          <div className="wp-days-filters">
             <div className="admin-filters" style={{ marginBottom: 0 }}>
               {(
                 [
@@ -917,17 +917,15 @@ function DaysTab({
             </div>
             <input
               type="date"
-              className="admin-input"
-              style={{ width: "auto" }}
+              className="admin-input wp-days-filters__date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
               aria-label="С даты"
             />
-            <span style={{ color: "var(--adm-muted)" }}>—</span>
+            <span className="wp-days-filters__dash">—</span>
             <input
               type="date"
-              className="admin-input"
-              style={{ width: "auto" }}
+              className="admin-input wp-days-filters__date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
               aria-label="По дату"
@@ -996,7 +994,7 @@ function DaysTab({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
           gap: 14,
         }}
       >
