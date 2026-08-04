@@ -354,7 +354,7 @@ export default async function AdminDashboard() {
         account: "cash" as const,
         category: legacy
           ? "Сдача кассы (старый учёт)"
-          : "Инкассация на карту ЮМ",
+          : "Перевод на карту ЮМ",
         counterparty: legacy ? "Сдача кассы" : "Карта ЮМ",
         amount,
         detail: collection.note || "Закрытие смены кассы",

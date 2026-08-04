@@ -39,6 +39,7 @@ import {
   getDealPaidMap,
   getReceiptPaidMap,
   getCashCarryoverSummary,
+  getPendingTransfersSummary,
   type WarehouseStockRow,
   type ProductStockSummary,
   type WarehouseReceipt,
@@ -513,6 +514,12 @@ export function WarehouseManager({
       ),
     [payments, salaries, cashCollections]
   );
+  // «Перевод»: сколько налички ещё ждёт перевода на карту.
+  // После сдачи кассы (платежи вошли в смену) обнуляется.
+  const pendingTransfers = useMemo(
+    () => getPendingTransfersSummary(payments, cashCollections, localDateIso()),
+    [payments, cashCollections]
+  );
 
   // --- Helper to get purchase price for any product ---
   const getProductPurchasePrice = (productId: string) => {
@@ -669,7 +676,7 @@ export function WarehouseManager({
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
   }, [deals, payments, receipts]);
 
-  // Закрытые смены кассы — инкассация на карту и перенос наличного остатка.
+  // Закрытые смены кассы — перевод на карту и перенос наличного остатка.
   const collectionsSorted = useMemo(
     () =>
       [...cashCollections]
@@ -702,7 +709,7 @@ export function WarehouseManager({
     [collectionsSorted]
   );
 
-  // Старая версия «закрыть без инкассации» не создавала документ сдачи,
+  // Старая версия «закрыть без перевода» не создавала документ сдачи,
   // а просто ставила платежам «вне баланса». Восстанавливаем виртуальные
   // документы по общему updatedAt, чтобы они были видны в проведённых и
   // отменялись одной кнопкой, как обычная сдача кассы.
@@ -759,7 +766,7 @@ export function WarehouseManager({
   async function handleRestoreLegacyClosure(paymentIds: string[], amount: number) {
     if (
       !confirm(
-        `Отменить проведение старой сдачи без инкассации на ${fmt(amount)} ₽?\n\n` +
+        `Отменить проведение старой сдачи без перевода на ${fmt(amount)} ₽?\n\n` +
           "Платежи вернутся в баланс кассы и снова появятся в настройках сдачи."
       )
     ) {
@@ -2674,9 +2681,14 @@ export function WarehouseManager({
                   <span>
                     Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
                   </span>
-                  <span>
-                    Инкассация за день: <b>{fmt(cashCarryover.todayCardTransfers)} ₽</b>
+                  <span title="Сколько налички ещё ждёт перевода на карту за сегодня — обнуляется после сдачи кассы">
+                    Перевод: <b>{fmt(pendingTransfers.today)} ₽</b>
                   </span>
+                  {pendingTransfers.older > 0.009 && (
+                    <span title="Непереведённая наличка прошлых дней — тоже обнулится после сдачи кассы">
+                      в т.ч. за прошлые дни: <b>{fmt(pendingTransfers.older)} ₽</b>
+                    </span>
+                  )}
                 </div>
                 {bankSummary.cashBalanceNegative && (
                   <div
@@ -3360,14 +3372,23 @@ export function WarehouseManager({
                                       ) : (
                                         (c.items || []).map((it, i) => (
                                           <div key={`${c.id}-i${i}`} className="wh-cc-line">
-                                            <button
-                                              type="button"
-                                              className="wh-cc-payment-link"
-                                              onClick={() => setDetailPaymentId(it.paymentId)}
-                                            >
-                                              {it.number ? `ПЛ-${it.number} · ` : ""}
-                                              {it.counterparty || "Без контрагента"}
-                                            </button>
+                                            {/* Технические строки manual:* не являются платежом —
+                                                у них нет карточки, кнопка вела в ошибку. */}
+                                            {String(it.paymentId || "").startsWith("manual:") ? (
+                                              <span className="wh-cc-payment-link" style={{ cursor: "default" }}>
+                                                {it.number ? `ПЛ-${it.number} · ` : ""}
+                                                {it.counterparty || "Без контрагента"}
+                                              </span>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                className="wh-cc-payment-link"
+                                                onClick={() => setDetailPaymentId(it.paymentId)}
+                                              >
+                                                {it.number ? `ПЛ-${it.number} · ` : ""}
+                                                {it.counterparty || "Без контрагента"}
+                                              </button>
+                                            )}
                                             <span className="wh-cc-line__val">
                                               {fmt(it.amount)} ₽
                                               {/* Разбитый платёж: показываем все части */}
@@ -3453,7 +3474,7 @@ export function WarehouseManager({
                                       </div>
                                       <div className="wh-cc-line">
                                         <span>
-                                          <CreditCard size={11} /> Инкассация на карту
+                                          <CreditCard size={11} /> Перевод на карту
                                         </span>
                                         <span
                                           className="wh-cc-line__val"
@@ -3541,7 +3562,7 @@ export function WarehouseManager({
                       <span className="bank-cash-posting__icon"><Archive size={15} /></span>
                       <div className="bank-cash-posting__main">
                         <div className="bank-cash-posting__top">
-                          <strong>Сдача кассы без инкассации · старое проведение</strong>
+                          <strong>Сдача кассы без перевода · старое проведение</strong>
                           <span className="admin-badge admin-badge--green">проведено</span>
                           <span className="admin-badge admin-badge--amber">вне баланса</span>
                         </div>

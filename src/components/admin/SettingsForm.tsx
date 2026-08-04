@@ -293,7 +293,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           <div className="admin-card__pad" style={cardPadStyle}>
             <h2 className="admin-h2" style={{ margin: 0 }}>Сдача кассы</h2>
             <div className="admin-field">
-              <label className="admin-label">Получатель инкассации на карту</label>
+              <label className="admin-label">Получатель перевода на карту</label>
               <input
                 type="text"
                 value={values[CASH_CARD_HOLDER_SETTING_KEY] ?? ""}

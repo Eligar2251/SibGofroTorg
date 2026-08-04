@@ -56,11 +56,16 @@ export function PaymentDetailsModal({
   adminPath,
   onClose,
   allowDocumentNavigation = true,
+  onNavigate,
 }: {
   paymentId: string | null;
   adminPath: string;
   onClose: () => void;
   allowDocumentNavigation?: boolean;
+  /** Клик по документу (ЗК/ПО): вызывается после onClose — родитель
+      закрывает свою модалку, если эта открыта поверх неё (например,
+      сдача кассы), иначе переход выглядел «нерабочим» под оверлеем. */
+  onNavigate?: () => void;
 }) {
   const [data, setData] = useState<PaymentDetailsPayload | null>(null);
   const [loading, setLoading] = useState(false);
@@ -173,7 +178,14 @@ export function PaymentDetailsModal({
                       <div>
                         <span>Заказ покупателя</span>
                         {allowDocumentNavigation ? (
-                          <Link href={`/${adminPath}/warehouse?tab=deals&deal=${deal.id}`} prefetch={false} onClick={onClose}>
+                          <Link
+                            href={`/${adminPath}/warehouse?tab=deals&deal=${deal.id}`}
+                            prefetch={false}
+                            onClick={() => {
+                              onClose();
+                              onNavigate?.();
+                            }}
+                          >
                             ЗК-{deal.number} →
                           </Link>
                         ) : (
@@ -197,7 +209,14 @@ export function PaymentDetailsModal({
                       <div>
                         <span>Поступление от поставщика</span>
                         {allowDocumentNavigation ? (
-                          <Link href={`/${adminPath}/warehouse?tab=receipts&receipt=${receipt.id}`} prefetch={false} onClick={onClose}>
+                          <Link
+                            href={`/${adminPath}/warehouse?tab=receipts&receipt=${receipt.id}`}
+                            prefetch={false}
+                            onClick={() => {
+                              onClose();
+                              onNavigate?.();
+                            }}
+                          >
                             ПО-{receipt.number} →
                           </Link>
                         ) : (

@@ -1,9 +1,9 @@
 // src/components/admin/CashCollectModal.tsx
 // Закрытие смены: касса показывает ТОЛЬКО наличные платежи, а менеджер
-// размечает, что инкассировано и что остаётся физической наличкой.
+// размечает, что переведено на карту и что остаётся физической наличкой.
 //
 // Направления:
-//   • «На карту» — инкассация на карту (по умолчанию Юлия Марковна,
+//   • «На карту» — перевод на карту (по умолчанию Юлия Марковна,
 //     имя настраивается в «Настройках»), эта часть уходит из кассы;
 //   • «Наличка» — остаётся в кассе и переносится на следующий день.
 //
@@ -291,7 +291,7 @@ export function CashCollectModal({
     setKinds(next);
   }
 
-  /** Закрыть все платежи выбранного дня без инкассации (старые долги). */
+  /** Закрыть все платежи выбранного дня без перевода (старые долги). */
   async function closeDay() {
     const ids = dayItems.map((p) => p.paymentId);
     if (ids.length === 0) return;
@@ -303,7 +303,7 @@ export function CashCollectModal({
     if (
       !confirm(
         `Скрыть ${ids.length} старых платеж(ей) на ${fmt(sum)} ₽ ` +
-          `документом от ${fmtDate(collectionDate)} без учёта и инкассации?\n\n` +
+          `документом от ${fmtDate(collectionDate)} без учёта и перевода?\n\n` +
           "Они только скроются из списка сдачи. Баланс кассы, оплаты, " +
           "платежи и история банка вообще не изменятся."
       )
@@ -435,7 +435,7 @@ export function CashCollectModal({
     }
   }
 
-  // Прогноз остатка после закрытия: вычитается только инкассация на карту,
+  // Прогноз остатка после закрытия: вычитается только перевод на карту,
   // наличная часть выбранной смены остаётся в кассе.
   const balanceAfterClose = r2(cashBalance - totals.card);
   /** Сколько неразмеченных платежей есть за другие дни. */
@@ -535,7 +535,7 @@ export function CashCollectModal({
             <details className="cashc-closed-settings">
               <summary>
                 <Archive size={13} />
-                Ранее закрытые без инкассации — {closed.length} плат. на{" "}
+                Ранее закрытые без перевода — {closed.length} плат. на{" "}
                 {fmt(r2(closed.reduce((sum, payment) => sum + payment.amount, 0)))} ₽
               </summary>
               <div className="cashc-closed-settings__note">
@@ -740,7 +740,7 @@ export function CashCollectModal({
                                   : ""
                               }`}
                               onClick={() => setKind(p.paymentId, "card")}
-                              title={`Инкассация на карту (${cardHolder})`}
+                              title={`Перевод на карту (${cardHolder})`}
                             >
                               <CreditCard size={12} /> На карту
                             </button>
@@ -888,7 +888,7 @@ export function CashCollectModal({
                       <AlertTriangle size={13} />
                       {balanceAfterClose < -0.009 ? (
                         <>
-                          Инкассация на карту превышает остаток кассы на{" "}
+                          Перевод на карту превышает остаток кассы на{" "}
                           <b>{fmt(Math.abs(balanceAfterClose))} ₽</b>.
                         </>
                       ) : (
@@ -952,6 +952,9 @@ export function CashCollectModal({
       paymentId={detailPaymentId}
       adminPath={adminPath}
       onClose={() => setDetailPaymentId(null)}
+      // Кнопки «ЗК-N →» / «ПО-N →» ведут в учёт: без закрытия самой сдачи
+      // кассы переход происходил под оверлеем, и кнопки казались нерабочими.
+      onNavigate={onClose}
     />
     </>
   );

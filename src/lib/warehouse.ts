@@ -3010,7 +3010,7 @@ export async function closeOldCashPayments(
       expenseAmount: 0,
       noAccounting: true,
     })),
-    note: `Закрыто без учёта и инкассации: ${selected.length} плат. на ${round2(amount)} ₽`,
+    note: `Закрыто без учёта и перевода: ${selected.length} плат. на ${round2(amount)} ₽`,
   });
   if (error) throw error;
 
