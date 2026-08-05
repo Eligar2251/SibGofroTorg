@@ -42,6 +42,9 @@ export async function PUT(
       deliveryAddress: body.deliveryAddress,
       deliveryPlannedDate: body.deliveryPlannedDate,
       deliveryNote: body.deliveryNote,
+      deliveryContact: body.deliveryContact,
+      deliveryPhone: body.deliveryPhone,
+      isReserved: body.isReserved === true,
     });
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });

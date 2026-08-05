@@ -234,10 +234,13 @@ function mapDealRow(row: any): CustomerDeal {
     deliveryPlannedDate: row.delivery_planned_date || null,
     deliveryReleasedAt: toIso(row.delivery_released_at),
     deliveryNote: row.delivery_note || null,
+    deliveryContact: row.delivery_contact || null,
+    deliveryPhone: row.delivery_phone || null,
     deliveryDriverId: row.delivery_driver_id || null,
     deliveryDriverName: row.delivery_driver_name || null,
     shippedItems: Array.isArray(row.shipped_items) ? row.shipped_items : [],
     deliveryItems: Array.isArray(row.delivery_items) ? row.delivery_items : [],
+    isReserved: Boolean(row.is_reserved),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -266,6 +269,8 @@ function parseDealDelivery(data: any): {
   delivery_address: string | null;
   delivery_planned_date: string | null;
   delivery_note: string | null;
+  delivery_contact: string | null;
+  delivery_phone: string | null;
   delivery_released_at?: string | null;
 } {
   const hasDelivery = Boolean(data.hasDelivery);
@@ -288,6 +293,8 @@ function parseDealDelivery(data: any): {
     delivery_note: hasDelivery
       ? cleanText(data.deliveryNote, 1000)
       : null,
+    delivery_contact: hasDelivery ? cleanText(data.deliveryContact ?? data.contactName, 160) : null,
+    delivery_phone: hasDelivery ? cleanText(data.deliveryPhone ?? data.customerPhone, 60) : null,
   };
 }
 
@@ -1407,6 +1414,7 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
     items, total, bank_adjustment: round2(total - linesTotal),
     vat_rate: vatRate, vat_amount: vatAmount,
     status: "new",
+    is_reserved: data.isReserved === true,
     ...delivery,
   }).select("id").single();
   if (dealError) throw dealError;
@@ -1724,6 +1732,10 @@ export async function updateDeal(id: string, data: any): Promise<void> {
       data.deliveryNote !== undefined
         ? data.deliveryNote
         : existing.delivery_note,
+    deliveryContact: data.deliveryContact,
+    deliveryPhone: data.deliveryPhone,
+    contactName: data.contactName,
+    customerPhone: data.customerPhone,
     address: data.address ?? existing.address,
   });
   if (delivery.has_delivery && !delivery.delivery_address) {
@@ -1774,6 +1786,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items, total, bank_adjustment: bankAdjustment,
     vat_rate: vatRate, vat_amount: vatAmount,
+    is_reserved: data.isReserved === true,
     ...delivery,
     updated_at: new Date().toISOString(),
   }).eq("id", id);

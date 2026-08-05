@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
       deliveryAddress: body.deliveryAddress,
       deliveryPlannedDate: body.deliveryPlannedDate,
       deliveryNote: body.deliveryNote,
+      deliveryContact: body.deliveryContact,
+      deliveryPhone: body.deliveryPhone,
+      isReserved: body.isReserved === true,
     });
     return NextResponse.json(result);
   } catch (error: any) {

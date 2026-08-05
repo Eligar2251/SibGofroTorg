@@ -89,6 +89,8 @@ export interface CustomerDeal extends CounterpartyDetails {
   vatAmount: number;
   status: DealStatus;
   cancelReason?: string | null;
+  /** Выставлен счёт / товар зарезервирован за клиентом. */
+  isReserved?: boolean;
   /** Есть ли доставка у заказа учёта */
   hasDelivery?: boolean;
   deliveryType?: "free" | "paid" | null;
@@ -97,6 +99,8 @@ export interface CustomerDeal extends CounterpartyDetails {
   deliveryPlannedDate?: string | null;
   deliveryReleasedAt?: string | null;
   deliveryNote?: string | null;
+  deliveryContact?: string | null;
+  deliveryPhone?: string | null;
   /** Водитель, назначенный на доставку */
   deliveryDriverId?: string | null;
   deliveryDriverName?: string | null;

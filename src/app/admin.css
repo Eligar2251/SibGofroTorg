@@ -10589,3 +10589,24 @@ body:has(.admin-modal-overlay) {
   border-top: 1px dashed var(--adm-border, #dbd8d0);
   padding-top: 8px;
 }
+
+/* ── Резерв товара ── */
+.deal-reserve-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--adm-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.deal-reserve-row .admin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.deal-reserve-hint {
+  font-size: 12px;
+  color: #4338ca;
+  font-weight: 600;
+}

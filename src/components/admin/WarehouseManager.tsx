@@ -30,6 +30,8 @@ import {
   ChevronRight,
   RotateCcw,
   BarChart3,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -331,6 +333,7 @@ export function WarehouseManager({
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
   const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   /** Раскрытые расширенные сводки в таблице склада. */
   const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(
     () => new Set(focusProductId ? [focusProductId] : [])
@@ -1074,6 +1077,35 @@ export function WarehouseManager({
     () => new Map(stock.map((p) => [p.id, p.stockQty])),
     [stock]
   );
+  // Резерв по товарам: сумма quantity по заказам со статусом != cancelled,
+  // у которых включён isReserved и товар ещё не отгружен.
+  const reservedById = useMemo(() => {
+    const map = new Map<string, number>();
+    const dealsByReserve = new Map<string, { number: number; qty: number }[]>();
+    for (const deal of deals) {
+      if (deal.status === "cancelled" || deal.status === "completed") continue;
+      if (!deal.isReserved) continue;
+      for (const it of deal.items || []) {
+        const ordered = Number(it.quantity) || 0;
+        const shipped = (deal.shippedItems || []).find(
+          (s: any) => s.productId === it.productId
+        )?.shippedQty || 0;
+        const remaining = Math.max(0, ordered - Number(shipped || 0));
+        if (remaining <= 0) continue;
+        map.set(it.productId, (map.get(it.productId) || 0) + remaining);
+        const arr = dealsByReserve.get(it.productId) || [];
+        arr.push({ number: deal.number, qty: remaining });
+        dealsByReserve.set(it.productId, arr);
+      }
+    }
+    return { total: map, dealsByProduct: dealsByReserve };
+  }, [deals]);
+  const reservedTotalById = reservedById.total;
+  const reservedDealsByProduct = reservedById.dealsByProduct;
+  // Свободный остаток = остаток на складе минус резерв по другим заказам
+  function freeStock(productId: string): number {
+    return Math.max(0, (stockById.get(productId) ?? 0) - (reservedTotalById.get(productId) || 0));
+  }
   const productById = useMemo(() => new Map(stock.map((p) => [p.id, p])), [stock]);
   const supplierRows = useMemo(() => {
     return counterpartyOptions
@@ -1332,6 +1364,7 @@ export function WarehouseManager({
               payments={payments}
               deliveryPrice={deliveryPrice}
               freeDeliveryThreshold={freeDeliveryThreshold}
+              reservedStockById={reservedTotalById}
             />
           )}
           {activeTab === "bank" && (
@@ -1489,6 +1522,16 @@ export function WarehouseManager({
                                     initialQty={p.stockQty}
                                     onSaved={() => handleStockQuantitySaved(p.id)}
                                   />
+                                  {(reservedTotalById.get(p.id) || 0) > 0 && (
+                                    <>
+                                      <div style={{ fontSize: 11, color: "#4338ca", marginTop: 2, whiteSpace: "nowrap" }}>
+                                        в резерве {fmt(reservedTotalById.get(p.id) || 0)} шт.
+                                      </div>
+                                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1, whiteSpace: "nowrap" }}>
+                                        свободно {fmt(freeStock(p.id))} шт.
+                                      </div>
+                                    </>
+                                  )}
                                 </td>
                                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                                   {p.price != null ? `${fmt(p.price)} ₽` : "—"}
@@ -2123,12 +2166,27 @@ export function WarehouseManager({
               filteredDeals.map((d) => {
                 const paid = dealPaidMap.get(d.id) || 0;
                 const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
+                // Резерв по другим заказам (кроме текущего)
+                const reservedByOthers = (productId: string): number => {
+                  let r = reservedTotalById.get(productId) || 0;
+                  if (d.isReserved) {
+                    const shipped = (d.shippedItems || []).find(
+                      (s: any) => s.productId === productId
+                    )?.shippedQty || 0;
+                    const it = d.items.find((i: any) => i.productId === productId);
+                    if (it) r -= Math.max(0, Number(it.quantity || 0) - Number(shipped || 0));
+                  }
+                  return Math.max(0, r);
+                };
                 const shortage =
                   d.status === "new"
                     ? d.items
                         .map((it) => {
-                          const available = stockById.get(it.productId) ?? 0;
-                          return { it, available, missing: Math.max(0, it.quantity - available) };
+                          const stock = stockById.get(it.productId) ?? 0;
+                          const otherReserve = reservedByOthers(it.productId);
+                          const free = Math.max(0, stock - otherReserve);
+                          const missing = Math.max(0, it.quantity - free);
+                          return { it, available: free, stock, otherReserve, missing };
                         })
                         .filter((r) => r.missing > 0)
                     : [];
@@ -2154,8 +2212,31 @@ export function WarehouseManager({
                       {!isFullyPaid && paid > 0 && (
                         <span className="admin-badge admin-badge--blue">Оплачено {fmt(paid)} из {fmt(d.total)} ₽</span>
                       )}
+                      {d.isReserved ? (
+                        <span
+                          className="admin-badge admin-badge--indigo"
+                          title="Товар зарезервирован за этим заказом — не продаётся другим"
+                        >
+                          <Lock size={10} /> в резерве
+                        </span>
+                      ) : null}
                       {hasShortage && (
-                        <span className="admin-badge admin-badge--red"><AlertTriangle size={10} /> не хватает товара</span>
+                        <span
+                          className="admin-badge admin-badge--red"
+                          title={shortage
+                            .map((r) => {
+                              const parts = [
+                                r.it.name,
+                                `нужно ${r.it.quantity}`,
+                                `свободно ${fmt(r.available)}`,
+                              ];
+                              if (r.otherReserve > 0) parts.push(`в резерве др. ${fmt(r.otherReserve)}`);
+                              return parts.join(" · ");
+                            })
+                            .join("\n")}
+                        >
+                          <AlertTriangle size={10} /> не хватает товара
+                        </span>
                       )}
                       {(() => {
                         const shippedArr = Array.isArray(d.shippedItems) ? d.shippedItems : [];
@@ -2312,19 +2393,69 @@ export function WarehouseManager({
                           {d.status === "new" &&
                             (hasShortage ? (
                               <div className="deal-stock deal-stock--miss">
-                                <div className="deal-stock__title"><AlertTriangle size={12} />Не хватает на складе</div>
+                                <div className="deal-stock__title"><AlertTriangle size={12} />Не хватает свободного товара</div>
                                 {shortage.map((r) => (
                                   <div key={r.it.productId} className="deal-stock__row">
                                     <span className="deal-stock__name">{r.it.name}</span>
                                     <span className="deal-stock__nums">
-                                      нужно {r.it.quantity} · на складе {r.available} · <b>не хватает {r.missing}</b>
+                                      нужно {r.it.quantity} · на складе {fmt(r.stock)}
+                                      {r.otherReserve > 0 && <> · <b style={{color:"#4338ca"}}>в резерве {fmt(r.otherReserve)}</b></>}
+                                      {" "}· свободно {fmt(r.available)} · <b>не хватает {r.missing}</b>
                                     </span>
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <div className="deal-stock deal-stock--ok"><PackageCheck size={13} />Все позиции есть на складе</div>
+                              <div className="deal-stock deal-stock--ok"><PackageCheck size={13} />Все позиции есть на складе (с учётом резервов)</div>
                             ))}
+
+                          {d.status === "new" && (
+                            <div className="deal-reserve-row">
+                              <button
+                                type="button"
+                                className={`admin-btn admin-btn--sm ${d.isReserved ? "admin-badge--indigo" : "admin-btn--ghost"}`}
+                                disabled={busyId === d.id}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setBusyId(d.id);
+                                  try {
+                                    const res = await fetch(
+                                      `/api/admin/warehouse/deals/${d.id}/reserve`,
+                                      {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ reserved: !d.isReserved }),
+                                      }
+                                    );
+                                    if (!res.ok) {
+                                      const err = await res.json().catch(() => ({}));
+                                      alert(err.error || "Не удалось изменить резерв");
+                                    } else {
+                                      router.refresh();
+                                    }
+                                  } finally {
+                                    setBusyId(null);
+                                  }
+                                }}
+                                title={d.isReserved
+                                  ? "Снять резерв — товары снова доступны другим заказам"
+                                  : "Зарезервировать товар по этому заказу (выставлен счёт)"}
+                              >
+                                {busyId === d.id ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : d.isReserved ? (
+                                  <><LockOpen size={13} /> Снять резерв</>
+                                ) : (
+                                  <><Lock size={13} /> Зарезервировать товар</>
+                                )}
+                              </button>
+                              {d.isReserved && (
+                                <span className="deal-reserve-hint">
+                                  Товар зарезервирован — не уйдёт другим клиентам
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div className="admin-order__side">
@@ -2334,6 +2465,7 @@ export function WarehouseManager({
                             payments={payments}
                             deliveryPrice={deliveryPrice}
                             freeDeliveryThreshold={freeDeliveryThreshold}
+                            reservedStockById={reservedTotalById}
                             initialDeal={{
                               id: d.id,
                               date: d.date,
@@ -2353,9 +2485,12 @@ export function WarehouseManager({
                                 d.deliveryAddress ?? d.address ?? null,
                               deliveryPlannedDate: d.deliveryPlannedDate ?? null,
                               deliveryNote: d.deliveryNote ?? null,
+                              deliveryContact: d.deliveryContact ?? d.contactName ?? null,
+                              deliveryPhone: d.deliveryPhone ?? d.customerPhone ?? null,
                               // Способ оплаты берём из привязанных платежей,
                               // чтобы наличный заказ не «переезжал» в безнал.
                               paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
+                              isReserved: Boolean(d.isReserved),
                               items: d.items.map((item) => ({
                                 productId: item.productId,
                                 name: item.name,
