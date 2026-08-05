@@ -193,6 +193,22 @@
   font-size: 11px;
 }
 .saz-mini:hover { background: #f0f2f5; }
+.saz-print-cell { min-width: 170px; }
+.saz-print-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.saz-btn--roster {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+.saz-btn--roster:hover { background: #b91c1c; }
 .saz-icon-btn {
   padding: 4px;
   border: none;
@@ -316,6 +332,67 @@
   background: #f0fdf4;
   border-color: #86efac;
 }
+.saz-print-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px;
+  margin-top: 6px;
+}
+.saz-print-block {
+  background: #fff;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 14px;
+}
+.saz-print-block--roster {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.saz-print-block__title {
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  color: #065f46;
+}
+.saz-print-block--roster .saz-print-block__title { color: #991b1b; }
+.saz-print-block__sub {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+.saz-card__actions--wrap { flex-wrap: wrap; }
+.saz-roster-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #fecaca;
+}
+.saz-roster-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.saz-roster-item:hover { background: #fee2e2; }
+.saz-roster-item input { cursor: pointer; }
+
+@media print {
+  .saz-multi-print {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 999999 !important;
+    background: #fff !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .saz-multi-print .saz-print-toolbar { display: none !important; }
+}
 
 /* ── Печать ── */
 .saz-print-root {
@@ -382,8 +459,8 @@
 }
 .saz-b-grid th,
 .saz-b-grid td {
-  border: 1.2px solid #555;
-  padding: 1mm 1mm;
+  border: 1.4px solid #333;
+  padding: 1.2mm 0.6mm;
   font-size: 10px;
   text-align: center;
   vertical-align: middle;
@@ -392,76 +469,84 @@
 .saz-b-grid thead th {
   background: #f1f1ee;
   font-weight: 800;
-  padding: 1mm 0.5mm;
+  padding: 1.5mm 0.4mm;
 }
 .saz-b-daynum {
   display: block;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 900;
   line-height: 1;
 }
 .saz-b-wd {
   display: block;
-  font-size: 8px;
-  color: #555;
-  font-weight: 600;
+  font-size: 9px;
+  color: #444;
+  font-weight: 700;
 }
 .saz-b-dow {
-  font-size: 8px !important;
-  color: #666;
+  font-size: 9px !important;
+  color: #444;
   background: #fafaf9;
+  font-weight: 700;
 }
 .saz-b-weekend {
   background: #fff3b0 !important;
 }
 .saz-b-name {
-  width: 42mm;
+  width: 32mm;
   text-align: left !important;
-  padding: 2mm 2mm !important;
+  padding: 1.5mm 2mm !important;
   font-weight: 800;
-  font-size: 11px !important;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 10px !important;
+  white-space: normal !important;
+  word-break: break-word;
+  line-height: 1.15;
 }
 .saz-b-name--body {
   background: #fff !important;
+  font-size: 11px !important;
 }
 .saz-b-total-col {
-  width: 16mm;
-  font-size: 12px !important;
-  font-weight: 800;
+  width: 18mm;
+  font-size: 13px !important;
+  font-weight: 900;
+  background: #f7f6f2;
 }
 .saz-b-sign-col {
-  width: 26mm;
+  width: 28mm;
 }
 .saz-b-cell {
-  height: 14mm;
+  height: 18mm;
+  min-width: 9.5mm;
   background: #fff;
   position: relative;
+  padding: 1mm 0.3mm !important;
 }
 .saz-b-cell--pay {
-  background: #fff3b0 !important;
+  background: #ffe135 !important;
 }
 .saz-b-cell--rem {
-  background: #dbeafe !important;
+  background: #bfdbfe !important;
 }
 .saz-b-amount {
   display: block;
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 20px;
+  font-weight: 900;
   color: #111;
-  line-height: 1.05;
+  line-height: 1;
   letter-spacing: 0.3px;
+  margin-top: 1mm;
+  white-space: nowrap;
 }
 .saz-b-handwrite {
   display: block;
-  font-size: 7px;
-  color: #888;
-  border-top: 1px dashed #bbb;
-  margin-top: 1mm;
-  padding-top: 0.5mm;
+  font-size: 8px;
+  color: #666;
+  border-top: 1px dashed #888;
+  margin-top: 2mm;
+  padding-top: 1mm;
   font-style: italic;
+  font-weight: 600;
 }
 .saz-b-num {
   text-align: right !important;
@@ -470,17 +555,22 @@
 }
 .saz-b-daytotal {
   background: #f7f6f2;
-  font-size: 9px;
+  font-size: 10px;
+  font-weight: 800;
 }
 .saz-b-grand {
   background: #f1f1ee;
   font-weight: 800 !important;
+  text-align: left !important;
 }
 .saz-b-grandtotal {
   background: #f1f1ee;
   font-weight: 900;
-  font-size: 11px !important;
+  font-size: 13px !important;
   color: #1d4ed8;
+}
+.saz-b-total-col.saz-b-num {
+  padding: 1.2mm 1.5mm !important;
 }
 
 .saz-b-notes {
@@ -530,7 +620,7 @@
 }
 .saz-r-mark {
   display: block;
-  font-size: 28px;
+  font-size: 38px;
   font-weight: 900;
   color: #b91c1c;
   line-height: 1;

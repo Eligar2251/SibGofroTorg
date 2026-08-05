@@ -328,6 +328,8 @@ export function SalaryAutoDistribute() {
   const [showBlank, setShowBlank] = useState(false);
   const [selectedForBlank, setSelectedForBlank] = useState<Set<string>>(new Set());
   const [blankPersonId, setBlankPersonId] = useState<string | null>(null);
+  const [printAllRosters, setPrintAllRosters] = useState(false);
+  const [selectedRosters, setSelectedRosters] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -361,6 +363,20 @@ export function SalaryAutoDistribute() {
       const next = new Set(s);
       next.delete(id);
       return next;
+    });
+    setSelectedRosters((s) => {
+      const next = new Set(s);
+      next.delete(id);
+      return next;
+    });
+  }
+  function selectAllRosters() { setSelectedRosters(new Set(people.map(p => p.id))); }
+  function clearRosters() { setSelectedRosters(new Set()); }
+  function toggleRoster(id: string) {
+    setSelectedRosters((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
     });
   }
   function togglePayDay(id: string, wd: number) {
@@ -553,23 +569,25 @@ export function SalaryAutoDistribute() {
                     <td className={`saz-num${(stat?.leftover || 0) > 0.01 ? " saz-warn" : ""}`}>
                       {fmtMoney(stat?.leftover || 0)} ₽
                     </td>
-                    <td>
-                      <label className="saz-check" title="Включить в общий бланк">
-                        <input
-                          type="checkbox"
-                          checked={selectedForBlank.has(p.id)}
-                          onChange={() => toggleSelected(p.id)}
-                        />
-                        в бланк
-                      </label>
-                      <button
-                        type="button"
-                        className="saz-mini"
-                        onClick={() => setBlankPersonId(p.id)}
-                        title="Открыть личный табель охраны этого сотрудника (рабочие дни отмечены крестиком)"
-                      >
-                        табель
-                      </button>
+                    <td className="saz-print-cell">
+                      <div className="saz-print-buttons">
+                        <label className="saz-check" title="Включить в общий бланк">
+                          <input
+                            type="checkbox"
+                            checked={selectedForBlank.has(p.id)}
+                            onChange={() => toggleSelected(p.id)}
+                          />
+                          в общий бланк
+                        </label>
+                        <button
+                          type="button"
+                          className="saz-btn saz-btn--roster"
+                          onClick={() => setBlankPersonId(p.id)}
+                          title="Личный табель охраны этого сотрудника"
+                        >
+                          Личный табель ✕
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <button
@@ -677,31 +695,71 @@ export function SalaryAutoDistribute() {
       {/* ── Печать ── */}
       <div className="saz-card saz-card--print">
         <div className="saz-card__head">
-          <h3>Печать бланка зарплат</h3>
-          <div className="saz-card__actions">
-            <button className="saz-btn saz-btn--ghost" onClick={selectAll}>Всех</button>
-            <button className="saz-btn saz-btn--ghost" onClick={clearSelection}>Снять выделение</button>
-            <button
-              className="saz-btn saz-btn--primary"
-              onClick={() => {
-                if (selectedForBlank.size === 0) {
-                  alert("Отметьте галочкой кого печатать (в колонке «Печать» → «в бланк»).");
-                  return;
-                }
-                setShowBlank(true);
-              }}
-            >
-              <Printer size={14} /> Печать бланка ({selectedForBlank.size})
-            </button>
-          </div>
+          <h3>🖨 Печать</h3>
         </div>
-        <div className="saz-hint">
-          Бланк печатается на альбомном A4 отдельно от основного раздела «Зарплаты»:
-          фамилии слева, дни месяца — по горизонтали, в пересечении — крупная
-          ячейка с суммой. Ниже на бланке можно от руки вписать фактически
-          выданную сумму. Кнопка «табель» в колонке «Печать» открывает личный
-          табель охраны сотрудника (рабочие дни отмечены крестиком, кроме его
-          личных смен) с местом для ручной записи зарплаты.
+        <div className="saz-print-grid">
+          <div className="saz-print-block">
+            <div className="saz-print-block__title">Общий бланк выдачи зарплат</div>
+            <div className="saz-print-block__sub">
+              Альбомный A4, все выбранные сотрудники на одном листе: дни по
+              горизонтали, крупные ячейки с суммами, место для подписи и
+              ручной записи фактически выданной суммы.
+            </div>
+            <div className="saz-card__actions saz-card__actions--wrap">
+              <button className="saz-btn saz-btn--ghost" onClick={selectAll}>Всех</button>
+              <button className="saz-btn saz-btn--ghost" onClick={clearSelection}>Снять</button>
+              <button
+                className="saz-btn saz-btn--primary"
+                onClick={() => {
+                  if (selectedForBlank.size === 0) {
+                    alert("Отметьте галочкой кого включать в бланк (в колонке «Печать» → «в общий бланк»).");
+                    return;
+                  }
+                  setShowBlank(true);
+                }}
+              >
+                <Printer size={14} /> Печать бланка ({selectedForBlank.size})
+              </button>
+            </div>
+          </div>
+
+          <div className="saz-print-block saz-print-block--roster">
+            <div className="saz-print-block__title">Личные табели охраны</div>
+            <div className="saz-print-block__sub">
+              Для каждого выбранного сотрудника — отдельный лист: все дни кроме
+              его смен помечены жирным <b>крестиком (✕)</b>, в его дни — пустая
+              жёлтая ячейка (выходит он). Внизу крупное поле для записи
+              выданной зарплаты от руки.
+            </div>
+            <div className="saz-card__actions saz-card__actions--wrap">
+              <button className="saz-btn saz-btn--ghost" onClick={selectAllRosters}>Всех</button>
+              <button className="saz-btn saz-btn--ghost" onClick={clearRosters}>Снять</button>
+              <button
+                className="saz-btn saz-btn--primary"
+                onClick={() => {
+                  if (selectedRosters.size === 0) {
+                    alert("Отметьте галочкой чьи табели печатать. Или нажмите красную кнопку «Личный табель» напротив сотрудника.");
+                    return;
+                  }
+                  setPrintAllRosters(true);
+                }}
+              >
+                <Printer size={14} /> Печать табелей ({selectedRosters.size})
+              </button>
+            </div>
+            <div className="saz-roster-list">
+              {people.map((p) => (
+                <label key={p.id} className="saz-roster-item">
+                  <input
+                    type="checkbox"
+                    checked={selectedRosters.has(p.id)}
+                    onChange={() => toggleRoster(p.id)}
+                  />
+                  <span>{p.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -722,6 +780,131 @@ export function SalaryAutoDistribute() {
           onDone={() => setBlankPersonId(null)}
         />
       )}
+
+      {printAllRosters && (
+        <MultiGuardRosterPrint
+          people={people.filter((p) => selectedRosters.has(p.id))}
+          allPeople={people}
+          settings={settings}
+          onDone={() => setPrintAllRosters(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MultiGuardRosterPrint({
+  people,
+  allPeople,
+  settings,
+  onDone,
+}: {
+  people: Person[];
+  allPeople: Person[];
+  settings: DistSettings;
+  onDone: () => void;
+}) {
+  return (
+    <div className="saz-print-root saz-multi-print">
+      <div className="saz-print-toolbar">
+        <button className="saz-btn saz-btn--primary" onClick={() => window.print()}>🖨 Печать</button>
+        <button className="saz-btn" onClick={onDone}>✕ Закрыть</button>
+      </div>
+      {people.map((p, idx) => (
+        <GuardRosterPrintInner key={p.id} person={p} allPeople={allPeople} settings={settings} pageBreak={idx > 0} />
+      ))}
+    </div>
+  );
+}
+
+// Внутренний рендер личного табеля без кнопок и оверлея (для мульти-печати)
+function GuardRosterPrintInner({
+  person,
+  allPeople,
+  settings,
+  pageBreak,
+}: {
+  person: Person;
+  allPeople: Person[];
+  settings: DistSettings;
+  pageBreak?: boolean;
+}) {
+  useEffect(() => {
+    document.title = `Табели охраны — ${settings.periodLabel}`;
+  }, [settings.periodLabel]);
+  const weeks = settings.weeks;
+  const curMon = (() => {
+    const d = new Date(); d.setHours(0,0,0,0);
+    const wd = d.getDay();
+    const diff = wd === 0 ? -6 : 1 - wd;
+    d.setDate(d.getDate() + diff);
+    return d;
+  })();
+  const start = new Date(curMon); start.setDate(start.getDate() - (weeks - 1) * 7);
+  const end = new Date(curMon); end.setDate(end.getDate() + 6 + (weeks - 1) * 7);
+  const periodDays: Date[] = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) periodDays.push(new Date(d));
+  const weeksArr: Date[][] = [];
+  for (let i = 0; i < periodDays.length; i += 7) weeksArr.push(periodDays.slice(i, i + 7));
+  const initials = (name: string) => name.trim().split(/\s+/).slice(0,2).map(w => w.charAt(0).toUpperCase()).join("");
+  const guardsOn = (wd: number) => allPeople.filter(p => p.payDays.includes(wd) && p.id !== person.id);
+  const WEEKDAYS_SHORT = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
+  return (
+    <div className="saz-print-sheet saz-roster" style={{ pageBreakBefore: pageBreak ? "always" : undefined } as any}>
+      <div className="saz-b-head">
+        <div className="saz-b-head__title">Личный табель дежурств охраны</div>
+        <div className="saz-b-head__period">
+          {person.name} · {settings.periodLabel}
+        </div>
+        <div className="saz-b-head__company">СибГофроТорг</div>
+      </div>
+      <div className="saz-r-hint">
+        <b style={{color:"#b91c1c", fontSize:13}}>✕ — выходной (не моя смена)</b>. Пустые жёлтые ячейки —
+        мои смены (выходит <b>{person.name.split(/\s+/)[0]}</b>).
+      </div>
+      {weeksArr.map((week, wi) => (
+        <table key={wi} className="saz-r-grid">
+          <thead>
+            <tr>
+              {week.map(d => (
+                <th key={d.toISOString()} className={d.getDay() === 0 || d.getDay() === 6 ? "saz-b-weekend" : ""}>
+                  <span className="saz-b-daynum">{d.getDate()}</span>
+                  <span className="saz-b-wd">{WEEKDAYS_SHORT[d.getDay()]}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {week.map(d => {
+                const wd = d.getDay();
+                const isMine = person.payDays.includes(wd);
+                const others = guardsOn(wd);
+                return (
+                  <td key={d.toISOString()} className={`saz-r-cell${isMine ? " saz-r-cell--mine" : ""}${wd === 0 || wd === 6 ? " saz-b-weekend" : ""}`}>
+                    <span className="saz-r-mark">{isMine ? "" : "✕"}</span>
+                    {others.length > 0 && <span className="saz-r-others">{others.map(o => initials(o.name)).join(" / ")}</span>}
+                  </td>
+                );
+              })}
+            </tr>
+          </tbody>
+        </table>
+      ))}
+      <div className="saz-r-salary">
+        <div className="saz-r-salary__label">Заработная плата за период (вписать от руки):</div>
+        <div className="saz-r-salary__box">
+          <div className="saz-r-salary__amount">___________________________ ₽</div>
+          <div className="saz-r-salary__small">прописью: _________________________________________________</div>
+        </div>
+        <div className="saz-r-salary__row">
+          <span>Выдал: ______________________</span>
+          <span>Получил: ______________________</span>
+        </div>
+        <div className="saz-r-salary__row">
+          <span>Дата: «____» ______________ 20____ г.</span>
+        </div>
+      </div>
     </div>
   );
 }
