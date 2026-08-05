@@ -1,0 +1,619 @@
+/* =========================================================
+   FILE: src/components/admin/SalaryAutoDistribute.css
+   Стили для автоматического расчёта зарплат и печатных бланков.
+   Префикс saz-*
+   ========================================================= */
+
+.saz-root {
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: #1f2933;
+  padding: 16px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid var(--adm-border, #dbd8d0);
+}
+.saz-header {
+  margin-bottom: 14px;
+}
+.saz-header h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.saz-header__sub {
+  font-size: 13px;
+  color: #555;
+}
+
+.saz-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.saz-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.saz-card__head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.saz-card__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.saz-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 14px;
+}
+.saz-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #374151;
+}
+.saz-field--wide {
+  grid-column: 1 / -1;
+}
+.saz-field span {
+  font-weight: 600;
+  font-size: 12px;
+  color: #374151;
+}
+.saz-field input,
+.saz-field select {
+  padding: 6px 8px;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.saz-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.saz-chip {
+  padding: 6px 10px;
+  border: 1px solid #cbd2d9;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 38px;
+  text-align: center;
+}
+.saz-chip:hover {
+  background: #f0f2f5;
+}
+.saz-chip--on {
+  background: #dbeafe;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+.saz-chip--on.saz-chip--pay {
+  background: #fef3c7;
+  border-color: #d97706;
+  color: #92400e;
+}
+
+.saz-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #cbd2d9;
+  background: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.saz-btn:hover { background: #f0f2f5; }
+.saz-btn--primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.saz-btn--primary:hover { background: #1d4ed8; }
+.saz-btn--ghost {
+  background: transparent;
+}
+
+.saz-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.saz-emp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.saz-emp-table th,
+.saz-emp-table td {
+  border: 1px solid #e5e7eb;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+.saz-emp-table thead th {
+  background: #f9fafb;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+.saz-input {
+  padding: 5px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  width: 100%;
+}
+.saz-input--name { font-weight: 600; }
+.saz-input--num { text-align: right; }
+
+.saz-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.saz-cell-total {
+  font-weight: 800;
+  background: #f0fdf4;
+  color: #15803d;
+}
+.saz-warn {
+  color: #b91c1c;
+  font-weight: 700;
+}
+.saz-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.saz-mini {
+  margin-left: 6px;
+  padding: 2px 6px;
+  border: 1px solid #cbd2d9;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.saz-mini:hover { background: #f0f2f5; }
+.saz-icon-btn {
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: #b91c1c;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.saz-icon-btn:hover { background: #fee2e2; }
+
+.saz-total-bar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px dashed #e5e7eb;
+  font-size: 13px;
+}
+.saz-total-bar b { color: #1d4ed8; }
+.saz-muted { color: #6b7280; font-size: 12px; }
+.saz-saved { margin-left: auto; font-size: 11px; color: #9ca3af; }
+
+/* ── Расписание по дням ── */
+.saz-schedule { display: flex; flex-direction: column; gap: 12px; }
+.saz-week {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  background: #fafafa;
+}
+.saz-week__head {
+  font-weight: 700;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.saz-week__total { color: #1d4ed8; }
+.saz-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.saz-day {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  padding: 6px;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+}
+.saz-day--empty { background: #f9fafb; color: #9ca3af; }
+.saz-day--remainder { border-color: #60a5fa; background: #eff6ff; }
+.saz-day__head {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 3px;
+  margin-bottom: 4px;
+}
+.saz-day__wd { font-weight: 700; font-size: 11px; color: #374151; }
+.saz-day__num { font-size: 16px; font-weight: 800; color: #111; }
+.saz-day__mon { font-size: 10px; color: #888; margin-left: auto; }
+.saz-day__body { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.saz-day__line {
+  background: #fff8e1;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  padding: 3px 4px;
+}
+.saz-day--remainder .saz-day__line {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+.saz-day__name {
+  display: block;
+  font-weight: 700;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.saz-day__amount {
+  display: block;
+  font-weight: 800;
+  font-size: 14px;
+  color: #1d4ed8;
+}
+.saz-day__hint {
+  display: block;
+  font-size: 9px;
+  color: #6b7280;
+}
+.saz-day__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d1d5db;
+  font-size: 18px;
+}
+.saz-day__foot {
+  margin-top: 4px;
+  text-align: right;
+  font-weight: 800;
+  font-size: 12px;
+  color: #374151;
+}
+
+.saz-hint {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+.saz-card--print {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+/* ── Печать ── */
+.saz-print-root {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #f5f3ee;
+  overflow: auto;
+  padding: 24px;
+}
+.saz-print-toolbar {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 100000;
+  display: flex;
+  gap: 8px;
+}
+.saz-print-sheet {
+  max-width: 297mm;
+  margin: 0 auto;
+  background: #fff;
+  padding: 8mm;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #2b2b28;
+}
+.saz-print-sheet,
+.saz-print-sheet * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.saz-b-head {
+  text-align: center;
+  margin-bottom: 5mm;
+  border-bottom: 2px solid #2b2b28;
+  padding-bottom: 3mm;
+}
+.saz-b-head__title {
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.saz-b-head__period {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 1mm;
+}
+.saz-b-head__company {
+  font-size: 11px;
+  color: #555;
+  margin-top: 1mm;
+}
+
+/* Главная сетка бланка зарплат */
+.saz-b-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  break-inside: avoid;
+}
+.saz-b-grid th,
+.saz-b-grid td {
+  border: 1.2px solid #555;
+  padding: 1mm 1mm;
+  font-size: 10px;
+  text-align: center;
+  vertical-align: middle;
+  overflow: hidden;
+}
+.saz-b-grid thead th {
+  background: #f1f1ee;
+  font-weight: 800;
+  padding: 1mm 0.5mm;
+}
+.saz-b-daynum {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+.saz-b-wd {
+  display: block;
+  font-size: 8px;
+  color: #555;
+  font-weight: 600;
+}
+.saz-b-dow {
+  font-size: 8px !important;
+  color: #666;
+  background: #fafaf9;
+}
+.saz-b-weekend {
+  background: #fff3b0 !important;
+}
+.saz-b-name {
+  width: 42mm;
+  text-align: left !important;
+  padding: 2mm 2mm !important;
+  font-weight: 800;
+  font-size: 11px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.saz-b-name--body {
+  background: #fff !important;
+}
+.saz-b-total-col {
+  width: 16mm;
+  font-size: 12px !important;
+  font-weight: 800;
+}
+.saz-b-sign-col {
+  width: 26mm;
+}
+.saz-b-cell {
+  height: 14mm;
+  background: #fff;
+  position: relative;
+}
+.saz-b-cell--pay {
+  background: #fff3b0 !important;
+}
+.saz-b-cell--rem {
+  background: #dbeafe !important;
+}
+.saz-b-amount {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  color: #111;
+  line-height: 1.05;
+  letter-spacing: 0.3px;
+}
+.saz-b-handwrite {
+  display: block;
+  font-size: 7px;
+  color: #888;
+  border-top: 1px dashed #bbb;
+  margin-top: 1mm;
+  padding-top: 0.5mm;
+  font-style: italic;
+}
+.saz-b-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.saz-b-daytotal {
+  background: #f7f6f2;
+  font-size: 9px;
+}
+.saz-b-grand {
+  background: #f1f1ee;
+  font-weight: 800 !important;
+}
+.saz-b-grandtotal {
+  background: #f1f1ee;
+  font-weight: 900;
+  font-size: 11px !important;
+  color: #1d4ed8;
+}
+
+.saz-b-notes {
+  margin-top: 3mm;
+  font-size: 9px;
+  color: #555;
+  line-height: 1.3;
+}
+.saz-b-sign {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8mm;
+  font-size: 11px;
+}
+
+/* ── Личный табель охраны ── */
+.saz-roster .saz-r-hint {
+  font-size: 10px;
+  color: #555;
+  margin-bottom: 4mm;
+}
+.saz-r-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin-bottom: 4mm;
+}
+.saz-r-grid th,
+.saz-r-grid td {
+  border: 1.2px solid #555;
+  text-align: center;
+  vertical-align: middle;
+  padding: 1mm;
+}
+.saz-r-grid thead th {
+  background: #f1f1ee;
+  font-weight: 800;
+  padding: 1mm 0.5mm;
+}
+.saz-r-cell {
+  height: 18mm;
+  background: #fff;
+  position: relative;
+}
+.saz-r-cell--mine {
+  background: #fff3b0 !important;
+}
+.saz-r-mark {
+  display: block;
+  font-size: 28px;
+  font-weight: 900;
+  color: #b91c1c;
+  line-height: 1;
+}
+.saz-r-cell--mine .saz-r-mark {
+  color: transparent;
+}
+.saz-r-others {
+  display: block;
+  position: absolute;
+  bottom: 1mm;
+  left: 0;
+  right: 0;
+  font-size: 9px;
+  color: #666;
+  font-weight: 700;
+}
+
+.saz-r-salary {
+  margin-top: 6mm;
+  border: 1.5px solid #2b2b28;
+  border-radius: 2mm;
+  padding: 4mm;
+}
+.saz-r-salary__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 3mm;
+}
+.saz-r-salary__box {
+  border: 1.2px solid #555;
+  border-radius: 2mm;
+  padding: 5mm;
+  background: #fff9db;
+  text-align: center;
+}
+.saz-r-salary__amount {
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #111;
+}
+.saz-r-salary__small {
+  font-size: 11px;
+  color: #444;
+  margin-top: 3mm;
+}
+.saz-r-salary__row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4mm;
+  font-size: 11px;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm 8mm;
+  }
+  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+  .admin-sidebar, .admin-mobile-bar, .NavigationProgress { display: none !important; }
+  .admin-content, .admin-main { visibility: hidden !important; }
+  .saz-print-root, .saz-print-root * { visibility: visible !important; }
+  .saz-print-root {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: 999999 !important;
+    overflow: visible !important;
+  }
+  .saz-print-toolbar { display: none !important; }
+  .saz-print-sheet {
+    max-width: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  /* Если табель один — лучше на portrait, но у нас бланк зарплат в landscape,
+     а личный табель охраны тоже альбомный (чтобы 7 дней помещались крупно). */
+  .saz-b-grid, .saz-r-grid { break-inside: avoid; }
+}

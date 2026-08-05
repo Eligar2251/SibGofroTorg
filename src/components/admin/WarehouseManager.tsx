@@ -76,6 +76,7 @@ import {
   type CounterpartyOption,
 } from "@/components/admin/WarehouseCounterparties";
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
+import { SalaryAutoDistribute } from "@/components/admin/SalaryAutoDistribute";
 import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
@@ -2392,7 +2393,15 @@ export function WarehouseManager({
 
       {/* ============ ВКЛАДКА: ЗАРПЛАТЫ ============ */}
       {activeTab === "salaries" && (
-        <WarehouseSalaries employees={employees} salaries={salaries} />
+        <>
+          <div className="admin-filters admin-filters--sub" style={{ marginBottom: 14 }}>
+            <SalaryTabsToggle />
+          </div>
+          <SalaryTabContent
+            employees={employees}
+            salaries={salaries}
+          />
+        </>
       )}
 
       {/* ============ ВКЛАДКА: ОТЧЁТЫ ============ */}
@@ -3994,3 +4003,73 @@ export function WarehouseManager({
     </div>
   );
 }
+
+// ─── Вкладки внутри раздела «Зарплаты»: обычный учёт + автор расчёт ───
+function SalaryTabsToggle() {
+  const [sub, setSub] = useState<string>(() => {
+    if (typeof window === "undefined") return "regular";
+    return new URLSearchParams(window.location.search).get("salary") || "regular";
+  });
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (sub === "regular") url.searchParams.delete("salary");
+    else url.searchParams.set("salary", sub);
+    window.history.replaceState({}, "", url.toString());
+    // Переключение видимости через событие storage не требуется — используем
+    // кастомное событие, чтобы оба компонента синхронно перерисовались.
+    window.dispatchEvent(new CustomEvent("salary-sub-changed", { detail: sub }));
+  }, [sub]);
+  useEffect(() => {
+    const onCustom = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      if (v && v !== sub) setSub(v);
+    };
+    window.addEventListener("salary-sub-changed", onCustom as EventListener);
+    return () => window.removeEventListener("salary-sub-changed", onCustom as EventListener);
+  }, [sub]);
+  return (
+    <>
+      <button
+        type="button"
+        className={`admin-filter${sub === "regular" ? " admin-filter--active" : ""}`}
+        onClick={() => setSub("regular")}
+      >
+        <Banknote size={12} /> Зарплаты (ведомости)
+      </button>
+      <button
+        type="button"
+        className={`admin-filter${sub === "auto" ? " admin-filter--active" : ""}`}
+        onClick={() => setSub("auto")}
+      >
+        Авторасчёт по дням
+      </button>
+    </>
+  );
+}
+
+function SalaryTabContent({
+  employees,
+  salaries,
+}: {
+  employees: Employee[];
+  salaries: Salary[];
+}) {
+  const [sub, setSub] = useState<string>(() => {
+    if (typeof window === "undefined") return "regular";
+    return new URLSearchParams(window.location.search).get("salary") || "regular";
+  });
+  useEffect(() => {
+    const onCustom = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      if (v) setSub(v);
+    };
+    window.addEventListener("salary-sub-changed", onCustom as EventListener);
+    return () => window.removeEventListener("salary-sub-changed", onCustom as EventListener);
+  }, []);
+  if (sub === "auto") {
+    return <SalaryAutoDistribute />;
+  }
+  return <WarehouseSalaries employees={employees} salaries={salaries} />;
+}
+
+export default WarehouseManager;
