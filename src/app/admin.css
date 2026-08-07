@@ -10822,92 +10822,29 @@ body:has(.admin-modal-overlay) {
   }
 }
 
-/* ── Чекбокс «не считать» у ожидающего платежа в банке ── */
-.bank-skip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* ── «Должны нам / Мы должны»: клик по строке вычитает контрагента ──
+   Строка кликабельна; вычтенный контрагент оформляется красным —
+   сразу видно, что он не участвует в расчёте. Повторный клик возвращает. */
+.bank-due__row--click {
   cursor: pointer;
-  user-select: none;
-  padding: 3px 8px 3px 6px;
-  border-radius: 99px;
-  border: 1px solid var(--adm-border-mid);
-  background: var(--adm-card);
-  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+  border-radius: var(--adm-r-sm);
+  transition: background var(--transition);
 }
 
-.bank-skip:hover {
-  border-color: var(--adm-kraft);
-  background: var(--adm-kraft-pale);
+.bank-due__row--click:hover {
+  background: var(--adm-paper);
 }
 
-.bank-skip input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.bank-skip__box {
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  border: 1.5px solid var(--adm-border-mid);
-  background: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background var(--transition), border-color var(--transition);
-}
-
-.bank-skip__box::after {
-  content: "";
-  width: 8px;
-  height: 5px;
-  border-left: 2px solid #fff;
-  border-bottom: 2px solid #fff;
-  transform: rotate(-45deg) translate(0, -1px);
-  opacity: 0;
-}
-
-.bank-skip__text {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--adm-muted);
-  white-space: nowrap;
-}
-
-.bank-skip--on {
-  background: var(--adm-kraft-pale);
-  border-color: var(--adm-kraft);
-}
-
-.bank-skip--on .bank-skip__box {
-  background: var(--adm-kraft-mid);
-  border-color: var(--adm-kraft-mid);
-}
-
-.bank-skip--on .bank-skip__box::after {
-  opacity: 1;
-}
-
-.bank-skip--on .bank-skip__text {
-  color: var(--adm-kraft);
-}
-
-/* Пропущенный контрагент в «Должны нам / Мы должны»: строка
-   приглушена, сумма зачёркнута — сразу видно, что вне расчёта. */
-.bank-due__row--skipped {
-  opacity: 0.55;
+.bank-due__row--skipped .bank-due__name,
+.bank-due__row--skipped .bank-due__meta,
+.bank-due__row--skipped .bank-due__sum {
+  color: var(--adm-rust) !important;
 }
 
 .bank-due__row--skipped .bank-due__sum {
   text-decoration: line-through;
 }
 
-.bank-due__row .bank-skip {
-  margin-left: auto;
-  margin-right: 10px;
+.bank-due__row--skipped:hover {
+  background: var(--adm-rust-pale);
 }

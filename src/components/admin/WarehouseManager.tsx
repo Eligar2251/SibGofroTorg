@@ -489,10 +489,10 @@ export function WarehouseManager({
   const [bankDateTo, setBankDateTo] = useState("");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
   const [historyDaysPage, setHistoryDaysPage] = useState(0);
-  // «Не считать» в «Должны нам / Мы должны»: чекбоксы прямо в блоке
-  // расчёта банка, по контрагенту. Клик мгновенно убирает его суммы
-  // из ожидаемого прихода/расхода — быстро прикинуть без правки
-  // платежей. Живёт только на клиенте, ничего не меняет в БД.
+  // «Не считать» в «Должны нам / Мы должны»: клик по контрагенту в блоке
+  // расчёта банка мгновенно вычитает его из ожидаемых сумм (строка
+  // становится красной), повторный клик возвращает. Быстрая прикидка —
+  // живёт только на клиенте, платежи и БД не меняются.
   const [skippedParties, setSkippedParties] = useState<Set<string>>(new Set());
 
   function toggleSkipParty(c: { type: "customer" | "supplier"; name: string }) {
@@ -688,8 +688,8 @@ export function WarehouseManager({
   
   const allCounterparties = useMemo(
     // Полный список платежей: строки «пропущенных» контрагентов должны
-    // оставаться видимыми (чтобы чекбокс можно было снять). Итоги
-    // «Должны нам / Мы должны» считаются по paymentsForTotals.
+    // оставаться видимыми (чтобы их можно было вернуть в расчёт кликом).
+    // Итоги «Должны нам / Мы должны» считаются по paymentsForTotals.
     () => getPendingPaymentCounterpartyBalances(payments, deals),
     [payments, deals]
   );
@@ -3065,27 +3065,29 @@ export function WarehouseManager({
                   .map((c) => {
                     const skipped = skippedParties.has(partyKey("customer", c.name));
                     return (
-                    <div key={`c-${c.name}`} className={`bank-due__row${skipped ? " bank-due__row--skipped" : ""}`}>
+                    <div
+                      key={`c-${c.name}`}
+                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      title={skipped
+                        ? "Нажмите, чтобы вернуть контрагента в расчёт"
+                        : "Нажмите, чтобы не считать контрагента в «Должны нам» (быстрая прикидка)"}
+                      onClick={() => toggleSkipParty(c)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleSkipParty(c);
+                        }
+                      }}
+                    >
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
                           {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <label
-                        className={`bank-skip${skipped ? " bank-skip--on" : ""}`}
-                        title="Не считать этого контрагента в «Должны нам» — быстрая прикидка, платежи не меняются"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={skipped}
-                          onChange={() => toggleSkipParty(c)}
-                        />
-                        <span className="bank-skip__box" aria-hidden="true" />
-                        <span className="bank-skip__text">не считать</span>
-                      </label>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
+                      <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
@@ -3106,27 +3108,29 @@ export function WarehouseManager({
                   .map((c) => {
                     const skipped = skippedParties.has(partyKey("supplier", c.name));
                     return (
-                    <div key={`s-${c.name}`} className={`bank-due__row${skipped ? " bank-due__row--skipped" : ""}`}>
+                    <div
+                      key={`s-${c.name}`}
+                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      title={skipped
+                        ? "Нажмите, чтобы вернуть контрагента в расчёт"
+                        : "Нажмите, чтобы не считать контрагента в «Мы должны» (быстрая прикидка)"}
+                      onClick={() => toggleSkipParty(c)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleSkipParty(c);
+                        }
+                      }}
+                    >
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
                           {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <label
-                        className={`bank-skip${skipped ? " bank-skip--on" : ""}`}
-                        title="Не считать этого контрагента в «Мы должны» — быстрая прикидка, платежи не меняются"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={skipped}
-                          onChange={() => toggleSkipParty(c)}
-                        />
-                        <span className="bank-skip__box" aria-hidden="true" />
-                        <span className="bank-skip__text">не считать</span>
-                      </label>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
+                      <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
