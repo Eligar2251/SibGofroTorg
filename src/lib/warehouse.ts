@@ -2952,10 +2952,18 @@ export async function collectCash(
   // Эти деньги физически ушли из кассы до сдачи, поэтому сдаётся
   // приход МИНУС траты. Иначе сдали бы больше, чем есть, и остаток
   // кассы ушёл бы в минус ровно на сумму трат.
-  // Пустая смена не должна повторно прикреплять расходы дня: без прихода
-  // они уже учтены в кассовом регистре, а нулевое закрытие лишь фиксирует
-  // отсутствие операций.
-  const expensesOfDay = isZeroShift
+  //
+  // Траты прикрепляются к ЛЮБОЙ смене, включая пустую: когда приходов
+  // за день не было вообще, а ЗП платили налом из остатка прошлых дней,
+  // сдача кассы должна показать «перенос с прошлого дня + ЗП −N» —
+  // иначе движение денег в документе не видно. Защита от двойного
+  // прикрепления: если за эту дату уже есть документ сдачи с тратами,
+  // повторно не прикрепляем.
+  const dateAlreadyHasExpenses = collections.some((c) => {
+    const d = String(c.date || "").slice(0, 10);
+    return d === expenseDate && Array.isArray(c.expenses) && c.expenses.length > 0;
+  });
+  const expensesOfDay = dateAlreadyHasExpenses
     ? []
     : listCashExpenses(payments, salaries).filter((e) => e.date === expenseDate);
   const expensesTotal =
@@ -3005,7 +3013,9 @@ export async function collectCash(
     transfer_amount: cardAmount,
     items: rows,
     expenses: expenseRows,
-    income_amount: round2(cashPart + cardPart + expensesTotal),
+    // У пустой смены прихода нет: траты покрыты переносом прошлых дней,
+    // поэтому в «приход за день» они не попадают.
+    income_amount: round2(cashPart + cardPart + (isZeroShift ? 0 : expensesTotal)),
     expenses_amount: expensesAmountTotal,
     note: cleanNote,
   });

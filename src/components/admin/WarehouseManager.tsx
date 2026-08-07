@@ -3539,7 +3539,29 @@ export function WarehouseManager({
                                 {transfer > 0 ? `${fmt(transfer)} ₽` : "—"}
                               </td>
                               <td style={{ textAlign: "right", fontWeight: 600 }}>
-                                {cashPart > 0 ? `${fmt(cashPart)} ₽` : "—"}
+                                {(() => {
+                                  // Пустая смена (платежей не было): показываем
+                                  // фактическую наличность на конец дня — перенос
+                                  // с прошлого дня минус траты (ЗП) и перевод на карту.
+                                  const endOfDayCash =
+                                    Math.round(
+                                      (carriedFromPreviousDays + cashPart - expSum - transfer) * 100
+                                    ) / 100;
+                                  if (cashPart > 0) return `${fmt(cashPart)} ₽`;
+                                  if (endOfDayCash > 0.009) {
+                                    return (
+                                      <>
+                                        {fmt(endOfDayCash)} ₽
+                                        <small
+                                          style={{ display: "block", marginTop: 2, color: "var(--adm-muted)", fontWeight: 500 }}
+                                        >
+                                          наличность на конец дня
+                                        </small>
+                                      </>
+                                    );
+                                  }
+                                  return "—";
+                                })()}
                                 {carriedFromPreviousDays > 0.009 && (
                                   <small
                                     style={{ display: "block", marginTop: 3, color: "var(--adm-muted)", fontWeight: 500 }}
@@ -3599,7 +3621,9 @@ export function WarehouseManager({
                                       )}
                                       {marked === 0 ? (
                                         <div className="wh-cc-empty">
-                                          Платежи не размечены (старая сдача)
+                                          {legacyCollection
+                                            ? "Платежи не размечены (старая сдача)"
+                                            : "Наличных платежей в смене не было"}
                                         </div>
                                       ) : (
                                         (c.items || []).map((it, i) => (
