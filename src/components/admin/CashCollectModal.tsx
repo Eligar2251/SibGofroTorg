@@ -100,6 +100,10 @@ export function CashCollectModal({
   /** Выбранная дата (YYYY-MM-DD). Работаем с платежами одного дня. */
   const [activeDate, setActiveDate] = useState<string>("");
   const [collectionDate, setCollectionDate] = useState<string>(todayIso());
+  /** Расход прямо с остатка кассы (ЗП в смену без приходов и т.п.). */
+  const [carryExpense, setCarryExpense] = useState("");
+  const [carryExpenseComment, setCarryExpenseComment] = useState("ЗП");
+  const carryAmount = r2(Number(String(carryExpense).replace(",", ".")) || 0);
 
   // Загружаем наличные поступления, ещё не вошедшие в сдачу
   useEffect(() => {
@@ -397,6 +401,12 @@ export function CashCollectModal({
       setError("Укажите дату закрытия смены");
       return;
     }
+    if (carryAmount > cashBalance + 0.009) {
+      setError(
+        `Расход с остатка (${fmt(carryAmount)} ₽) больше остатка кассы (${fmt(cashBalance)} ₽)`
+      );
+      return;
+    }
     if (
       !confirm(
         `Закрыть смену за ${fmtDate(collectionDate)}.\n` +
@@ -404,8 +414,12 @@ export function CashCollectModal({
           (expensesTotal > 0.009
             ? `\nТраты налом: −${fmt(expensesTotal)} ₽`
             : "") +
+          (carryAmount > 0.009
+            ? `\nРасход с остатка (${carryExpenseComment.trim() || "ЗП"}): −${fmt(carryAmount)} ₽`
+            : "") +
           `\nНа карту (${cardHolder}): ${fmt(totals.card)} ₽` +
-          `\nОстанется наличными в кассе: ${fmt(totals.cash)} ₽`
+          `\nОстанется наличными в кассе: ${fmt(totals.cash)} ₽` +
+          `\nВ кассе после закрытия: ${fmt(balanceAfterClose)} ₽`
       )
     ) {
       return;
@@ -423,6 +437,8 @@ export function CashCollectModal({
           items,
           unlinkedCashAmount: manualAmount,
           unlinkedCashKind,
+          carryoverExpenseAmount: carryAmount > 0.009 ? carryAmount : null,
+          carryoverExpenseComment: carryExpenseComment.trim() || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -435,9 +451,9 @@ export function CashCollectModal({
     }
   }
 
-  // Прогноз остатка после закрытия: вычитается только перевод на карту,
-  // наличная часть выбранной смены остаётся в кассе.
-  const balanceAfterClose = r2(cashBalance - totals.card);
+  // Прогноз остатка после закрытия: вычитается перевод на карту и расход
+  // с остатка, наличная часть выбранной смены остаётся в кассе.
+  const balanceAfterClose = r2(cashBalance - totals.card - carryAmount);
   /** Сколько неразмеченных платежей есть за другие дни. */
   const otherDaysTotal = useMemo(
     () =>
@@ -639,6 +655,42 @@ export function CashCollectModal({
                     <strong>−{fmt(expensesTotal)} ₽</strong>
                   </div>
                 )}
+                {/* Расход с остатка кассы: для смен без приходов, когда
+                    ЗП платится из переноса прошлых дней. */}
+                <div className="cashc-total cashc-total--spent" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+                  <span className="cashc-total__label">
+                    <Wallet size={13} /> Расход с остатка кассы (ЗП и пр.)
+                  </span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      type="number"
+                      min={0}
+                      className="admin-input"
+                      style={{ width: 120 }}
+                      placeholder="0"
+                      value={carryExpense}
+                      onChange={(e) => setCarryExpense(e.target.value)}
+                      disabled={saving}
+                    />
+                    <input
+                      className="admin-input"
+                      style={{ flex: 1 }}
+                      placeholder="комментарий: ЗП, охрана…"
+                      value={carryExpenseComment}
+                      onChange={(e) => setCarryExpenseComment(e.target.value)}
+                      disabled={saving}
+                    />
+                  </div>
+                  <span className="admin-muted" style={{ fontSize: 11.5 }}>
+                    Вычитается из кассы сразу. Если приходов за смену нет —
+                    берётся из остатка прошлых дней ({fmt(cashBalance)} ₽ сейчас).
+                  </span>
+                  {carryAmount > cashBalance + 0.009 && (
+                    <span className="admin-error" style={{ marginTop: 0, fontSize: 12 }}>
+                      Больше остатка кассы ({fmt(cashBalance)} ₽)
+                    </span>
+                  )}
+                </div>
                 <div className="cashc-total cashc-total--sum">
                   <span className="cashc-total__label">В кассе после закрытия</span>
                   <strong>{fmt(balanceAfterClose)} ₽</strong>
@@ -654,7 +706,9 @@ export function CashCollectModal({
                       <>
                         {" "}
                         В кассе остаётся {fmt(cashBalance)} ₽ — это перенесённая
-                        наличка прошлых смен и другие движения кассы.
+                        наличка прошлых смен и другие движения кассы. Если в такую
+                        смену платили ЗП налом — укажите сумму в «Расход с остатка
+                        кассы», она вычтется из переноса.
                       </>
                     )}
                   </p>

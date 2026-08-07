@@ -2702,7 +2702,13 @@ export async function collectCash(
   /** Дата закрытия смены, которую явно выбрал кассир. */
   collectionDate?: string | null,
   /** Старый остаток кассы без исходного платежа. */
-  unlinkedCash?: { amount: number; kind: CashKind } | null
+  unlinkedCash?: { amount: number; kind: CashKind } | null,
+  /**
+   * Расход прямо с остатка кассы (например, ЗП в смену без приходов).
+   * Создаёт проведённый наличный расход, который вычитается из кассы —
+   * в т.ч. из остатка прошлых дней.
+   */
+  carryoverExpense?: { amount: number; comment?: string | null } | null
 ): Promise<{ amount: number; cashAmount: number; transferAmount: number; date: string }> {
   const db = getAdminDb();
   const [payments, salaries, collections] = await Promise.all([
@@ -2726,6 +2732,56 @@ export async function collectCash(
     );
   }
   const cleanNote = note ? cleanText(note, 500) : null;
+
+  // ── Расход с остатка кассы (ЗП в смену без приходов и т.п.) ──
+  // Формально это обычный наличный расход: создаём проведённый платёж,
+  // и кассовый регистр вычитает его из остатка — при нулевом приходе
+  // дня деньги берутся из переноса прошлых дней.
+  const requestedCarryoverExpense = Math.max(
+    0,
+    round2(Number(carryoverExpense?.amount) || 0)
+  );
+  let carryoverExpenseRow: CashCollectionExpense | null = null;
+  if (requestedCarryoverExpense > 0.009) {
+    if (requestedCarryoverExpense > cashBalance + 0.009) {
+      throw new Error(
+        `Расход с остатка (${requestedCarryoverExpense} ₽) больше остатка кассы (${cashBalance} ₽)`
+      );
+    }
+    const expenseDate = String(collectionDate || "")
+      .slice(0, 10)
+      .replace(/[^\d-]/g, "");
+    const payDate = /^\d{4}-\d{2}-\d{2}$/.test(expenseDate)
+      ? expenseDate
+      : getWarehouseBusinessDate();
+    const expenseComment = cleanText(carryoverExpense?.comment, 300) || "ЗП";
+    const expNumber = await nextNumber("payment");
+    const { data: expRow, error: expError } = await db
+      .from("bank_payments")
+      .insert({
+        number: expNumber,
+        date: payDate,
+        direction: "outgoing",
+        type: "cash",
+        counterparty: "Расход с остатка кассы",
+        amount: requestedCarryoverExpense,
+        is_paid: true,
+        paid_at: payDate,
+        exclude_from_balance: false,
+        comment: expenseComment,
+      })
+      .select("id")
+      .single();
+    if (expError) throw expError;
+    carryoverExpenseRow = {
+      kind: "payment",
+      id: String(expRow.id),
+      title: `Расход с остатка кассы — ${expenseComment}`,
+      amount: requestedCarryoverExpense,
+      comment: expenseComment,
+    };
+  }
+
   const pending = listPendingCashPayments(payments, collections);
   const carryover = getCashCarryoverSummary(
     payments,
@@ -2938,6 +2994,8 @@ export async function collectCash(
     amount: e.amount,
     comment: e.comment,
   }));
+  if (carryoverExpenseRow) expenseRows.push(carryoverExpenseRow);
+  const expensesAmountTotal = round2(expensesTotal + requestedCarryoverExpense);
 
   const { error } = await db.from("cash_collections").insert({
     date,
@@ -2948,7 +3006,7 @@ export async function collectCash(
     items: rows,
     expenses: expenseRows,
     income_amount: round2(cashPart + cardPart + expensesTotal),
-    expenses_amount: expensesTotal,
+    expenses_amount: expensesAmountTotal,
     note: cleanNote,
   });
   if (error) throw error;
