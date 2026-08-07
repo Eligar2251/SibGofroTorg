@@ -19,6 +19,12 @@ CLOUDINARY_API_SECRET=...
 # ─── Telegram/MAX боты для уведомлений ───
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_ADMIN_CHAT_ID=...
+# Адрес Telegram Bot API. Пусто = официальный api.telegram.org.
+# ⚠️ С серверов в РФ api.telegram.org заблокирован (ТСПУ дропает пакеты) —
+# сюда вписывают РЕЛЕЙ: зарубежный VPS / Cloudflare Worker, который
+# проксирует api.telegram.org. Можно несколько адресов через запятую —
+# пробоются по очереди. Либо настройте MAX — он работает из РФ без VPN.
+TELEGRAM_API_BASE=
 MAX_BOT_TOKEN=...
 MAX_ADMIN_CHAT_ID=...
 
@@ -109,4 +115,43 @@ CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET
 TELEGRAM_BOT_TOKEN
 TELEGRAM_ADMIN_CHAT_ID
+TELEGRAM_API_BASE          ← только если сервер в РФ (релей)
+MAX_BOT_TOKEN              ← запасной канал, работает из РФ
+MAX_ADMIN_CHAT_ID
 ```
+
+---
+
+## 🔔 Уведомления в Telegram из РФ (блокировка api.telegram.org)
+
+С марта 2026 ТСПУ дропает пакеты с российских серверов к `api.telegram.org` —
+заявки «уходят», но в Telegram ничего не приходит. Два рабочих варианта:
+
+### Вариант 1 (рекомендуемый): MAX-бот
+MAX работает из РФ без ограничений. Создайте бота в MAX, заполните в админке
+(Настройки → Уведомления) `MAX_BOT_TOKEN` и `MAX_ADMIN_CHAT_ID` и нажмите
+«Проверить MAX». Уведомления будут дублироваться в MAX.
+
+### Вариант 2: релей для Telegram
+Поднимите маленький зарубежный VPS (или бесплатный Cloudflare Worker), который
+проксирует `api.telegram.org`, и впишите его адрес в `TELEGRAM_API_BASE`
+(env) или в админке: Настройки → «Адрес Telegram API (релей)».
+
+Пример Caddy на зарубежном VPS (проксирует только ваш IP):
+
+```
+tg.example.com {
+    @allowed remote_ip 1.2.3.4   # IP вашего сервера в РФ
+    handle @allowed {
+        reverse_proxy https://api.telegram.org {
+            header_up Host api.telegram.org
+        }
+    }
+    respond 403
+}
+```
+
+Тогда в настройках сайта: `TELEGRAM_API_BASE=https://tg.example.com`.
+Код сам пройдёт по списку адресов и отправит через первый живой. Проверка —
+кнопка «Проверить Telegram» в настройках: диагностика покажет, какой адрес
+ответил, а какой заблокирован.

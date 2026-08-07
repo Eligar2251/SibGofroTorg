@@ -38,7 +38,11 @@ export type EntityType =
   | "wp-shipment"
   | "wp-payment"
   | "wp-transport"
-  | "wp-counterparty";
+  | "wp-counterparty"
+  | "rent-org"
+  | "rent-tenant"
+  | "rent-invoice"
+  | "rent-payment";
 
 interface LogEntry {
   adminId?: string;

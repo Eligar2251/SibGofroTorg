@@ -1,0 +1,189 @@
+/* =========================================================
+   FILE: src/app/rent.css
+   Стили модуля учёта аренды. Максимально переиспользует
+   классы admin.css (admin-card, admin-btn, bank-hero…).
+   ========================================================= */
+
+/* Сетка балансов организаций */
+.rent-balances {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+/* Две колонки: просрочки + напоминания */
+.rent-two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 14px;
+}
+
+/* Списки строк (просрочки, напоминания, платежи) */
+.rent-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.rent-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--adm-r-sm);
+  transition: background var(--transition);
+}
+
+.rent-row + .rent-row {
+  border-top: 1px solid var(--adm-border-soft);
+}
+
+.rent-row:hover {
+  background: var(--adm-paper);
+}
+
+.rent-row--danger {
+  background: var(--adm-rust-pale);
+}
+
+.rent-row--danger:hover {
+  background: var(--adm-rust-pale);
+}
+
+.rent-row__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.rent-row__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--adm-ink);
+}
+
+.rent-row__side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.rent-row__side strong {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .rent-two-col {
+    grid-template-columns: 1fr;
+  }
+  .rent-balances {
+    grid-template-columns: 1fr;
+  }
+  .rent-row {
+    flex-wrap: wrap;
+  }
+  .rent-row__side {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* ── Карточка арендатора ── */
+.rent-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 13px;
+  color: var(--adm-ink-soft);
+  padding: 10px 12px;
+  background: var(--adm-paper);
+  border-radius: var(--adm-r-sm);
+}
+
+.rent-card-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.rent-card-stat {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border-soft);
+  border-radius: var(--adm-r-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rent-card-stat__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--adm-muted);
+  font-weight: 600;
+}
+
+.rent-card-stat strong {
+  font-size: 14px;
+}
+
+.rent-card-h {
+  font-family: var(--adm-font-head);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-ink-soft);
+  margin-bottom: 6px;
+}
+
+/* Кликабельная строка таблицы */
+.rent-tr-click {
+  cursor: pointer;
+}
+
+.rent-tr-click:hover td {
+  background: var(--adm-paper);
+}
+
+/* ── Прогресс сбора месяца ── */
+.rent-progress {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--adm-paper-warm);
+  overflow: hidden;
+}
+
+.rent-progress__fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #2e7d46, #7dd181);
+  transition: width 0.3s ease;
+}
+
+/* ── Чипы (не выставлены счета) ── */
+.rent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--adm-kraft-line);
+  background: var(--adm-kraft-pale);
+  color: var(--adm-ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+}

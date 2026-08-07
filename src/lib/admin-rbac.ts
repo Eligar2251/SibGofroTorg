@@ -113,8 +113,17 @@ export function canAccessAdminPage(
     );
   }
 
-  // Юрист работает только с ограниченным представлением дашборда.
-  return relativePath === "/";
+  // Юрист работает с ограниченным представлением дашборда и видит
+  // учёт аренды (только просмотр: финансы, просрочки, отчётность).
+  return relativePath === "/" || relativePath === "/rent";
+}
+
+/**
+ * В модуле аренды редактировать может только администратор.
+ * Остальные роли (manager, lawyer) — только просмотр.
+ */
+export function canEditRent(role: AdminRole): boolean {
+  return role === "admin";
 }
 
 /**
@@ -149,10 +158,17 @@ export function canAccessAdminApi(
     return true;
   }
 
-  // На дашборде юрист может открыть подробности проведённого платежа,
-  // но не может изменять его или обращаться к остальным API админки.
+  // Юрист видит учёт аренды только на чтение (дашборд, финансы,
+  // просрочки), плюс карточку складского платежа на дашборде.
+  const methodGet = method.toUpperCase() === "GET";
+  if (
+    methodGet &&
+    (pathname === "/api/admin/rent" || pathname.startsWith("/api/admin/rent/"))
+  ) {
+    return true;
+  }
   return (
-    method.toUpperCase() === "GET" &&
+    methodGet &&
     /^\/api\/admin\/warehouse\/payments\/[^/]+$/.test(pathname)
   );
 }

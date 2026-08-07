@@ -109,8 +109,14 @@ export default async function AdminProductsPage({
             <Link href={`/${ADMIN_PATH}/qr-print`} className="admin-btn admin-btn--ghost" prefetch={false}>
               <QrCode size={15} /> Печать этикеток
             </Link>
+            <Link href={`/${ADMIN_PATH}/box-labels`} className="admin-btn admin-btn--ghost" prefetch={false}>
+              <QrCode size={15} /> Этикетки ящиков
+            </Link>
             <Link href={`/${ADMIN_PATH}/products/bulk`} className="admin-btn admin-btn--ghost" prefetch={false}>
               <Pencil size={15} /> Массовое редактирование
+            </Link>
+            <Link href={`/${ADMIN_PATH}/products/add-many`} className="admin-btn admin-btn--outline" prefetch={false}>
+              <Plus size={15} /> Массовое добавление
             </Link>
             <Link href={`/${ADMIN_PATH}/products/new`} className="admin-btn admin-btn--primary" prefetch={false}>
               <Plus size={16} /> Добавить товар

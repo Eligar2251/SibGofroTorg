@@ -812,12 +812,17 @@ export function getBankSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
   collections: CashCollection[] = [],
-  asOfDate = getWarehouseBusinessDate()
+  asOfDate = getWarehouseBusinessDate(),
+  deals?: CustomerDeal[]
 ) {
   let bankBalance = 0;
   let cashBalance = 0;
   let expectedIn = 0;
   let expectedOut = 0;
+  // Остатки долгов по заказам: ожидаемый приход по заказу уменьшается
+  // на суммы, уже пришедшие отдельными проведёнными платежами
+  // (частичная оплата 90 000 из 213 000 → в ожидании остаётся 123 000).
+  const debtPool = deals ? getDealDebtPool(deals, payments) : null;
   for (const p of payments) {
     // Платёж «вне баланса» не имеет отношения к текущему банку/кассе:
     // не учитываем его ни в факте, ни в ожидаемых оплатах.
@@ -831,8 +836,9 @@ export function getBankSummary(
       // источники использовали ту же формулу, что и число на дашборде.
       if (p.type !== "cash" && p.type !== "transfer") bankBalance += amt;
     } else {
-      if (p.direction === "incoming") expectedIn += p.amount;
-      else expectedOut += p.amount;
+      if (p.direction === "incoming") {
+        expectedIn += offsetIncomingByDealPayments(p, debtPool);
+      } else expectedOut += p.amount;
     }
   }
   // Зарплаты — это расход: выплаченные уменьшают кассу/банк,
@@ -939,6 +945,60 @@ export function getDealPaidMap(payments: BankPayment[]): Map<string, number> {
 }
 
 /**
+ * Остаток долга по каждому заказу: итог заказа минус оплаты, уже
+ * полученные проведёнными платежами (в т.ч. «вне баланса» — деньги
+ * по заказу получены, даже если платёж архивный). Отменённые заказы
+ * ничего не должны.
+ */
+export function getDealDebtPool(
+  deals: CustomerDeal[],
+  payments: BankPayment[]
+): Map<string, number> {
+  const received = getDealPaidMap(payments);
+  const pool = new Map<string, number>();
+  for (const d of deals) {
+    if (d.status === "cancelled") continue;
+    const debt = (Number(d.total) || 0) - (received.get(d.id) || 0);
+    if (debt > 0.009) pool.set(d.id, debt);
+  }
+  return pool;
+}
+
+/**
+ * Ожидаемая сумма непроведённого входящего платежа с учётом уже
+ * полученных оплат по тем же заказам.
+ *
+ * Контрагент оплатил 90 000 из 213 000 отдельным проведённым платежом —
+ * ожидающий платёж по этому заказу попадает в «ожидаем» не на 213 000,
+ * а на остаток долга 123 000. Ограничение идёт через остаток долга
+ * заказа (getDealDebtPool), поэтому схема «ожидающий платёж уменьшили
+ * вручную и создали новый на остаток» тоже считается верно.
+ * Долг «съедается» последовательно, чтобы несколько ожидающих платежей
+ * по одному заказу не задваивали сумму. Если заказы не переданы
+ * (пустой список) — ведём себя как раньше: ожидаем полную сумму платежа.
+ */
+export function offsetIncomingByDealPayments(
+  payment: BankPayment,
+  debtPool: Map<string, number> | null
+): number {
+  if (payment.direction !== "incoming") return payment.amount;
+  // Заказы не переданы (например, расчёт только по платежам) —
+  // ожидаем полную сумму платежа, как раньше.
+  if (debtPool === null) return payment.amount;
+  if (!payment.dealIds || payment.dealIds.length === 0) return payment.amount;
+  let left = payment.amount;
+  for (const dealId of payment.dealIds) {
+    if (left <= 0.009) break;
+    const debt = debtPool.get(dealId) || 0;
+    if (debt <= 0.009) continue;
+    const take = Math.min(left, debt);
+    left -= take;
+    debtPool.set(dealId, debt - take);
+  }
+  return Math.max(0, payment.amount - left);
+}
+
+/**
  * Оплачено по каждому поступлению (id → сумма проведённых исходящих).
  * «Вне баланса» закрывает документ, но не меняет текущий банк/кассу.
  */
@@ -958,9 +1018,13 @@ export function getReceiptPaidMap(payments: BankPayment[]): Map<string, number> 
 
 /** Долги по контрагентам на основании непроведённых платежей банка. */
 export function getPendingPaymentCounterpartyBalances(
-  payments: BankPayment[]
+  payments: BankPayment[],
+  deals?: CustomerDeal[]
 ): CounterpartyBalance[] {
   const result = new Map<string, CounterpartyBalance>();
+  // Остатки долгов по заказам — частичные оплаты, пришедшие отдельными
+  // платежами, уменьшают ожидаемое по контрагенту (см. getBankSummary).
+  const debtPool = deals ? getDealDebtPool(deals, payments) : null;
 
   const getRow = (name: string, type: "customer" | "supplier") => {
     const norm = normalizeName(name);
@@ -998,8 +1062,9 @@ export function getPendingPaymentCounterpartyBalances(
     // Для покупателей положительный баланс = должны нам (ожидаемый приход).
     // Для поставщиков положительный баланс = мы должны (ожидаемый расход).
     if (type === "customer") {
-      if (p.direction === "incoming") row.docsTotal += p.amount;
-      else row.paidTotal += p.amount;
+      if (p.direction === "incoming") {
+        row.docsTotal += offsetIncomingByDealPayments(p, debtPool);
+      } else row.paidTotal += p.amount;
     } else {
       if (p.direction === "outgoing") row.docsTotal += p.amount;
       else row.paidTotal += p.amount;

@@ -1,8 +1,20 @@
 // =========================================================
 // FILE: src/lib/notify.ts
 // Надёжная отправка уведомлений в Telegram и MAX.
-// — чанкует слишком длинные сообщения (лимит Telegram 4096
-//   символов), иначе длинные заявки молча не доходят;
+//
+// ВАЖНО ПРО БЛОКИРОВКИ (2026): с серверов в РФ ТСПУ дропает
+// пакеты к api.telegram.org — напрямую Telegram отсюда не
+// отправляется. Поэтому адрес Telegram API настраивается
+// (TELEGRAM_API_BASE / настройка telegram_api_base): туда можно
+// вписать РЕЛЕЙ — зарубежный VPS/Cloudflare Worker, который
+// проксирует api.telegram.org. Поддерживается несколько адресов
+// через запятую — пробуем по очереди, пока не сработает.
+// MAX (botapi.max.ru) работает из РФ без ограничений и служит
+// запасным каналом.
+//
+// — чанкует слишком длинные сообщения (лимиты 4096/4000),
+//   иначе длинные заявки молча не доходят;
+// — таймауты на все запросы, чтобы блокировки не вешали заказы;
 // — не падает при ошибке сети, но подробно логирует причину,
 //   чтобы «пропавшие» уведомления было легко диагностировать.
 // — ключи берутся ПРЕЖДЕ всего из переменных окружения
@@ -17,6 +29,9 @@ import { getSettings } from "./supabase-queries";
 
 const TELEGRAM_LIMIT = 4000; // с запасом меньше лимита 4096
 const MAX_LIMIT = 4000;
+const FETCH_TIMEOUT_MS = 15_000;
+
+const DEFAULT_TELEGRAM_BASE = "https://api.telegram.org";
 
 /**
  * Чтение переменной окружения через скобочную нотацию.
@@ -61,6 +76,15 @@ function chunkText(text: string, limit: number): string[] {
   return chunks;
 }
 
+/** fetch с таймаутом: блокировки/релеи не должны вешать запросы. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS
+): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+}
+
 export interface NotifyResult {
   ok: boolean;
   error?: string;
@@ -102,6 +126,27 @@ export async function resolveTelegramConfig(): Promise<TelegramConfig> {
 }
 
 /**
+ * Список адресов Telegram Bot API в порядке приоритета.
+ * Свои ретрансляторы (релеи) задаются через TELEGRAM_API_BASE (env)
+ * или настройку telegram_api_base — можно несколько через запятую.
+ * Официальный api.telegram.org всегда добавляется последним.
+ */
+export async function telegramApiBases(): Promise<string[]> {
+  const raw = env("TELEGRAM_API_BASE") || (await setting("telegram_api_base"));
+  const bases: string[] = [];
+  if (raw) {
+    for (const part of raw.split(",")) {
+      let v = part.trim().replace(/\/+$/, "");
+      if (!v) continue;
+      if (!/^https?:\/\//.test(v)) v = `https://${v}`;
+      if (!bases.includes(v)) bases.push(v);
+    }
+  }
+  if (!bases.includes(DEFAULT_TELEGRAM_BASE)) bases.push(DEFAULT_TELEGRAM_BASE);
+  return bases;
+}
+
+/**
  * Приводит chat_id к рабочему виду: username канала/группы без «@»
  * дополняем префиксом (иначе Telegram отвечает «chat not found»),
  * номера телефонов API не принимает вовсе — об этом явно говорим.
@@ -116,7 +161,7 @@ export function normalizeTelegramChatId(raw: string): string {
 
 /** chat_id в виде +79… — это номер телефона: Telegram таких адресатов не знает. */
 function looksLikePhoneNumber(chatId: string): boolean {
-  return /^\+[0-9()\-\s]+$/.test(chatId.trim());
+  return /^\+[0-9()\-]+$/.test(chatId.trim());
 }
 
 function mask(value: string | undefined, visible = 4): string | null {
@@ -133,15 +178,23 @@ export interface TelegramDiagnostics {
   tokenMasked: string | null;
   chatIdMasked: string | null;
   chatIdNormalized: string | null;
-  getMe?: { ok: boolean; username?: string | null; error?: string };
+  apiBases: string[];
+  getMe?: {
+    ok: boolean;
+    username?: string | null;
+    error?: string;
+    base?: string;
+  };
 }
 
 /**
  * Диагностика подключения: показывает, ОТКУДА взяты токен/chat_id
- * (env или настройки), не светя их целиком, и проверяет токен вызовом getMe.
+ * (env или настройки), не светя их целиком, какие адреса API будут
+ * пробоваться, и проверяет токен вызовом getMe через каждый адрес.
  */
 export async function diagnoseTelegram(): Promise<TelegramDiagnostics> {
   const cfg = await resolveTelegramConfig();
+  const bases = await telegramApiBases();
   const diag: TelegramDiagnostics = {
     configured: Boolean(cfg.token && cfg.chatId),
     tokenSource: cfg.tokenSource,
@@ -149,27 +202,33 @@ export async function diagnoseTelegram(): Promise<TelegramDiagnostics> {
     tokenMasked: mask(cfg.token),
     chatIdMasked: mask(cfg.chatId),
     chatIdNormalized: cfg.chatId ? normalizeTelegramChatId(cfg.chatId) : null,
+    apiBases: bases,
   };
   if (!cfg.token) return diag;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${cfg.token}/getMe`, {
-      method: "GET",
-    });
-    const data = await res.json().catch(() => ({} as any));
-    if (res.ok && data?.ok) {
-      diag.getMe = { ok: true, username: data.result?.username ?? null };
-    } else {
-      diag.getMe = {
-        ok: false,
-        error: data?.description || `HTTP ${res.status}`,
-      };
+
+  // getMe пробуем по каждому адресу: так видно, какой релей живой,
+  // а какой заблокирован/не отвечает.
+  let lastError = "";
+  for (const base of bases) {
+    try {
+      const res = await fetchWithTimeout(`${base}/bot${cfg.token}/getMe`, {
+        method: "GET",
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (res.ok && data?.ok) {
+        diag.getMe = {
+          ok: true,
+          username: data.result?.username ?? null,
+          base,
+        };
+        return diag;
+      }
+      lastError = data?.description || `HTTP ${res.status}`;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "Сетевая ошибка";
     }
-  } catch (err) {
-    diag.getMe = {
-      ok: false,
-      error: err instanceof Error ? err.message : "Сетевая ошибка",
-    };
   }
+  diag.getMe = { ok: false, error: lastError };
   return diag;
 }
 
@@ -198,7 +257,12 @@ export async function sendTelegramNotification(
       };
     }
     const normalizedChatId = normalizeTelegramChatId(chatId);
+    const bases = await telegramApiBases();
     const parts = chunkText(text, TELEGRAM_LIMIT);
+
+    let workingBase: string | null = null;
+    const errors: string[] = [];
+
     for (let i = 0; i < parts.length; i++) {
       const body = JSON.stringify({
         chat_id: normalizedChatId,
@@ -208,29 +272,64 @@ export async function sendTelegramNotification(
             : parts[i],
         parse_mode: "HTML",
       });
-      const res = await fetch(
-        `https://api.telegram.org/bot${token}/sendMessage`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
+
+      // Сначала адрес, который уже сработал на предыдущей части,
+      // затем остальные по списку.
+      const preferred: string | null = workingBase;
+      const order: string[] = preferred
+        ? [preferred, ...bases.filter((b) => b !== preferred)]
+        : bases;
+
+      let sent = false;
+      for (const base of order) {
+        try {
+          const res = await fetchWithTimeout(`${base}/bot${token}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data?.ok !== false) {
+            workingBase = base;
+            sent = true;
+            break;
+          }
+          const reason = data?.description || `HTTP ${res.status}`;
+          errors.push(`${base}: ${reason}`);
+          console.error(`[notify] Telegram ${base}:`, reason, data);
+          // 4xx уровня токена/чата нет смысла гонять по другим адресам —
+          // ошибка одна и та же. Прерываем перебор баз.
+          if (
+            res.status === 400 ||
+            res.status === 401 ||
+            res.status === 403
+          ) {
+            return {
+              ok: false,
+              error: reason,
+              detail: data,
+            };
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Сетевая ошибка";
+          errors.push(`${base}: ${msg}`);
+          console.error(`[notify] Telegram ${base} недоступен:`, msg);
         }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        console.error(
-          "[notify] Telegram error:",
-          data?.description || res.status,
-          data
-        );
+      }
+      if (!sent) {
         return {
           ok: false,
-          error: data?.description || `HTTP ${res.status}`,
-          detail: data,
+          error:
+            "Не удалось отправить ни через один адрес Telegram API: " +
+            errors.join("; ") +
+            ". Если сервер в РФ — api.telegram.org заблокирован ТСПУ: укажите релей в TELEGRAM_API_BASE (настройки сайта → Telegram API) или настройте MAX.",
+          detail: errors,
         };
       }
     }
-    console.log(`[notify] Telegram OK (${parts.length} част.)`);
+    console.log(
+      `[notify] Telegram OK (${parts.length} част.) через ${workingBase}`
+    );
     return { ok: true };
   } catch (err) {
     console.error("[notify] Telegram exception:", err);
@@ -240,6 +339,14 @@ export async function sendTelegramNotification(
     };
   }
 }
+
+// ── MAX ──────────────────────────────────────────────────
+// Официальный Bot API: POST {host}/messages?chat_id={id}
+// (или ?user_id={id} для личных чатов), токен — в заголовке
+// Authorization; access_token в query больше не поддерживается.
+// Хосты пробуем по очереди: botapi.max.ru и platform-api.max.ru.
+
+const MAX_HOSTS = ["https://botapi.max.ru", "https://platform-api.max.ru"];
 
 export async function sendMaxNotification(text: string): Promise<NotifyResult> {
   try {
@@ -252,19 +359,46 @@ export async function sendMaxNotification(text: string): Promise<NotifyResult> {
     }
     const plain = String(text).replace(/<[^>]*>/g, "");
     const parts = chunkText(plain, MAX_LIMIT);
+    const errors: string[] = [];
+
     for (const part of parts) {
-      const res = await fetch(
-        `https://botapi.max.ru/messages?access_token=${token}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, text: part }),
+      let sent = false;
+      // chat_id и user_id — разные адресаты в MAX; пробуем оба варианта.
+      const paramNames = ["chat_id", "user_id"];
+      outer: for (const host of MAX_HOSTS) {
+        for (const paramName of paramNames) {
+          try {
+            const res = await fetchWithTimeout(
+              `${host}/messages?${paramName}=${encodeURIComponent(chatId)}`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ text: part }),
+              }
+            );
+            if (res.ok) {
+              sent = true;
+              break outer;
+            }
+            const data = await res.json().catch(() => ({}));
+            errors.push(`${host}?${paramName}: HTTP ${res.status}`);
+            console.error("[notify] MAX error:", res.status, data);
+          } catch (err) {
+            errors.push(
+              `${host}?${paramName}: ${err instanceof Error ? err.message : "Сетевая ошибка"}`
+            );
+          }
         }
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        console.error("[notify] MAX error:", res.status, data);
-        return { ok: false, error: `HTTP ${res.status}`, detail: data };
+      }
+      if (!sent) {
+        return {
+          ok: false,
+          error: `MAX: не удалось отправить (${errors.join("; ")})`,
+          detail: errors,
+        };
       }
     }
     console.log("[notify] MAX OK");
@@ -286,5 +420,10 @@ export async function sendAdminNotifications(
     sendTelegramNotification(htmlText),
     sendMaxNotification(htmlText),
   ]);
+  if (!telegram.ok && !max.ok) {
+    console.error(
+      `[notify] Уведомление НЕ доставлено ни в один канал. TG: ${telegram.error}; MAX: ${max.error}`
+    );
+  }
   return { telegram, max };
 }

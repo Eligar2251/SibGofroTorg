@@ -29,12 +29,15 @@ import {
   MapPin,
   ExternalLink,
   Recycle,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminDb } from "@/lib/supabase";
 import { verifySession } from "@/lib/auth";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
+import { getRentSummary } from "@/lib/rent";
+import { RENT_ORG_LABELS } from "@/lib/rent-shared";
 import { getWpFinanceData } from "@/lib/wastepaper-account";
 import {
   getWpBalance,
@@ -200,6 +203,13 @@ export default async function AdminDashboard() {
     return null;
   });
 
+  // Учёт аренды: отдельный банк (БАУ и ИП Пакин). При сбое (миграция
+  // ещё не применена) блок просто не показываем.
+  const rentSummary = await getRentSummary().catch((error) => {
+    console.error("dashboard: учёт аренды:", error);
+    return null;
+  });
+
   const newOrdersCount = newOrdersAgg + newWastepaperAgg;
   const inProgressOrdersCount = inProgressAgg + inProgressWastepaperAgg;
   const readyOrdersCount = readyAgg;
@@ -212,7 +222,15 @@ export default async function AdminDashboard() {
     completedOrdersCount +
     rejectedOrdersCount;
   // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
-  const bankSummary = getBankSummary(payments, salaries, cashCollections);
+  // Заказы передаём, чтобы ожидаемый приход учитывал уже полученные
+  // частичные оплаты (у юриста заказов нет — считаем по-старому).
+  const bankSummary = getBankSummary(
+    payments,
+    salaries,
+    cashCollections,
+    undefined,
+    deals.length ? deals : undefined
+  );
   const dashboardDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Novosibirsk",
     year: "numeric",
@@ -733,6 +751,67 @@ export default async function AdminDashboard() {
         />
       </section>
       </CollapsibleSection>
+
+      {/* Учёт аренды: отдельный банк БАУ и ИП Пакин */}
+      {rentSummary && (
+        <CollapsibleSection
+          id="rent"
+          title="Учёт аренды"
+          subtitle="Банк аренды, арендаторы, просрочки"
+          icon={<Building2 size={18} />}
+          accent="amber"
+          badge={rentSummary.overdueSum > 0 ? `просрочено ${money(rentSummary.overdueSum)}` : "просрочек нет"}
+          sideContent={
+            <Link
+              href={`/${ADMIN_PATH}/rent`}
+              className="admin-btn admin-btn--ghost"
+              prefetch={false}
+              style={{ textDecoration: "none", fontSize: 13 }}
+            >
+              <ExternalLink size={13} /> Открыть учёт аренды
+            </Link>
+          }
+        >
+          <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
+            <div className="dash-finance-totals" style={{ padding: "0 20px", marginTop: 12 }}>
+              {Object.entries(rentSummary.balances).map(([orgId, b]) => (
+                <div key={orgId} className="dash-finance-total dash-finance-total--bank">
+                  <span className="dash-finance-total__icon" aria-hidden="true">
+                    <CreditCard size={18} />
+                  </span>
+                  <span className="dash-finance-total__content">
+                    <span>{RENT_ORG_LABELS[orgId] || orgId} · всего</span>
+                    <strong>{money(b.balance)}</strong>
+                  </span>
+                </div>
+              ))}
+              <div className="dash-finance-total dash-finance-total--in">
+                <span className="dash-finance-total__icon" aria-hidden="true">
+                  <ArrowDownLeft size={18} />
+                </span>
+                <span className="dash-finance-total__content">
+                  <span>Должны нам по счетам</span>
+                  <strong>{money(rentSummary.totalDebt)}</strong>
+                </span>
+              </div>
+              <div className="dash-finance-total dash-finance-total--out">
+                <span className="dash-finance-total__icon" aria-hidden="true">
+                  <AlertTriangle size={18} />
+                </span>
+                <span className="dash-finance-total__content">
+                  <span>Просрочено (после отсрочки)</span>
+                  <strong>{money(rentSummary.overdueSum)} · {rentSummary.overdueCount} аренд.</strong>
+                </span>
+              </div>
+            </div>
+            <p style={{ padding: "8px 20px 16px", margin: 0, color: "var(--adm-muted)", fontSize: 13 }}>
+              Активных арендаторов: <b>{rentSummary.activeTenants}</b> · оплат в ближайшие 7
+              дней: <b>{rentSummary.upcomingCount}</b>. Подробности, напоминания и банк аренды —
+              в разделе «Аренда».
+            </p>
+          </section>
+        </CollapsibleSection>
+      )}
 
       {/* Оплаченные заказы, которые нужно доставить */}
       <CollapsibleSection

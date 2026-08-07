@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Headset,
   Recycle,
+  Building2,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
@@ -106,6 +107,13 @@ export function AdminShell({
       href: `/${adminPath}/warehouse`,
       label: "Учёт",
       icon: <Boxes size={18} />,
+    },
+    {
+      // Управленческий учёт аренды: банк аренды, арендаторы, просрочки.
+      // Юристу доступен только просмотр дашборда (canAccessAdminPage).
+      href: `/${adminPath}/rent`,
+      label: "Аренда",
+      icon: <Building2 size={18} />,
     },
     {
       // Отдельный учёт макулатуры: виден admin и макулатурщику

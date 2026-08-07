@@ -505,8 +505,10 @@ export function WarehouseManager({
     return map;
   }, [payments]);
   const bankSummary = useMemo(
-    () => getBankSummary(payments, salaries, cashCollections),
-    [payments, salaries, cashCollections]
+    // Заказы нужны, чтобы ожидаемый приход по заказу автоматически
+    // уменьшался на уже пришедшие частичные оплаты другими платежами.
+    () => getBankSummary(payments, salaries, cashCollections, undefined, deals),
+    [payments, salaries, cashCollections, deals]
   );
   const cashCarryover = useMemo(
     () =>
@@ -638,8 +640,8 @@ export function WarehouseManager({
   }, [orderingProduct, findLastSupplierAndPrice]);
   
   const allCounterparties = useMemo(
-    () => getPendingPaymentCounterpartyBalances(payments),
-    [payments]
+    () => getPendingPaymentCounterpartyBalances(payments, deals),
+    [payments, deals]
   );
 
   // Filter counterparties to only show those with positive debt (what is owed)

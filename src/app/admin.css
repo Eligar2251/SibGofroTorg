@@ -8702,6 +8702,27 @@ body:has(.admin-modal-overlay) {
   letter-spacing: 0.01em;
 }
 
+/* Строка «Партия от N шт» на этикетке листа — ценник партии. */
+.qrprint__label-batch {
+  font-size: 7pt;
+  font-weight: 800;
+  color: #000;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+/* Поле «своё число партии» в панели настроек печати. */
+.qrprint__batch-input {
+  width: 96px;
+  padding: 5px 8px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  font-size: 12px;
+  font-family: var(--adm-font-body);
+  background: var(--adm-card);
+  color: var(--adm-ink);
+}
+
 .qrprint__label-code {
   width: 100%;
   display: flex;
@@ -8924,6 +8945,16 @@ body:has(.admin-modal-overlay) {
   text-overflow: ellipsis;
 }
 
+/* Строка «Партия от N шт» на термоэтикетке 40×60 — под ценой,
+   жирная, чтобы читалась на термобумаге. */
+.qrprint__tape-batch {
+  font-size: 7.5pt;
+  font-weight: 800;
+  color: #000;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
 /* Компактная раскладка: выбраны ВСЕ поля (название+цена+размеры).
    QR уменьшаем до 22 мм, чтобы суммарная высота гарантированно
    уместилась в 40 мм этикетки (иначе этикетки «поползут»). */
@@ -9000,6 +9031,7 @@ body:has(.admin-modal-overlay) {
   body.qrprint-mode .qrprint__tape-bc,
   body.qrprint-mode .qrprint__tape-name,
   body.qrprint-mode .qrprint__tape-price,
+  body.qrprint-mode .qrprint__tape-batch,
   body.qrprint-mode .qrprint__tape-dims {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
@@ -10609,4 +10641,169 @@ body:has(.admin-modal-overlay) {
   font-size: 12px;
   color: #4338ca;
   font-weight: 600;
+}
+
+/* ══════════════════════════════════════
+   ЭТИКЕТКИ ЯЩИКОВ — отдельная печать A4
+   (страница /[admin]/box-labels)
+   ══════════════════════════════════════ */
+
+/* Редактор на экране: карточки товаров с полями этикетки */
+.boxlabel-edit {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.boxlabel-item {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border-soft);
+  border-radius: var(--adm-r);
+  overflow: hidden;
+}
+
+.boxlabel-item--on {
+  border-color: var(--adm-kraft);
+  box-shadow: 0 0 0 1px var(--adm-kraft-line);
+}
+
+.boxlabel-item__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.boxlabel-item__name {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boxlabel-item__form {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--adm-border-soft);
+  background: var(--adm-paper);
+}
+
+/* Печатный лист на экране скрыт — виден только при печати */
+.boxlabel-sheet {
+  display: none;
+}
+
+@media print {
+  /* Обнуляем контейнеры админки, чтобы A4 не «съезжал» */
+  body.boxlabel-mode,
+  body.boxlabel-mode .admin-shell,
+  body.boxlabel-mode .admin-content,
+  body.boxlabel-mode .admin-main,
+  body.boxlabel-mode .qrprint-page,
+  body.boxlabel-mode .qrprint {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.boxlabel-mode .no-print {
+    display: none !important;
+  }
+
+  body.boxlabel-mode .boxlabel-sheet {
+    display: block !important;
+  }
+
+  /* Одна этикетка = одна страница A4 */
+  body.boxlabel-mode .boxlabel {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: page;
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 6mm;
+    color: #000;
+  }
+
+  body.boxlabel-mode .boxlabel:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* № ящика: буква ~3 см высотой ≈ 85pt, жирная */
+  body.boxlabel-mode .boxlabel__number {
+    font-family: var(--adm-font-head);
+    font-size: 85pt;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: 0.01em;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* Разделитель */
+  body.boxlabel-mode .boxlabel__sep {
+    width: 100%;
+    border-top: 3px solid #000;
+    margin: 8mm 0;
+  }
+
+  /* Размеры и примечание: 18pt */
+  body.boxlabel-mode .boxlabel__info {
+    width: 100%;
+    text-align: center;
+    display: grid;
+    gap: 4mm;
+  }
+
+  body.boxlabel-mode .boxlabel__sizes {
+    font-size: 18pt;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  body.boxlabel-mode .boxlabel__note {
+    font-size: 18pt;
+    font-weight: 500;
+    line-height: 1.25;
+  }
+
+  /* Штрихкод: векторный SVG, цифры под ним */
+  body.boxlabel-mode .boxlabel__code {
+    margin-top: 10mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2mm;
+  }
+
+  body.boxlabel-mode .boxlabel__bc {
+    height: 22mm;
+    width: auto;
+  }
+
+  body.boxlabel-mode .boxlabel__ean {
+    font-size: 12pt;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+  }
+
+  body.boxlabel-mode .boxlabel,
+  body.boxlabel-mode .boxlabel__bc {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }
