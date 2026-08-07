@@ -10724,17 +10724,16 @@ body:has(.admin-modal-overlay) {
     display: block !important;
   }
 
-  /* Одна этикетка = одна страница A4 */
+  /* Одна этикетка = одна страница A4: полоса по центру страницы */
   body.boxlabel-mode .boxlabel {
     break-inside: avoid;
     page-break-inside: avoid;
     break-after: page;
     page-break-after: always;
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
-    padding-top: 6mm;
+    justify-content: center;
+    min-height: 265mm;
     color: #000;
   }
 
@@ -10743,30 +10742,48 @@ body:has(.admin-modal-overlay) {
     page-break-after: auto;
   }
 
-  /* № ящика: буква ~3 см высотой ≈ 85pt, жирная */
-  body.boxlabel-mode .boxlabel__number {
+  /* Горизонтальная полоса через весь лист: № | размеры | штрихкод */
+  body.boxlabel-mode .boxlabel__band {
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    border: 3px solid #000;
+    border-radius: 2mm;
+    overflow: hidden;
+  }
+
+  body.boxlabel-mode .boxlabel__cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8mm 6mm;
+    min-width: 0;
+  }
+
+  /* Вертикальная разделительная черта */
+  body.boxlabel-mode .boxlabel__vsep {
+    width: 3px;
+    background: #000;
+    flex-shrink: 0;
+  }
+
+  /* № ящика слева: буква ~3 см ≈ 85pt, только номер */
+  body.boxlabel-mode .boxlabel__num {
     font-family: var(--adm-font-head);
     font-size: 85pt;
     font-weight: 700;
-    line-height: 1.05;
+    line-height: 1;
     letter-spacing: 0.01em;
-    text-align: center;
     white-space: nowrap;
+    flex: 1 1 auto;
   }
 
-  /* Разделитель */
-  body.boxlabel-mode .boxlabel__sep {
-    width: 100%;
-    border-top: 3px solid #000;
-    margin: 8mm 0;
-  }
-
-  /* Размеры и примечание: 18pt */
+  /* Середина: размеры 18pt + примечание под ними */
   body.boxlabel-mode .boxlabel__info {
-    width: 100%;
+    flex: 1 1 auto;
+    gap: 3mm;
     text-align: center;
-    display: grid;
-    gap: 4mm;
   }
 
   body.boxlabel-mode .boxlabel__sizes {
@@ -10776,29 +10793,26 @@ body:has(.admin-modal-overlay) {
   }
 
   body.boxlabel-mode .boxlabel__note {
-    font-size: 18pt;
+    font-size: 14pt;
     font-weight: 500;
     line-height: 1.25;
   }
 
-  /* Штрихкод: векторный SVG, цифры под ним */
+  /* Справа: штрихкод (векторный SVG) и цифры под ним */
   body.boxlabel-mode .boxlabel__code {
-    margin-top: 10mm;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    flex: 1 1 auto;
     gap: 2mm;
   }
 
   body.boxlabel-mode .boxlabel__bc {
-    height: 22mm;
+    height: 20mm;
     width: auto;
   }
 
   body.boxlabel-mode .boxlabel__ean {
-    font-size: 12pt;
+    font-size: 11pt;
     font-weight: 600;
-    letter-spacing: 0.18em;
+    letter-spacing: 0.14em;
   }
 
   body.boxlabel-mode .boxlabel,
@@ -10806,4 +10820,88 @@ body:has(.admin-modal-overlay) {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
+}
+
+/* ── Чекбокс «не считать» у ожидающего платежа в банке ── */
+.bank-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 3px 8px 3px 6px;
+  border-radius: 99px;
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+}
+
+.bank-skip:hover {
+  border-color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+}
+
+.bank-skip input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.bank-skip__box {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid var(--adm-border-mid);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.bank-skip__box::after {
+  content: "";
+  width: 8px;
+  height: 5px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(0, -1px);
+  opacity: 0;
+}
+
+.bank-skip__text {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--adm-muted);
+  white-space: nowrap;
+}
+
+.bank-skip--on {
+  background: var(--adm-kraft-pale);
+  border-color: var(--adm-kraft);
+}
+
+.bank-skip--on .bank-skip__box {
+  background: var(--adm-kraft-mid);
+  border-color: var(--adm-kraft-mid);
+}
+
+.bank-skip--on .bank-skip__box::after {
+  opacity: 1;
+}
+
+.bank-skip--on .bank-skip__text {
+  color: var(--adm-kraft);
+}
+
+/* Пропущенный платёж: приглушаем строку и сумму */
+.bank-pay--skipped {
+  opacity: 0.55;
+}
+
+.bank-pay--skipped .bank-pay__amount {
+  text-decoration: line-through;
 }

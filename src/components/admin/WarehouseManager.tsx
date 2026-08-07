@@ -473,6 +473,29 @@ export function WarehouseManager({
   const [bankDateTo, setBankDateTo] = useState("");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
   const [historyDaysPage, setHistoryDaysPage] = useState(0);
+  // «Не считать» для ожидающих платежей: чекбокс у строки мгновенно
+  // убирает платёж из «Должны нам / Мы должны» — быстро прикинуть суммы
+  // без правки самих платежей. Живёт только на клиенте, ничего не меняет в БД.
+  const [skippedExpected, setSkippedExpected] = useState<Set<string>>(new Set());
+
+  function toggleSkipExpected(id: string) {
+    setSkippedExpected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Платежи для расчёта итогов: без «пропущенных» чекбоксами.
+  // Список на экране при этом остаётся полным.
+  const paymentsForTotals = useMemo(
+    () =>
+      skippedExpected.size === 0
+        ? payments
+        : payments.filter((p) => !skippedExpected.has(p.id)),
+    [payments, skippedExpected]
+  );
 
   useEffect(() => {
     setHistoryDaysPage(0);
@@ -507,8 +530,9 @@ export function WarehouseManager({
   const bankSummary = useMemo(
     // Заказы нужны, чтобы ожидаемый приход по заказу автоматически
     // уменьшался на уже пришедшие частичные оплаты другими платежами.
-    () => getBankSummary(payments, salaries, cashCollections, undefined, deals),
-    [payments, salaries, cashCollections, deals]
+    // paymentsForTotals — без платежей, отмеченных «не считать».
+    () => getBankSummary(paymentsForTotals, salaries, cashCollections, undefined, deals),
+    [paymentsForTotals, salaries, cashCollections, deals]
   );
   const cashCarryover = useMemo(
     () =>
@@ -640,8 +664,8 @@ export function WarehouseManager({
   }, [orderingProduct, findLastSupplierAndPrice]);
   
   const allCounterparties = useMemo(
-    () => getPendingPaymentCounterpartyBalances(payments, deals),
-    [payments, deals]
+    () => getPendingPaymentCounterpartyBalances(paymentsForTotals, deals),
+    [paymentsForTotals, deals]
   );
 
   // Filter counterparties to only show those with positive debt (what is owed)
@@ -666,7 +690,7 @@ export function WarehouseManager({
         .map((r) => r.id)
     );
 
-    return payments
+    return paymentsForTotals
       .filter((p) => {
         if (p.isPaid || p.direction !== "outgoing" || p.excludeFromBalance || p.amount <= 0) {
           return false;
@@ -680,7 +704,7 @@ export function WarehouseManager({
         return linkedToReleasedDeal || linkedToReceiptForReleasedDeal;
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
-  }, [deals, payments, receipts]);
+  }, [deals, paymentsForTotals, receipts]);
 
   // Закрытые смены кассы — перевод на карту и перенос наличного остатка.
   const collectionsSorted = useMemo(
@@ -3953,7 +3977,7 @@ export function WarehouseManager({
                   <div
                     key={p.id}
                     id={`payment-${p.id}`}
-                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}`}
+                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}${skippedExpected.has(p.id) ? " bank-pay--skipped" : ""}`}
                     role={p.entryKind === "payment" ? "button" : undefined}
                     tabIndex={p.entryKind === "payment" ? 0 : undefined}
                     onClick={(event) => {
@@ -4093,6 +4117,21 @@ export function WarehouseManager({
                       </div>
                     </div>
                     <div className="bank-pay__side">
+                      {!p.isPaid && p.entryKind === "payment" && (
+                        <label
+                          className={`bank-skip${skippedExpected.has(p.id) ? " bank-skip--on" : ""}`}
+                          title="Не считать этот платёж в «Должны нам / Мы должны» — быстрая прикидка, сам платёж не меняется"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={skippedExpected.has(p.id)}
+                            onChange={() => toggleSkipExpected(p.id)}
+                          />
+                          <span className="bank-skip__box" aria-hidden="true" />
+                          <span className="bank-skip__text">не считать</span>
+                        </label>
+                      )}
                       <span
                         className={`bank-pay__amount ${
                           p.direction === "incoming" ? "+" : "−"

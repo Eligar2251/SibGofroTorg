@@ -3,14 +3,15 @@
 // Отдельная печать этикеток ЯЩИКОВ: лист A4 вертикально,
 // одна этикетка = одна страница.
 //
-// Состав этикетки (сверху вниз):
-//   1. № ящика — очень крупно (буква ~3 см = 85pt, жирный);
-//   2. разделитель;
-//   3. размеры коробки и примечание (18pt). Примечание можно
-//      набрать руками или добавить готовые варианты товара
-//      («более крепкий», «с отверстиями»…) чипами;
-//   4. разделитель;
-//   5. штрихкод EAN-13 (SVG — вектор, чёткая печать).
+// Макет — одна ГОРИЗОНТАЛЬНАЯ полоса через всю страницу:
+//   [ № 670 | размеры + примечание | штрихкод ]
+//   • слева крупный № (буква ~3 см = 85pt), только цифры/буквы —
+//     без названия товара, артикула и цены;
+//   • вертикальные разделительные черты между блоками;
+//   • размеры 18pt, примечание под ними (варианты товара
+//     «более крепкий», «с отверстиями»… добавляются чипами
+//     или дописываются руками);
+//   • справа штрихкод EAN-13 (SVG — вектор, чёткая печать).
 //
 // Товары подставляются автоматически (№ = артикул, размеры из
 // карточки), но каждая этикетка редактируется вручную прямо
@@ -255,29 +256,36 @@ export function BoxLabelsClient({ products, categories }: Props) {
         </button>
       </div>
 
-      {/* ── Печатный лист: на экране скрыт, при печати — только он ── */}
+      {/* ── Печатный лист: на экране скрыт, при печати — только он ──
+          Одна горизонтальная полоса на A4 (вертикальный лист):
+          слева крупный №, вертикальная черта, размеры (+примечание),
+          ещё черта, штрихкод. Всё в одну линию. */}
       <div className="boxlabel-sheet">
         {selectedProducts.map((p) => {
           const label = getLabel(p);
           return (
             <div key={p.id} className="boxlabel">
-              <div className="boxlabel__number">№ {label.boxNumber || "—"}</div>
-              <div className="boxlabel__sep" />
-              <div className="boxlabel__info">
-                {label.sizes && <div className="boxlabel__sizes">{label.sizes}</div>}
-                {label.note && <div className="boxlabel__note">{label.note}</div>}
-                {!label.sizes && !label.note && (
-                  <div className="boxlabel__sizes">{p.name}</div>
-                )}
-              </div>
-              <div className="boxlabel__sep" />
-              <div className="boxlabel__code">
-                <img
-                  src={`/api/admin/qr/barcode/${p.id}?format=svg&height=22`}
-                  alt={`Штрихкод ${p.barcode}`}
-                  className="boxlabel__bc"
-                />
-                <div className="boxlabel__ean">{p.barcode}</div>
+              <div className="boxlabel__band">
+                <div className="boxlabel__cell boxlabel__num">
+                  № {label.boxNumber || "—"}
+                </div>
+                <div className="boxlabel__vsep" />
+                <div className="boxlabel__cell boxlabel__info">
+                  {label.sizes && <div className="boxlabel__sizes">{label.sizes}</div>}
+                  {label.note && <div className="boxlabel__note">{label.note}</div>}
+                  {!label.sizes && !label.note && (
+                    <div className="boxlabel__sizes">—</div>
+                  )}
+                </div>
+                <div className="boxlabel__vsep" />
+                <div className="boxlabel__cell boxlabel__code">
+                  <img
+                    src={`/api/admin/qr/barcode/${p.id}?format=svg&height=20`}
+                    alt={`Штрихкод ${p.barcode}`}
+                    className="boxlabel__bc"
+                  />
+                  <div className="boxlabel__ean">{p.barcode}</div>
+                </div>
               </div>
             </div>
           );
