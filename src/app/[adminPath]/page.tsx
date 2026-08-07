@@ -29,12 +29,15 @@ import {
   MapPin,
   ExternalLink,
   Recycle,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminDb } from "@/lib/supabase";
 import { verifySession } from "@/lib/auth";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
+import { getRentSummary } from "@/lib/rent";
+import { RENT_ORG_LABELS } from "@/lib/rent-shared";
 import { getWpFinanceData } from "@/lib/wastepaper-account";
 import {
   getWpBalance,
@@ -61,6 +64,7 @@ import {
   DashboardFinanceHistory,
   type DashboardFinanceRow,
 } from "@/components/admin/DashboardFinanceHistory";
+import { CollapsibleSection, DashboardVisibilityToggle } from "@/components/admin/DashboardCollapsible";
 
 export const dynamic = "force-dynamic";
 
@@ -199,6 +203,13 @@ export default async function AdminDashboard() {
     return null;
   });
 
+  // Учёт аренды: отдельный банк (БАУ и ИП Пакин). При сбое (миграция
+  // ещё не применена) блок просто не показываем.
+  const rentSummary = await getRentSummary().catch((error) => {
+    console.error("dashboard: учёт аренды:", error);
+    return null;
+  });
+
   const newOrdersCount = newOrdersAgg + newWastepaperAgg;
   const inProgressOrdersCount = inProgressAgg + inProgressWastepaperAgg;
   const readyOrdersCount = readyAgg;
@@ -211,7 +222,15 @@ export default async function AdminDashboard() {
     completedOrdersCount +
     rejectedOrdersCount;
   // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
-  const bankSummary = getBankSummary(payments, salaries, cashCollections);
+  // Заказы передаём, чтобы ожидаемый приход учитывал уже полученные
+  // частичные оплаты (у юриста заказов нет — считаем по-старому).
+  const bankSummary = getBankSummary(
+    payments,
+    salaries,
+    cashCollections,
+    undefined,
+    deals.length ? deals : undefined
+  );
   const dashboardDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Novosibirsk",
     year: "numeric",
@@ -476,9 +495,32 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
+      {/* Настройка видимости блоков — для удобства бухгалтера */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 18,
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ fontSize: 13, color: "var(--adm-muted)" }}>
+          💡 Нажимайте на заголовок блока чтобы скрыть/раскрыть его. Лишние разделы можно убрать совсем:
+        </span>
+        <DashboardVisibilityToggle />
+      </div>
+
       {/* Основная статистика */}
       {!isLawyer && (
-      <div className="admin-stat-grid" style={{ marginBottom: 24 }}>
+      <CollapsibleSection
+        id="stats"
+        title="Главные показатели"
+        subtitle="Быстрый взгляд: товары, заявки, деньги"
+        defaultOpen
+        accent="blue"
+      >
+      <div className="admin-stat-grid" style={{ margin: 0, padding: "16px 20px" }}>
         {[
           {
             label: "Товаров",
@@ -592,29 +634,37 @@ export default async function AdminDashboard() {
           </Link>
         ))}
       </div>
+      </CollapsibleSection>
       )}
 
       <div className="dash-report-grid">
       {/* Полная аналитика по банку и кассе */}
-      <section className="admin-card dash-finance">
-        <div className="dash-section-head">
+      <CollapsibleSection
+        id="finance"
+        title="Финансовая отчётность"
+        subtitle="Приходы/расходы, банк и касса"
+        icon={<Banknote size={18} />}
+        accent="green"
+        badge={money(bankSummary.balance)}
+        sideContent={!isLawyer && (
+          <Link
+            href={`/${ADMIN_PATH}/warehouse?tab=bank`}
+            className="admin-btn admin-btn--ghost"
+            prefetch={false}
+            style={{ textDecoration: "none", fontSize: 13 }}
+          >
+            <ExternalLink size={13} /> Открыть банк
+          </Link>
+        )}
+      >
+      <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
+        <div className="dash-section-head" style={{ padding: "0 20px" }}>
           <div>
-            <span className="dash-section-kicker">Финансовая отчётность</span>
-            <h2>Банковские счета: приход и расход</h2>
-            <p id="dash-finance-period-label">Фактические проведённые операции за текущий месяц.</p>
+            <p id="dash-finance-period-label" style={{ margin: "4px 0 0" }}>Фактические проведённые операции за текущий месяц.</p>
           </div>
-          {!isLawyer && (
-            <Link
-              href={`/${ADMIN_PATH}/warehouse?tab=bank`}
-              className="admin-btn admin-btn--ghost"
-              prefetch={false}
-            >
-              <ExternalLink size={13} /> Открыть банк
-            </Link>
-          )}
         </div>
 
-        <div className="dash-finance-totals">
+        <div className="dash-finance-totals" style={{ padding: "0 20px", marginTop: 12 }}>
           <div className="dash-finance-total dash-finance-total--in">
             <span className="dash-finance-total__icon" aria-hidden="true">
               <ArrowDownLeft size={18} />
@@ -700,24 +750,93 @@ export default async function AdminDashboard() {
           allowNavigation={!isLawyer}
         />
       </section>
+      </CollapsibleSection>
 
-      {/* Оплаченные заказы, которые нужно доставить */}
-      <section className="admin-card dash-deliveries">
-        <div className="dash-section-head">
-          <div>
-            <span className="dash-section-kicker">Перевозки</span>
-            <h2>Доставки и перевозки к выполнению</h2>
-            <p>Заказы к доставке и самостоятельные рейсы (вывоз макулатуры, отправки и т.д.).</p>
-          </div>
-          {!isLawyer && (
+      {/* Учёт аренды: отдельный банк БАУ и ИП Пакин */}
+      {rentSummary && (
+        <CollapsibleSection
+          id="rent"
+          title="Учёт аренды"
+          subtitle="Банк аренды, арендаторы, просрочки"
+          icon={<Building2 size={18} />}
+          accent="amber"
+          badge={rentSummary.overdueSum > 0 ? `просрочено ${money(rentSummary.overdueSum)}` : "просрочек нет"}
+          sideContent={
             <Link
-              href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
+              href={`/${ADMIN_PATH}/rent`}
               className="admin-btn admin-btn--ghost"
               prefetch={false}
+              style={{ textDecoration: "none", fontSize: 13 }}
             >
-              <Truck size={13} /> Все перевозки
+              <ExternalLink size={13} /> Открыть учёт аренды
             </Link>
-          )}
+          }
+        >
+          <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
+            <div className="dash-finance-totals" style={{ padding: "0 20px", marginTop: 12 }}>
+              {Object.entries(rentSummary.balances).map(([orgId, b]) => (
+                <div key={orgId} className="dash-finance-total dash-finance-total--bank">
+                  <span className="dash-finance-total__icon" aria-hidden="true">
+                    <CreditCard size={18} />
+                  </span>
+                  <span className="dash-finance-total__content">
+                    <span>{RENT_ORG_LABELS[orgId] || orgId} · всего</span>
+                    <strong>{money(b.balance)}</strong>
+                  </span>
+                </div>
+              ))}
+              <div className="dash-finance-total dash-finance-total--in">
+                <span className="dash-finance-total__icon" aria-hidden="true">
+                  <ArrowDownLeft size={18} />
+                </span>
+                <span className="dash-finance-total__content">
+                  <span>Должны нам по счетам</span>
+                  <strong>{money(rentSummary.totalDebt)}</strong>
+                </span>
+              </div>
+              <div className="dash-finance-total dash-finance-total--out">
+                <span className="dash-finance-total__icon" aria-hidden="true">
+                  <AlertTriangle size={18} />
+                </span>
+                <span className="dash-finance-total__content">
+                  <span>Просрочено (после отсрочки)</span>
+                  <strong>{money(rentSummary.overdueSum)} · {rentSummary.overdueCount} аренд.</strong>
+                </span>
+              </div>
+            </div>
+            <p style={{ padding: "8px 20px 16px", margin: 0, color: "var(--adm-muted)", fontSize: 13 }}>
+              Активных арендаторов: <b>{rentSummary.activeTenants}</b> · оплат в ближайшие 7
+              дней: <b>{rentSummary.upcomingCount}</b>. Подробности, напоминания и банк аренды —
+              в разделе «Аренда».
+            </p>
+          </section>
+        </CollapsibleSection>
+      )}
+
+      {/* Оплаченные заказы, которые нужно доставить */}
+      <CollapsibleSection
+        id="deliveries"
+        title="Доставки и перевозки"
+        subtitle="Заказы к доставке и самостоятельные рейсы"
+        icon={<Truck size={18} />}
+        accent="blue"
+        badge={dashboardDeliveries.length}
+        sideContent={!isLawyer && (
+          <Link
+            href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
+            className="admin-btn admin-btn--ghost"
+            prefetch={false}
+            style={{ textDecoration: "none", fontSize: 13 }}
+          >
+            <Truck size={13} /> Все перевозки
+          </Link>
+        )}
+      >
+      <section className="admin-card dash-deliveries" style={{ margin: 0, border: "none", borderRadius: 0 }}>
+        <div className="dash-section-head" style={{ padding: "0 20px" }}>
+          <div>
+            <p style={{ margin: "4px 0 0" }}>Оплаченные заказы + самостоятельные рейсы (вывоз макулатуры, отправки).</p>
+          </div>
         </div>
         {dashboardDeliveries.length > 0 ? (
           <div className="dash-delivery-list">
@@ -781,30 +900,34 @@ export default async function AdminDashboard() {
           </div>
         )}
       </section>
+      </CollapsibleSection>
       </div>
 
       {/* Финансовая отчётность по макулатуре — отдельно от основной */}
       {wpFinance && (
-        <section className="admin-card dash-finance" style={{ marginBottom: 24 }}>
-          <div className="dash-section-head">
-            <div>
-              <span className="dash-section-kicker">Отдельный учёт макулатуры</span>
-              <h2>Макулатура: наличка и безнал</h2>
-              <p>
-                Финансы отдельного учёта макулатуры — не смешиваются с банком и
-                кассой выше.
-              </p>
-            </div>
-            {session.role === "admin" && (
-              <Link
-                href={`/${ADMIN_PATH}/wastepaper-account`}
-                className="admin-btn admin-btn--ghost"
-                prefetch={false}
-              >
-                <Recycle size={13} /> Открыть учёт макулатуры
-              </Link>
-            )}
-          </div>
+      <CollapsibleSection
+        id="wastepaper"
+        title="Макулатура (отдельный учёт)"
+        subtitle="Приход/расход и остатки по макулатуре — не смешиваются с банком"
+        icon={<Recycle size={18} />}
+        accent="green"
+        badge={money(wpBalance.total)}
+        defaultOpen={false}
+        sideContent={session.role === "admin" && (
+          <Link
+            href={`/${ADMIN_PATH}/wastepaper-account`}
+            className="admin-btn admin-btn--ghost"
+            prefetch={false}
+            style={{ textDecoration: "none", fontSize: 13 }}
+          >
+            <Recycle size={13} /> Открыть учёт
+          </Link>
+        )}
+      >
+        <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
+        <div style={{ padding: "0 20px" }}>
+          <p style={{ margin: "4px 0 0" }}>Наличка/безнал и прогноз по приходам и расходам отдельно от товарного учёта.</p>
+        </div>
 
           <div className="dash-finance-totals">
             <div className="dash-finance-total dash-finance-total--in">
@@ -895,14 +1018,24 @@ export default async function AdminDashboard() {
             </div>
           </div>
         </section>
+        </CollapsibleSection>
       )}
 
       {!isLawyer && (
         <>
       {/* Воронка статусов */}
+      <CollapsibleSection
+        id="statuses"
+        title="Статусы заявок"
+        subtitle="Сколько заявок на каком этапе"
+        icon={<Clock size={18} />}
+        accent="amber"
+        badge={totalOrdersCount}
+        defaultOpen={false}
+      >
       <div
         className="admin-card"
-        style={{ marginBottom: 24, padding: "20px 24px" }}
+        style={{ margin: 0, border: "none", borderRadius: 0, padding: "20px 24px" }}
       >
         <div
           style={{
@@ -1013,13 +1146,23 @@ export default async function AdminDashboard() {
           ))}
         </div>
       </div>
+      </CollapsibleSection>
 
+      <CollapsibleSection
+        id="recent"
+        title="Последние заявки, склад и быстрые действия"
+        subtitle="Свежие заказы, заканчивающиеся товары и кнопки"
+        icon={<Clock size={18} />}
+        accent="gray"
+        defaultOpen={false}
+      >
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
           gap: 20,
-          marginBottom: 24,
+          margin: 0,
+          padding: "0 20px 20px",
         }}
         className="admin-dash-grid"
       >
@@ -1358,6 +1501,7 @@ export default async function AdminDashboard() {
           </div>
         </div>
       </div>
+      </CollapsibleSection>
         </>
       )}
 

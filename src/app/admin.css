@@ -8702,6 +8702,27 @@ body:has(.admin-modal-overlay) {
   letter-spacing: 0.01em;
 }
 
+/* Строка «Партия от N шт» на этикетке листа — ценник партии. */
+.qrprint__label-batch {
+  font-size: 7pt;
+  font-weight: 800;
+  color: #000;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+/* Поле «своё число партии» в панели настроек печати. */
+.qrprint__batch-input {
+  width: 96px;
+  padding: 5px 8px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  font-size: 12px;
+  font-family: var(--adm-font-body);
+  background: var(--adm-card);
+  color: var(--adm-ink);
+}
+
 .qrprint__label-code {
   width: 100%;
   display: flex;
@@ -8924,6 +8945,16 @@ body:has(.admin-modal-overlay) {
   text-overflow: ellipsis;
 }
 
+/* Строка «Партия от N шт» на термоэтикетке 40×60 — под ценой,
+   жирная, чтобы читалась на термобумаге. */
+.qrprint__tape-batch {
+  font-size: 7.5pt;
+  font-weight: 800;
+  color: #000;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
 /* Компактная раскладка: выбраны ВСЕ поля (название+цена+размеры).
    QR уменьшаем до 22 мм, чтобы суммарная высота гарантированно
    уместилась в 40 мм этикетки (иначе этикетки «поползут»). */
@@ -9000,6 +9031,7 @@ body:has(.admin-modal-overlay) {
   body.qrprint-mode .qrprint__tape-bc,
   body.qrprint-mode .qrprint__tape-name,
   body.qrprint-mode .qrprint__tape-price,
+  body.qrprint-mode .qrprint__tape-batch,
   body.qrprint-mode .qrprint__tape-dims {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
@@ -10439,4 +10471,380 @@ body:has(.admin-modal-overlay) {
     grid-column: 1 / -1;
     justify-content: center;
   }
+}
+
+/* ── Сворачиваемые секции дашборда (удобство для бухгалтера) ── */
+.dash-section {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid var(--adm-border, #dbd8d0);
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  overflow: hidden;
+}
+.dash-section__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: #fafaf7;
+  border: none;
+  padding: 14px 20px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  border-bottom: 1px solid rgba(200,196,188,0.35);
+  transition: background 0.15s;
+}
+.dash-section__head:hover { background: #f4f2ec; }
+.dash-section__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.dash-section__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.dash-section__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.dash-section__title-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1b2b4b;
+  line-height: 1.2;
+}
+.dash-section__subtitle {
+  font-size: 12px;
+  color: var(--adm-muted, #8b8678);
+  font-weight: 400;
+}
+.dash-section__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.dash-section__side {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+.dash-section__body {
+  padding: 0;
+}
+
+/* Панель настройки видимости */
+.dash-visibility {
+  margin-left: auto;
+  position: relative;
+}
+.dash-visibility summary {
+  list-style: none;
+  cursor: pointer;
+}
+.dash-visibility summary::-webkit-details-marker { display: none; }
+.dash-visibility__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1b2b4b;
+  cursor: pointer;
+}
+.dash-visibility__toggle:hover { background: #f4f2ec; }
+.dash-visibility__count {
+  background: #1b2b4b;
+  color: #fff;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.dash-visibility__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: #fff;
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 10px;
+  padding: 12px;
+  min-width: 280px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 50;
+}
+.dash-visibility__actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.dash-visibility__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dash-visibility__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dash-visibility__item:hover { background: #f4f2ec; }
+.dash-visibility__item input { cursor: pointer; }
+.dash-visibility__hint {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--adm-muted, #8b8678);
+  line-height: 1.4;
+  border-top: 1px dashed var(--adm-border, #dbd8d0);
+  padding-top: 8px;
+}
+
+/* ── Резерв товара ── */
+.deal-reserve-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--adm-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.deal-reserve-row .admin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.deal-reserve-hint {
+  font-size: 12px;
+  color: #4338ca;
+  font-weight: 600;
+}
+
+/* ══════════════════════════════════════
+   ЭТИКЕТКИ ЯЩИКОВ — отдельная печать A4
+   (страница /[admin]/box-labels)
+   ══════════════════════════════════════ */
+
+/* Редактор на экране: карточки товаров с полями этикетки */
+.boxlabel-edit {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.boxlabel-item {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border-soft);
+  border-radius: var(--adm-r);
+  overflow: hidden;
+}
+
+.boxlabel-item--on {
+  border-color: var(--adm-kraft);
+  box-shadow: 0 0 0 1px var(--adm-kraft-line);
+}
+
+.boxlabel-item__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.boxlabel-item__name {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boxlabel-item__form {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--adm-border-soft);
+  background: var(--adm-paper);
+}
+
+/* Печатный лист на экране скрыт — виден только при печати */
+.boxlabel-sheet {
+  display: none;
+}
+
+@media print {
+  /* Обнуляем контейнеры админки, чтобы A4 не «съезжал» */
+  body.boxlabel-mode,
+  body.boxlabel-mode .admin-shell,
+  body.boxlabel-mode .admin-content,
+  body.boxlabel-mode .admin-main,
+  body.boxlabel-mode .qrprint-page,
+  body.boxlabel-mode .qrprint {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.boxlabel-mode .no-print {
+    display: none !important;
+  }
+
+  body.boxlabel-mode .boxlabel-sheet {
+    display: block !important;
+  }
+
+  /* Одна этикетка = одна страница A4: полоса по центру страницы */
+  body.boxlabel-mode .boxlabel {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: page;
+    page-break-after: always;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 265mm;
+    color: #000;
+  }
+
+  body.boxlabel-mode .boxlabel:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* Горизонтальная полоса через весь лист: № | размеры | штрихкод */
+  body.boxlabel-mode .boxlabel__band {
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    border: 3px solid #000;
+    border-radius: 2mm;
+    overflow: hidden;
+  }
+
+  body.boxlabel-mode .boxlabel__cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8mm 6mm;
+    min-width: 0;
+  }
+
+  /* Вертикальная разделительная черта */
+  body.boxlabel-mode .boxlabel__vsep {
+    width: 3px;
+    background: #000;
+    flex-shrink: 0;
+  }
+
+  /* № ящика слева: буква ~3 см ≈ 85pt, только номер */
+  body.boxlabel-mode .boxlabel__num {
+    font-family: var(--adm-font-head);
+    font-size: 85pt;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    flex: 1 1 auto;
+  }
+
+  /* Середина: размеры 18pt + примечание под ними */
+  body.boxlabel-mode .boxlabel__info {
+    flex: 1 1 auto;
+    gap: 3mm;
+    text-align: center;
+  }
+
+  body.boxlabel-mode .boxlabel__sizes {
+    font-size: 18pt;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  body.boxlabel-mode .boxlabel__note {
+    font-size: 14pt;
+    font-weight: 500;
+    line-height: 1.25;
+  }
+
+  /* Справа: штрихкод (векторный SVG) и цифры под ним */
+  body.boxlabel-mode .boxlabel__code {
+    flex: 1 1 auto;
+    gap: 2mm;
+  }
+
+  body.boxlabel-mode .boxlabel__bc {
+    height: 20mm;
+    width: auto;
+  }
+
+  body.boxlabel-mode .boxlabel__ean {
+    font-size: 11pt;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+  }
+
+  body.boxlabel-mode .boxlabel,
+  body.boxlabel-mode .boxlabel__bc {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+/* ── «Должны нам / Мы должны»: клик по строке вычитает контрагента ──
+   Строка кликабельна; вычтенный контрагент оформляется красным —
+   сразу видно, что он не участвует в расчёте. Повторный клик возвращает. */
+.bank-due__row--click {
+  cursor: pointer;
+  border-radius: var(--adm-r-sm);
+  transition: background var(--transition);
+}
+
+.bank-due__row--click:hover {
+  background: var(--adm-paper);
+}
+
+.bank-due__row--skipped .bank-due__name,
+.bank-due__row--skipped .bank-due__meta,
+.bank-due__row--skipped .bank-due__sum {
+  color: var(--adm-rust) !important;
+}
+
+.bank-due__row--skipped .bank-due__sum {
+  text-decoration: line-through;
+}
+
+.bank-due__row--skipped:hover {
+  background: var(--adm-rust-pale);
 }

@@ -27,6 +27,10 @@
 // «На этикетке»: Название / Цена / Размеры — можно оставить
 // один голый код. Размеры берутся из карточки товара (Д×Ш[×В] мм)
 // и печатаются только там, где они заданы.
+//
+// Дополнительно — строка «Партия от N шт» (ценник партии):
+// пресеты 1 / 1000 / 2000 и 3 / 4 / 5 плюс своё число. Включается
+// блоком «Партия от:» и печатается на каждой этикетке в обоих режимах.
 // =========================================================
 
 "use client";
@@ -47,6 +51,7 @@ import {
   Ruler,
   Barcode,
   QrCode,
+  Boxes,
 } from "lucide-react";
 
 type Product = {
@@ -138,6 +143,10 @@ const TAPE_DIM = {
   qrSize: 280,
 };
 
+// Пресеты строки «Партия от N шт» на этикетке: типовые ценники
+// (от 1 / от 1000 / от 2000) и штучные партии (от 3 / 4 / 5).
+const BATCH_PRESETS = [1, 1000, 2000, 3, 4, 5];
+
 // ── Правило @page — зависит от режима печати ──
 // Инъектируем CSS тегом <style>, потому что статический @page в
 // admin.css не умеет переключаться между режимами (второй @page
@@ -171,6 +180,12 @@ export function PrintLabelsClient({
   const [showName, setShowName] = useState(true);
   const [showPrice, setShowPrice] = useState(true);
   const [showSizes, setShowSizes] = useState(true);
+  // ── Партия от N шт ──
+  // Ценники-тикеры под термопринтер: на этикетке печатается строка
+  // «Партия от N шт» (просто слово и число). Пресеты: 1 / 1000 / 2000
+  // и 3 / 4 / 5 — плюс своё число. null = строка не печатается.
+  const [batch, setBatch] = useState<number | null>(null);
+  const [batchCustom, setBatchCustom] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => {
     // По умолчанию отмечены все видимые и в наличии
     return new Set(
@@ -380,6 +395,56 @@ export function PrintLabelsClient({
               <Ruler size={12} /> Размеры
             </button>
           </div>
+          {/* ── Партия от N шт: строка «Партия от N шт» на каждой
+              этикетке. Пресеты под типовые ценники + своё число.
+              Работает в обоих режимах (лист A4 и термоэтикетка). */}
+          <div className="qrprint__seg" role="group" aria-label="Партия от скольких штук">
+            <span className="qrprint__seg-label">
+              <Boxes size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
+              Партия от:
+            </span>
+            {BATCH_PRESETS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => {
+                  setBatch(batch === n ? null : n);
+                  setBatchCustom("");
+                }}
+                className={`qrprint__seg-btn${batch === n ? " qrprint__seg-btn--active" : ""}`}
+                title={`Печатать «Партия от ${n} шт» на каждой этикетке`}
+              >
+                {n}
+              </button>
+            ))}
+            <input
+              type="number"
+              min={1}
+              className="qrprint__batch-input"
+              placeholder="своё число"
+              value={batchCustom}
+              onChange={(e) => {
+                const v = e.target.value;
+                setBatchCustom(v);
+                const n = Math.floor(Number(v));
+                setBatch(Number.isFinite(n) && n > 0 ? n : null);
+              }}
+              title="Свой размер партии — напечатается «Партия от N шт»"
+            />
+            {batch != null && (
+              <button
+                type="button"
+                className="qrprint__seg-btn qrprint__seg-btn--active"
+                onClick={() => {
+                  setBatch(null);
+                  setBatchCustom("");
+                }}
+                title="Убрать строку партии с этикетки"
+              >
+                ✕ Партия от {batch} шт
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => window.print()}
@@ -475,7 +540,7 @@ export function PrintLabelsClient({
               {/* Шапка этикетки: только выбранные тумблерами поля.
                   Если всё выключено — шапку не рисуем вовсе (код
                   займёт всю этикетку). */}
-              {(showName || (showPrice && p.price != null) || dims) && (
+              {(showName || (showPrice && p.price != null) || dims || batch != null) && (
               <div className="qrprint__label-head">
                 {showName && (
                   <div className="qrprint__label-name">{p.name}</div>
@@ -483,6 +548,11 @@ export function PrintLabelsClient({
                 {showPrice && p.price != null && (
                   <div className="qrprint__label-price">
                     {`${fmt(p.price)} ₽`}
+                  </div>
+                )}
+                {batch != null && (
+                  <div className="qrprint__label-batch">
+                    {`Партия от ${batch} шт`}
                   </div>
                 )}
                 {dims && (
@@ -556,10 +626,10 @@ export function PrintLabelsClient({
         >
           {selectedProducts.map((p) => {
             const dims = showSizes ? formatDims(p) : null;
-            // Включены ВСЕ три поля (название+цена+размеры) — код
-            // чуть уменьшаем (compact), чтобы всё гарантированно
+            // Много строк (название+цена+размеры или строка партии) —
+            // код чуть уменьшаем (compact), чтобы всё гарантированно
             // уместилось на 40 мм высоты и этикетки не «поползли».
-            const compact = showName && showPrice && !!dims;
+            const compact = showName && showPrice && (!!dims || batch != null);
             return (
             <div
               key={p.id}
@@ -601,6 +671,11 @@ export function PrintLabelsClient({
               {showPrice && p.price != null && (
                 <div className="qrprint__tape-price">
                   {`${fmt(p.price)} ₽`}
+                </div>
+              )}
+              {batch != null && (
+                <div className="qrprint__tape-batch">
+                  {`Партия от ${batch} шт`}
                 </div>
               )}
               {dims && (

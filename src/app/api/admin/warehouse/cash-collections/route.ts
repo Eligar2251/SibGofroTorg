@@ -122,6 +122,14 @@ export async function POST(request: NextRequest) {
             amount: Number(body.unlinkedCashAmount) || 0,
             kind: normalizeCashKind(body.unlinkedCashKind),
           }
+        : null,
+      // Расход с остатка кассы (например, ЗП в смену без приходов):
+      // вычитается из переноса прошлых дней даже при нулевом приходе.
+      body.carryoverExpenseAmount != null && Number(body.carryoverExpenseAmount) > 0
+        ? {
+            amount: Number(body.carryoverExpenseAmount) || 0,
+            comment: body.carryoverExpenseComment || null,
+          }
         : null
     );
 

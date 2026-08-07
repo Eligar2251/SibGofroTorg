@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Bell, ClipboardList, Loader2, PackageSearch, RefreshCw, Wallet, X } from "lucide-react";
+import { AlertTriangle, Bell, Building2, ClipboardList, Loader2, PackageSearch, RefreshCw, Wallet, X } from "lucide-react";
 
-type NotificationType = "order" | "stock" | "unpaid_released";
+type NotificationType = "order" | "stock" | "unpaid_released" | "rent";
 type NotificationSeverity = "danger" | "warning" | "info";
 
 type AdminNotification = {
@@ -23,6 +23,7 @@ type NotificationsResponse = {
     orders: number;
     stock: number;
     unpaidReleased: number;
+    rent: number;
   };
   items: AdminNotification[];
 };
@@ -30,6 +31,7 @@ type NotificationsResponse = {
 function iconFor(type: NotificationType) {
   if (type === "order") return ClipboardList;
   if (type === "stock") return PackageSearch;
+  if (type === "rent") return Building2;
   return Wallet;
 }
 
@@ -52,7 +54,7 @@ export function AdminNotifications({ adminPath }: { adminPath: string }) {
   const [error, setError] = useState("");
   const [data, setData] = useState<NotificationsResponse>({
     total: 0,
-    counts: { orders: 0, stock: 0, unpaidReleased: 0 },
+    counts: { orders: 0, stock: 0, unpaidReleased: 0, rent: 0 },
     items: [],
   });
 
@@ -70,6 +72,7 @@ export function AdminNotifications({ adminPath }: { adminPath: string }) {
           orders: Number(body.counts?.orders) || 0,
           stock: Number(body.counts?.stock) || 0,
           unpaidReleased: Number(body.counts?.unpaidReleased) || 0,
+          rent: Number(body.counts?.rent) || 0,
         },
         items: Array.isArray(body.items) ? body.items : [],
       });
@@ -101,8 +104,9 @@ export function AdminNotifications({ adminPath }: { adminPath: string }) {
     if (data.counts.orders) parts.push(`заявки ${data.counts.orders}`);
     if (data.counts.stock) parts.push(`остатки ${data.counts.stock}`);
     if (data.counts.unpaidReleased) parts.push(`без оплаты ${data.counts.unpaidReleased}`);
+    if (data.counts.rent) parts.push(`аренда ${data.counts.rent}`);
     return parts.join(" · ") || "Срочных уведомлений нет";
-  }, [data.counts.orders, data.counts.stock, data.counts.unpaidReleased]);
+  }, [data.counts.orders, data.counts.stock, data.counts.unpaidReleased, data.counts.rent]);
 
   return (
     <div className="admin-notify">

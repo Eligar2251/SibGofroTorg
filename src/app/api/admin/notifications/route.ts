@@ -2,12 +2,20 @@
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth";
 import { getAdminDb } from "@/lib/supabase";
+import { getRentInvoices, getRentTenants } from "@/lib/rent";
+import {
+  rentInvoiceState,
+  rentTodayIso,
+  rentDaysBetween,
+  type RentInvoice,
+  type RentTenant,
+} from "@/lib/rent-shared";
 
 export const dynamic = "force-dynamic";
 
 type AdminNotification = {
   id: string;
-  type: "order" | "stock" | "unpaid_released";
+  type: "order" | "stock" | "unpaid_released" | "rent";
   severity: "danger" | "warning" | "info";
   title: string;
   description: string;
@@ -143,6 +151,51 @@ export async function GET() {
       });
     }
 
+    // Напоминания учёта аренды: просрочки (после отсрочки) и оплаты
+    // в ближайшие 3 дня. При сбое (миграция не применена) просто
+    // пропускаем блок.
+    const rentData = await Promise.all([
+      getRentTenants().catch(() => null as RentTenant[] | null),
+      getRentInvoices().catch(() => null as RentInvoice[] | null),
+    ]);
+    const [rentTenants, rentInvoices] = rentData;
+    if (rentTenants && rentInvoices) {
+      const today = rentTodayIso();
+      const tenantById = new Map(rentTenants.map((t) => [t.id, t]));
+      for (const inv of rentInvoices) {
+        if (inv.status !== "awaiting") continue;
+        const tenant = tenantById.get(inv.tenantId);
+        if (!tenant) continue;
+        const state = rentInvoiceState(inv, tenant.deferralDays, today);
+        if (state === "overdue") {
+          const limitIso = new Date(
+            new Date(inv.dueDate).getTime() + tenant.deferralDays * 86_400_000
+          )
+            .toISOString()
+            .slice(0, 10);
+          notifications.push({
+            id: `rent-overdue-${inv.id}`,
+            type: "rent",
+            severity: "danger",
+            title: "Просрочена оплата аренды",
+            description: `${tenant.name}${tenant.office ? ` · ${tenant.office}` : ""} · АР-${inv.number} · ${fmtRub(inv.amount)} · просрочка ${rentDaysBetween(limitIso, today)} дн.`,
+            href: `/${ADMIN_PATH}/rent`,
+            createdAt: `${today}T00:00:00.000Z`,
+          });
+        } else if (state === "due_today" || (state === "upcoming" && rentDaysBetween(today, inv.dueDate) <= 3)) {
+          notifications.push({
+            id: `rent-due-${inv.id}`,
+            type: "rent",
+            severity: "warning",
+            title: state === "due_today" ? "Сегодня оплата аренды" : "Скоро оплата аренды",
+            description: `${tenant.name}${tenant.office ? ` · ${tenant.office}` : ""} · АР-${inv.number} · ${fmtRub(inv.amount)}`,
+            href: `/${ADMIN_PATH}/rent`,
+            createdAt: `${today}T00:00:00.000Z`,
+          });
+        }
+      }
+    }
+
     notifications.sort((a, b) => {
       const priority = { danger: 2, warning: 1, info: 0 } as const;
       const pa = priority[a.severity];
@@ -157,6 +210,7 @@ export async function GET() {
         orders: notifications.filter((n) => n.type === "order").length,
         stock: notifications.filter((n) => n.type === "stock").length,
         unpaidReleased: notifications.filter((n) => n.type === "unpaid_released").length,
+        rent: notifications.filter((n) => n.type === "rent").length,
       },
       items: notifications.slice(0, 50),
     });

@@ -234,10 +234,13 @@ function mapDealRow(row: any): CustomerDeal {
     deliveryPlannedDate: row.delivery_planned_date || null,
     deliveryReleasedAt: toIso(row.delivery_released_at),
     deliveryNote: row.delivery_note || null,
+    deliveryContact: row.delivery_contact || null,
+    deliveryPhone: row.delivery_phone || null,
     deliveryDriverId: row.delivery_driver_id || null,
     deliveryDriverName: row.delivery_driver_name || null,
     shippedItems: Array.isArray(row.shipped_items) ? row.shipped_items : [],
     deliveryItems: Array.isArray(row.delivery_items) ? row.delivery_items : [],
+    isReserved: Boolean(row.is_reserved),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -266,6 +269,8 @@ function parseDealDelivery(data: any): {
   delivery_address: string | null;
   delivery_planned_date: string | null;
   delivery_note: string | null;
+  delivery_contact: string | null;
+  delivery_phone: string | null;
   delivery_released_at?: string | null;
 } {
   const hasDelivery = Boolean(data.hasDelivery);
@@ -288,6 +293,8 @@ function parseDealDelivery(data: any): {
     delivery_note: hasDelivery
       ? cleanText(data.deliveryNote, 1000)
       : null,
+    delivery_contact: hasDelivery ? cleanText(data.deliveryContact ?? data.contactName, 160) : null,
+    delivery_phone: hasDelivery ? cleanText(data.deliveryPhone ?? data.customerPhone, 60) : null,
   };
 }
 
@@ -1407,6 +1414,7 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
     items, total, bank_adjustment: round2(total - linesTotal),
     vat_rate: vatRate, vat_amount: vatAmount,
     status: "new",
+    is_reserved: data.isReserved === true,
     ...delivery,
   }).select("id").single();
   if (dealError) throw dealError;
@@ -1724,6 +1732,10 @@ export async function updateDeal(id: string, data: any): Promise<void> {
       data.deliveryNote !== undefined
         ? data.deliveryNote
         : existing.delivery_note,
+    deliveryContact: data.deliveryContact,
+    deliveryPhone: data.deliveryPhone,
+    contactName: data.contactName,
+    customerPhone: data.customerPhone,
     address: data.address ?? existing.address,
   });
   if (delivery.has_delivery && !delivery.delivery_address) {
@@ -1774,6 +1786,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
     items, total, bank_adjustment: bankAdjustment,
     vat_rate: vatRate, vat_amount: vatAmount,
+    is_reserved: data.isReserved === true,
     ...delivery,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
@@ -2689,7 +2702,13 @@ export async function collectCash(
   /** Дата закрытия смены, которую явно выбрал кассир. */
   collectionDate?: string | null,
   /** Старый остаток кассы без исходного платежа. */
-  unlinkedCash?: { amount: number; kind: CashKind } | null
+  unlinkedCash?: { amount: number; kind: CashKind } | null,
+  /**
+   * Расход прямо с остатка кассы (например, ЗП в смену без приходов).
+   * Создаёт проведённый наличный расход, который вычитается из кассы —
+   * в т.ч. из остатка прошлых дней.
+   */
+  carryoverExpense?: { amount: number; comment?: string | null } | null
 ): Promise<{ amount: number; cashAmount: number; transferAmount: number; date: string }> {
   const db = getAdminDb();
   const [payments, salaries, collections] = await Promise.all([
@@ -2713,6 +2732,56 @@ export async function collectCash(
     );
   }
   const cleanNote = note ? cleanText(note, 500) : null;
+
+  // ── Расход с остатка кассы (ЗП в смену без приходов и т.п.) ──
+  // Формально это обычный наличный расход: создаём проведённый платёж,
+  // и кассовый регистр вычитает его из остатка — при нулевом приходе
+  // дня деньги берутся из переноса прошлых дней.
+  const requestedCarryoverExpense = Math.max(
+    0,
+    round2(Number(carryoverExpense?.amount) || 0)
+  );
+  let carryoverExpenseRow: CashCollectionExpense | null = null;
+  if (requestedCarryoverExpense > 0.009) {
+    if (requestedCarryoverExpense > cashBalance + 0.009) {
+      throw new Error(
+        `Расход с остатка (${requestedCarryoverExpense} ₽) больше остатка кассы (${cashBalance} ₽)`
+      );
+    }
+    const expenseDate = String(collectionDate || "")
+      .slice(0, 10)
+      .replace(/[^\d-]/g, "");
+    const payDate = /^\d{4}-\d{2}-\d{2}$/.test(expenseDate)
+      ? expenseDate
+      : getWarehouseBusinessDate();
+    const expenseComment = cleanText(carryoverExpense?.comment, 300) || "ЗП";
+    const expNumber = await nextNumber("payment");
+    const { data: expRow, error: expError } = await db
+      .from("bank_payments")
+      .insert({
+        number: expNumber,
+        date: payDate,
+        direction: "outgoing",
+        type: "cash",
+        counterparty: "Расход с остатка кассы",
+        amount: requestedCarryoverExpense,
+        is_paid: true,
+        paid_at: payDate,
+        exclude_from_balance: false,
+        comment: expenseComment,
+      })
+      .select("id")
+      .single();
+    if (expError) throw expError;
+    carryoverExpenseRow = {
+      kind: "payment",
+      id: String(expRow.id),
+      title: `Расход с остатка кассы — ${expenseComment}`,
+      amount: requestedCarryoverExpense,
+      comment: expenseComment,
+    };
+  }
+
   const pending = listPendingCashPayments(payments, collections);
   const carryover = getCashCarryoverSummary(
     payments,
@@ -2883,10 +2952,18 @@ export async function collectCash(
   // Эти деньги физически ушли из кассы до сдачи, поэтому сдаётся
   // приход МИНУС траты. Иначе сдали бы больше, чем есть, и остаток
   // кассы ушёл бы в минус ровно на сумму трат.
-  // Пустая смена не должна повторно прикреплять расходы дня: без прихода
-  // они уже учтены в кассовом регистре, а нулевое закрытие лишь фиксирует
-  // отсутствие операций.
-  const expensesOfDay = isZeroShift
+  //
+  // Траты прикрепляются к ЛЮБОЙ смене, включая пустую: когда приходов
+  // за день не было вообще, а ЗП платили налом из остатка прошлых дней,
+  // сдача кассы должна показать «перенос с прошлого дня + ЗП −N» —
+  // иначе движение денег в документе не видно. Защита от двойного
+  // прикрепления: если за эту дату уже есть документ сдачи с тратами,
+  // повторно не прикрепляем.
+  const dateAlreadyHasExpenses = collections.some((c) => {
+    const d = String(c.date || "").slice(0, 10);
+    return d === expenseDate && Array.isArray(c.expenses) && c.expenses.length > 0;
+  });
+  const expensesOfDay = dateAlreadyHasExpenses
     ? []
     : listCashExpenses(payments, salaries).filter((e) => e.date === expenseDate);
   const expensesTotal =
@@ -2925,6 +3002,8 @@ export async function collectCash(
     amount: e.amount,
     comment: e.comment,
   }));
+  if (carryoverExpenseRow) expenseRows.push(carryoverExpenseRow);
+  const expensesAmountTotal = round2(expensesTotal + requestedCarryoverExpense);
 
   const { error } = await db.from("cash_collections").insert({
     date,
@@ -2934,8 +3013,10 @@ export async function collectCash(
     transfer_amount: cardAmount,
     items: rows,
     expenses: expenseRows,
-    income_amount: round2(cashPart + cardPart + expensesTotal),
-    expenses_amount: expensesTotal,
+    // У пустой смены прихода нет: траты покрыты переносом прошлых дней,
+    // поэтому в «приход за день» они не попадают.
+    income_amount: round2(cashPart + cardPart + (isZeroShift ? 0 : expensesTotal)),
+    expenses_amount: expensesAmountTotal,
     note: cleanNote,
   });
   if (error) throw error;

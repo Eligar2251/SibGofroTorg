@@ -30,11 +30,14 @@ import {
   ChevronRight,
   RotateCcw,
   BarChart3,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import {
   type BankPayment,
   getBankSummary,
   getPendingPaymentCounterpartyBalances,
+  normalizeName,
   getCollectedBreakdown,
   getDealPaidMap,
   getReceiptPaidMap,
@@ -76,12 +79,28 @@ import {
   type CounterpartyOption,
 } from "@/components/admin/WarehouseCounterparties";
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
+import { SalaryAutoDistribute } from "@/components/admin/SalaryAutoDistribute";
 import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+
+/** Ключ контрагента в «Должны нам / Мы должны» (тип + нормализованное имя). */
+function partyKey(type: "customer" | "supplier", name: string): string {
+  return `${type}:${normalizeName(name)}`;
+}
+
+/** Ключ контрагента платежа — та же логика, что в расчёте долгов. */
+function paymentPartyKey(p: BankPayment): string | null {
+  if (!p.counterparty) return null;
+  let type: "customer" | "supplier";
+  if (p.dealIds && p.dealIds.length > 0) type = "customer";
+  else if (p.receiptIds && p.receiptIds.length > 0) type = "supplier";
+  else type = p.direction === "outgoing" ? "supplier" : "customer";
+  return partyKey(type, p.counterparty);
+}
 
 function fmtDate(raw: string | null | undefined): string {
   if (!raw) return "—";
@@ -330,6 +349,7 @@ export function WarehouseManager({
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
   const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   /** Раскрытые расширенные сводки в таблице склада. */
   const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(
     () => new Set(focusProductId ? [focusProductId] : [])
@@ -469,6 +489,36 @@ export function WarehouseManager({
   const [bankDateTo, setBankDateTo] = useState("");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
   const [historyDaysPage, setHistoryDaysPage] = useState(0);
+  // «Не считать» в «Должны нам / Мы должны»: клик по контрагенту в блоке
+  // расчёта банка мгновенно вычитает его из ожидаемых сумм (строка
+  // становится красной), повторный клик возвращает. Быстрая прикидка —
+  // живёт только на клиенте, платежи и БД не меняются.
+  const [skippedParties, setSkippedParties] = useState<Set<string>>(new Set());
+
+  function toggleSkipParty(c: { type: "customer" | "supplier"; name: string }) {
+    const key = partyKey(c.type, c.name);
+    setSkippedParties((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  // Платежи для итогов («Должны нам / Мы должны», прогноз): ожидающие
+  // платежи пропущенных контрагентов не учитываются. Проведённые
+  // платежи (фактический баланс) не трогаем никогда.
+  const paymentsForTotals = useMemo(
+    () =>
+      skippedParties.size === 0
+        ? payments
+        : payments.filter((p) => {
+            if (p.isPaid) return true;
+            const key = paymentPartyKey(p);
+            return !key || !skippedParties.has(key);
+          }),
+    [payments, skippedParties]
+  );
 
   useEffect(() => {
     setHistoryDaysPage(0);
@@ -501,8 +551,11 @@ export function WarehouseManager({
     return map;
   }, [payments]);
   const bankSummary = useMemo(
-    () => getBankSummary(payments, salaries, cashCollections),
-    [payments, salaries, cashCollections]
+    // Заказы нужны, чтобы ожидаемый приход по заказу автоматически
+    // уменьшался на уже пришедшие частичные оплаты другими платежами.
+    // paymentsForTotals — без платежей, отмеченных «не считать».
+    () => getBankSummary(paymentsForTotals, salaries, cashCollections, undefined, deals),
+    [paymentsForTotals, salaries, cashCollections, deals]
   );
   const cashCarryover = useMemo(
     () =>
@@ -634,8 +687,11 @@ export function WarehouseManager({
   }, [orderingProduct, findLastSupplierAndPrice]);
   
   const allCounterparties = useMemo(
-    () => getPendingPaymentCounterpartyBalances(payments),
-    [payments]
+    // Полный список платежей: строки «пропущенных» контрагентов должны
+    // оставаться видимыми (чтобы их можно было вернуть в расчёт кликом).
+    // Итоги «Должны нам / Мы должны» считаются по paymentsForTotals.
+    () => getPendingPaymentCounterpartyBalances(payments, deals),
+    [payments, deals]
   );
 
   // Filter counterparties to only show those with positive debt (what is owed)
@@ -660,7 +716,7 @@ export function WarehouseManager({
         .map((r) => r.id)
     );
 
-    return payments
+    return paymentsForTotals
       .filter((p) => {
         if (p.isPaid || p.direction !== "outgoing" || p.excludeFromBalance || p.amount <= 0) {
           return false;
@@ -674,7 +730,7 @@ export function WarehouseManager({
         return linkedToReleasedDeal || linkedToReceiptForReleasedDeal;
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
-  }, [deals, payments, receipts]);
+  }, [deals, paymentsForTotals, receipts]);
 
   // Закрытые смены кассы — перевод на карту и перенос наличного остатка.
   const collectionsSorted = useMemo(
@@ -1073,6 +1129,35 @@ export function WarehouseManager({
     () => new Map(stock.map((p) => [p.id, p.stockQty])),
     [stock]
   );
+  // Резерв по товарам: сумма quantity по заказам со статусом != cancelled,
+  // у которых включён isReserved и товар ещё не отгружен.
+  const reservedById = useMemo(() => {
+    const map = new Map<string, number>();
+    const dealsByReserve = new Map<string, { number: number; qty: number }[]>();
+    for (const deal of deals) {
+      if (deal.status === "cancelled" || deal.status === "completed") continue;
+      if (!deal.isReserved) continue;
+      for (const it of deal.items || []) {
+        const ordered = Number(it.quantity) || 0;
+        const shipped = (deal.shippedItems || []).find(
+          (s: any) => s.productId === it.productId
+        )?.shippedQty || 0;
+        const remaining = Math.max(0, ordered - Number(shipped || 0));
+        if (remaining <= 0) continue;
+        map.set(it.productId, (map.get(it.productId) || 0) + remaining);
+        const arr = dealsByReserve.get(it.productId) || [];
+        arr.push({ number: deal.number, qty: remaining });
+        dealsByReserve.set(it.productId, arr);
+      }
+    }
+    return { total: map, dealsByProduct: dealsByReserve };
+  }, [deals]);
+  const reservedTotalById = reservedById.total;
+  const reservedDealsByProduct = reservedById.dealsByProduct;
+  // Свободный остаток = остаток на складе минус резерв по другим заказам
+  function freeStock(productId: string): number {
+    return Math.max(0, (stockById.get(productId) ?? 0) - (reservedTotalById.get(productId) || 0));
+  }
   const productById = useMemo(() => new Map(stock.map((p) => [p.id, p])), [stock]);
   const supplierRows = useMemo(() => {
     return counterpartyOptions
@@ -1331,6 +1416,7 @@ export function WarehouseManager({
               payments={payments}
               deliveryPrice={deliveryPrice}
               freeDeliveryThreshold={freeDeliveryThreshold}
+              reservedStockById={reservedTotalById}
             />
           )}
           {activeTab === "bank" && (
@@ -1488,6 +1574,16 @@ export function WarehouseManager({
                                     initialQty={p.stockQty}
                                     onSaved={() => handleStockQuantitySaved(p.id)}
                                   />
+                                  {(reservedTotalById.get(p.id) || 0) > 0 && (
+                                    <>
+                                      <div style={{ fontSize: 11, color: "#4338ca", marginTop: 2, whiteSpace: "nowrap" }}>
+                                        в резерве {fmt(reservedTotalById.get(p.id) || 0)} шт.
+                                      </div>
+                                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1, whiteSpace: "nowrap" }}>
+                                        свободно {fmt(freeStock(p.id))} шт.
+                                      </div>
+                                    </>
+                                  )}
                                 </td>
                                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                                   {p.price != null ? `${fmt(p.price)} ₽` : "—"}
@@ -2122,12 +2218,27 @@ export function WarehouseManager({
               filteredDeals.map((d) => {
                 const paid = dealPaidMap.get(d.id) || 0;
                 const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
+                // Резерв по другим заказам (кроме текущего)
+                const reservedByOthers = (productId: string): number => {
+                  let r = reservedTotalById.get(productId) || 0;
+                  if (d.isReserved) {
+                    const shipped = (d.shippedItems || []).find(
+                      (s: any) => s.productId === productId
+                    )?.shippedQty || 0;
+                    const it = d.items.find((i: any) => i.productId === productId);
+                    if (it) r -= Math.max(0, Number(it.quantity || 0) - Number(shipped || 0));
+                  }
+                  return Math.max(0, r);
+                };
                 const shortage =
                   d.status === "new"
                     ? d.items
                         .map((it) => {
-                          const available = stockById.get(it.productId) ?? 0;
-                          return { it, available, missing: Math.max(0, it.quantity - available) };
+                          const stock = stockById.get(it.productId) ?? 0;
+                          const otherReserve = reservedByOthers(it.productId);
+                          const free = Math.max(0, stock - otherReserve);
+                          const missing = Math.max(0, it.quantity - free);
+                          return { it, available: free, stock, otherReserve, missing };
                         })
                         .filter((r) => r.missing > 0)
                     : [];
@@ -2153,8 +2264,31 @@ export function WarehouseManager({
                       {!isFullyPaid && paid > 0 && (
                         <span className="admin-badge admin-badge--blue">Оплачено {fmt(paid)} из {fmt(d.total)} ₽</span>
                       )}
+                      {d.isReserved ? (
+                        <span
+                          className="admin-badge admin-badge--indigo"
+                          title="Товар зарезервирован за этим заказом — не продаётся другим"
+                        >
+                          <Lock size={10} /> в резерве
+                        </span>
+                      ) : null}
                       {hasShortage && (
-                        <span className="admin-badge admin-badge--red"><AlertTriangle size={10} /> не хватает товара</span>
+                        <span
+                          className="admin-badge admin-badge--red"
+                          title={shortage
+                            .map((r) => {
+                              const parts = [
+                                r.it.name,
+                                `нужно ${r.it.quantity}`,
+                                `свободно ${fmt(r.available)}`,
+                              ];
+                              if (r.otherReserve > 0) parts.push(`в резерве др. ${fmt(r.otherReserve)}`);
+                              return parts.join(" · ");
+                            })
+                            .join("\n")}
+                        >
+                          <AlertTriangle size={10} /> не хватает товара
+                        </span>
                       )}
                       {(() => {
                         const shippedArr = Array.isArray(d.shippedItems) ? d.shippedItems : [];
@@ -2311,19 +2445,69 @@ export function WarehouseManager({
                           {d.status === "new" &&
                             (hasShortage ? (
                               <div className="deal-stock deal-stock--miss">
-                                <div className="deal-stock__title"><AlertTriangle size={12} />Не хватает на складе</div>
+                                <div className="deal-stock__title"><AlertTriangle size={12} />Не хватает свободного товара</div>
                                 {shortage.map((r) => (
                                   <div key={r.it.productId} className="deal-stock__row">
                                     <span className="deal-stock__name">{r.it.name}</span>
                                     <span className="deal-stock__nums">
-                                      нужно {r.it.quantity} · на складе {r.available} · <b>не хватает {r.missing}</b>
+                                      нужно {r.it.quantity} · на складе {fmt(r.stock)}
+                                      {r.otherReserve > 0 && <> · <b style={{color:"#4338ca"}}>в резерве {fmt(r.otherReserve)}</b></>}
+                                      {" "}· свободно {fmt(r.available)} · <b>не хватает {r.missing}</b>
                                     </span>
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <div className="deal-stock deal-stock--ok"><PackageCheck size={13} />Все позиции есть на складе</div>
+                              <div className="deal-stock deal-stock--ok"><PackageCheck size={13} />Все позиции есть на складе (с учётом резервов)</div>
                             ))}
+
+                          {d.status === "new" && (
+                            <div className="deal-reserve-row">
+                              <button
+                                type="button"
+                                className={`admin-btn admin-btn--sm ${d.isReserved ? "admin-badge--indigo" : "admin-btn--ghost"}`}
+                                disabled={busyId === d.id}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setBusyId(d.id);
+                                  try {
+                                    const res = await fetch(
+                                      `/api/admin/warehouse/deals/${d.id}/reserve`,
+                                      {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ reserved: !d.isReserved }),
+                                      }
+                                    );
+                                    if (!res.ok) {
+                                      const err = await res.json().catch(() => ({}));
+                                      alert(err.error || "Не удалось изменить резерв");
+                                    } else {
+                                      router.refresh();
+                                    }
+                                  } finally {
+                                    setBusyId(null);
+                                  }
+                                }}
+                                title={d.isReserved
+                                  ? "Снять резерв — товары снова доступны другим заказам"
+                                  : "Зарезервировать товар по этому заказу (выставлен счёт)"}
+                              >
+                                {busyId === d.id ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : d.isReserved ? (
+                                  <><LockOpen size={13} /> Снять резерв</>
+                                ) : (
+                                  <><Lock size={13} /> Зарезервировать товар</>
+                                )}
+                              </button>
+                              {d.isReserved && (
+                                <span className="deal-reserve-hint">
+                                  Товар зарезервирован — не уйдёт другим клиентам
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div className="admin-order__side">
@@ -2333,6 +2517,7 @@ export function WarehouseManager({
                             payments={payments}
                             deliveryPrice={deliveryPrice}
                             freeDeliveryThreshold={freeDeliveryThreshold}
+                            reservedStockById={reservedTotalById}
                             initialDeal={{
                               id: d.id,
                               date: d.date,
@@ -2352,9 +2537,12 @@ export function WarehouseManager({
                                 d.deliveryAddress ?? d.address ?? null,
                               deliveryPlannedDate: d.deliveryPlannedDate ?? null,
                               deliveryNote: d.deliveryNote ?? null,
+                              deliveryContact: d.deliveryContact ?? d.contactName ?? null,
+                              deliveryPhone: d.deliveryPhone ?? d.customerPhone ?? null,
                               // Способ оплаты берём из привязанных платежей,
                               // чтобы наличный заказ не «переезжал» в безнал.
                               paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
+                              isReserved: Boolean(d.isReserved),
                               items: d.items.map((item) => ({
                                 productId: item.productId,
                                 name: item.name,
@@ -2392,7 +2580,15 @@ export function WarehouseManager({
 
       {/* ============ ВКЛАДКА: ЗАРПЛАТЫ ============ */}
       {activeTab === "salaries" && (
-        <WarehouseSalaries employees={employees} salaries={salaries} />
+        <>
+          <div className="admin-filters admin-filters--sub" style={{ marginBottom: 14 }}>
+            <SalaryTabsToggle />
+          </div>
+          <SalaryTabContent
+            employees={employees}
+            salaries={salaries}
+          />
+        </>
       )}
 
       {/* ============ ВКЛАДКА: ОТЧЁТЫ ============ */}
@@ -2866,19 +3062,37 @@ export function WarehouseManager({
               ) : (
                 counterpartiesWithDebt
                   .filter((c) => c.type === "customer")
-                  .map((c) => (
-                    <div key={`c-${c.name}`} className="bank-due__row">
+                  .map((c) => {
+                    const skipped = skippedParties.has(partyKey("customer", c.name));
+                    return (
+                    <div
+                      key={`c-${c.name}`}
+                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      title={skipped
+                        ? "Нажмите, чтобы вернуть контрагента в расчёт"
+                        : "Нажмите, чтобы не считать контрагента в «Должны нам» (быстрая прикидка)"}
+                      onClick={() => toggleSkipParty(c)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleSkipParty(c);
+                        }
+                      }}
+                    >
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
                           {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
+                      <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
-                  ))
+                    );
+                  })
               )}
             </div>
 
@@ -2891,19 +3105,37 @@ export function WarehouseManager({
               ) : (
                 counterpartiesWithDebt
                   .filter((c) => c.type === "supplier")
-                  .map((c) => (
-                    <div key={`s-${c.name}`} className="bank-due__row">
+                  .map((c) => {
+                    const skipped = skippedParties.has(partyKey("supplier", c.name));
+                    return (
+                    <div
+                      key={`s-${c.name}`}
+                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      title={skipped
+                        ? "Нажмите, чтобы вернуть контрагента в расчёт"
+                        : "Нажмите, чтобы не считать контрагента в «Мы должны» (быстрая прикидка)"}
+                      onClick={() => toggleSkipParty(c)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleSkipParty(c);
+                        }
+                      }}
+                    >
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
                           {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
+                      <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
-                  ))
+                    );
+                  })
               )}
             </div>
           </div>
@@ -3307,7 +3539,29 @@ export function WarehouseManager({
                                 {transfer > 0 ? `${fmt(transfer)} ₽` : "—"}
                               </td>
                               <td style={{ textAlign: "right", fontWeight: 600 }}>
-                                {cashPart > 0 ? `${fmt(cashPart)} ₽` : "—"}
+                                {(() => {
+                                  // Пустая смена (платежей не было): показываем
+                                  // фактическую наличность на конец дня — перенос
+                                  // с прошлого дня минус траты (ЗП) и перевод на карту.
+                                  const endOfDayCash =
+                                    Math.round(
+                                      (carriedFromPreviousDays + cashPart - expSum - transfer) * 100
+                                    ) / 100;
+                                  if (cashPart > 0) return `${fmt(cashPart)} ₽`;
+                                  if (endOfDayCash > 0.009) {
+                                    return (
+                                      <>
+                                        {fmt(endOfDayCash)} ₽
+                                        <small
+                                          style={{ display: "block", marginTop: 2, color: "var(--adm-muted)", fontWeight: 500 }}
+                                        >
+                                          наличность на конец дня
+                                        </small>
+                                      </>
+                                    );
+                                  }
+                                  return "—";
+                                })()}
                                 {carriedFromPreviousDays > 0.009 && (
                                   <small
                                     style={{ display: "block", marginTop: 3, color: "var(--adm-muted)", fontWeight: 500 }}
@@ -3367,7 +3621,9 @@ export function WarehouseManager({
                                       )}
                                       {marked === 0 ? (
                                         <div className="wh-cc-empty">
-                                          Платежи не размечены (старая сдача)
+                                          {legacyCollection
+                                            ? "Платежи не размечены (старая сдача)"
+                                            : "Наличных платежей в смене не было"}
                                         </div>
                                       ) : (
                                         (c.items || []).map((it, i) => (
@@ -3994,3 +4250,73 @@ export function WarehouseManager({
     </div>
   );
 }
+
+// ─── Вкладки внутри раздела «Зарплаты»: обычный учёт + автор расчёт ───
+function SalaryTabsToggle() {
+  const [sub, setSub] = useState<string>(() => {
+    if (typeof window === "undefined") return "regular";
+    return new URLSearchParams(window.location.search).get("salary") || "regular";
+  });
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (sub === "regular") url.searchParams.delete("salary");
+    else url.searchParams.set("salary", sub);
+    window.history.replaceState({}, "", url.toString());
+    // Переключение видимости через событие storage не требуется — используем
+    // кастомное событие, чтобы оба компонента синхронно перерисовались.
+    window.dispatchEvent(new CustomEvent("salary-sub-changed", { detail: sub }));
+  }, [sub]);
+  useEffect(() => {
+    const onCustom = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      if (v && v !== sub) setSub(v);
+    };
+    window.addEventListener("salary-sub-changed", onCustom as EventListener);
+    return () => window.removeEventListener("salary-sub-changed", onCustom as EventListener);
+  }, [sub]);
+  return (
+    <>
+      <button
+        type="button"
+        className={`admin-filter${sub === "regular" ? " admin-filter--active" : ""}`}
+        onClick={() => setSub("regular")}
+      >
+        <Banknote size={12} /> Зарплаты (ведомости)
+      </button>
+      <button
+        type="button"
+        className={`admin-filter${sub === "auto" ? " admin-filter--active" : ""}`}
+        onClick={() => setSub("auto")}
+      >
+        Авторасчёт по дням
+      </button>
+    </>
+  );
+}
+
+function SalaryTabContent({
+  employees,
+  salaries,
+}: {
+  employees: Employee[];
+  salaries: Salary[];
+}) {
+  const [sub, setSub] = useState<string>(() => {
+    if (typeof window === "undefined") return "regular";
+    return new URLSearchParams(window.location.search).get("salary") || "regular";
+  });
+  useEffect(() => {
+    const onCustom = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      if (v) setSub(v);
+    };
+    window.addEventListener("salary-sub-changed", onCustom as EventListener);
+    return () => window.removeEventListener("salary-sub-changed", onCustom as EventListener);
+  }, []);
+  if (sub === "auto") {
+    return <SalaryAutoDistribute />;
+  }
+  return <WarehouseSalaries employees={employees} salaries={salaries} />;
+}
+
+export default WarehouseManager;

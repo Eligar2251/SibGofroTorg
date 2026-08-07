@@ -109,6 +109,8 @@ export interface EditableDeal {
   deliveryPhone?: string | null;
   /** Способ оплаты заказа: "cash" — наличные в кассу, иначе безнал. */
   paymentMethod?: string | null;
+  /** Заказ зарезервирован (выставлен счёт) — товар не уходит другим клиентам. */
+  isReserved?: boolean;
 }
 
 function todayIso(): string {
@@ -135,6 +137,7 @@ export function DealForm({
   initialDeal,
   deliveryPrice = 800,
   freeDeliveryThreshold = 30000,
+  reservedStockById,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
@@ -144,6 +147,8 @@ export function DealForm({
   deliveryPrice?: number;
   /** Порог бесплатной доставки из настроек (₽) */
   freeDeliveryThreshold?: number;
+  /** Карта зарезервированного кол-ва по другим заказам (для подсказки «свободно X»). */
+  reservedStockById?: Map<string, number>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -202,6 +207,9 @@ export function DealForm({
   const [paymentMethod, setPaymentMethod] = useState<string>(
     initialDeal?.paymentMethod === "cash" ? "cash" : "regular"
   );
+
+  // Резерв товара (выставлен счёт — не продаём другим).
+  const [isReserved, setIsReserved] = useState<boolean>(Boolean(initialDeal?.isReserved));
 
   // ── Разбиение платежа на части ──
   // Непроведённые платежи ИМЕННО этого заказа (раньше фильтр не учитывал
@@ -310,6 +318,7 @@ export function DealForm({
     setSplitAmounts([""]);
     setSplitTouched(false);
     setPaymentMethod(initialDeal?.paymentMethod === "cash" ? "cash" : "regular");
+    setIsReserved(Boolean(initialDeal?.isReserved));
   }
 
   function pickCustomerAddress(found: CounterpartyOption): string {
@@ -485,6 +494,7 @@ export function DealForm({
           linkedPaymentIds: selectedPayments,
           paymentSplits: buildPaymentSplits(),
           paymentMethod,
+          isReserved,
         }),
       });
       if (!res.ok) {
@@ -642,14 +652,24 @@ export function DealForm({
                     <span>Сумма</span>
                     <span />
                   </div>
-                  {items.map((it) => (
+                  {items.map((it) => {
+                    // Свободный остаток = на складе − резерв по ДРУГИМ заказам
+                    // (текущий редактируемый заказ, если он зарезервирован, из резерва вычтен).
+                    const otherReserved =
+                      (reservedStockById?.get(it.productId) || 0) -
+                      (initialDeal?.isReserved
+                        ? Math.max(0, Number(it.quantity) || 0)
+                        : 0);
+                    const freeQty = Math.max(0, (it.stockQty || 0) - Math.max(0, otherReserved));
+                    const overFree = Number(it.quantity) > freeQty;
+                    return (
                     <div key={it.productId} className="wh-item-row">
                       <span className="wh-item-row__name">
                         {it.name}
                         {it.sku && <span className="wh-item-row__sku">{it.sku}</span>}
-                        {Number(it.quantity) > it.stockQty && (
+                        {overFree && (
                           <span className="wh-item-row__warn">
-                            на складе: {it.stockQty}
+                            свободно: {freeQty} {reservedStockById ? "(с учётом резервов)" : ""}
                           </span>
                         )}
                       </span>
@@ -695,7 +715,8 @@ export function DealForm({
                         <Trash2 size={14} />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -936,6 +957,25 @@ export function DealForm({
                     emptyText="Платежи не найдены"
                   />
                 )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 10 }}>
+                <label className="admin-checkbox" style={{ fontSize: 14, fontWeight: 700 }}>
+                  <input
+                    type="checkbox"
+                    checked={isReserved}
+                    onChange={(e) => setIsReserved(e.target.checked)}
+                  />
+                  <span>
+                    <b style={{ color: "#4338ca" }}>
+                      {isReserved ? "🔒 Зарезервировать товар" : "📋 Зарезервировать товар (выставлен счёт)"}
+                    </b>
+                    <span className="wh-form-hint" style={{ display: "block", fontWeight: 400, marginTop: 2 }}>
+                      При включении товар по этому заказу не будет продаваться другим клиентам.
+                      После отгрузки резерв снимается автоматически.
+                    </span>
+                  </span>
+                </label>
               </div>
 
               {error && <div className="wh-form-error">{error}</div>}

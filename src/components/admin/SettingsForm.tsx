@@ -81,6 +81,8 @@ export function SettingsForm({ settings }: SettingsFormProps) {
   const [saved, setSaved] = useState(false);
   const [testingTg, setTestingTg] = useState(false);
   const [tgResult, setTgResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [testingMax, setTestingMax] = useState(false);
+  const [maxResult, setMaxResult] = useState<{ ok: boolean; error?: string } | null>(null);
   // Диагностика подключения бота: откуда взяты токен/chat_id и жив ли токен.
   const [tgDiag, setTgDiag] = useState<null | {
     configured: boolean;
@@ -89,7 +91,8 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     tokenMasked: string | null;
     chatIdMasked: string | null;
     chatIdNormalized: string | null;
-    getMe?: { ok: boolean; username?: string | null; error?: string };
+    apiBases?: string[];
+    getMe?: { ok: boolean; username?: string | null; error?: string; base?: string };
   }>(null);
   const [diagLoading, setDiagLoading] = useState(false);
 
@@ -130,6 +133,27 @@ export function SettingsForm({ settings }: SettingsFormProps) {
       setTgResult({ ok: false, error: "Сетевая ошибка" });
     } finally {
       setTestingTg(false);
+    }
+  }
+
+  async function testMax() {
+    setTestingMax(true);
+    setMaxResult(null);
+    try {
+      const res = await fetch("/api/admin/settings/test-max", {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.ok) setMaxResult({ ok: true });
+      else
+        setMaxResult({
+          ok: false,
+          error: body.error || "Не удалось отправить тестовое сообщение MAX",
+        });
+    } catch {
+      setMaxResult({ ok: false, error: "Сетевая ошибка" });
+    } finally {
+      setTestingMax(false);
     }
   }
 
@@ -480,11 +504,22 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                       {tgDiag.getMe.ok ? (
                         <b style={{ color: "#15803d" }}>
                           OK{tgDiag.getMe.username ? ` — @${tgDiag.getMe.username}` : ""}
+                          {tgDiag.getMe.base ? ` (через ${tgDiag.getMe.base})` : ""}
                         </b>
                       ) : (
                         <b style={{ color: "#dc2626" }}>
                           ошибка{tgDiag.getMe.error ? `: ${tgDiag.getMe.error}` : ""}
                         </b>
+                      )}
+                      {tgDiag.apiBases && tgDiag.apiBases.length > 0 && (
+                        <span style={{ color: "var(--adm-muted)" }}>
+                          {" "}· пробовались адреса: {tgDiag.apiBases.join(", ")}
+                        </span>
+                      )}
+                      {!tgDiag.getMe.ok && (
+                        <span style={{ color: "var(--adm-muted)" }}>
+                          {" "}— если сервер в РФ, api.telegram.org заблокирован: укажите релей или MAX.
+                        </span>
                       )}
                     </span>
                   )}
@@ -528,10 +563,32 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                     autoComplete="off"
                   />
                 </div>
+                <div className="admin-field">
+                  <label className="admin-label">
+                    Адрес Telegram API (релей) — если сервер в РФ
+                  </label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={values["telegram_api_base"] || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, telegram_api_base: e.target.value.trim() })
+                    }
+                    placeholder="пусто = api.telegram.org; можно несколько через запятую"
+                    autoComplete="off"
+                  />
+                </div>
                 <p className="admin-hint" style={{ margin: 0 }}>
                   Chat ID — НЕ номер телефона: числовой id сообщит бот{" "}
                   <code>@userinfobot</code> / <code>@getmyid_bot</code>, для канала или группы —{" "}
                   <code>@username</code> (бот должен быть участником и иметь право писать).
+                </p>
+                <p className="admin-hint" style={{ margin: "6px 0 0" }}>
+                  ⚠️ С серверов в РФ <code>api.telegram.org</code> заблокирован (ТСПУ дропает
+                  пакеты) — напрямую уведомления не уходят. Укажите релей: зарубежный VPS или
+                  Cloudflare Worker, который проксирует <code>api.telegram.org</code>, например{" "}
+                  <code>https://tg-relay.ваш-домен.ru</code>. Альтернатива без VPN — настроить
+                  MAX-бота ниже, он работает из РФ без ограничений.
                 </p>
               </div>
               <div className="settings-messenger-item">
@@ -586,6 +643,26 @@ export function SettingsForm({ settings }: SettingsFormProps) {
               {tgResult && !tgResult.ok && (
                 <span className="wh-form-error" style={{ marginTop: 0, maxWidth: "100%", overflowWrap: "anywhere" }}>
                   {tgResult.error}
+                </span>
+              )}
+              <button
+                type="button"
+                className="admin-btn admin-btn--outline"
+                disabled={testingMax}
+                onClick={testMax}
+                title="Отправить тестовое сообщение через MAX (работает из РФ без VPN)"
+              >
+                {testingMax ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                Проверить MAX
+              </button>
+              {maxResult?.ok && (
+                <span className="admin-success">
+                  <CheckCircle size={16} /> MAX отправил! Проверьте чат.
+                </span>
+              )}
+              {maxResult && !maxResult.ok && (
+                <span className="wh-form-error" style={{ marginTop: 0, maxWidth: "100%", overflowWrap: "anywhere" }}>
+                  {maxResult.error}
                 </span>
               )}
             </div>

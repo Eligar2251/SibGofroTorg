@@ -65,6 +65,9 @@ export default async function QrPrintPage({
         <h1 className="qrprint-page__title">
           <QrCode size={20} /> Печать этикеток: штрихкоды и QR
         </h1>
+        <Link href={`/${ADMIN_PATH}/box-labels`} className="qrprint-page__back" prefetch={false}>
+          Этикетки ящиков (A4, крупный №) →
+        </Link>
       </div>
 
       <PrintLabelsClient
