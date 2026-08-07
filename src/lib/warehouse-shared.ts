@@ -405,7 +405,7 @@ export interface CashCollection {
   createdAt?: string | null;
 }
 
-function normalizeName(name: string): string {
+export function normalizeName(name: string): string {
   return (name || "")
     .trim()
     .toLocaleLowerCase("ru-RU")

@@ -10897,11 +10897,17 @@ body:has(.admin-modal-overlay) {
   color: var(--adm-kraft);
 }
 
-/* Пропущенный платёж: приглушаем строку и сумму */
-.bank-pay--skipped {
+/* Пропущенный контрагент в «Должны нам / Мы должны»: строка
+   приглушена, сумма зачёркнута — сразу видно, что вне расчёта. */
+.bank-due__row--skipped {
   opacity: 0.55;
 }
 
-.bank-pay--skipped .bank-pay__amount {
+.bank-due__row--skipped .bank-due__sum {
   text-decoration: line-through;
+}
+
+.bank-due__row .bank-skip {
+  margin-left: auto;
+  margin-right: 10px;
 }

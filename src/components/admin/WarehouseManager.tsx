@@ -37,6 +37,7 @@ import {
   type BankPayment,
   getBankSummary,
   getPendingPaymentCounterpartyBalances,
+  normalizeName,
   getCollectedBreakdown,
   getDealPaidMap,
   getReceiptPaidMap,
@@ -85,6 +86,21 @@ import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+
+/** Ключ контрагента в «Должны нам / Мы должны» (тип + нормализованное имя). */
+function partyKey(type: "customer" | "supplier", name: string): string {
+  return `${type}:${normalizeName(name)}`;
+}
+
+/** Ключ контрагента платежа — та же логика, что в расчёте долгов. */
+function paymentPartyKey(p: BankPayment): string | null {
+  if (!p.counterparty) return null;
+  let type: "customer" | "supplier";
+  if (p.dealIds && p.dealIds.length > 0) type = "customer";
+  else if (p.receiptIds && p.receiptIds.length > 0) type = "supplier";
+  else type = p.direction === "outgoing" ? "supplier" : "customer";
+  return partyKey(type, p.counterparty);
+}
 
 function fmtDate(raw: string | null | undefined): string {
   if (!raw) return "—";
@@ -473,28 +489,35 @@ export function WarehouseManager({
   const [bankDateTo, setBankDateTo] = useState("");
   const [bsort, setBsort] = useState<"asc" | "desc">("desc");
   const [historyDaysPage, setHistoryDaysPage] = useState(0);
-  // «Не считать» для ожидающих платежей: чекбокс у строки мгновенно
-  // убирает платёж из «Должны нам / Мы должны» — быстро прикинуть суммы
-  // без правки самих платежей. Живёт только на клиенте, ничего не меняет в БД.
-  const [skippedExpected, setSkippedExpected] = useState<Set<string>>(new Set());
+  // «Не считать» в «Должны нам / Мы должны»: чекбоксы прямо в блоке
+  // расчёта банка, по контрагенту. Клик мгновенно убирает его суммы
+  // из ожидаемого прихода/расхода — быстро прикинуть без правки
+  // платежей. Живёт только на клиенте, ничего не меняет в БД.
+  const [skippedParties, setSkippedParties] = useState<Set<string>>(new Set());
 
-  function toggleSkipExpected(id: string) {
-    setSkippedExpected((prev) => {
+  function toggleSkipParty(c: { type: "customer" | "supplier"; name: string }) {
+    const key = partyKey(c.type, c.name);
+    setSkippedParties((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
 
-  // Платежи для расчёта итогов: без «пропущенных» чекбоксами.
-  // Список на экране при этом остаётся полным.
+  // Платежи для итогов («Должны нам / Мы должны», прогноз): ожидающие
+  // платежи пропущенных контрагентов не учитываются. Проведённые
+  // платежи (фактический баланс) не трогаем никогда.
   const paymentsForTotals = useMemo(
     () =>
-      skippedExpected.size === 0
+      skippedParties.size === 0
         ? payments
-        : payments.filter((p) => !skippedExpected.has(p.id)),
-    [payments, skippedExpected]
+        : payments.filter((p) => {
+            if (p.isPaid) return true;
+            const key = paymentPartyKey(p);
+            return !key || !skippedParties.has(key);
+          }),
+    [payments, skippedParties]
   );
 
   useEffect(() => {
@@ -664,8 +687,11 @@ export function WarehouseManager({
   }, [orderingProduct, findLastSupplierAndPrice]);
   
   const allCounterparties = useMemo(
-    () => getPendingPaymentCounterpartyBalances(paymentsForTotals, deals),
-    [paymentsForTotals, deals]
+    // Полный список платежей: строки «пропущенных» контрагентов должны
+    // оставаться видимыми (чтобы чекбокс можно было снять). Итоги
+    // «Должны нам / Мы должны» считаются по paymentsForTotals.
+    () => getPendingPaymentCounterpartyBalances(payments, deals),
+    [payments, deals]
   );
 
   // Filter counterparties to only show those with positive debt (what is owed)
@@ -3036,19 +3062,35 @@ export function WarehouseManager({
               ) : (
                 counterpartiesWithDebt
                   .filter((c) => c.type === "customer")
-                  .map((c) => (
-                    <div key={`c-${c.name}`} className="bank-due__row">
+                  .map((c) => {
+                    const skipped = skippedParties.has(partyKey("customer", c.name));
+                    return (
+                    <div key={`c-${c.name}`} className={`bank-due__row${skipped ? " bank-due__row--skipped" : ""}`}>
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
                           {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
+                      <label
+                        className={`bank-skip${skipped ? " bank-skip--on" : ""}`}
+                        title="Не считать этого контрагента в «Должны нам» — быстрая прикидка, платежи не меняются"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={skipped}
+                          onChange={() => toggleSkipParty(c)}
+                        />
+                        <span className="bank-skip__box" aria-hidden="true" />
+                        <span className="bank-skip__text">не считать</span>
+                      </label>
                       <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
-                  ))
+                    );
+                  })
               )}
             </div>
 
@@ -3061,19 +3103,35 @@ export function WarehouseManager({
               ) : (
                 counterpartiesWithDebt
                   .filter((c) => c.type === "supplier")
-                  .map((c) => (
-                    <div key={`s-${c.name}`} className="bank-due__row">
+                  .map((c) => {
+                    const skipped = skippedParties.has(partyKey("supplier", c.name));
+                    return (
+                    <div key={`s-${c.name}`} className={`bank-due__row${skipped ? " bank-due__row--skipped" : ""}`}>
                       <div className="bank-due__name">
                         {c.name}
                         <span className="bank-due__meta">
                           {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
                         </span>
                       </div>
+                      <label
+                        className={`bank-skip${skipped ? " bank-skip--on" : ""}`}
+                        title="Не считать этого контрагента в «Мы должны» — быстрая прикидка, платежи не меняются"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={skipped}
+                          onChange={() => toggleSkipParty(c)}
+                        />
+                        <span className="bank-skip__box" aria-hidden="true" />
+                        <span className="bank-skip__text">не считать</span>
+                      </label>
                       <div className="bank-due__sum" style={{ fontSize: 18, color: c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
                         {fmt(c.balance)} ₽
                       </div>
                     </div>
-                  ))
+                    );
+                  })
               )}
             </div>
           </div>
@@ -3977,7 +4035,7 @@ export function WarehouseManager({
                   <div
                     key={p.id}
                     id={`payment-${p.id}`}
-                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}${skippedExpected.has(p.id) ? " bank-pay--skipped" : ""}`}
+                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}`}
                     role={p.entryKind === "payment" ? "button" : undefined}
                     tabIndex={p.entryKind === "payment" ? 0 : undefined}
                     onClick={(event) => {
@@ -4117,21 +4175,6 @@ export function WarehouseManager({
                       </div>
                     </div>
                     <div className="bank-pay__side">
-                      {!p.isPaid && p.entryKind === "payment" && (
-                        <label
-                          className={`bank-skip${skippedExpected.has(p.id) ? " bank-skip--on" : ""}`}
-                          title="Не считать этот платёж в «Должны нам / Мы должны» — быстрая прикидка, сам платёж не меняется"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={skippedExpected.has(p.id)}
-                            onChange={() => toggleSkipExpected(p.id)}
-                          />
-                          <span className="bank-skip__box" aria-hidden="true" />
-                          <span className="bank-skip__text">не считать</span>
-                        </label>
-                      )}
                       <span
                         className={`bank-pay__amount ${
                           p.direction === "incoming" ? "+" : "−"
