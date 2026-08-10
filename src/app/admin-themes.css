@@ -262,6 +262,10 @@
   color: #0f1115;
   border-color: #e8eaed;
 }
+not-used-selector-anyway {
+  display: none;
+}
+
 .admin-theme-select {
   padding: 6px 8px;
   border-radius: 6px;
@@ -270,4 +274,314 @@
   color: var(--adm-ink);
   font-size: 12px;
   font-weight: 600;
+}
+
+/* ── Ультра-тёмная — "Космос" — глубокий чёрный, глаза отдыхают ── */
+[data-admin-theme="superdark"] {
+  --adm-ink:        #f3f4f6;
+  --adm-ink-soft:   #e5e7eb;
+  --adm-ink-muted:  #9ca3af;
+  --adm-muted:      #9ca3af;
+  --adm-kraft:      #10b981;
+  --adm-kraft-mid:  #34d399;
+  --adm-kraft-pale: #062216;
+  --adm-kraft-line: rgba(16,185,129,0.22);
+  --adm-paper:      #000000;
+  --adm-paper-warm: #080808;
+  --adm-card:       #0d0d0d;
+  --adm-border:     #1a1a1a;
+  --adm-border-mid: #2d2d2d;
+  --adm-pine:       #059669;
+  --adm-pine-pale:  #022c22;
+  --adm-pine-line:  rgba(5,150,105,0.22);
+  --adm-rust:       #ef4444;
+  --adm-rust-pale:  #450a0a;
+  --adm-rust-line:  rgba(239,68,68,0.22);
+  --adm-steel:      #3b82f6;
+  --adm-steel-pale: #172554;
+  --adm-steel-line: rgba(59,130,246,0.22);
+  --adm-sand:       #9ca3af;
+  --adm-sand-pale:  #0f172a;
+}
+[data-admin-theme="superdark"] .admin-sidebar {
+  background: #000000;
+  border-right-color: #1a1a1a;
+}
+[data-admin-theme="superdark"] .admin-mobile-bar {
+  background: #000000;
+  border-bottom-color: #1a1a1a;
+}
+[data-admin-theme="superdark"] .admin-shell {
+  background: #000000;
+}
+[data-admin-theme="superdark"] .admin-main {
+  background: transparent;
+}
+[data-admin-theme="superdark"] .bank-hero {
+  background: linear-gradient(135deg, #000000 0%, #0d0d0d 52%, #041d13 100%);
+  border-color: rgba(16,185,129,0.22);
+}
+[data-admin-theme="superdark"] .admin-table thead tr {
+  background: #0d0d0d;
+}
+[data-admin-theme="superdark"] .admin-input,
+[data-admin-theme="superdark"] .admin-select,
+[data-admin-theme="superdark"] .admin-textarea {
+  background: #0d0d0d;
+  color: #f3f4f6;
+  border-color: #2d2d2d;
+}
+[data-admin-theme="superdark"] .admin-input::placeholder {
+  color: #4b5563;
+}
+[data-admin-theme="superdark"] .admin-theme-btn--active {
+  background: #10b981;
+  color: #000000;
+  border-color: #10b981;
+}
+
+/* ══════════════════════════════════════
+   РАЗДЕЛ НАСТРОЕК: РАСПОЛОЖЕНИЕ ЭЛЕМЕНТОВ
+   ══════════════════════════════════════ */
+
+/* ── Сайдбар справа ── */
+@media (min-width: 1024px) {
+  [data-admin-layout="sidebar-right"] .admin-shell {
+    flex-direction: row-reverse;
+  }
+  [data-admin-layout="sidebar-right"] .admin-sidebar {
+    inset: 0 0 0 auto;
+    border-right: none;
+    border-left: 2px solid var(--adm-kraft);
+  }
+  [data-admin-layout="sidebar-right"] .admin-content {
+    margin-left: 0 !important;
+    margin-right: 240px !important;
+  }
+  [data-admin-layout="sidebar-right"] .admin-shell--sidebar-hidden .admin-content {
+    margin-right: 0 !important;
+  }
+  [data-admin-layout="sidebar-right"] .admin-sidebar-handle {
+    left: auto;
+    right: 0;
+    border-radius: 4px 0 0 4px;
+    transform: rotate(180deg);
+  }
+}
+
+/* ── Сайдбар сверху (Верхнее горизонтальное меню) ── */
+@media (min-width: 1024px) {
+  [data-admin-layout="sidebar-top"] .admin-shell {
+    flex-direction: column;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 70px;
+    position: sticky !important;
+    inset: 0 0 auto 0 !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 0 24px !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--adm-kraft) !important;
+    flex-shrink: 0 !important;
+    overflow: visible !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar::before {
+    display: none !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__brand {
+    border-bottom: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 16px !important;
+    height: auto !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__toggle {
+    display: none !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__nav {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    padding: 0 16px !important;
+    margin: 0 !important;
+    flex-grow: 1 !important;
+    justify-content: center !important;
+    overflow: visible !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__link {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    border-radius: 6px !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__footer {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    border-top: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 16px !important;
+    width: auto !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__footer > div {
+    display: none !important; /* прячем выбор темы в шапке */
+  }
+  [data-admin-layout="sidebar-top"] .admin-content {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar-handle {
+    display: none !important;
+  }
+}
+
+/* ══════════════════════════════════════
+   РАЗДЕЛ НАСТРОЕК: ОФОРМЛЕНИЕ И СТИЛИ
+   ══════════════════════════════════════ */
+
+/* ── Мягкий Нео (Неоморфизм) ── */
+[data-admin-style="neo"] {
+  --adm-r-md: 16px !important;
+  --adm-r-sm: 8px !important;
+}
+[data-admin-style="neo"] .admin-card,
+[data-admin-style="neo"] .admin-stat {
+  border-radius: 16px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid var(--adm-border) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+[data-admin-style="neo"] .admin-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.07), 0 4px 10px rgba(0, 0, 0, 0.03) !important;
+}
+[data-admin-style="neo"] .admin-btn {
+  border-radius: 999px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+[data-admin-style="neo"] .admin-input,
+[data-admin-style="neo"] .admin-select,
+[data-admin-style="neo"] .admin-textarea {
+  border-radius: 12px !important;
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.03) !important;
+}
+
+/* ── Ретро-панель (90-е) ── */
+[data-admin-style="retro"] {
+  --adm-r-md: 0px !important;
+  --adm-r-sm: 0px !important;
+}
+[data-admin-style="retro"] .admin-card,
+[data-admin-style="retro"] .admin-stat {
+  border: 2px solid var(--adm-ink) !important;
+  border-radius: 0px !important;
+  box-shadow: 4px 4px 0px var(--adm-border-mid) !important;
+}
+[data-admin-style="retro"] .admin-btn {
+  border: 2px solid var(--adm-ink) !important;
+  border-radius: 0px !important;
+  box-shadow: 3px 3px 0px var(--adm-ink) !important;
+  font-weight: 900 !important;
+  text-transform: uppercase;
+}
+[data-admin-style="retro"] .admin-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px var(--adm-ink) !important;
+}
+[data-admin-style="retro"] .admin-input,
+[data-admin-style="retro"] .admin-select,
+[data-admin-style="retro"] .admin-textarea {
+  border: 2px solid var(--adm-ink) !important;
+  border-radius: 0px !important;
+}
+
+/* ── Киберпанк (Неон) ── */
+[data-admin-style="cyberpunk"] {
+  font-family: monospace, sans-serif !important;
+}
+[data-admin-style="cyberpunk"] .admin-card {
+  border: 1px solid var(--adm-kraft) !important;
+  box-shadow: 0 0 10px rgba(253, 214, 99, 0.1) !important;
+  position: relative;
+  border-radius: 2px !important;
+}
+[data-admin-style="cyberpunk"][data-admin-theme="superdark"] .admin-card {
+  border: 1px solid #10b981 !important;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.15) !important;
+}
+[data-admin-style="cyberpunk"] .admin-card::before {
+  content: "⚡ SYS_ACTIVE";
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  font-size: 8px;
+  background: var(--adm-card);
+  padding: 0 4px;
+  color: var(--adm-kraft);
+}
+[data-admin-style="cyberpunk"] .admin-btn {
+  border: 1px solid var(--adm-kraft) !important;
+  box-shadow: 0 0 6px var(--adm-kraft-line) !important;
+  text-transform: uppercase;
+  font-weight: 700;
+  border-radius: 2px !important;
+}
+
+/* ══════════════════════════════════════
+   ОБЩИЕ ФИКСЫ РАЗМЕТКИ И НАКЛАДЫВАНИЯ ЭЛЕМЕНТОВ
+   ══════════════════════════════════════ */
+
+/* Разрешаем перенос заголовков и кнопок в карточках, предотвращая их наложение */
+[data-admin="true"] .admin-card__head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+[data-admin="true"] .admin-card__title {
+  flex-grow: 1;
+  min-width: 0;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Исправляем сжатие фильтров на средних экранах */
+[data-admin="true"] .admin-filters {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+/* Таблицы: предотвращаем сужение важных колонок и наложение текста */
+[data-admin="true"] .admin-table td {
+  word-break: break-word;
+  white-space: normal;
+}
+
+/* Кнопки действий в таблицах не должны перекрывать друг друга */
+[data-admin="true"] .admin-table .admin-actions,
+[data-admin="true"] .admin-table td .admin-btn-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+  min-width: max-content;
+}
+
+/* Поля ввода и гриды форм: делаем адаптивный грид для настроек */
+@media (min-width: 900px) and (max-width: 1200px) {
+  .settings-main-grid {
+    grid-template-columns: 1fr !important; /* На средних экранах одна колонка удобнее для предотвращения сжатия */
+  }
 }
