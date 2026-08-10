@@ -1,0 +1,273 @@
+/* =========================================================
+   FILE: src/app/admin-themes.css
+   Темы админки — мгновенное переключение без перезагрузки.
+   Только цвета и оформление (#fff остаётся для печати).
+   Стандартная тема — :root из admin.css, остальные — data-attr.
+   ========================================================= */
+
+/* Плавный переход для всего админского UI (только цвета) */
+[data-admin="true"],
+[data-admin="true"] .admin-card,
+[data-admin="true"] .admin-sidebar,
+[data-admin="true"] .admin-main,
+[data-admin="true"] .admin-stat,
+[data-admin="true"] .bank-hero,
+[data-admin="true"] .bank-due__group,
+[data-admin="true"] .admin-table,
+[data-admin="true"] .admin-btn,
+[data-admin="true"] .admin-input,
+[data-admin="true"] .admin-select {
+  transition: background-color 0.22s ease, color 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+/* ── Стандарт (крафт) — без переопределений, это :root ── */
+html[data-admin-theme="standard"] {}
+
+/* ── Светлая — "Бумага" — воздушная, минимал, акцент Google Blue ── */
+html[data-admin-theme="light"] {
+  --adm-ink:        #1a1c1e;
+  --adm-ink-soft:   #2e3133;
+  --adm-ink-muted:  #5f6368;
+  --adm-muted:      #5f6368;
+  --adm-kraft:      #1a73e8;
+  --adm-kraft-mid:  #4285f4;
+  --adm-kraft-pale: #e8f0fe;
+  --adm-kraft-line: rgba(26,115,232,0.22);
+  --adm-paper:      #f8f9fa;
+  --adm-paper-warm: #f1f3f4;
+  --adm-card:       #ffffff;
+  --adm-border:     #dadce0;
+  --adm-border-mid: #c4c7ca;
+  --adm-pine:       #0d652d;
+  --adm-pine-pale:  #e6f4ea;
+  --adm-pine-line:  #a8dab5;
+  --adm-rust:       #c5221f;
+  --adm-rust-pale:  #fce8e6;
+  --adm-rust-line:  #f6aea9;
+  --adm-steel:      #1a73e8;
+  --adm-steel-pale: #e8f0fe;
+  --adm-steel-line: #aecbfa;
+  --adm-sand:       #5f6368;
+  --adm-sand-pale:  #f1f3f4;
+}
+html[data-admin-theme="light"] .admin-sidebar {
+  background: #202124;
+  border-right-color: #1a73e8;
+}
+html[data-admin-theme="light"] .admin-mobile-bar {
+  background: #202124;
+  border-bottom-color: #1a73e8;
+}
+html[data-admin-theme="light"] .bank-hero {
+  background: linear-gradient(135deg, #202124 0%, #2d2e30 52%, #1e3a5a 100%);
+}
+
+/* ── Тёмная — "Ночь" — для работы вечером, бережёт глаза ── */
+html[data-admin-theme="dark"] {
+  --adm-ink:        #e8eaed;
+  --adm-ink-soft:   #dadce0;
+  --adm-ink-muted:  #9aa0a6;
+  --adm-muted:      #9aa0a6;
+  --adm-kraft:      #fdd663;
+  --adm-kraft-mid:  #fde293;
+  --adm-kraft-pale: #3c2f14;
+  --adm-kraft-line: rgba(253,214,99,0.22);
+  --adm-paper:      #0f1115;
+  --adm-paper-warm: #171a1f;
+  --adm-card:       #1f2328;
+  --adm-border:     #2f333a;
+  --adm-border-mid: #3c4043;
+  --adm-pine:       #81c995;
+  --adm-pine-pale:  #1e2e1f;
+  --adm-pine-line:  rgba(129,201,149,0.22);
+  --adm-rust:       #f28b82;
+  --adm-rust-pale:  #2e1e1d;
+  --adm-rust-line:  rgba(242,139,130,0.22);
+  --adm-steel:      #8ab4f8;
+  --adm-steel-pale: #1e2a3a;
+  --adm-steel-line: rgba(138,180,248,0.22);
+  --adm-sand:       #9aa0a6;
+  --adm-sand-pale:  #1f2328;
+}
+html[data-admin-theme="dark"] .admin-sidebar {
+  background: #0b0e14;
+  border-right-color: #3c4043;
+}
+html[data-admin-theme="dark"] .admin-mobile-bar {
+  background: #0b0e14;
+  border-bottom-color: #3c4043;
+}
+html[data-admin-theme="dark"] .admin-shell {
+  background: #0f1115;
+}
+html[data-admin-theme="dark"] .admin-main {
+  background: transparent;
+}
+html[data-admin-theme="dark"] .bank-hero {
+  background: linear-gradient(135deg, #0b0e14 0%, #1a1d23 52%, #1e2a3a 100%);
+  border-color: rgba(138,180,248,0.22);
+}
+html[data-admin-theme="dark"] .admin-table thead tr {
+  background: #1f2328;
+}
+html[data-admin-theme="dark"] .admin-input,
+html[data-admin-theme="dark"] .admin-select,
+html[data-admin-theme="dark"] .admin-textarea {
+  background: #1f2328;
+  color: #e8eaed;
+  border-color: #3c4043;
+}
+html[data-admin-theme="dark"] .admin-input::placeholder {
+  color: #5f6368;
+}
+
+/* ── Лесная — "Тайга" — глубокие зелёные, тёплый крафт как мох ── */
+html[data-admin-theme="forest"] {
+  --adm-ink:        #1b2a1e;
+  --adm-ink-soft:   #2a3d2e;
+  --adm-ink-muted:  #6b7c6e;
+  --adm-muted:      #6b7c6e;
+  --adm-kraft:      #6a8d73;
+  --adm-kraft-mid:  #8ab09a;
+  --adm-kraft-pale: #e8f0e6;
+  --adm-kraft-line: rgba(106,141,115,0.22);
+  --adm-paper:      #f6f7f3;
+  --adm-paper-warm: #eceee6;
+  --adm-card:       #ffffff;
+  --adm-border:     #d4ddd6;
+  --adm-border-mid: #b8c4bb;
+  --adm-pine:       #2d5a3a;
+  --adm-pine-pale:  #e8f0e6;
+  --adm-pine-line:  #a8c4b0;
+  --adm-rust:       #8b3a2d;
+  --adm-rust-pale:  #f5e6e3;
+  --adm-rust-line:  #d4a9a0;
+  --adm-steel:      #4a6b5a;
+  --adm-steel-pale: #e8f0e6;
+  --adm-steel-line: #a8c4b0;
+  --adm-sand:       #7a8a7e;
+  --adm-sand-pale:  #f0f2ef;
+}
+html[data-admin-theme="forest"] .admin-sidebar {
+  background: #1b2a1e;
+  border-right-color: #6a8d73;
+}
+html[data-admin-theme="forest"] .admin-mobile-bar {
+  background: #1b2a1e;
+  border-bottom-color: #6a8d73;
+}
+html[data-admin-theme="forest"] .bank-hero {
+  background: linear-gradient(135deg, #1b2a1e 0%, #2a3d2e 52%, #2d4a3a 100%);
+}
+
+/* ── Морская — "Байкал" — холодные синие, лёд и глубина ── */
+html[data-admin-theme="ocean"] {
+  --adm-ink:        #0f2040;
+  --adm-ink-soft:   #1a365d;
+  --adm-ink-muted:  #5a7aa0;
+  --adm-muted:      #5a7aa0;
+  --adm-kraft:      #0ea5e9;
+  --adm-kraft-mid:  #38bdf8;
+  --adm-kraft-pale: #e0f2fe;
+  --adm-kraft-line: rgba(14,165,233,0.22);
+  --adm-paper:      #f0f7fa;
+  --adm-paper-warm: #e6f0f6;
+  --adm-card:       #ffffff;
+  --adm-border:     #cbdde8;
+  --adm-border-mid: #a8c4d8;
+  --adm-pine:       #0e7490;
+  --adm-pine-pale:  #ecfeff;
+  --adm-pine-line:  #a5f3fc;
+  --adm-rust:       #be123c;
+  --adm-rust-pale:  #ffe4e6;
+  --adm-rust-line:  #fecdd3;
+  --adm-steel:      #0369a1;
+  --adm-steel-pale: #e0f2fe;
+  --adm-steel-line: #7dd3fc;
+  --adm-sand:       #64748b;
+  --adm-sand-pale:  #f1f5f9;
+}
+html[data-admin-theme="ocean"] .admin-sidebar {
+  background: #0f2040;
+  border-right-color: #0ea5e9;
+}
+html[data-admin-theme="ocean"] .admin-mobile-bar {
+  background: #0f2040;
+  border-bottom-color: #0ea5e9;
+}
+html[data-admin-theme="ocean"] .bank-hero {
+  background: linear-gradient(135deg, #0f2040 0%, #1a365d 52%, #0c4a6e 100%);
+}
+
+/* ── Печать всегда белая, вне зависимости от темы ── */
+@media print {
+  html[data-admin-theme] {
+    --adm-ink: #000 !important;
+    --adm-ink-soft: #111 !important;
+    --adm-paper: #fff !important;
+    --adm-card: #fff !important;
+    --adm-border: #ccc !important;
+  }
+  .boxlabel-sheet,
+  .boxlabel,
+  .boxlabel__band {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
+
+/* ── Селектор темы — компактный ── */
+.admin-theme-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.admin-theme-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0,0,0,0.12);
+  flex-shrink: 0;
+  display: inline-block;
+}
+.admin-theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-card);
+  color: var(--adm-ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.admin-theme-btn:hover {
+  border-color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+  color: var(--adm-ink);
+}
+.admin-theme-btn--active {
+  background: var(--adm-ink);
+  color: #fff;
+  border-color: var(--adm-ink);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+html[data-admin-theme="dark"] .admin-theme-btn--active {
+  background: #e8eaed;
+  color: #0f1115;
+  border-color: #e8eaed;
+}
+.admin-theme-select {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  color: var(--adm-ink);
+  font-size: 12px;
+  font-weight: 600;
+}

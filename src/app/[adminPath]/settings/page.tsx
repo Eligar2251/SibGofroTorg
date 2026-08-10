@@ -7,6 +7,7 @@ import { SettingsForm } from "@/components/admin/SettingsForm";
 import { ExcelDataManager } from "@/components/admin/ExcelDataManager";
 import { ActivityLogs } from "@/components/admin/ActivityLogs";
 import { AdminUsersManager } from "@/components/admin/AdminUsersManager";
+import { ThemeSwitcher } from "@/components/admin/AdminTheme";
 import { redirect } from "next/navigation";
 import { hasPermission, verifySession } from "@/lib/auth";
 
@@ -30,6 +31,15 @@ export default async function AdminSettingsPage() {
   return (
     <div>
       <h1 className="admin-h1">Настройки</h1>
+      <div className="admin-card" style={{ marginBottom: "1.5rem" }}>
+        <div className="admin-card__head">
+          <h2 className="admin-card__title">🎨 Оформление админ-панели</h2>
+        </div>
+        <div className="admin-card__pad">
+          <p className="admin-muted" style={{ marginBottom: 12 }}>Выберите тему — меняется мгновенно, без перезагрузки. Действует только в админке, стандартная тема «Крафт» остаётся по умолчанию.</p>
+          <ThemeSwitcher />
+        </div>
+      </div>
       <AdminUsersManager />
 
       <div className="admin-settings-section">

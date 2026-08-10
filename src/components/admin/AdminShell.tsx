@@ -26,6 +26,7 @@ import {
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
+import { ThemeSwitcher } from "./AdminTheme";
 import {
   canAccessAdminPage,
   type AdminRole,
@@ -209,6 +210,10 @@ export function AdminShell({
         </nav>
 
         <div className="admin-sidebar__footer">
+          <div style={{ padding: "8px 10px 6px", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: 6 }}>
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Тема</div>
+            <ThemeSwitcher />
+          </div>
           <Link
             href="/"
             prefetch={false}

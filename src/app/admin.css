@@ -10646,6 +10646,7 @@ body:has(.admin-modal-overlay) {
 /* ══════════════════════════════════════
    ЭТИКЕТКИ ЯЩИКОВ — отдельная печать A4
    (страница /[admin]/box-labels)
+   Полосы 60мм высотой, горизонтальные, несколько на листе A4
    ══════════════════════════════════════ */
 
 /* Редактор на экране: карточки товаров с полями этикетки */
@@ -10694,9 +10695,86 @@ body:has(.admin-modal-overlay) {
   background: var(--adm-paper);
 }
 
-/* Печатный лист на экране скрыт — виден только при печати */
+/* ── Превью на экране (видно когда есть выбранные) ── */
 .boxlabel-sheet {
   display: none;
+}
+.boxlabel-sheet--preview {
+  display: flex !important;
+  flex-direction: column;
+  gap: 6mm;
+  padding: 10mm;
+  background: #f5f3ee;
+  border: 1px dashed #ccc9c0;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+.boxlabel-sheet--preview .boxlabel {
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: 2mm;
+  height: 60mm;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  color: #000;
+}
+.boxlabel-sheet--preview .boxlabel__band {
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+}
+.boxlabel-sheet--preview .boxlabel__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4mm 5mm;
+  min-width: 0;
+}
+.boxlabel-sheet--preview .boxlabel__vsep {
+  width: 2px;
+  background: #000;
+  flex-shrink: 0;
+}
+.boxlabel-sheet--preview .boxlabel__num {
+  font-family: var(--adm-font-head);
+  font-size: 48pt;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  flex: 1 1 35%;
+  text-align: center;
+}
+.boxlabel-sheet--preview .boxlabel__info {
+  flex: 1 1 30%;
+  gap: 2mm;
+  text-align: center;
+}
+.boxlabel-sheet--preview .boxlabel__sizes {
+  font-size: 14pt;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.boxlabel-sheet--preview .boxlabel__note {
+  font-size: 10pt;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.boxlabel-sheet--preview .boxlabel__code {
+  flex: 1 1 35%;
+  gap: 2mm;
+}
+.boxlabel-sheet--preview .boxlabel__bc {
+  height: 14mm;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+.boxlabel-sheet--preview .boxlabel__ean {
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: 0.12em;
 }
 
 @media print {
@@ -10721,34 +10799,41 @@ body:has(.admin-modal-overlay) {
   }
 
   body.boxlabel-mode .boxlabel-sheet {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column;
+    gap: 4mm;
+    padding: 0 !important;
+    background: #fff !important;
+    border: none !important;
+    margin: 0 !important;
   }
 
-  /* Одна этикетка = одна страница A4: полоса по центру страницы */
+  /* Каждая этикетка — горизонтальная полоса 60мм, несколько на листе */
   body.boxlabel-mode .boxlabel {
     break-inside: avoid;
     page-break-inside: avoid;
-    break-after: page;
-    page-break-after: always;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 265mm;
-    color: #000;
-  }
-
-  body.boxlabel-mode .boxlabel:last-child {
-    break-after: auto;
-    page-break-after: auto;
-  }
-
-  /* Горизонтальная полоса через весь лист: № | размеры | штрихкод */
-  body.boxlabel-mode .boxlabel__band {
-    width: 100%;
+    height: 60mm;
+    min-height: 60mm;
+    max-height: 60mm;
     display: flex;
     align-items: stretch;
-    border: 3px solid #000;
+    color: #000;
+    background: #fff !important;
+    border: 2px solid #000;
     border-radius: 2mm;
+    overflow: hidden;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Горизонтальная полоса: № | размеры | штрихкод — растянута на всю ширину */
+  body.boxlabel-mode .boxlabel__band {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+    border: none;
+    border-radius: 0;
     overflow: hidden;
   }
 
@@ -10757,62 +10842,61 @@ body:has(.admin-modal-overlay) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 8mm 6mm;
+    padding: 4mm 5mm;
     min-width: 0;
   }
 
-  /* Вертикальная разделительная черта */
   body.boxlabel-mode .boxlabel__vsep {
-    width: 3px;
+    width: 2px;
     background: #000;
     flex-shrink: 0;
   }
 
-  /* № ящика слева: буква ~3 см ≈ 85pt, только номер */
   body.boxlabel-mode .boxlabel__num {
     font-family: var(--adm-font-head);
-    font-size: 85pt;
-    font-weight: 700;
+    font-size: 54pt;
+    font-weight: 800;
     line-height: 1;
     letter-spacing: 0.01em;
     white-space: nowrap;
-    flex: 1 1 auto;
+    flex: 1 1 35%;
+    text-align: center;
   }
 
-  /* Середина: размеры 18pt + примечание под ними */
   body.boxlabel-mode .boxlabel__info {
-    flex: 1 1 auto;
-    gap: 3mm;
+    flex: 1 1 30%;
+    gap: 2mm;
     text-align: center;
   }
 
   body.boxlabel-mode .boxlabel__sizes {
-    font-size: 18pt;
-    font-weight: 700;
-    line-height: 1.2;
+    font-size: 16pt;
+    font-weight: 800;
+    line-height: 1.15;
   }
 
   body.boxlabel-mode .boxlabel__note {
-    font-size: 14pt;
+    font-size: 11pt;
     font-weight: 500;
-    line-height: 1.25;
+    line-height: 1.2;
   }
 
-  /* Справа: штрихкод (векторный SVG) и цифры под ним */
   body.boxlabel-mode .boxlabel__code {
-    flex: 1 1 auto;
+    flex: 1 1 35%;
     gap: 2mm;
   }
 
   body.boxlabel-mode .boxlabel__bc {
-    height: 20mm;
+    height: 16mm;
     width: auto;
+    max-width: 100%;
+    object-fit: contain;
   }
 
   body.boxlabel-mode .boxlabel__ean {
-    font-size: 11pt;
+    font-size: 9pt;
     font-weight: 600;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
   }
 
   body.boxlabel-mode .boxlabel,
