@@ -24,6 +24,7 @@ import {
   buildLocalBusinessJsonLd,
   buildWebSiteJsonLd,
 } from "@/lib/seo";
+import { adminThemeInitScript } from "@/lib/admin-theme";
 
 const FONTS_CSS_URL =
   "https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@800;900&display=swap";
@@ -123,7 +124,10 @@ export default async function RootLayout({
         <JsonLd
           data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}
         />
-        <script dangerouslySetInnerHTML={{ __html: `try{var k="adm-theme",v=localStorage.getItem(k)||"standard";var ok=["standard","light","dark","superdark","forest","ocean"].indexOf(v)>=0?v:"standard";var kl="adm-layout",vl=localStorage.getItem(kl)||"sidebar-left";var okl=["sidebar-left","sidebar-right","sidebar-top"].indexOf(vl)>=0?vl:"sidebar-left";var ks="adm-style",vs=localStorage.getItem(ks)||"classic";var oks=["classic","neo","retro","cyberpunk"].indexOf(vs)>=0?vs:"classic";document.documentElement.setAttribute("data-admin-theme",ok);document.documentElement.setAttribute("data-admin-layout",okl);document.documentElement.setAttribute("data-admin-style",oks);}catch(e){}` }} />
+        {/* Кастомизация админки: применяем сохранённые тему/раскладку/стиль
+            до первой отрисовки (анти-FOUC). Список настроек и скрипт
+            генерируются из единого источника — src/lib/admin-theme.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: adminThemeInitScript() }} />
       </head>
       <body>
         <CartProvider>

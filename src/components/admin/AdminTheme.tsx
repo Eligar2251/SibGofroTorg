@@ -1,25 +1,66 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings, Layout, Sparkles, Check } from "lucide-react";
+import {
+  Settings,
+  Layout,
+  Sparkles,
+  Check,
+  RotateCcw,
+  Rows3,
+  Gauge,
+  Zap,
+  ZapOff,
+} from "lucide-react";
+import {
+  ADMIN_THEME_IDS,
+  ADMIN_LAYOUT_IDS,
+  ADMIN_STYLE_IDS,
+  ADMIN_DENSITY_IDS,
+  ADMIN_ANIM_IDS,
+  THEME_STORAGE_KEY,
+  LAYOUT_STORAGE_KEY,
+  STYLE_STORAGE_KEY,
+  DENSITY_STORAGE_KEY,
+  ANIM_STORAGE_KEY,
+  DEFAULT_ADMIN_THEME,
+  DEFAULT_ADMIN_LAYOUT,
+  DEFAULT_ADMIN_STYLE,
+  DEFAULT_ADMIN_DENSITY,
+  DEFAULT_ADMIN_ANIM,
+} from "@/lib/admin-theme";
 
-export type AdminThemeId = "standard" | "light" | "dark" | "superdark" | "forest" | "ocean";
-export type AdminLayoutId = "sidebar-left" | "sidebar-right" | "sidebar-top";
-export type AdminStyleId = "classic" | "neo" | "retro" | "cyberpunk";
+export type AdminThemeId = (typeof ADMIN_THEME_IDS)[number];
+export type AdminLayoutId = (typeof ADMIN_LAYOUT_IDS)[number];
+export type AdminStyleId = (typeof ADMIN_STYLE_IDS)[number];
+export type AdminDensityId = (typeof ADMIN_DENSITY_IDS)[number];
+export type AdminAnimId = (typeof ADMIN_ANIM_IDS)[number];
 
-export const ADMIN_THEMES: { id: AdminThemeId; label: string; desc: string; colors: [string, string, string] }[] = [
+export const ADMIN_THEMES: {
+  id: AdminThemeId;
+  label: string;
+  desc: string;
+  colors: [string, string, string];
+}[] = [
   { id: "standard", label: "Крафт", desc: "Стандарт — тёплый гофрокартон", colors: ["#1a1a18", "#c8860a", "#f5f3ee"] },
-  { id: "light", label: "Бумага", desc: "Светлая — чистая и воздушная", colors: ["#ffffff", "#1a73e8", "#f8f9fa"] },
+  { id: "light", label: "Бумага", desc: "Светлая — чистая и воздушная", colors: ["#202124", "#1a73e8", "#f8f9fa"] },
   { id: "dark", label: "Ночь", desc: "Тёмная — бережёт глаза в темноте", colors: ["#0f1115", "#fdd663", "#1f2328"] },
-  { id: "superdark", label: "Космос", desc: "Глубокий чёрный — максимальный отдых для глаз", colors: ["#000000", "#10b981", "#000000"] },
+  { id: "superdark", label: "Космос", desc: "Глубокий чёрный — максимальный отдых для глаз", colors: ["#000000", "#10b981", "#0d0d0d"] },
   { id: "forest", label: "Тайга", desc: "Лесная — глубокие зелёные тона", colors: ["#1b2a1e", "#6a8d73", "#f6f7f3"] },
   { id: "ocean", label: "Байкал", desc: "Морская — холодные синие оттенки", colors: ["#0f2040", "#0ea5e9", "#f0f7fa"] },
+  { id: "graphite", label: "Гранит", desc: "Нейтральный тёмно-серый с оранжевым акцентом", colors: ["#141618", "#ff8a3d", "#202429"] },
+  { id: "ruby", label: "Рубин", desc: "Тёмный бордовый с розовым акцентом", colors: ["#170f11", "#fb7185", "#251a1d"] },
+  { id: "coffee", label: "Эспрессо", desc: "Тёплый кофейный с карамельным акцентом", colors: ["#171310", "#d9a05b", "#241e19"] },
+  { id: "lavender", label: "Лаванда", desc: "Светлая и нежная, сиреневый акцент", colors: ["#2a2438", "#7c3aed", "#f8f6fc"] },
+  { id: "sunset", label: "Закат", desc: "Тёплый персиковый, терракотовый акцент", colors: ["#33231c", "#ea580c", "#fdf7f2"] },
+  { id: "mint", label: "Мята", desc: "Свежая светло-зелёная, изумрудный акцент", colors: ["#122b21", "#059669", "#f4faf7"] },
 ];
 
 export const ADMIN_LAYOUTS: { id: AdminLayoutId; label: string; desc: string }[] = [
   { id: "sidebar-left", label: "Сайдбар слева", desc: "Классический вариант с меню слева" },
   { id: "sidebar-right", label: "Сайдбар справа", desc: "Для тех, кто предпочитает меню справа" },
   { id: "sidebar-top", label: "Верхнее меню", desc: "Широкий экран: меню превращается в шапку сверху" },
+  { id: "compact", label: "Компактный сайдбар", desc: "Только иконки — максимум места для контента" },
 ];
 
 export const ADMIN_STYLES: { id: AdminStyleId; label: string; desc: string }[] = [
@@ -27,11 +68,19 @@ export const ADMIN_STYLES: { id: AdminStyleId; label: string; desc: string }[] =
   { id: "neo", label: "Мягкий Нео", desc: "Плавные скругления, парящие карточки с тенями" },
   { id: "retro", label: "Ретро-панель", desc: "Чёрные рамки в стиле 90-х, острые углы" },
   { id: "cyberpunk", label: "Киберпанк", desc: "Неоновое свечение, футуристичный моноширинный акцент" },
+  { id: "minimal", label: "Минимализм", desc: "Без теней и лишнего — только тонкие линии" },
+  { id: "contrast", label: "Контраст", desc: "Жирные рамки и заметный фокус — максимальная читаемость" },
 ];
 
-const STORAGE_KEY = "adm-theme";
-const LAYOUT_KEY = "adm-layout";
-const STYLE_KEY = "adm-style";
+export const ADMIN_DENSITIES: { id: AdminDensityId; label: string; desc: string }[] = [
+  { id: "comfortable", label: "Обычная", desc: "Просторные отступы, размеры по умолчанию" },
+  { id: "compact", label: "Компактная", desc: "Меньше отступов — больше данных на экране" },
+];
+
+export const ADMIN_ANIMS: { id: AdminAnimId; label: string; desc: string }[] = [
+  { id: "full", label: "Полные анимации", desc: "Плавные переходы и эффекты" },
+  { id: "reduced", label: "Уменьшить анимации", desc: "Статичный интерфейс без движения" },
+];
 
 function applyTheme(id: AdminThemeId) {
   if (typeof document !== "undefined") {
@@ -51,38 +100,92 @@ function applyStyle(id: AdminStyleId) {
   }
 }
 
+function applyDensity(id: AdminDensityId) {
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-admin-density", id);
+  }
+}
+
+function applyAnim(id: AdminAnimId) {
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-admin-anim", id);
+  }
+}
+
+function safeGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* localStorage недоступен — настройка применится только визуально */
+  }
+}
+
 export function AdminThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    try {
-      const savedTheme = (localStorage.getItem(STORAGE_KEY) as AdminThemeId | null) || "standard";
-      const validTheme = ADMIN_THEMES.some((t) => t.id === savedTheme) ? savedTheme : "standard";
-      applyTheme(validTheme);
+    const savedTheme = safeGet(THEME_STORAGE_KEY) as AdminThemeId | null;
+    applyTheme(
+      savedTheme && (ADMIN_THEME_IDS as readonly string[]).includes(savedTheme)
+        ? savedTheme
+        : DEFAULT_ADMIN_THEME
+    );
 
-      const savedLayout = (localStorage.getItem(LAYOUT_KEY) as AdminLayoutId | null) || "sidebar-left";
-      const validLayout = ADMIN_LAYOUTS.some((l) => l.id === savedLayout) ? savedLayout : "sidebar-left";
-      applyLayout(validLayout);
+    const savedLayout = safeGet(LAYOUT_STORAGE_KEY) as AdminLayoutId | null;
+    applyLayout(
+      savedLayout && (ADMIN_LAYOUT_IDS as readonly string[]).includes(savedLayout)
+        ? savedLayout
+        : DEFAULT_ADMIN_LAYOUT
+    );
 
-      const savedStyle = (localStorage.getItem(STYLE_KEY) as AdminStyleId | null) || "classic";
-      const validStyle = ADMIN_STYLES.some((s) => s.id === savedStyle) ? savedStyle : "classic";
-      applyStyle(validStyle);
-    } catch {
-      applyTheme("standard");
-      applyLayout("sidebar-left");
-      applyStyle("classic");
-    }
+    const savedStyle = safeGet(STYLE_STORAGE_KEY) as AdminStyleId | null;
+    applyStyle(
+      savedStyle && (ADMIN_STYLE_IDS as readonly string[]).includes(savedStyle)
+        ? savedStyle
+        : DEFAULT_ADMIN_STYLE
+    );
 
+    const savedDensity = safeGet(DENSITY_STORAGE_KEY) as AdminDensityId | null;
+    applyDensity(
+      savedDensity && (ADMIN_DENSITY_IDS as readonly string[]).includes(savedDensity)
+        ? savedDensity
+        : DEFAULT_ADMIN_DENSITY
+    );
+
+    const savedAnim = safeGet(ANIM_STORAGE_KEY) as AdminAnimId | null;
+    applyAnim(
+      savedAnim && (ADMIN_ANIM_IDS as readonly string[]).includes(savedAnim)
+        ? savedAnim
+        : DEFAULT_ADMIN_ANIM
+    );
+
+    // Синхронизация между вкладками.
     const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
+      if (e.key === THEME_STORAGE_KEY && e.newValue) {
         const v = e.newValue as AdminThemeId;
-        if (ADMIN_THEMES.some((t) => t.id === v)) applyTheme(v);
+        if ((ADMIN_THEME_IDS as readonly string[]).includes(v)) applyTheme(v);
       }
-      if (e.key === LAYOUT_KEY && e.newValue) {
+      if (e.key === LAYOUT_STORAGE_KEY && e.newValue) {
         const v = e.newValue as AdminLayoutId;
-        if (ADMIN_LAYOUTS.some((l) => l.id === v)) applyLayout(v);
+        if ((ADMIN_LAYOUT_IDS as readonly string[]).includes(v)) applyLayout(v);
       }
-      if (e.key === STYLE_KEY && e.newValue) {
+      if (e.key === STYLE_STORAGE_KEY && e.newValue) {
         const v = e.newValue as AdminStyleId;
-        if (ADMIN_STYLES.some((s) => s.id === v)) applyStyle(v);
+        if ((ADMIN_STYLE_IDS as readonly string[]).includes(v)) applyStyle(v);
+      }
+      if (e.key === DENSITY_STORAGE_KEY && e.newValue) {
+        const v = e.newValue as AdminDensityId;
+        if ((ADMIN_DENSITY_IDS as readonly string[]).includes(v)) applyDensity(v);
+      }
+      if (e.key === ANIM_STORAGE_KEY && e.newValue) {
+        const v = e.newValue as AdminAnimId;
+        if ((ADMIN_ANIM_IDS as readonly string[]).includes(v)) applyAnim(v);
       }
     };
     window.addEventListener("storage", onStorage);
@@ -92,101 +195,76 @@ export function AdminThemeProvider({ children }: { children: React.ReactNode }) 
   return <>{children}</>;
 }
 
-export function ThemeSwitcher({ compact = false }: { compact?: boolean }) {
-  const [theme, setTheme] = useState<AdminThemeId>("standard");
-
-  useEffect(() => {
-    try {
-      const saved = (localStorage.getItem(STORAGE_KEY) as AdminThemeId | null) || "standard";
-      if (ADMIN_THEMES.some((t) => t.id === saved)) setTheme(saved);
-    } catch {}
-  }, []);
-
-  function set(newId: AdminThemeId) {
-    setTheme(newId);
-    try {
-      localStorage.setItem(STORAGE_KEY, newId);
-    } catch {}
-    applyTheme(newId);
-  }
-
-  if (compact) {
-    return (
-      <select
-        value={theme}
-        onChange={(e) => set(e.target.value as AdminThemeId)}
-        className="admin-theme-select"
-        aria-label="Тема оформления"
-        title="Тема оформления — меняется мгновенно"
-      >
-        {ADMIN_THEMES.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.label}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
-  return (
-    <div className="admin-theme-switcher" role="group" aria-label="Тема оформления">
-      {ADMIN_THEMES.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          onClick={() => set(t.id)}
-          className={`admin-theme-btn${theme === t.id ? " admin-theme-btn--active" : ""}`}
-          title={`${t.label} — ${t.desc}`}
-          aria-pressed={theme === t.id}
-        >
-          <span className="admin-theme-dot" style={{ background: t.colors[1], borderColor: t.colors[0] }} aria-hidden />
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function ThemeCustomizer() {
-  const [theme, setTheme] = useState<AdminThemeId>("standard");
-  const [layout, setLayout] = useState<AdminLayoutId>("sidebar-left");
-  const [style, setStyle] = useState<AdminStyleId>("classic");
+  const [theme, setTheme] = useState<AdminThemeId>(DEFAULT_ADMIN_THEME);
+  const [layout, setLayout] = useState<AdminLayoutId>(DEFAULT_ADMIN_LAYOUT);
+  const [style, setStyle] = useState<AdminStyleId>(DEFAULT_ADMIN_STYLE);
+  const [density, setDensity] = useState<AdminDensityId>(DEFAULT_ADMIN_DENSITY);
+  const [anim, setAnim] = useState<AdminAnimId>(DEFAULT_ADMIN_ANIM);
 
   useEffect(() => {
-    try {
-      const savedTheme = (localStorage.getItem(STORAGE_KEY) as AdminThemeId | null) || "standard";
-      if (ADMIN_THEMES.some((t) => t.id === savedTheme)) setTheme(savedTheme);
+    const savedTheme = safeGet(THEME_STORAGE_KEY) as AdminThemeId | null;
+    if (savedTheme && (ADMIN_THEME_IDS as readonly string[]).includes(savedTheme)) setTheme(savedTheme);
 
-      const savedLayout = (localStorage.getItem(LAYOUT_KEY) as AdminLayoutId | null) || "sidebar-left";
-      if (ADMIN_LAYOUTS.some((l) => l.id === savedLayout)) setLayout(savedLayout);
+    const savedLayout = safeGet(LAYOUT_STORAGE_KEY) as AdminLayoutId | null;
+    if (savedLayout && (ADMIN_LAYOUT_IDS as readonly string[]).includes(savedLayout)) setLayout(savedLayout);
 
-      const savedStyle = (localStorage.getItem(STYLE_KEY) as AdminStyleId | null) || "classic";
-      if (ADMIN_STYLES.some((s) => s.id === savedStyle)) setStyle(savedStyle);
-    } catch {}
+    const savedStyle = safeGet(STYLE_STORAGE_KEY) as AdminStyleId | null;
+    if (savedStyle && (ADMIN_STYLE_IDS as readonly string[]).includes(savedStyle)) setStyle(savedStyle);
+
+    const savedDensity = safeGet(DENSITY_STORAGE_KEY) as AdminDensityId | null;
+    if (savedDensity && (ADMIN_DENSITY_IDS as readonly string[]).includes(savedDensity)) setDensity(savedDensity);
+
+    const savedAnim = safeGet(ANIM_STORAGE_KEY) as AdminAnimId | null;
+    if (savedAnim && (ADMIN_ANIM_IDS as readonly string[]).includes(savedAnim)) setAnim(savedAnim);
   }, []);
 
   function handleThemeChange(id: AdminThemeId) {
     setTheme(id);
-    try {
-      localStorage.setItem(STORAGE_KEY, id);
-    } catch {}
+    safeSet(THEME_STORAGE_KEY, id);
     applyTheme(id);
   }
 
   function handleLayoutChange(id: AdminLayoutId) {
     setLayout(id);
-    try {
-      localStorage.setItem(LAYOUT_KEY, id);
-    } catch {}
+    safeSet(LAYOUT_STORAGE_KEY, id);
     applyLayout(id);
   }
 
   function handleStyleChange(id: AdminStyleId) {
     setStyle(id);
-    try {
-      localStorage.setItem(STYLE_KEY, id);
-    } catch {}
+    safeSet(STYLE_STORAGE_KEY, id);
     applyStyle(id);
+  }
+
+  function handleDensityChange(id: AdminDensityId) {
+    setDensity(id);
+    safeSet(DENSITY_STORAGE_KEY, id);
+    applyDensity(id);
+  }
+
+  function handleAnimChange(id: AdminAnimId) {
+    setAnim(id);
+    safeSet(ANIM_STORAGE_KEY, id);
+    applyAnim(id);
+  }
+
+  function handleReset() {
+    setTheme(DEFAULT_ADMIN_THEME);
+    setLayout(DEFAULT_ADMIN_LAYOUT);
+    setStyle(DEFAULT_ADMIN_STYLE);
+    setDensity(DEFAULT_ADMIN_DENSITY);
+    setAnim(DEFAULT_ADMIN_ANIM);
+    safeSet(THEME_STORAGE_KEY, DEFAULT_ADMIN_THEME);
+    safeSet(LAYOUT_STORAGE_KEY, DEFAULT_ADMIN_LAYOUT);
+    safeSet(STYLE_STORAGE_KEY, DEFAULT_ADMIN_STYLE);
+    safeSet(DENSITY_STORAGE_KEY, DEFAULT_ADMIN_DENSITY);
+    safeSet(ANIM_STORAGE_KEY, DEFAULT_ADMIN_ANIM);
+    applyTheme(DEFAULT_ADMIN_THEME);
+    applyLayout(DEFAULT_ADMIN_LAYOUT);
+    applyStyle(DEFAULT_ADMIN_STYLE);
+    applyDensity(DEFAULT_ADMIN_DENSITY);
+    applyAnim(DEFAULT_ADMIN_ANIM);
   }
 
   return (
@@ -251,6 +329,14 @@ export function ThemeCustomizer() {
                     <div className="thumb-content" />
                   </div>
                 )}
+                {l.id === "compact" && (
+                  <div className="thumb-split">
+                    <div className="thumb-bar thumb-bar--icons">
+                      <i /><i /><i />
+                    </div>
+                    <div className="thumb-content" />
+                  </div>
+                )}
               </div>
               <div className="card-info">
                 <div className="card-label">{l.label}</div>
@@ -277,9 +363,11 @@ export function ThemeCustomizer() {
             >
               <div className="style-preview-box">
                 {s.id === "classic" && <div className="p-classic">Классика</div>}
-                {s.id === "neo" && <div className="p-neo">Объём и Скругление</div>}
-                {s.id === "retro" && <div className="p-retro">90-х Стиль</div>}
-                {s.id === "cyberpunk" && <div className="p-cyber">Cyberpunk_</div>}
+                {s.id === "neo" && <div className="p-neo">Объём</div>}
+                {s.id === "retro" && <div className="p-retro">90-е</div>}
+                {s.id === "cyberpunk" && <div className="p-cyber">Cyber_</div>}
+                {s.id === "minimal" && <div className="p-minimal">Плоский</div>}
+                {s.id === "contrast" && <div className="p-contrast">Контраст</div>}
               </div>
               <div className="card-info">
                 <div className="card-label">{s.label}</div>
@@ -289,6 +377,64 @@ export function ThemeCustomizer() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 4. Плотность интерфейса */}
+      <div className="customizer-section">
+        <h3 className="customizer-title">
+          <Rows3 size={16} /> Плотность интерфейса
+        </h3>
+        <div className="customizer-grid text-density-grid">
+          {ADMIN_DENSITIES.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className={`customizer-card ${density === d.id ? "active" : ""}`}
+              onClick={() => handleDensityChange(d.id)}
+            >
+              <div className="option-icon-badge">
+                <Gauge size={18} />
+              </div>
+              <div className="card-info">
+                <div className="card-label">{d.label}</div>
+                <div className="card-desc">{d.desc}</div>
+              </div>
+              {density === d.id && <Check className="check-icon" size={16} />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 5. Анимации */}
+      <div className="customizer-section">
+        <h3 className="customizer-title">
+          <Zap size={16} /> Анимации
+        </h3>
+        <div className="customizer-grid text-anim-grid">
+          {ADMIN_ANIMS.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`customizer-card ${anim === a.id ? "active" : ""}`}
+              onClick={() => handleAnimChange(a.id)}
+            >
+              <div className="option-icon-badge">
+                {a.id === "full" ? <Zap size={18} /> : <ZapOff size={18} />}
+              </div>
+              <div className="card-info">
+                <div className="card-label">{a.label}</div>
+                <div className="card-desc">{a.desc}</div>
+              </div>
+              {anim === a.id && <Check className="check-icon" size={16} />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="customizer-reset-row">
+        <button type="button" className="customizer-reset-btn" onClick={handleReset}>
+          <RotateCcw size={14} /> Сбросить всё к стандартным настройкам
+        </button>
       </div>
 
       <style jsx global>{`
@@ -317,7 +463,7 @@ export function ThemeCustomizer() {
         }
         .customizer-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
           gap: 12px;
         }
         .customizer-card {
@@ -327,13 +473,14 @@ export function ThemeCustomizer() {
           padding: 12px;
           background: var(--adm-card);
           border: 1px solid var(--adm-border);
-          border-radius: var(--adm-r-md, 8px);
+          border-radius: var(--adm-r, 8px);
           text-align: left;
           cursor: pointer;
           position: relative;
           transition: all 0.2s ease;
           width: 100%;
           color: var(--adm-ink-soft);
+          font-family: inherit;
         }
         .customizer-card:hover {
           border-color: var(--adm-kraft);
@@ -350,18 +497,14 @@ export function ThemeCustomizer() {
           gap: 4px;
           flex-shrink: 0;
           padding: 4px;
-          background: rgba(0,0,0,0.05);
+          background: rgba(127,127,127,0.12);
           border-radius: 6px;
-        }
-        [data-admin-theme="dark"] .theme-preview-dots,
-        [data-admin-theme="superdark"] .theme-preview-dots {
-          background: rgba(255,255,255,0.08);
         }
         .theme-preview-dots .dot {
           width: 12px;
           height: 12px;
           border-radius: 50%;
-          border: 1px solid rgba(255,255,255,0.15);
+          border: 1px solid rgba(127,127,127,0.35);
         }
         .card-info {
           display: flex;
@@ -384,7 +527,7 @@ export function ThemeCustomizer() {
           color: var(--adm-kraft);
           flex-shrink: 0;
         }
-        
+
         /* Layout Thumbnails */
         .layout-thumbnail {
           width: 44px;
@@ -405,12 +548,26 @@ export function ThemeCustomizer() {
         .thumb-bar {
           width: 12px;
           height: 100%;
-          background: var(--adm-ink);
+          background: var(--adm-ink-deep);
           border-right: 1px solid var(--adm-border);
         }
         .thumb-split.reverse .thumb-bar {
           border-right: none;
           border-left: 1px solid var(--adm-border);
+        }
+        .thumb-bar--icons {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 3px;
+          width: 9px;
+        }
+        .thumb-bar--icons i {
+          width: 4px;
+          height: 4px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.65);
         }
         .thumb-content {
           flex-grow: 1;
@@ -425,7 +582,7 @@ export function ThemeCustomizer() {
         .thumb-header {
           height: 10px;
           width: 100%;
-          background: var(--adm-ink);
+          background: var(--adm-ink-deep);
           border-bottom: 1px solid var(--adm-border);
         }
 
@@ -445,6 +602,7 @@ export function ThemeCustomizer() {
           flex-shrink: 0;
           overflow: hidden;
           text-align: center;
+          color: var(--adm-ink-soft);
         }
         .p-classic {
           border: 1px solid var(--adm-ink-muted);
@@ -454,7 +612,7 @@ export function ThemeCustomizer() {
         .p-neo {
           border-radius: 12px;
           background: var(--adm-card);
-          box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+          box-shadow: 2px 2px 5px rgba(0,0,0,0.15);
           padding: 2px 4px;
           font-size: 7px;
         }
@@ -473,25 +631,61 @@ export function ThemeCustomizer() {
           font-family: monospace;
           padding: 2px;
         }
+        .p-minimal {
+          border: 1px solid var(--adm-border-soft);
+          background: var(--adm-card);
+          padding: 2px 4px;
+          font-size: 7px;
+          font-weight: 600;
+        }
+        .p-contrast {
+          border: 2.5px solid var(--adm-ink);
+          padding: 1px 3px;
+          font-weight: 900;
+          color: var(--adm-ink);
+        }
+
+        /* Icon badges for density/animation cards */
+        .option-icon-badge {
+          width: 44px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--adm-paper-warm);
+          border: 1px solid var(--adm-border-mid);
+          border-radius: 4px;
+          flex-shrink: 0;
+          color: var(--adm-ink-muted);
+        }
+
+        .customizer-reset-row {
+          display: flex;
+          justify-content: flex-end;
+          padding-top: 4px;
+          border-top: 1px solid var(--adm-border);
+        }
+        .customizer-reset-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 8px 14px;
+          border-radius: var(--adm-r-sm, 6px);
+          border: 1px solid var(--adm-border-mid);
+          background: var(--adm-card);
+          color: var(--adm-ink-soft);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          font-family: inherit;
+        }
+        .customizer-reset-btn:hover {
+          border-color: var(--adm-rust);
+          color: var(--adm-rust);
+          background: var(--adm-rust-pale);
+        }
       `}</style>
     </div>
   );
-}
-
-// Inline script для мгновенного применения без FOUC — вставляется в layout <head>
-export function adminThemeInitScript() {
-  return `try{
-    var k="${STORAGE_KEY}",v=localStorage.getItem(k)||"standard";
-    var ok=["standard","light","dark","superdark","forest","ocean"].indexOf(v)>=0?v:"standard";
-    
-    var kl="${LAYOUT_KEY}",vl=localStorage.getItem(kl)||"sidebar-left";
-    var okl=["sidebar-left","sidebar-right","sidebar-top"].indexOf(vl)>=0?vl:"sidebar-left";
-
-    var ks="${STYLE_KEY}",vs=localStorage.getItem(ks)||"classic";
-    var oks=["classic","neo","retro","cyberpunk"].indexOf(vs)>=0?vs:"classic";
-
-    document.documentElement.setAttribute("data-admin-theme",ok);
-    document.documentElement.setAttribute("data-admin-layout",okl);
-    document.documentElement.setAttribute("data-admin-style",oks);
-  }catch(e){}`;
 }

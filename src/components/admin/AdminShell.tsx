@@ -26,7 +26,6 @@ import {
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
-import { ThemeSwitcher } from "./AdminTheme";
 import {
   canAccessAdminPage,
   type AdminRole,
@@ -200,31 +199,34 @@ export function AdminShell({
               <Link
                 key={link.href}
                 href={link.href}
+                title={link.label}
                 className={`admin-sidebar__link${active ? " admin-sidebar__link--active" : ""}`}
               >
                 {link.icon}
-                {link.label}
+                {/* Подпись обёрнута в span: в «компактной» раскладке
+                    CSS прячет текст и оставляет только иконки. */}
+                <span className="admin-sidebar__label">{link.label}</span>
               </Link>
             );
           })}
         </nav>
 
         <div className="admin-sidebar__footer">
-          <div style={{ padding: "8px 10px 6px", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: 6 }}>
-            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Тема</div>
-            <ThemeSwitcher />
-          </div>
+          {/* Переключателя темы здесь больше нет: вся кастомизация
+              (темы, раскладка, стиль, плотность, анимации) живёт
+              в Настройках → «Кастомизация оформления». */}
           <Link
             href="/"
             prefetch={false}
             target="_blank"
+            title="Перейти на сайт"
             className="admin-sidebar__footer-link"
           >
-            <ExternalLink size={13} /> Перейти на сайт
+            <ExternalLink size={13} /> <span className="admin-sidebar__label">Перейти на сайт</span>
           </Link>
           <form action={`/${adminPath}/api/logout`} method="POST">
-            <button type="submit" className="admin-sidebar__logout">
-              <LogOut size={13} /> Выйти из аккаунта
+            <button type="submit" className="admin-sidebar__logout" title="Выйти из аккаунта">
+              <LogOut size={13} /> <span className="admin-sidebar__label">Выйти из аккаунта</span>
             </button>
           </form>
         </div>
