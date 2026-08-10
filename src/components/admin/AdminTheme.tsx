@@ -34,24 +34,21 @@ const LAYOUT_KEY = "adm-layout";
 const STYLE_KEY = "adm-style";
 
 function applyTheme(id: AdminThemeId) {
-  const elements = [document.documentElement, document.querySelector('[data-admin="true"]')].filter(Boolean) as HTMLElement[];
-  elements.forEach((el) => {
-    el.setAttribute("data-admin-theme", id);
-  });
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-admin-theme", id);
+  }
 }
 
 function applyLayout(id: AdminLayoutId) {
-  const elements = [document.documentElement, document.querySelector('[data-admin="true"]')].filter(Boolean) as HTMLElement[];
-  elements.forEach((el) => {
-    el.setAttribute("data-admin-layout", id);
-  });
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-admin-layout", id);
+  }
 }
 
 function applyStyle(id: AdminStyleId) {
-  const elements = [document.documentElement, document.querySelector('[data-admin="true"]')].filter(Boolean) as HTMLElement[];
-  elements.forEach((el) => {
-    el.setAttribute("data-admin-style", id);
-  });
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-admin-style", id);
+  }
 }
 
 export function AdminThemeProvider({ children }: { children: React.ReactNode }) {
@@ -496,12 +493,5 @@ export function adminThemeInitScript() {
     document.documentElement.setAttribute("data-admin-theme",ok);
     document.documentElement.setAttribute("data-admin-layout",okl);
     document.documentElement.setAttribute("data-admin-style",oks);
-    
-    var a=document.querySelector('[data-admin=\"true\"]');
-    if(a) {
-      a.setAttribute("data-admin-theme",ok);
-      a.setAttribute("data-admin-layout",okl);
-      a.setAttribute("data-admin-style",oks);
-    }
   }catch(e){}`;
 }

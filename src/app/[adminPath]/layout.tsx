@@ -29,13 +29,6 @@ const ADMIN_THEME_INIT_SCRIPT = `try{
   document.documentElement.setAttribute("data-admin-theme",ok);
   document.documentElement.setAttribute("data-admin-layout",okl);
   document.documentElement.setAttribute("data-admin-style",oks);
-  
-  var a=document.querySelector('[data-admin="true"]');
-  if(a){
-    a.setAttribute("data-admin-theme",ok);
-    a.setAttribute("data-admin-layout",okl);
-    a.setAttribute("data-admin-style",oks);
-  }
 }catch(e){}`;
 
 // Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому
