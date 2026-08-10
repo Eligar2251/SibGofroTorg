@@ -123,6 +123,7 @@ export default async function RootLayout({
         <JsonLd
           data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}
         />
+        <script dangerouslySetInnerHTML={{ __html: `try{var k="adm-theme",v=localStorage.getItem(k)||"standard";var ok=["standard","light","dark","superdark","forest","ocean"].indexOf(v)>=0?v:"standard";var kl="adm-layout",vl=localStorage.getItem(kl)||"sidebar-left";var okl=["sidebar-left","sidebar-right","sidebar-top"].indexOf(vl)>=0?vl:"sidebar-left";var ks="adm-style",vs=localStorage.getItem(ks)||"classic";var oks=["classic","neo","retro","cyberpunk"].indexOf(vs)>=0?vs:"classic";document.documentElement.setAttribute("data-admin-theme",ok);document.documentElement.setAttribute("data-admin-layout",okl);document.documentElement.setAttribute("data-admin-style",oks);}catch(e){}` }} />
       </head>
       <body>
         <CartProvider>
