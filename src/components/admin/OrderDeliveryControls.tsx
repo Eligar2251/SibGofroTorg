@@ -318,7 +318,7 @@ function DeliveryForm({
     <div className="order-delivery__form">
       <div className="admin-field">
         <label className="admin-label">
-          Адрес доставки <span style={{ color: "#ef4444" }}>*</span>
+          Адрес доставки <span style={{ color: "var(--adm-rust)" }}>*</span>
         </label>
         <input
           className="admin-input"
@@ -337,7 +337,7 @@ function DeliveryForm({
                 — 0 = бесплатно для клиента
               </span>
             ) : (
-              <span style={{ color: "#ef4444" }}>*</span>
+              <span style={{ color: "var(--adm-rust)" }}>*</span>
             )}
           </label>
           <input

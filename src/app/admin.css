@@ -1090,7 +1090,7 @@
   font-weight: 600;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.14s ease;
   text-decoration: none;
   font-family: var(--adm-font-body);
   line-height: 1.2;
@@ -1117,7 +1117,7 @@
 .admin-btn--primary:hover:not(:disabled) {
   background: var(--adm-kraft-mid);
   border-color: var(--adm-kraft-mid);
-  box-shadow: 0 2px 10px rgba(200,134,10,0.3);
+  box-shadow: 0 2px 10px var(--adm-kraft-line);
 }
 
 /* Тёмная — чернильная. Поверхность ink-deep остаётся тёмной
@@ -1573,7 +1573,7 @@
   background: var(--adm-card);
   color: var(--adm-ink-muted);
   text-decoration: none;
-  transition: all 0.13s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.13s ease;
   letter-spacing: 0.02em;
   white-space: nowrap;
   flex-shrink: 0;
@@ -2200,7 +2200,7 @@
   padding: 28px 16px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.14s ease;
   background: var(--adm-paper);
 }
 
@@ -3201,7 +3201,7 @@ body:has(.admin-modal-overlay) {
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.13s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.13s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -3252,7 +3252,7 @@ body:has(.admin-modal-overlay) {
   cursor: pointer;
   font-family: inherit;
   text-align: left;
-  transition: all 0.12s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.12s ease;
   min-width: 0;
   max-width: 100%;
 }
@@ -3540,7 +3540,7 @@ body:has(.admin-modal-overlay) {
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.13s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.13s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -5554,7 +5554,7 @@ body:has(.admin-modal-overlay) {
   border-radius: var(--adm-r-sm);
   color: var(--adm-ink-soft);
   cursor: pointer;
-  transition: all 0.13s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.13s ease;
   flex-shrink: 0;
 }
 
@@ -5998,7 +5998,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-row:hover .whsal-day--weekend {
-  background: #f9ecbf;
+  background: color-mix(in srgb, var(--adm-kraft-pale) 80%, var(--adm-kraft-mid));
 }
 
 .whsal-day--paid {
@@ -6358,7 +6358,7 @@ body:has(.admin-modal-overlay) {
   border-right: 1px solid var(--adm-border);
   cursor: pointer;
   color: var(--adm-ink-muted);
-  transition: all 0.12s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.12s ease;
   font-family: var(--adm-font-body);
 }
 
@@ -6429,7 +6429,7 @@ body:has(.admin-modal-overlay) {
   align-items: center;
   justify-content: center;
   gap: 1px;
-  transition: all 0.12s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.12s ease;
   padding: 2px;
 }
 
@@ -10977,4 +10977,169 @@ body:has(.admin-modal-overlay) {
 
 .bank-due__row--skipped:hover {
   background: var(--adm-rust-pale);
+}
+
+/* ══════════════════════════════════════
+   АНИМАЦИИ АДМИНКИ
+   Только transform/opacity — эти свойства исполняются
+   на композиторе GPU и не вызывают layout/paint,
+   поэтому интерфейс держит 60–120 fps.
+   Отключаются при data-admin-anim="reduced" и
+   prefers-reduced-motion (см. ниже).
+   ══════════════════════════════════════ */
+@keyframes adm-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes adm-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes adm-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* Пульс счётчика уведомлений: кольцо расходится через
+   transform+opacity на ::after — дёшево для композитора. */
+@keyframes adm-badge-pulse {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* Появление контента при загрузке страницы */
+[data-admin="true"] .admin-h1,
+[data-admin="true"] .admin-filters,
+[data-admin="true"] .admin-card,
+[data-admin="true"] .admin-stat,
+[data-admin="true"] .dash-section {
+  animation: adm-rise 0.3s ease-out both;
+}
+
+/* Лёгкая «волна» для гридов карточек (первые 8 элементов) */
+[data-admin="true"] .admin-grid-2 > *,
+[data-admin="true"] .admin-grid-3 > *,
+[data-admin="true"] .admin-grid-4 > *,
+[data-admin="true"] .admin-stat-grid > * {
+  animation: adm-rise 0.3s ease-out both;
+}
+[data-admin="true"] .admin-grid-2 > *:nth-child(2),
+[data-admin="true"] .admin-grid-3 > *:nth-child(2),
+[data-admin="true"] .admin-grid-4 > *:nth-child(2),
+[data-admin="true"] .admin-stat-grid > *:nth-child(2) { animation-delay: 0.04s; }
+[data-admin="true"] .admin-grid-2 > *:nth-child(3),
+[data-admin="true"] .admin-grid-3 > *:nth-child(3),
+[data-admin="true"] .admin-grid-4 > *:nth-child(3),
+[data-admin="true"] .admin-stat-grid > *:nth-child(3) { animation-delay: 0.08s; }
+[data-admin="true"] .admin-grid-3 > *:nth-child(4),
+[data-admin="true"] .admin-grid-4 > *:nth-child(4),
+[data-admin="true"] .admin-stat-grid > *:nth-child(4) { animation-delay: 0.12s; }
+[data-admin="true"] .admin-grid-4 > *:nth-child(n+5),
+[data-admin="true"] .admin-stat-grid > *:nth-child(n+5) { animation-delay: 0.16s; }
+
+/* Модалки: плавный вход оверлея и окна */
+[data-admin="true"] .admin-modal-overlay {
+  animation: adm-overlay-in 0.18s ease-out both;
+}
+[data-admin="true"] .admin-modal {
+  animation: adm-modal-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* Тактильный отклик кнопок: нажатие чуть сжимает кнопку.
+   transform — композиторное свойство, 120 fps без перерисовки. */
+[data-admin="true"] .admin-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Пункты меню слегка сдвигаются при наведении */
+[data-admin="true"] .admin-sidebar__link {
+  transition: color 0.15s, background 0.15s, transform 0.15s;
+}
+[data-admin="true"] .admin-sidebar__link:hover {
+  transform: translateX(2px);
+}
+
+/* Пульсирующее кольцо у бейджа уведомлений.
+   Бейдж уже position:absolute — кольцо позиционируется по нему. */
+[data-admin="true"] .admin-notify__badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--adm-rust);
+  animation: adm-badge-pulse 2.4s ease-out infinite;
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════
+   ПРОИЗВОДИТЕЛЬНОСТЬ 60–120 FPS
+   ══════════════════════════════════════ */
+
+/* content-visibility: браузер пропускает рендеринг секций
+   за пределами экрана. contain-intrinsic-size резервирует
+   высоту, чтобы скроллбар не «прыгал». Самая тяжёлая
+   страница — дашборд с десятками секций. */
+[data-admin="true"] .dash-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+/* Списки заявок тоже бывают длинными */
+[data-admin="true"] .admin-order {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+
+/* Сайдбар уже анимируется transform'ом — подсказываем
+   браузеру держать его на отдельном GPU-слое. */
+[data-admin="true"] .admin-sidebar {
+  will-change: transform;
+}
+
+/* Тема/плотность меняются мгновенно: короткий переход цветов
+   только у верхнеуровневых контейнеров (уже задан в
+   admin-themes.css), у вложенных элементов — без переходов,
+   чтобы смена темы не вызывала сотни одновременных анимаций. */
+
+/* Темизированный скроллбар страниц админки */
+html:has([data-admin="true"]) {
+  scrollbar-color: var(--adm-border-mid) transparent;
+}
+html:has([data-admin="true"])::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html:has([data-admin="true"])::-webkit-scrollbar-track {
+  background: transparent;
+}
+html:has([data-admin="true"])::-webkit-scrollbar-thumb {
+  background: var(--adm-border-mid);
+  border-radius: 999px;
+  border: 2px solid var(--adm-paper);
+}
+html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
+  background: var(--adm-ink-muted);
+}
+
+/* Выделение текста в цветах темы */
+[data-admin="true"] ::selection {
+  background: color-mix(in srgb, var(--adm-kraft) 30%, transparent);
+  color: var(--adm-ink);
+}
+
+/* Видимый фокус с клавиатуры (доступность) */
+[data-admin="true"] a:focus-visible,
+[data-admin="true"] button:focus-visible {
+  outline: 2px solid var(--adm-kraft);
+  outline-offset: 2px;
+}
+
+/* Уважение к системной настройке «меньше движения» */
+@media (prefers-reduced-motion: reduce) {
+  [data-admin="true"] *,
+  [data-admin="true"] *::before,
+  [data-admin="true"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

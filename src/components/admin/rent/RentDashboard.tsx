@@ -233,7 +233,7 @@ export function RentDashboard({
       {/* Сводные показатели */}
       <div className="admin-stat-grid">
         <div className="admin-stat">
-          <div className="admin-stat__icon" style={{ background: "rgba(125,209,129,0.12)", color: "#7dd181" }}>
+          <div className="admin-stat__icon" style={{ background: "var(--adm-pine-pale)", color: "var(--adm-pine)" }}>
             <Users size={16} />
           </div>
           <div>
@@ -242,7 +242,7 @@ export function RentDashboard({
           </div>
         </div>
         <div className="admin-stat">
-          <div className="admin-stat__icon" style={{ background: "rgba(125,209,129,0.12)", color: "#7dd181" }}>
+          <div className="admin-stat__icon" style={{ background: "var(--adm-pine-pale)", color: "var(--adm-pine)" }}>
             <ArrowDownLeft size={16} />
           </div>
           <div>
@@ -251,18 +251,18 @@ export function RentDashboard({
           </div>
         </div>
         <div className="admin-stat">
-          <div className="admin-stat__icon" style={{ background: "rgba(239,143,118,0.14)", color: "#ef8f76" }}>
+          <div className="admin-stat__icon" style={{ background: "var(--adm-rust-pale)", color: "var(--adm-rust)" }}>
             <AlertTriangle size={16} />
           </div>
           <div>
             <div className="admin-stat__label">Просрочено (после отсрочки)</div>
-            <div className="admin-stat__value" style={{ color: overdueSum > 0 ? "#ef8f76" : undefined }}>
+            <div className="admin-stat__value" style={{ color: overdueSum > 0 ? "var(--adm-rust)" : undefined }}>
               {rentFmt(overdueSum)} ₽ · {overdueStates.length}
             </div>
           </div>
         </div>
         <div className="admin-stat">
-          <div className="admin-stat__icon" style={{ background: "rgba(224,155,18,0.14)", color: "#e09b12" }}>
+          <div className="admin-stat__icon" style={{ background: "var(--adm-kraft-pale)", color: "var(--adm-kraft)" }}>
             <BellRing size={16} />
           </div>
           <div>
@@ -278,7 +278,7 @@ export function RentDashboard({
           <div className="admin-card__head">
             <h3 className="admin-card__title">Сбор за месяц</h3>
             <span className="admin-muted" style={{ fontSize: 13 }}>
-              поступило <b style={{ color: "#1e4a2d" }}>{rentFmt(collection.fact)} ₽</b> из{" "}
+              поступило <b style={{ color: "var(--adm-pine)" }}>{rentFmt(collection.fact)} ₽</b> из{" "}
               <b>{rentFmt(collection.plan)} ₽</b> к сбору
             </span>
           </div>
@@ -332,7 +332,7 @@ export function RentDashboard({
         <div className="admin-card">
           <div className="admin-card__head">
             <h3 className="admin-card__title">
-              <AlertTriangle size={15} style={{ color: "#ef8f76", verticalAlign: "-2px", marginRight: 6 }} />
+              <AlertTriangle size={15} style={{ color: "var(--adm-rust)", verticalAlign: "-2px", marginRight: 6 }} />
               Просроченные оплаты
             </h3>
             <span className="admin-badge admin-badge--red">{overdueRows.length}</span>
@@ -364,7 +364,7 @@ export function RentDashboard({
                       </div>
                     </div>
                     <div className="rent-row__side">
-                      <strong style={{ color: "#ef8f76" }}>{rentFmt(invoice.amount)} ₽</strong>
+                      <strong style={{ color: "var(--adm-rust)" }}>{rentFmt(invoice.amount)} ₽</strong>
                       <span className="admin-badge admin-badge--red">{daysOverdue} дн.</span>
                     </div>
                   </div>
@@ -378,7 +378,7 @@ export function RentDashboard({
         <div className="admin-card">
           <div className="admin-card__head">
             <h3 className="admin-card__title">
-              <BellRing size={15} style={{ color: "#e09b12", verticalAlign: "-2px", marginRight: 6 }} />
+              <BellRing size={15} style={{ color: "var(--adm-kraft)", verticalAlign: "-2px", marginRight: 6 }} />
               Ближайшие оплаты (7 дней)
             </h3>
             <span className="admin-badge admin-badge--amber">{upcoming.length}</span>
@@ -447,7 +447,7 @@ export function RentDashboard({
                     </div>
                   </div>
                   <div className="rent-row__side">
-                    <strong style={{ color: p.direction === "incoming" ? "#7dd181" : "#ef8f76" }}>
+                    <strong style={{ color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)" }}>
                       {p.direction === "incoming" ? "+" : "−"}{rentFmt(p.amount)} ₽
                     </strong>
                   </div>

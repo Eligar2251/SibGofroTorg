@@ -782,7 +782,7 @@ export function DealForm({
                       >
                         <label className="admin-label">
                           Адрес доставки{" "}
-                          <span style={{ color: "#ef4444" }}>*</span>
+                          <span style={{ color: "var(--adm-rust)" }}>*</span>
                         </label>
                         <input
                           className="admin-input"
@@ -967,7 +967,7 @@ export function DealForm({
                     onChange={(e) => setIsReserved(e.target.checked)}
                   />
                   <span>
-                    <b style={{ color: "#4338ca" }}>
+                    <b style={{ color: "var(--adm-indigo)" }}>
                       {isReserved ? "🔒 Зарезервировать товар" : "📋 Зарезервировать товар (выставлен счёт)"}
                     </b>
                     <span className="wh-form-hint" style={{ display: "block", fontWeight: 400, marginTop: 2 }}>

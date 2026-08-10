@@ -42,17 +42,22 @@ export const ADMIN_DENSITY_IDS = ["comfortable", "compact"] as const;
 // Анимации: полные или уменьшенные (для чувствительных к движению).
 export const ADMIN_ANIM_IDS = ["full", "reduced"] as const;
 
+// Эффект стекла: полупрозрачные карточки с размытием фона.
+export const ADMIN_GLASS_IDS = ["off", "on"] as const;
+
 export const THEME_STORAGE_KEY = "adm-theme";
 export const LAYOUT_STORAGE_KEY = "adm-layout";
 export const STYLE_STORAGE_KEY = "adm-style";
 export const DENSITY_STORAGE_KEY = "adm-density";
 export const ANIM_STORAGE_KEY = "adm-anim";
+export const GLASS_STORAGE_KEY = "adm-glass";
 
 export const DEFAULT_ADMIN_THEME = "standard";
 export const DEFAULT_ADMIN_LAYOUT = "sidebar-left";
 export const DEFAULT_ADMIN_STYLE = "classic";
 export const DEFAULT_ADMIN_DENSITY = "comfortable";
 export const DEFAULT_ADMIN_ANIM = "full";
+export const DEFAULT_ADMIN_GLASS = "off";
 
 /**
  * Инлайн-скрипт для <head>: применяет сохранённые настройки
@@ -72,5 +77,7 @@ export function adminThemeInitScript(): string {
     d.setAttribute("data-admin-density",${JSON.stringify([...ADMIN_DENSITY_IDS])}.indexOf(dn)>=0?dn:"${DEFAULT_ADMIN_DENSITY}");
     var an=localStorage.getItem("${ANIM_STORAGE_KEY}")||"${DEFAULT_ADMIN_ANIM}";
     d.setAttribute("data-admin-anim",${JSON.stringify([...ADMIN_ANIM_IDS])}.indexOf(an)>=0?an:"${DEFAULT_ADMIN_ANIM}");
+    var gl=localStorage.getItem("${GLASS_STORAGE_KEY}")||"${DEFAULT_ADMIN_GLASS}";
+    d.setAttribute("data-admin-glass",${JSON.stringify([...ADMIN_GLASS_IDS])}.indexOf(gl)>=0?gl:"${DEFAULT_ADMIN_GLASS}");
   }catch(e){}`;
 }

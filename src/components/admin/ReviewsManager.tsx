@@ -135,7 +135,7 @@ export function ReviewsManager() {
     return (
       <span className="admin-rating-stars" style={{ display: "inline-flex", gap: 2 }}>
         {[1, 2, 3, 4, 5].map(n => (
-          <Star key={n} size={14} className={n <= rating ? "filled" : ""} style={{ color: n <= rating ? "#f5a623" : "#e0e0e0" }} />
+          <Star key={n} size={14} className={n <= rating ? "filled" : ""} style={{ color: n <= rating ? "var(--adm-kraft)" : "var(--adm-border-mid)" }} />
         ))}
       </span>
     );
@@ -164,14 +164,14 @@ export function ReviewsManager() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minWidth: 200 }}>
               {[5,4,3,2,1].map(star => (
                 <div key={star} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Star size={14} style={{ color: "#f5a623" }} />
+                  <Star size={14} style={{ color: "var(--adm-kraft)" }} />
                   <span style={{ width: 30, textAlign: "right", fontSize: 13 }}>{star}</span>
                   <div style={{ flex: 1, height: 8, background: "var(--border)", borderRadius: 4, overflow: "hidden" }}>
                     <div 
                       style={{ 
                         width: `${getDistributionBar(stats, star)}%`, 
                         height: "100%", 
-                        background: star >= 4 ? "#16a34a" : star === 3 ? "#f59e0b" : "#dc2626",
+                        background: star >= 4 ? "var(--adm-pine)" : star === 3 ? "var(--adm-kraft)" : "var(--adm-rust)",
                         borderRadius: 4,
                         transition: "width 0.3s"
                       }} 
@@ -329,15 +329,15 @@ export function ReviewsManager() {
                     <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{r.text}</p>
                   </div>
                   {r.pros && (
-                    <div style={{ marginBottom: 8, padding: 12, background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
-                      <p style={{ fontWeight: 600, color: "#15803d", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><GlyphIcon value="ok" size={14} /> Достоинства:</p>
-                      <p style={{ color: "#15803d" }}>{r.pros}</p>
+                    <div style={{ marginBottom: 8, padding: 12, background: "var(--adm-pine-pale)", borderRadius: 8, border: "1px solid var(--adm-pine-line)" }}>
+                      <p style={{ fontWeight: 600, color: "var(--adm-pine)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><GlyphIcon value="ok" size={14} /> Достоинства:</p>
+                      <p style={{ color: "var(--adm-pine)" }}>{r.pros}</p>
                     </div>
                   )}
                   {r.cons && (
-                    <div style={{ marginBottom: 8, padding: 12, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
-                      <p style={{ fontWeight: 600, color: "#dc2626", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><GlyphIcon value="cancel" size={14} /> Недостатки:</p>
-                      <p style={{ color: "#dc2626" }}>{r.cons}</p>
+                    <div style={{ marginBottom: 8, padding: 12, background: "var(--adm-rust-pale)", borderRadius: 8, border: "1px solid var(--adm-rust-line)" }}>
+                      <p style={{ fontWeight: 600, color: "var(--adm-rust)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><GlyphIcon value="cancel" size={14} /> Недостатки:</p>
+                      <p style={{ color: "var(--adm-rust)" }}>{r.cons}</p>
                     </div>
                   )}
                   {r.images && r.images.length > 0 && (
@@ -401,7 +401,7 @@ export function ReviewsManager() {
                     <td>
                       <span className="admin-rating-stars" style={{ display: "inline-flex", gap: 2 }}>
                         {[1,2,3,4,5].map(n => (
-                          <Star key={n} size={14} className={n <= r.rating ? "filled" : ""} style={{ color: n <= r.rating ? "#f5a623" : "#e0e0e0" }} />
+                          <Star key={n} size={14} className={n <= r.rating ? "filled" : ""} style={{ color: n <= r.rating ? "var(--adm-kraft)" : "var(--adm-border-mid)" }} />
                         ))}
                       </span>
                       <span className="admin-muted" style={{ marginLeft: 4 }}>{r.rating}/5</span>
@@ -432,7 +432,7 @@ export function ReviewsManager() {
                               onClick={() => startModeration(r.id, "approve")}
                               className="admin-btn admin-btn--icon"
                               title="Одобрить"
-                              style={{ color: "#16a34a" }}
+                              style={{ color: "var(--adm-pine)" }}
                             >
                               <Check size={14} />
                             </button>
@@ -440,7 +440,7 @@ export function ReviewsManager() {
                               onClick={() => startModeration(r.id, "reject")}
                               className="admin-btn admin-btn--icon"
                               title="Отклонить"
-                              style={{ color: "#dc2626" }}
+                              style={{ color: "var(--adm-rust)" }}
                             >
                               <X size={14} />
                             </button>

@@ -721,6 +721,19 @@
   border-radius: 12px !important;
   box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.03) !important;
 }
+/* В тёмных темах чёрные тени почти не видны — усиливаем */
+[data-admin-style="neo"]:is([data-admin-theme="dark"],
+[data-admin-theme="superdark"],
+[data-admin-theme="graphite"],
+[data-admin-theme="ruby"],
+[data-admin-theme="coffee"]) .admin-card,
+[data-admin-style="neo"]:is([data-admin-theme="dark"],
+[data-admin-theme="superdark"],
+[data-admin-theme="graphite"],
+[data-admin-theme="ruby"],
+[data-admin-theme="coffee"]) .admin-stat {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
 
 /* ── Ретро-панель (90-е) ── */
 [data-admin-style="retro"] {
@@ -891,6 +904,50 @@
 }
 [data-admin-anim="reduced"] html[data-scroll-behavior="smooth"] {
   scroll-behavior: auto;
+}
+
+/* ══════════════════════════════════════
+   РАЗДЕЛ НАСТРОЕК: ЭФФЕКТ СТЕКЛА
+   Включается отдельной кнопкой в Настройках
+   (data-admin-glass="on"). Полупрозрачные карточки
+   с размытием фона. Blur умеренный (10px) и применён
+   только к основным контейнерам, чтобы эффект не
+   снижал FPS на слабых машинах.
+   ══════════════════════════════════════ */
+[data-admin-glass="on"] .admin-card,
+[data-admin-glass="on"] .admin-stat,
+[data-admin-glass="on"] .dash-section,
+[data-admin-glass="on"] .admin-modal,
+[data-admin-glass="on"] .admin-notify__panel {
+  background: color-mix(in srgb, var(--adm-card) 72%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  backdrop-filter: blur(10px) saturate(1.15);
+  border-color: color-mix(in srgb, var(--adm-border-mid) 65%, transparent);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+}
+/* Внутренняя шапка секции дашборда не должна перекрывать стекло */
+[data-admin-glass="on"] .dash-section__head {
+  background: transparent;
+}
+/* Сайдбар и мобильная панель — тёмное стекло поверх контента */
+[data-admin-glass="on"] .admin-sidebar,
+[data-admin-glass="on"] .admin-mobile-bar {
+  background: color-mix(in srgb, var(--adm-ink-deep) 82%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  backdrop-filter: blur(12px) saturate(1.1);
+}
+
+/* Печать: стекло отключается, поверхности всегда белые */
+@media print {
+  [data-admin-glass="on"] .admin-card,
+  [data-admin-glass="on"] .admin-stat,
+  [data-admin-glass="on"] .dash-section,
+  [data-admin-glass="on"] .admin-modal,
+  [data-admin-glass="on"] .admin-notify__panel {
+    background: #fff !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
 }
 
 /* ══════════════════════════════════════

@@ -67,7 +67,7 @@ export default async function AdminDeliveriesPage({
           </div>
         </div>
         <div className="admin-card" style={{ padding: 24 }}>
-          <p style={{ color: "#b45309", fontWeight: 600, margin: 0 }}>{loadError}</p>
+          <p style={{ color: "var(--adm-kraft)", fontWeight: 600, margin: 0 }}>{loadError}</p>
         </div>
       </div>
     );

@@ -284,8 +284,8 @@ export function RentBank({
                     <div className="bank-pay__icon" style={{
                       width: 32, height: 32, borderRadius: 8, display: "flex",
                       alignItems: "center", justifyContent: "center", flexShrink: 0,
-                      background: p.direction === "incoming" ? "rgba(125,209,129,0.12)" : "rgba(239,143,118,0.12)",
-                      color: p.direction === "incoming" ? "#7dd181" : "#ef8f76",
+                      background: p.direction === "incoming" ? "var(--adm-pine-pale)" : "var(--adm-rust-pale)",
+                      color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)",
                     }}>
                       {p.method === "cash" ? <Banknote size={15} /> : <CreditCard size={15} />}
                     </div>
@@ -304,7 +304,7 @@ export function RentBank({
                       </div>
                     </div>
                     <div className="rent-row__side">
-                      <strong style={{ color: p.direction === "incoming" ? "#7dd181" : "#ef8f76" }}>
+                      <strong style={{ color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)" }}>
                         {p.direction === "incoming" ? "+" : "−"}{rentFmt(p.amount)} ₽
                       </strong>
                       {!readOnly && (
@@ -361,8 +361,8 @@ export function RentBank({
                 <div className="admin-card__head">
                   <h3 className="admin-card__title">{rentMonthLabel(month)}</h3>
                   <div style={{ display: "flex", gap: 10, fontSize: 13 }}>
-                    <span style={{ color: "#7dd181" }}>+{rentFmt(monthIn)} ₽</span>
-                    <span style={{ color: "#ef8f76" }}>−{rentFmt(monthOut)} ₽</span>
+                    <span style={{ color: "var(--adm-pine)" }}>+{rentFmt(monthIn)} ₽</span>
+                    <span style={{ color: "var(--adm-rust)" }}>−{rentFmt(monthOut)} ₽</span>
                     <strong>{rentFmt(monthIn - monthOut)} ₽</strong>
                   </div>
                 </div>
@@ -389,7 +389,7 @@ export function RentBank({
                           </div>
                         </div>
                         <div className="rent-row__side">
-                          <strong style={{ color: p.direction === "incoming" ? "#7dd181" : "#ef8f76" }}>
+                          <strong style={{ color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)" }}>
                             {p.direction === "incoming" ? "+" : "−"}{rentFmt(p.amount)} ₽
                           </strong>
                           {!readOnly && (

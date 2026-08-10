@@ -527,8 +527,8 @@ export default async function AdminDashboard() {
             value: allProducts.length,
             icon: <Package size={20} />,
             href: `/${ADMIN_PATH}/products`,
-            iconBg: "rgba(27,43,75,0.08)",
-            iconColor: "#1b2b4b",
+            iconBg: "var(--adm-sand-pale)",
+            iconColor: "var(--adm-ink)",
             sub: `${allProducts.filter((p) => (p.stockQty ?? 0) > 0).length} в наличии`,
           },
           {
@@ -536,8 +536,8 @@ export default async function AdminDashboard() {
             value: allCats.length,
             icon: <FolderOpen size={20} />,
             href: `/${ADMIN_PATH}/categories`,
-            iconBg: "rgba(217,119,6,0.12)",
-            iconColor: "#d97706",
+            iconBg: "var(--adm-kraft-pale)",
+            iconColor: "var(--adm-kraft)",
             sub: `${allCats.filter((c) => c.isVisible !== false).length} видимых`,
           },
           {
@@ -545,8 +545,8 @@ export default async function AdminDashboard() {
             value: newOrdersCount,
             icon: <TrendingUp size={20} />,
             href: `/${ADMIN_PATH}/orders?status=new`,
-            iconBg: "#fef2f2",
-            iconColor: "#ef4444",
+            iconBg: "var(--adm-rust-pale)",
+            iconColor: "var(--adm-rust)",
             sub: "требуют обработки",
           },
 
@@ -558,8 +558,8 @@ export default async function AdminDashboard() {
                 : "—",
             icon: <BarChart3 size={20} />,
             href: `/${ADMIN_PATH}/orders?status=completed`,
-            iconBg: "rgba(16,185,129,0.1)",
-            iconColor: "#10b981",
+            iconBg: "var(--adm-pine-pale)",
+            iconColor: "var(--adm-pine)",
             sub: `оплаты минус расходы · ${dashboardDate.slice(0, 7)}`,
           },
           {
@@ -567,8 +567,8 @@ export default async function AdminDashboard() {
             value: `${(bankSummary.expectedIn / 1000).toFixed(0)}К ₽`,
             icon: <TrendingUp size={20} />,
             href: `/${ADMIN_PATH}/warehouse?tab=bank`,
-            iconBg: "rgba(16,185,129,0.1)",
-            iconColor: "#10b981",
+            iconBg: "var(--adm-pine-pale)",
+            iconColor: "var(--adm-pine)",
             sub: `${unpaidDeals.length} неоплаченных заказов`,
           },
           {
@@ -576,8 +576,8 @@ export default async function AdminDashboard() {
             value: `${(bankSummary.expectedOut / 1000).toFixed(0)}К ₽`,
             icon: <AlertTriangle size={20} />,
             href: `/${ADMIN_PATH}/warehouse?tab=bank`,
-            iconBg: "#fef2f2",
-            iconColor: "#ef4444",
+            iconBg: "var(--adm-rust-pale)",
+            iconColor: "var(--adm-rust)",
             sub: `${unpaidReceipts.length} поставок + ${unpaidIndependentPayments.length} платежей`,
           },
           {
@@ -585,8 +585,8 @@ export default async function AdminDashboard() {
             value: `${(stockValue / 1000).toFixed(0)}К ₽`,
             icon: <Package size={20} />,
             href: `/${ADMIN_PATH}/warehouse?tab=stock`,
-            iconBg: "rgba(27,43,75,0.08)",
-            iconColor: "#1b2b4b",
+            iconBg: "var(--adm-sand-pale)",
+            iconColor: "var(--adm-ink)",
             sub: `${outOfStockProducts.length} нет, ${lowStockProducts.length} скоро закончатся`,
           },
           {
@@ -594,8 +594,8 @@ export default async function AdminDashboard() {
             value: promotions.length,
             icon: <Megaphone size={20} />,
             href: `/${ADMIN_PATH}/promotions`,
-            iconBg: "rgba(234,179,8,0.12)",
-            iconColor: "#eaaf08",
+            iconBg: "var(--adm-kraft-pale)",
+            iconColor: "var(--adm-kraft)",
             sub: `${promotions.filter((p) => p.isVisible !== false).length} активных`,
           },
           {
@@ -603,8 +603,8 @@ export default async function AdminDashboard() {
             value: 0,
             icon: <Star size={20} />,
             href: `/${ADMIN_PATH}/reviews`,
-            iconBg: "rgba(245,166,35,0.12)",
-            iconColor: "#f5a623",
+            iconBg: "var(--adm-kraft-pale)",
+            iconColor: "var(--adm-kraft)",
             sub: "управление отзывами",
           },
         ].map((stat) => (
@@ -1041,7 +1041,7 @@ export default async function AdminDashboard() {
           style={{
             fontFamily: "Oswald, sans-serif",
             fontWeight: 700,
-            color: "#1b2b4b",
+            color: "var(--adm-ink)",
             fontSize: 16,
             marginBottom: 16,
           }}
@@ -1060,40 +1060,45 @@ export default async function AdminDashboard() {
               label: "Новые",
               count: newOrdersCount,
               icon: <Clock size={16} />,
-              color: "#f59e0b",
-              bg: "#fffbeb",
+              color: "var(--adm-kraft)",
+              bg: "var(--adm-kraft-pale)",
+              line: "var(--adm-kraft-line)",
               status: "new",
             },
             {
               label: "В работе",
               count: inProgressOrdersCount,
               icon: <TrendingUp size={16} />,
-              color: "#3b82f6",
-              bg: "#eff6ff",
+              color: "var(--adm-steel)",
+              bg: "var(--adm-steel-pale)",
+              line: "var(--adm-steel-line)",
               status: "in_progress",
             },
             {
               label: "Готов к выдаче",
               count: readyOrdersCount,
               icon: <Package size={16} />,
-              color: "#7c3aed",
-              bg: "#f5f3ff",
+              color: "var(--adm-indigo)",
+              bg: "var(--adm-indigo-pale)",
+              line: "var(--adm-indigo-line)",
               status: "ready",
             },
             {
               label: "Выполнены",
               count: completedOrdersCount,
               icon: <CheckCircle size={16} />,
-              color: "#16a34a",
-              bg: "#f0fdf4",
+              color: "var(--adm-pine)",
+              bg: "var(--adm-pine-pale)",
+              line: "var(--adm-pine-line)",
               status: "completed",
             },
             {
               label: "Отменены",
               count: rejectedOrdersCount,
               icon: <XCircle size={16} />,
-              color: "#ef4444",
-              bg: "#fef2f2",
+              color: "var(--adm-rust)",
+              bg: "var(--adm-rust-pale)",
+              line: "var(--adm-rust-line)",
               status: "rejected",
             },
           ].map((s) => (
@@ -1107,7 +1112,7 @@ export default async function AdminDashboard() {
                 padding: "16px 12px",
                 borderRadius: 12,
                 background: s.bg,
-                border: `1px solid ${s.color}30`,
+                border: `1px solid ${s.line}`,
                 textDecoration: "none",
                 gap: 6,
               }}
@@ -1181,7 +1186,7 @@ export default async function AdminDashboard() {
               style={{
                 fontFamily: "Oswald, sans-serif",
                 fontWeight: 700,
-                color: "#1b2b4b",
+                color: "var(--adm-ink)",
                 fontSize: 16,
               }}
             >
@@ -1191,7 +1196,7 @@ export default async function AdminDashboard() {
               href={`/${ADMIN_PATH}/orders`}
               style={{
                 fontSize: 13,
-                color: "#d97706",
+                color: "var(--adm-kraft)",
                 fontWeight: 600,
               }}
              prefetch={false}>
@@ -1219,7 +1224,7 @@ export default async function AdminDashboard() {
                       <div
                         style={{
                           fontWeight: 600,
-                          color: "#1b2b4b",
+                          color: "var(--adm-ink)",
                           fontSize: 13,
                         }}
                       >
@@ -1247,7 +1252,7 @@ export default async function AdminDashboard() {
                         style={{
                           fontSize: 13,
                           fontWeight: 700,
-                          color: "#1b2b4b",
+                          color: "var(--adm-ink)",
                         }}
                       >
                         {o.totalSum.toLocaleString("ru-RU")} ₽
@@ -1296,7 +1301,7 @@ export default async function AdminDashboard() {
                 style={{
                   fontFamily: "Oswald, sans-serif",
                   fontWeight: 700,
-                  color: "#1b2b4b",
+                  color: "var(--adm-ink)",
                   fontSize: 16,
                   display: "flex",
                   alignItems: "center",
@@ -1311,7 +1316,7 @@ export default async function AdminDashboard() {
                 href={`/${ADMIN_PATH}/products/bulk`}
                 style={{
                   fontSize: 13,
-                  color: "#d97706",
+                  color: "var(--adm-kraft)",
                   fontWeight: 600,
                 }}
                prefetch={false}>
@@ -1342,7 +1347,7 @@ export default async function AdminDashboard() {
                       <div
                         style={{
                           fontSize: 13,
-                          color: "#1b2b4b",
+                          color: "var(--adm-ink)",
                           fontWeight: 500,
                           flex: 1,
                         }}
@@ -1356,8 +1361,8 @@ export default async function AdminDashboard() {
                         style={{
                           fontSize: 12,
                           fontWeight: 700,
-                          color: qty <= 0 ? "#ef4444" : "#f59e0b",
-                          background: qty <= 0 ? "#fef2f2" : "#fffbeb",
+                          color: qty <= 0 ? "var(--adm-rust)" : "var(--adm-kraft)",
+                          background: qty <= 0 ? "var(--adm-rust-pale)" : "var(--adm-kraft-pale)",
                           padding: "2px 8px",
                           borderRadius: 999,
                           whiteSpace: "nowrap",
@@ -1413,7 +1418,7 @@ export default async function AdminDashboard() {
               style={{
                 fontFamily: "Oswald, sans-serif",
                 fontWeight: 700,
-                color: "#1b2b4b",
+                color: "var(--adm-ink)",
                 fontSize: 16,
                 marginBottom: 14,
               }}
@@ -1487,7 +1492,7 @@ export default async function AdminDashboard() {
                     background: "var(--adm-bg, #f8f7f4)",
                     fontSize: 13,
                     fontWeight: 500,
-                    color: "#1b2b4b",
+                    color: "var(--adm-ink)",
                     textDecoration: "none",
                     border: "1px solid transparent",
                     transition: "border-color 0.15s",

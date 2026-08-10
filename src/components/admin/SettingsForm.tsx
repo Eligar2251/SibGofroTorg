@@ -475,7 +475,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                   <span>
                     Токен:{" "}
                     {tgDiag.tokenSource === "none" ? (
-                      <b style={{ color: "#dc2626" }}>не задан</b>
+                      <b style={{ color: "var(--adm-rust)" }}>не задан</b>
                     ) : (
                       <>
                         <b>{tgDiag.tokenMasked}</b>{" "}
@@ -488,7 +488,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                   <span>
                     Chat ID:{" "}
                     {tgDiag.chatIdSource === "none" ? (
-                      <b style={{ color: "#dc2626" }}>не задан</b>
+                      <b style={{ color: "var(--adm-rust)" }}>не задан</b>
                     ) : (
                       <>
                         <b>{tgDiag.chatIdNormalized || tgDiag.chatIdMasked}</b>{" "}
@@ -502,12 +502,12 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                     <span>
                       Проверка токена:{" "}
                       {tgDiag.getMe.ok ? (
-                        <b style={{ color: "#15803d" }}>
+                        <b style={{ color: "var(--adm-pine)" }}>
                           OK{tgDiag.getMe.username ? ` — @${tgDiag.getMe.username}` : ""}
                           {tgDiag.getMe.base ? ` (через ${tgDiag.getMe.base})` : ""}
                         </b>
                       ) : (
-                        <b style={{ color: "#dc2626" }}>
+                        <b style={{ color: "var(--adm-rust)" }}>
                           ошибка{tgDiag.getMe.error ? `: ${tgDiag.getMe.error}` : ""}
                         </b>
                       )}
@@ -524,7 +524,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                     </span>
                   )}
                   {!tgDiag.configured && (
-                    <span style={{ color: "#b45309", display: "inline-flex", gap: 6 }}>
+                    <span style={{ color: "var(--adm-kraft)", display: "inline-flex", gap: 6 }}>
                       <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
                       Подключение не готово — заполните поля ниже и сохраните (или задайте
                       переменные окружения на хостинге) и нажмите «Проверить Telegram».

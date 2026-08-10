@@ -11,6 +11,7 @@ import {
   Gauge,
   Zap,
   ZapOff,
+  GlassWater,
 } from "lucide-react";
 import {
   ADMIN_THEME_IDS,
@@ -18,16 +19,19 @@ import {
   ADMIN_STYLE_IDS,
   ADMIN_DENSITY_IDS,
   ADMIN_ANIM_IDS,
+  ADMIN_GLASS_IDS,
   THEME_STORAGE_KEY,
   LAYOUT_STORAGE_KEY,
   STYLE_STORAGE_KEY,
   DENSITY_STORAGE_KEY,
   ANIM_STORAGE_KEY,
+  GLASS_STORAGE_KEY,
   DEFAULT_ADMIN_THEME,
   DEFAULT_ADMIN_LAYOUT,
   DEFAULT_ADMIN_STYLE,
   DEFAULT_ADMIN_DENSITY,
   DEFAULT_ADMIN_ANIM,
+  DEFAULT_ADMIN_GLASS,
 } from "@/lib/admin-theme";
 
 export type AdminThemeId = (typeof ADMIN_THEME_IDS)[number];
@@ -35,6 +39,7 @@ export type AdminLayoutId = (typeof ADMIN_LAYOUT_IDS)[number];
 export type AdminStyleId = (typeof ADMIN_STYLE_IDS)[number];
 export type AdminDensityId = (typeof ADMIN_DENSITY_IDS)[number];
 export type AdminAnimId = (typeof ADMIN_ANIM_IDS)[number];
+export type AdminGlassId = (typeof ADMIN_GLASS_IDS)[number];
 
 export const ADMIN_THEMES: {
   id: AdminThemeId;
@@ -82,6 +87,11 @@ export const ADMIN_ANIMS: { id: AdminAnimId; label: string; desc: string }[] = [
   { id: "reduced", label: "Уменьшить анимации", desc: "Статичный интерфейс без движения" },
 ];
 
+export const ADMIN_GLASS: { id: AdminGlassId; label: string; desc: string }[] = [
+  { id: "off", label: "Классические поверхности", desc: "Плотные карточки без размытия — максимальный FPS" },
+  { id: "on", label: "Эффект стекла", desc: "Полупрозрачные карточки с размытием фона (glassmorphism)" },
+];
+
 function applyTheme(id: AdminThemeId) {
   if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-admin-theme", id);
@@ -109,6 +119,12 @@ function applyDensity(id: AdminDensityId) {
 function applyAnim(id: AdminAnimId) {
   if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-admin-anim", id);
+  }
+}
+
+function applyGlass(id: AdminGlassId) {
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-admin-glass", id);
   }
 }
 
@@ -165,6 +181,13 @@ export function AdminThemeProvider({ children }: { children: React.ReactNode }) 
         : DEFAULT_ADMIN_ANIM
     );
 
+    const savedGlass = safeGet(GLASS_STORAGE_KEY) as AdminGlassId | null;
+    applyGlass(
+      savedGlass && (ADMIN_GLASS_IDS as readonly string[]).includes(savedGlass)
+        ? savedGlass
+        : DEFAULT_ADMIN_GLASS
+    );
+
     // Синхронизация между вкладками.
     const onStorage = (e: StorageEvent) => {
       if (e.key === THEME_STORAGE_KEY && e.newValue) {
@@ -187,6 +210,10 @@ export function AdminThemeProvider({ children }: { children: React.ReactNode }) 
         const v = e.newValue as AdminAnimId;
         if ((ADMIN_ANIM_IDS as readonly string[]).includes(v)) applyAnim(v);
       }
+      if (e.key === GLASS_STORAGE_KEY && e.newValue) {
+        const v = e.newValue as AdminGlassId;
+        if ((ADMIN_GLASS_IDS as readonly string[]).includes(v)) applyGlass(v);
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -201,6 +228,7 @@ export function ThemeCustomizer() {
   const [style, setStyle] = useState<AdminStyleId>(DEFAULT_ADMIN_STYLE);
   const [density, setDensity] = useState<AdminDensityId>(DEFAULT_ADMIN_DENSITY);
   const [anim, setAnim] = useState<AdminAnimId>(DEFAULT_ADMIN_ANIM);
+  const [glass, setGlass] = useState<AdminGlassId>(DEFAULT_ADMIN_GLASS);
 
   useEffect(() => {
     const savedTheme = safeGet(THEME_STORAGE_KEY) as AdminThemeId | null;
@@ -217,6 +245,9 @@ export function ThemeCustomizer() {
 
     const savedAnim = safeGet(ANIM_STORAGE_KEY) as AdminAnimId | null;
     if (savedAnim && (ADMIN_ANIM_IDS as readonly string[]).includes(savedAnim)) setAnim(savedAnim);
+
+    const savedGlass = safeGet(GLASS_STORAGE_KEY) as AdminGlassId | null;
+    if (savedGlass && (ADMIN_GLASS_IDS as readonly string[]).includes(savedGlass)) setGlass(savedGlass);
   }, []);
 
   function handleThemeChange(id: AdminThemeId) {
@@ -249,22 +280,31 @@ export function ThemeCustomizer() {
     applyAnim(id);
   }
 
+  function handleGlassChange(id: AdminGlassId) {
+    setGlass(id);
+    safeSet(GLASS_STORAGE_KEY, id);
+    applyGlass(id);
+  }
+
   function handleReset() {
     setTheme(DEFAULT_ADMIN_THEME);
     setLayout(DEFAULT_ADMIN_LAYOUT);
     setStyle(DEFAULT_ADMIN_STYLE);
     setDensity(DEFAULT_ADMIN_DENSITY);
     setAnim(DEFAULT_ADMIN_ANIM);
+    setGlass(DEFAULT_ADMIN_GLASS);
     safeSet(THEME_STORAGE_KEY, DEFAULT_ADMIN_THEME);
     safeSet(LAYOUT_STORAGE_KEY, DEFAULT_ADMIN_LAYOUT);
     safeSet(STYLE_STORAGE_KEY, DEFAULT_ADMIN_STYLE);
     safeSet(DENSITY_STORAGE_KEY, DEFAULT_ADMIN_DENSITY);
     safeSet(ANIM_STORAGE_KEY, DEFAULT_ADMIN_ANIM);
+    safeSet(GLASS_STORAGE_KEY, DEFAULT_ADMIN_GLASS);
     applyTheme(DEFAULT_ADMIN_THEME);
     applyLayout(DEFAULT_ADMIN_LAYOUT);
     applyStyle(DEFAULT_ADMIN_STYLE);
     applyDensity(DEFAULT_ADMIN_DENSITY);
     applyAnim(DEFAULT_ADMIN_ANIM);
+    applyGlass(DEFAULT_ADMIN_GLASS);
   }
 
   return (
@@ -426,6 +466,32 @@ export function ThemeCustomizer() {
                 <div className="card-desc">{a.desc}</div>
               </div>
               {anim === a.id && <Check className="check-icon" size={16} />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 6. Эффект стекла */}
+      <div className="customizer-section">
+        <h3 className="customizer-title">
+          <GlassWater size={16} /> Эффект стекла
+        </h3>
+        <div className="customizer-grid text-glass-grid">
+          {ADMIN_GLASS.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              className={`customizer-card glass-option${g.id === "on" ? " glass-option--preview" : ""} ${glass === g.id ? "active" : ""}`}
+              onClick={() => handleGlassChange(g.id)}
+            >
+              <div className="option-icon-badge">
+                <GlassWater size={18} />
+              </div>
+              <div className="card-info">
+                <div className="card-label">{g.label}</div>
+                <div className="card-desc">{g.desc}</div>
+              </div>
+              {glass === g.id && <Check className="check-icon" size={16} />}
             </button>
           ))}
         </div>
@@ -657,6 +723,15 @@ export function ThemeCustomizer() {
           border-radius: 4px;
           flex-shrink: 0;
           color: var(--adm-ink-muted);
+        }
+
+        /* Карточка-превью стекла: полупрозрачность + блик */
+        .glass-option--preview .option-icon-badge {
+          background: linear-gradient(135deg, color-mix(in srgb, var(--adm-card) 55%, transparent), color-mix(in srgb, var(--adm-steel) 18%, transparent));
+          -webkit-backdrop-filter: blur(4px);
+          backdrop-filter: blur(4px);
+          border-color: color-mix(in srgb, var(--adm-border-mid) 70%, transparent);
+          color: var(--adm-steel);
         }
 
         .customizer-reset-row {

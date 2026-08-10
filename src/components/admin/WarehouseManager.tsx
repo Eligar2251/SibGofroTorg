@@ -1626,10 +1626,10 @@ export function WarehouseManager({
                                   />
                                   {(reservedTotalById.get(p.id) || 0) > 0 && (
                                     <>
-                                      <div style={{ fontSize: 11, color: "#4338ca", marginTop: 2, whiteSpace: "nowrap" }}>
+                                      <div style={{ fontSize: 11, color: "var(--adm-indigo)", marginTop: 2, whiteSpace: "nowrap" }}>
                                         в резерве {fmt(reservedTotalById.get(p.id) || 0)} шт.
                                       </div>
-                                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1, whiteSpace: "nowrap" }}>
+                                      <div style={{ fontSize: 11, color: "var(--adm-ink-muted)", marginTop: 1, whiteSpace: "nowrap" }}>
                                         свободно {fmt(freeStock(p.id))} шт.
                                       </div>
                                     </>
@@ -2501,7 +2501,7 @@ export function WarehouseManager({
                                     <span className="deal-stock__name">{r.it.name}</span>
                                     <span className="deal-stock__nums">
                                       нужно {r.it.quantity} · на складе {fmt(r.stock)}
-                                      {r.otherReserve > 0 && <> · <b style={{color:"#4338ca"}}>в резерве {fmt(r.otherReserve)}</b></>}
+                                      {r.otherReserve > 0 && <> · <b style={{color:"var(--adm-indigo)"}}>в резерве {fmt(r.otherReserve)}</b></>}
                                       {" "}· свободно {fmt(r.available)} · <b>не хватает {r.missing}</b>
                                     </span>
                                   </div>
@@ -3052,7 +3052,7 @@ export function WarehouseManager({
                     <div
                       key={p.id}
                       className="bank-pay payment-clickable"
-                      style={{ background: "#fff", padding: "10px 14px" }}
+                      style={{ background: "var(--adm-card)", padding: "10px 14px" }}
                       role="button"
                       tabIndex={0}
                       onClick={(event) => {
@@ -3431,7 +3431,7 @@ export function WarehouseManager({
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <textarea
                         className="admin-input"
-                        style={{ width: "100%", height: "135px", resize: "vertical", fontSize: 13, background: "rgba(245, 242, 234, 0.15)" }}
+                        style={{ width: "100%", height: "135px", resize: "vertical", fontSize: 13, background: "var(--adm-paper-warm)" }}
                         value={financeNotes}
                         onChange={(e) => {
                           const val = e.target.value;
