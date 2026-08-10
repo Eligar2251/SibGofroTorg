@@ -15,6 +15,7 @@ import {
   getCounterparties,
   getTransports,
   getCashCollections,
+  getConsignmentManualSales,
 } from "@/lib/warehouse";
 import { dealNeedsDelivery } from "@/lib/warehouse-shared";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
@@ -110,6 +111,8 @@ export default async function AdminWarehousePage({
   // только необходимые ей коллекции.
   const needStock = ["stock", "deals", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
   const needReceipts = ["supplies", "receipts", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
+  // Ручные продажи реестра «Товар на реализации» (лёгкий запрос).
+  const needConsignmentManual = needReceipts;
   const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
   // Платежи нужны и на актуальной вкладке `receipts`: по ним карточки
   // активных и архивных поступлений получают пометки «Оплачен/Оплачено».
@@ -138,6 +141,7 @@ export default async function AdminWarehousePage({
     clients,
     transportsData,
     cashCollections,
+    consignmentManual,
   ] = await Promise.all([
     needStock ? getWarehouseStock() : Promise.resolve([]),
     needReceipts ? getReceipts() : Promise.resolve([]),
@@ -152,6 +156,7 @@ export default async function AdminWarehousePage({
       ? getTransports({ limit: initialTab === "reports" ? 1000 : 200 })
       : Promise.resolve([]),
     needCashCollections ? getCashCollections() : Promise.resolve([]),
+    needConsignmentManual ? getConsignmentManualSales() : Promise.resolve([]),
   ]);
 
   const receipts =
@@ -313,6 +318,7 @@ export default async function AdminWarehousePage({
       pendingDeals={pendingDeals}
       drivers={drivers}
       cashCollections={cashCollections}
+      consignmentManual={consignmentManual}
       companyPhone={settings.phone || undefined}
       companyAddress={settings.address || undefined}
     />

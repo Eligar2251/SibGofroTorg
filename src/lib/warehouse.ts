@@ -33,6 +33,7 @@ import type {
   CashKind,
   CashCollectionItem,
   CashCollectionExpense,
+  ConsignmentManualSale,
 } from "./warehouse-shared";
 import {
   includedVat,
@@ -203,6 +204,34 @@ function mapReceiptRow(row: any): WarehouseReceipt {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
+}
+
+function mapConsignmentManualRow(row: any): ConsignmentManualSale {
+  return {
+    id: row.id,
+    receiptId: row.receipt_id,
+    productId: row.product_id,
+    productName: row.product_name || "",
+    quantity: Number(row.quantity || 0),
+    comment: row.comment ?? null,
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+/** Ручные продажи товара на реализации (все записи). */
+export async function getConsignmentManualSales(): Promise<ConsignmentManualSale[]> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("consignment_manual_sales")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) {
+    // Таблица появляется после миграции — до её применения считаем
+    // ручных продаж пустыми, а не роняем страницу учёта.
+    if (String(error.message).includes("does not exist")) return [];
+    throw error;
+  }
+  return (data || []).map(mapConsignmentManualRow);
 }
 
 function mapDealRow(row: any): CustomerDeal {

@@ -51,6 +51,17 @@ export interface Counterparty extends CounterpartyDetails {
 
 export type ReceiptStatus = "draft" | "posted";
 
+/** Ручная продажа товара на реализации (плюс к автоподсчёту по отгрузкам). */
+export interface ConsignmentManualSale {
+  id: string;
+  receiptId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  comment?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface WarehouseReceipt extends CounterpartyDetails {
   id: string;
   number: number;

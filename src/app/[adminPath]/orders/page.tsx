@@ -3,6 +3,7 @@ import { getOrders, getWastepaperRequests } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
+import { OrdersSortControl, ORDER_SORT_OPTIONS, type OrderSortId } from "@/components/admin/OrdersSortControl";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { OrdersRealtime } from "@/components/admin/OrdersRealtime";
 
@@ -99,7 +100,7 @@ function firstParam(value: string | string[] | undefined): string {
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string | string[]; q?: string | string[] }>;
+  searchParams: Promise<{ status?: string | string[]; q?: string | string[]; sort?: string | string[] }>;
 }) {
   const params = await searchParams;
   const requestedStatus = firstParam(params.status);
@@ -110,6 +111,11 @@ export default async function AdminOrdersPage({
     : "active";
   const searchQuery = firstParam(params.q);
   const query = searchQuery.toLowerCase().trim();
+  // Сортировка списка (особенно полезна в архиве «Проведённые»).
+  const requestedSort = firstParam(params.sort);
+  const activeSort: OrderSortId = ORDER_SORT_OPTIONS.some((o) => o.value === requestedSort)
+    ? (requestedSort as OrderSortId)
+    : "date_desc";
 
   const [siteOrders, wastepaperRequests] = await Promise.all([
     getOrders({ status: activeFilter, limit: 200 }),
@@ -135,10 +141,25 @@ export default async function AdminOrdersPage({
         itemText.toLowerCase().includes(query)
       );
     })
-    .sort((a: any, b: any) => createdMs(b.createdAt) - createdMs(a.createdAt));
+    .sort((a: any, b: any) => {
+      switch (activeSort) {
+        case "date_asc":
+          return createdMs(a.createdAt) - createdMs(b.createdAt);
+        case "sum_desc":
+          return (Number(b.totalSum) || 0) - (Number(a.totalSum) || 0);
+        case "sum_asc":
+          return (Number(a.totalSum) || 0) - (Number(b.totalSum) || 0);
+        case "name_asc":
+          return String(a.customerName || "").localeCompare(String(b.customerName || ""), "ru");
+        case "date_desc":
+        default:
+          return createdMs(b.createdAt) - createdMs(a.createdAt);
+      }
+    });
 
   const hrefBase = `/${ADMIN_PATH}/orders`;
   const qSuffix = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
+  const sortSuffix = activeSort !== "date_desc" ? `&sort=${activeSort}` : "";
 
   return (
     <div>
@@ -157,6 +178,7 @@ export default async function AdminOrdersPage({
         <div style={{ flex: 1, minWidth: 260 }}>
           <form method="GET" action={hrefBase} style={{ display: "flex", gap: 8 }}>
             <input type="hidden" name="status" defaultValue={activeFilter} />
+            {activeSort !== "date_desc" && <input type="hidden" name="sort" defaultValue={activeSort} />}
             <input
               type="text"
               name="q"
@@ -166,19 +188,20 @@ export default async function AdminOrdersPage({
             />
             <button type="submit" className="admin-btn admin-btn--navy">Найти</button>
             {searchQuery && (
-              <Link href={`${hrefBase}?status=${activeFilter}`} className="admin-btn admin-btn--ghost" prefetch={false}>
+              <Link href={`${hrefBase}?status=${activeFilter}${sortSuffix}`} className="admin-btn admin-btn--ghost" prefetch={false}>
                 Сбросить
               </Link>
             )}
           </form>
         </div>
+        <OrdersSortControl basePath={hrefBase} status={activeFilter} q={searchQuery} sort={activeSort} />
       </div>
 
       <div className="admin-filters">
         {filterOptions.map((opt) => (
           <Link
             key={opt.value}
-            href={`${hrefBase}?status=${opt.value}${qSuffix}`}
+            href={`${hrefBase}?status=${opt.value}${qSuffix}${sortSuffix}`}
             className={`admin-filter${activeFilter === opt.value ? " admin-filter--active" : ""}`}
             prefetch={false}
           >

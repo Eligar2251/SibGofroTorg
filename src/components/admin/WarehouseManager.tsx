@@ -58,6 +58,7 @@ import {
   isDebtSalaryComment,
   stripSalaryMetaTags,
   getWarehouseBusinessDate,
+  type ConsignmentManualSale,
 } from "@/lib/warehouse-shared";
 import { ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
 import { DealForm, DealActions } from "@/components/admin/WarehouseDeals";
@@ -233,6 +234,7 @@ interface WarehouseManagerProps {
   pendingDeals?: TransportDeal[];
   drivers?: DriverOption[];
   cashCollections?: CashCollection[];
+  consignmentManual?: ConsignmentManualSale[];
   companyPhone?: string;
   companyAddress?: string;
 }
@@ -263,6 +265,7 @@ export function WarehouseManager({
   pendingDeals = [],
   drivers = [],
   cashCollections = [],
+  consignmentManual = [],
   companyPhone,
   companyAddress,
 }: WarehouseManagerProps) {
@@ -1980,7 +1983,7 @@ export function WarehouseManager({
           </div>
 
           {suppliesSub === "consignment" && (
-            <div className="admin-card" style={{ marginTop: 12 }}><div className="admin-card__head"><h3 className="admin-card__title">Товар на реализации</h3></div><div className="admin-card__pad"><ConsignmentTracker receipts={receipts} deals={deals} payments={payments} /></div></div>
+            <div className="admin-card" style={{ marginTop: 12 }}><div className="admin-card__head"><h3 className="admin-card__title">Товар на реализации</h3></div><div className="admin-card__pad"><ConsignmentTracker receipts={receipts} deals={deals} payments={payments} manualSales={consignmentManual} /></div></div>
           )}
 
           {suppliesSub === "receipts" && (
