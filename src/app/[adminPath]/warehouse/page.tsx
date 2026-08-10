@@ -113,7 +113,10 @@ export default async function AdminWarehousePage({
   const needReceipts = ["supplies", "receipts", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
   // Ручные продажи реестра «Товар на реализации» (лёгкий запрос).
   const needConsignmentManual = needReceipts;
-  const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
+  // "receipts" обязателен: на вкладке «Поставки» работает реестр
+  // «Товар на реализации», который считает продажи по заказам учёта.
+  // Без заказов реестр всегда показывал нули.
+  const needDeals = ["deals", "bank", "counterparties", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
   // Платежи нужны и на актуальной вкладке `receipts`: по ним карточки
   // активных и архивных поступлений получают пометки «Оплачен/Оплачено».
   // Старый ключ `supplies` оставляем для совместимости со ссылками.
@@ -171,6 +174,7 @@ export default async function AdminWarehousePage({
     sku: p.sku,
     price: p.price,
     priceWholesale: p.priceWholesale,
+    purchasePrice: p.purchasePrice ?? null,
     stockQty: p.stockQty,
   }));
 

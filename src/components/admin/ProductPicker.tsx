@@ -16,6 +16,8 @@ export interface PickerProduct {
   price: number | null;
   /** Оптовая цена — подсказка для закупки */
   priceWholesale: number | null;
+  /** Закупочная цена товара (если задана в карточке) */
+  purchasePrice?: number | null;
   stockQty: number;
 }
 

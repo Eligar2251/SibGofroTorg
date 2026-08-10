@@ -98,6 +98,15 @@ export function ConsignmentTracker({
       const key = `${lot.receipt.id}:${lot.item.productId}`;
       const manual = manualMap.get(key) || 0;
       const totalSold = Math.min(lot.supplied, lot.sold + manual);
+      // Закупочная цена за штуку. Для старых поставок, где price не
+      // сохранился, восстанавливаем её из суммы строки.
+      const unitPrice =
+        Number(lot.item.price) > 0
+          ? Number(lot.item.price)
+          : lot.supplied > 0
+            ? (Number(lot.item.lineTotal) || 0) / lot.supplied
+            : 0;
+      const lotTotal = Number(lot.item.lineTotal) || unitPrice * lot.supplied;
       const receiptPayments = payments
         .filter(
           (p) =>
@@ -107,17 +116,18 @@ export function ConsignmentTracker({
         )
         .reduce((s, p) => s + p.amount, 0);
       const receiptTotal = lot.receipt.total || 1;
-      const paid = receiptPayments * ((lot.item.lineTotal || lot.item.price * lot.supplied) / receiptTotal);
-      const soldValue = totalSold * lot.item.price;
+      const paid = receiptPayments * (lotTotal / receiptTotal);
+      const soldValue = totalSold * unitPrice;
       return {
         ...lot,
         key,
         manual,
         totalSold,
+        unitPrice,
         paid,
         soldValue,
         due: Math.max(0, soldValue - paid),
-        debt: Math.max(0, (lot.item.lineTotal || lot.item.price * lot.supplied) - paid),
+        debt: Math.max(0, lotTotal - paid),
       };
     });
   }, [receipts, deals, payments, manualMap]);
@@ -192,7 +202,9 @@ export function ConsignmentTracker({
       <p className="admin-hint" style={{ marginBottom: 10 }}>
         Продажи попадают сюда автоматически после отгрузки заказа учёта
         (включая частичные отгрузки). Если что-то продано вне заказов —
-        впишите количество вручную в колонке «Вручную».
+        впишите количество вручную в колонке «Вручную». Все суммы считаются
+        по закупочной цене поставки — она указана в строке товара
+        («закуп … ₽/шт»); проверить или изменить её можно в самой поставке.
       </p>
       <div className="admin-table-wrap">
         <table className="admin-table">
@@ -223,7 +235,13 @@ export function ConsignmentTracker({
                     <br />
                     <small>ПО-{r.receipt.number}</small>
                   </td>
-                  <td>{r.item.name}</td>
+                  <td>
+                    {r.item.name}
+                    <br />
+                    <small style={{ color: "var(--adm-ink-muted)" }}>
+                      закуп: {money(r.unitPrice)}/шт
+                    </small>
+                  </td>
                   <td>{r.supplied}</td>
                   <td>{r.sold}</td>
                   <td>
