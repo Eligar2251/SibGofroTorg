@@ -21,10 +21,10 @@
 }
 
 /* ── Стандарт (крафт) — без переопределений, это :root ── */
-html[data-admin-theme="standard"] {}
+[data-admin-theme="standard"] {}
 
 /* ── Светлая — "Бумага" — воздушная, минимал, акцент Google Blue ── */
-html[data-admin-theme="light"] {
+[data-admin-theme="light"] {
   --adm-ink:        #1a1c1e;
   --adm-ink-soft:   #2e3133;
   --adm-ink-muted:  #5f6368;
@@ -50,20 +50,20 @@ html[data-admin-theme="light"] {
   --adm-sand:       #5f6368;
   --adm-sand-pale:  #f1f3f4;
 }
-html[data-admin-theme="light"] .admin-sidebar {
+[data-admin-theme="light"] .admin-sidebar {
   background: #202124;
   border-right-color: #1a73e8;
 }
-html[data-admin-theme="light"] .admin-mobile-bar {
+[data-admin-theme="light"] .admin-mobile-bar {
   background: #202124;
   border-bottom-color: #1a73e8;
 }
-html[data-admin-theme="light"] .bank-hero {
+[data-admin-theme="light"] .bank-hero {
   background: linear-gradient(135deg, #202124 0%, #2d2e30 52%, #1e3a5a 100%);
 }
 
 /* ── Тёмная — "Ночь" — для работы вечером, бережёт глаза ── */
-html[data-admin-theme="dark"] {
+[data-admin-theme="dark"] {
   --adm-ink:        #e8eaed;
   --adm-ink-soft:   #dadce0;
   --adm-ink-muted:  #9aa0a6;
@@ -89,40 +89,40 @@ html[data-admin-theme="dark"] {
   --adm-sand:       #9aa0a6;
   --adm-sand-pale:  #1f2328;
 }
-html[data-admin-theme="dark"] .admin-sidebar {
+[data-admin-theme="dark"] .admin-sidebar {
   background: #0b0e14;
   border-right-color: #3c4043;
 }
-html[data-admin-theme="dark"] .admin-mobile-bar {
+[data-admin-theme="dark"] .admin-mobile-bar {
   background: #0b0e14;
   border-bottom-color: #3c4043;
 }
-html[data-admin-theme="dark"] .admin-shell {
+[data-admin-theme="dark"] .admin-shell {
   background: #0f1115;
 }
-html[data-admin-theme="dark"] .admin-main {
+[data-admin-theme="dark"] .admin-main {
   background: transparent;
 }
-html[data-admin-theme="dark"] .bank-hero {
+[data-admin-theme="dark"] .bank-hero {
   background: linear-gradient(135deg, #0b0e14 0%, #1a1d23 52%, #1e2a3a 100%);
   border-color: rgba(138,180,248,0.22);
 }
-html[data-admin-theme="dark"] .admin-table thead tr {
+[data-admin-theme="dark"] .admin-table thead tr {
   background: #1f2328;
 }
-html[data-admin-theme="dark"] .admin-input,
-html[data-admin-theme="dark"] .admin-select,
-html[data-admin-theme="dark"] .admin-textarea {
+[data-admin-theme="dark"] .admin-input,
+[data-admin-theme="dark"] .admin-select,
+[data-admin-theme="dark"] .admin-textarea {
   background: #1f2328;
   color: #e8eaed;
   border-color: #3c4043;
 }
-html[data-admin-theme="dark"] .admin-input::placeholder {
+[data-admin-theme="dark"] .admin-input::placeholder {
   color: #5f6368;
 }
 
 /* ── Лесная — "Тайга" — глубокие зелёные, тёплый крафт как мох ── */
-html[data-admin-theme="forest"] {
+[data-admin-theme="forest"] {
   --adm-ink:        #1b2a1e;
   --adm-ink-soft:   #2a3d2e;
   --adm-ink-muted:  #6b7c6e;
@@ -148,20 +148,20 @@ html[data-admin-theme="forest"] {
   --adm-sand:       #7a8a7e;
   --adm-sand-pale:  #f0f2ef;
 }
-html[data-admin-theme="forest"] .admin-sidebar {
+[data-admin-theme="forest"] .admin-sidebar {
   background: #1b2a1e;
   border-right-color: #6a8d73;
 }
-html[data-admin-theme="forest"] .admin-mobile-bar {
+[data-admin-theme="forest"] .admin-mobile-bar {
   background: #1b2a1e;
   border-bottom-color: #6a8d73;
 }
-html[data-admin-theme="forest"] .bank-hero {
+[data-admin-theme="forest"] .bank-hero {
   background: linear-gradient(135deg, #1b2a1e 0%, #2a3d2e 52%, #2d4a3a 100%);
 }
 
 /* ── Морская — "Байкал" — холодные синие, лёд и глубина ── */
-html[data-admin-theme="ocean"] {
+[data-admin-theme="ocean"] {
   --adm-ink:        #0f2040;
   --adm-ink-soft:   #1a365d;
   --adm-ink-muted:  #5a7aa0;
@@ -187,15 +187,15 @@ html[data-admin-theme="ocean"] {
   --adm-sand:       #64748b;
   --adm-sand-pale:  #f1f5f9;
 }
-html[data-admin-theme="ocean"] .admin-sidebar {
+[data-admin-theme="ocean"] .admin-sidebar {
   background: #0f2040;
   border-right-color: #0ea5e9;
 }
-html[data-admin-theme="ocean"] .admin-mobile-bar {
+[data-admin-theme="ocean"] .admin-mobile-bar {
   background: #0f2040;
   border-bottom-color: #0ea5e9;
 }
-html[data-admin-theme="ocean"] .bank-hero {
+[data-admin-theme="ocean"] .bank-hero {
   background: linear-gradient(135deg, #0f2040 0%, #1a365d 52%, #0c4a6e 100%);
 }
 
@@ -257,7 +257,7 @@ html[data-admin-theme="ocean"] .bank-hero {
   border-color: var(--adm-ink);
   box-shadow: 0 1px 4px rgba(0,0,0,0.15);
 }
-html[data-admin-theme="dark"] .admin-theme-btn--active {
+[data-admin-theme="dark"] .admin-theme-btn--active {
   background: #e8eaed;
   color: #0f1115;
   border-color: #e8eaed;

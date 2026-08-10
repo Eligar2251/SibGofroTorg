@@ -109,7 +109,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="ru" data-scroll-behavior="smooth">
+    <html lang="ru" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         {/* Ранние подключения источников (экономия на handshake/TLS). */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />

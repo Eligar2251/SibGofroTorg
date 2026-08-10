@@ -15,11 +15,14 @@ export const ADMIN_THEMES: { id: AdminThemeId; label: string; desc: string; colo
 const STORAGE_KEY = "adm-theme";
 
 function applyTheme(id: AdminThemeId) {
-  const root = document.documentElement;
-  root.setAttribute("data-admin-theme", id);
-  // также на data-admin контейнер для скоупа, если он есть
-  const admin = document.querySelector("[data-admin=\"true\"]");
-  if (admin) admin.setAttribute("data-admin-theme", id);
+  const admin = document.querySelector('[data-admin="true"]') as HTMLElement | null;
+  if (admin) {
+    admin.setAttribute("data-admin-theme", id);
+    // fallback на html для глобальности, но не вызывает hydration mismatch т.к. только внутри admin
+    document.documentElement.setAttribute("data-admin-theme", id);
+  } else {
+    document.documentElement.setAttribute("data-admin-theme", id);
+  }
 }
 
 export function AdminThemeProvider({ children }: { children: React.ReactNode }) {
