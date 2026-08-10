@@ -33,7 +33,8 @@ export async function POST() {
   }
   try {
     const result = await sendTelegramNotification(
-      "✅ <b>Тест уведомления</b>\nЕсли вы видите это сообщение — Telegram настроен верно."
+      "✅ <b>Тест уведомления</b>\nЕсли вы видите это сообщение — Telegram настроен верно.",
+      "Тест Telegram (настройки)"
     );
     if (!result.ok) {
       // К ошибке прикладываем снимок конфигурации — видно, откуда бот

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
 <b>Комментарий:</b> ${comment || "—"}`;
 
-    await sendAdminNotifications(message);
+    await sendAdminNotifications(message, "Заявка на макулатуру");
 
     return NextResponse.json({ success: true, id: data.id });
   } catch (error) {

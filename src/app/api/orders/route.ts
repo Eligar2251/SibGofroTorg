@@ -378,7 +378,10 @@ async function sendNotifications(order: {
     message += `<b>Комментарий:</b> ${escapeHtml(order.comment)}\n`;
   }
 
-  await sendAdminNotifications(message);
+  await sendAdminNotifications(
+    message,
+    `${isOrder ? "Заказ" : "Заявка"} #${order.id.slice(0, 6)}`
+  );
 }
 
 function escapeHtml(s: string): string {

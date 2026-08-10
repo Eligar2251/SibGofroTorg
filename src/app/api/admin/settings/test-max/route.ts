@@ -41,7 +41,7 @@ export async function POST() {
   try {
     const result = await sendMaxNotification(
       "Тест уведомления SibGofroTorg: если вы видите это сообщение — MAX настроен верно."
-    );
+    , "Тест MAX (настройки)");
     if (!result.ok) {
       return NextResponse.json(
         { ok: false, error: result.error, detail: result.detail },
