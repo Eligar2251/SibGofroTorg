@@ -10711,8 +10711,9 @@ body:has(.admin-modal-overlay) {
 }
 .boxlabel-sheet--preview .boxlabel {
   background: #fff;
-  border: 2px solid #000;
-  border-radius: 2mm;
+  border: 1px solid #ddd;
+  border-bottom: 2px solid #000;
+  border-radius: 0;
   height: 60mm;
   display: flex;
   align-items: stretch;
@@ -10733,7 +10734,7 @@ body:has(.admin-modal-overlay) {
   min-width: 0;
 }
 .boxlabel-sheet--preview .boxlabel__vsep {
-  width: 2px;
+  width: 1px;
   background: #000;
   flex-shrink: 0;
 }
@@ -10766,7 +10767,7 @@ body:has(.admin-modal-overlay) {
   gap: 2mm;
 }
 .boxlabel-sheet--preview .boxlabel__bc {
-  height: 14mm;
+  height: 22mm;
   width: auto;
   max-width: 100%;
   object-fit: contain;
@@ -10819,8 +10820,9 @@ body:has(.admin-modal-overlay) {
     align-items: stretch;
     color: #000;
     background: #fff !important;
-    border: 2px solid #000;
-    border-radius: 2mm;
+    border: none;
+    border-bottom: 1px solid #000;
+    border-radius: 0;
     overflow: hidden;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
@@ -10847,7 +10849,7 @@ body:has(.admin-modal-overlay) {
   }
 
   body.boxlabel-mode .boxlabel__vsep {
-    width: 2px;
+    width: 1px;
     background: #000;
     flex-shrink: 0;
   }
@@ -10887,7 +10889,7 @@ body:has(.admin-modal-overlay) {
   }
 
   body.boxlabel-mode .boxlabel__bc {
-    height: 16mm;
+    height: 25mm;
     width: auto;
     max-width: 100%;
     object-fit: contain;

@@ -278,7 +278,7 @@ export function BoxLabelsClient({ products, categories }: Props) {
                 <div className="boxlabel__vsep" />
                 <div className="boxlabel__cell boxlabel__code">
                   <img
-                    src={`/api/admin/qr/barcode/${p.id}?format=svg&height=20`}
+                    src={`/api/admin/qr/barcode/${p.id}?format=svg&height=35`}
                     alt={`Штрихкод ${p.barcode}`}
                     className="boxlabel__bc"
                   />

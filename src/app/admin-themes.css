@@ -214,6 +214,23 @@
     background: #fff !important;
     color: #000 !important;
   }
+
+  /* Скрываем элементы навигации и управления при печати */
+  .admin-sidebar,
+  .admin-sidebar-handle,
+  .admin-mobile-bar,
+  .admin-notifications,
+  .no-print,
+  #admin-sidebar {
+    display: none !important;
+  }
+  
+  /* Обнуляем отступы у контента при печати */
+  .admin-content {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+  }
 }
 
 /* ── Селектор темы — компактный ── */
