@@ -602,3 +602,41 @@ not-used-selector-anyway {
     grid-template-columns: 1fr !important; /* На средних экранах одна колонка удобнее для предотвращения сжатия */
   }
 }
+
+/* ── Выделение правой кнопкой в Банке ( Counterparties & Payments ) ── */
+
+/* 1. Контрагенты (Покупатели) - Деликатная подсветка цветом */
+[data-admin="true"] .bank-due__group:first-of-type .bank-due__row--selected {
+  background: var(--adm-steel-pale) !important;
+  border-left: 4px solid var(--adm-steel) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 2. Контрагенты (Поставщики) - Деликатная подсветка цветом */
+[data-admin="true"] .bank-due__group:last-of-type .bank-due__row--selected {
+  background: var(--adm-rust-pale) !important;
+  border-left: 4px solid var(--adm-rust) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 3. Платежи (Приход) - Деликатная подсветка цветом */
+[data-admin="true"] .bank-pay--selected.bank-pay--incoming {
+  background: var(--adm-pine-pale) !important;
+  border-left: 4px solid var(--adm-pine) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 4. Платежи (Расход) - Деликатная подсветка цветом */
+[data-admin="true"] .bank-pay--selected.bank-pay--outgoing {
+  background: var(--adm-rust-pale) !important;
+  border-left: 4px solid var(--adm-rust) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}

@@ -3143,7 +3143,6 @@ export function WarehouseManager({
                           toggleSkipParty(c);
                         }
                       }}
-                      style={isSel ? { outline: "2px solid var(--adm-steel)", outlineOffset: -2, background: "rgba(63,111,163,0.12)" } : undefined}
                     >
                       <div className="bank-due__name">
                         {c.name}
@@ -3190,7 +3189,6 @@ export function WarehouseManager({
                           toggleSkipParty(c);
                         }
                       }}
-                      style={isSel ? { outline: "2px solid var(--adm-rust)", outlineOffset: -2, background: "rgba(239,143,118,0.12)" } : undefined}
                     >
                       <div className="bank-due__name">
                         {c.name}
@@ -4214,7 +4212,7 @@ export function WarehouseManager({
                   <div
                     key={p.id}
                     id={`payment-${p.id}`}
-                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}${isSelected ? " bank-pay--selected" : ""}`}
+                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}${isSelected ? " bank-pay--selected" : ""} ${p.direction === "incoming" ? "bank-pay--incoming" : "bank-pay--outgoing"}`}
                     role={p.entryKind === "payment" ? "button" : undefined}
                     tabIndex={p.entryKind === "payment" ? 0 : undefined}
                     onClick={(event) => {
@@ -4227,7 +4225,6 @@ export function WarehouseManager({
                       event.preventDefault();
                       toggleSelectedPayment(p.id);
                     }}
-                    style={isSelected ? { outline: p.direction === "incoming" ? "2px solid var(--adm-pine)" : "2px solid var(--adm-rust)", outlineOffset: -2, background: p.direction === "incoming" ? "rgba(125,209,129,0.12)" : "rgba(239,143,118,0.12)" } : undefined}
                     title={isPendingPayment ? (isSelected ? "ПКМ — снять выделение" : "ПКМ — выделить для прикидки (приход + / расход −)") : undefined}
                     onKeyDown={(event) => {
                       if (p.entryKind === "payment" && (event.key === "Enter" || event.key === " ")) {
