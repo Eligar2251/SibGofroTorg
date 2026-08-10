@@ -48,6 +48,16 @@
      перекрывает всё». */
   --adm-ink-deep:      #1a1a18;
   --adm-ink-deep-soft: #2e2e2a;
+  /* Сайдбар и мобильная панель: поверхность и тексты.
+     По умолчанию — тёмные; тема «Бумага» делает их светлыми. */
+  --adm-sidebar-bg:           var(--adm-ink-deep);
+  --adm-sidebar-line:         rgba(255,255,255,0.07);
+  --adm-sidebar-text:         rgba(255,255,255,0.45);
+  --adm-sidebar-text-hover:   rgba(255,255,255,0.85);
+  --adm-sidebar-text-active:  #ffffff;
+  --adm-sidebar-muted:        rgba(255,255,255,0.22);
+  --adm-sidebar-hover-bg:     rgba(255,255,255,0.06);
+  --adm-sidebar-active-bg:    rgba(200,134,10,0.14);
   /* on-accent — цвет текста на акцентном фоне (--adm-kraft).
      Подбирается под контраст в каждой теме отдельно. */
   --adm-on-accent:     #1a1a18;
@@ -330,10 +340,14 @@
   inset: 0 auto 0 0;
   z-index: 40;
   height: 100vh;
-  background: var(--adm-ink-deep);
+  background: var(--adm-sidebar-bg);
   border-right: 2px solid var(--adm-kraft);
   overflow: hidden;
-  transition: transform 0.22s ease, opacity 0.18s ease;
+  /* Раскрытие/скрытие: transform+opacity идут с ОДНОЙ кривой и
+     длительностью, что и margin-left у контента (ниже), — панель
+     и контент двигаются как одно целое, без рассинхрона. */
+  transition: transform 0.24s cubic-bezier(0.33, 1, 0.68, 1),
+              opacity 0.24s cubic-bezier(0.33, 1, 0.68, 1);
   will-change: transform;
 }
 
@@ -369,7 +383,7 @@
   align-items: flex-start;
   justify-content: center;
   gap: 5px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid var(--adm-sidebar-line);
   position: relative;
   flex-shrink: 0;
 }
@@ -385,9 +399,9 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.55);
+  border: 1px solid var(--adm-sidebar-line);
+  background: var(--adm-sidebar-hover-bg);
+  color: var(--adm-sidebar-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -445,7 +459,7 @@
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  color: rgba(255,255,255,0.22);
+  color: var(--adm-sidebar-muted);
   margin-top: 2px;
   font-weight: 500;
 }
@@ -458,7 +472,7 @@
   flex-direction: column;
   gap: 1px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.08) transparent;
+  scrollbar-color: var(--adm-sidebar-line) transparent;
 }
 
 /* Разделитель секций */
@@ -479,7 +493,7 @@
   border-radius: var(--adm-r-sm);
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255,255,255,0.45);
+  color: var(--adm-sidebar-text);
   text-decoration: none;
   transition: color 0.15s, background 0.15s;
   position: relative;
@@ -495,8 +509,8 @@
 }
 
 .admin-sidebar__link:hover {
-  color: #fff;
-  background: rgba(255,255,255,0.06);
+  color: var(--adm-sidebar-text-hover);
+  background: var(--adm-sidebar-hover-bg);
 }
 
 .admin-sidebar__link:hover svg {
@@ -505,8 +519,8 @@
 }
 
 .admin-sidebar__link--active {
-  color: #fff;
-  background: rgba(200,134,10,0.14);
+  color: var(--adm-sidebar-text-active);
+  background: var(--adm-sidebar-active-bg);
   font-weight: 600;
 }
 
@@ -528,7 +542,7 @@
 
 .admin-sidebar__footer {
   padding: 8px 10px 12px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid var(--adm-sidebar-line);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -543,7 +557,7 @@
   padding: 8px 10px;
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255,255,255,0.3);
+  color: var(--adm-sidebar-text);
   background: none;
   border: none;
   border-radius: var(--adm-r-sm);
@@ -557,8 +571,8 @@
 }
 
 .admin-sidebar__footer-link:hover {
-  color: rgba(255,255,255,0.7);
-  background: rgba(255,255,255,0.04);
+  color: var(--adm-sidebar-text-hover);
+  background: var(--adm-sidebar-hover-bg);
 }
 
 .admin-sidebar__logout:hover {
@@ -574,7 +588,7 @@
   left: 0;
   right: 0;
   z-index: 50;
-  background: var(--adm-ink-deep);
+  background: var(--adm-sidebar-bg);
   border-bottom: 2px solid var(--adm-kraft);
   padding: 0 16px;
   height: 56px;
@@ -594,7 +608,7 @@
   font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--adm-sidebar-text-active);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -621,7 +635,7 @@
   min-width: 0;
   height: 40px;
   padding: 0 4px;
-  color: rgba(255,255,255,0.48);
+  color: var(--adm-sidebar-text);
   border-radius: var(--adm-r-sm);
   transition: color 0.15s, background-color 0.15s;
   display: flex;
@@ -632,18 +646,18 @@
   flex-shrink: 0;
 }
 
+.admin-mobile-bar__link:hover,
+.admin-mobile-bar__link--active {
+  color: var(--adm-kraft-mid);
+  background: var(--adm-sidebar-hover-bg);
+}
+
 .admin-mobile-bar__link svg {
   display: block;
   width: 17px;
   height: 17px;
   max-width: 100%;
   flex: 0 0 auto;
-}
-
-.admin-mobile-bar__link:hover,
-.admin-mobile-bar__link--active {
-  color: var(--adm-kraft-mid);
-  background: rgba(255,255,255,0.08);
 }
 
 @media (max-width: 360px) {
@@ -669,7 +683,11 @@
 @media (min-width: 1024px) {
   .admin-content {
     margin-left: 240px;
-    transition: margin-left 0.22s ease;
+    /* Та же кривая и длительность, что у transform сайдбара, —
+       контент и панель раскрываются синхронно и плавно.
+       margin-right — для раскладки «сайдбар справа». */
+    transition: margin-left 0.24s cubic-bezier(0.33, 1, 0.68, 1),
+                margin-right 0.24s cubic-bezier(0.33, 1, 0.68, 1);
   }
 
   .admin-shell--sidebar-hidden .admin-content {

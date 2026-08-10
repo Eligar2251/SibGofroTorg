@@ -79,6 +79,27 @@
   --adm-on-steel:   #ffffff;
   --adm-placeholder: #80868b;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%235f6368' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: строгий Google-минимализм, почти без теней */
+  --adm-r: 8px;
+  --adm-r-sm: 6px;
+  --adm-r-lg: 12px;
+  --adm-sh-xs: 0 1px 2px rgba(60,64,67,0.08);
+  --adm-sh-sm: 0 1px 3px rgba(60,64,67,0.10);
+  --adm-sh-md: 0 4px 12px rgba(60,64,67,0.10);
+  --adm-sh-lg: 0 8px 24px rgba(60,64,67,0.12);
+  --adm-sh-up: 0 -1px 4px rgba(60,64,67,0.05);
+  /* Фишка темы: СВЕТЛЫЙ сайдбар вместо тёмного */
+  --adm-sidebar-bg:          #ffffff;
+  --adm-sidebar-line:        rgba(0,0,0,0.08);
+  --adm-sidebar-text:        rgba(26,28,30,0.55);
+  --adm-sidebar-text-hover:  rgba(26,28,30,0.90);
+  --adm-sidebar-text-active: #1a73e8;
+  --adm-sidebar-muted:       rgba(26,28,30,0.35);
+  --adm-sidebar-hover-bg:    rgba(26,115,232,0.06);
+  --adm-sidebar-active-bg:   rgba(26,115,232,0.10);
+}
+[data-admin-theme="light"] .admin-sidebar::before {
+  display: none;
 }
 [data-admin-theme="light"] .bank-hero {
   background: linear-gradient(135deg, #202124 0%, #2d2e30 52%, #1e3a5a 100%);
@@ -119,6 +140,15 @@
   --adm-on-steel:   #ffffff;
   --adm-placeholder: #7f8f81;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%236b7c6e' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: мягкая органика, крупные скругления */
+  --adm-r: 14px;
+  --adm-r-sm: 10px;
+  --adm-r-lg: 18px;
+  --adm-sh-xs: 0 1px 2px rgba(27,42,30,0.06);
+  --adm-sh-sm: 0 2px 10px rgba(27,42,30,0.08);
+  --adm-sh-md: 0 8px 26px rgba(27,42,30,0.10);
+  --adm-sh-lg: 0 14px 40px rgba(27,42,30,0.13);
+  --adm-sh-up: 0 -2px 8px rgba(27,42,30,0.04);
 }
 [data-admin-theme="forest"] .bank-hero {
   background: linear-gradient(135deg, #1b2a1e 0%, #2a3d2e 52%, #2d4a3a 100%);
@@ -159,6 +189,15 @@
   --adm-on-steel:   #ffffff;
   --adm-placeholder: #6d87a8;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%235a7aa0' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: льдистые скругления, холодные тени */
+  --adm-r: 12px;
+  --adm-r-sm: 8px;
+  --adm-r-lg: 16px;
+  --adm-sh-xs: 0 1px 2px rgba(15,32,64,0.06);
+  --adm-sh-sm: 0 2px 10px rgba(15,32,64,0.08);
+  --adm-sh-md: 0 8px 26px rgba(15,32,64,0.10);
+  --adm-sh-lg: 0 14px 40px rgba(15,32,64,0.13);
+  --adm-sh-up: 0 -2px 8px rgba(15,32,64,0.04);
 }
 [data-admin-theme="ocean"] .bank-hero {
   background: linear-gradient(135deg, #0f2040 0%, #1a365d 52%, #0c4a6e 100%);
@@ -199,6 +238,15 @@
   --adm-on-steel:   #ffffff;
   --adm-placeholder: #8f88a3;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%236f6787' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: воздушный — большие радиусы, сиреневатые тени */
+  --adm-r: 18px;
+  --adm-r-sm: 12px;
+  --adm-r-lg: 24px;
+  --adm-sh-xs: 0 1px 2px rgba(124,58,237,0.05);
+  --adm-sh-sm: 0 2px 10px rgba(124,58,237,0.07);
+  --adm-sh-md: 0 8px 26px rgba(124,58,237,0.09);
+  --adm-sh-lg: 0 14px 40px rgba(124,58,237,0.12);
+  --adm-sh-up: 0 -2px 8px rgba(124,58,237,0.04);
 }
 [data-admin-theme="lavender"] .bank-hero {
   background: linear-gradient(135deg, #2a2438 0%, #3d3552 52%, #4c1d95 100%);
@@ -239,6 +287,15 @@
   --adm-on-steel:   #ffffff;
   --adm-placeholder: #9c8b7d;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2385695c' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: тёплый закатный, средние скругления */
+  --adm-r: 12px;
+  --adm-r-sm: 8px;
+  --adm-r-lg: 16px;
+  --adm-sh-xs: 0 1px 2px rgba(51,35,28,0.06);
+  --adm-sh-sm: 0 2px 10px rgba(51,35,28,0.08);
+  --adm-sh-md: 0 8px 26px rgba(51,35,28,0.10);
+  --adm-sh-lg: 0 14px 40px rgba(51,35,28,0.13);
+  --adm-sh-up: 0 -2px 8px rgba(51,35,28,0.04);
 }
 [data-admin-theme="sunset"] .bank-hero {
   background: linear-gradient(135deg, #33231c 0%, #4a332a 52%, #7c2d12 100%);
@@ -279,6 +336,15 @@
   --adm-on-steel:   #ffffff;
   --adm-placeholder: #7a8f82;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%235d7a6b' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: свежий, аккуратные скругления */
+  --adm-r: 10px;
+  --adm-r-sm: 8px;
+  --adm-r-lg: 14px;
+  --adm-sh-xs: 0 1px 2px rgba(20,39,30,0.06);
+  --adm-sh-sm: 0 2px 10px rgba(20,39,30,0.08);
+  --adm-sh-md: 0 8px 26px rgba(20,39,30,0.10);
+  --adm-sh-lg: 0 14px 40px rgba(20,39,30,0.12);
+  --adm-sh-up: 0 -2px 8px rgba(20,39,30,0.04);
 }
 [data-admin-theme="mint"] .bank-hero {
   background: linear-gradient(135deg, #122b21 0%, #1d4032 52%, #065f46 100%);
@@ -323,6 +389,15 @@
   --adm-on-steel:   #0b1e36;
   --adm-placeholder: #6f757c;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239aa0a6' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: глубокие тени на тёмном */
+  --adm-r: 10px;
+  --adm-r-sm: 6px;
+  --adm-r-lg: 14px;
+  --adm-sh-xs: 0 1px 2px rgba(0,0,0,0.40);
+  --adm-sh-sm: 0 2px 8px rgba(0,0,0,0.45);
+  --adm-sh-md: 0 6px 24px rgba(0,0,0,0.50);
+  --adm-sh-lg: 0 12px 38px rgba(0,0,0,0.55);
+  --adm-sh-up: 0 -2px 8px rgba(0,0,0,0.35);
 }
 [data-admin-theme="dark"] .bank-hero {
   background: linear-gradient(135deg, #0b0e14 0%, #1a1d23 52%, #1e2a3a 100%);
@@ -364,6 +439,15 @@
   --adm-on-steel:   #061027;
   --adm-placeholder: #52525b;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: рубленые углы и неоновое свечение вместо теней */
+  --adm-r: 4px;
+  --adm-r-sm: 3px;
+  --adm-r-lg: 6px;
+  --adm-sh-xs: 0 0 0 1px rgba(16,185,129,0.06);
+  --adm-sh-sm: 0 0 14px rgba(16,185,129,0.08);
+  --adm-sh-md: 0 0 24px rgba(16,185,129,0.10);
+  --adm-sh-lg: 0 0 38px rgba(16,185,129,0.14);
+  --adm-sh-up: 0 0 10px rgba(16,185,129,0.06);
 }
 [data-admin-theme="superdark"] .bank-hero {
   background: linear-gradient(135deg, #000000 0%, #0d0d0d 52%, #041d13 100%);
@@ -405,6 +489,15 @@
   --adm-on-steel:   #0a1633;
   --adm-placeholder: #6b747c;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2399a2ab' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: индустриальный — острые углы, жёсткие тени-ступеньки */
+  --adm-r: 2px;
+  --adm-r-sm: 2px;
+  --adm-r-lg: 4px;
+  --adm-sh-xs: 0 1px 0 rgba(0,0,0,0.50);
+  --adm-sh-sm: 0 2px 0 rgba(0,0,0,0.45);
+  --adm-sh-md: 0 3px 0 rgba(0,0,0,0.40), 0 8px 20px rgba(0,0,0,0.35);
+  --adm-sh-lg: 0 4px 0 rgba(0,0,0,0.40), 0 14px 34px rgba(0,0,0,0.45);
+  --adm-sh-up: 0 -2px 0 rgba(0,0,0,0.35);
 }
 [data-admin-theme="graphite"] .bank-hero {
   background: linear-gradient(135deg, #0c0e10 0%, #1a1d21 52%, #2b1a0c 100%);
@@ -446,6 +539,15 @@
   --adm-on-steel:   #0c1a36;
   --adm-placeholder: #75605f;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23a8908f' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: роскошь — крупные скругления, глубокие тени */
+  --adm-r: 16px;
+  --adm-r-sm: 10px;
+  --adm-r-lg: 20px;
+  --adm-sh-xs: 0 1px 2px rgba(0,0,0,0.45);
+  --adm-sh-sm: 0 3px 12px rgba(0,0,0,0.50);
+  --adm-sh-md: 0 10px 30px rgba(0,0,0,0.55);
+  --adm-sh-lg: 0 18px 44px rgba(0,0,0,0.60);
+  --adm-sh-up: 0 -2px 10px rgba(0,0,0,0.40);
 }
 [data-admin-theme="ruby"] .bank-hero {
   background: linear-gradient(135deg, #0e0708 0%, #1e1113 52%, #4c0519 100%);
@@ -487,6 +589,15 @@
   --adm-on-steel:   #101c28;
   --adm-placeholder: #6f6252;
   --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23a3937f' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: тёплый, мягкие скругления, плотные тени */
+  --adm-r: 12px;
+  --adm-r-sm: 8px;
+  --adm-r-lg: 16px;
+  --adm-sh-xs: 0 1px 2px rgba(0,0,0,0.40);
+  --adm-sh-sm: 0 2px 10px rgba(0,0,0,0.45);
+  --adm-sh-md: 0 8px 26px rgba(0,0,0,0.50);
+  --adm-sh-lg: 0 14px 40px rgba(0,0,0,0.55);
+  --adm-sh-up: 0 -2px 8px rgba(0,0,0,0.35);
 }
 [data-admin-theme="coffee"] .bank-hero {
   background: linear-gradient(135deg, #0f0c0a 0%, #201913 52%, #3b2410 100%);
@@ -572,7 +683,9 @@
   }
 }
 
-/* ── Сайдбар сверху (Верхнее горизонтальное меню) ── */
+/* ── Сайдбар сверху (Верхнее горизонтальное меню) ──
+   Ровная шапка: логотип слева, меню по центру (переносится
+   аккуратными строками), справа — «на сайт» и «выйти». */
 @media (min-width: 1024px) {
   [data-admin-layout="sidebar-top"] .admin-shell {
     flex-direction: column;
@@ -580,17 +693,23 @@
   [data-admin-layout="sidebar-top"] .admin-sidebar {
     width: 100% !important;
     height: auto !important;
-    min-height: 70px;
     position: sticky !important;
     inset: 0 0 auto 0 !important;
+    display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    padding: 0 24px !important;
+    gap: 12px;
+    padding: 8px 18px !important;
     border-right: none !important;
     border-bottom: 2px solid var(--adm-kraft) !important;
     flex-shrink: 0 !important;
     overflow: visible !important;
+  }
+  /* Свёрнутая панель в верхней раскладке не прячется:
+     без неё остаётся пустая страница. */
+  [data-admin-layout="sidebar-top"] .admin-sidebar--hidden {
+    transform: none !important;
+    opacity: 1 !important;
   }
   [data-admin-layout="sidebar-top"] .admin-sidebar::before {
     display: none !important;
@@ -599,9 +718,16 @@
     border-bottom: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    gap: 16px !important;
-    height: auto !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-shrink: 0 !important;
   }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__logo-svg {
+    height: 26px !important;
+    width: auto !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__sub,
   [data-admin-layout="sidebar-top"] .admin-sidebar__toggle {
     display: none !important;
   }
@@ -609,19 +735,34 @@
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: wrap !important;
-    gap: 4px !important;
-    padding: 0 16px !important;
-    margin: 0 !important;
-    flex-grow: 1 !important;
+    align-items: center !important;
     justify-content: center !important;
+    gap: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
     overflow: visible !important;
+    scrollbar-width: none;
   }
   [data-admin-layout="sidebar-top"] .admin-sidebar__link {
-    padding: 8px 12px !important;
+    padding: 7px 10px !important;
     font-size: 12px !important;
-    border-radius: 6px !important;
+    border-radius: var(--adm-r-sm) !important;
     margin: 0 !important;
     white-space: nowrap !important;
+    flex: 0 0 auto !important;
+  }
+  /* Активная ссылка в горизонтальном меню — полоска снизу,
+     а не слева (так ровнее). */
+  [data-admin-layout="sidebar-top"] .admin-sidebar__link--active::before {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 1px;
+    width: auto;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
   }
   [data-admin-layout="sidebar-top"] .admin-sidebar__footer {
     display: flex !important;
@@ -630,8 +771,16 @@
     border-top: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    gap: 16px !important;
+    gap: 2px !important;
     width: auto !important;
+    flex-shrink: 0 !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__footer-link,
+  [data-admin-layout="sidebar-top"] .admin-sidebar__logout {
+    width: auto !important;
+    padding: 7px 8px !important;
+    justify-content: center;
+    white-space: nowrap;
   }
   [data-admin-layout="sidebar-top"] .admin-content {
     margin-left: 0 !important;
@@ -644,50 +793,75 @@
   }
 }
 
-/* ── Компактный сайдбар: только иконки, максимум места ── */
+/* ── Компактный сайдбар: только иконки, максимум места ──
+   Подписи прячутся (текст обёрнут в .admin-sidebar__label),
+   широкий логотип заменяется монограммой «С», кнопка
+   сворачивания встаёт под монограмму. Ничего не обрезается. */
 @media (min-width: 1024px) {
   [data-admin-layout="compact"] .admin-sidebar {
-    width: 72px;
+    width: 76px;
   }
   [data-admin-layout="compact"] .admin-content {
-    margin-left: 72px !important;
+    margin-left: 76px !important;
   }
   [data-admin-layout="compact"] .admin-shell--sidebar-hidden .admin-content {
     margin-left: 0 !important;
   }
-  /* Подписи скрываем — остаются только иконки (текст обернут
-     в .admin-sidebar__label, см. AdminShell). */
   [data-admin-layout="compact"] .admin-sidebar__label,
   [data-admin-layout="compact"] .admin-sidebar__sub {
-    display: none;
+    display: none !important;
+  }
+  /* Горизонтальный логотип (знак + текст) в 76px не помещается —
+     вместо него аккуратная монограмма в фирменном цвете. */
+  [data-admin-layout="compact"] .admin-sidebar__logo-svg {
+    display: none !important;
+  }
+  [data-admin-layout="compact"] .admin-sidebar__brand::before {
+    content: 'С';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--adm-r-sm);
+    background: var(--adm-kraft);
+    color: var(--adm-on-accent);
+    font-family: var(--adm-font-head);
+    font-weight: 700;
+    font-size: 20px;
+    flex-shrink: 0;
   }
   [data-admin-layout="compact"] .admin-sidebar__brand {
-    padding: 12px 8px 10px;
-    align-items: center;
+    padding: 12px 8px 10px !important;
+    align-items: center !important;
+    gap: 8px !important;
   }
+  /* Кнопка сворачивания — обычным элементом под монограммой,
+     чтобы не наезжала на неё. */
   [data-admin-layout="compact"] .admin-sidebar__toggle {
-    top: 6px;
-    right: 4px;
-    width: 22px;
-    height: 22px;
+    position: static !important;
+    width: 26px;
+    height: 26px;
   }
   [data-admin-layout="compact"] .admin-sidebar__nav {
-    padding: 10px 6px;
-    gap: 3px;
+    padding: 10px 8px !important;
+    gap: 4px !important;
   }
   [data-admin-layout="compact"] .admin-sidebar__link {
-    justify-content: center;
-    padding: 10px 0;
-    gap: 0;
+    justify-content: center !important;
+    padding: 10px 0 !important;
+    gap: 0 !important;
   }
   [data-admin-layout="compact"] .admin-sidebar__footer {
-    padding: 8px 6px 10px;
+    padding: 8px 8px 10px !important;
+    align-items: center;
   }
   [data-admin-layout="compact"] .admin-sidebar__footer-link,
   [data-admin-layout="compact"] .admin-sidebar__logout {
-    justify-content: center;
-    padding: 8px 0;
-    gap: 0;
+    justify-content: center !important;
+    padding: 9px 0 !important;
+    gap: 0 !important;
+    width: 40px;
   }
 }
 
@@ -932,7 +1106,7 @@
 /* Сайдбар и мобильная панель — тёмное стекло поверх контента */
 [data-admin-glass="on"] .admin-sidebar,
 [data-admin-glass="on"] .admin-mobile-bar {
-  background: color-mix(in srgb, var(--adm-ink-deep) 82%, transparent);
+  background: color-mix(in srgb, var(--adm-sidebar-bg) 82%, transparent);
   -webkit-backdrop-filter: blur(12px) saturate(1.1);
   backdrop-filter: blur(12px) saturate(1.1);
 }
