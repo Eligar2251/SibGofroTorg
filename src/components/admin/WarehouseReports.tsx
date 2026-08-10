@@ -953,7 +953,7 @@ export function WarehouseReports({
         )}
 
         {filters.kind === "product-sales" && (
-          <ProductSalesPopularity deals={deals} receipts={receipts} from={filters.from} to={filters.to} />
+          <ProductSalesPopularity deals={deals} receipts={receipts} stock={stock} from={filters.from} to={filters.to} />
         )}
 
         {filters.kind === "stock" && (

@@ -32,6 +32,7 @@ import {
   BarChart3,
   Lock,
   LockOpen,
+  Calculator,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -505,6 +506,33 @@ export function WarehouseManager({
     });
   }
 
+  // ——— Правый клик: выделение ожидающих платежей/контрагентов для быстрой прикидки ———
+  // Левый клик остаётся «вычеркиванием» (skippedParties), правый — выделение.
+  // Выделенные суммы показываются отдельным блоком «Выбрано», где приход + , расход −.
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState<Set<string>>(new Set());
+  const [selectedPartyKeys, setSelectedPartyKeys] = useState<Set<string>>(new Set());
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [calcExpression, setCalcExpression] = useState("");
+  const [calcResult, setCalcResult] = useState<string>("");
+
+  function toggleSelectedParty(c: { type: "customer" | "supplier"; name: string }) {
+    const key = partyKey(c.type, c.name);
+    setSelectedPartyKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function toggleSelectedPayment(paymentId: string) {
+    setSelectedPaymentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(paymentId)) next.delete(paymentId);
+      else next.add(paymentId);
+      return next;
+    });
+  }
+
   // Платежи для итогов («Должны нам / Мы должны», прогноз): ожидающие
   // платежи пропущенных контрагентов не учитываются. Проведённые
   // платежи (фактический баланс) не трогаем никогда.
@@ -576,6 +604,9 @@ export function WarehouseManager({
 
   // --- Helper to get purchase price for any product ---
   const getProductPurchasePrice = (productId: string) => {
+    // 0. Check product's own purchasePrice (set via card or report)
+    const prod = (stock as any[]).find((p: any) => p.id === productId);
+    if (prod && prod.purchasePrice != null && prod.purchasePrice > 0) return prod.purchasePrice;
     // 1. Check counterparties supplierPrices
     for (const cp of counterpartyOptions) {
       if (cp.supplierPrices && cp.supplierPrices[productId] !== undefined) {
@@ -699,6 +730,25 @@ export function WarehouseManager({
     () => allCounterparties.filter((c) => c.balance > 0.009),
     [allCounterparties]
   );
+
+  const selectedSum = useMemo(() => {
+    let sum = 0;
+    let count = 0;
+    for (const key of selectedPartyKeys) {
+      const found = allCounterparties.find((c) => partyKey(c.type as any, c.name) === key) || counterpartiesWithDebt.find((c) => partyKey(c.type as any, c.name) === key);
+      if (found) {
+        sum += found.type === "customer" ? found.balance : -found.balance;
+        count++;
+      }
+    }
+    for (const pid of selectedPaymentIds) {
+      const p = payments.find((x) => x.id === pid);
+      if (!p) continue;
+      sum += p.direction === "incoming" ? p.amount : -p.amount;
+      count++;
+    }
+    return { sum, count };
+  }, [selectedPartyKeys, selectedPaymentIds, counterpartiesWithDebt, allCounterparties, payments]);
 
   // Непроведённые исходящие платежи поставщикам показываем только как
   // срочное напоминание, когда они связаны с уже отпущенным заказом.
@@ -2853,9 +2903,19 @@ export function WarehouseManager({
                 <div className="bank-hero__label">
                   <CreditCard size={14} /> Безналичный расчет
                 </div>
-                <div className="bank-hero__value" style={{ color: '#fff' }}>
+                <div className="bank-hero__value" style={{ color: '#fff', display: "inline-flex", alignItems: "center", gap: 8 }}>
                   {fmt(bankSummary.bankBalance)} ₽
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost"
+                    style={{ padding: "4px 6px", minWidth: 0, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff" }}
+                    title="Калькулятор счёта — быстро прикинуть операции относительно расчётного счёта"
+                    onClick={() => setShowCalculator(true)}
+                  >
+                    <Calculator size={14} />
+                  </button>
                 </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", marginTop: 4 }}>ПКМ по ожидающим — выделение для прикидки</div>
               </div>
               <div>
                 <div className="bank-hero__label">
@@ -3064,22 +3124,26 @@ export function WarehouseManager({
                   .filter((c) => c.type === "customer")
                   .map((c) => {
                     const skipped = skippedParties.has(partyKey("customer", c.name));
+                    const selKey = partyKey("customer", c.name);
+                    const isSel = selectedPartyKeys.has(selKey);
                     return (
                     <div
                       key={`c-${c.name}`}
-                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}`}
+                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}${isSel ? " bank-due__row--selected" : ""}`}
                       role="button"
                       tabIndex={0}
                       title={skipped
-                        ? "Нажмите, чтобы вернуть контрагента в расчёт"
-                        : "Нажмите, чтобы не считать контрагента в «Должны нам» (быстрая прикидка)"}
+                        ? "ЛКМ — вернуть в расчёт · ПКМ — выделить для прикидки"
+                        : "ЛКМ — не считать (вычеркнуть) · ПКМ — выделить для прикидки (приход +)"}
                       onClick={() => toggleSkipParty(c)}
+                      onContextMenu={(e) => { e.preventDefault(); toggleSelectedParty({ type: "customer", name: c.name }); }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           toggleSkipParty(c);
                         }
                       }}
+                      style={isSel ? { outline: "2px solid var(--adm-steel)", outlineOffset: -2, background: "rgba(63,111,163,0.12)" } : undefined}
                     >
                       <div className="bank-due__name">
                         {c.name}
@@ -3107,22 +3171,26 @@ export function WarehouseManager({
                   .filter((c) => c.type === "supplier")
                   .map((c) => {
                     const skipped = skippedParties.has(partyKey("supplier", c.name));
+                    const selKey = partyKey("supplier", c.name);
+                    const isSel = selectedPartyKeys.has(selKey);
                     return (
                     <div
                       key={`s-${c.name}`}
-                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}`}
+                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}${isSel ? " bank-due__row--selected" : ""}`}
                       role="button"
                       tabIndex={0}
                       title={skipped
-                        ? "Нажмите, чтобы вернуть контрагента в расчёт"
-                        : "Нажмите, чтобы не считать контрагента в «Мы должны» (быстрая прикидка)"}
+                        ? "ЛКМ — вернуть в расчёт · ПКМ — выделить для прикидки"
+                        : "ЛКМ — не считать (вычеркнуть) · ПКМ — выделить для прикидки (расход −)"}
                       onClick={() => toggleSkipParty(c)}
+                      onContextMenu={(e) => { e.preventDefault(); toggleSelectedParty({ type: "supplier", name: c.name }); }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           toggleSkipParty(c);
                         }
                       }}
+                      style={isSel ? { outline: "2px solid var(--adm-rust)", outlineOffset: -2, background: "rgba(239,143,118,0.12)" } : undefined}
                     >
                       <div className="bank-due__name">
                         {c.name}
@@ -3140,6 +3208,86 @@ export function WarehouseManager({
             </div>
           </div>
 
+          {/* Подсказка про ПКМ и выделенная сумма — отдельно от банка */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8, fontSize: 11, color: "var(--adm-muted)" }}>
+            <span>ЛКМ — вычеркнуть/не считать · ПКМ — выделить для прикидки (приход +, расход −)</span>
+            {(selectedPaymentIds.size > 0 || selectedPartyKeys.size > 0) && (
+              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => { setSelectedPaymentIds(new Set()); setSelectedPartyKeys(new Set()); }}>Сбросить выделение</button>
+            )}
+          </div>
+          {(selectedSum.count > 0) && (
+            <div className="admin-card" style={{ marginTop: 8, border: "1px solid var(--adm-steel)", background: "rgba(63,111,163,0.07)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>Выбрано (отдельно от банка) · {selectedSum.count} позиций · ПКМ по строкам</div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: selectedSum.sum >= 0 ? "var(--adm-pine)" : "var(--adm-rust)" }}>{selectedSum.sum >= 0 ? "+" : ""}{fmt(Math.round(selectedSum.sum * 100) / 100)} ₽</div>
+                <div style={{ fontSize: 10, color: "var(--adm-muted)" }}>Приход прибавляется, расход из правой колонки вычитается · прогноз баланса после этих операций: {fmt(Math.round((bankSummary.balance + selectedSum.sum) * 100) / 100)} ₽</div>
+              </div>
+              <button type="button" className="admin-btn admin-btn--ghost" onClick={() => { setSelectedPaymentIds(new Set()); setSelectedPartyKeys(new Set()); }}>Очистить</button>
+            </div>
+          )}
+
+          {showCalculator && (
+            <ModalPortal>
+              <div className="admin-modal-overlay" onClick={() => setShowCalculator(false)}>
+                <div className="admin-modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+                  <div className="admin-modal__head">
+                    <h3 className="admin-modal__title"><Calculator size={14} style={{ marginRight: 6 }} />Калькулятор счёта</h3>
+                    <button type="button" className="admin-modal__close" onClick={() => setShowCalculator(false)}><X size={14} /></button>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--adm-muted)", marginBottom: 8 }}>
+                    Расчётный счёт: <b>{fmt(bankSummary.bankBalance)} ₽</b> · Касса: <b>{fmt(bankSummary.cashBalance)} ₽</b> · Всего: <b>{fmt(bankSummary.balance)} ₽</b>
+                  </div>
+                  <div className="admin-field">
+                    <label className="admin-label">Выражение</label>
+                    <input className="admin-input" value={calcExpression} onChange={e => setCalcExpression(e.target.value)} placeholder="напр. 12500+3200*2  или  банк-5000" />
+                    <div style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 4 }}>Поддерживаются + − * / ( ) и слова: банк, касса, всего · Enter = посчитать</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                    {[
+                      ["+банк", () => setCalcExpression(v => (v ? v + "+" : "") + String(Math.round(bankSummary.bankBalance)))],
+                      ["+касса", () => setCalcExpression(v => (v ? v + "+" : "") + String(Math.round(bankSummary.cashBalance)))],
+                      ["Очистить", () => { setCalcExpression(""); setCalcResult(""); }],
+                      ["Посчитать", () => {
+                        try {
+                          let expr = calcExpression.replace(/банк/g, String(bankSummary.bankBalance)).replace(/касса/g, String(bankSummary.cashBalance)).replace(/всего/g, String(bankSummary.balance)).replace(/[^0-9+\-*/(). ]/g, "");
+                          if (!expr.trim()) { setCalcResult(""); return; }
+                          // безопасный eval
+                          const res = Function('"use strict";return (' + expr + ')')();
+                          setCalcResult(String(Math.round(Number(res) * 100) / 100));
+                        } catch { setCalcResult("ошибка"); }
+                      }],
+                    ].map(([label, fn]: any) => (
+                      <button key={label} type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={fn}>{label}</button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
+                    {["7","8","9","/","4","5","6","*","1","2","3","-","0",".","(",")"].map(ch => (
+                      <button key={ch} type="button" className="admin-btn admin-btn--ghost" style={{ padding: "8px 0" }} onClick={() => setCalcExpression(v => v + ch)}>{ch}</button>
+                    ))}
+                    <button type="button" className="admin-btn admin-btn--ghost" style={{ padding: "8px 0" }} onClick={() => setCalcExpression(v => v + "+")}>+</button>
+                    <button type="button" className="admin-btn admin-btn--primary" style={{ gridColumn: "span 3" }} onClick={() => {
+                      try {
+                        let expr = calcExpression.replace(/банк/g, String(bankSummary.bankBalance)).replace(/касса/g, String(bankSummary.cashBalance)).replace(/всего/g, String(bankSummary.balance)).replace(/[^0-9+\-*/(). ]/g, "");
+                        if (!expr.trim()) { setCalcResult(""); return; }
+                        const res = Function('"use strict";return (' + expr + ')')();
+                        setCalcResult(String(Math.round(Number(res) * 100) / 100));
+                      } catch { setCalcResult("ошибка"); }
+                    }}>=</button>
+                  </div>
+                  {calcResult && (
+                    <div style={{ marginTop: 10, padding: 10, background: "var(--adm-paper)", borderRadius: 8, border: "1px solid var(--adm-border)" }}>
+                      <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>Результат</div>
+                      <div style={{ fontWeight: 800, fontSize: 18 }}>{calcResult} ₽</div>
+                      <div style={{ fontSize: 11, color: "var(--adm-muted)", marginTop: 4 }}>
+                        Баланс + результат: <b>{fmt(Math.round((bankSummary.balance + Number(calcResult || 0)) * 100) / 100)} ₽</b> · Банк + результат: <b>{fmt(Math.round((bankSummary.bankBalance + Number(calcResult || 0)) * 100) / 100)} ₽</b>
+                      </div>
+                    </div>
+                  )}
+                  <p style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 8 }}>Это не просто калькулятор: считает относительно счёта. Вставьте «банк» в выражение, чтобы быстро прикинуть новый остаток.</p>
+                </div>
+              </div>
+            </ModalPortal>
+          )}
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
             <button
@@ -4059,11 +4207,14 @@ export function WarehouseManager({
                 <span className="bank-month__line" />
               </div>
               <div className="bank-month__list">
-                {g.items.map((p) => (
+                {g.items.map((p) => {
+                  const isPendingPayment = p.entryKind === "payment" && !p.isPaid;
+                  const isSelected = isPendingPayment && selectedPaymentIds.has(p.id);
+                  return (
                   <div
                     key={p.id}
                     id={`payment-${p.id}`}
-                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}`}
+                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}${isSelected ? " bank-pay--selected" : ""}`}
                     role={p.entryKind === "payment" ? "button" : undefined}
                     tabIndex={p.entryKind === "payment" ? 0 : undefined}
                     onClick={(event) => {
@@ -4071,6 +4222,13 @@ export function WarehouseManager({
                       if ((event.target as HTMLElement).closest("a,button,input,label,select")) return;
                       setDetailPaymentId(p.id);
                     }}
+                    onContextMenu={(event) => {
+                      if (!isPendingPayment) return;
+                      event.preventDefault();
+                      toggleSelectedPayment(p.id);
+                    }}
+                    style={isSelected ? { outline: p.direction === "incoming" ? "2px solid var(--adm-pine)" : "2px solid var(--adm-rust)", outlineOffset: -2, background: p.direction === "incoming" ? "rgba(125,209,129,0.12)" : "rgba(239,143,118,0.12)" } : undefined}
+                    title={isPendingPayment ? (isSelected ? "ПКМ — снять выделение" : "ПКМ — выделить для прикидки (приход + / расход −)") : undefined}
                     onKeyDown={(event) => {
                       if (p.entryKind === "payment" && (event.key === "Enter" || event.key === " ")) {
                         event.preventDefault();
@@ -4239,7 +4397,8 @@ export function WarehouseManager({
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

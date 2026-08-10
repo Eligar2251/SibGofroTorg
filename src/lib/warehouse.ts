@@ -3661,7 +3661,7 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("products")
-    .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, is_visible, dimension_length, dimension_width, dimension_height, dimension_unit")
+    .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, purchase_price, is_visible, dimension_length, dimension_width, dimension_height, dimension_unit")
     .order("name", { ascending: true });
   if (error) throw error;
   return (data || []).map((row: any) => ({
@@ -3671,6 +3671,7 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     inStock: row.in_stock ?? (Number(row.stock_qty || 0) > 0),
     price: row.price != null ? Number(row.price) : null,
     priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
+    purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
     isVisible: row.is_visible ?? true,
     // Габариты — нужны в бланке/акте ревизии, чтобы кладовщик сразу видел
     // «670×370×370» и не пересчитывал «абстрактный» SKU наугад.

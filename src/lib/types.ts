@@ -20,6 +20,7 @@ export interface FirestoreProduct {
   price: number | null;
   priceWholesale?: number | null | undefined;
   minWholesaleQty?: number | null | undefined;
+  purchasePrice?: number | null | undefined;
   dimensionLength?: number | null | undefined;
   dimensionWidth?: number | null | undefined;
   dimensionHeight?: number | null | undefined;

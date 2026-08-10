@@ -134,6 +134,18 @@ export function firstImageUrl(images: { url: string }[]): string | null {
   return found ? found.url.trim() : null;
 }
 
+function isMissingPurchasePriceColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("purchase_price")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 function mapProductRow(row: any): FirestoreProduct {
   const images = normalizeProductImages(row.images);
   return {
@@ -146,6 +158,7 @@ function mapProductRow(row: any): FirestoreProduct {
     featuredOrder: row.sort_order != null ? Number(row.sort_order) : null,
     price: row.price != null ? Number(row.price) : null,
     priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
+    purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
     minWholesaleQty: row.min_wholesale_qty != null ? Number(row.min_wholesale_qty) : null,
     dimensionLength: row.dimension_length != null ? Number(row.dimension_length) : null,
     dimensionWidth: row.dimension_width != null ? Number(row.dimension_width) : null,
@@ -606,6 +619,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     description: data.description || null,
     price: data.price ?? null,
     price_wholesale: data.priceWholesale ?? null,
+    purchase_price: data.purchasePrice ?? null,
     min_wholesale_qty: data.minWholesaleQty ?? null,
     dimension_length: data.dimensionLength ?? null,
     dimension_width: data.dimensionWidth ?? null,
@@ -635,10 +649,10 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     barcode: data.barcode || null,
   };
 
-  // Если в БД ещё нет колонки barcode (миграция со штрихкодами не
+  // Если в БД ещё нет колонки barcode/purchase_price (миграция не
   // применена), PostgREST отклоняет insert целиком (PGRST204). В таком
-  // случае ПОВТОРЯЕМ запись без поля barcode — товар должен сохраняться
-  // всегда; штрихкод дозапишется после применения миграции.
+  // случае ПОВТОРЯЕМ запись без этих полей — товар должен сохраняться
+  // всегда.
   let result: { id: string } | null = null;
   let insertErr: any = null;
   const first = await db.from("products").insert(payload).select("id").single();
@@ -650,6 +664,13 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
       const retry = await db.from("products").insert(payloadNoBarcode).select("id").single();
       if (retry.error) throw retry.error;
       result = retry.data;
+      insertErr = null;
+    } else if (isMissingPurchasePriceColumnError(first.error)) {
+      console.warn("[products] Колонки purchase_price нет — запись без закупочной цены");
+      const { purchase_price: _pp, ...payloadNoPP } = payload;
+      const retry2 = await db.from("products").insert(payloadNoPP).select("id").single();
+      if (retry2.error) throw retry2.error;
+      result = retry2.data;
       insertErr = null;
     }
   } else {
@@ -681,6 +702,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   const fieldMap: Record<string, string> = {
     name: "name", slug: "slug", categoryId: "category_id", sku: "sku",
     description: "description", price: "price", priceWholesale: "price_wholesale",
+    purchasePrice: "purchase_price",
     minWholesaleQty: "min_wholesale_qty", dimensionLength: "dimension_length",
     dimensionWidth: "dimension_width", dimensionHeight: "dimension_height",
     dimensionUnit: "dimension_unit", weight: "weight", material: "material",
@@ -726,13 +748,18 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       ? null
       : Number(data.packQty);
   }
-  // Ретрай без barcode, если колонки ещё нет в БД (миграция не
+  // Ретрай без barcode/purchase_price, если колонки ещё нет в БД (миграция не
   // применена) — сохранение товара не должно падать из-за этого.
   let { error } = await db.from("products").update(payload).eq("id", id);
   if (error && isMissingBarcodeColumnError(error) && "barcode" in payload) {
     console.warn(BARCODE_COLUMN_MISSING_HINT);
     const { barcode: _bc, ...payloadNoBarcode } = payload;
     ({ error } = await db.from("products").update(payloadNoBarcode).eq("id", id));
+  }
+  if (error && isMissingPurchasePriceColumnError(error) && "purchase_price" in payload) {
+    console.warn("[products] Колонки purchase_price нет — сохранение без неё");
+    const { purchase_price: _pp, ...payloadNoPP } = payload;
+    ({ error } = await db.from("products").update(payloadNoPP).eq("id", id));
   }
   if (error) throw error;
   invalidateProductsCache();

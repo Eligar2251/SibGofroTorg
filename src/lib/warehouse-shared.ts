@@ -155,6 +155,7 @@ export interface WarehouseStockRow {
   inStock: boolean;
   price: number | null;
   priceWholesale: number | null;
+  purchasePrice?: number | null;
   isVisible: boolean;
   /** Габариты товара в мм (или в иных единицах из dimensionUnit).
    *  Подхватываются в ревизию склада, чтобы кладовщик мог

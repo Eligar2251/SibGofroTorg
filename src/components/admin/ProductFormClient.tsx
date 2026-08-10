@@ -43,6 +43,7 @@ interface ProductData {
   categoryId?: string | null;
   description?: string | null;
   price?: number | null;
+  purchasePrice?: number | null;
   priceWholesale?: number | null;
   minWholesaleQty?: number | null;
   stockQty?: number | null;
@@ -219,6 +220,7 @@ export function ProductFormClient({
       categoryId: data.get("categoryId") || null,
       description: data.get("description") || null,
       price: data.get("price") ? Number(data.get("price")) : null,
+      purchasePrice: data.get("purchasePrice") ? Number(data.get("purchasePrice")) : null,
       priceWholesale: data.get("priceWholesale")
         ? Number(data.get("priceWholesale"))
         : null,
@@ -559,7 +561,7 @@ export function ProductFormClient({
       <div className="admin-card">
         <div className="admin-card__pad admin-stack">
           <h2 className="admin-h2">Цены и Скидки</h2>
-          <div className="admin-grid-3">
+          <div className="admin-grid-4">
             <div className="admin-field">
               <label className="admin-label">Розничная цена, ₽</label>
               <input
@@ -570,6 +572,18 @@ export function ProductFormClient({
                 placeholder="0.00"
                 className="admin-input"
               />
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Закупочная цена, ₽</label>
+              <input
+                name="purchasePrice"
+                type="number"
+                step="0.01"
+                defaultValue={product?.purchasePrice ?? ""}
+                placeholder="0.00"
+                className="admin-input"
+              />
+              <span className="admin-hint">Для расчёта прибыли в отчётах. Берётся, если нет цены из поставки.</span>
             </div>
             <div className="admin-field">
               <label className="admin-label">Оптовая цена, ₽</label>
