@@ -13,7 +13,9 @@ import "../admin.css";
 import "../admin-users.css";
 import "../rent.css";
 import "../admin-themes.css";
-import { AdminThemeProvider, adminThemeInitScript } from "@/components/admin/AdminTheme";
+import { AdminThemeProvider } from "@/components/admin/AdminTheme";
+
+const ADMIN_THEME_INIT_SCRIPT = `try{var k="adm-theme",v=localStorage.getItem(k)||"standard";var ok=["standard","light","dark","forest","ocean"].indexOf(v)>=0?v:"standard";document.documentElement.setAttribute("data-admin-theme",ok);var a=document.querySelector('[data-admin="true"]');if(a)a.setAttribute("data-admin-theme",ok);}catch(e){}`;
 
 // Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому
 // единственный источник истины — публичная переменная. Legacy-переменная
@@ -42,7 +44,7 @@ export default async function AdminLayout({
 
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: adminThemeInitScript() }} />
+      <script dangerouslySetInnerHTML={{ __html: ADMIN_THEME_INIT_SCRIPT }} />
       <AdminThemeProvider>
         <AdminShell
           adminPath={ADMIN_PATH}
