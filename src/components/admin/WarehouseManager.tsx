@@ -3052,7 +3052,7 @@ export function WarehouseManager({
                     <div
                       key={p.id}
                       className="bank-pay payment-clickable"
-                      style={{ background: "var(--adm-card)", padding: "10px 14px" }}
+                      style={{ padding: "10px 14px" }}
                       role="button"
                       tabIndex={0}
                       onClick={(event) => {

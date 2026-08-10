@@ -4098,13 +4098,16 @@ body:has(.admin-modal-overlay) {
   border-color: var(--adm-border-mid);
 }
 
+/* Полоски «ожидания»: вторая полоса замешивается из цвета
+   карточки и акцента темы, поэтому в любой теме узор остаётся
+   деликатным и не светит белым (раньше был захардкожен #fdfaf2). */
 .bank-pay--pending {
   background: repeating-linear-gradient(
     -45deg,
     var(--adm-card),
     var(--adm-card) 14px,
-    #fdfaf2 14px,
-    #fdfaf2 28px
+    color-mix(in srgb, var(--adm-card) 88%, var(--adm-kraft)) 14px,
+    color-mix(in srgb, var(--adm-card) 88%, var(--adm-kraft)) 28px
   );
   border-style: dashed;
   border-color: var(--adm-kraft-line);
