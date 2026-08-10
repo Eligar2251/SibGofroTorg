@@ -38,6 +38,11 @@ export const metadata: Metadata = {
   description: DEFAULT_DESCRIPTION,
   applicationName: SITE_NAME,
   robots: { index: true, follow: true },
+  // Подтверждение прав на сайт в Яндекс.Вебмастере (мета-тег).
+  // Файловый способ (public/yandex_a4c02cbb98296a7e.html) оставлен как запасной.
+  verification: {
+    yandex: "a4c02cbb98296a7e",
+  },
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
