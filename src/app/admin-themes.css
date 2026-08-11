@@ -710,6 +710,7 @@
   [data-admin-layout="sidebar-top"] .admin-sidebar--hidden {
     transform: none !important;
     opacity: 1 !important;
+    pointer-events: auto !important;
   }
   [data-admin-layout="sidebar-top"] .admin-sidebar::before {
     display: none !important;
@@ -808,8 +809,19 @@
     margin-left: 0 !important;
   }
   [data-admin-layout="compact"] .admin-sidebar__label,
-  [data-admin-layout="compact"] .admin-sidebar__sub {
+  [data-admin-layout="compact"] .admin-sidebar__sub,
+  [data-admin-layout="compact"] .admin-sidebar__link > span,
+  [data-admin-layout="compact"] .admin-sidebar__footer-link > span,
+  [data-admin-layout="compact"] .admin-sidebar__logout > span {
     display: none !important;
+  }
+  /* Страховка от переноса/обрезки, если текст всё же пролезет */
+  [data-admin-layout="compact"] .admin-sidebar__link,
+  [data-admin-layout="compact"] .admin-sidebar__footer-link,
+  [data-admin-layout="compact"] .admin-sidebar__logout {
+    overflow: hidden;
+    white-space: nowrap;
+    text-indent: 0;
   }
   /* Горизонтальный логотип (знак + текст) в 76px не помещается —
      вместо него аккуратная монограмма в фирменном цвете. */

@@ -3,7 +3,8 @@ import { getOrders, getWastepaperRequests } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
-import { OrdersSortControl, ORDER_SORT_OPTIONS, type OrderSortId } from "@/components/admin/OrdersSortControl";
+import { OrdersSortControl } from "@/components/admin/OrdersSortControl";
+import { isOrderSortId, type OrderSortId } from "@/lib/orders-sort";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { OrdersRealtime } from "@/components/admin/OrdersRealtime";
 
@@ -113,8 +114,8 @@ export default async function AdminOrdersPage({
   const query = searchQuery.toLowerCase().trim();
   // Сортировка списка (особенно полезна в архиве «Проведённые»).
   const requestedSort = firstParam(params.sort);
-  const activeSort: OrderSortId = ORDER_SORT_OPTIONS.some((o) => o.value === requestedSort)
-    ? (requestedSort as OrderSortId)
+  const activeSort: OrderSortId = isOrderSortId(requestedSort)
+    ? requestedSort
     : "date_desc";
 
   const [siteOrders, wastepaperRequests] = await Promise.all([

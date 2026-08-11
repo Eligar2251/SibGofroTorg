@@ -6,16 +6,7 @@
 
 import { useRouter } from "next/navigation";
 import { ArrowDownWideNarrow } from "lucide-react";
-
-export const ORDER_SORT_OPTIONS = [
-  { value: "date_desc", label: "Сначала новые" },
-  { value: "date_asc", label: "Сначала старые" },
-  { value: "sum_desc", label: "Сумма: по убыванию" },
-  { value: "sum_asc", label: "Сумма: по возрастанию" },
-  { value: "name_asc", label: "Клиент: А → Я" },
-] as const;
-
-export type OrderSortId = (typeof ORDER_SORT_OPTIONS)[number]["value"];
+import { ORDER_SORT_OPTIONS, type OrderSortId } from "@/lib/orders-sort";
 
 export function OrdersSortControl({
   basePath,
