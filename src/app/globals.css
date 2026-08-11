@@ -2776,24 +2776,45 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   width: 100%;
+  height: 30px;
   text-align: center;
-  padding: 6px;
+  padding: 0 10px;
   font-size: 12px;
   font-weight: 700;
   font-family: var(--font-body);
-  color: var(--green);
-  background: var(--green-light);
+  color: #fff;
+  background: var(--green);
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
   text-decoration: none;
   margin-top: 4px;
-  transition: background-color var(--transition);
+  transition: background-color var(--transition), transform var(--transition);
 }
 
 .pcc__inquiry-btn:hover {
-  background: var(--green-bg);
+  background: var(--green-dark);
+}
+
+.pcc__inquiry-btn:active {
+  transform: scale(0.98);
+}
+
+/* Пометка «Под заказ · 2–3 дня» под ценой — в стиле оптовой строки */
+.pcc__mto-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  color: var(--green-dark);
+  background: var(--green-light);
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .pcc__hover-overlay {
@@ -7312,9 +7333,8 @@ body {
   white-space: nowrap;
 }
 
-.order-products-grid .pcc {
-  border-color: var(--kraft-border);
-}
+/* Рамки плиток «под заказ» не отличаются от главной секции:
+   единый стиль карточек по всему сайту. */
 
 @media (max-width: 640px) {
   .order-products-section { padding: 24px 0 30px; }

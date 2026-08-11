@@ -469,7 +469,7 @@ export default async function AdminDashboard() {
   });
 
   return (
-    <div>
+    <div className="dash-page">
       <DashboardRealtime limited={isLawyer} />
       <div
         style={{
@@ -657,14 +657,14 @@ export default async function AdminDashboard() {
           </Link>
         )}
       >
-      <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
-        <div className="dash-section-head" style={{ padding: "0 20px" }}>
+      <section className="admin-card dash-finance dash-inner-card">
+        <div className="dash-section-head" style={{ padding: "10px 20px" }}>
           <div>
-            <p id="dash-finance-period-label" style={{ margin: "4px 0 0" }}>Фактические проведённые операции за текущий месяц.</p>
+            <p id="dash-finance-period-label" style={{ margin: 0 }}>Фактические проведённые операции за текущий месяц.</p>
           </div>
         </div>
 
-        <div className="dash-finance-totals" style={{ padding: "0 20px", marginTop: 12 }}>
+        <div className="dash-finance-totals" style={{ padding: "12px 20px" }}>
           <div className="dash-finance-total dash-finance-total--in">
             <span className="dash-finance-total__icon" aria-hidden="true">
               <ArrowDownLeft size={18} />
@@ -772,8 +772,8 @@ export default async function AdminDashboard() {
             </Link>
           }
         >
-          <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
-            <div className="dash-finance-totals" style={{ padding: "0 20px", marginTop: 12 }}>
+          <section className="admin-card dash-finance dash-inner-card">
+            <div className="dash-finance-totals" style={{ padding: "12px 20px" }}>
               {Object.entries(rentSummary.balances).map(([orgId, b]) => (
                 <div key={orgId} className="dash-finance-total dash-finance-total--bank">
                   <span className="dash-finance-total__icon" aria-hidden="true">
@@ -832,10 +832,10 @@ export default async function AdminDashboard() {
           </Link>
         )}
       >
-      <section className="admin-card dash-deliveries" style={{ margin: 0, border: "none", borderRadius: 0 }}>
-        <div className="dash-section-head" style={{ padding: "0 20px" }}>
+      <section className="admin-card dash-deliveries dash-inner-card">
+        <div className="dash-section-head" style={{ padding: "10px 20px" }}>
           <div>
-            <p style={{ margin: "4px 0 0" }}>Оплаченные заказы + самостоятельные рейсы (вывоз макулатуры, отправки).</p>
+            <p style={{ margin: 0 }}>Оплаченные заказы + самостоятельные рейсы (вывоз макулатуры, отправки).</p>
           </div>
         </div>
         {dashboardDeliveries.length > 0 ? (
@@ -924,9 +924,9 @@ export default async function AdminDashboard() {
           </Link>
         )}
       >
-        <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
-        <div style={{ padding: "0 20px" }}>
-          <p style={{ margin: "4px 0 0" }}>Наличка/безнал и прогноз по приходам и расходам отдельно от товарного учёта.</p>
+        <section className="admin-card dash-finance dash-inner-card">
+        <div style={{ padding: "10px 20px 0" }}>
+          <p style={{ margin: 0 }}>Наличка/безнал и прогноз по приходам и расходам отдельно от товарного учёта.</p>
         </div>
 
           <div className="dash-finance-totals">
@@ -1034,20 +1034,9 @@ export default async function AdminDashboard() {
         defaultOpen={false}
       >
       <div
-        className="admin-card"
-        style={{ margin: 0, border: "none", borderRadius: 0, padding: "20px 24px" }}
+        className="admin-card dash-inner-card"
+        style={{ padding: "20px 24px" }}
       >
-        <div
-          style={{
-            fontFamily: "Oswald, sans-serif",
-            fontWeight: 700,
-            color: "var(--adm-ink)",
-            fontSize: 16,
-            marginBottom: 16,
-          }}
-        >
-          Статусы заявок
-        </div>
         <div
           style={{
             display: "grid",
@@ -1141,7 +1130,7 @@ export default async function AdminDashboard() {
                 <div
                   style={{
                     fontSize: 11,
-                    color: `${s.color}99`,
+                    color: `color-mix(in srgb, ${s.color} 62%, transparent)`,
                   }}
                 >
                   {Math.round((s.count / totalOrdersCount) * 100)}%
@@ -1161,22 +1150,13 @@ export default async function AdminDashboard() {
         accent="gray"
         defaultOpen={false}
       >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 20,
-          margin: 0,
-          padding: "0 20px 20px",
-        }}
-        className="admin-dash-grid"
-      >
+      <div className="admin-dash-grid">
         {/* Последние заявки */}
         <div className="admin-card">
           <div
             style={{
               padding: "16px 24px",
-              borderBottom: "1px solid rgba(200,196,188,0.35)",
+              borderBottom: "1px solid var(--adm-border)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -1213,7 +1193,7 @@ export default async function AdminDashboard() {
                     key={o.id}
                     style={{
                       padding: "12px 24px",
-                      borderBottom: "1px solid rgba(200,196,188,0.15)",
+                      borderBottom: "1px solid var(--adm-border-soft)",
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
@@ -1233,7 +1213,7 @@ export default async function AdminDashboard() {
                       <div
                         style={{
                           fontSize: 11,
-                          color: "rgba(55,65,81,0.5)",
+                          color: "var(--adm-muted)",
                         }}
                       >
                         {o.customerPhone}
@@ -1261,7 +1241,7 @@ export default async function AdminDashboard() {
                     <span
                       style={{
                         fontSize: 11,
-                        color: "rgba(55,65,81,0.4)",
+                        color: "var(--adm-muted)",
                       }}
                     >
                       {formatDate(o.createdAt)}
@@ -1275,7 +1255,7 @@ export default async function AdminDashboard() {
               style={{
                 padding: "32px 24px",
                 textAlign: "center",
-                color: "rgba(55,65,81,0.4)",
+                color: "var(--adm-muted)",
                 fontSize: 14,
               }}
             >
@@ -1291,7 +1271,7 @@ export default async function AdminDashboard() {
             <div
               style={{
                 padding: "16px 24px",
-                borderBottom: "1px solid rgba(200,196,188,0.35)",
+                borderBottom: "1px solid var(--adm-border)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -1336,7 +1316,7 @@ export default async function AdminDashboard() {
                       prefetch={false}
                       style={{
                         padding: "10px 24px",
-                        borderBottom: "1px solid rgba(200,196,188,0.15)",
+                        borderBottom: "1px solid var(--adm-border-soft)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
@@ -1390,7 +1370,7 @@ export default async function AdminDashboard() {
                 style={{
                   padding: "24px",
                   textAlign: "center",
-                  color: "rgba(55,65,81,0.4)",
+                  color: "var(--adm-muted)",
                   fontSize: 13,
                 }}
               >

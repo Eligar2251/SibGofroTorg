@@ -53,12 +53,30 @@ export function CollapsibleSection({
     } catch {}
   }, [open, storageKey]);
 
+  function toggleOpen() {
+    setOpen((v) => !v);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    // Управление с клавиатуры: заголовок — не <button>, потому что
+    // внутри него бывают интерактивные элементы (ссылки sideContent),
+    // а вкладывать интерактив в <button> нельзя по спецификации.
+    if (e.key === "Enter" || e.key === " ") {
+      const target = e.target as HTMLElement;
+      if (target.closest("a,button")) return;
+      e.preventDefault();
+      toggleOpen();
+    }
+  }
+
   return (
     <section className={`dash-section${open ? " dash-section--open" : ""}`}>
-      <button
-        type="button"
+      <div
         className="dash-section__head"
-        onClick={() => setOpen(!open)}
+        onClick={toggleOpen}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
         aria-expanded={open}
       >
         <span
@@ -86,7 +104,7 @@ export function CollapsibleSection({
             {sideContent}
           </span>
         )}
-      </button>
+      </div>
       {open && <div className="dash-section__body">{children}</div>}
     </section>
   );

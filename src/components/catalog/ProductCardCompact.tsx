@@ -11,7 +11,7 @@ import {
   RESTOCK_INQUIRY_LABEL,
 } from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { Plus, Minus, ShoppingCart, Check, Package } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Check, Package, Clock3 } from "lucide-react";
 
 /** Склонение для «N вариантов» на карточке. */
 function pluralVariants(n: number): string {
@@ -222,17 +222,15 @@ export function ProductCardCompact({
         </Link>
 
         {/* Цена — шт + партия. Если у товара есть варианты,
-           показываем «от X ₽» (по минимальной цене). */}
+           показываем «от X ₽» (по минимальной цене).
+           Плитки «под заказ» выглядят так же, как обычные:
+           цена крупно, а пометка «Под заказ · 2–3 дня» — ниже. */}
         <div className="pcc__prices">
-          {orderOffer ? (
-            <span className="pcc__price-muted pcc__price-muted--mto">
-              Под заказ · 2–3 дня
-            </span>
-          ) : outOfStock ? (
+          {outOfStock && !orderOffer ? (
             <span className="pcc__price-muted pcc__price-muted--out">
               {OUT_OF_STOCK_LABEL}
             </span>
-          ) : product.madeToOrder ? (
+          ) : product.madeToOrder && product.price == null ? (
             <span className="pcc__price-muted pcc__price-muted--mto">
               Под заказ
             </span>
@@ -265,6 +263,12 @@ export function ProductCardCompact({
             </>
           ) : (
             <span className="pcc__price-muted">Цена по запросу</span>
+          )}
+          {orderOffer && (
+            <span className="pcc__mto-note">
+              <Clock3 size={10} />
+              Под заказ · 2–3 дня
+            </span>
           )}
           {inCart && (
             <span className="pcc__in-cart"><GlyphIcon value="check" size={12} /> в корзине: {inCart.quantity}</span>
