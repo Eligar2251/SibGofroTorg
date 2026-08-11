@@ -1154,18 +1154,15 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
       ? sum + (Number(p.amount) || 0) / links
       : sum;
   }, 0);
-  const existingNoPaymentPaid = receiptPayments.reduce((sum: number, p: any) => {
-    const receiptLinks = (p.receipt_ids || []).length;
-    const dealLinks = (p.deal_ids || []).length;
-    if (p.direction !== "outgoing" || p.is_paid !== true || p.exclude_from_balance !== true) return sum;
-    if (receiptLinks !== 1 || dealLinks !== 0) return sum;
-    return sum + (Number(p.amount) || 0);
-  }, 0);
-  const effectivePaidTotal = noPayment
-    ? 0
-    : Math.max(0, round2(paidTotal - existingNoPaymentPaid));
-  const total = effectivePaidTotal > 0 ? effectivePaidTotal : linesTotal;
-  const bankAdjustment = round2(total - linesTotal);
+
+  // Итог поставки — это ВСЕГДА сумма позиций (как при создании).
+  // Раньше здесь было `total = effectivePaidTotal > 0 ? effectivePaidTotal : linesTotal`,
+  // из-за чего при редактировании частично оплаченной поставки итог
+  // подменялся уже оплаченной суммой: плашка «Оплачено X из Y» исчезала,
+  // а итоговая сумма «слетала». Оплаченная часть учитывается отдельно
+  // через платежи (paidTotal), а не через total поставки.
+  const total = linesTotal;
+  const bankAdjustment = 0;
 
   const supplier = sanitizeCounterpartyName(data.supplier);
   const details = {
