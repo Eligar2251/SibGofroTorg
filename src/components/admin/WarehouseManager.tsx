@@ -28,6 +28,7 @@ import {
   Gift,
   Trash2,
   ChevronRight,
+  ChevronDown,
   RotateCcw,
   BarChart3,
   Lock,
@@ -36,6 +37,7 @@ import {
 } from "lucide-react";
 import {
   type BankPayment,
+  type CounterpartyBalance,
   getBankSummary,
   getPendingPaymentCounterpartyBalances,
   normalizeName,
@@ -509,6 +511,127 @@ export function WarehouseManager({
     });
   }
 
+  // ——— Поштучное «вычёркивание» платежей в «Должны нам / Мы должны» ———
+  // Строку контрагента можно раскрыть: внутри — платежи, из которых
+  // складывается его сумма. Клик по строке контрагента вычёркивает его
+  // целиком (как раньше), клик по конкретному платежу вычитает из суммы
+  // только его часть. Всё живёт на клиенте, БД не меняется.
+  const [skippedPaymentIds, setSkippedPaymentIds] = useState<Set<string>>(new Set());
+  const [expandedDueKeys, setExpandedDueKeys] = useState<Set<string>>(new Set());
+
+  function toggleSkipPayment(paymentId: string) {
+    setSkippedPaymentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(paymentId)) next.delete(paymentId);
+      else next.add(paymentId);
+      return next;
+    });
+  }
+
+  function toggleDueExpanded(key: string) {
+    setExpandedDueKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  /** Строка контрагента в «Должны нам / Мы должны» + раскрываемый список
+      платежей: клик по строке — вычеркнуть контрагента целиком, клик по
+      платежу внутри — вычесть из суммы только его часть. */
+  function renderDueParty(c: CounterpartyBalance, type: "customer" | "supplier") {
+    const selKey = partyKey(type, c.name);
+    const skipped = skippedParties.has(selKey);
+    const isSel = selectedPartyKeys.has(selKey);
+    const duePays = dueBreakdown.listByKey.get(selKey) || [];
+    const skippedSum = Math.round((dueBreakdown.skippedByKey.get(selKey) || 0) * 100) / 100;
+    const expanded = expandedDueKeys.has(selKey);
+    // Если контрагент вычеркнут целиком — показываем исходную сумму
+    // (зачёркнута вся строка). Иначе вычитаем поштучно вычеркнутые платежи.
+    const shownBalance = skipped
+      ? Math.round(c.balance * 100) / 100
+      : Math.round((c.balance - skippedSum) * 100) / 100;
+    const positiveColor = type === "customer" ? "#7dd181" : "#ef8f76";
+    const negativeColor = type === "customer" ? "#ef8f76" : "#7dd181";
+    const paySign = type === "customer" ? "+" : "−";
+    return (
+      <div key={`${type}-${c.name}`} className="bank-due__item">
+        <div
+          className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}${isSel ? " bank-due__row--selected" : ""}`}
+          role="button"
+          tabIndex={0}
+          title={skipped
+            ? "ЛКМ — вернуть в расчёт · ПКМ — выделить для прикидки"
+            : type === "customer"
+              ? "ЛКМ — не считать контрагента целиком · ПКМ — выделить для прикидки (приход +)"
+              : "ЛКМ — не считать контрагента целиком · ПКМ — выделить для прикидки (расход −)"}
+          onClick={() => toggleSkipParty(c)}
+          onContextMenu={(e) => { e.preventDefault(); toggleSelectedParty({ type, name: c.name }); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggleSkipParty(c);
+            }
+          }}
+        >
+          {duePays.length > 0 ? (
+            <button
+              type="button"
+              className={`bank-due__expand${expanded ? " bank-due__expand--open" : ""}`}
+              aria-label={expanded ? "Свернуть список платежей" : "Раскрыть список платежей"}
+              title={expanded ? "Свернуть список платежей" : "Список платежей — можно вычеркнуть поштучно"}
+              onClick={(e) => { e.stopPropagation(); toggleDueExpanded(selKey); }}
+            >
+              <ChevronDown size={14} />
+            </button>
+          ) : (
+            <span className="bank-due__expand bank-due__expand--placeholder" aria-hidden="true" />
+          )}
+          <div className="bank-due__name">
+            {c.name}
+            <span className="bank-due__meta">
+              {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
+              {!skipped && skippedSum > 0 ? ` · вычеркнуто ${fmt(skippedSum)} ₽` : ""}
+            </span>
+          </div>
+          <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : shownBalance > 0 ? positiveColor : negativeColor }}>
+            {fmt(shownBalance)} ₽
+          </div>
+        </div>
+        {expanded && duePays.length > 0 && (
+          <div className="bank-due__pays">
+            {duePays.map((p) => {
+              const pSkipped = skippedPaymentIds.has(p.id);
+              return (
+                <div
+                  key={p.id}
+                  className={`bank-due__pay${pSkipped ? " bank-due__pay--skipped" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  title="ЛКМ — вычеркнуть/вернуть этот платёж · ПКМ — выделить для прикидки"
+                  onClick={(e) => { e.stopPropagation(); toggleSkipPayment(p.id); }}
+                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleSelectedPayment(p.id); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleSkipPayment(p.id);
+                    }
+                  }}
+                >
+                  <span className="bank-due__pay-num">{p.invoiceNumber || `ПЛ-${p.number}`}</span>
+                  <span className="bank-due__pay-date">{fmtDate(p.date)}</span>
+                  {p.comment ? <span className="bank-due__pay-comment">{p.comment}</span> : null}
+                  <span className="bank-due__pay-sum">{paySign}{fmt(p.amount)} ₽</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ——— Правый клик: выделение ожидающих платежей/контрагентов для быстрой прикидки ———
   // Левый клик остаётся «вычеркиванием» (skippedParties), правый — выделение.
   // Выделенные суммы показываются отдельным блоком «Выбрано», где приход + , расход −.
@@ -537,18 +660,19 @@ export function WarehouseManager({
   }
 
   // Платежи для итогов («Должны нам / Мы должны», прогноз): ожидающие
-  // платежи пропущенных контрагентов не учитываются. Проведённые
-  // платежи (фактический баланс) не трогаем никогда.
+  // платежи пропущенных контрагентов И отдельно вычеркнутые платежи
+  // не учитываются. Проведённые платежи (фактический баланс) не трогаем.
   const paymentsForTotals = useMemo(
     () =>
-      skippedParties.size === 0
+      skippedParties.size === 0 && skippedPaymentIds.size === 0
         ? payments
         : payments.filter((p) => {
             if (p.isPaid) return true;
+            if (skippedPaymentIds.has(p.id)) return false;
             const key = paymentPartyKey(p);
             return !key || !skippedParties.has(key);
           }),
-    [payments, skippedParties]
+    [payments, skippedParties, skippedPaymentIds]
   );
 
   useEffect(() => {
@@ -733,6 +857,36 @@ export function WarehouseManager({
     () => allCounterparties.filter((c) => c.balance > 0.009),
     [allCounterparties]
   );
+
+  // Разбивка «Должны нам / Мы должны» по платежам: для каждого
+  // контрагента — список неоплаченных платежей, образующих его долг
+  // (покупателю — входящие, поставщику — исходящие), и сумма уже
+  // вычеркнутых поштучно. Ключ — тот же, что у partyKey().
+  const dueBreakdown = useMemo(() => {
+    const listByKey = new Map<string, BankPayment[]>();
+    const skippedByKey = new Map<string, number>();
+    for (const p of payments) {
+      if (p.isPaid || p.excludeFromBalance) continue;
+      const key = paymentPartyKey(p);
+      if (!key) continue;
+      const isCustomer = key.startsWith("customer:");
+      const contributes = isCustomer
+        ? p.direction === "incoming"
+        : p.direction === "outgoing";
+      if (!contributes) continue;
+      const list = listByKey.get(key) || [];
+      list.push(p);
+      listByKey.set(key, list);
+      if (skippedPaymentIds.has(p.id)) {
+        skippedByKey.set(key, (skippedByKey.get(key) || 0) + (Number(p.amount) || 0));
+      }
+    }
+    // Новые сверху — как в списке платежей
+    for (const list of listByKey.values()) {
+      list.sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.number - a.number);
+    }
+    return { listByKey, skippedByKey };
+  }, [payments, skippedPaymentIds]);
 
   const selectedSum = useMemo(() => {
     let sum = 0;
@@ -3125,40 +3279,7 @@ export function WarehouseManager({
               ) : (
                 counterpartiesWithDebt
                   .filter((c) => c.type === "customer")
-                  .map((c) => {
-                    const skipped = skippedParties.has(partyKey("customer", c.name));
-                    const selKey = partyKey("customer", c.name);
-                    const isSel = selectedPartyKeys.has(selKey);
-                    return (
-                    <div
-                      key={`c-${c.name}`}
-                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}${isSel ? " bank-due__row--selected" : ""}`}
-                      role="button"
-                      tabIndex={0}
-                      title={skipped
-                        ? "ЛКМ — вернуть в расчёт · ПКМ — выделить для прикидки"
-                        : "ЛКМ — не считать (вычеркнуть) · ПКМ — выделить для прикидки (приход +)"}
-                      onClick={() => toggleSkipParty(c)}
-                      onContextMenu={(e) => { e.preventDefault(); toggleSelectedParty({ type: "customer", name: c.name }); }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          toggleSkipParty(c);
-                        }
-                      }}
-                    >
-                      <div className="bank-due__name">
-                        {c.name}
-                        <span className="bank-due__meta">
-                          {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
-                        </span>
-                      </div>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
-                        {fmt(c.balance)} ₽
-                      </div>
-                    </div>
-                    );
-                  })
+                  .map((c) => renderDueParty(c, "customer"))
               )}
             </div>
 
@@ -3171,49 +3292,19 @@ export function WarehouseManager({
               ) : (
                 counterpartiesWithDebt
                   .filter((c) => c.type === "supplier")
-                  .map((c) => {
-                    const skipped = skippedParties.has(partyKey("supplier", c.name));
-                    const selKey = partyKey("supplier", c.name);
-                    const isSel = selectedPartyKeys.has(selKey);
-                    return (
-                    <div
-                      key={`s-${c.name}`}
-                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}${isSel ? " bank-due__row--selected" : ""}`}
-                      role="button"
-                      tabIndex={0}
-                      title={skipped
-                        ? "ЛКМ — вернуть в расчёт · ПКМ — выделить для прикидки"
-                        : "ЛКМ — не считать (вычеркнуть) · ПКМ — выделить для прикидки (расход −)"}
-                      onClick={() => toggleSkipParty(c)}
-                      onContextMenu={(e) => { e.preventDefault(); toggleSelectedParty({ type: "supplier", name: c.name }); }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          toggleSkipParty(c);
-                        }
-                      }}
-                    >
-                      <div className="bank-due__name">
-                        {c.name}
-                        <span className="bank-due__meta">
-                          {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
-                        </span>
-                      </div>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
-                        {fmt(c.balance)} ₽
-                      </div>
-                    </div>
-                    );
-                  })
+                  .map((c) => renderDueParty(c, "supplier"))
               )}
             </div>
           </div>
 
           {/* Подсказка про ПКМ и выделенная сумма — отдельно от банка */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8, fontSize: 11, color: "var(--adm-muted)" }}>
-            <span>ЛКМ — вычеркнуть/не считать · ПКМ — выделить для прикидки (приход +, расход −)</span>
+            <span>ЛКМ по контрагенту — вычеркнуть целиком · стрелка — раскрыть платежи и вычеркнуть поштучно · ПКМ — выделить для прикидки (приход +, расход −)</span>
             {(selectedPaymentIds.size > 0 || selectedPartyKeys.size > 0) && (
               <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => { setSelectedPaymentIds(new Set()); setSelectedPartyKeys(new Set()); }}>Сбросить выделение</button>
+            )}
+            {(skippedParties.size > 0 || skippedPaymentIds.size > 0) && (
+              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => { setSkippedParties(new Set()); setSkippedPaymentIds(new Set()); }}>Вернуть вычеркнутые в расчёт</button>
             )}
           </div>
           {(selectedSum.count > 0) && (

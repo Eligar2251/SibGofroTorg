@@ -11027,6 +11027,102 @@ body:has(.admin-modal-overlay) {
   background: var(--adm-rust-pale);
 }
 
+/* ── Раскрытие списка платежей «Должны нам / Мы должны» ──
+   Клик по контрагенту вычёркивает его целиком; стрелка раскрывает
+   платежи, из которых складывается сумма, — клик по платежу вычитает
+   только его часть. */
+.bank-due__item {
+  border-top: 1px solid rgba(219, 216, 208, 0.45);
+}
+.bank-due__item:first-child {
+  border-top: none;
+}
+.bank-due__item .bank-due__row {
+  border-top: none;
+}
+
+.bank-due__expand {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--adm-r-sm);
+  background: transparent;
+  color: var(--adm-sand);
+  cursor: pointer;
+  transition: transform 0.18s ease, background var(--transition), color var(--transition);
+}
+.bank-due__expand:hover {
+  background: var(--adm-paper-warm);
+  color: var(--adm-ink);
+}
+.bank-due__expand--open {
+  transform: rotate(180deg);
+}
+.bank-due__expand--placeholder {
+  cursor: default;
+  pointer-events: none;
+}
+
+.bank-due__pays {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 8px 30px;
+}
+.bank-due__pay {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--adm-r-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  transition: background var(--transition);
+}
+.bank-due__pay:hover {
+  background: var(--adm-paper);
+}
+.bank-due__pay--skipped,
+.bank-due__pay--skipped .bank-due__pay-num,
+.bank-due__pay--skipped .bank-due__pay-date,
+.bank-due__pay--skipped .bank-due__pay-sum {
+  color: var(--adm-rust) !important;
+}
+.bank-due__pay--skipped .bank-due__pay-sum {
+  text-decoration: line-through;
+}
+.bank-due__pay--skipped:hover {
+  background: var(--adm-rust-pale);
+}
+.bank-due__pay-num {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.bank-due__pay-date {
+  color: var(--adm-sand);
+  white-space: nowrap;
+}
+.bank-due__pay-comment {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--adm-sand);
+}
+.bank-due__pay-sum {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--adm-font-head);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* ══════════════════════════════════════
    АНИМАЦИИ АДМИНКИ
    Только transform/opacity — эти свойства исполняются
