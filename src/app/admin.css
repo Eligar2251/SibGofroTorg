@@ -2066,9 +2066,9 @@
   padding: 16px;
 }
 
-/* Отступ под фиксированную мобильную панель (высота 104px ≤1099px),
+/* Отступ под фиксированную мобильную панель (высота 104px ≤1023px),
    чтобы модалка не пряталась под неё и появлялась по центру, а не «снизу» */
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   .admin-modal-overlay {
     padding-top: 116px;
   }
@@ -2685,7 +2685,7 @@ body:has(.admin-login) > main {
   overscroll-behavior: contain;
 }
 
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   /* Под мобильной шапкой 104px + верхний отступ оверлея 116px. */
   .wh-modal {
     max-height: calc(100dvh - 136px);
@@ -5344,7 +5344,7 @@ body:has(.admin-modal-overlay) {
 
 /* На мобильных опускаем колокольчик ниже двухрядной шапки (104 px):
    в углу он перекрывал кнопки «Сайт»/«Выйти» — их было не нажать. */
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   .admin-notify { top: 112px; }
 }
 
@@ -10215,7 +10215,7 @@ body:has(.admin-modal-overlay) {
 /* ══════════════════════════════════════
    ADMIN NAVIGATION — accessible compact layout
    ══════════════════════════════════════ */
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   .admin-sidebar { display: none; }
   .admin-content { margin-left: 0 !important; }
   .admin-mobile-bar {
@@ -10289,11 +10289,6 @@ body:has(.admin-modal-overlay) {
   .admin-sidebar-handle { display: none !important; }
 }
 
-/* На малом десктопе сохраняем широкую рабочую область вместо резкого
-   появления 240px сайдбара. */
-@media (min-width: 1024px) and (max-width: 1099px) {
-  .admin-mobile-bar { display: block; }
-}
 
 @media (max-width: 380px) {
   .admin-mobile-bar { height: 100px; }

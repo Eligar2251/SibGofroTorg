@@ -815,13 +815,17 @@
   [data-admin-layout="compact"] .admin-sidebar__logout > span {
     display: none !important;
   }
-  /* Страховка от переноса/обрезки, если текст всё же пролезет */
+  /* Двойная страховка «только иконки»: даже если подпись почему-то не
+     спряталась display:none, нулевой размер шрифта не даст ей
+     occupать место и уезжать за поля. Иконки (svg) имеют свои
+     размеры и от font-size не зависят. */
   [data-admin-layout="compact"] .admin-sidebar__link,
   [data-admin-layout="compact"] .admin-sidebar__footer-link,
   [data-admin-layout="compact"] .admin-sidebar__logout {
     overflow: hidden;
     white-space: nowrap;
-    text-indent: 0;
+    font-size: 0;
+    line-height: 0;
   }
   /* Горизонтальный логотип (знак + текст) в 76px не помещается —
      вместо него аккуратная монограмма в фирменном цвете. */
