@@ -338,6 +338,51 @@ export function SettingsForm({ settings }: SettingsFormProps) {
 
         <div className="admin-card" style={cardStyle}>
           <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Варианты цен (скидки контрагентов)</h2>
+            <div className="admin-grid-2" style={{ minWidth: 0 }}>
+              <div className="admin-field">
+                <label className="admin-label">Спеццена, скидка %</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.5"
+                  value={values["price_tier_special_discount"] ?? ""}
+                  placeholder="5"
+                  onChange={(e) =>
+                    setValues({ ...values, price_tier_special_discount: e.target.value })
+                  }
+                  className="admin-input"
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Эксклюзивная цена, скидка %</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.5"
+                  value={values["price_tier_exclusive_discount"] ?? ""}
+                  placeholder="10"
+                  onChange={(e) =>
+                    setValues({ ...values, price_tier_exclusive_discount: e.target.value })
+                  }
+                  className="admin-input"
+                />
+              </div>
+            </div>
+            <p className="admin-hint" style={{ marginTop: "auto" }}>
+              Три уровня цен контрагентов: «Обычная» (без скидки, у всех по
+              умолчанию), «Спеццена» и «Эксклюзивная». Уровень выбирается в
+              карточке контрагента (Учёт → Контрагенты). При оформлении заказа
+              цена товара подставляется автоматически со скидкой уровня.
+              Пустые поля = 5% и 10%.
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
             <h2 className="admin-h2" style={{ margin: 0 }}>Сдача кассы</h2>
             <div className="admin-field">
               <label className="admin-label">Получатель перевода на карту</label>

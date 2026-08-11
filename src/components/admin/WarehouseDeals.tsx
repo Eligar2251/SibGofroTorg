@@ -34,6 +34,11 @@ import {
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
+import {
+  priceTierDiscountPercent,
+  applyTierDiscount,
+  normalizePriceTier,
+} from "@/lib/warehouse-shared";
 import type { BankPayment } from "@/lib/warehouse-shared";
 
 /** Округление до копеек */
@@ -83,6 +88,9 @@ interface DealItemDraft {
   quantity: number | "";
   price: number | "";
   stockQty: number;
+  /** Цена подставлена автоматически (со скидкой уровня покупателя) —
+      при смене покупателя пересчитывается; ручная правка снимает флаг. */
+  autoPrice?: boolean;
 }
 
 export interface EditableDeal {
@@ -138,6 +146,7 @@ export function DealForm({
   deliveryPrice = 800,
   freeDeliveryThreshold = 30000,
   reservedStockById,
+  tierDiscounts = { special: 5, exclusive: 10 },
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
@@ -149,6 +158,8 @@ export function DealForm({
   freeDeliveryThreshold?: number;
   /** Карта зарезервированного кол-ва по другим заказам (для подсказки «свободно X»). */
   reservedStockById?: Map<string, number>;
+  /** Скидки ценовых уровней контрагентов (из настроек админки). */
+  tierDiscounts?: { special: number; exclusive: number };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -331,6 +342,17 @@ export function DealForm({
 
   function selectCustomer(value: string) {
     setCustomerName(value);
+    // Сменили покупателя — пересчитываем автоцены позиций под скидку
+    // его ценового уровня (правленные вручную цены не трогаем).
+    const nextDiscount = discountPercentForName(value);
+    setItems((prev) =>
+      prev.map((it) => {
+        if (!it.autoPrice) return it;
+        const product = products.find((p) => p.id === it.productId);
+        if (!product || product.price == null || product.price <= 0) return it;
+        return { ...it, price: applyTierDiscount(product.price, nextDiscount) };
+      })
+    );
     const found = counterparties.find(
       (item) =>
         item.roles.includes("customer") &&
@@ -365,6 +387,18 @@ export function DealForm({
     }
   }
 
+  /** Скидка ценового уровня покупателя по имени (0 — обычный уровень). */
+  function discountPercentForName(name: string): number {
+    const found = counterparties.find(
+      (item) =>
+        item.roles.includes("customer") &&
+        item.name.toLocaleLowerCase("ru-RU") ===
+          name.trim().toLocaleLowerCase("ru-RU")
+    );
+    if (!found) return 0;
+    return priceTierDiscountPercent(normalizePriceTier(found.priceTier), tierDiscounts);
+  }
+
   function addItem(p: PickerProduct) {
     setItems((prev) => {
       const existing = prev.find((it) => it.productId === p.id);
@@ -375,8 +409,11 @@ export function DealForm({
             : it
         );
       }
-      // Цена продажи подставляется автоматически (со скидкой),
-      // спец. цену можно вписать вручную
+      // Цена продажи подставляется автоматически СО СКИДКОЙ ценового
+      // уровня покупателя (спец/эксклюзив из карточки контрагента).
+      // Цену можно переписать вручную — тогда автопересчёт снимается.
+      const basePrice = p.price != null && p.price > 0 ? p.price : null;
+      const discount = discountPercentForName(customerName);
       return [
         ...prev,
         {
@@ -384,8 +421,9 @@ export function DealForm({
           name: p.name,
           sku: p.sku,
           quantity: 1,
-          price: p.price != null && p.price > 0 ? p.price : "",
+          price: basePrice != null ? applyTierDiscount(basePrice, discount) : "",
           stockQty: p.stockQty,
+          autoPrice: basePrice != null,
         },
       ];
     });
@@ -576,6 +614,16 @@ export function DealForm({
                     placeholder="Начните вводить название..."
                     emptyText="Такого покупателя нет — впишите нового"
                   />
+                  {(() => {
+                    const pct = discountPercentForName(customerName);
+                    return pct > 0 ? (
+                      <span className="admin-hint" style={{ marginTop: 4 }}>
+                        Ценовой уровень со скидкой {pct}% — цены товаров
+                        подставляются уже со скидкой (уровень меняется в
+                        карточке контрагента).
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Ставка НДС</label>
@@ -700,6 +748,9 @@ export function DealForm({
                               e.target.value === ""
                                 ? ""
                                 : Number(e.target.value),
+                            // Цену правят руками — автопересчёт при смене
+                            // покупателя эту позицию больше не трогает.
+                            autoPrice: false,
                           })
                         }
                       />

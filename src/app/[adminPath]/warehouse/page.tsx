@@ -17,7 +17,7 @@ import {
   getCashCollections,
   getConsignmentManualSales,
 } from "@/lib/warehouse";
-import { dealNeedsDelivery } from "@/lib/warehouse-shared";
+import { dealNeedsDelivery, getPriceTierDiscounts } from "@/lib/warehouse-shared";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
 import { getAdminDb } from "@/lib/supabase";
@@ -292,6 +292,7 @@ export default async function AdminWarehousePage({
     Number.isFinite(freeThresholdRaw) && freeThresholdRaw >= 0
       ? freeThresholdRaw
       : 30000;
+  const tierDiscounts = getPriceTierDiscounts(settings);
 
   return (
     <div>
@@ -325,6 +326,7 @@ export default async function AdminWarehousePage({
       consignmentManual={consignmentManual}
       companyPhone={settings.phone || undefined}
       companyAddress={settings.address || undefined}
+      tierDiscounts={tierDiscounts}
     />
     </div>
   );

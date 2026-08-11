@@ -31,6 +31,7 @@ export async function PUT(
       address: body.address,
       contactName: body.contactName,
       comment: body.comment,
+      priceTier: body.priceTier,
     });
     return NextResponse.json({ success: true });
   } catch (error) {

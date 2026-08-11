@@ -72,6 +72,7 @@ import {
 } from "@/components/admin/WarehousePayments";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
+import { StockPriceEditor } from "@/components/admin/StockPriceEditor";
 import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import { StockRevision } from "@/components/admin/StockRevision";
@@ -239,6 +240,8 @@ interface WarehouseManagerProps {
   consignmentManual?: ConsignmentManualSale[];
   companyPhone?: string;
   companyAddress?: string;
+  /** Скидки ценовых уровней контрагентов (из настроек админки). */
+  tierDiscounts?: { special: number; exclusive: number };
 }
 
 export function WarehouseManager({
@@ -270,6 +273,7 @@ export function WarehouseManager({
   consignmentManual = [],
   companyPhone,
   companyAddress,
+  tierDiscounts = { special: 5, exclusive: 10 },
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<string>(initialSub);
@@ -475,6 +479,33 @@ export function WarehouseManager({
   }
 
   function handleStockQuantitySaved(productId: string) {
+    setStockSummaries((prev) => {
+      if (!prev[productId]) return prev;
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+    if (expandedStockIds.has(productId)) {
+      void loadStockSummary(productId, true);
+    }
+  }
+
+  // Локальные переопределения цен после инлайн-сохранения: колонка
+  // «Разница» и «Сумма» пересчитываются сразу, без перезагрузки.
+  const [stockPriceOverrides, setStockPriceOverrides] = useState<
+    Map<string, { price?: number | null; purchasePrice?: number | null }>
+  >(new Map());
+  function handleStockPriceSaved(
+    productId: string,
+    field: "price" | "purchasePrice",
+    value: number | null
+  ) {
+    setStockPriceOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(productId, { ...(next.get(productId) || {}), [field]: value });
+      return next;
+    });
+    // Сводка товара использует закупочную цену для маржи — сбрасываем кеш.
     setStockSummaries((prev) => {
       if (!prev[productId]) return prev;
       const next = { ...prev };
@@ -1624,6 +1655,7 @@ export function WarehouseManager({
               deliveryPrice={deliveryPrice}
               freeDeliveryThreshold={freeDeliveryThreshold}
               reservedStockById={reservedTotalById}
+              tierDiscounts={tierDiscounts}
             />
           )}
           {activeTab === "bank" && (
@@ -1717,15 +1749,25 @@ export function WarehouseManager({
                         <tr>
                           <th>Товар</th>
                           <th>Артикул</th>
-                          <th>Поставщик</th>
                           <th style={{ textAlign: "right" }}>Остаток</th>
+                          <th style={{ textAlign: "right" }} title="Закупочная цена — общая, примерная. Для конкретного поставщика цена берётся из поставки.">Закуп</th>
                           <th style={{ textAlign: "right" }}>Цена продажи</th>
+                          <th style={{ textAlign: "right" }} title="Разница между ценой продажи и закупочной">Разница</th>
                           <th style={{ textAlign: "right" }}>Сумма</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredStock.map((p) => {
                           const summaryExpanded = expandedStockIds.has(p.id);
+                          const priceOverride = stockPriceOverrides.get(p.id);
+                          const effPrice =
+                            priceOverride && priceOverride.price !== undefined
+                              ? priceOverride.price
+                              : p.price ?? null;
+                          const effPurchase =
+                            priceOverride && priceOverride.purchasePrice !== undefined
+                              ? priceOverride.purchasePrice
+                              : p.purchasePrice ?? null;
                           return (
                             <React.Fragment key={p.id}>
                               <tr id={`stock-${p.id}`} className={summaryExpanded ? "wh-stock-row--expanded" : undefined}>
@@ -1758,23 +1800,6 @@ export function WarehouseManager({
                                   )}
                                 </td>
                                 <td>{p.sku || "—"}</td>
-                                <td>
-                                  {(suppliersByProduct.get(p.id) || []).length > 0 ? (
-                                    <div style={{ display: "grid", gap: 3 }}>
-                                      {(suppliersByProduct.get(p.id) || []).slice(0, 2).map((row) => (
-                                        <button
-                                          key={row.supplier.id}
-                                          type="button"
-                                          onClick={() => { setActiveTab("suppliers"); setSelectedSupplierId(row.supplier.id); }}
-                                          className="admin-badge admin-badge--blue"
-                                          style={{ border: 0, cursor: "pointer", justifyContent: "flex-start" }}
-                                        >
-                                          {row.supplier.name} · {fmt(row.price)} ₽
-                                        </button>
-                                      ))}
-                                    </div>
-                                  ) : "—"}
-                                </td>
                                 <td style={{ textAlign: "right" }}>
                                   <StockQtyEditor
                                     productId={p.id}
@@ -1792,16 +1817,46 @@ export function WarehouseManager({
                                     </>
                                   )}
                                 </td>
-                                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                                  {p.price != null ? `${fmt(p.price)} ₽` : "—"}
+                                <td style={{ textAlign: "right" }}>
+                                  <StockPriceEditor
+                                    productId={p.id}
+                                    field="purchasePrice"
+                                    initialValue={p.purchasePrice ?? null}
+                                    variant="purchase"
+                                    onSaved={(value) => handleStockPriceSaved(p.id, "purchasePrice", value)}
+                                  />
+                                </td>
+                                <td style={{ textAlign: "right" }}>
+                                  <StockPriceEditor
+                                    productId={p.id}
+                                    field="price"
+                                    initialValue={p.price ?? null}
+                                    onSaved={(value) => handleStockPriceSaved(p.id, "price", value)}
+                                  />
+                                </td>
+                                <td style={{ textAlign: "right" }}>
+                                  {effPrice != null && effPurchase != null && effPrice > 0 ? (
+                                    <span
+                                      className="wh-stock-diff"
+                                      style={{ color: effPrice - effPurchase >= 0 ? "var(--adm-pine)" : "var(--adm-rust)" }}
+                                      title="Цена продажи − закупочная цена"
+                                    >
+                                      {effPrice - effPurchase >= 0 ? "+" : ""}{fmt(Math.round((effPrice - effPurchase) * 100) / 100)} ₽
+                                      <small style={{ display: "block", fontSize: 10, opacity: 0.75 }}>
+                                        {Math.round(((effPrice - effPurchase) / effPrice) * 100)}%
+                                      </small>
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: "var(--adm-sand)" }}>—</span>
+                                  )}
                                 </td>
                                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                                  {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
+                                  {effPrice != null ? `${fmt(p.stockQty * effPrice)} ₽` : "—"}
                                 </td>
                               </tr>
                               {summaryExpanded && (
                                 <tr id={`stock-summary-${p.id}`} className="stock-summary-row">
-                                  <td colSpan={6}>
+                                  <td colSpan={7}>
                                     <ProductStockSummaryPanel
                                       adminPath={adminPath}
                                       summary={stockSummaries[p.id]}
@@ -2725,6 +2780,7 @@ export function WarehouseManager({
                             deliveryPrice={deliveryPrice}
                             freeDeliveryThreshold={freeDeliveryThreshold}
                             reservedStockById={reservedTotalById}
+                            tierDiscounts={tierDiscounts}
                             initialDeal={{
                               id: d.id,
                               date: d.date,
@@ -2817,6 +2873,7 @@ export function WarehouseManager({
         <CounterpartiesManager
           initialCounterparties={counterpartyOptions}
           documents={counterpartyDocuments}
+          tierDiscounts={tierDiscounts}
         />
       )}
 

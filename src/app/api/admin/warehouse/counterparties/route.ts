@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       address: body.address,
       contactName: body.contactName,
       comment: body.comment,
+      priceTier: body.priceTier,
     });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

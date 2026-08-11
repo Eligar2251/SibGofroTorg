@@ -44,9 +44,56 @@ export interface Counterparty extends CounterpartyDetails {
   normalizedName: string;
   roles: CounterpartyRole[];
   supplierPrices?: Record<string, number>;
+  /** Вариант цены контрагента: обычный / спец (скидка) / эксклюзив (скидка больше). */
+  priceTier?: PriceTier;
   comment?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+// ── Варианты цен (ценовые уровни контрагентов) ──────────────
+// «Обычная» — цена как в карточке товара (все по умолчанию).
+// «Спец» и «Эксклюзив» — скидка от цены продажи; проценты задаются
+// в настройках админки (price_tier_special_discount /
+// price_tier_exclusive_discount) и применяются при оформлении заказа.
+export type PriceTier = "regular" | "special" | "exclusive";
+
+export const PRICE_TIER_IDS: readonly PriceTier[] = ["regular", "special", "exclusive"];
+
+export function normalizePriceTier(value: unknown): PriceTier {
+  return value === "special" || value === "exclusive" ? value : "regular";
+}
+
+/** Скидки уровней из настроек (дефолты: спец 5%, эксклюзив 10%). */
+export function getPriceTierDiscounts(
+  settings: Record<string, string | undefined> | null | undefined
+): { special: number; exclusive: number } {
+  const parse = (raw: string | undefined, fallback: number) => {
+    const trimmed = String(raw ?? "").trim();
+    if (!trimmed) return fallback;
+    const n = Number(trimmed.replace(",", "."));
+    return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 100) / 100 : fallback;
+  };
+  return {
+    special: parse(settings?.price_tier_special_discount, 5),
+    exclusive: parse(settings?.price_tier_exclusive_discount, 10),
+  };
+}
+
+export function priceTierDiscountPercent(
+  tier: PriceTier | null | undefined,
+  discounts: { special: number; exclusive: number }
+): number {
+  if (tier === "special") return discounts.special;
+  if (tier === "exclusive") return discounts.exclusive;
+  return 0;
+}
+
+/** Цена со скидкой уровня (округление до копеек). */
+export function applyTierDiscount(price: number, discountPercent: number): number {
+  if (!Number.isFinite(price) || price <= 0) return price;
+  const pct = Math.min(100, Math.max(0, Number(discountPercent) || 0));
+  return Math.round(price * (1 - pct / 100) * 100) / 100;
 }
 
 export type ReceiptStatus = "draft" | "posted";
@@ -216,6 +263,9 @@ export interface ProductStockSummary {
   productId: string;
   productName: string;
   sku: string | null;
+  /** Общая закупочная цена из карточки товара — фолбэк для маржи,
+      когда поставок по товару ещё нет. */
+  purchasePrice?: number | null;
   currentStockQty: number;
   receipts: ProductStockReceiptHistory[];
   deals: ProductStockDealHistory[];

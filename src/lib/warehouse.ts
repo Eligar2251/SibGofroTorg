@@ -57,6 +57,8 @@ import {
   isSalaryExcludedFromBalance,
   getSalaryPeriodMonth,
   stripSalaryMetaTags,
+  normalizePriceTier,
+  type PriceTier,
 } from "./warehouse-shared";
 
 export {
@@ -157,6 +159,7 @@ function mapCounterpartyRow(row: any): Counterparty {
     supplierPrices: row.supplier_prices && typeof row.supplier_prices === "object"
       ? Object.fromEntries(Object.entries(row.supplier_prices).map(([id, price]) => [id, Math.max(0, Number(price) || 0)]))
       : {},
+    priceTier: normalizePriceTier(row.price_tier),
     phone: row.phone ?? null,
     email: row.email ?? null,
     inn: row.inn ?? null,
@@ -625,6 +628,7 @@ export async function saveCounterparty(data: {
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
+  priceTier?: PriceTier | null;
 }): Promise<{ id: string }> {
   const db = getAdminDb();
   const name = sanitizeCounterpartyName(data.name);
@@ -641,6 +645,7 @@ export async function saveCounterparty(data: {
     bik: data.bik ?? null, correspondent_account: data.correspondentAccount ?? null,
     address: data.address ?? null, contact_name: data.contactName ?? null,
     comment: data.comment ?? null,
+    price_tier: normalizePriceTier(data.priceTier),
   };
 
   const { error } = await db.from("counterparties").upsert(payload);
@@ -3782,7 +3787,7 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     await Promise.all([
       db
         .from("products")
-        .select("id, name, sku, stock_qty")
+        .select("id, name, sku, stock_qty, purchase_price")
         .eq("id", productId)
         .maybeSingle(),
       fetchProductReceiptRows(productId),
@@ -3879,6 +3884,8 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     productId,
     productName: String(product.name || ""),
     sku: product.sku ? String(product.sku) : null,
+    purchasePrice:
+      product.purchase_price != null ? Number(product.purchase_price) : null,
     currentStockQty,
     receipts,
     deals,
