@@ -384,12 +384,17 @@ export function ProductListClient({
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 6,
-                          fontWeight: 600,
-                          color: (product.viewCount ?? 0) > 0 ? "var(--ink)" : "var(--ink-faint)",
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 12,
+                          background: (product.viewCount ?? 0) > 0 ? "#ffffff" : "#1a1a18",
+                          color: (product.viewCount ?? 0) > 0 ? "#111111" : "#ffffff",
+                          border: (product.viewCount ?? 0) > 0 ? "1px solid #dbd8d0" : "1px solid #1a1a18",
                         }}
                         title="Уникальные посетители страницы товара"
                       >
-                        <Eye size={14} style={{ opacity: 0.55, flexShrink: 0 }} />
+                        <Eye size={12} style={{ opacity: (product.viewCount ?? 0) > 0 ? 0.7 : 0.9, flexShrink: 0 }} />
                         {(product.viewCount ?? 0).toLocaleString("ru-RU")}
                       </span>
                     </td>

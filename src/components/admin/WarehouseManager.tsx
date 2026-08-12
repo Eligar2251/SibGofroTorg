@@ -3150,92 +3150,91 @@ export function WarehouseManager({
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", marginTop: 4 }}>ПКМ по ожидающим — выделение для прикидки</div>
               </div>
 
-              {/* Касса и Карта ЮМ — на одной линии, по соседству, это по факту касса */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, alignItems: "start" }}>
-                <div>
-                  <div className="bank-hero__label">
-                    <Banknote size={14} /> Касса (наличные)
-                  </div>
-                  <div
-                    className="bank-hero__value"
-                    style={{ color: bankSummary.cashBalanceNegative ? '#ef8f76' : '#fff' }}
-                  >
-                    {fmt(bankSummary.cashBalance)} ₽
-                  </div>
-                  <div className="cash-carryover-hero">
-                    <span>
-                      С прошлых дней: <b>{fmt(cashCarryover.previousDaysRemaining)} ₽</b>
-                    </span>
-                    <span>
-                      На начало дня: <b>{fmt(cashCarryover.openingBalance)} ₽</b>
-                    </span>
-                    <span>
-                      Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
-                    </span>
-                    <span title="Сколько налички ещё ждёт перевода на карту за сегодня — обнуляется после сдачи кассы">
-                      Перевод: <b>{fmt(pendingTransfers.today)} ₽</b>
-                    </span>
-                    {pendingTransfers.older > 0.009 && (
-                      <span title="Непереведённая наличка прошлых дней — тоже обнулится после сдачи кассы">
-                        в т.ч. за прошлые дни: <b>{fmt(pendingTransfers.older)} ₽</b>
-                      </span>
-                    )}
-                  </div>
-                  {bankSummary.cashBalanceNegative && (
+              {/* Касса и Карта ЮМ — на одной линии, по соседству, это по факту касса — кнопки на одном уровне */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, alignItems: "stretch" }}>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div>
+                    <div className="bank-hero__label">
+                      <Banknote size={14} /> Касса (наличные)
+                    </div>
                     <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 6,
-                        marginTop: 6,
-                        fontSize: 12,
-                        color: '#ef8f76',
-                        maxWidth: 280,
-                      }}
+                      className="bank-hero__value"
+                      style={{ color: bankSummary.cashBalanceNegative ? '#ef8f76' : '#fff' }}
                     >
-                      <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                      {fmt(bankSummary.cashBalance)} ₽
+                    </div>
+                    <div className="cash-carryover-hero">
                       <span>
-                        Касса в минусе. Обычно это значит, что приход, покрытый
-                        прошлой сдачей, стал безналичным. Проверьте типы платежей
-                        и суммы сдач — цифры разошлись.
+                        С прошлых дней: <b>{fmt(cashCarryover.previousDaysRemaining)} ₽</b>
+                      </span>
+                      <span>
+                        На начало дня: <b>{fmt(cashCarryover.openingBalance)} ₽</b>
+                      </span>
+                      <span>
+                        Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
                       </span>
                     </div>
-                  )}
-                  <button
-                    type="button"
-                    className="admin-btn admin-btn--primary admin-btn--sm"
-                    disabled={collecting || bankSummary.cashBalance < -0.009}
-                    onClick={handleCollectCash}
-                    style={{ marginTop: 10 }}
-                  >
-                    {collecting ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
-                    Сдать кассу
-                  </button>
+                    {bankSummary.cashBalanceNegative && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 6,
+                          marginTop: 6,
+                          fontSize: 12,
+                          color: '#ef8f76',
+                          maxWidth: 280,
+                        }}
+                      >
+                        <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span>
+                          Касса в минусе. Обычно это значит, что приход, покрытый
+                          прошлой сдачей, стал безналичным. Проверьте типы платежей
+                          и суммы сдач — цифры разошлись.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: "auto", paddingTop: 10 }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--primary admin-btn--sm"
+                      disabled={collecting || bankSummary.cashBalance < -0.009}
+                      onClick={handleCollectCash}
+                    >
+                      {collecting ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
+                      Сдать кассу
+                    </button>
+                  </div>
                 </div>
 
-                <div style={{ borderLeft: "1px dashed rgba(255,255,255,0.12)", paddingLeft: 16 }}>
-                  <div className="bank-hero__label">
-                    <CreditCard size={14} /> Карта ЮМ
+                <div style={{ borderLeft: "1px dashed rgba(255,255,255,0.12)", paddingLeft: 16, display: "flex", flexDirection: "column" }}>
+                  <div>
+                    <div className="bank-hero__label">
+                      <CreditCard size={14} /> Карта ЮМ
+                    </div>
+                    <div className="bank-hero__value" style={{ color: '#e0b45a' }}>
+                      {fmt(bankSummary.ymCardBalance)} ₽
+                    </div>
+                    <div className="cash-carryover-hero" style={{ marginTop: 6, flexWrap: "wrap" }}>
+                      <span>Ожидаем +: <b>{fmt(bankSummary.ymExpectedIn)} ₽</b></span>
+                      <span>К оплате −: <b>{fmt(bankSummary.ymExpectedOut)} ₽</b></span>
+                      <span>Прогноз: <b>{fmt(bankSummary.ymForecast)} ₽</b></span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 6, lineHeight: 1.3 }}>
+                      По факту касса: сюда приходят переводы из кассы. Отсюда — оплата, внесение, ЗП.
+                    </div>
                   </div>
-                  <div className="bank-hero__value" style={{ color: '#e0b45a' }}>
-                    {fmt(bankSummary.ymCardBalance)} ₽
+                  <div style={{ marginTop: "auto", paddingTop: 10 }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      style={{ background: "rgba(224,180,90,0.12)", border: "1px solid rgba(224,180,90,0.25)", color: "#e0b45a" }}
+                      onClick={() => setBankSub("ym")}
+                    >
+                      <CreditCard size={13} /> Открыть карту ЮМ
+                    </button>
                   </div>
-                  <div className="cash-carryover-hero" style={{ marginTop: 6, flexWrap: "wrap" }}>
-                    <span>Ожидаем +: <b>{fmt(bankSummary.ymExpectedIn)} ₽</b></span>
-                    <span>К оплате −: <b>{fmt(bankSummary.ymExpectedOut)} ₽</b></span>
-                    <span>Прогноз: <b>{fmt(bankSummary.ymForecast)} ₽</b></span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 6, lineHeight: 1.3 }}>
-                    По факту касса: сюда приходят переводы из кассы. Отсюда — оплата, внесение, ЗП.
-                  </div>
-                  <button
-                    type="button"
-                    className="admin-btn admin-btn--ghost admin-btn--sm"
-                    style={{ marginTop: 8, background: "rgba(224,180,90,0.12)", border: "1px solid rgba(224,180,90,0.25)", color: "#e0b45a" }}
-                    onClick={() => setBankSub("ym")}
-                  >
-                    <CreditCard size={13} /> Открыть карту ЮМ
-                  </button>
                 </div>
               </div>
 
