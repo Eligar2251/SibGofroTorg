@@ -92,7 +92,6 @@ import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
-import { DueSummaryModal } from "@/components/admin/DueSummaryModal";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -698,8 +697,6 @@ export function WarehouseManager({
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<Set<string>>(new Set());
   const [selectedPartyKeys, setSelectedPartyKeys] = useState<Set<string>>(new Set());
   const [showCalculator, setShowCalculator] = useState(false);
-  const [showDueSummaryModal, setShowDueSummaryModal] = useState(false);
-  const [dueModalTab, setDueModalTab] = useState<"skipped" | "all">("skipped");
   const [calcExpression, setCalcExpression] = useState("");
   const [calcResult, setCalcResult] = useState<string>("");
 
@@ -3536,31 +3533,6 @@ export function WarehouseManager({
             </div>
           )}
 
-          {/* Кнопки расширенной сводки по коробкам и вычёркиваниям */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-            <button
-              type="button"
-              className="admin-btn admin-btn--ghost admin-btn--sm"
-              style={{ background: 'rgba(59,130,246,0.08)', color: 'var(--adm-primary)', borderColor: 'rgba(59,130,246,0.3)', fontWeight: 700 }}
-              onClick={() => { setDueModalTab("all"); setShowDueSummaryModal(true); }}
-            >
-              <Boxes size={14} /> Расширенная сводка долгов по коробкам ({counterpartiesWithDebt.length})
-            </button>
-            <button
-              type="button"
-              className="admin-btn admin-btn--ghost admin-btn--sm"
-              style={{
-                background: (skippedParties.size > 0 || skippedPaymentIds.size > 0) ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.03)',
-                color: (skippedParties.size > 0 || skippedPaymentIds.size > 0) ? 'var(--adm-rust)' : 'var(--adm-muted)',
-                borderColor: (skippedParties.size > 0 || skippedPaymentIds.size > 0) ? 'rgba(239,68,68,0.3)' : 'var(--adm-border)',
-                fontWeight: 700,
-              }}
-              onClick={() => { setDueModalTab("skipped"); setShowDueSummaryModal(true); }}
-            >
-              <Scissors size={14} /> Что вычеркнуто из расчётов ({skippedParties.size + skippedPaymentIds.size})
-            </button>
-          </div>
-
           {/* Баланс по контрагентам (только с долгами) */}
           <div className="bank-due">
             <div className="bank-due__group">
@@ -3673,36 +3645,6 @@ export function WarehouseManager({
               </div>
             </ModalPortal>
           )}
-
-          <DueSummaryModal
-            isOpen={showDueSummaryModal}
-            onClose={() => setShowDueSummaryModal(false)}
-            initialTab={dueModalTab}
-            counterpartiesWithDebt={counterpartiesWithDebt}
-            dueBreakdown={dueBreakdown}
-            skippedParties={skippedParties}
-            skippedPaymentIds={skippedPaymentIds}
-            onRestoreParty={(key) => {
-              setSkippedParties((prev) => {
-                const next = new Set(prev);
-                next.delete(key);
-                return next;
-              });
-            }}
-            onRestorePayment={(id) => {
-              setSkippedPaymentIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-              });
-            }}
-            onRestoreAll={() => {
-              setSkippedParties(new Set());
-              setSkippedPaymentIds(new Set());
-            }}
-            paymentProductsSummaryById={paymentProductsSummaryById}
-            adminPath={adminPath}
-          />
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
             <button
