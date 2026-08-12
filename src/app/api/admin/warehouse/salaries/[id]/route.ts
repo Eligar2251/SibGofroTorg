@@ -13,7 +13,7 @@ export async function PATCH(
     const body = await request.json();
     const src = body.source ? String(body.source) : undefined;
     const safeSource =
-      src === "cash" || src === "bank" || src === "ym_card" ? src : undefined;
+      src === "cash" || src === "bank" || src === "ym_card" || src === "rent" ? src : undefined;
     await updateSalary(id, {
       employeeId: body.employeeId,
       employeeName: body.employeeName,

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     const src = String(body.source || "");
-    const safeSource = src === "cash" ? "cash" : src === "ym_card" ? "ym_card" : "bank";
+    const safeSource = (src === "cash" || src === "ym_card" || src === "rent" || src === "bank" ? src : "bank");
     const result = await createSalary({
       employeeId,
       employeeName,

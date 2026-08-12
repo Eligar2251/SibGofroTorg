@@ -55,6 +55,7 @@ import {
   isDealFullyShipped,
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
+  isYmCardSalaryComment,
   getSalaryPeriodMonth,
   stripSalaryMetaTags,
   normalizePriceTier,
@@ -376,7 +377,7 @@ function mapSalaryRow(row: any): Salary {
     amount: Number(row.amount || 0),
     date: row.date,
     periodMonth: getSalaryPeriodMonth(row.comment, row.date),
-    source: row.source,
+    source: isYmCardSalaryComment(row.comment) ? "ym_card" : row.source,
     isPaid: row.is_paid ?? false,
     paidAt: row.paid_at ?? null,
     comment: row.comment ?? null,
@@ -2491,11 +2492,19 @@ export async function deleteEmployee(id: string): Promise<void> {
 
 export async function createSalary(data: { employeeId?: string | null; employeeName: string; amount: number; date: string; source: SalarySource; isPaid?: boolean; comment?: string | null }): Promise<{ id: string }> {
   const db = getAdminDb();
+  const rawSource = String(data.source || "");
+  const dbSource = rawSource === "cash" ? "cash" : "bank";
+  let dbComment = data.comment || "";
+  if (rawSource === "ym_card" && !dbComment.includes("[Карта ЮМ]") && !dbComment.includes("[ЮМ]")) {
+    dbComment = `[Карта ЮМ] ${dbComment}`.trim();
+  } else if (rawSource === "rent" && !dbComment.includes("[Аренда]")) {
+    dbComment = `[Аренда] ${dbComment}`.trim();
+  }
   const { data: result, error } = await db.from("salaries").insert({
     employee_id: data.employeeId ?? null, employee_name: data.employeeName,
-    amount: data.amount, date: data.date.slice(0, 10), source: data.source,
+    amount: data.amount, date: data.date.slice(0, 10), source: dbSource,
     is_paid: data.isPaid ?? false, paid_at: data.isPaid ? data.date.slice(0, 10) : null,
-    comment: data.comment ?? null,
+    comment: dbComment || null,
   }).select("id").single();
   if (error) throw error;
   revalidateTag("warehouse-salaries", { expire: 0 });
@@ -2507,9 +2516,20 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   const payload: Record<string, any> = {};
   if (data.amount !== undefined) payload.amount = data.amount;
   if (data.date) payload.date = data.date.slice(0, 10);
-  if (data.source) payload.source = data.source;
+  if (data.source) {
+    const rawSource = String(data.source);
+    payload.source = rawSource === "cash" ? "cash" : "bank";
+    const commentStr = String(data.comment || "");
+    let nextComment = data.comment;
+    if (rawSource === "ym_card" && nextComment !== undefined && !commentStr.includes("[Карта ЮМ]") && !commentStr.includes("[ЮМ]")) {
+      nextComment = `[Карта ЮМ] ${commentStr}`.trim();
+    } else if (rawSource === "rent" && nextComment !== undefined && !commentStr.includes("[Аренда]")) {
+      nextComment = `[Аренда] ${commentStr}`.trim();
+    }
+    if (nextComment !== undefined) payload.comment = nextComment;
+  }
   if (data.isPaid !== undefined) { payload.is_paid = data.isPaid; payload.paid_at = data.isPaid ? (data.paidAt || data.date?.slice(0, 10) || null) : null; }
-  if (data.comment !== undefined) payload.comment = data.comment;
+  if (data.comment !== undefined && !payload.comment) payload.comment = data.comment;
   const { error } = await db.from("salaries").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-salaries", { expire: 0 });

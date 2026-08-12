@@ -400,9 +400,11 @@ function salaryHasTag(comment: string | null | undefined, tag: string): boolean 
   return (comment || "").includes(tag);
 }
 
-/** Выплата прошла по схеме «с аренды на карту» или с source="bank" (зп с р/с банка не платится, только аренда). */
+/** Выплата прошла по схеме «с аренды на карту» или с source="bank" (если это не карта ЮМ). ЗП с р/с банка не платится, только аренда. */
 export function isRentSalaryComment(comment: string | null | undefined, source?: string | null): boolean {
-  return salaryHasTag(comment, SALARY_RENT_TAG) || source === "bank";
+  if (salaryHasTag(comment, SALARY_RENT_TAG)) return true;
+  if (source === "bank" && !isYmCardSalaryComment(comment)) return true;
+  return false;
 }
 
 /** Историческая выплата: показывается в ЗП, но не влияет на текущий баланс. */
@@ -452,10 +454,13 @@ export function composeSalaryComment(options: {
   periodMonth?: string | null;
 }): string | null {
   const tags: string[] = [];
-  if (options.rent) tags.push(SALARY_RENT_TAG);
+  if (options.ymCard) {
+    tags.push(SALARY_YM_CARD_TAG);
+  } else if (options.rent) {
+    tags.push(SALARY_RENT_TAG);
+  }
   if (options.excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
   if (options.debtPayment) tags.push(SALARY_DEBT_PAYMENT_TAG);
-  if (options.ymCard) tags.push(SALARY_YM_CARD_TAG);
   if (/^\d{4}-\d{2}$/.test(options.periodMonth || "")) {
     tags.push(`[${SALARY_PERIOD_TAG_PREFIX}${options.periodMonth}]`);
   }
@@ -1025,7 +1030,18 @@ export function getBankSummary(
     const bypassBalance = isSalaryExcludedFromBalance(s.comment);
     if (bypassBalance) continue;
     const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
-    const isRent = isRentSalaryComment(s.comment);
+    if (isYm) {
+      // карта ЮМ — перевод / выплата с карты
+      if (s.isPaid) {
+        const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
+        if (!salaryDate || salaryDate > asOfDate) continue;
+        ymCardBalance -= s.amount;
+      } else {
+        ymExpectedOut += s.amount;
+      }
+      continue;
+    }
+    const isRent = isRentSalaryComment(s.comment, s.source);
     if (isRent) {
       // аренда — отдельный счёт, не трогает основной р/с и кассу
       if (s.isPaid) {
@@ -1035,17 +1051,6 @@ export function getBankSummary(
       } else {
         // ожидаемая аренда — к выплате
         rentExpectedOut += s.amount;
-      }
-      continue;
-    }
-    if (isYm) {
-      // карта ЮМ — перевод / выплата с карты
-      if (s.isPaid) {
-        const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
-        if (!salaryDate || salaryDate > asOfDate) continue;
-        ymCardBalance -= s.amount;
-      } else {
-        ymExpectedOut += s.amount;
       }
       continue;
     }

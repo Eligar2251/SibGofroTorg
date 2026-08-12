@@ -74,8 +74,9 @@ import {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-/** Оплата «с аренды на карту» или с source="bank": обычная запись bank + тег в комментарии. ЗП с р/с банка не платится, только аренда. */
+/** Оплата «с аренды на карту» или с source="bank" (если это не Карта ЮМ): обычная запись bank + тег в комментарии. ЗП с р/с банка не платится, только аренда. */
 function isRentSalary(s: Salary): boolean {
+  if (isYmCardSalaryComment(s.comment)) return false;
   return isRentSalaryComment(s.comment, s.source) || s.source === "bank";
 }
 
@@ -295,8 +296,9 @@ function SalaryFormModal({
       const empId = employeeId || (found ? found.id : null);
 
       // Для р/с банк — это всегда аренда (отдельный счёт). ЗП с р/с не платится.
-      const isRentForSubmit = source === "bank" ? true : initialRent;
-      const finalSource: SalarySource = source === "bank" ? "bank" : source;
+      const isRentForSubmit = source === "bank" || (source as string) === "rent" ? true : initialRent;
+      const isYmCardForSubmit = source === "ym_card" || (initial ? isYmCardSalaryComment(initial.comment) || initial.source === "ym_card" : false);
+      const finalSource: SalarySource = source === "cash" ? "cash" : "bank";
       const res = await fetch(
         initial
           ? `/api/admin/warehouse/salaries/${initial.id}`
@@ -313,8 +315,8 @@ function SalaryFormModal({
             periodMonth,
             comment: composeSalaryComment({
               comment,
-              rent: isRentForSubmit,
-              ymCard: source === "ym_card" || (initial ? isYmCardSalaryComment(initial.comment) || initial.source === "ym_card" : false),
+              rent: isRentForSubmit && !isYmCardForSubmit,
+              ymCard: isYmCardForSubmit,
               excludeFromBalance,
               debtPayment,
               periodMonth,
@@ -1660,7 +1662,7 @@ export function WarehouseSalaries({
           employeeName: employee.name,
           amount: data.amount,
           date,
-          source: data.source === "rent" ? "bank" : data.source,
+          source: data.source === "cash" ? "cash" : "bank",
           isPaid: data.paid,
           comment: finalComment,
         }),
@@ -1678,7 +1680,7 @@ export function WarehouseSalaries({
         amount: data.amount,
         date,
         periodMonth: activeMonth,
-        source: data.source === "rent" ? "bank" : data.source,
+        source: data.source === "ym_card" ? "ym_card" : data.source === "rent" ? "bank" : data.source,
         isPaid: data.paid,
         paidAt: data.paid ? date : null,
         comment: finalComment,
