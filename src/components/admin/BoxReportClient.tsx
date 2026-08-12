@@ -77,6 +77,15 @@ export function BoxReportClient({
   products: BoxProduct[];
 }) {
   const [search, setSearch] = useState("");
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => {
+      if (p.categoryName) set.add(p.categoryName);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
+  }, [products]);
+
+  const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(products.map((p) => p.id))
   );
@@ -85,6 +94,9 @@ export function BoxReportClient({
 
   const filtered = useMemo(() => {
     let list = products;
+    if (selectedCategory !== "all") {
+      list = list.filter((p) => p.categoryName === selectedCategory);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -98,7 +110,7 @@ export function BoxReportClient({
       list = list.filter((p) => selectedIds.has(p.id));
     }
     return list;
-  }, [products, search, showOnlySelected, selectedIds]);
+  }, [products, selectedCategory, search, showOnlySelected, selectedIds]);
 
   function toggleProduct(id: string) {
     setSelectedIds((prev) => {
@@ -184,6 +196,58 @@ export function BoxReportClient({
     window.print();
   }
 
+  function escapeXml(str: string): string {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+  }
+
+  function handleExportExcel() {
+    if (selectedProducts.length === 0 || activeFields.length === 0) {
+      alert("Выберите хотя бы один товар и одно поле");
+      return;
+    }
+    const headCells = activeFields
+      .map((k) => `<th style="border:1px solid #999;padding:6px 8px;background:#eee;font-weight:bold;text-align:left;">${escapeXml(FIELD_LABELS[k])}</th>`)
+      .join("");
+    const bodyRows = selectedProducts
+      .map((p, idx) => {
+        const cells = activeFields
+          .map((k) => `<td style="border:1px solid #999;padding:6px 8px;mso-number-format:'\\@';">${escapeXml(getFieldValue(p, k))}</td>`)
+          .join("");
+        return `<tr><td style="border:1px solid #999;padding:6px 8px;">${idx + 1}</td>${cells}</tr>`;
+      })
+      .join("");
+
+    const html =
+      `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">` +
+      `<head><meta charset="utf-8" />` +
+      `<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>` +
+      `<x:Name>Коробки</x:Name>` +
+      `<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>` +
+      `</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->` +
+      `<style>table{border-collapse:collapse;font-family:Arial;font-size:11px;} th,td{border:1px solid #999;padding:6px 8px;}</style>` +
+      `</head><body>` +
+      `<div style="font-family:Arial;font-size:14px;font-weight:bold;margin-bottom:8px;">Отчёт по коробкам (${new Date().toLocaleDateString("ru-RU")})</div>` +
+      `<table><thead><tr><th style="border:1px solid #999;padding:6px 8px;background:#eee;font-weight:bold;">№</th>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table>` +
+      `</body></html>`;
+
+    const blob = new Blob(["\ufeff", html], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Коробки_отчет_${new Date().toISOString().slice(0, 10)}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function handleExportCsv() {
     if (selectedProducts.length === 0 || activeFields.length === 0) {
       alert("Выберите хотя бы один товар и одно поле");
@@ -248,6 +312,19 @@ export function BoxReportClient({
                 style={{ paddingLeft: 32 }}
               />
             </div>
+            <select
+              className="admin-select"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              style={{ minWidth: 180 }}
+            >
+              <option value="all">Все категории ({products.length})</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
             <label className="admin-check" style={{ margin: 0 }}>
               <input type="checkbox" checked={showOnlySelected} onChange={(e) => setShowOnlySelected(e.target.checked)} />
               <span>Только выбранные ({selectedIds.size})</span>
@@ -277,18 +354,50 @@ export function BoxReportClient({
                 </label>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setFields({ ...DEFAULT_FIELDS })}>
-                Сбросить (название + размеры)
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                style={!fields.name && fields.dimensions && activeFields.length === 1 ? { background: 'rgba(59,130,246,0.12)', borderColor: 'rgba(59,130,246,0.5)', fontWeight: 700 } : {}}
+                onClick={() => setFields((prev) => Object.fromEntries((Object.keys(FIELD_LABELS) as FieldKey[]).map(k => [k, k === 'dimensions'])) as any)}
+              >
+                Только размеры Д×Ш×В (без названия)
               </button>
-              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setFields(Object.fromEntries((Object.keys(FIELD_LABELS) as FieldKey[]).map(k => [k, true])) as any)}>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                style={!fields.name && fields.length && fields.width && fields.height && activeFields.length === 3 ? { background: 'rgba(59,130,246,0.12)', borderColor: 'rgba(59,130,246,0.5)', fontWeight: 700 } : {}}
+                onClick={() => setFields((prev) => Object.fromEntries((Object.keys(FIELD_LABELS) as FieldKey[]).map(k => [k, k === 'length' || k === 'width' || k === 'height'])) as any)}
+              >
+                Длина, Ширина, Высота (3 столбца, без названия)
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                onClick={() => setFields({ ...DEFAULT_FIELDS })}
+              >
+                Название + Размеры (стандарт)
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                onClick={() => setFields((prev) => Object.fromEntries((Object.keys(FIELD_LABELS) as FieldKey[]).map(k => [k, k === 'name' || k === 'dimensions' || k === 'price' || k === 'stockQty'])) as any)}
+              >
+                Название + Размеры + Цена + Остаток
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                onClick={() => setFields(Object.fromEntries((Object.keys(FIELD_LABELS) as FieldKey[]).map(k => [k, true])) as any)}
+              >
                 Все поля
               </button>
-              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setFields(Object.fromEntries((Object.keys(FIELD_LABELS) as FieldKey[]).map(k => [k, false])) as any)}>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                onClick={() => setFields(Object.fromEntries((Object.keys(FIELD_LABELS) as FieldKey[]).map(k => [k, false])) as any)}
+              >
                 Снять все
-              </button>
-              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setFields((prev) => ({ ...prev, dimensions: true, name: false, sku: false, length: false, width: false, height: false }))}>
-                Только размеры (пример)
               </button>
             </div>
           </div>
@@ -297,8 +406,11 @@ export function BoxReportClient({
             <button type="button" className="admin-btn admin-btn--primary" onClick={handlePrint} disabled={selectedProducts.length === 0 || activeFields.length === 0}>
               <Printer size={15} /> Печать таблицы
             </button>
+            <button type="button" className="admin-btn admin-btn--ghost" onClick={handleExportExcel} disabled={selectedProducts.length === 0 || activeFields.length === 0}>
+              <Download size={15} /> Скачать Excel (.xls)
+            </button>
             <button type="button" className="admin-btn admin-btn--ghost" onClick={handleExportCsv} disabled={selectedProducts.length === 0 || activeFields.length === 0}>
-              <Download size={15} /> Скачать CSV / Excel
+              <Download size={15} /> Скачать CSV
             </button>
             <span className="admin-hint" style={{ alignSelf: 'center' }}>
               Выбрано коробок: {selectedProducts.length} · полей: {activeFields.length}

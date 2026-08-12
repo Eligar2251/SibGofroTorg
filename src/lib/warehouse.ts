@@ -951,6 +951,9 @@ function cleanItems(rawItems: any[]): StockDocItem[] {
         const m = Number(it.metersPerRoll);
         if (Number.isFinite(m) && m > 0) metersPerRoll = m;
       }
+      if (unit === 'roll' && !metersPerRoll && !it.isCuttable) {
+        unit = 'piece';
+      }
 
       // saleQuantity — исходное в единице продажи, base — в рулонах
       let saleQuantity: number | null = null;

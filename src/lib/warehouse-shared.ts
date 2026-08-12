@@ -281,7 +281,8 @@ export function getStockItemBaseQuantity(item: { quantity?: number; baseQuantity
 
 export function getStockItemDisplaySale(item: StockDocItem): { saleQty: number; unit: 'roll'|'meter'|'piece'; pricePerSale: number; metersPerRoll?: number | null } {
   const base = Number(item.quantity) || 0;
-  const unit = (item.unit as any) === 'meter' ? 'meter' : (item.unit as any) === 'roll' ? 'roll' : 'piece';
+  const isRoll = (item.unit as any) === 'roll' && Boolean((item as any).isCuttable || item.metersPerRoll);
+  const unit = (item.unit as any) === 'meter' ? 'meter' : isRoll ? 'roll' : 'piece';
   const mpr = item.metersPerRoll != null ? Number(item.metersPerRoll) : null;
   const saleQty = item.saleQuantity != null ? Number(item.saleQuantity) : (unit === 'meter' && mpr ? base * mpr : base);
   const pricePerSale = item.salePrice != null ? Number(item.salePrice) : Number(item.price) || 0;
@@ -399,9 +400,9 @@ function salaryHasTag(comment: string | null | undefined, tag: string): boolean 
   return (comment || "").includes(tag);
 }
 
-/** Выплата прошла по схеме «с аренды на карту». */
-export function isRentSalaryComment(comment: string | null | undefined): boolean {
-  return salaryHasTag(comment, SALARY_RENT_TAG);
+/** Выплата прошла по схеме «с аренды на карту» или с source="bank" (зп с р/с банка не платится, только аренда). */
+export function isRentSalaryComment(comment: string | null | undefined, source?: string | null): boolean {
+  return salaryHasTag(comment, SALARY_RENT_TAG) || source === "bank";
 }
 
 /** Историческая выплата: показывается в ЗП, но не влияет на текущий баланс. */

@@ -464,7 +464,7 @@ export function DealForm({
           isCuttable: isCut,
           metersPerRoll: mpr,
           cutPricePerMeter: pricePerMeter,
-          unit: 'roll' as const,
+          unit: (isCut ? 'roll' : 'piece') as any,
           baseQty: 1,
         },
       ];
@@ -578,11 +578,11 @@ export function DealForm({
               price: baseQty > 0 ? Math.round(((saleQty * (Number(it.price)||0)) / baseQty) * 100) / 100 : Number(it.price)||0,
               lineTotal: Math.round(saleQty * (Number(it.price)||0) * 100) / 100,
               // расширенные поля для резаных
-              unit: it.unit || 'roll',
-              metersPerRoll: it.metersPerRoll || null,
+              unit: it.isCuttable ? (it.unit || 'roll') : 'piece',
+              metersPerRoll: it.isCuttable ? (it.metersPerRoll || null) : null,
               saleQuantity: saleQty,
               salePrice: Number(it.price)||0,
-              cutUnitName: 'м',
+              cutUnitName: it.isCuttable ? 'м' : null,
             };
           }),
           linkedPaymentIds: selectedPayments,
@@ -791,7 +791,7 @@ export function DealForm({
                                   unit: newUnit,
                                   quantity: newQty || 1,
                                   price: (products.find(p=>p.id===it.productId) as any)?.price || it.price,
-                                  baseQty: newUnit === 'meter' ? (Number(newQty||0)/mpr) : Number(newQty||0),
+                                  baseQty: Number(newQty||0),
                                 });
                               }}
                             >
@@ -832,7 +832,7 @@ export function DealForm({
                         type="number"
                         className="admin-input"
                         min={0.01}
-                        step={it.unit === 'meter' ? 1 : 0.1}
+                        step={it.isCuttable ? (it.unit === 'meter' ? 1 : 0.1) : 1}
                         value={it.quantity}
                         onChange={(e) => {
                           const raw = e.target.value === "" ? "" : Number(e.target.value);
@@ -843,7 +843,7 @@ export function DealForm({
                           });
                         }}
                       />
-                      <span style={{ fontSize: 10, color: 'var(--adm-muted)', textAlign: 'center' }}>{it.unit === 'meter' ? 'м' : 'рул.'}</span>
+                      <span style={{ fontSize: 10, color: 'var(--adm-muted)', textAlign: 'center' }}>{it.isCuttable ? (it.unit === 'meter' ? 'м' : 'рул.') : 'шт.'}</span>
                       </div>
                       <input
                         type="number"

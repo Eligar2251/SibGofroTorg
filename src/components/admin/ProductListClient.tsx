@@ -12,6 +12,7 @@ import {
   Edit2,
   QrCode,
   RefreshCw,
+  Printer,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 
@@ -242,6 +243,16 @@ export function ProductListClient({
           Обновить штрихкоды
         </button>
 
+        <Link
+          href={`/${adminPath}/products/box-report`}
+          className="admin-btn admin-btn--ghost"
+          style={{ background: 'rgba(59,130,246,0.08)', color: 'var(--adm-primary)', borderColor: 'rgba(59,130,246,0.3)' }}
+          prefetch={false}
+          title="Отчёт по коробкам: выбор столбцов, печать и скачивание таблицы (например, только размеры без названия)"
+        >
+          <Printer size={14} /> Отчёт по коробкам
+        </Link>
+
         {selectedIds.size > 0 && (
           <button
             type="button"
@@ -387,10 +398,10 @@ export function ProductListClient({
                               : ""
                           }`}
                         >
-                          {product.isCuttable ? formatCutStock(product.stockQty, product.cutMetersPerRoll) : `${product.stockQty.toLocaleString("ru-RU")} шт.`}
+                          {product.isCuttable && Number(product.cutMetersPerRoll) > 0 ? formatCutStock(product.stockQty, product.cutMetersPerRoll) : `${product.stockQty.toLocaleString("ru-RU")} шт.`}
                         </span>
                       </Link>
-                      {product.isCuttable && (
+                      {product.isCuttable && Number(product.cutMetersPerRoll) > 0 && (
                         <div style={{ fontSize: 10, color: 'var(--adm-muted)' }}>рулон {product.cutMetersPerRoll || 100}м · {product.cutPricePerMeter ? `${product.cutPricePerMeter} ₽/м` : ''}</div>
                       )}
                     </td>

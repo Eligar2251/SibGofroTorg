@@ -2624,9 +2624,10 @@ export function WarehouseManager({
                               const shipped = (Array.isArray(d.shippedItems) ? d.shippedItems : []).find((s: any) => s.productId === it.productId)?.shippedQty || 0;
                               const remaining = it.quantity - shipped;
                               const isMeter = (it as any).unit === 'meter';
+                              const isRoll = (it as any).unit === 'roll' && Boolean((it as any).isCuttable || (it as any).metersPerRoll);
                               const saleQty = (it as any).saleQuantity != null ? (it as any).saleQuantity : (isMeter && (it as any).metersPerRoll ? Number(it.quantity) * Number((it as any).metersPerRoll) : Number(it.quantity));
-                              const unitLabel = isMeter ? `${saleQty} м` : `${it.quantity} рул.`;
-                              const priceLabel = isMeter ? `${fmt((it as any).salePrice || it.price)} ₽/м` : `${fmt(it.price)} ₽/шт`;
+                              const unitLabel = isMeter ? `${saleQty} м` : isRoll ? `${it.quantity} рул.` : `${it.quantity} шт.`;
+                              const priceLabel = isMeter ? `${fmt((it as any).salePrice || it.price)} ₽/м` : isRoll ? `${fmt(it.price)} ₽/рул.` : `${fmt(it.price)} ₽/шт`;
                               return (
                                 <div key={idx} className={`admin-order__item${shipped > 0 && remaining > 0 ? " admin-order__item--partial" : ""}`}>
                                   <Link
@@ -2830,7 +2831,8 @@ export function WarehouseManager({
                               isReserved: Boolean(d.isReserved),
                               items: d.items.map((item) => {
                                 const prod = productById.get(item.productId) as any;
-                                const unit = (item as any).unit || 'roll';
+                                const isCut = Boolean(prod?.isCuttable || (item as any).isCuttable);
+                                const unit = isCut ? ((item as any).unit || 'roll') : 'piece';
                                 const metersPerRoll = (item as any).metersPerRoll || prod?.cutMetersPerRoll || null;
                                 const saleQty = (item as any).saleQuantity != null ? (item as any).saleQuantity : (unit === 'meter' && metersPerRoll ? Number(item.quantity) * Number(metersPerRoll) : Number(item.quantity));
                                 return {

@@ -74,9 +74,9 @@ import {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-/** Оплата «с аренды на карту»: обычная запись bank + тег в комментарии. */
+/** Оплата «с аренды на карту» или с source="bank": обычная запись bank + тег в комментарии. ЗП с р/с банка не платится, только аренда. */
 function isRentSalary(s: Salary): boolean {
-  return isRentSalaryComment(s.comment);
+  return isRentSalaryComment(s.comment, s.source) || s.source === "bank";
 }
 
 function todayIso(): string {
@@ -208,13 +208,13 @@ type QuickSource = "cash" | "bank" | "rent" | "ym_card";
 function sourceLabel(s: Salary): string {
   if (isRentSalary(s)) return "Аренда → карта";
   if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "Карта ЮМ";
-  return s.source === "cash" ? "Касса · наличные" : "Банк · безнал";
+  return s.source === "cash" ? "Касса · наличные" : "Аренда → карта";
 }
 
 function sourceBadgeClass(s: Salary): string {
   if (isRentSalary(s)) return "admin-badge--indigo";
   if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "admin-badge--amber";
-  return s.source === "cash" ? "admin-badge--green" : "admin-badge--blue";
+  return s.source === "cash" ? "admin-badge--green" : "admin-badge--indigo";
 }
 
 function isDebtPaymentSalary(s: Salary): boolean {
@@ -1339,7 +1339,7 @@ export function WarehouseSalaries({
   const paidTotal = paidSalary.reduce((s, x) => s + x.amount, 0);
   const paidDebtTotal = paidDebt.reduce((s, x) => s + x.amount, 0);
   const paidCash = paidSalary
-    .filter((s) => s.source === "cash" && !isRentSalary(s) && s.source !== "ym_card" && !isYmCardSalaryComment(s.comment))
+    .filter((s) => s.source === "cash" && !isRentSalary(s) && !isYmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
   const paidBank = paidSalary
     .filter((s) => s.source === "bank" && !isRentSalary(s) && !isYmCardSalaryComment(s.comment))
@@ -1504,7 +1504,7 @@ export function WarehouseSalaries({
             employeeName: item.row.employee.name,
             amount: item.amount,
             date,
-            source: "bank",
+            source: "cash",
             isPaid: false,
             comment: composeSalaryComment({ periodMonth: activeMonth }),
           }),
@@ -2199,9 +2199,9 @@ export function WarehouseSalaries({
             <div className="whsal-progress__bar" style={{ width: `${progressPct}%` }} />
           </div>
           <div className="whsal-card__sub">
-            {progressPct}% от начисленного · касса {fmt(paidCash)} · безнал {fmt(paidBank)}
-            {paidYm ? ` · карта ЮМ ${fmt(paidYm)}` : ""}
-            {paidRent ? ` · аренда ${fmt(paidRent)}` : ""}
+            {progressPct}% от начисленного · касса {fmt(paidCash)}
+            {paidYm > 0 ? ` · карта ЮМ ${fmt(paidYm)}` : ""}
+            {paidRent > 0 ? ` · аренда (отд. счёт) ${fmt(paidRent)}` : ""}
             {paidDebtTotal > 0 ? ` · в счёт долга ${fmt(paidDebtTotal)} ₽ (не входит в факт месяца)` : ""}
           </div>
         </div>
