@@ -294,6 +294,9 @@ function SalaryFormModal({
       );
       const empId = employeeId || (found ? found.id : null);
 
+      // Для р/с банк — это всегда аренда (отдельный счёт). ЗП с р/с не платится.
+      const isRentForSubmit = source === "bank" ? true : initialRent;
+      const finalSource: SalarySource = source === "bank" ? "bank" : source;
       const res = await fetch(
         initial
           ? `/api/admin/warehouse/salaries/${initial.id}`
@@ -306,11 +309,11 @@ function SalaryFormModal({
             employeeName: employeeName.trim(),
             amount: amountNum,
             date,
-            source,
+            source: finalSource,
             periodMonth,
             comment: composeSalaryComment({
               comment,
-              rent: initialRent,
+              rent: isRentForSubmit,
               ymCard: source === "ym_card" || (initial ? isYmCardSalaryComment(initial.comment) || initial.source === "ym_card" : false),
               excludeFromBalance,
               debtPayment,
@@ -419,7 +422,7 @@ function SalaryFormModal({
 
             <div className="admin-field" style={{ marginTop: 12 }}>
               <label className="admin-label">Счёт будущей выплаты *</label>
-              <div className="wh-direction">
+              <div className="wh-direction" style={{ flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className={`wh-direction__btn wh-direction__btn--in${
@@ -432,22 +435,26 @@ function SalaryFormModal({
                 <button
                   type="button"
                   className={`wh-direction__btn wh-direction__btn--out${
-                    source === "bank" ? " wh-direction__btn--active" : ""
-                  }`}
-                  onClick={() => setSource("bank")}
-                >
-                  <CreditCard size={14} /> Банк (безнал)
-                </button>
-                <button
-                  type="button"
-                  className={`wh-direction__btn wh-direction__btn--out${
                     source === "ym_card" ? " wh-direction__btn--active" : ""
                   }`}
                   onClick={() => setSource("ym_card")}
                 >
-                  <CreditCard size={14} /> Карта ЮМ
+                  <CreditCard size={14} /> Карта ЮМ (перевод)
+                </button>
+                <button
+                  type="button"
+                  className={`wh-direction__btn wh-direction__btn--out${
+                    source === "bank" ? " wh-direction__btn--active" : ""
+                  }`}
+                  onClick={() => setSource("bank")}
+                  title="Аренда — отдельный счёт, не списывает р/с банка. ЗП с р/с не платится, только аренда"
+                >
+                  <KeyRound size={14} /> Аренда (отд. счёт)
                 </button>
               </div>
+              <span className="admin-hint" style={{ marginTop: 4, display: 'block' }}>
+                ЗП: касса и карта ЮМ. Р/С (банк) — только аренда, не списывает основной р/с, уходит в отдельный счёт аренды. Для внебаланса — отметьте ниже.
+              </span>
             </div>
 
             <div className="admin-field" style={{ marginTop: 12 }}>
@@ -775,20 +782,15 @@ function QuickPayForm({
           type="button"
           className={`whsal-seg__btn${source === "cash" ? " whsal-seg__btn--cash" : ""}`}
           onClick={() => setSource("cash")}
+          title="Наличкой из кассы"
         >
           <Banknote size={12} /> Касса
         </button>
         <button
           type="button"
-          className={`whsal-seg__btn${source === "bank" ? " whsal-seg__btn--bank" : ""}`}
-          onClick={() => setSource("bank")}
-        >
-          <CreditCard size={12} /> Безнал
-        </button>
-        <button
-          type="button"
           className={`whsal-seg__btn${source === "ym_card" ? " whsal-seg__btn--bank" : ""}`}
           onClick={() => setSource("ym_card")}
+          title="С карты ЮМ (перевод)"
         >
           <CreditCard size={12} /> Карта ЮМ
         </button>
@@ -796,8 +798,9 @@ function QuickPayForm({
           type="button"
           className={`whsal-seg__btn${source === "rent" ? " whsal-seg__btn--rent" : ""}`}
           onClick={() => setSource("rent")}
+          title="Аренда — отдельный счёт, не списывает р/с"
         >
-          <KeyRound size={12} /> Аренда
+          <KeyRound size={12} /> Аренда (отд. счёт)
         </button>
       </div>
       <label className="whsal-check">

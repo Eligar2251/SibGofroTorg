@@ -136,6 +136,9 @@ export default async function AdminProductsPage({
         <Link href={`/${ADMIN_PATH}/products/made-to-order`} className="admin-filter" prefetch={false}>
           <Package size={13} /> Под заказ · {allProducts.filter((p:any)=>p.madeToOrder).length}
         </Link>
+        <Link href={`/${ADMIN_PATH}/products/box-report`} className="admin-filter" prefetch={false}>
+          <Package size={13} /> Отчёт по коробкам · печать размеров
+        </Link>
         <Link href={`/${ADMIN_PATH}/products?tab=categories`} className={`admin-filter${activeTab === "categories" ? " admin-filter--active" : ""}`} prefetch={false}>
           <FolderOpen size={13} /> Категории
         </Link>

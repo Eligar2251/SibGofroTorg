@@ -3255,8 +3255,8 @@ export function WarehouseManager({
 
               <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, lineHeight: 1.4, color: 'rgba(255,255,255,0.65)' }}>
                 <div>Р/С: {fmt(bankSummary.bankBalance)} ₽ · +{fmt(bankSummary.expectedIn)} −{fmt(bankSummary.expectedOut)} = <b style={{ color: '#fff' }}>{fmt(bankSummary.bankForecast)} ₽</b></div>
-                <div>Касса: {fmt(bankSummary.cashBalance)} ₽ · ЮМ: {fmt(bankSummary.ymCardBalance)} ₽ (прогн. {fmt(bankSummary.ymForecast)} ₽)</div>
-                <div>Всего: {fmt(bankSummary.balance)} ₽ · прогноз {fmt(bankSummary.forecast)} ₽</div>
+                <div>Касса: {fmt(bankSummary.cashBalance)} ₽ · ЮМ: {fmt(bankSummary.ymCardBalance)} ₽ (прогн. {fmt(bankSummary.ymForecast)} ₽) · Аренда: {fmt((bankSummary as any).rentBalance || 0)} ₽ (к опл. {fmt((bankSummary as any).rentExpectedOut || 0)} ₽)</div>
+                <div>Всего: {fmt(bankSummary.balance)} ₽ · прогноз {fmt(bankSummary.forecast)} ₽ · с арендой {fmt((bankSummary as any).forecastWithRent || bankSummary.forecast)} ₽</div>
               </div>
             </div>
 
@@ -3314,6 +3314,12 @@ export function WarehouseManager({
                     <div style={{ fontSize: 10, color: 'rgba(224,180,90,0.8)', fontWeight: 600, letterSpacing: 0.3 }}>БЕЗНАЛ · ПЕРЕВОДЫ</div>
                     <div style={{ fontSize: 12, marginTop: 2 }}>Карта ЮМ факт: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymCardBalance)} ₽</b></div>
                     <div style={{ fontSize: 11 }}>Прогноз ЮМ: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymForecast)} ₽</b></div>
+                  </div>
+                  <div style={{ flex: '1 1 120px', borderLeft: '1px dashed rgba(255,255,255,0.12)', paddingLeft: 12 }}>
+                    <div style={{ fontSize: 10, color: 'rgba(147,197,253,0.85)', fontWeight: 600, letterSpacing: 0.3 }}>АРЕНДА (отдельный счёт)</div>
+                    <div style={{ fontSize: 12, marginTop: 2 }}>Факт: <b style={{ color: '#93c5fd' }}>{fmt((bankSummary as any).rentBalance || 0)} ₽</b></div>
+                    <div style={{ fontSize: 11 }}>К оплате: <b style={{ color: '#93c5fd' }}>{fmt((bankSummary as any).rentExpectedOut || 0)} ₽</b> · Прогноз: <b>{fmt((bankSummary as any).rentForecast || 0)} ₽</b></div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Не списывает р/с, не входит в общий прогноз</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12, marginTop: 4, width: '100%', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>

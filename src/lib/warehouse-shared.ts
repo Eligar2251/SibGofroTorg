@@ -788,7 +788,8 @@ export function getCashCarryoverSummary(
       !salary.isPaid ||
       salary.source !== "cash" ||
       salary.amount <= 0 ||
-      isSalaryExcludedFromBalance(salary.comment)
+      isSalaryExcludedFromBalance(salary.comment) ||
+      isRentSalaryComment(salary.comment)
     ) {
       continue;
     }
@@ -977,10 +978,13 @@ export function getBankSummary(
   let bankBalance = 0;
   let cashBalance = 0;
   let ymCardBalance = 0;
+  let rentBalance = 0;
   let expectedIn = 0;
   let expectedOut = 0;
   let ymExpectedIn = 0;
   let ymExpectedOut = 0;
+  let rentExpectedIn = 0;
+  let rentExpectedOut = 0;
   const debtPool = deals ? getDealDebtPool(deals, payments) : null;
   const paymentById = new Map<string, BankPayment>();
   for (const p of payments) paymentById.set(String(p.id), p);
@@ -1020,19 +1024,39 @@ export function getBankSummary(
     const bypassBalance = isSalaryExcludedFromBalance(s.comment);
     if (bypassBalance) continue;
     const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
-    if (s.isPaid) {
-      const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
-      if (!salaryDate || salaryDate > asOfDate) continue;
-      if (isYm) {
-        ymCardBalance -= s.amount;
-      } else if (s.source === "bank") {
-        bankBalance -= s.amount;
+    const isRent = isRentSalaryComment(s.comment);
+    if (isRent) {
+      // аренда — отдельный счёт, не трогает основной р/с и кассу
+      if (s.isPaid) {
+        const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
+        if (!salaryDate || salaryDate > asOfDate) continue;
+        rentBalance -= s.amount;
+      } else {
+        // ожидаемая аренда — к выплате
+        rentExpectedOut += s.amount;
       }
-    } else {
-      if (isYm) {
+      continue;
+    }
+    if (isYm) {
+      // карта ЮМ — перевод / выплата с карты
+      if (s.isPaid) {
+        const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
+        if (!salaryDate || salaryDate > asOfDate) continue;
+        ymCardBalance -= s.amount;
+      } else {
         ymExpectedOut += s.amount;
       }
+      continue;
     }
+    if (s.source === "bank") {
+      // ЗП с расчётного счёта вообще не платится, только аренда.
+      // Поэтому обычные ЗП с source=bank игнорируем — они не должны
+      // списывать основной банк. Если такая ЗП всё-таки заведена
+      // по ошибке, она просто не повлияет на баланс (админ её
+      // переведёт в аренду или в кассу/ЮМ).
+      continue;
+    }
+    // cash — учитывается через getCashCarryoverSummary, здесь не трогаем
   }
   cashBalance = getCashCarryoverSummary(
     payments,
@@ -1074,12 +1098,15 @@ export function getBankSummary(
   const bankForecast = bankBalance + expectedIn - expectedOut;
   const bankIncomeTotal = bankBalance + expectedIn;
   const ymForecast = ymCardBalance + ymExpectedIn - ymExpectedOut;
+  const rentForecast = rentBalance + rentExpectedIn - rentExpectedOut;
   const totalForecast = bankBalance + cashBalance + ymCardBalance + expectedIn - expectedOut + ymExpectedIn - ymExpectedOut;
+  const totalWithRentForecast = totalForecast + rentBalance + rentExpectedIn - rentExpectedOut;
   return {
     balance: bankBalance + cashBalance + ymCardBalance,
     bankBalance,
     cashBalance,
     ymCardBalance,
+    rentBalance,
     cashBalanceNegative: cashBalance < -0.009,
     collectedCash,
     collectedCashOnly,
@@ -1089,26 +1116,20 @@ export function getBankSummary(
     ymExpectedIn,
     ymExpectedOut,
     ymForecast,
+    rentExpectedIn,
+    rentExpectedOut,
+    rentForecast,
     bankForecast,
     bankIncomeTotal,
     forecast: totalForecast,
     forecastCashPlusBank: bankForecast + cashBalance,
     forecastWithYm: totalForecast,
+    forecastWithRent: totalWithRentForecast,
     totalWithoutCash: bankBalance + ymCardBalance,
     totalWithoutCashForecast: bankForecast + ymForecast,
   };
 }
 
-
-/**
- * Сводка закрытых смен: сколько оставлено наличными для переноса и сколько
- * инкассировано на карту.
- *
- * Направление (карта/наличка) проставляется вручную при закрытии смены,
- * а не берётся из типа платежа. Тип "transfer" в банке
- * означает другое — исходящий перевод физлицу с расчётного счёта.
- * Поле `transfer` здесь = инкассация на карту.
- */
 export function getCollectedBreakdown(
   collections: CashCollection[] = []
 ): { cash: number; transfer: number; total: number } {

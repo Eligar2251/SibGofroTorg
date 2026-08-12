@@ -2744,6 +2744,8 @@ function listCashExpenses(
   for (const s of salaries) {
     if (!s.isPaid || s.source !== "cash" || s.amount <= 0) continue;
     if (isSalaryExcludedFromBalance(s.comment)) continue;
+    // аренда — отдельный счёт, не показывается в расходах кассы
+    if ((s.comment || "").includes("[Аренда]")) continue;
     rows.push({
       kind: "salary",
       id: String(s.id),
