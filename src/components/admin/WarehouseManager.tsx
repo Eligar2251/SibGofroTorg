@@ -93,7 +93,6 @@ import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
 import { DueSummaryModal } from "@/components/admin/DueSummaryModal";
-import { PaymentProductsModal } from "@/components/admin/PaymentProductsModal";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -642,11 +641,14 @@ export function WarehouseManager({
               const pSkipped = skippedPaymentIds.has(p.id);
               const prodInfo = paymentProductsSummaryById.get(String(p.id));
               const hasBoxes = prodInfo && (prodInfo.itemsList.length > 0 || prodInfo.summaryText);
+              const commentText = p.comment ? String(p.comment).trim() : "";
+              const middleText = hasBoxes
+                ? `📦 ${prodInfo.summaryText}${commentText ? ` · ${commentText}` : ""}`
+                : commentText;
               return (
                 <div
                   key={p.id}
                   className={`bank-due__pay${pSkipped ? " bank-due__pay--skipped" : ""}`}
-                  style={{ display: "flex", flexDirection: "column", gap: 3, padding: "8px 12px" }}
                   role="button"
                   tabIndex={0}
                   title="ЛКМ — вычеркнуть/вернуть этот платёж · ПКМ — выделить для прикидки"
@@ -659,46 +661,28 @@ export function WarehouseManager({
                     }
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span className="bank-due__pay-num" style={{ fontWeight: 700 }}>{p.invoiceNumber || `ПЛ-${p.number}`}</span>
-                      <span className="bank-due__pay-date" style={{ color: "var(--adm-muted)", fontSize: 12 }}>{fmtDate(p.date)}</span>
-                      {p.comment ? <span className="bank-due__pay-comment" style={{ fontSize: 12 }}>{p.comment}</span> : null}
-                      {hasBoxes && prodInfo.itemsList.length > 0 && (
-                        <button
-                          type="button"
-                          className="admin-btn admin-btn--ghost admin-btn--sm"
-                          style={{ padding: "1px 6px", fontSize: 11, height: 20 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDetailPaymentProductsId(String(p.id));
-                          }}
-                          title="Посмотреть подробный состав коробок (размеры, количество, цена)"
-                        >
-                          Состав ({prodInfo.itemsList.length})
-                        </button>
-                      )}
-                    </div>
-                    <span className="bank-due__pay-sum" style={{ fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>
-                      {paySign}{fmt(p.amount)} ₽
-                    </span>
-                  </div>
-
-                  {/* Коробки / товары мелкими буквами через запятую */}
-                  {hasBoxes && prodInfo.summaryText ? (
-                    <div
+                  <span className="bank-due__pay-num">{p.invoiceNumber || `ПЛ-${p.number}`}</span>
+                  <span className="bank-due__pay-date">{fmtDate(p.date)}</span>
+                  {middleText ? (
+                    <span
+                      className="bank-due__pay-comment"
                       style={{
                         fontSize: 11.5,
-                        color: pSkipped ? "var(--adm-muted)" : "var(--adm-primary)",
-                        lineHeight: 1.35,
-                        wordBreak: "break-word",
-                        fontWeight: 550,
+                        color: hasBoxes
+                          ? pSkipped
+                            ? "var(--adm-rust)"
+                            : "var(--adm-primary)"
+                          : undefined,
+                        fontWeight: hasBoxes ? 550 : undefined,
                       }}
-                      title="Коробки / позиции документа"
+                      title={middleText}
                     >
-                      📦 {prodInfo.summaryText}
-                    </div>
-                  ) : null}
+                      {middleText}
+                    </span>
+                  ) : (
+                    <span className="bank-due__pay-comment" />
+                  )}
+                  <span className="bank-due__pay-sum">{paySign}{fmt(p.amount)} ₽</span>
                 </div>
               );
             })}
@@ -716,7 +700,6 @@ export function WarehouseManager({
   const [showCalculator, setShowCalculator] = useState(false);
   const [showDueSummaryModal, setShowDueSummaryModal] = useState(false);
   const [dueModalTab, setDueModalTab] = useState<"skipped" | "all">("skipped");
-  const [detailPaymentProductsId, setDetailPaymentProductsId] = useState<string | null>(null);
   const [calcExpression, setCalcExpression] = useState("");
   const [calcResult, setCalcResult] = useState<string>("");
 
@@ -3719,23 +3702,6 @@ export function WarehouseManager({
             }}
             paymentProductsSummaryById={paymentProductsSummaryById}
             adminPath={adminPath}
-          />
-
-          <PaymentProductsModal
-            isOpen={detailPaymentProductsId !== null}
-            onClose={() => setDetailPaymentProductsId(null)}
-            payment={
-              detailPaymentProductsId
-                ? payments.find((p) => String(p.id) === detailPaymentProductsId) ||
-                  null
-                : null
-            }
-            itemsList={
-              detailPaymentProductsId
-                ? paymentProductsSummaryById.get(detailPaymentProductsId)?.itemsList ||
-                  []
-                : []
-            }
           />
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
