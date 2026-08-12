@@ -56,6 +56,7 @@ import {
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
   isYmCardSalaryComment,
+  isRentSalaryComment,
   getSalaryPeriodMonth,
   stripSalaryMetaTags,
   normalizePriceTier,
@@ -2692,15 +2693,18 @@ export async function getPendingCashPayments(): Promise<{
   );
 
   return {
-    pending: listPendingCashPayments(payments, collections).map((p) => ({
-      paymentId: String(p.id),
-      number: p.number,
-      date: p.date,
-      counterparty: p.counterparty,
-      amount: p.amount,
-      comment: p.comment ?? null,
-      cashDestination: p.cashDestination ?? null,
-    })),
+    pending: listPendingCashPayments(payments, collections).map((p) => {
+      const isYm = p.type === "ym_card" || p.type === "transfer" || p.cashDestination === "card" || (p.comment && (p.comment.includes("[Карта ЮМ]") || p.comment.includes("[ЮМ]")));
+      return {
+        paymentId: String(p.id),
+        number: p.number,
+        date: p.date,
+        counterparty: p.counterparty,
+        amount: p.amount,
+        comment: p.comment ?? null,
+        cashDestination: isYm ? "card" : "cash",
+      };
+    }),
     closed: payments
       .filter(
         (p) =>
@@ -2740,7 +2744,7 @@ function isCashDeskIncome(p: BankPayment): boolean {
   );
 }
 
-/** Наличный расход из кассы: зарплата или исходящий платёж налом. */
+/** Расход из кассы или с карты ЮМ (зарплата или исходящий платёж). */
 export interface CashExpenseRow {
   kind: "salary" | "payment";
   id: string;
@@ -2748,15 +2752,11 @@ export interface CashExpenseRow {
   title: string;
   amount: number;
   comment: string | null;
+  sourceKind?: "cash" | "card";
 }
 
 /**
- * Наличные расходы, уменьшившие кассу: выплаченные налом зарплаты и
- * проведённые исходящие платежи с типом "cash".
- *
- * Эти деньги физически ушли из кассы до сдачи, поэтому сдавать нужно
- * приход МИНУС расходы. Безнала здесь нет: только type='cash' и
- * source='cash'.
+ * Расходы смены (наличные из кассы и переводы с карты ЮМ).
  */
 function listCashExpenses(
   payments: BankPayment[],
@@ -2765,10 +2765,11 @@ function listCashExpenses(
   const rows: CashExpenseRow[] = [];
 
   for (const s of salaries) {
-    if (!s.isPaid || s.source !== "cash" || s.amount <= 0) continue;
+    if (!s.isPaid || s.amount <= 0) continue;
     if (isSalaryExcludedFromBalance(s.comment)) continue;
-    // аренда — отдельный счёт, не показывается в расходах кассы
-    if ((s.comment || "").includes("[Аренда]")) continue;
+    if (isRentSalaryComment(s.comment, s.source)) continue;
+    const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
+    if (s.source !== "cash" && !isYm) continue;
     rows.push({
       kind: "salary",
       id: String(s.id),
@@ -2776,6 +2777,7 @@ function listCashExpenses(
       title: `Зарплата — ${s.employeeName || "сотрудник"}`,
       amount: s.amount,
       comment: stripSalaryMetaTags(s.comment) || null,
+      sourceKind: isYm ? "card" : "cash",
     });
   }
 
@@ -2783,12 +2785,13 @@ function listCashExpenses(
     if (
       !p.isPaid ||
       p.excludeFromBalance ||
-      p.type !== "cash" ||
       p.direction !== "outgoing" ||
       p.amount <= 0
     ) {
       continue;
     }
+    const isYm = p.type === "ym_card" || p.type === "transfer" || p.cashDestination === "card" || (p.comment && (p.comment.includes("[Карта ЮМ]") || p.comment.includes("[ЮМ]")));
+    if (p.type !== "cash" && !isYm) continue;
     rows.push({
       kind: "payment",
       id: String(p.id),
@@ -2796,13 +2799,14 @@ function listCashExpenses(
       title: `ПЛ-${p.number} — ${p.counterparty || "расход"}`,
       amount: p.amount,
       comment: p.comment ?? null,
+      sourceKind: isYm ? "card" : "cash",
     });
   }
 
   return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Наличные поступления, ещё не размеченные ни в одной сдаче кассы. */
+/** Поступления смены, ещё не размеченные ни в одной сдаче (касса и карта ЮМ). */
 function listPendingCashPayments(
   payments: BankPayment[],
   collections: CashCollectionRow[]
@@ -2815,12 +2819,14 @@ function listPendingCashPayments(
   }
   const today = getWarehouseBusinessDate();
   return payments
-    .filter(
-      (p) =>
-        isCashDeskIncome(p) &&
-        String(p.date || "").slice(0, 10) <= today &&
-        !collected.has(String(p.id))
-    )
+    .filter((p) => {
+      if (!p.isPaid || p.excludeFromBalance || p.direction !== "incoming" || p.amount <= 0) return false;
+      const isYm = p.type === "ym_card" || p.type === "transfer" || p.cashDestination === "card" || (p.comment && (p.comment.includes("[Карта ЮМ]") || p.comment.includes("[ЮМ]")));
+      const isCash = p.type === "cash" && !isYm;
+      if (!isYm && !isCash) return false;
+      if (String(p.date || "").slice(0, 10) > today) return false;
+      return !collected.has(String(p.id));
+    })
     .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
 }
 
