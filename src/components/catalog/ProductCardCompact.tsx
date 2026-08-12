@@ -11,7 +11,7 @@ import {
   RESTOCK_INQUIRY_LABEL,
 } from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { Plus, Minus, ShoppingCart, Check, Package } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Check, Package, Clock3 } from "lucide-react";
 
 /** Склонение для «N вариантов» на карточке. */
 function pluralVariants(n: number): string {
@@ -35,6 +35,11 @@ interface CompactProduct {
   inStock?: boolean;
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
+  madeToOrderMinQty?: number | null;
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
+  cutUnitName?: string | null;
   stockQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;
@@ -222,19 +227,21 @@ export function ProductCardCompact({
         </Link>
 
         {/* Цена — шт + партия. Если у товара есть варианты,
-           показываем «от X ₽» (по минимальной цене). */}
+           показываем «от X ₽» (по минимальной цене).
+           Плитки «под заказ» выглядят так же, как обычные:
+           цена крупно, а пометка «Под заказ · 2–3 дня» — ниже. */}
         <div className="pcc__prices">
-          {orderOffer ? (
-            <span className="pcc__price-muted pcc__price-muted--mto">
-              Под заказ · 2–3 дня
-            </span>
-          ) : outOfStock ? (
+          {outOfStock && !orderOffer ? (
             <span className="pcc__price-muted pcc__price-muted--out">
               {OUT_OF_STOCK_LABEL}
             </span>
+          ) : product.madeToOrder && product.price == null ? (
+            <span className="pcc__price-muted pcc__price-muted--mto">
+              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
+            </span>
           ) : product.madeToOrder ? (
             <span className="pcc__price-muted pcc__price-muted--mto">
-              Под заказ
+              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
             </span>
           ) : product.price != null ? (
             <>
@@ -265,6 +272,17 @@ export function ProductCardCompact({
             </>
           ) : (
             <span className="pcc__price-muted">Цена по запросу</span>
+          )}
+          {(product as any).isCuttable && (
+            <span className="pcc__mto-note" style={{ background: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.2)' }}>
+              Рулон {(product as any).cutMetersPerRoll || 100}м · можно метрами
+            </span>
+          )}
+          {orderOffer && (
+            <span className="pcc__mto-note">
+              <Clock3 size={10} />
+              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : " · 2–3 дня"}
+            </span>
           )}
           {inCart && (
             <span className="pcc__in-cart"><GlyphIcon value="check" size={12} /> в корзине: {inCart.quantity}</span>

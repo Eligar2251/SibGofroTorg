@@ -214,10 +214,10 @@ export function TransportManager({
       {/* ── Статистика ── */}
       <div className="admin-stat-grid" style={{ marginBottom: 20 }}>
         {[
-          { label: "Ожидают формирования", value: stats.pending, icon: <Clock size={18} />, color: "#d97706", bg: "rgba(217,119,6,0.12)" },
-          { label: "Активные", value: stats.active, icon: <Truck size={18} />, color: "#1d4ed8", bg: "#eff6ff" },
-          { label: "Завершённые", value: stats.completed, icon: <CheckCircle2 size={18} />, color: "#16a34a", bg: "#f0fdf4" },
-          { label: "В архиве", value: stats.archived, icon: <Archive size={18} />, color: "#6b7280", bg: "#f3f4f6" },
+          { label: "Ожидают формирования", value: stats.pending, icon: <Clock size={18} />, color: "var(--adm-kraft)", bg: "var(--adm-kraft-pale)" },
+          { label: "Активные", value: stats.active, icon: <Truck size={18} />, color: "var(--adm-steel)", bg: "var(--adm-steel-pale)" },
+          { label: "Завершённые", value: stats.completed, icon: <CheckCircle2 size={18} />, color: "var(--adm-pine)", bg: "var(--adm-pine-pale)" },
+          { label: "В архиве", value: stats.archived, icon: <Archive size={18} />, color: "var(--adm-sand)", bg: "var(--adm-sand-pale)" },
         ].map((s) => (
           <div key={s.label} className="admin-stat" style={{ cursor: "default" }}>
             <div className="admin-stat__icon" style={{ background: s.bg, color: s.color }}>{s.icon}</div>

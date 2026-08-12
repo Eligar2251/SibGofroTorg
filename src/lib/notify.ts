@@ -91,6 +91,44 @@ export interface NotifyResult {
   detail?: unknown;
 }
 
+// ── Журнал последних отправок ────────────────────────────
+// Хранится в памяти процесса (переживает до перезапуска
+// контейнера) — этого достаточно, чтобы в админке быстро
+// увидеть, УШЛО ли уведомление и почему нет. Раньше ошибки
+// падали только в серверный лог и «пропавшие» уведомления
+// было нечем диагностировать.
+export interface NotifyLogEntry {
+  at: string;
+  channel: "telegram" | "max";
+  label: string;
+  ok: boolean;
+  error?: string;
+}
+const NOTIFY_LOG_LIMIT = 30;
+const notifyLog: NotifyLogEntry[] = [];
+
+function pushNotifyLog(
+  channel: "telegram" | "max",
+  label: string,
+  result: NotifyResult
+) {
+  notifyLog.push({
+    at: new Date().toISOString(),
+    channel,
+    label: label || "—",
+    ok: result.ok,
+    error: result.ok ? undefined : String(result.error || "Ошибка"),
+  });
+  if (notifyLog.length > NOTIFY_LOG_LIMIT) {
+    notifyLog.splice(0, notifyLog.length - NOTIFY_LOG_LIMIT);
+  }
+}
+
+/** Последние отправки (новые сверху). */
+export function getNotificationLog(): NotifyLogEntry[] {
+  return [...notifyLog].reverse();
+}
+
 type SettingSource = "env" | "settings" | "none";
 
 export interface TelegramConfig {
@@ -233,7 +271,8 @@ export async function diagnoseTelegram(): Promise<TelegramDiagnostics> {
 }
 
 export async function sendTelegramNotification(
-  text: string
+  text: string,
+  label = ""
 ): Promise<NotifyResult> {
   try {
     const cfg = await resolveTelegramConfig();
@@ -242,19 +281,23 @@ export async function sendTelegramNotification(
       console.warn(
         `[notify] Telegram не настроен: token=${cfg.tokenSource}, chatId=${cfg.chatIdSource} (нет ни в env, ни в настройках сайта)`
       );
-      return {
+      const r = {
         ok: false,
         error:
           "Telegram не настроен: не заданы TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID (ни в переменных окружения, ни в настройках сайта)",
       };
+      pushNotifyLog("telegram", label, r);
+      return r;
     }
     if (looksLikePhoneNumber(chatId)) {
       console.error("[notify] TELEGRAM_ADMIN_CHAT_ID похож на номер телефона — Telegram требует числовой chat_id или @username");
-      return {
+      const rPhone = {
         ok: false,
         error:
           "TELEGRAM_ADMIN_CHAT_ID выглядит как номер телефона. Укажите числовой chat_id (его сообщит бот @userinfobot / @getmyid_bot) или @username канала/группы.",
       };
+      pushNotifyLog("telegram", label, rPhone);
+      return rPhone;
     }
     const normalizedChatId = normalizeTelegramChatId(chatId);
     const bases = await telegramApiBases();
@@ -304,11 +347,13 @@ export async function sendTelegramNotification(
             res.status === 401 ||
             res.status === 403
           ) {
-            return {
+            const r4xx = {
               ok: false,
               error: reason,
               detail: data,
             };
+            pushNotifyLog("telegram", label, r4xx);
+            return r4xx;
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Сетевая ошибка";
@@ -317,7 +362,7 @@ export async function sendTelegramNotification(
         }
       }
       if (!sent) {
-        return {
+        const rFail = {
           ok: false,
           error:
             "Не удалось отправить ни через один адрес Telegram API: " +
@@ -325,100 +370,154 @@ export async function sendTelegramNotification(
             ". Если сервер в РФ — api.telegram.org заблокирован ТСПУ: укажите релей в TELEGRAM_API_BASE (настройки сайта → Telegram API) или настройте MAX.",
           detail: errors,
         };
+        pushNotifyLog("telegram", label, rFail);
+        return rFail;
       }
     }
     console.log(
       `[notify] Telegram OK (${parts.length} част.) через ${workingBase}`
     );
-    return { ok: true };
+    const rOk = { ok: true };
+    pushNotifyLog("telegram", label, rOk);
+    return rOk;
   } catch (err) {
     console.error("[notify] Telegram exception:", err);
-    return {
+    const rErr = {
       ok: false,
       error: err instanceof Error ? err.message : "Ошибка отправки",
     };
+    pushNotifyLog("telegram", label, rErr);
+    return rErr;
   }
 }
 
 // ── MAX ──────────────────────────────────────────────────
 // Официальный Bot API: POST {host}/messages?chat_id={id}
 // (или ?user_id={id} для личных чатов), токен — в заголовке
-// Authorization; access_token в query больше не поддерживается.
-// Хосты пробуем по очереди: botapi.max.ru и platform-api.max.ru.
+// Authorization. Хосты пробуем по очереди.
+//
+// ВАЖНО (2026): MAX переехал на platform-api2.max.ru — старый
+// platform-api.max.ru отключён после 19.07.2026, поэтому он
+// только в конце списка как запасной. Авторизация в документации
+// описана неоднозначно: где-то «Authorization: <токен>», где-то
+// «Authorization: Bearer <токен>» — пробуем оба варианта.
+// TLS-цепочка *.max.ru может быть подписана корневым сертификатом
+// Минцифры: если Node его не знает, нужна NODE_EXTRA_CA_CERTS.
 
-const MAX_HOSTS = ["https://botapi.max.ru", "https://platform-api.max.ru"];
+const MAX_HOSTS = [
+  "https://botapi.max.ru",
+  "https://platform-api2.max.ru",
+  "https://platform-api.max.ru",
+];
 
-export async function sendMaxNotification(text: string): Promise<NotifyResult> {
+function tlsHint(msg: string): string {
+  return /certificate|cert\b|tls|ssl/i.test(msg)
+    ? " (TLS: среда не доверяет корневому сертификату Минцифры — задайте NODE_EXTRA_CA_CERTS на сервере)"
+    : "";
+}
+
+export async function sendMaxNotification(
+  text: string,
+  label = ""
+): Promise<NotifyResult> {
   try {
     const token = env("MAX_BOT_TOKEN") || (await setting("max_bot_token"));
     const chatId =
       env("MAX_ADMIN_CHAT_ID") || (await setting("max_admin_chat_id"));
     if (!token || !chatId) {
       console.warn("[notify] MAX не настроен");
-      return { ok: false, error: "MAX не настроен" };
+      const r = { ok: false, error: "MAX не настроен" };
+      pushNotifyLog("max", label, r);
+      return r;
     }
     const plain = String(text).replace(/<[^>]*>/g, "");
     const parts = chunkText(plain, MAX_LIMIT);
     const errors: string[] = [];
+    let workingHost: string | null = null;
+    let workingAuth: string | null = null;
+
+    // Два варианта заголовка авторизации — см. комментарий выше.
+    const authVariants = [token, `Bearer ${token}`];
 
     for (const part of parts) {
       let sent = false;
-      // chat_id и user_id — разные адресаты в MAX; пробуем оба варианта.
-      const paramNames = ["chat_id", "user_id"];
-      outer: for (const host of MAX_HOSTS) {
-        for (const paramName of paramNames) {
-          try {
-            const res = await fetchWithTimeout(
-              `${host}/messages?${paramName}=${encodeURIComponent(chatId)}`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: token,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ text: part }),
+      const hosts: string[] = workingHost
+        ? [workingHost, ...MAX_HOSTS.filter((h) => h !== workingHost)]
+        : MAX_HOSTS;
+      outer: for (const host of hosts) {
+        const auths: string[] = workingAuth
+          ? [workingAuth, ...authVariants.filter((v) => v !== workingAuth)]
+          : authVariants;
+        for (const authHeader of auths) {
+          // chat_id и user_id — разные адресаты в MAX; пробуем оба.
+          for (const paramName of ["chat_id", "user_id"]) {
+            try {
+              const res = await fetchWithTimeout(
+                `${host}/messages?${paramName}=${encodeURIComponent(chatId)}`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: authHeader,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ text: part }),
+                }
+              );
+              const data = await res.json().catch(() => ({} as any));
+              if (res.ok) {
+                workingHost = host;
+                workingAuth = authHeader;
+                sent = true;
+                break outer;
               }
-            );
-            if (res.ok) {
-              sent = true;
-              break outer;
+              const reason =
+                data?.message ||
+                data?.description ||
+                data?.code ||
+                `HTTP ${res.status}`;
+              errors.push(`${host}?${paramName}: ${reason}`);
+              console.error("[notify] MAX error:", res.status, data);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "Сетевая ошибка";
+              errors.push(`${host}?${paramName}: ${msg}${tlsHint(msg)}`);
+              console.error(`[notify] MAX ${host} недоступен:`, msg);
             }
-            const data = await res.json().catch(() => ({}));
-            errors.push(`${host}?${paramName}: HTTP ${res.status}`);
-            console.error("[notify] MAX error:", res.status, data);
-          } catch (err) {
-            errors.push(
-              `${host}?${paramName}: ${err instanceof Error ? err.message : "Сетевая ошибка"}`
-            );
           }
         }
       }
       if (!sent) {
-        return {
+        const r = {
           ok: false,
           error: `MAX: не удалось отправить (${errors.join("; ")})`,
           detail: errors,
         };
+        pushNotifyLog("max", label, r);
+        return r;
       }
     }
-    console.log("[notify] MAX OK");
-    return { ok: true };
+    console.log(`[notify] MAX OK через ${workingHost}`);
+    const r = { ok: true };
+    pushNotifyLog("max", label, r);
+    return r;
   } catch (err) {
     console.error("[notify] MAX exception:", err);
-    return {
+    const r = {
       ok: false,
       error: err instanceof Error ? err.message : "Ошибка отправки",
     };
+    pushNotifyLog("max", label, r);
+    return r;
   }
 }
 
 /** Отправить во все настроенные каналы (Telegram + MAX) параллельно. */
 export async function sendAdminNotifications(
-  htmlText: string
+  htmlText: string,
+  label = ""
 ): Promise<{ telegram: NotifyResult; max: NotifyResult }> {
   const [telegram, max] = await Promise.all([
-    sendTelegramNotification(htmlText),
-    sendMaxNotification(htmlText),
+    sendTelegramNotification(htmlText, label),
+    sendMaxNotification(htmlText, label),
   ]);
   if (!telegram.ok && !max.ok) {
     console.error(

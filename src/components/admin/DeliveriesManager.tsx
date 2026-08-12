@@ -377,29 +377,29 @@ export function DeliveriesManager({
             label: "Всего с доставкой",
             value: stats.total,
             icon: <Truck size={18} />,
-            color: "#1b2b4b",
-            bg: "rgba(27,43,75,0.08)",
+            color: "var(--adm-ink)",
+            bg: "var(--adm-paper-warm)",
           },
           {
             label: "Не отпущены",
             value: stats.unreleased,
             icon: <Clock size={18} />,
-            color: "#d97706",
-            bg: "rgba(217,119,6,0.12)",
+            color: "var(--adm-kraft)",
+            bg: "var(--adm-kraft-pale)",
           },
           {
             label: "С водителем",
             value: stats.withDriver,
             icon: <User size={18} />,
-            color: "#3b82f6",
-            bg: "#eff6ff",
+            color: "var(--adm-steel)",
+            bg: "var(--adm-steel-pale)",
           },
           {
             label: "Архив (отпущено)",
             value: stats.released,
             icon: <CheckCircle2 size={18} />,
-            color: "#16a34a",
-            bg: "#f0fdf4",
+            color: "var(--adm-pine)",
+            bg: "var(--adm-pine-pale)",
           },
         ].map((s) => (
           <div key={s.label} className="admin-stat" style={{ cursor: "default" }}>
@@ -687,7 +687,7 @@ export function DeliveriesManager({
                         <MapPin size={14} />
                         <span>
                           {order.deliveryAddress || (
-                            <em style={{ color: "#ef4444" }}>Адрес не указан</em>
+                            <em style={{ color: "var(--adm-rust)" }}>Адрес не указан</em>
                           )}
                         </span>
                       </div>
@@ -716,7 +716,7 @@ export function DeliveriesManager({
                                 if (shippedQty > 0 || delQty > 0) {
                                   return (
                                     <span key={pid} style={{ marginRight: 8 }}>
-                                      <del style={{ color: "#999" }}>{it.quantity}</del>{" "}
+                                      <del style={{ color: "var(--adm-sand)" }}>{it.quantity}</del>{" "}
                                       <strong style={{ color: "var(--adm-kraft)" }}>{remaining}</strong>{" "}
                                       {fullName}
                                       {shippedQty > 0 ? ` · отгружено: ${shippedQty}` : ""}

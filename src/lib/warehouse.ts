@@ -33,6 +33,7 @@ import type {
   CashKind,
   CashCollectionItem,
   CashCollectionExpense,
+  ConsignmentManualSale,
 } from "./warehouse-shared";
 import {
   includedVat,
@@ -54,8 +55,12 @@ import {
   isDealFullyShipped,
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
+  isYmCardSalaryComment,
+  isRentSalaryComment,
   getSalaryPeriodMonth,
   stripSalaryMetaTags,
+  normalizePriceTier,
+  type PriceTier,
 } from "./warehouse-shared";
 
 export {
@@ -156,6 +161,7 @@ function mapCounterpartyRow(row: any): Counterparty {
     supplierPrices: row.supplier_prices && typeof row.supplier_prices === "object"
       ? Object.fromEntries(Object.entries(row.supplier_prices).map(([id, price]) => [id, Math.max(0, Number(price) || 0)]))
       : {},
+    priceTier: normalizePriceTier(row.price_tier),
     phone: row.phone ?? null,
     email: row.email ?? null,
     inn: row.inn ?? null,
@@ -203,6 +209,34 @@ function mapReceiptRow(row: any): WarehouseReceipt {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
+}
+
+function mapConsignmentManualRow(row: any): ConsignmentManualSale {
+  return {
+    id: row.id,
+    receiptId: row.receipt_id,
+    productId: row.product_id,
+    productName: row.product_name || "",
+    quantity: Number(row.quantity || 0),
+    comment: row.comment ?? null,
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+/** Ручные продажи товара на реализации (все записи). */
+export async function getConsignmentManualSales(): Promise<ConsignmentManualSale[]> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("consignment_manual_sales")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) {
+    // Таблица появляется после миграции — до её применения считаем
+    // ручных продаж пустыми, а не роняем страницу учёта.
+    if (String(error.message).includes("does not exist")) return [];
+    throw error;
+  }
+  return (data || []).map(mapConsignmentManualRow);
 }
 
 function mapDealRow(row: any): CustomerDeal {
@@ -344,7 +378,7 @@ function mapSalaryRow(row: any): Salary {
     amount: Number(row.amount || 0),
     date: row.date,
     periodMonth: getSalaryPeriodMonth(row.comment, row.date),
-    source: row.source,
+    source: isYmCardSalaryComment(row.comment) ? "ym_card" : row.source,
     isPaid: row.is_paid ?? false,
     paidAt: row.paid_at ?? null,
     comment: row.comment ?? null,
@@ -596,6 +630,7 @@ export async function saveCounterparty(data: {
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
+  priceTier?: PriceTier | null;
 }): Promise<{ id: string }> {
   const db = getAdminDb();
   const name = sanitizeCounterpartyName(data.name);
@@ -612,6 +647,7 @@ export async function saveCounterparty(data: {
     bik: data.bik ?? null, correspondent_account: data.correspondentAccount ?? null,
     address: data.address ?? null, contact_name: data.contactName ?? null,
     comment: data.comment ?? null,
+    price_tier: normalizePriceTier(data.priceTier),
   };
 
   const { error } = await db.from("counterparties").upsert(payload);
@@ -741,8 +777,10 @@ async function returnLegacyCompletedDealToStock(deal: {
 
 export async function setWarehouseStock(productId: string, quantity: number): Promise<void> {
   const db = getAdminDb();
+  const qty = Math.max(0, Number(quantity) || 0);
   const { error } = await db.from("products").update({
-    stock_qty: Math.floor(quantity), in_stock: Math.floor(quantity) > 0,
+    stock_qty: Math.round(qty * 1000) / 1000,
+    in_stock: qty > 0,
     updated_at: new Date().toISOString(),
   }).eq("id", productId);
   if (error) throw error;
@@ -794,7 +832,8 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
       skipped += 1;
       continue;
     }
-    const actual = Math.max(0, Math.floor(Number(item.actualQty) || 0));
+    const rawActual = Number(item.actualQty);
+    const actual = Math.max(0, Math.round((Number.isFinite(rawActual) ? rawActual : 0) * 1000) / 1000);
     const variantId =
       item.variantId == null || item.variantId === ""
         ? null
@@ -892,17 +931,7 @@ function itemsTotal(items: StockDocItem[]): number {
 function cleanItems(rawItems: any[]): StockDocItem[] {
   return (Array.isArray(rawItems) ? rawItems : [])
     .map((it: any) => {
-      const quantity = Math.max(0, Math.min(100_000, Number(it.quantity) || 0));
-      let lineTotal = Math.max(0, Number(it.lineTotal) || 0);
-      let price = Math.max(0, Number(it.price) || 0);
-      if (lineTotal > 0 && quantity > 0) {
-        price = round2(lineTotal / quantity);
-      } else {
-        lineTotal = round2(price * quantity);
-      }
-      // Идентификатор варианта: если не передан (старые заявки) — null,
-      // и тогда «товар без варианта». Имя варианта — snapshot, чтобы при
-      // переименовании в админке в учёте осталось то, что заказывал клиент.
+      // Вариант
       const variantId =
         it.variantId == null || it.variantId === ""
           ? null
@@ -911,18 +940,118 @@ function cleanItems(rawItems: any[]): StockDocItem[] {
         it.variantName == null || it.variantName === ""
           ? null
           : String(it.variantName).slice(0, 200);
-      return {
+
+      // Вариативность рулон/метры
+      let unit: 'roll' | 'meter' | 'piece' | null = null;
+      const rawUnit = String(it.unit || it.saleUnit || "").toLowerCase();
+      if (rawUnit === 'meter' || rawUnit === 'm' || rawUnit === 'м') unit = 'meter';
+      else if (rawUnit === 'roll' || rawUnit === 'рулон') unit = 'roll';
+      else if (rawUnit === 'piece' || rawUnit === 'шт') unit = 'piece';
+
+      let metersPerRoll: number | null = null;
+      if (it.metersPerRoll != null) {
+        const m = Number(it.metersPerRoll);
+        if (Number.isFinite(m) && m > 0) metersPerRoll = m;
+      }
+      if (unit === 'roll' && !metersPerRoll && !it.isCuttable) {
+        unit = 'piece';
+      }
+
+      // saleQuantity — исходное в единице продажи, base — в рулонах
+      let saleQuantity: number | null = null;
+      if (it.saleQuantity != null) {
+        const sq = Number(it.saleQuantity);
+        if (Number.isFinite(sq) && sq >= 0) saleQuantity = sq;
+      }
+      let baseQuantity: number | null = null;
+      // quantity в старом формате — это base (рулоны). В новом может быть sale или base.
+      const rawQty = it.quantity != null ? Number(it.quantity) : NaN;
+
+      // Если указана saleQuantity и unit meter — base = sale / mpr
+      if (saleQuantity != null && unit === 'meter' && metersPerRoll) {
+        baseQuantity = saleQuantity / metersPerRoll;
+      } else if (saleQuantity != null && unit !== 'meter') {
+        baseQuantity = saleQuantity;
+      } else if (Number.isFinite(rawQty)) {
+        // rawQty считаем base, если unit meter и saleQuantity не указана, но metersPerRoll есть,
+        // пробуем определить: если rawQty большая (метры) > base, то возможно это метры?
+        // Для совместимости: если unit meter и metersPerRoll, а saleQuantity отсутствует,
+        // считаем rawQty как метры.
+        if (unit === 'meter' && metersPerRoll && saleQuantity == null) {
+          saleQuantity = rawQty;
+          baseQuantity = rawQty / metersPerRoll;
+        } else {
+          baseQuantity = rawQty;
+          if (saleQuantity == null) saleQuantity = rawQty;
+        }
+      }
+
+      // Если до сих пор нет base, пробуем baseQuantity поле
+      if (baseQuantity == null && it.baseQuantity != null) {
+        const bq = Number(it.baseQuantity);
+        if (Number.isFinite(bq)) baseQuantity = bq;
+      }
+
+      baseQuantity = Math.max(0, Math.min(100_000, Number(baseQuantity) || 0));
+      // Разрешаем дробные рулоны (5.9) — не floor
+      // Сохраняем до 3 знаков после запятой
+      baseQuantity = Math.round(baseQuantity * 1000) / 1000;
+
+      saleQuantity = saleQuantity == null ? baseQuantity : Math.max(0, Number(saleQuantity) || 0);
+
+      let lineTotal = Math.max(0, Number(it.lineTotal) || 0);
+      let price = Math.max(0, Number(it.price) || 0);
+      let salePrice: number | null = null;
+      if (it.salePrice != null) {
+        const sp = Number(it.salePrice);
+        if (Number.isFinite(sp) && sp >= 0) salePrice = sp;
+      }
+
+      // Если salePrice нет, но price есть и unit meter — считаем price как за метр
+      if (salePrice == null && unit === 'meter') {
+        salePrice = price || 0;
+        // Пересчитаем lineTotal если не указан
+        if (lineTotal <= 0 && saleQuantity > 0 && salePrice > 0) {
+          lineTotal = round2(saleQuantity * salePrice);
+        }
+      }
+
+      if (lineTotal > 0 && baseQuantity > 0) {
+        price = round2(lineTotal / baseQuantity);
+      } else if (saleQuantity > 0 && salePrice != null) {
+        lineTotal = round2(saleQuantity * salePrice);
+        price = baseQuantity > 0 ? round2(lineTotal / baseQuantity) : salePrice;
+      } else {
+        lineTotal = round2(price * baseQuantity);
+      }
+
+      // Если unit не указан, но есть saleQuantity отличающаяся — определим
+      if (!unit && saleQuantity != null && baseQuantity != null && metersPerRoll) {
+        // Если saleQuantity сильно больше base (в 10+ раз) — вероятно это метры
+        if (Math.abs(saleQuantity - baseQuantity * metersPerRoll) < 0.01) {
+          unit = 'meter';
+        }
+      }
+
+      const result: any = {
         productId: String(it.productId || ""),
         variantId,
         variantName,
         name: String(it.name || "").slice(0, 300),
         sku: it.sku ? String(it.sku).slice(0, 60) : null,
-        quantity,
+        quantity: baseQuantity,
         price,
         lineTotal: round2(lineTotal),
       };
+      if (unit && unit !== 'piece') result.unit = unit;
+      if (metersPerRoll) result.metersPerRoll = metersPerRoll;
+      if (saleQuantity != null && Math.abs(saleQuantity - baseQuantity) > 0.0001) result.saleQuantity = Math.round(saleQuantity * 100) / 100;
+      else if (unit === 'meter') result.saleQuantity = Math.round(saleQuantity * 100) / 100;
+      if (salePrice != null && unit === 'meter') result.salePrice = salePrice;
+      if (it.cutUnitName) result.cutUnitName = String(it.cutUnitName).slice(0,10);
+      return result;
     })
-    .filter((it) => it.productId && it.quantity > 0);
+    .filter((it: any) => it.productId && it.quantity > 0);
 }
 
 // ─── Receipts CRUD ─────────────────────────────────────────
@@ -1125,18 +1254,15 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
       ? sum + (Number(p.amount) || 0) / links
       : sum;
   }, 0);
-  const existingNoPaymentPaid = receiptPayments.reduce((sum: number, p: any) => {
-    const receiptLinks = (p.receipt_ids || []).length;
-    const dealLinks = (p.deal_ids || []).length;
-    if (p.direction !== "outgoing" || p.is_paid !== true || p.exclude_from_balance !== true) return sum;
-    if (receiptLinks !== 1 || dealLinks !== 0) return sum;
-    return sum + (Number(p.amount) || 0);
-  }, 0);
-  const effectivePaidTotal = noPayment
-    ? 0
-    : Math.max(0, round2(paidTotal - existingNoPaymentPaid));
-  const total = effectivePaidTotal > 0 ? effectivePaidTotal : linesTotal;
-  const bankAdjustment = round2(total - linesTotal);
+
+  // Итог поставки — это ВСЕГДА сумма позиций (как при создании).
+  // Раньше здесь было `total = effectivePaidTotal > 0 ? effectivePaidTotal : linesTotal`,
+  // из-за чего при редактировании частично оплаченной поставки итог
+  // подменялся уже оплаченной суммой: плашка «Оплачено X из Y» исчезала,
+  // а итоговая сумма «слетала». Оплаченная часть учитывается отдельно
+  // через платежи (paidTotal), а не через total поставки.
+  const total = linesTotal;
+  const bankAdjustment = 0;
 
   const supplier = sanitizeCounterpartyName(data.supplier);
   const details = {
@@ -2367,11 +2493,19 @@ export async function deleteEmployee(id: string): Promise<void> {
 
 export async function createSalary(data: { employeeId?: string | null; employeeName: string; amount: number; date: string; source: SalarySource; isPaid?: boolean; comment?: string | null }): Promise<{ id: string }> {
   const db = getAdminDb();
+  const rawSource = String(data.source || "");
+  const dbSource = rawSource === "cash" ? "cash" : "bank";
+  let dbComment = data.comment || "";
+  if (rawSource === "ym_card" && !dbComment.includes("[Карта ЮМ]") && !dbComment.includes("[ЮМ]")) {
+    dbComment = `[Карта ЮМ] ${dbComment}`.trim();
+  } else if (rawSource === "rent" && !dbComment.includes("[Аренда]")) {
+    dbComment = `[Аренда] ${dbComment}`.trim();
+  }
   const { data: result, error } = await db.from("salaries").insert({
     employee_id: data.employeeId ?? null, employee_name: data.employeeName,
-    amount: data.amount, date: data.date.slice(0, 10), source: data.source,
+    amount: data.amount, date: data.date.slice(0, 10), source: dbSource,
     is_paid: data.isPaid ?? false, paid_at: data.isPaid ? data.date.slice(0, 10) : null,
-    comment: data.comment ?? null,
+    comment: dbComment || null,
   }).select("id").single();
   if (error) throw error;
   revalidateTag("warehouse-salaries", { expire: 0 });
@@ -2383,9 +2517,20 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   const payload: Record<string, any> = {};
   if (data.amount !== undefined) payload.amount = data.amount;
   if (data.date) payload.date = data.date.slice(0, 10);
-  if (data.source) payload.source = data.source;
+  if (data.source) {
+    const rawSource = String(data.source);
+    payload.source = rawSource === "cash" ? "cash" : "bank";
+    const commentStr = String(data.comment || "");
+    let nextComment = data.comment;
+    if (rawSource === "ym_card" && nextComment !== undefined && !commentStr.includes("[Карта ЮМ]") && !commentStr.includes("[ЮМ]")) {
+      nextComment = `[Карта ЮМ] ${commentStr}`.trim();
+    } else if (rawSource === "rent" && nextComment !== undefined && !commentStr.includes("[Аренда]")) {
+      nextComment = `[Аренда] ${commentStr}`.trim();
+    }
+    if (nextComment !== undefined) payload.comment = nextComment;
+  }
   if (data.isPaid !== undefined) { payload.is_paid = data.isPaid; payload.paid_at = data.isPaid ? (data.paidAt || data.date?.slice(0, 10) || null) : null; }
-  if (data.comment !== undefined) payload.comment = data.comment;
+  if (data.comment !== undefined && !payload.comment) payload.comment = data.comment;
   const { error } = await db.from("salaries").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-salaries", { expire: 0 });
@@ -2548,15 +2693,18 @@ export async function getPendingCashPayments(): Promise<{
   );
 
   return {
-    pending: listPendingCashPayments(payments, collections).map((p) => ({
-      paymentId: String(p.id),
-      number: p.number,
-      date: p.date,
-      counterparty: p.counterparty,
-      amount: p.amount,
-      comment: p.comment ?? null,
-      cashDestination: p.cashDestination ?? null,
-    })),
+    pending: listPendingCashPayments(payments, collections).map((p) => {
+      const isYm = p.type === "ym_card" || p.type === "transfer" || p.cashDestination === "card" || (p.comment && (p.comment.includes("[Карта ЮМ]") || p.comment.includes("[ЮМ]")));
+      return {
+        paymentId: String(p.id),
+        number: p.number,
+        date: p.date,
+        counterparty: p.counterparty,
+        amount: p.amount,
+        comment: p.comment ?? null,
+        cashDestination: isYm ? "card" : "cash",
+      };
+    }),
     closed: payments
       .filter(
         (p) =>
@@ -2582,18 +2730,21 @@ export async function getPendingCashPayments(): Promise<{
   };
 }
 
-/** Платёж относится к кассе: наличное поступление, влияющее на остаток. */
+/** Платёж относится к кассе: только регулярная наличка.
+ * Переводы (transfer / cashDestination=card) сразу в ЮМ, минуя кассу.
+ */
 function isCashDeskIncome(p: BankPayment): boolean {
   return (
     p.isPaid &&
     !p.excludeFromBalance &&
-    (p.type === "cash" || p.type === "transfer") &&
+    p.type === "cash" &&
+    p.cashDestination !== "card" &&
     p.direction === "incoming" &&
     p.amount > 0
   );
 }
 
-/** Наличный расход из кассы: зарплата или исходящий платёж налом. */
+/** Расход из кассы или с карты ЮМ (зарплата или исходящий платёж). */
 export interface CashExpenseRow {
   kind: "salary" | "payment";
   id: string;
@@ -2601,15 +2752,11 @@ export interface CashExpenseRow {
   title: string;
   amount: number;
   comment: string | null;
+  sourceKind?: "cash" | "card";
 }
 
 /**
- * Наличные расходы, уменьшившие кассу: выплаченные налом зарплаты и
- * проведённые исходящие платежи с типом "cash".
- *
- * Эти деньги физически ушли из кассы до сдачи, поэтому сдавать нужно
- * приход МИНУС расходы. Безнала здесь нет: только type='cash' и
- * source='cash'.
+ * Расходы смены (наличные из кассы и переводы с карты ЮМ).
  */
 function listCashExpenses(
   payments: BankPayment[],
@@ -2618,8 +2765,11 @@ function listCashExpenses(
   const rows: CashExpenseRow[] = [];
 
   for (const s of salaries) {
-    if (!s.isPaid || s.source !== "cash" || s.amount <= 0) continue;
+    if (!s.isPaid || s.amount <= 0) continue;
     if (isSalaryExcludedFromBalance(s.comment)) continue;
+    if (isRentSalaryComment(s.comment, s.source)) continue;
+    const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
+    if (s.source !== "cash" && !isYm) continue;
     rows.push({
       kind: "salary",
       id: String(s.id),
@@ -2627,6 +2777,7 @@ function listCashExpenses(
       title: `Зарплата — ${s.employeeName || "сотрудник"}`,
       amount: s.amount,
       comment: stripSalaryMetaTags(s.comment) || null,
+      sourceKind: isYm ? "card" : "cash",
     });
   }
 
@@ -2634,12 +2785,13 @@ function listCashExpenses(
     if (
       !p.isPaid ||
       p.excludeFromBalance ||
-      p.type !== "cash" ||
       p.direction !== "outgoing" ||
       p.amount <= 0
     ) {
       continue;
     }
+    const isYm = p.type === "ym_card" || p.type === "transfer" || p.cashDestination === "card" || (p.comment && (p.comment.includes("[Карта ЮМ]") || p.comment.includes("[ЮМ]")));
+    if (p.type !== "cash" && !isYm) continue;
     rows.push({
       kind: "payment",
       id: String(p.id),
@@ -2647,13 +2799,14 @@ function listCashExpenses(
       title: `ПЛ-${p.number} — ${p.counterparty || "расход"}`,
       amount: p.amount,
       comment: p.comment ?? null,
+      sourceKind: isYm ? "card" : "cash",
     });
   }
 
   return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Наличные поступления, ещё не размеченные ни в одной сдаче кассы. */
+/** Поступления смены, ещё не размеченные ни в одной сдаче (касса и карта ЮМ). */
 function listPendingCashPayments(
   payments: BankPayment[],
   collections: CashCollectionRow[]
@@ -2666,12 +2819,14 @@ function listPendingCashPayments(
   }
   const today = getWarehouseBusinessDate();
   return payments
-    .filter(
-      (p) =>
-        isCashDeskIncome(p) &&
-        String(p.date || "").slice(0, 10) <= today &&
-        !collected.has(String(p.id))
-    )
+    .filter((p) => {
+      if (!p.isPaid || p.excludeFromBalance || p.direction !== "incoming" || p.amount <= 0) return false;
+      const isYm = p.type === "ym_card" || p.type === "transfer" || p.cashDestination === "card" || (p.comment && (p.comment.includes("[Карта ЮМ]") || p.comment.includes("[ЮМ]")));
+      const isCash = p.type === "cash" && !isYm;
+      if (!isYm && !isCash) return false;
+      if (String(p.date || "").slice(0, 10) > today) return false;
+      return !collected.has(String(p.id));
+    })
     .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
 }
 
@@ -3661,7 +3816,7 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("products")
-    .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, is_visible, dimension_length, dimension_width, dimension_height, dimension_unit")
+    .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, purchase_price, is_visible, is_cuttable, cut_meters_per_roll, cut_price_per_meter, cut_unit_name, dimension_length, dimension_width, dimension_height, dimension_unit")
     .order("name", { ascending: true });
   if (error) throw error;
   return (data || []).map((row: any) => ({
@@ -3671,9 +3826,13 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     inStock: row.in_stock ?? (Number(row.stock_qty || 0) > 0),
     price: row.price != null ? Number(row.price) : null,
     priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
+    purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
     isVisible: row.is_visible ?? true,
-    // Габариты — нужны в бланке/акте ревизии, чтобы кладовщик сразу видел
-    // «670×370×370» и не пересчитывал «абстрактный» SKU наугад.
+    isCuttable: row.is_cuttable ?? false,
+    cutMetersPerRoll: row.cut_meters_per_roll != null ? Number(row.cut_meters_per_roll) : null,
+    cutPricePerMeter: row.cut_price_per_meter != null ? Number(row.cut_price_per_meter) : null,
+    cutUnitName: row.cut_unit_name || 'м',
+    // Габариты — нужны в бланке/акте ревизии
     dimensionLength: row.dimension_length != null ? Number(row.dimension_length) : null,
     dimensionWidth: row.dimension_width != null ? Number(row.dimension_width) : null,
     dimensionHeight: row.dimension_height != null ? Number(row.dimension_height) : null,
@@ -3755,7 +3914,7 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     await Promise.all([
       db
         .from("products")
-        .select("id, name, sku, stock_qty")
+        .select("id, name, sku, stock_qty, purchase_price")
         .eq("id", productId)
         .maybeSingle(),
       fetchProductReceiptRows(productId),
@@ -3852,6 +4011,8 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     productId,
     productName: String(product.name || ""),
     sku: product.sku ? String(product.sku) : null,
+    purchasePrice:
+      product.purchase_price != null ? Number(product.purchase_price) : null,
     currentStockQty,
     receipts,
     deals,

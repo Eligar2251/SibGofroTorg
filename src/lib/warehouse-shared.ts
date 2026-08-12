@@ -13,9 +13,24 @@ export interface StockDocItem {
   variantName?: string | null;
   name: string;
   sku?: string | null;
+  /** 
+   * Базовое кол-во для списания склада — в рулонах/шт (может быть дробным 5.9).
+   * Для резаных товаров: если продажа в метрах, сюда попадает base = meters / metersPerRoll
+   */
   quantity: number;
   price: number;
   lineTotal: number;
+  // ── Вариативность рулон / метры ──
+  /** Единица продажи: roll | meter | piece (по умолчанию roll/piece) */
+  unit?: 'roll' | 'meter' | 'piece' | null;
+  /** Метров в рулоне на момент продажи (снапшот) */
+  metersPerRoll?: number | null;
+  /** Исходное кол-во в единице продажи (напр. 10 метров) */
+  saleQuantity?: number | null;
+  /** Цена за единицу продажи (напр. за метр) */
+  salePrice?: number | null;
+  /** Единица отмотки подпись, напр. 'м' */
+  cutUnitName?: string | null;
 }
 
 export type CounterpartyRole = "supplier" | "customer";
@@ -44,12 +59,70 @@ export interface Counterparty extends CounterpartyDetails {
   normalizedName: string;
   roles: CounterpartyRole[];
   supplierPrices?: Record<string, number>;
+  /** Вариант цены контрагента: обычный / спец (скидка) / эксклюзив (скидка больше). */
+  priceTier?: PriceTier;
   comment?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
 
+// ── Варианты цен (ценовые уровни контрагентов) ──────────────
+// «Обычная» — цена как в карточке товара (все по умолчанию).
+// «Спец» и «Эксклюзив» — скидка от цены продажи; проценты задаются
+// в настройках админки (price_tier_special_discount /
+// price_tier_exclusive_discount) и применяются при оформлении заказа.
+export type PriceTier = "regular" | "special" | "exclusive";
+
+export const PRICE_TIER_IDS: readonly PriceTier[] = ["regular", "special", "exclusive"];
+
+export function normalizePriceTier(value: unknown): PriceTier {
+  return value === "special" || value === "exclusive" ? value : "regular";
+}
+
+/** Скидки уровней из настроек (дефолты: спец 5%, эксклюзив 10%). */
+export function getPriceTierDiscounts(
+  settings: Record<string, string | undefined> | null | undefined
+): { special: number; exclusive: number } {
+  const parse = (raw: string | undefined, fallback: number) => {
+    const trimmed = String(raw ?? "").trim();
+    if (!trimmed) return fallback;
+    const n = Number(trimmed.replace(",", "."));
+    return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 100) / 100 : fallback;
+  };
+  return {
+    special: parse(settings?.price_tier_special_discount, 5),
+    exclusive: parse(settings?.price_tier_exclusive_discount, 10),
+  };
+}
+
+export function priceTierDiscountPercent(
+  tier: PriceTier | null | undefined,
+  discounts: { special: number; exclusive: number }
+): number {
+  if (tier === "special") return discounts.special;
+  if (tier === "exclusive") return discounts.exclusive;
+  return 0;
+}
+
+/** Цена со скидкой уровня (округление до копеек). */
+export function applyTierDiscount(price: number, discountPercent: number): number {
+  if (!Number.isFinite(price) || price <= 0) return price;
+  const pct = Math.min(100, Math.max(0, Number(discountPercent) || 0));
+  return Math.round(price * (1 - pct / 100) * 100) / 100;
+}
+
 export type ReceiptStatus = "draft" | "posted";
+
+/** Ручная продажа товара на реализации (плюс к автоподсчёту по отгрузкам). */
+export interface ConsignmentManualSale {
+  id: string;
+  receiptId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  comment?: string | null;
+  updatedAt?: string | null;
+}
 
 export interface WarehouseReceipt extends CounterpartyDetails {
   id: string;
@@ -117,7 +190,8 @@ export type BankPaymentType =
   | "refund"
   | "cash"
   | "transfer"
-  | "deposit";
+  | "deposit"
+  | "ym_card";
 
 export interface BankPayment {
   id: string;
@@ -155,7 +229,13 @@ export interface WarehouseStockRow {
   inStock: boolean;
   price: number | null;
   priceWholesale: number | null;
+  purchasePrice?: number | null;
   isVisible: boolean;
+  // Вариативность
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
+  cutUnitName?: string | null;
   /** Габариты товара в мм (или в иных единицах из dimensionUnit).
    *  Подхватываются в ревизию склада, чтобы кладовщик мог
    *  пересчитать остатки по позициям и сразу видеть, что именно
@@ -165,6 +245,50 @@ export interface WarehouseStockRow {
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
 }
+
+ // ── Хелперы для резаных товаров ──
+export function getCuttableBreakdown(stockRolls: number, metersPerRoll: number | null | undefined) {
+  const rolls = Math.max(0, Number(stockRolls) || 0);
+  const mpr = Math.max(0, Number(metersPerRoll) || 0);
+  if (!mpr) return { fullRolls: Math.floor(rolls), remainderMeters: 0, totalMeters: rolls, rolls };
+  const fullRolls = Math.floor(rolls + 1e-9);
+  const remainderMeters = Math.round((rolls - fullRolls) * mpr * 100) / 100;
+  const totalMeters = Math.round(rolls * mpr * 100) / 100;
+  return { fullRolls, remainderMeters, totalMeters, rolls };
+}
+
+export function formatCuttableStock(stockRolls: number, metersPerRoll: number | null | undefined, unitName?: string | null) {
+  const { fullRolls, remainderMeters, totalMeters } = getCuttableBreakdown(stockRolls, metersPerRoll);
+  const u = unitName || 'м';
+  if (!metersPerRoll) return `${Number(stockRolls || 0).toLocaleString('ru-RU')} шт.`;
+  if (remainderMeters > 0.009) return `${fullRolls} рул. + ${remainderMeters} ${u} (${totalMeters} ${u} всего)`;
+  return `${fullRolls} рул. · ${totalMeters} ${u}`;
+}
+
+export function getStockItemBaseQuantity(item: { quantity?: number; baseQuantity?: number; saleQuantity?: number; unit?: string | null; metersPerRoll?: number | null } & any): number {
+  if (item == null) return 0;
+  // quantity уже base
+  const q = Number(item.quantity);
+  if (Number.isFinite(q) && q > 0) return q;
+  // fallback: saleQuantity / mpr
+  if (item.unit === 'meter' && item.metersPerRoll) {
+    const sale = Number(item.saleQuantity);
+    const mpr = Number(item.metersPerRoll);
+    if (sale > 0 && mpr > 0) return sale / mpr;
+  }
+  return 0;
+}
+
+export function getStockItemDisplaySale(item: StockDocItem): { saleQty: number; unit: 'roll'|'meter'|'piece'; pricePerSale: number; metersPerRoll?: number | null } {
+  const base = Number(item.quantity) || 0;
+  const isRoll = (item.unit as any) === 'roll' && Boolean((item as any).isCuttable || item.metersPerRoll);
+  const unit = (item.unit as any) === 'meter' ? 'meter' : isRoll ? 'roll' : 'piece';
+  const mpr = item.metersPerRoll != null ? Number(item.metersPerRoll) : null;
+  const saleQty = item.saleQuantity != null ? Number(item.saleQuantity) : (unit === 'meter' && mpr ? base * mpr : base);
+  const pricePerSale = item.salePrice != null ? Number(item.salePrice) : Number(item.price) || 0;
+  return { saleQty, unit, pricePerSale, metersPerRoll: mpr };
+}
+
 
 /** Строка поступления в расширенной складской сводке товара. */
 export interface ProductStockReceiptHistory {
@@ -204,6 +328,9 @@ export interface ProductStockSummary {
   productId: string;
   productName: string;
   sku: string | null;
+  /** Общая закупочная цена из карточки товара — фолбэк для маржи,
+      когда поставок по товару ещё нет. */
+  purchasePrice?: number | null;
   currentStockQty: number;
   receipts: ProductStockReceiptHistory[];
   deals: ProductStockDealHistory[];
@@ -239,7 +366,7 @@ export interface Employee {
 }
 
 /** Счёт, с которого выплачивается зарплата */
-export type SalarySource = "cash" | "bank";
+export type SalarySource = "cash" | "bank" | "ym_card";
 
 /** Начисление/выплата зарплаты сотруднику */
 export interface Salary {
@@ -263,6 +390,8 @@ export interface Salary {
 export const SALARY_RENT_TAG = "[Аренда]";
 export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
 export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
+export const SALARY_YM_CARD_TAG = "[Карта ЮМ]";
+export const SALARY_YM_CARD_TAG_SHORT = "[ЮМ]";
 /** Расчётный месяц хранится служебной пометкой — миграция БД не нужна. */
 export const SALARY_PERIOD_TAG_PREFIX = "Период:";
 const SALARY_PERIOD_TAG_RE = /\[Период:(\d{4}-\d{2})\]/g;
@@ -271,9 +400,11 @@ function salaryHasTag(comment: string | null | undefined, tag: string): boolean 
   return (comment || "").includes(tag);
 }
 
-/** Выплата прошла по схеме «с аренды на карту». */
-export function isRentSalaryComment(comment: string | null | undefined): boolean {
-  return salaryHasTag(comment, SALARY_RENT_TAG);
+/** Выплата прошла по схеме «с аренды на карту» или с source="bank" (если это не карта ЮМ). ЗП с р/с банка не платится, только аренда. */
+export function isRentSalaryComment(comment: string | null | undefined, source?: string | null): boolean {
+  if (salaryHasTag(comment, SALARY_RENT_TAG)) return true;
+  if (source === "bank" && !isYmCardSalaryComment(comment)) return true;
+  return false;
 }
 
 /** Историческая выплата: показывается в ЗП, но не влияет на текущий баланс. */
@@ -305,6 +436,8 @@ export function stripSalaryMetaTags(comment: string | null | undefined): string 
     .replaceAll(SALARY_RENT_TAG, "")
     .replaceAll(SALARY_EXCLUDE_BALANCE_TAG, "")
     .replaceAll(SALARY_DEBT_PAYMENT_TAG, "")
+    .replaceAll(SALARY_YM_CARD_TAG, "")
+    .replaceAll(SALARY_YM_CARD_TAG_SHORT, "")
     .replace(SALARY_PERIOD_TAG_RE, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -316,11 +449,16 @@ export function composeSalaryComment(options: {
   rent?: boolean;
   excludeFromBalance?: boolean;
   debtPayment?: boolean;
+  ymCard?: boolean;
   /** Расчётный месяц YYYY-MM: например, выплата в июле за июнь. */
   periodMonth?: string | null;
 }): string | null {
   const tags: string[] = [];
-  if (options.rent) tags.push(SALARY_RENT_TAG);
+  if (options.ymCard) {
+    tags.push(SALARY_YM_CARD_TAG);
+  } else if (options.rent) {
+    tags.push(SALARY_RENT_TAG);
+  }
   if (options.excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
   if (options.debtPayment) tags.push(SALARY_DEBT_PAYMENT_TAG);
   if (/^\d{4}-\d{2}$/.test(options.periodMonth || "")) {
@@ -558,6 +696,23 @@ function collectionCashOutflow(collection: CashCollection): number {
     : Math.max(0, Number(collection.amount) || 0);
 }
 
+/** Платеж, который сразу должен попадать в карту ЮМ, минуя кассу. */
+export function isImmediateYmPayment(p: BankPayment | null | undefined): boolean {
+  if (!p) return false;
+  if (p.type === "transfer") return true;
+  if (p.type === "cash" && p.cashDestination === "card") return true;
+  return false;
+}
+
+/** Платеж, который считается наличкой в кассе (только регулярная наличка). */
+function isRegularCashForCashDesk(p: BankPayment): boolean {
+  if (!p.isPaid || p.excludeFromBalance) return false;
+  if (p.type !== "cash") return false;
+  if (p.amount <= 0) return false;
+  if (p.direction === "incoming" && p.cashDestination === "card") return false;
+  return true;
+}
+
 /** Рабочая дата компании — Новосибирск, а не UTC сервера/Vercel. */
 export function getWarehouseBusinessDate(date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -577,6 +732,10 @@ export function getWarehouseBusinessDate(date = new Date()): string {
  * смены помечены «на карту». Остальные расходы списываются FIFO. Поэтому
  * перенесённая наличка не только входит в баланс, но и сохраняет ссылку на
  * исходный ПЛ и контрагента.
+ *
+ * ВАЖНО (2026): переводы (type=transfer и cashDestination=card) в кассу
+ * НЕ входят, а сразу отображаются в карте ЮМ. Здесь учитывается только
+ * регулярная наличка (cash + destination != card).
  */
 export function getCashCarryoverSummary(
   payments: BankPayment[],
@@ -595,11 +754,15 @@ export function getCashCarryoverSummary(
         targets?: { paymentId: string; amount: number }[];
       };
 
+  const paymentById = new Map<string, BankPayment>();
+  for (const p of payments) paymentById.set(String(p.id), p);
+
   const events: CashEvent[] = [];
   for (const payment of payments) {
-    if (!payment.isPaid || payment.excludeFromBalance || (payment.type !== "cash" && payment.type !== "transfer")) {
-      continue;
-    }
+    if (!payment.isPaid || payment.excludeFromBalance) continue;
+    // В кассу попадает только регулярная наличка, без переводов на ЮМ
+    if (payment.type !== "cash") continue;
+    if (payment.direction === "incoming" && payment.cashDestination === "card") continue;
     const amount = Math.max(0, Number(payment.amount) || 0);
     if (amount <= 0) continue;
     // Именно дата платежа определяет, в какой дневной баланс он входит.
@@ -631,7 +794,8 @@ export function getCashCarryoverSummary(
       !salary.isPaid ||
       salary.source !== "cash" ||
       salary.amount <= 0 ||
-      isSalaryExcludedFromBalance(salary.comment)
+      isSalaryExcludedFromBalance(salary.comment) ||
+      isRentSalaryComment(salary.comment)
     ) {
       continue;
     }
@@ -644,31 +808,51 @@ export function getCashCarryoverSummary(
   }
 
   for (const collection of collections) {
-    const amount = collectionCashOutflow(collection);
-    if (amount <= 0) continue;
-    const rawTargets = (collection.items || [])
-      .map((item) => ({
-        paymentId: String(item.paymentId || ""),
-        amount: Math.max(
-          0,
-          Number(
-            item.cardAmount != null
-              ? item.cardAmount
-              : item.kind === "card"
-                ? item.amount
-                : 0
-          ) || 0
-        ),
-      }))
-      .filter((item) => item.paymentId && item.amount > 0);
-    const rawTotal = rawTargets.reduce((sum, item) => sum + item.amount, 0);
-    const factor = rawTotal > 0 ? Math.min(1, amount / rawTotal) : 0;
+    // Для кассы учитываем только ту часть инкассации, которая относится
+    // к регулярной наличке. Переводы (transfer / cashDestination=card)
+    // никогда не были в кассе, поэтому из кассы не вычитаются.
+    const eligibleCardItems: { paymentId: string; amount: number }[] = [];
+    let eligibleCardTotal = 0;
+    for (const item of collection.items || []) {
+      const pid = String(item.paymentId || "");
+      if (!pid) continue;
+      if (pid.startsWith("manual:")) {
+        const card = Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+        if (card > 0) {
+          eligibleCardItems.push({ paymentId: pid, amount: card });
+          eligibleCardTotal += card;
+        }
+        continue;
+      }
+      const pay = paymentById.get(pid);
+      if (pay && isImmediateYmPayment(pay)) {
+        // перевод — никогда не был в кассе, пропускаем
+        continue;
+      }
+      const card = Math.max(
+        0,
+        Number(
+          item.cardAmount != null
+            ? item.cardAmount
+            : item.kind === "card"
+              ? item.amount
+              : 0
+        ) || 0
+      );
+      if (card > 0) {
+        eligibleCardItems.push({ paymentId: pid, amount: card });
+        eligibleCardTotal += card;
+      }
+    }
+    if (eligibleCardTotal <= 0) continue;
+    const rawTotal = eligibleCardItems.reduce((sum, it) => sum + it.amount, 0);
+    const factor = rawTotal > 0 ? Math.min(1, eligibleCardTotal / rawTotal) : 0;
     events.push({
       date: String(collection.date || "").slice(0, 10),
       priority: 2,
       type: "card",
-      amount,
-      targets: rawTargets.map((item) => ({
+      amount: eligibleCardTotal,
+      targets: eligibleCardItems.map((item) => ({
         paymentId: item.paymentId,
         amount: item.amount * factor,
       })),
@@ -763,51 +947,33 @@ export interface PendingTransfersSummary {
 }
 
 /**
- * Наличка, которую ещё предстоит перевести на карту: поступления в кассу,
- * помеченные «к переводу» (тип «Безнал на карту» или наличка с
- * cashDestination="card"), ещё не вошедшие ни в одну сдачу кассы.
- *
- * После сдачи кассы эта сумма обнуляется — так кассир видит «Перевод:
- * сколько ещё нужно перевести», а не исторический факт переводов.
+ * Раньше наличка, которую предстояло перевести на карту, считалась
+ * отдельно (type=transfer / cashDestination=card). Теперь переводы сразу
+ * отображаются в карте ЮМ, минуя кассу, поэтому pending = 0.
+ * Оставлено для обратной совместимости, чтобы UI не ломался.
  */
 export function getPendingTransfersSummary(
-  payments: BankPayment[],
-  collections: CashCollection[] = [],
-  date = getWarehouseBusinessDate()
+  _payments: BankPayment[] = [],
+  _collections: CashCollection[] = [],
+  _date = getWarehouseBusinessDate()
 ): PendingTransfersSummary {
-  const collected = new Set<string>();
-  for (const collection of collections) {
-    for (const item of collection.items || []) {
-      if (item?.paymentId) collected.add(String(item.paymentId));
-    }
-  }
-  let today = 0;
-  let older = 0;
-  for (const payment of payments) {
-    if (!payment.isPaid || payment.excludeFromBalance) continue;
-    if (payment.direction !== "incoming") continue;
-    if (payment.type !== "cash" && payment.type !== "transfer") continue;
-    // К переводу относится: безналичный перевод на карту или наличка,
-    // которую менеджер предпочёл инкассировать.
-    const toCard =
-      payment.type === "transfer" || payment.cashDestination === "card";
-    if (!toCard) continue;
-    if (collected.has(String(payment.id))) continue;
-    const amount = Math.max(0, Number(payment.amount) || 0);
-    if (amount <= 0) continue;
-    const day = String(payment.date || "").slice(0, 10);
-    if (day === date) today += amount;
-    else if (day < date) older += amount;
-  }
-  return {
-    today: Math.round(today * 100) / 100,
-    older: Math.round(older * 100) / 100,
-    total: Math.round((today + older) * 100) / 100,
-  };
+  return { today: 0, older: 0, total: 0 };
 }
 
 /** Сводка по банку и кассе. Зарплата влияет только после фактической
  *  выплаты; начисленная зарплата не является ожидаемым банковским платежом. */
+export function isYmCardSalaryComment(comment: string | null | undefined): boolean {
+  const c = String(comment || "");
+  return c.includes(SALARY_YM_CARD_TAG) || c.includes(SALARY_YM_CARD_TAG_SHORT);
+}
+
+/** Сводка по банку, кассе и карте ЮМ.
+ * ИЗМЕНЕНИЕ 2026: переводы (type=transfer и cash с cashDestination=card)
+ * в кассе НЕ учитываются, а сразу отображаются в карте ЮМ. При этом
+ * после сдачи кассы они не начисляются повторно — коллекции с
+ * такими платежами игнорируются для кассы и для ЮМ (они уже учтены
+ * напрямую как immediate YM).
+ */
 export function getBankSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
@@ -817,43 +983,87 @@ export function getBankSummary(
 ) {
   let bankBalance = 0;
   let cashBalance = 0;
+  let ymCardBalance = 0;
+  let rentBalance = 0;
   let expectedIn = 0;
   let expectedOut = 0;
-  // Остатки долгов по заказам: ожидаемый приход по заказу уменьшается
-  // на суммы, уже пришедшие отдельными проведёнными платежами
-  // (частичная оплата 90 000 из 213 000 → в ожидании остаётся 123 000).
+  let ymExpectedIn = 0;
+  let ymExpectedOut = 0;
+  let rentExpectedIn = 0;
+  let rentExpectedOut = 0;
   const debtPool = deals ? getDealDebtPool(deals, payments) : null;
-  for (const p of payments) {
-    // Платёж «вне баланса» не имеет отношения к текущему банку/кассе:
-    // не учитываем его ни в факте, ни в ожидаемых оплатах.
-    if (p.excludeFromBalance) continue;
+  const paymentById = new Map<string, BankPayment>();
+  for (const p of payments) paymentById.set(String(p.id), p);
 
+  for (const p of payments) {
+    if (p.excludeFromBalance) continue;
+    const isYm = p.type === "ym_card";
+    const isImmediateYm = isImmediateYmPayment(p);
     if (p.isPaid) {
       const paymentDate = String(p.date || "").slice(0, 10);
       if (!paymentDate || paymentDate > asOfDate) continue;
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
-      // Касса ниже считается единым кассовым регистром, чтобы перенос и
-      // источники использовали ту же формулу, что и число на дашборде.
-      if (p.type !== "cash" && p.type !== "transfer") bankBalance += amt;
+      if (isImmediateYm) {
+        // переводы сразу в ЮМ, минуя кассу
+        ymCardBalance += amt;
+      } else if (p.type === "cash") {
+        // регулярная наличка — считается отдельно через getCashCarryoverSummary
+      } else if (isYm) {
+        ymCardBalance += amt;
+      } else {
+        bankBalance += amt;
+      }
     } else {
-      if (p.direction === "incoming") {
-        expectedIn += offsetIncomingByDealPayments(p, debtPool);
-      } else expectedOut += p.amount;
+      if (isImmediateYm || isYm) {
+        if (p.direction === "incoming") ymExpectedIn += p.amount;
+        else ymExpectedOut += p.amount;
+      } else if (p.type === "cash") {
+        // наличка ожидаемая не влияет на р/с прогноз (по новому ТЗ)
+      } else {
+        if (p.direction === "incoming") {
+          expectedIn += offsetIncomingByDealPayments(p, debtPool);
+        } else expectedOut += p.amount;
+      }
     }
   }
-  // Зарплаты — это расход: выплаченные уменьшают кассу/банк,
-  // начисленные, но ещё не выплаченные — это долг «к оплате».
   for (const s of salaries) {
     const bypassBalance = isSalaryExcludedFromBalance(s.comment);
-    if (s.isPaid) {
-      if (bypassBalance) continue;
-      const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
-      if (!salaryDate || salaryDate > asOfDate) continue;
-      if (s.source === "bank") bankBalance -= s.amount;
+    if (bypassBalance) continue;
+    const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
+    if (isYm) {
+      // карта ЮМ — перевод / выплата с карты
+      if (s.isPaid) {
+        const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
+        if (!salaryDate || salaryDate > asOfDate) continue;
+        ymCardBalance -= s.amount;
+      } else {
+        ymExpectedOut += s.amount;
+      }
+      continue;
     }
+    const isRent = isRentSalaryComment(s.comment, s.source);
+    if (isRent) {
+      // аренда — отдельный счёт, не трогает основной р/с и кассу
+      if (s.isPaid) {
+        const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
+        if (!salaryDate || salaryDate > asOfDate) continue;
+        rentBalance -= s.amount;
+      } else {
+        // ожидаемая аренда — к выплате
+        rentExpectedOut += s.amount;
+      }
+      continue;
+    }
+    if (s.source === "bank") {
+      // ЗП с расчётного счёта вообще не платится, только аренда.
+      // Поэтому обычные ЗП с source=bank игнорируем — они не должны
+      // списывать основной банк. Если такая ЗП всё-таки заведена
+      // по ошибке, она просто не повлияет на баланс (админ её
+      // переведёт в аренду или в кассу/ЮМ).
+      continue;
+    }
+    // cash — учитывается через getCashCarryoverSummary, здесь не трогаем
   }
-  // Единый кассовый регистр — тот же расчёт используется для переноса и
-  // детальной расшифровки источников налички.
   cashBalance = getCashCarryoverSummary(
     payments,
     salaries,
@@ -864,43 +1074,68 @@ export function getBankSummary(
   let collectedCash = 0;
   let collectedCashOnly = 0;
   let collectedTransfer = 0;
+  // Переводы из кассы в ЮМ теперь учитываются только для регулярной налички,
+  // которая была переведена через сдачу. Immediate YM платежи (transfer /
+  // cashDestination=card) уже учтены напрямую, чтобы не было двойного начисления.
   for (const c of collections) {
     const collectionDate = String(c.date || "").slice(0, 10);
     if (!collectionDate || collectionDate > asOfDate) continue;
     collectedCash += c.amount;
     collectedCashOnly += Math.max(0, Number(c.cashAmount) || 0);
-    collectedTransfer += collectionCashOutflow(c);
+    // Считаем только eligible переводы (регулярная наличка, переведённая через сдачу)
+    let eligibleTransfer = 0;
+    for (const item of c.items || []) {
+      const pid = String(item.paymentId || "");
+      if (!pid) continue;
+      if (pid.startsWith("manual:")) {
+        eligibleTransfer += Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+        continue;
+      }
+      const pay = paymentById.get(pid);
+      if (pay && isImmediateYmPayment(pay)) {
+        // уже учтён напрямую как immediate YM — не добавляем второй раз
+        continue;
+      }
+      eligibleTransfer += Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+    }
+    collectedTransfer += eligibleTransfer;
+    ymCardBalance += eligibleTransfer;
   }
+  const bankForecast = bankBalance + expectedIn - expectedOut;
+  const bankIncomeTotal = bankBalance + expectedIn;
+  const ymForecast = ymCardBalance + ymExpectedIn - ymExpectedOut;
+  const rentForecast = rentBalance + rentExpectedIn - rentExpectedOut;
+  const totalForecast = bankBalance + cashBalance + ymCardBalance + expectedIn - expectedOut + ymExpectedIn - ymExpectedOut;
+  const totalWithRentForecast = totalForecast + rentBalance + rentExpectedIn - rentExpectedOut;
   return {
-    balance: bankBalance + cashBalance,
+    balance: bankBalance + cashBalance + ymCardBalance,
     bankBalance,
     cashBalance,
-    /**
-     * Касса ушла в минус — так быть не должно. Обычно это значит, что
-     * приход, который покрывала старая сдача кассы, сменил тип на
-     * безналичный: сдача продолжает вычитать сумму, а прихода в кассе
-     * уже нет. Показываем предупреждение вместо тихой поломки цифр.
-     */
+    ymCardBalance,
+    rentBalance,
     cashBalanceNegative: cashBalance < -0.009,
     collectedCash,
-    /** Из закрытых смен — оставлено наличными и перенесено дальше */
     collectedCashOnly,
-    /** Из закрытых смен — инкассацией на карту (вне расчётного счёта) */
     collectedTransfer,
     expectedIn,
     expectedOut,
+    ymExpectedIn,
+    ymExpectedOut,
+    ymForecast,
+    rentExpectedIn,
+    rentExpectedOut,
+    rentForecast,
+    bankForecast,
+    bankIncomeTotal,
+    forecast: totalForecast,
+    forecastCashPlusBank: bankForecast + cashBalance,
+    forecastWithYm: totalForecast,
+    forecastWithRent: totalWithRentForecast,
+    totalWithoutCash: bankBalance + ymCardBalance,
+    totalWithoutCashForecast: bankForecast + ymForecast,
   };
 }
 
-/**
- * Сводка закрытых смен: сколько оставлено наличными для переноса и сколько
- * инкассировано на карту.
- *
- * Направление (карта/наличка) проставляется вручную при закрытии смены,
- * а не берётся из типа платежа. Тип "transfer" в банке
- * означает другое — исходящий перевод физлицу с расчётного счёта.
- * Поле `transfer` здесь = инкассация на карту.
- */
 export function getCollectedBreakdown(
   collections: CashCollection[] = []
 ): { cash: number; transfer: number; total: number } {

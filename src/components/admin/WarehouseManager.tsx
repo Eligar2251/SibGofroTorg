@@ -28,13 +28,18 @@ import {
   Gift,
   Trash2,
   ChevronRight,
+  ChevronDown,
   RotateCcw,
   BarChart3,
   Lock,
   LockOpen,
+  Calculator,
+  Scissors,
+  Package,
 } from "lucide-react";
 import {
   type BankPayment,
+  type CounterpartyBalance,
   getBankSummary,
   getPendingPaymentCounterpartyBalances,
   normalizeName,
@@ -55,8 +60,10 @@ import {
   VAT_RATE,
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
+  isYmCardSalaryComment,
   stripSalaryMetaTags,
   getWarehouseBusinessDate,
+  type ConsignmentManualSale,
 } from "@/lib/warehouse-shared";
 import { ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
 import { DealForm, DealActions } from "@/components/admin/WarehouseDeals";
@@ -68,6 +75,7 @@ import {
 } from "@/components/admin/WarehousePayments";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
+import { StockPriceEditor } from "@/components/admin/StockPriceEditor";
 import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import { StockRevision } from "@/components/admin/StockRevision";
@@ -179,6 +187,7 @@ const paymentTypeLabels: Record<string, string> = {
   cash: "Наличные",
   transfer: "Перевод",
   deposit: "Внесение",
+  ym_card: "Карта ЮМ",
 };
 
 type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries" | "reports";
@@ -186,7 +195,7 @@ type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
-type BankSub = "summary" | "pending" | "history" | "cash";
+type BankSub = "summary" | "pending" | "history" | "cash" | "ym";
 type ProcurementCartItem = { productId: string; supplierId: string; quantity: number; price: number; vatRate: number };
 type BankEntry =
   | (BankPayment & { entryKind: "payment" })
@@ -199,7 +208,7 @@ type BankEntry =
       counterparty: string;
       amount: number;
       isPaid: boolean;
-      source: "cash" | "bank";
+      source: "cash" | "bank" | "ym_card";
       comment?: string | null;
       excludeFromBalance?: boolean;
       createdAt?: string | null;
@@ -232,8 +241,11 @@ interface WarehouseManagerProps {
   pendingDeals?: TransportDeal[];
   drivers?: DriverOption[];
   cashCollections?: CashCollection[];
+  consignmentManual?: ConsignmentManualSale[];
   companyPhone?: string;
   companyAddress?: string;
+  /** Скидки ценовых уровней контрагентов (из настроек админки). */
+  tierDiscounts?: { special: number; exclusive: number };
 }
 
 export function WarehouseManager({
@@ -262,8 +274,10 @@ export function WarehouseManager({
   pendingDeals = [],
   drivers = [],
   cashCollections = [],
+  consignmentManual = [],
   companyPhone,
   companyAddress,
+  tierDiscounts = { special: 5, exclusive: 10 },
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<string>(initialSub);
@@ -480,6 +494,33 @@ export function WarehouseManager({
     }
   }
 
+  // Локальные переопределения цен после инлайн-сохранения: колонка
+  // «Разница» и «Сумма» пересчитываются сразу, без перезагрузки.
+  const [stockPriceOverrides, setStockPriceOverrides] = useState<
+    Map<string, { price?: number | null; purchasePrice?: number | null }>
+  >(new Map());
+  function handleStockPriceSaved(
+    productId: string,
+    field: "price" | "purchasePrice",
+    value: number | null
+  ) {
+    setStockPriceOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(productId, { ...(next.get(productId) || {}), [field]: value });
+      return next;
+    });
+    // Сводка товара использует закупочную цену для маржи — сбрасываем кеш.
+    setStockSummaries((prev) => {
+      if (!prev[productId]) return prev;
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+    if (expandedStockIds.has(productId)) {
+      void loadStockSummary(productId, true);
+    }
+  }
+
   // Filters
   const [q, setQ] = useState(""); // Stock/Deals query
   const [bq, setBq] = useState(""); // Bank query
@@ -505,19 +546,192 @@ export function WarehouseManager({
     });
   }
 
+  // ——— Поштучное «вычёркивание» платежей в «Должны нам / Мы должны» ———
+  // Строку контрагента можно раскрыть: внутри — платежи, из которых
+  // складывается его сумма. Клик по строке контрагента вычёркивает его
+  // целиком (как раньше), клик по конкретному платежу вычитает из суммы
+  // только его часть. Всё живёт на клиенте, БД не меняется.
+  const [skippedPaymentIds, setSkippedPaymentIds] = useState<Set<string>>(new Set());
+  const [expandedDueKeys, setExpandedDueKeys] = useState<Set<string>>(new Set());
+
+  function toggleSkipPayment(paymentId: string) {
+    setSkippedPaymentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(paymentId)) next.delete(paymentId);
+      else next.add(paymentId);
+      return next;
+    });
+  }
+
+  function toggleDueExpanded(key: string) {
+    setExpandedDueKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  /** Строка контрагента в «Должны нам / Мы должны» + раскрываемый список
+      платежей: клик по строке — вычеркнуть контрагента целиком, клик по
+      платежу внутри — вычесть из суммы только его часть. */
+  function renderDueParty(c: CounterpartyBalance, type: "customer" | "supplier") {
+    const selKey = partyKey(type, c.name);
+    const skipped = skippedParties.has(selKey);
+    const isSel = selectedPartyKeys.has(selKey);
+    const duePays = dueBreakdown.listByKey.get(selKey) || [];
+    const skippedSum = Math.round((dueBreakdown.skippedByKey.get(selKey) || 0) * 100) / 100;
+    const expanded = expandedDueKeys.has(selKey);
+    // Если контрагент вычеркнут целиком — показываем исходную сумму
+    // (зачёркнута вся строка). Иначе вычитаем поштучно вычеркнутые платежи.
+    const shownBalance = skipped
+      ? Math.round(c.balance * 100) / 100
+      : Math.round((c.balance - skippedSum) * 100) / 100;
+    const positiveColor = type === "customer" ? "#7dd181" : "#ef8f76";
+    const negativeColor = type === "customer" ? "#ef8f76" : "#7dd181";
+    const paySign = type === "customer" ? "+" : "−";
+    return (
+      <div key={`${type}-${c.name}`} className="bank-due__item">
+        <div
+          className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}${isSel ? " bank-due__row--selected" : ""}`}
+          role="button"
+          tabIndex={0}
+          title={skipped
+            ? "ЛКМ — вернуть в расчёт · ПКМ — выделить для прикидки"
+            : type === "customer"
+              ? "ЛКМ — не считать контрагента целиком · ПКМ — выделить для прикидки (приход +)"
+              : "ЛКМ — не считать контрагента целиком · ПКМ — выделить для прикидки (расход −)"}
+          onClick={() => toggleSkipParty(c)}
+          onContextMenu={(e) => { e.preventDefault(); toggleSelectedParty({ type, name: c.name }); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggleSkipParty(c);
+            }
+          }}
+        >
+          {duePays.length > 0 ? (
+            <button
+              type="button"
+              className={`bank-due__expand${expanded ? " bank-due__expand--open" : ""}`}
+              aria-label={expanded ? "Свернуть список платежей" : "Раскрыть список платежей"}
+              title={expanded ? "Свернуть список платежей" : "Список платежей — можно вычеркнуть поштучно"}
+              onClick={(e) => { e.stopPropagation(); toggleDueExpanded(selKey); }}
+            >
+              <ChevronDown size={14} />
+            </button>
+          ) : (
+            <span className="bank-due__expand bank-due__expand--placeholder" aria-hidden="true" />
+          )}
+          <div className="bank-due__name">
+            {c.name}
+            <span className="bank-due__meta">
+              {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
+              {!skipped && skippedSum > 0 ? ` · вычеркнуто ${fmt(skippedSum)} ₽` : ""}
+            </span>
+          </div>
+          <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : shownBalance > 0 ? positiveColor : negativeColor }}>
+            {fmt(shownBalance)} ₽
+          </div>
+        </div>
+        {expanded && duePays.length > 0 && (
+          <div className="bank-due__pays">
+            {duePays.map((p) => {
+              const pSkipped = skippedPaymentIds.has(p.id);
+              const prodInfo = paymentProductsSummaryById.get(String(p.id));
+              const hasBoxes = prodInfo && (prodInfo.itemsList.length > 0 || prodInfo.summaryText);
+              const commentText = p.comment ? String(p.comment).trim() : "";
+              const middleText = hasBoxes
+                ? `📦 ${prodInfo.summaryText}${commentText ? ` · ${commentText}` : ""}`
+                : commentText;
+              return (
+                <div
+                  key={p.id}
+                  className={`bank-due__pay${pSkipped ? " bank-due__pay--skipped" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  title="ЛКМ — вычеркнуть/вернуть этот платёж · ПКМ — выделить для прикидки"
+                  onClick={(e) => { e.stopPropagation(); toggleSkipPayment(p.id); }}
+                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleSelectedPayment(p.id); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleSkipPayment(p.id);
+                    }
+                  }}
+                >
+                  <span className="bank-due__pay-num">{p.invoiceNumber || `ПЛ-${p.number}`}</span>
+                  <span className="bank-due__pay-date">{fmtDate(p.date)}</span>
+                  {middleText ? (
+                    <span
+                      className="bank-due__pay-comment"
+                      style={{
+                        fontSize: 11.5,
+                        color: hasBoxes
+                          ? pSkipped
+                            ? "var(--adm-rust)"
+                            : "var(--adm-primary)"
+                          : undefined,
+                        fontWeight: hasBoxes ? 550 : undefined,
+                      }}
+                      title={middleText}
+                    >
+                      {middleText}
+                    </span>
+                  ) : (
+                    <span className="bank-due__pay-comment" />
+                  )}
+                  <span className="bank-due__pay-sum">{paySign}{fmt(p.amount)} ₽</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ——— Правый клик: выделение ожидающих платежей/контрагентов для быстрой прикидки ———
+  // Левый клик остаётся «вычеркиванием» (skippedParties), правый — выделение.
+  // Выделенные суммы показываются отдельным блоком «Выбрано», где приход + , расход −.
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState<Set<string>>(new Set());
+  const [selectedPartyKeys, setSelectedPartyKeys] = useState<Set<string>>(new Set());
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [calcExpression, setCalcExpression] = useState("");
+  const [calcResult, setCalcResult] = useState<string>("");
+
+  function toggleSelectedParty(c: { type: "customer" | "supplier"; name: string }) {
+    const key = partyKey(c.type, c.name);
+    setSelectedPartyKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function toggleSelectedPayment(paymentId: string) {
+    setSelectedPaymentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(paymentId)) next.delete(paymentId);
+      else next.add(paymentId);
+      return next;
+    });
+  }
+
   // Платежи для итогов («Должны нам / Мы должны», прогноз): ожидающие
-  // платежи пропущенных контрагентов не учитываются. Проведённые
-  // платежи (фактический баланс) не трогаем никогда.
+  // платежи пропущенных контрагентов И отдельно вычеркнутые платежи
+  // не учитываются. Проведённые платежи (фактический баланс) не трогаем.
   const paymentsForTotals = useMemo(
     () =>
-      skippedParties.size === 0
+      skippedParties.size === 0 && skippedPaymentIds.size === 0
         ? payments
         : payments.filter((p) => {
             if (p.isPaid) return true;
+            if (skippedPaymentIds.has(p.id)) return false;
             const key = paymentPartyKey(p);
             return !key || !skippedParties.has(key);
           }),
-    [payments, skippedParties]
+    [payments, skippedParties, skippedPaymentIds]
   );
 
   useEffect(() => {
@@ -576,6 +790,9 @@ export function WarehouseManager({
 
   // --- Helper to get purchase price for any product ---
   const getProductPurchasePrice = (productId: string) => {
+    // 0. Check product's own purchasePrice (set via card or report)
+    const prod = (stock as any[]).find((p: any) => p.id === productId);
+    if (prod && prod.purchasePrice != null && prod.purchasePrice > 0) return prod.purchasePrice;
     // 1. Check counterparties supplierPrices
     for (const cp of counterpartyOptions) {
       if (cp.supplierPrices && cp.supplierPrices[productId] !== undefined) {
@@ -699,6 +916,55 @@ export function WarehouseManager({
     () => allCounterparties.filter((c) => c.balance > 0.009),
     [allCounterparties]
   );
+
+  // Разбивка «Должны нам / Мы должны» по платежам: для каждого
+  // контрагента — список неоплаченных платежей, образующих его долг
+  // (покупателю — входящие, поставщику — исходящие), и сумма уже
+  // вычеркнутых поштучно. Ключ — тот же, что у partyKey().
+  const dueBreakdown = useMemo(() => {
+    const listByKey = new Map<string, BankPayment[]>();
+    const skippedByKey = new Map<string, number>();
+    for (const p of payments) {
+      if (p.isPaid || p.excludeFromBalance) continue;
+      const key = paymentPartyKey(p);
+      if (!key) continue;
+      const isCustomer = key.startsWith("customer:");
+      const contributes = isCustomer
+        ? p.direction === "incoming"
+        : p.direction === "outgoing";
+      if (!contributes) continue;
+      const list = listByKey.get(key) || [];
+      list.push(p);
+      listByKey.set(key, list);
+      if (skippedPaymentIds.has(p.id)) {
+        skippedByKey.set(key, (skippedByKey.get(key) || 0) + (Number(p.amount) || 0));
+      }
+    }
+    // Новые сверху — как в списке платежей
+    for (const list of listByKey.values()) {
+      list.sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.number - a.number);
+    }
+    return { listByKey, skippedByKey };
+  }, [payments, skippedPaymentIds]);
+
+  const selectedSum = useMemo(() => {
+    let sum = 0;
+    let count = 0;
+    for (const key of selectedPartyKeys) {
+      const found = allCounterparties.find((c) => partyKey(c.type as any, c.name) === key) || counterpartiesWithDebt.find((c) => partyKey(c.type as any, c.name) === key);
+      if (found) {
+        sum += found.type === "customer" ? found.balance : -found.balance;
+        count++;
+      }
+    }
+    for (const pid of selectedPaymentIds) {
+      const p = payments.find((x) => x.id === pid);
+      if (!p) continue;
+      sum += p.direction === "incoming" ? p.amount : -p.amount;
+      count++;
+    }
+    return { sum, count };
+  }, [selectedPartyKeys, selectedPaymentIds, counterpartiesWithDebt, allCounterparties, payments]);
 
   // Непроведённые исходящие платежи поставщикам показываем только как
   // срочное напоминание, когда они связаны с уже отпущенным заказом.
@@ -937,12 +1203,28 @@ export function WarehouseManager({
       ...salaryEntries,
     ].filter((p) => {
       if (bankSub === "cash") return false;
-      // ЗП ведётся в отдельном разделе «Зарплаты». В «Ожидают оплаты»
-      // банка показываем только реальные платёжные поручения, а не
-      // начисления сотрудникам.
-      if (bankSub === "pending" && p.entryKind === "salary") return false;
-      const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
-      if (!matchesTab) return false;
+      const isYmPayment = p.entryKind === "payment" && (p as any).type === "ym_card";
+      const isYmSalary = p.entryKind === "salary" && (p.source === "ym_card" || isYmCardSalaryComment((p as any).salary?.comment));
+      if (bankSub === "ym") {
+        if (!isYmPayment && !isYmSalary) return false;
+      } else {
+        // В обычных вкладках скрываем операции карты ЮМ — у них отдельная вкладка
+        if (isYmPayment || isYmSalary) return false;
+        // ЗП ведётся в отдельном разделе «Зарплаты». В «Ожидают оплаты»
+        // банка показываем только реальные платёжные поручения, а не
+        // начисления сотрудникам.
+        if (bankSub === "pending" && p.entryKind === "salary") return false;
+      }
+      const matchesTab = bankSub === "pending" || bankSub === "ym" ? !p.isPaid : p.isPaid;
+      // Для карты ЮМ показываем и ожидающие и проведённые в одном списке? Требование: вкладка с балансом и операциями.
+      // Делаем как в банке: pending — неоплаченные, history — оплаченные, ym — показываем все если не фильтруем по paid? Для простоты покажем все в ym, независимо от isPaid, если выбран ym. Если хотим разделить, покажем через paid-фильтр ниже.
+      // Сейчас для ym показываем и ожидающие и проведённые — не фильтруем по isPaid, а оставляем оба.
+      if (bankSub !== "ym") {
+        if (!matchesTab && bankSub !== "summary") return false;
+        if (bankSub === "summary") {
+          // в сводке не показываем список — bankList не используется, но для безопасности
+        }
+      }
       if (bdir !== "all" && p.direction !== bdir) return false;
       const operationDate = String(p.date || "").slice(0, 10);
       if (bankDateFrom && operationDate < bankDateFrom) return false;
@@ -957,7 +1239,7 @@ export function WarehouseManager({
               ...p.dealNumbers.map((n) => `зк-${n}`),
               ...p.receiptNumbers.map((n) => `по-${n}`),
             ].join(" ").toLowerCase()
-          : ["зп", "зарплата", p.counterparty, p.comment || "", p.source === "cash" ? "касса" : "банк"].join(" ").toLowerCase();
+          : ["зп", "зарплата", p.counterparty, p.comment || "", p.source === "cash" ? "касса" : p.source === "ym_card" ? "карта юм" : "банк"].join(" ").toLowerCase();
         if (!hay.includes(query)) return false;
       }
       return true;
@@ -1159,6 +1441,93 @@ export function WarehouseManager({
     return Math.max(0, (stockById.get(productId) ?? 0) - (reservedTotalById.get(productId) || 0));
   }
   const productById = useMemo(() => new Map(stock.map((p) => [p.id, p])), [stock]);
+
+  const dealById = useMemo(() => new Map(deals.map((d) => [String(d.id), d])), [deals]);
+  const receiptById = useMemo(() => new Map(receipts.map((r) => [String(r.id), r])), [receipts]);
+
+  const paymentProductsSummaryById = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        summaryText: string;
+        itemsList: {
+          name: string;
+          sku?: string | null;
+          qty: number;
+          unitLabel?: string;
+          price?: number;
+        }[];
+      }
+    >();
+    for (const p of payments) {
+      const itemsList: {
+        name: string;
+        sku?: string | null;
+        qty: number;
+        unitLabel?: string;
+        price?: number;
+      }[] = [];
+      const namesSet = new Set<string>();
+
+      for (const dealId of p.dealIds || []) {
+        const d = dealById.get(String(dealId));
+        if (d && Array.isArray(d.items)) {
+          for (const it of d.items) {
+            if (!it.name) continue;
+            const unitStr =
+              (it as any).unit === "meter"
+                ? "м"
+                : (it as any).unit === "roll" &&
+                  ((it as any).isCuttable || (it as any).metersPerRoll)
+                ? "рул."
+                : "шт.";
+            itemsList.push({
+              name: it.name,
+              sku: it.sku ?? null,
+              qty: it.quantity,
+              unitLabel: unitStr,
+              price: Number(it.price) || 0,
+            });
+            namesSet.add(it.name.trim());
+          }
+        }
+      }
+
+      for (const recId of p.receiptIds || []) {
+        const r = receiptById.get(String(recId));
+        if (r && Array.isArray(r.items)) {
+          for (const it of r.items) {
+            if (!it.name) continue;
+            const unitStr =
+              (it as any).unit === "meter"
+                ? "м"
+                : (it as any).unit === "roll" &&
+                  ((it as any).isCuttable || (it as any).metersPerRoll)
+                ? "рул."
+                : "шт.";
+            itemsList.push({
+              name: it.name,
+              sku: it.sku ?? null,
+              qty: it.quantity,
+              unitLabel: unitStr,
+              price: Number(it.price) || 0,
+            });
+            namesSet.add(it.name.trim());
+          }
+        }
+      }
+
+      const namesArr = Array.from(namesSet);
+      let summaryText = "";
+      if (namesArr.length > 0) {
+        summaryText = namesArr.join(", ");
+      } else if (p.comment) {
+        summaryText = p.comment;
+      }
+      map.set(String(p.id), { summaryText, itemsList });
+    }
+    return map;
+  }, [payments, dealById, receiptById]);
   const supplierRows = useMemo(() => {
     return counterpartyOptions
       .filter((cp) => cp.roles.includes("supplier"))
@@ -1417,6 +1786,7 @@ export function WarehouseManager({
               deliveryPrice={deliveryPrice}
               freeDeliveryThreshold={freeDeliveryThreshold}
               reservedStockById={reservedTotalById}
+              tierDiscounts={tierDiscounts}
             />
           )}
           {activeTab === "bank" && (
@@ -1510,15 +1880,25 @@ export function WarehouseManager({
                         <tr>
                           <th>Товар</th>
                           <th>Артикул</th>
-                          <th>Поставщик</th>
                           <th style={{ textAlign: "right" }}>Остаток</th>
+                          <th style={{ textAlign: "right" }} title="Закупочная цена — общая, примерная. Для конкретного поставщика цена берётся из поставки.">Закуп</th>
                           <th style={{ textAlign: "right" }}>Цена продажи</th>
+                          <th style={{ textAlign: "right" }} title="Разница между ценой продажи и закупочной">Разница</th>
                           <th style={{ textAlign: "right" }}>Сумма</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredStock.map((p) => {
                           const summaryExpanded = expandedStockIds.has(p.id);
+                          const priceOverride = stockPriceOverrides.get(p.id);
+                          const effPrice =
+                            priceOverride && priceOverride.price !== undefined
+                              ? priceOverride.price
+                              : p.price ?? null;
+                          const effPurchase =
+                            priceOverride && priceOverride.purchasePrice !== undefined
+                              ? priceOverride.purchasePrice
+                              : p.purchasePrice ?? null;
                           return (
                             <React.Fragment key={p.id}>
                               <tr id={`stock-${p.id}`} className={summaryExpanded ? "wh-stock-row--expanded" : undefined}>
@@ -1551,23 +1931,6 @@ export function WarehouseManager({
                                   )}
                                 </td>
                                 <td>{p.sku || "—"}</td>
-                                <td>
-                                  {(suppliersByProduct.get(p.id) || []).length > 0 ? (
-                                    <div style={{ display: "grid", gap: 3 }}>
-                                      {(suppliersByProduct.get(p.id) || []).slice(0, 2).map((row) => (
-                                        <button
-                                          key={row.supplier.id}
-                                          type="button"
-                                          onClick={() => { setActiveTab("suppliers"); setSelectedSupplierId(row.supplier.id); }}
-                                          className="admin-badge admin-badge--blue"
-                                          style={{ border: 0, cursor: "pointer", justifyContent: "flex-start" }}
-                                        >
-                                          {row.supplier.name} · {fmt(row.price)} ₽
-                                        </button>
-                                      ))}
-                                    </div>
-                                  ) : "—"}
-                                </td>
                                 <td style={{ textAlign: "right" }}>
                                   <StockQtyEditor
                                     productId={p.id}
@@ -1576,25 +1939,55 @@ export function WarehouseManager({
                                   />
                                   {(reservedTotalById.get(p.id) || 0) > 0 && (
                                     <>
-                                      <div style={{ fontSize: 11, color: "#4338ca", marginTop: 2, whiteSpace: "nowrap" }}>
+                                      <div style={{ fontSize: 11, color: "var(--adm-indigo)", marginTop: 2, whiteSpace: "nowrap" }}>
                                         в резерве {fmt(reservedTotalById.get(p.id) || 0)} шт.
                                       </div>
-                                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1, whiteSpace: "nowrap" }}>
+                                      <div style={{ fontSize: 11, color: "var(--adm-ink-muted)", marginTop: 1, whiteSpace: "nowrap" }}>
                                         свободно {fmt(freeStock(p.id))} шт.
                                       </div>
                                     </>
                                   )}
                                 </td>
-                                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                                  {p.price != null ? `${fmt(p.price)} ₽` : "—"}
+                                <td style={{ textAlign: "right" }}>
+                                  <StockPriceEditor
+                                    productId={p.id}
+                                    field="purchasePrice"
+                                    initialValue={p.purchasePrice ?? null}
+                                    variant="purchase"
+                                    onSaved={(value) => handleStockPriceSaved(p.id, "purchasePrice", value)}
+                                  />
+                                </td>
+                                <td style={{ textAlign: "right" }}>
+                                  <StockPriceEditor
+                                    productId={p.id}
+                                    field="price"
+                                    initialValue={p.price ?? null}
+                                    onSaved={(value) => handleStockPriceSaved(p.id, "price", value)}
+                                  />
+                                </td>
+                                <td style={{ textAlign: "right" }}>
+                                  {effPrice != null && effPurchase != null && effPrice > 0 ? (
+                                    <span
+                                      className="wh-stock-diff"
+                                      style={{ color: effPrice - effPurchase >= 0 ? "var(--adm-pine)" : "var(--adm-rust)" }}
+                                      title="Цена продажи − закупочная цена"
+                                    >
+                                      {effPrice - effPurchase >= 0 ? "+" : ""}{fmt(Math.round((effPrice - effPurchase) * 100) / 100)} ₽
+                                      <small style={{ display: "block", fontSize: 10, opacity: 0.75 }}>
+                                        {Math.round(((effPrice - effPurchase) / effPrice) * 100)}%
+                                      </small>
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: "var(--adm-sand)" }}>—</span>
+                                  )}
                                 </td>
                                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                                  {p.price != null ? `${fmt(p.stockQty * p.price)} ₽` : "—"}
+                                  {effPrice != null ? `${fmt(p.stockQty * effPrice)} ₽` : "—"}
                                 </td>
                               </tr>
                               {summaryExpanded && (
                                 <tr id={`stock-summary-${p.id}`} className="stock-summary-row">
-                                  <td colSpan={6}>
+                                  <td colSpan={7}>
                                     <ProductStockSummaryPanel
                                       adminPath={adminPath}
                                       summary={stockSummaries[p.id]}
@@ -1930,7 +2323,7 @@ export function WarehouseManager({
           </div>
 
           {suppliesSub === "consignment" && (
-            <div className="admin-card" style={{ marginTop: 12 }}><div className="admin-card__head"><h3 className="admin-card__title">Товар на реализации</h3></div><div className="admin-card__pad"><ConsignmentTracker receipts={receipts} deals={deals} payments={payments} /></div></div>
+            <div className="admin-card" style={{ marginTop: 12 }}><div className="admin-card__head"><h3 className="admin-card__title">Товар на реализации</h3></div><div className="admin-card__pad"><ConsignmentTracker receipts={receipts} deals={deals} payments={payments} manualSales={consignmentManual} /></div></div>
           )}
 
           {suppliesSub === "receipts" && (
@@ -2343,6 +2736,11 @@ export function WarehouseManager({
                             {d.items.map((it, idx) => {
                               const shipped = (Array.isArray(d.shippedItems) ? d.shippedItems : []).find((s: any) => s.productId === it.productId)?.shippedQty || 0;
                               const remaining = it.quantity - shipped;
+                              const isMeter = (it as any).unit === 'meter';
+                              const isRoll = (it as any).unit === 'roll' && Boolean((it as any).isCuttable || (it as any).metersPerRoll);
+                              const saleQty = (it as any).saleQuantity != null ? (it as any).saleQuantity : (isMeter && (it as any).metersPerRoll ? Number(it.quantity) * Number((it as any).metersPerRoll) : Number(it.quantity));
+                              const unitLabel = isMeter ? `${saleQty} м` : isRoll ? `${it.quantity} рул.` : `${it.quantity} шт.`;
+                              const priceLabel = isMeter ? `${fmt((it as any).salePrice || it.price)} ₽/м` : isRoll ? `${fmt(it.price)} ₽/рул.` : `${fmt(it.price)} ₽/шт`;
                               return (
                                 <div key={idx} className={`admin-order__item${shipped > 0 && remaining > 0 ? " admin-order__item--partial" : ""}`}>
                                   <Link
@@ -2350,8 +2748,8 @@ export function WarehouseManager({
                                     prefetch={false}
                                     style={{ color: "inherit", fontWeight: 650 }}
                                   >
-                                    {it.name} × {it.quantity}
-                                    <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
+                                    {it.name} × {unitLabel}
+                                    <span className="wh-item-unit">{priceLabel}</span>
                                     {shipped > 0 && remaining > 0 && (
                                       <span className="wh-item-row__warn" style={{ marginLeft: 8, whiteSpace: "nowrap" }}>
                                         отгружено: {shipped} · осталось: {remaining}
@@ -2451,7 +2849,7 @@ export function WarehouseManager({
                                     <span className="deal-stock__name">{r.it.name}</span>
                                     <span className="deal-stock__nums">
                                       нужно {r.it.quantity} · на складе {fmt(r.stock)}
-                                      {r.otherReserve > 0 && <> · <b style={{color:"#4338ca"}}>в резерве {fmt(r.otherReserve)}</b></>}
+                                      {r.otherReserve > 0 && <> · <b style={{color:"var(--adm-indigo)"}}>в резерве {fmt(r.otherReserve)}</b></>}
                                       {" "}· свободно {fmt(r.available)} · <b>не хватает {r.missing}</b>
                                     </span>
                                   </div>
@@ -2518,6 +2916,7 @@ export function WarehouseManager({
                             deliveryPrice={deliveryPrice}
                             freeDeliveryThreshold={freeDeliveryThreshold}
                             reservedStockById={reservedTotalById}
+                            tierDiscounts={tierDiscounts}
                             initialDeal={{
                               id: d.id,
                               date: d.date,
@@ -2543,14 +2942,26 @@ export function WarehouseManager({
                               // чтобы наличный заказ не «переезжал» в безнал.
                               paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
                               isReserved: Boolean(d.isReserved),
-                              items: d.items.map((item) => ({
-                                productId: item.productId,
-                                name: item.name,
-                                sku: item.sku ?? null,
-                                quantity: item.quantity,
-                                price: item.price,
-                                stockQty: stockById.get(item.productId) ?? 0,
-                              })),
+                              items: d.items.map((item) => {
+                                const prod = productById.get(item.productId) as any;
+                                const isCut = Boolean(prod?.isCuttable || (item as any).isCuttable);
+                                const unit = isCut ? ((item as any).unit || 'roll') : 'piece';
+                                const metersPerRoll = (item as any).metersPerRoll || prod?.cutMetersPerRoll || null;
+                                const saleQty = (item as any).saleQuantity != null ? (item as any).saleQuantity : (unit === 'meter' && metersPerRoll ? Number(item.quantity) * Number(metersPerRoll) : Number(item.quantity));
+                                return {
+                                  productId: item.productId,
+                                  name: item.name,
+                                  sku: item.sku ?? null,
+                                  quantity: saleQty,
+                                  price: (item as any).salePrice != null ? (item as any).salePrice : item.price,
+                                  stockQty: stockById.get(item.productId) ?? 0,
+                                  isCuttable: Boolean(prod?.isCuttable),
+                                  metersPerRoll: metersPerRoll,
+                                  cutPricePerMeter: prod?.cutPricePerMeter || (item as any).salePrice || null,
+                                  unit: unit as any,
+                                  baseQty: Number(item.quantity) || 0,
+                                };
+                              }),
                             }}
                           />
                           <DealActions
@@ -2610,6 +3021,7 @@ export function WarehouseManager({
         <CounterpartiesManager
           initialCounterparties={counterpartyOptions}
           documents={counterpartyDocuments}
+          tierDiscounts={tierDiscounts}
         />
       )}
 
@@ -2853,72 +3265,113 @@ export function WarehouseManager({
                 <div className="bank-hero__label">
                   <CreditCard size={14} /> Безналичный расчет
                 </div>
-                <div className="bank-hero__value" style={{ color: '#fff' }}>
+                <div className="bank-hero__value" style={{ color: '#fff', display: "inline-flex", alignItems: "center", gap: 8 }}>
                   {fmt(bankSummary.bankBalance)} ₽
-                </div>
-              </div>
-              <div>
-                <div className="bank-hero__label">
-                  <Banknote size={14} /> Касса (наличные)
-                </div>
-                <div
-                  className="bank-hero__value"
-                  style={{ color: bankSummary.cashBalanceNegative ? '#ef8f76' : '#fff' }}
-                >
-                  {fmt(bankSummary.cashBalance)} ₽
-                </div>
-                <div className="cash-carryover-hero">
-                  <span>
-                    С прошлых дней: <b>{fmt(cashCarryover.previousDaysRemaining)} ₽</b>
-                  </span>
-                  <span>
-                    На начало дня: <b>{fmt(cashCarryover.openingBalance)} ₽</b>
-                  </span>
-                  <span>
-                    Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
-                  </span>
-                  <span title="Сколько налички ещё ждёт перевода на карту за сегодня — обнуляется после сдачи кассы">
-                    Перевод: <b>{fmt(pendingTransfers.today)} ₽</b>
-                  </span>
-                  {pendingTransfers.older > 0.009 && (
-                    <span title="Непереведённая наличка прошлых дней — тоже обнулится после сдачи кассы">
-                      в т.ч. за прошлые дни: <b>{fmt(pendingTransfers.older)} ₽</b>
-                    </span>
-                  )}
-                </div>
-                {bankSummary.cashBalanceNegative && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 6,
-                      marginTop: 6,
-                      fontSize: 12,
-                      color: '#ef8f76',
-                      maxWidth: 280,
-                    }}
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost"
+                    style={{ padding: "4px 6px", minWidth: 0, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff" }}
+                    title="Калькулятор счёта — быстро прикинуть операции относительно расчётного счёта"
+                    onClick={() => setShowCalculator(true)}
                   >
-                    <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                    <span>
-                      Касса в минусе. Обычно это значит, что приход, покрытый
-                      прошлой сдачей, стал безналичным. Проверьте типы платежей
-                      и суммы сдач — цифры разошлись.
-                    </span>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  className="admin-btn admin-btn--primary admin-btn--sm"
-                  disabled={collecting || bankSummary.cashBalance < -0.009}
-                  onClick={handleCollectCash}
-                  style={{ marginTop: 10 }}
-                >
-                  {collecting ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
-                  Сдать кассу
-                </button>
+                    <Calculator size={14} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", marginTop: 4 }}>ПКМ по ожидающим — выделение для прикидки</div>
               </div>
-              <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-                Расчётный счёт + касса: <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
+
+              {/* Касса и Карта ЮМ — на одной линии, по соседству, это по факту касса — кнопки на одном уровне */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, alignItems: "stretch" }}>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div>
+                    <div className="bank-hero__label">
+                      <Banknote size={14} /> Касса (наличные)
+                    </div>
+                    <div
+                      className="bank-hero__value"
+                      style={{ color: bankSummary.cashBalanceNegative ? '#ef8f76' : '#fff' }}
+                    >
+                      {fmt(bankSummary.cashBalance)} ₽
+                    </div>
+                    <div className="cash-carryover-hero">
+                      <span>
+                        С прошлых дней: <b>{fmt(cashCarryover.previousDaysRemaining)} ₽</b>
+                      </span>
+                      <span>
+                        На начало дня: <b>{fmt(cashCarryover.openingBalance)} ₽</b>
+                      </span>
+                      <span>
+                        Сегодня: <b>{cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers >= 0 ? "+" : ""}{fmt(cashCarryover.todayIncoming - cashCarryover.todayOutgoing - cashCarryover.todayCardTransfers)} ₽</b>
+                      </span>
+                    </div>
+                    {bankSummary.cashBalanceNegative && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 6,
+                          marginTop: 6,
+                          fontSize: 12,
+                          color: '#ef8f76',
+                          maxWidth: 280,
+                        }}
+                      >
+                        <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span>
+                          Касса в минусе. Обычно это значит, что приход, покрытый
+                          прошлой сдачей, стал безналичным. Проверьте типы платежей
+                          и суммы сдач — цифры разошлись.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: "auto", paddingTop: 10 }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--primary admin-btn--sm"
+                      disabled={collecting || bankSummary.cashBalance < -0.009}
+                      onClick={handleCollectCash}
+                    >
+                      {collecting ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
+                      Сдать кассу
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ borderLeft: "1px dashed rgba(255,255,255,0.12)", paddingLeft: 16, display: "flex", flexDirection: "column" }}>
+                  <div>
+                    <div className="bank-hero__label">
+                      <CreditCard size={14} /> Карта ЮМ
+                    </div>
+                    <div className="bank-hero__value" style={{ color: '#e0b45a' }}>
+                      {fmt(bankSummary.ymCardBalance)} ₽
+                    </div>
+                    <div className="cash-carryover-hero" style={{ marginTop: 6, flexWrap: "wrap" }}>
+                      <span>Ожидаем +: <b>{fmt(bankSummary.ymExpectedIn)} ₽</b></span>
+                      <span>К оплате −: <b>{fmt(bankSummary.ymExpectedOut)} ₽</b></span>
+                      <span>Прогноз: <b>{fmt(bankSummary.ymForecast)} ₽</b></span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 6, lineHeight: 1.3 }}>
+                      По факту касса: сюда приходят переводы из кассы. Отсюда — оплата, внесение, ЗП.
+                    </div>
+                  </div>
+                  <div style={{ marginTop: "auto", paddingTop: 10 }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      style={{ background: "rgba(224,180,90,0.12)", border: "1px solid rgba(224,180,90,0.25)", color: "#e0b45a" }}
+                      onClick={() => setBankSub("ym")}
+                    >
+                      <CreditCard size={13} /> Открыть карту ЮМ
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, lineHeight: 1.4, color: 'rgba(255,255,255,0.65)' }}>
+                <div>Р/С: {fmt(bankSummary.bankBalance)} ₽ · +{fmt(bankSummary.expectedIn)} −{fmt(bankSummary.expectedOut)} = <b style={{ color: '#fff' }}>{fmt(bankSummary.bankForecast)} ₽</b></div>
+                <div>Касса: {fmt(bankSummary.cashBalance)} ₽ · ЮМ: {fmt(bankSummary.ymCardBalance)} ₽ (прогн. {fmt(bankSummary.ymForecast)} ₽) · Аренда: {fmt((bankSummary as any).rentBalance || 0)} ₽ (к опл. {fmt((bankSummary as any).rentExpectedOut || 0)} ₽)</div>
+                <div>Всего: {fmt(bankSummary.balance)} ₽ · прогноз {fmt(bankSummary.forecast)} ₽ · с арендой {fmt((bankSummary as any).forecastWithRent || bankSummary.forecast)} ₽</div>
               </div>
             </div>
 
@@ -2926,8 +3379,8 @@ export function WarehouseManager({
               <div className="bank-hero__stat" style={{ color: '#7dd181' }}>
                 <ArrowDownLeft size={16} />
                 <div>
-                  <span style={{ color: 'rgba(125,209,129,0.7)', fontWeight: 700 }}>Должны нам (ожидаем)</span>
-                  <strong style={{ fontSize: 22 }}>+{fmt(bankSummary.expectedIn)} ₽</strong>
+                  <span style={{ color: 'rgba(125,209,129,0.7)', fontWeight: 700 }}>Должны нам (ожидаем, только р/с)</span>
+                  <strong style={{ fontSize: 20 }}>+{fmt(bankSummary.expectedIn)} ₽</strong>
                 </div>
               </div>
 
@@ -2935,13 +3388,13 @@ export function WarehouseManager({
                 <Wallet size={16} />
                 <div>
                   <span style={{ color: 'rgba(157,227,165,0.72)', fontWeight: 700 }}>
-                    Общий приход (факт + будущие)
+                    Общий приход р/с (факт + будущие)
                   </span>
-                  <strong style={{ color: '#fff', fontSize: 22 }}>
-                    {fmt(bankSummary.balance + bankSummary.expectedIn)} ₽
+                  <strong style={{ color: '#fff', fontSize: 20 }}>
+                    {fmt(bankSummary.bankIncomeTotal)} ₽
                   </strong>
-                  <small style={{ display: 'block', marginTop: 2, color: 'rgba(245,242,234,0.45)', fontSize: 10 }}>
-                    Касса + безнал + все ожидаемые входящие платежи
+                  <small style={{ display: 'block', marginTop: 2, color: 'rgba(245,242,234,0.55)', fontSize: 10 }}>
+                    Только расчётный счёт: {fmt(bankSummary.bankBalance)} + {fmt(bankSummary.expectedIn)} · без налички и без карты ЮМ
                   </small>
                 </div>
               </div>
@@ -2949,16 +3402,45 @@ export function WarehouseManager({
               <div className="bank-hero__stat" style={{ color: '#ef8f76' }}>
                 <ArrowUpRight size={16} />
                 <div>
-                  <span style={{ color: 'rgba(239,143,118,0.7)', fontWeight: 700 }}>Мы должны (к оплате)</span>
-                  <strong style={{ fontSize: 22 }}>−{fmt(bankSummary.expectedOut)} ₽</strong>
+                  <span style={{ color: 'rgba(239,143,118,0.7)', fontWeight: 700 }}>Мы должны (к оплате, только р/с)</span>
+                  <strong style={{ fontSize: 20 }}>−{fmt(bankSummary.expectedOut)} ₽</strong>
                 </div>
               </div>
 
-              <div className="bank-hero__stat" style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 12, marginTop: 4, color: '#e09b12' }}>
+              <div className="bank-hero__stat" style={{ borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 12, marginTop: 4, color: '#e09b12' }}>
                 <History size={16} />
                 <div>
-                  <span style={{ color: 'rgba(224,155,18,0.7)' }}>Прогноз после всех оплат</span>
-                  <strong style={{ color: '#fff', fontSize: 18 }}>{fmt(bankSummary.balance + bankSummary.expectedIn - bankSummary.expectedOut)} ₽</strong>
+                  <span style={{ color: 'rgba(224,155,18,0.85)', fontWeight: 700 }}>Прогноз р/с после всех оплат</span>
+                  <strong style={{ color: '#fff', fontSize: 18 }}>{fmt(bankSummary.bankForecast)} ₽</strong>
+                  <small style={{ display: 'block', marginTop: 2, color: 'rgba(245,242,234,0.5)', fontSize: 10 }}>
+                    {fmt(bankSummary.bankBalance)} + {fmt(bankSummary.expectedIn)} − {fmt(bankSummary.expectedOut)} · только расчётный счёт, без налички
+                  </small>
+                </div>
+              </div>
+
+              <div className="bank-hero__stat" style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', paddingTop: 12, marginTop: 8, color: '#fff', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', width: '100%' }}>
+                  <div style={{ flex: '1 1 120px' }}>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: 0.3 }}>НАЛИЧКА</div>
+                    <div style={{ fontSize: 14, marginTop: 2 }}>Касса: <b>{fmt(bankSummary.cashBalance)} ₽</b></div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>факт, не входит в прогноз р/с</div>
+                  </div>
+                  <div style={{ flex: '1 1 140px', borderLeft: '1px dashed rgba(255,255,255,0.12)', paddingLeft: 12 }}>
+                    <div style={{ fontSize: 10, color: 'rgba(224,180,90,0.8)', fontWeight: 600, letterSpacing: 0.3 }}>БЕЗНАЛ · ПЕРЕВОДЫ</div>
+                    <div style={{ fontSize: 12, marginTop: 2 }}>Карта ЮМ факт: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymCardBalance)} ₽</b></div>
+                    <div style={{ fontSize: 11 }}>Прогноз ЮМ: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymForecast)} ₽</b></div>
+                  </div>
+                  <div style={{ flex: '1 1 120px', borderLeft: '1px dashed rgba(255,255,255,0.12)', paddingLeft: 12 }}>
+                    <div style={{ fontSize: 10, color: 'rgba(147,197,253,0.85)', fontWeight: 600, letterSpacing: 0.3 }}>АРЕНДА (отдельный счёт)</div>
+                    <div style={{ fontSize: 12, marginTop: 2 }}>Факт: <b style={{ color: '#93c5fd' }}>{fmt((bankSummary as any).rentBalance || 0)} ₽</b></div>
+                    <div style={{ fontSize: 11 }}>К оплате: <b style={{ color: '#93c5fd' }}>{fmt((bankSummary as any).rentExpectedOut || 0)} ₽</b> · Прогноз: <b>{fmt((bankSummary as any).rentForecast || 0)} ₽</b></div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Не списывает р/с, не входит в общий прогноз</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12, marginTop: 4, width: '100%', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span style={{ background: 'rgba(255,255,255,0.08)', padding: '4px 8px', borderRadius: 6 }}>Р/С прогноз: <b>{fmt(bankSummary.bankForecast)} ₽</b></span>
+                  <span style={{ background: 'rgba(125,209,129,0.12)', padding: '4px 8px', borderRadius: 6 }}>+ касса {fmt(bankSummary.cashBalance)} = <b>{fmt(bankSummary.bankForecast + bankSummary.cashBalance)} ₽</b></span>
+                  <span style={{ background: 'rgba(224,180,90,0.12)', padding: '4px 8px', borderRadius: 6, color: '#e0b45a' }}>+ ЮМ {fmt(bankSummary.ymForecast)} = <b>{fmt(bankSummary.forecast)} ₽ всего</b></span>
                 </div>
               </div>
             </div>
@@ -2992,7 +3474,7 @@ export function WarehouseManager({
                     <div
                       key={p.id}
                       className="bank-pay payment-clickable"
-                      style={{ background: "#fff", padding: "10px 14px" }}
+                      style={{ padding: "10px 14px" }}
                       role="button"
                       tabIndex={0}
                       onClick={(event) => {
@@ -3062,37 +3544,7 @@ export function WarehouseManager({
               ) : (
                 counterpartiesWithDebt
                   .filter((c) => c.type === "customer")
-                  .map((c) => {
-                    const skipped = skippedParties.has(partyKey("customer", c.name));
-                    return (
-                    <div
-                      key={`c-${c.name}`}
-                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}`}
-                      role="button"
-                      tabIndex={0}
-                      title={skipped
-                        ? "Нажмите, чтобы вернуть контрагента в расчёт"
-                        : "Нажмите, чтобы не считать контрагента в «Должны нам» (быстрая прикидка)"}
-                      onClick={() => toggleSkipParty(c)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          toggleSkipParty(c);
-                        }
-                      }}
-                    >
-                      <div className="bank-due__name">
-                        {c.name}
-                        <span className="bank-due__meta">
-                          {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
-                        </span>
-                      </div>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : c.balance > 0 ? '#7dd181' : '#ef8f76' }}>
-                        {fmt(c.balance)} ₽
-                      </div>
-                    </div>
-                    );
-                  })
+                  .map((c) => renderDueParty(c, "customer"))
               )}
             </div>
 
@@ -3105,41 +3557,94 @@ export function WarehouseManager({
               ) : (
                 counterpartiesWithDebt
                   .filter((c) => c.type === "supplier")
-                  .map((c) => {
-                    const skipped = skippedParties.has(partyKey("supplier", c.name));
-                    return (
-                    <div
-                      key={`s-${c.name}`}
-                      className={`bank-due__row bank-due__row--click${skipped ? " bank-due__row--skipped" : ""}`}
-                      role="button"
-                      tabIndex={0}
-                      title={skipped
-                        ? "Нажмите, чтобы вернуть контрагента в расчёт"
-                        : "Нажмите, чтобы не считать контрагента в «Мы должны» (быстрая прикидка)"}
-                      onClick={() => toggleSkipParty(c)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          toggleSkipParty(c);
-                        }
-                      }}
-                    >
-                      <div className="bank-due__name">
-                        {c.name}
-                        <span className="bank-due__meta">
-                          {c.docsCount} плат. · последний {fmtDate(c.lastPaymentDate)}
-                        </span>
-                      </div>
-                      <div className="bank-due__sum" style={{ fontSize: 18, color: skipped ? undefined : c.balance > 0 ? '#ef8f76' : '#7dd181' }}>
-                        {fmt(c.balance)} ₽
-                      </div>
-                    </div>
-                    );
-                  })
+                  .map((c) => renderDueParty(c, "supplier"))
               )}
             </div>
           </div>
 
+          {/* Подсказка про ПКМ и выделенная сумма — отдельно от банка */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8, fontSize: 11, color: "var(--adm-muted)" }}>
+            <span>ЛКМ по контрагенту — вычеркнуть целиком · стрелка — раскрыть платежи и вычеркнуть поштучно · ПКМ — выделить для прикидки (приход +, расход −)</span>
+            {(selectedPaymentIds.size > 0 || selectedPartyKeys.size > 0) && (
+              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => { setSelectedPaymentIds(new Set()); setSelectedPartyKeys(new Set()); }}>Сбросить выделение</button>
+            )}
+            {(skippedParties.size > 0 || skippedPaymentIds.size > 0) && (
+              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => { setSkippedParties(new Set()); setSkippedPaymentIds(new Set()); }}>Вернуть вычеркнутые в расчёт</button>
+            )}
+          </div>
+          {(selectedSum.count > 0) && (
+            <div className="admin-card" style={{ marginTop: 8, border: "1px solid var(--adm-steel)", background: "rgba(63,111,163,0.07)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>Выбрано (отдельно от банка) · {selectedSum.count} позиций · ПКМ по строкам</div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: selectedSum.sum >= 0 ? "var(--adm-pine)" : "var(--adm-rust)" }}>{selectedSum.sum >= 0 ? "+" : ""}{fmt(Math.round(selectedSum.sum * 100) / 100)} ₽</div>
+                <div style={{ fontSize: 10, color: "var(--adm-muted)" }}>Приход прибавляется, расход из правой колонки вычитается · прогноз баланса после этих операций: {fmt(Math.round((bankSummary.balance + selectedSum.sum) * 100) / 100)} ₽</div>
+              </div>
+              <button type="button" className="admin-btn admin-btn--ghost" onClick={() => { setSelectedPaymentIds(new Set()); setSelectedPartyKeys(new Set()); }}>Очистить</button>
+            </div>
+          )}
+
+          {showCalculator && (
+            <ModalPortal>
+              <div className="admin-modal-overlay" onClick={() => setShowCalculator(false)}>
+                <div className="admin-modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+                  <div className="admin-modal__head">
+                    <h3 className="admin-modal__title"><Calculator size={14} style={{ marginRight: 6 }} />Калькулятор счёта</h3>
+                    <button type="button" className="admin-modal__close" onClick={() => setShowCalculator(false)}><X size={14} /></button>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--adm-muted)", marginBottom: 8 }}>
+                    Расчётный счёт: <b>{fmt(bankSummary.bankBalance)} ₽</b> · Касса: <b>{fmt(bankSummary.cashBalance)} ₽</b> · Всего: <b>{fmt(bankSummary.balance)} ₽</b>
+                  </div>
+                  <div className="admin-field">
+                    <label className="admin-label">Выражение</label>
+                    <input className="admin-input" value={calcExpression} onChange={e => setCalcExpression(e.target.value)} placeholder="напр. 12500+3200*2  или  банк-5000" />
+                    <div style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 4 }}>Поддерживаются + − * / ( ) и слова: банк, касса, всего · Enter = посчитать</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                    {[
+                      ["+банк", () => setCalcExpression(v => (v ? v + "+" : "") + String(Math.round(bankSummary.bankBalance)))],
+                      ["+касса", () => setCalcExpression(v => (v ? v + "+" : "") + String(Math.round(bankSummary.cashBalance)))],
+                      ["Очистить", () => { setCalcExpression(""); setCalcResult(""); }],
+                      ["Посчитать", () => {
+                        try {
+                          let expr = calcExpression.replace(/банк/g, String(bankSummary.bankBalance)).replace(/касса/g, String(bankSummary.cashBalance)).replace(/всего/g, String(bankSummary.balance)).replace(/[^0-9+\-*/(). ]/g, "");
+                          if (!expr.trim()) { setCalcResult(""); return; }
+                          // безопасный eval
+                          const res = Function('"use strict";return (' + expr + ')')();
+                          setCalcResult(String(Math.round(Number(res) * 100) / 100));
+                        } catch { setCalcResult("ошибка"); }
+                      }],
+                    ].map(([label, fn]: any) => (
+                      <button key={label} type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={fn}>{label}</button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
+                    {["7","8","9","/","4","5","6","*","1","2","3","-","0",".","(",")"].map(ch => (
+                      <button key={ch} type="button" className="admin-btn admin-btn--ghost" style={{ padding: "8px 0" }} onClick={() => setCalcExpression(v => v + ch)}>{ch}</button>
+                    ))}
+                    <button type="button" className="admin-btn admin-btn--ghost" style={{ padding: "8px 0" }} onClick={() => setCalcExpression(v => v + "+")}>+</button>
+                    <button type="button" className="admin-btn admin-btn--primary" style={{ gridColumn: "span 3" }} onClick={() => {
+                      try {
+                        let expr = calcExpression.replace(/банк/g, String(bankSummary.bankBalance)).replace(/касса/g, String(bankSummary.cashBalance)).replace(/всего/g, String(bankSummary.balance)).replace(/[^0-9+\-*/(). ]/g, "");
+                        if (!expr.trim()) { setCalcResult(""); return; }
+                        const res = Function('"use strict";return (' + expr + ')')();
+                        setCalcResult(String(Math.round(Number(res) * 100) / 100));
+                      } catch { setCalcResult("ошибка"); }
+                    }}>=</button>
+                  </div>
+                  {calcResult && (
+                    <div style={{ marginTop: 10, padding: 10, background: "var(--adm-paper)", borderRadius: 8, border: "1px solid var(--adm-border)" }}>
+                      <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>Результат</div>
+                      <div style={{ fontWeight: 800, fontSize: 18 }}>{calcResult} ₽</div>
+                      <div style={{ fontSize: 11, color: "var(--adm-muted)", marginTop: 4 }}>
+                        Баланс + результат: <b>{fmt(Math.round((bankSummary.balance + Number(calcResult || 0)) * 100) / 100)} ₽</b> · Банк + результат: <b>{fmt(Math.round((bankSummary.bankBalance + Number(calcResult || 0)) * 100) / 100)} ₽</b>
+                      </div>
+                    </div>
+                  )}
+                  <p style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 8 }}>Это не просто калькулятор: считает относительно счёта. Вставьте «банк» в выражение, чтобы быстро прикинуть новый остаток.</p>
+                </div>
+              </div>
+            </ModalPortal>
+          )}
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
             <button
@@ -3155,6 +3660,13 @@ export function WarehouseManager({
             >
               <History size={12} />
               История (архив)
+            </button>
+            <button
+              onClick={() => setBankSub("ym")}
+              className={`admin-filter${bankSub === "ym" ? " admin-filter--active" : ""}`}
+            >
+              <CreditCard size={12} />
+              Карта ЮМ · {fmt(bankSummary.ymCardBalance)} ₽
             </button>
             <button
               onClick={() => setBankSub("cash")}
@@ -3285,7 +3797,7 @@ export function WarehouseManager({
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <textarea
                         className="admin-input"
-                        style={{ width: "100%", height: "135px", resize: "vertical", fontSize: 13, background: "rgba(245, 242, 234, 0.15)" }}
+                        style={{ width: "100%", height: "135px", resize: "vertical", fontSize: 13, background: "var(--adm-paper-warm)" }}
                         value={financeNotes}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -4059,11 +4571,14 @@ export function WarehouseManager({
                 <span className="bank-month__line" />
               </div>
               <div className="bank-month__list">
-                {g.items.map((p) => (
+                {g.items.map((p) => {
+                  const isPendingPayment = p.entryKind === "payment" && !p.isPaid;
+                  const isSelected = isPendingPayment && selectedPaymentIds.has(p.id);
+                  return (
                   <div
                     key={p.id}
                     id={`payment-${p.id}`}
-                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}`}
+                    className={`bank-pay${!p.isPaid ? " bank-pay--pending" : ""}${p.entryKind === "payment" ? " payment-clickable" : ""}${isSelected ? " bank-pay--selected" : ""} ${p.direction === "incoming" ? "bank-pay--incoming" : "bank-pay--outgoing"}`}
                     role={p.entryKind === "payment" ? "button" : undefined}
                     tabIndex={p.entryKind === "payment" ? 0 : undefined}
                     onClick={(event) => {
@@ -4071,6 +4586,12 @@ export function WarehouseManager({
                       if ((event.target as HTMLElement).closest("a,button,input,label,select")) return;
                       setDetailPaymentId(p.id);
                     }}
+                    onContextMenu={(event) => {
+                      if (!isPendingPayment) return;
+                      event.preventDefault();
+                      toggleSelectedPayment(p.id);
+                    }}
+                    title={isPendingPayment ? (isSelected ? "ПКМ — снять выделение" : "ПКМ — выделить для прикидки (приход + / расход −)") : undefined}
                     onKeyDown={(event) => {
                       if (p.entryKind === "payment" && (event.key === "Enter" || event.key === " ")) {
                         event.preventDefault();
@@ -4239,7 +4760,8 @@ export function WarehouseManager({
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

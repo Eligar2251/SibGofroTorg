@@ -859,7 +859,7 @@ function GuardRosterPrintInner({
         <div className="saz-b-head__company">СибГофроТорг</div>
       </div>
       <div className="saz-r-hint">
-        <b style={{color:"#b91c1c", fontSize:13}}>✕ — выходной (не моя смена)</b>. Пустые жёлтые ячейки —
+        <b style={{color:"var(--adm-rust)", fontSize:13}}>✕ — выходной (не моя смена)</b>. Пустые жёлтые ячейки —
         мои смены (выходит <b>{person.name.split(/\s+/)[0]}</b>).
       </div>
       {weeksArr.map((week, wi) => (

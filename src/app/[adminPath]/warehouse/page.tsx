@@ -15,8 +15,9 @@ import {
   getCounterparties,
   getTransports,
   getCashCollections,
+  getConsignmentManualSales,
 } from "@/lib/warehouse";
-import { dealNeedsDelivery } from "@/lib/warehouse-shared";
+import { dealNeedsDelivery, getPriceTierDiscounts } from "@/lib/warehouse-shared";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
 import { getAdminDb } from "@/lib/supabase";
@@ -110,7 +111,12 @@ export default async function AdminWarehousePage({
   // только необходимые ей коллекции.
   const needStock = ["stock", "deals", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
   const needReceipts = ["supplies", "receipts", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
-  const needDeals = ["deals", "bank", "counterparties", "supplies", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
+  // Ручные продажи реестра «Товар на реализации» (лёгкий запрос).
+  const needConsignmentManual = needReceipts;
+  // "receipts" обязателен: на вкладке «Поставки» работает реестр
+  // «Товар на реализации», который считает продажи по заказам учёта.
+  // Без заказов реестр всегда показывал нули.
+  const needDeals = ["deals", "bank", "counterparties", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
   // Платежи нужны и на актуальной вкладке `receipts`: по ним карточки
   // активных и архивных поступлений получают пометки «Оплачен/Оплачено».
   // Старый ключ `supplies` оставляем для совместимости со ссылками.
@@ -138,6 +144,7 @@ export default async function AdminWarehousePage({
     clients,
     transportsData,
     cashCollections,
+    consignmentManual,
   ] = await Promise.all([
     needStock ? getWarehouseStock() : Promise.resolve([]),
     needReceipts ? getReceipts() : Promise.resolve([]),
@@ -152,6 +159,7 @@ export default async function AdminWarehousePage({
       ? getTransports({ limit: initialTab === "reports" ? 1000 : 200 })
       : Promise.resolve([]),
     needCashCollections ? getCashCollections() : Promise.resolve([]),
+    needConsignmentManual ? getConsignmentManualSales() : Promise.resolve([]),
   ]);
 
   const receipts =
@@ -166,7 +174,12 @@ export default async function AdminWarehousePage({
     sku: p.sku,
     price: p.price,
     priceWholesale: p.priceWholesale,
+    purchasePrice: p.purchasePrice ?? null,
     stockQty: p.stockQty,
+    isCuttable: (p as any).isCuttable ?? false,
+    cutMetersPerRoll: (p as any).cutMetersPerRoll ?? null,
+    cutPricePerMeter: (p as any).cutPricePerMeter ?? null,
+    cutUnitName: (p as any).cutUnitName || 'м',
   }));
 
   const counterpartyOptions: CounterpartyOption[] = counterpartyRows.map(
@@ -283,6 +296,7 @@ export default async function AdminWarehousePage({
     Number.isFinite(freeThresholdRaw) && freeThresholdRaw >= 0
       ? freeThresholdRaw
       : 30000;
+  const tierDiscounts = getPriceTierDiscounts(settings);
 
   return (
     <div>
@@ -313,8 +327,10 @@ export default async function AdminWarehousePage({
       pendingDeals={pendingDeals}
       drivers={drivers}
       cashCollections={cashCollections}
+      consignmentManual={consignmentManual}
       companyPhone={settings.phone || undefined}
       companyAddress={settings.address || undefined}
+      tierDiscounts={tierDiscounts}
     />
     </div>
   );

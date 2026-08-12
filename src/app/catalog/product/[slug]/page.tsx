@@ -444,8 +444,22 @@ export default async function ProductPage({
                       <div className="spec-value">уточняйте у менеджера</div>
                     </div>
                   )}
+                  {/* Вариативность рулон/м */}
+                  {(product as any).isCuttable && (
+                    <div className="spec-row">
+                      <div className="spec-name">Продажа</div>
+                      <div className="spec-value">
+                        Можно рулоном ({(product as any).cutMetersPerRoll || 100} {(product as any).cutUnitName || 'м'} в рулоне) и на отмотку по {(product as any).cutPricePerMeter ? `${(product as any).cutPricePerMeter} ₽/${(product as any).cutUnitName || 'м'}` : 'метрам'}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
+              {(product as any).isCuttable && (
+                <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', fontSize: 13, lineHeight: 1.4 }}>
+                  <strong>Вариативность:</strong> этот товар можно купить целым рулоном ({(product as any).cutMetersPerRoll || 100} {(product as any).cutUnitName || 'м'}) или отматываем нужное количество метров. Уточните у менеджера — в заказах учитывается остаток рулонов автоматически (напр. 5 рул. + 90 м).
+                </div>
+              )}
 
             </div>
           </div>
@@ -475,10 +489,15 @@ export default async function ProductPage({
                   </span>
                 </div>
               ) : product.madeToOrder ? (
-                <div className="pdp-price-row">
+                <div className="pdp-price-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
                   <span className="pdp-price-current pdp-price-current--mto">
-                    Под заказ
+                    Под заказ{(product as any).madeToOrderMinQty ? ` от ${(product as any).madeToOrderMinQty} шт.` : ""}
                   </span>
+                  {(product as any).madeToOrderMinQty && (
+                    <span style={{ fontSize: 13, color: "var(--ink-soft, #666)", fontWeight: 500 }}>
+                      Минимальный заказ: {(product as any).madeToOrderMinQty} шт.
+                    </span>
+                  )}
                 </div>
               ) : displayPrice == null ? (
                 <div className="pdp-price-row">
@@ -551,8 +570,9 @@ export default async function ProductPage({
                   <div className="pdp-made-to-order">
                     <div className="pdp-made-to-order__text">
                       <FileText size={15} />
-                      Изготавливается под заказ — оставьте заявку, менеджер
+                      Изготавливается под заказ{(product as any).madeToOrderMinQty ? ` от ${(product as any).madeToOrderMinQty} шт.` : ""} — оставьте заявку, менеджер
                       рассчитает стоимость и сроки
+                      {(product as any).madeToOrderMinQty ? ` (мин. ${(product as any).madeToOrderMinQty} шт.)` : ""}
                     </div>
                     <PriceInquiryButton
                       productName={product.name}

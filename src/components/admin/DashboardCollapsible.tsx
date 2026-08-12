@@ -15,12 +15,14 @@ interface CollapsibleSectionProps {
   sideContent?: ReactNode;
 }
 
+// Акценты секций — пары/тройки из темных переменных, чтобы
+     // цвет оставался контрастным в любой теме.
 const accentMap = {
-  green: "#16a34a",
-  red: "#dc2626",
-  blue: "#2563eb",
-  amber: "#d97706",
-  gray: "#6b7280",
+  green: { fg: "var(--adm-pine)", bg: "var(--adm-pine-pale)", line: "var(--adm-pine-line)" },
+  red: { fg: "var(--adm-rust)", bg: "var(--adm-rust-pale)", line: "var(--adm-rust-line)" },
+  blue: { fg: "var(--adm-steel)", bg: "var(--adm-steel-pale)", line: "var(--adm-steel-line)" },
+  amber: { fg: "var(--adm-kraft)", bg: "var(--adm-kraft-pale)", line: "var(--adm-kraft-line)" },
+  gray: { fg: "var(--adm-sand)", bg: "var(--adm-sand-pale)", line: "var(--adm-border-mid)" },
 };
 
 export function CollapsibleSection({
@@ -51,12 +53,30 @@ export function CollapsibleSection({
     } catch {}
   }, [open, storageKey]);
 
+  function toggleOpen() {
+    setOpen((v) => !v);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    // Управление с клавиатуры: заголовок — не <button>, потому что
+    // внутри него бывают интерактивные элементы (ссылки sideContent),
+    // а вкладывать интерактив в <button> нельзя по спецификации.
+    if (e.key === "Enter" || e.key === " ") {
+      const target = e.target as HTMLElement;
+      if (target.closest("a,button")) return;
+      e.preventDefault();
+      toggleOpen();
+    }
+  }
+
   return (
     <section className={`dash-section${open ? " dash-section--open" : ""}`}>
-      <button
-        type="button"
+      <div
         className="dash-section__head"
-        onClick={() => setOpen(!open)}
+        onClick={toggleOpen}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
         aria-expanded={open}
       >
         <span
@@ -66,7 +86,7 @@ export function CollapsibleSection({
         >
           <ChevronRight size={18} />
         </span>
-        {icon && <span className="dash-section__icon" style={{ color: accentMap[accent] }}>{icon}</span>}
+        {icon && <span className="dash-section__icon" style={{ color: accentMap[accent].fg }}>{icon}</span>}
         <span className="dash-section__title">
           <span className="dash-section__title-text">{title}</span>
           {subtitle && <span className="dash-section__subtitle">{subtitle}</span>}
@@ -74,7 +94,7 @@ export function CollapsibleSection({
         {badge !== undefined && badge !== "" && (
           <span
             className="dash-section__badge"
-            style={{ background: `${accentMap[accent]}18`, color: accentMap[accent], borderColor: `${accentMap[accent]}40` }}
+            style={{ background: accentMap[accent].bg, color: accentMap[accent].fg, borderColor: accentMap[accent].line }}
           >
             {typeof badge === "number" ? badge.toLocaleString("ru-RU") : badge}
           </span>
@@ -84,22 +104,27 @@ export function CollapsibleSection({
             {sideContent}
           </span>
         )}
-      </button>
+      </div>
       {open && <div className="dash-section__body">{children}</div>}
     </section>
   );
 }
 
 /** Панель «быстрых видимостей» — скрыть/показать все блоки одним кликом. */
+// Статический список секций дашборда. Вынесен на уровень модуля,
+// чтобы не пересоздаваться на каждый рендер и не попадать в
+// зависимости хуков.
+const VISIBILITY_SECTIONS = [
+  { id: "stats", label: "Главные показатели" },
+  { id: "finance", label: "Финансовая отчётность (банк/касса)" },
+  { id: "deliveries", label: "Перевозки и доставки" },
+  { id: "wastepaper", label: "Макулатура" },
+  { id: "statuses", label: "Статусы заявок" },
+  { id: "recent", label: "Последние заявки / склад / действия" },
+];
+
 export function DashboardVisibilityToggle() {
-  const sections = [
-    { id: "stats", label: "Главные показатели" },
-    { id: "finance", label: "Финансовая отчётность (банк/касса)" },
-    { id: "deliveries", label: "Перевозки и доставки" },
-    { id: "wastepaper", label: "Макулатура" },
-    { id: "statuses", label: "Статусы заявок" },
-    { id: "recent", label: "Последние заявки / склад / действия" },
-  ];
+  const sections = VISIBILITY_SECTIONS;
   const [visible, setVisible] = useState<Record<string, boolean>>(() => {
     const out: Record<string, boolean> = {};
     for (const s of sections) out[s.id] = true;
@@ -149,7 +174,7 @@ export function DashboardVisibilityToggle() {
       window.removeEventListener("storage", refresh);
       window.removeEventListener("dash-visibility-changed", refresh as EventListener);
     };
-  }, []);
+  }, [sections]);
 
   const shownCount = Object.values(visible).filter(Boolean).length;
   return (

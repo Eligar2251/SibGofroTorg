@@ -130,11 +130,16 @@ export function ProductStockSummaryPanel({
     // Вычисляем маржу для продаж
     let marginStr = "—";
     if (ev.docType === "deal") {
-      // Ищем последнюю цену закупки, действовавшую на дату продажи или ранее
+      // Ищем последнюю цену закупки, действовавшую на дату продажи или ранее.
+      // Если поставок по товару нет — берём общую закупочную цену
+      // из карточки товара (приблизительную).
       const activeReceipts = summary.receipts
         .filter((r) => r.status === "posted" && r.date <= ev.date)
         .sort((a, b) => b.date.localeCompare(a.date));
-      const purchasePrice = activeReceipts.length > 0 ? activeReceipts[0].unitPrice : 0;
+      const purchasePrice =
+        activeReceipts.length > 0
+          ? activeReceipts[0].unitPrice
+          : summary.purchasePrice ?? 0;
 
       if (ev.price > 0 && purchasePrice > 0) {
         const margin = Math.round(((ev.price - purchasePrice) / ev.price) * 100);

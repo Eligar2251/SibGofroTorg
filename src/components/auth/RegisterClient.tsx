@@ -10,18 +10,23 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, UserPlus } from "lucide-react";
 import { safeNextPath } from "@/lib/safe-next";
 import { formatPhoneMask } from "@/lib/phone-mask";
+import { useSiteSettings } from "@/hooks/use-site-settings";
 
 export function RegisterClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeNextPath(searchParams.get("next"), "/cabinet");
+  const { registrationField, ready } = useSiteSettings();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const isEmailMode = ready ? registrationField === "email" : false;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,11 +43,14 @@ export function RegisterClient() {
 
     setLoading(true);
     try {
-      // POST /api/auth/register → addDoc(users) → коллекция users создаётся сама
+      const payload: any = { name, password };
+      if (isEmailMode) payload.email = email;
+      else payload.phone = phone;
+
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, phone, password }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ошибка регистрации");
@@ -92,7 +100,7 @@ export function RegisterClient() {
             <p
               style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 6 }}
             >
-              Только телефон и пароль — без SMS
+              {isEmailMode ? "Корпоративная почта + пароль — без телефона" : "Только телефон и пароль — без SMS"}
             </p>
           </div>
 
@@ -113,21 +121,40 @@ export function RegisterClient() {
                 autoComplete="name"
               />
             </div>
-            <div>
-              <label className="checkout-label">Телефон *</label>
-              <input
-                id="reg-phone"
-                name="phone"
-                type="tel"
-                className="form-input"
-                value={phone}
-                onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
-                placeholder="+7 (913) 000-00-00"
-                inputMode="tel"
-                autoComplete="tel"
-                maxLength={18}
-              />
-            </div>
+            {isEmailMode ? (
+              <div>
+                <label className="checkout-label">Email (корпоративный) *</label>
+                <input
+                  id="reg-email"
+                  name="email"
+                  type="email"
+                  className="form-input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="info@company.ru"
+                  autoComplete="email"
+                />
+                <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 4 }}>
+                  Рекомендуем обезличенную корпоративную почту: info@, zakaz@ — не считается ПД
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="checkout-label">Телефон *</label>
+                <input
+                  id="reg-phone"
+                  name="phone"
+                  type="tel"
+                  className="form-input"
+                  value={phone}
+                  onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
+                  placeholder="+7 (913) 000-00-00"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={18}
+                />
+              </div>
+            )}
             <div>
               <label className="checkout-label">Пароль *</label>
               <input

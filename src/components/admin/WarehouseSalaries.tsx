@@ -66,6 +66,7 @@ import {
   composeSalaryComment,
   isDebtSalaryComment,
   isRentSalaryComment,
+  isYmCardSalaryComment,
   isSalaryExcludedFromBalance,
   getSalaryPeriodMonth,
   stripSalaryMetaTags,
@@ -73,9 +74,10 @@ import {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
-/** Оплата «с аренды на карту»: обычная запись bank + тег в комментарии. */
+/** Оплата «с аренды на карту» или с source="bank" (если это не Карта ЮМ): обычная запись bank + тег в комментарии. ЗП с р/с банка не платится, только аренда. */
 function isRentSalary(s: Salary): boolean {
-  return isRentSalaryComment(s.comment);
+  if (isYmCardSalaryComment(s.comment)) return false;
+  return isRentSalaryComment(s.comment, s.source) || s.source === "bank";
 }
 
 function todayIso(): string {
@@ -202,16 +204,18 @@ function initialsOf(name: string): string {
     .join("");
 }
 
-type QuickSource = "cash" | "bank" | "rent";
+type QuickSource = "cash" | "bank" | "rent" | "ym_card";
 
 function sourceLabel(s: Salary): string {
   if (isRentSalary(s)) return "Аренда → карта";
-  return s.source === "cash" ? "Касса · наличные" : "Банк · безнал";
+  if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "Карта ЮМ";
+  return s.source === "cash" ? "Касса · наличные" : "Аренда → карта";
 }
 
 function sourceBadgeClass(s: Salary): string {
   if (isRentSalary(s)) return "admin-badge--indigo";
-  return s.source === "cash" ? "admin-badge--green" : "admin-badge--blue";
+  if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "admin-badge--amber";
+  return s.source === "cash" ? "admin-badge--green" : "admin-badge--indigo";
 }
 
 function isDebtPaymentSalary(s: Salary): boolean {
@@ -291,6 +295,10 @@ function SalaryFormModal({
       );
       const empId = employeeId || (found ? found.id : null);
 
+      // Для р/с банк — это всегда аренда (отдельный счёт). ЗП с р/с не платится.
+      const isRentForSubmit = source === "bank" || (source as string) === "rent" ? true : initialRent;
+      const isYmCardForSubmit = source === "ym_card" || (initial ? isYmCardSalaryComment(initial.comment) || initial.source === "ym_card" : false);
+      const finalSource: SalarySource = source === "cash" ? "cash" : "bank";
       const res = await fetch(
         initial
           ? `/api/admin/warehouse/salaries/${initial.id}`
@@ -303,11 +311,12 @@ function SalaryFormModal({
             employeeName: employeeName.trim(),
             amount: amountNum,
             date,
-            source,
+            source: finalSource,
             periodMonth,
             comment: composeSalaryComment({
               comment,
-              rent: initialRent,
+              rent: isRentForSubmit && !isYmCardForSubmit,
+              ymCard: isYmCardForSubmit,
               excludeFromBalance,
               debtPayment,
               periodMonth,
@@ -415,7 +424,7 @@ function SalaryFormModal({
 
             <div className="admin-field" style={{ marginTop: 12 }}>
               <label className="admin-label">Счёт будущей выплаты *</label>
-              <div className="wh-direction">
+              <div className="wh-direction" style={{ flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className={`wh-direction__btn wh-direction__btn--in${
@@ -428,13 +437,26 @@ function SalaryFormModal({
                 <button
                   type="button"
                   className={`wh-direction__btn wh-direction__btn--out${
+                    source === "ym_card" ? " wh-direction__btn--active" : ""
+                  }`}
+                  onClick={() => setSource("ym_card")}
+                >
+                  <CreditCard size={14} /> Карта ЮМ (перевод)
+                </button>
+                <button
+                  type="button"
+                  className={`wh-direction__btn wh-direction__btn--out${
                     source === "bank" ? " wh-direction__btn--active" : ""
                   }`}
                   onClick={() => setSource("bank")}
+                  title="Аренда — отдельный счёт, не списывает р/с банка. ЗП с р/с не платится, только аренда"
                 >
-                  <CreditCard size={14} /> Банк (безнал)
+                  <KeyRound size={14} /> Аренда (отд. счёт)
                 </button>
               </div>
+              <span className="admin-hint" style={{ marginTop: 4, display: 'block' }}>
+                ЗП: касса и карта ЮМ. Р/С (банк) — только аренда, не списывает основной р/с, уходит в отдельный счёт аренды. Для внебаланса — отметьте ниже.
+              </span>
             </div>
 
             <div className="admin-field" style={{ marginTop: 12 }}>
@@ -762,22 +784,25 @@ function QuickPayForm({
           type="button"
           className={`whsal-seg__btn${source === "cash" ? " whsal-seg__btn--cash" : ""}`}
           onClick={() => setSource("cash")}
+          title="Наличкой из кассы"
         >
           <Banknote size={12} /> Касса
         </button>
         <button
           type="button"
-          className={`whsal-seg__btn${source === "bank" ? " whsal-seg__btn--bank" : ""}`}
-          onClick={() => setSource("bank")}
+          className={`whsal-seg__btn${source === "ym_card" ? " whsal-seg__btn--bank" : ""}`}
+          onClick={() => setSource("ym_card")}
+          title="С карты ЮМ (перевод)"
         >
-          <CreditCard size={12} /> Безнал
+          <CreditCard size={12} /> Карта ЮМ
         </button>
         <button
           type="button"
           className={`whsal-seg__btn${source === "rent" ? " whsal-seg__btn--rent" : ""}`}
           onClick={() => setSource("rent")}
+          title="Аренда — отдельный счёт, не списывает р/с"
         >
-          <KeyRound size={12} /> Аренда
+          <KeyRound size={12} /> Аренда (отд. счёт)
         </button>
       </div>
       <label className="whsal-check">
@@ -1316,13 +1341,16 @@ export function WarehouseSalaries({
   const paidTotal = paidSalary.reduce((s, x) => s + x.amount, 0);
   const paidDebtTotal = paidDebt.reduce((s, x) => s + x.amount, 0);
   const paidCash = paidSalary
-    .filter((s) => s.source === "cash" && !isRentSalary(s))
+    .filter((s) => s.source === "cash" && !isRentSalary(s) && !isYmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
   const paidBank = paidSalary
-    .filter((s) => s.source === "bank" && !isRentSalary(s))
+    .filter((s) => s.source === "bank" && !isRentSalary(s) && !isYmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
   const paidRent = paidSalary
     .filter((s) => isRentSalary(s))
+    .reduce((s, x) => s + x.amount, 0);
+  const paidYm = paidSalary
+    .filter((s) => s.source === "ym_card" || isYmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
 
   // ── Excel-таблица: выходные дни месяца ──
@@ -1478,7 +1506,7 @@ export function WarehouseSalaries({
             employeeName: item.row.employee.name,
             amount: item.amount,
             date,
-            source: "bank",
+            source: "cash",
             isPaid: false,
             comment: composeSalaryComment({ periodMonth: activeMonth }),
           }),
@@ -1621,6 +1649,7 @@ export function WarehouseSalaries({
       const finalComment = composeSalaryComment({
         comment: data.comment,
         rent: data.source === "rent",
+        ymCard: data.source === "ym_card",
         excludeFromBalance: data.excludeFromBalance,
         debtPayment: data.debtPayment,
         periodMonth: activeMonth,
@@ -1633,7 +1662,7 @@ export function WarehouseSalaries({
           employeeName: employee.name,
           amount: data.amount,
           date,
-          source: data.source === "rent" ? "bank" : data.source,
+          source: data.source === "cash" ? "cash" : "bank",
           isPaid: data.paid,
           comment: finalComment,
         }),
@@ -1651,7 +1680,7 @@ export function WarehouseSalaries({
         amount: data.amount,
         date,
         periodMonth: activeMonth,
-        source: data.source === "rent" ? "bank" : data.source,
+        source: data.source === "ym_card" ? "ym_card" : data.source === "rent" ? "bank" : data.source,
         isPaid: data.paid,
         paidAt: data.paid ? date : null,
         comment: finalComment,
@@ -2172,8 +2201,9 @@ export function WarehouseSalaries({
             <div className="whsal-progress__bar" style={{ width: `${progressPct}%` }} />
           </div>
           <div className="whsal-card__sub">
-            {progressPct}% от начисленного · касса {fmt(paidCash)} · безнал {fmt(paidBank)}
-            {paidRent ? ` · аренда ${fmt(paidRent)}` : ""}
+            {progressPct}% от начисленного · касса {fmt(paidCash)}
+            {paidYm > 0 ? ` · карта ЮМ ${fmt(paidYm)}` : ""}
+            {paidRent > 0 ? ` · аренда (отд. счёт) ${fmt(paidRent)}` : ""}
             {paidDebtTotal > 0 ? ` · в счёт долга ${fmt(paidDebtTotal)} ₽ (не входит в факт месяца)` : ""}
           </div>
         </div>

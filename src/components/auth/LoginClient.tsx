@@ -1,5 +1,5 @@
 // =========================================================
-// FILE: src/components/auth/LoginClient.tsx
+// FILE: src/components/auth/LoginClient.tsx — вход по телефону или email (настраивается)
 // =========================================================
 
 "use client";
@@ -10,16 +10,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, LogIn } from "lucide-react";
 import { safeNextPath } from "@/lib/safe-next";
 import { formatPhoneMask } from "@/lib/phone-mask";
+import { useSiteSettings } from "@/hooks/use-site-settings";
 
 export function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeNextPath(searchParams.get("next"), "/cabinet");
+  const { registrationField, ready } = useSiteSettings();
 
-  const [phone, setPhone] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const isEmailMode = ready ? registrationField === "email" : false;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,10 +31,16 @@ export function LoginClient() {
     setError("");
 
     try {
+      const body: any = { password };
+      if (isEmailMode || identifier.includes("@")) {
+        body.email = identifier;
+      } else {
+        body.phone = identifier;
+      }
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ошибка входа");
@@ -40,6 +50,14 @@ export function LoginClient() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
       setLoading(false);
+    }
+  }
+
+  function onIdentifierChange(v: string) {
+    if (isEmailMode || v.includes("@")) {
+      setIdentifier(v);
+    } else {
+      setIdentifier(formatPhoneMask(v));
     }
   }
 
@@ -80,7 +98,7 @@ export function LoginClient() {
             <p
               style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 6 }}
             >
-              Телефон и пароль — без SMS-подтверждения
+              {isEmailMode ? "Email и пароль — для юр.лиц и 152-ФЗ" : "Телефон и пароль — без SMS-подтверждения"}
             </p>
           </div>
 
@@ -89,19 +107,23 @@ export function LoginClient() {
             style={{ display: "flex", flexDirection: "column", gap: 14 }}
           >
             <div>
-              <label className="checkout-label">Телефон *</label>
+              <label className="checkout-label">{isEmailMode ? "Email *" : "Телефон / Email *"}</label>
               <input
-                id="login-phone"
-                name="phone"
-                type="tel"
+                id="login-identifier"
+                name="identifier"
+                type={isEmailMode ? "email" : "text"}
                 className="form-input"
-                value={phone}
-                onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
-                placeholder="+7 (913) 000-00-00"
-                inputMode="tel"
-                autoComplete="tel"
-                maxLength={18}
+                value={identifier}
+                onChange={(e) => onIdentifierChange(e.target.value)}
+                placeholder={isEmailMode ? "info@company.ru" : "+7 (913) 000-00-00 или email"}
+                autoComplete={isEmailMode ? "email" : "tel"}
+                inputMode={isEmailMode ? "email" : "tel"}
               />
+              {isEmailMode && (
+                <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 4 }}>
+                  Можно войти и по старому телефону — система поддерживает оба варианта
+                </div>
+              )}
             </div>
             <div>
               <label className="checkout-label">Пароль *</label>

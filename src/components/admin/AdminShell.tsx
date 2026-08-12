@@ -47,6 +47,9 @@ export function AdminShell({
   const pathname = usePathname() || "";
   const isLogin = pathname === `/${adminPath}/login`;
   const [sidebarHidden, setSidebarHidden] = useState(false);
+  // Текущая раскладка (data-admin-layout на <html>): в «Верхнем меню»
+  // панель обязана быть видна всегда, даже если раньше её сворачивали.
+  const [layout, setLayout] = useState("sidebar-left");
 
   useEffect(() => {
     try {
@@ -54,7 +57,31 @@ export function AdminShell({
     } catch {
       /* localStorage недоступен */
     }
+    const readLayout = () =>
+      setLayout(
+        document.documentElement.getAttribute("data-admin-layout") || "sidebar-left"
+      );
+    readLayout();
+    // Раскладку меняет кастомайзер в Настройках (атрибут на <html>) —
+    // следим за атрибутом и за другими вкладками.
+    const observer = new MutationObserver(readLayout);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-admin-layout"],
+    });
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "adm-layout") readLayout();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
+
+  // В раскладке «сайдбар сверху» скрывать панель нельзя: другой
+  // навигации на странице нет.
+  const hideSidebar = sidebarHidden && layout !== "sidebar-top";
 
   function toggleSidebar() {
     setSidebarHidden((prev) => {
@@ -157,15 +184,15 @@ export function AdminShell({
 
   return (
     <div
-      className={`admin-shell${sidebarHidden ? " admin-shell--sidebar-hidden" : ""}`}
+      className={`admin-shell${hideSidebar ? " admin-shell--sidebar-hidden" : ""}`}
       data-admin="true"
     >
       <NavigationProgress />
       <aside
         id="admin-sidebar"
-        className={`admin-sidebar${sidebarHidden ? " admin-sidebar--hidden" : ""}`}
-        aria-hidden={sidebarHidden}
-        inert={sidebarHidden}
+        className={`admin-sidebar${hideSidebar ? " admin-sidebar--hidden" : ""}`}
+        aria-hidden={hideSidebar}
+        inert={hideSidebar}
       >
         <div className="admin-sidebar__brand">
           <SiteLogo variant="light" className="admin-sidebar__logo-svg" />
@@ -199,27 +226,34 @@ export function AdminShell({
               <Link
                 key={link.href}
                 href={link.href}
+                title={link.label}
                 className={`admin-sidebar__link${active ? " admin-sidebar__link--active" : ""}`}
               >
                 {link.icon}
-                {link.label}
+                {/* Подпись обёрнута в span: в «компактной» раскладке
+                    CSS прячет текст и оставляет только иконки. */}
+                <span className="admin-sidebar__label">{link.label}</span>
               </Link>
             );
           })}
         </nav>
 
         <div className="admin-sidebar__footer">
+          {/* Переключателя темы здесь больше нет: вся кастомизация
+              (темы, раскладка, стиль, плотность, анимации) живёт
+              в Настройках → «Кастомизация оформления». */}
           <Link
             href="/"
             prefetch={false}
             target="_blank"
+            title="Перейти на сайт"
             className="admin-sidebar__footer-link"
           >
-            <ExternalLink size={13} /> Перейти на сайт
+            <ExternalLink size={13} /> <span className="admin-sidebar__label">Перейти на сайт</span>
           </Link>
           <form action={`/${adminPath}/api/logout`} method="POST">
-            <button type="submit" className="admin-sidebar__logout">
-              <LogOut size={13} /> Выйти из аккаунта
+            <button type="submit" className="admin-sidebar__logout" title="Выйти из аккаунта">
+              <LogOut size={13} /> <span className="admin-sidebar__label">Выйти из аккаунта</span>
             </button>
           </form>
         </div>
@@ -276,7 +310,7 @@ export function AdminShell({
        * Рендерится только когда панель скрыта: пока сайдбар открыт,
        * закрывать его нужно кнопкой на самой панели.
        */}
-      {sidebarHidden && (
+      {hideSidebar && (
         <button
           type="button"
           className="admin-sidebar-handle"

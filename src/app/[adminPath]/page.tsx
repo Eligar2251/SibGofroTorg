@@ -142,14 +142,9 @@ function paymentPurpose(payment: BankPayment): string {
 export default async function AdminDashboard() {
   const session = await verifySession();
   if (!session) redirect(`/${ADMIN_PATH}/login`);
-  // Макулатурщик работает только в отдельном модуле учёта макулатуры;
-  // proxy его и так перенаправит, здесь — явная подстраховка.
   if (session.role === "wastepaper") redirect(`/${ADMIN_PATH}/wastepaper-account`);
   const isLawyer = session.role === "lawyer";
 
-  // Для дашборда читаем только 50 последних заявок. Общие показатели
-  // получаем агрегатами Supabase: это значительно дешевле, чем загружать
-  // целиком коллекции users и orders при каждом открытии панели.
   const [
     allProducts,
     recentOrderPool,
@@ -171,9 +166,6 @@ export default async function AdminDashboard() {
     cashCollections,
     transports,
   ] = await Promise.all([
-    // Юристу не показываются товары, заявки, акции и склад, поэтому эти
-    // данные для его ограниченного дашборда даже не запрашиваем.
-    // includeHidden: для остальных ролей считаем ВСЕ товары, как и учёт.
     isLawyer ? Promise.resolve([]) : getProducts({ includeHidden: true }),
     isLawyer ? Promise.resolve([]) : getOrders({ limit: 50 }),
     isLawyer ? Promise.resolve([]) : getAllCategories(),
@@ -195,16 +187,11 @@ export default async function AdminDashboard() {
     getTransports(),
   ]);
 
-  // Отдельный учёт макулатуры: своя финансовая сводка на дашборде.
-  // Баланс НЕ смешивается с банком/кассой товарного учёта. При сбое
-  // (например, миграция модуля ещё не применена) просто прячем блок.
   const wpFinance = await getWpFinanceData().catch((error) => {
     console.error("dashboard: финансы макулатуры:", error);
     return null;
   });
 
-  // Учёт аренды: отдельный банк (БАУ и ИП Пакин). При сбое (миграция
-  // ещё не применена) блок просто не показываем.
   const rentSummary = await getRentSummary().catch((error) => {
     console.error("dashboard: учёт аренды:", error);
     return null;
@@ -221,9 +208,6 @@ export default async function AdminDashboard() {
     readyOrdersCount +
     completedOrdersCount +
     rejectedOrdersCount;
-  // Клиенты перенесены в «Учёт», поэтому на дашборде считаем только финансы/заявки.
-  // Заказы передаём, чтобы ожидаемый приход учитывал уже полученные
-  // частичные оплаты (у юриста заказов нет — считаем по-старому).
   const bankSummary = getBankSummary(
     payments,
     salaries,
@@ -243,10 +227,8 @@ export default async function AdminDashboard() {
     cashCollections,
     dashboardDate
   );
-  const totalRevenue = bankSummary.balance;
   const recentOrders = recentOrderPool.slice(0, 8);
 
-  // Финансы макулатуры: нал/безнал отдельно и вместе + прогноз.
   const wpEvents = wpFinance
     ? wpCollectMoneyEvents(
         wpFinance.intakes,
@@ -295,7 +277,6 @@ export default async function AdminDashboard() {
     return paid + 0.009 < receipt.total;
   });
 
-  // Независимые неоплаченные платежи (без привязки к поступлению/заказу, не "вне баланса")
   const unpaidIndependentPayments = payments.filter((p) =>
     !p.isPaid &&
     p.direction === "outgoing" &&
@@ -304,7 +285,6 @@ export default async function AdminDashboard() {
     (!p.dealIds || p.dealIds.length === 0)
   );
 
-  // ── Полная лента фактических движений по счетам ────────────────
   const paymentFinanceRows: DashboardFinanceRow[] = payments
     .filter((payment) => payment.isPaid && !payment.excludeFromBalance)
     .map((payment) => ({
@@ -387,8 +367,6 @@ export default async function AdminDashboard() {
     ...salaryFinanceRows,
     ...collectionFinanceRows,
   ];
-  // Карточки дашборда — только текущий календарный месяц. История ниже
-  // остаётся полной и позволяет выбрать любой предыдущий месяц.
   const currentMonthFinanceRows = financeRows.filter((row) =>
     row.date.startsWith(dashboardDate.slice(0, 7))
   );
@@ -411,8 +389,6 @@ export default async function AdminDashboard() {
     .filter((row) => row.account === "cash" && row.direction === "outgoing")
     .reduce((sum, row) => sum + row.amount, 0);
 
-  // На дашборде нужны только оплаченные заказы, которые ещё действительно
-  // надо доставить. Отменённые и уже полностью отгруженные не показываем.
   const paidDeliveryDeals = deals
     .filter((deal) => {
       if (!deal.hasDelivery || !dealNeedsDelivery(deal)) return false;
@@ -420,7 +396,6 @@ export default async function AdminDashboard() {
       return deal.total > 0 && paid + 0.009 >= deal.total;
     });
 
-  // Получаем активные самостоятельные перевозки (которые не привязаны к заказам)
   const activeTransports = transports.filter(t => t.status === "draft" || t.status === "active");
   const independentTrips: any[] = [];
   for (const t of activeTransports) {
@@ -469,14 +444,14 @@ export default async function AdminDashboard() {
   });
 
   return (
-    <div>
+    <div className="dash-page">
       <DashboardRealtime limited={isLawyer} />
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: 24,
+          marginBottom: 16,
           flexWrap: "wrap",
           gap: 12,
         }}
@@ -484,9 +459,7 @@ export default async function AdminDashboard() {
         <h1 className="admin-h1" style={{ margin: 0 }}>
           {isLawyer ? "Финансы и перевозки" : "Панель управления"}
         </h1>
-        <div
-          style={{ fontSize: 13, color: "var(--adm-muted)" }}
-        >
+        <div style={{ fontSize: 13, color: "var(--adm-muted)" }}>
           {new Date().toLocaleDateString("ru-RU", {
             weekday: "long",
             day: "numeric",
@@ -495,1017 +468,443 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      {/* Настройка видимости блоков — для удобства бухгалтера */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: 10,
-          marginBottom: 18,
+          marginBottom: 16,
           flexWrap: "wrap",
+          padding: "8px 12px",
+          background: "var(--adm-paper-warm)",
+          border: "1px dashed var(--adm-border)",
+          borderRadius: 8,
         }}
       >
-        <span style={{ fontSize: 13, color: "var(--adm-muted)" }}>
-          💡 Нажимайте на заголовок блока чтобы скрыть/раскрыть его. Лишние разделы можно убрать совсем:
+        <span style={{ fontSize: 12, color: "var(--adm-muted)" }}>
+          💡 Нажимайте на заголовок блока чтобы скрыть/раскрыть. Дашборд теперь в 2 колонки.
         </span>
         <DashboardVisibilityToggle />
       </div>
 
-      {/* Основная статистика */}
       {!isLawyer && (
-      <CollapsibleSection
-        id="stats"
-        title="Главные показатели"
-        subtitle="Быстрый взгляд: товары, заявки, деньги"
-        defaultOpen
-        accent="blue"
-      >
-      <div className="admin-stat-grid" style={{ margin: 0, padding: "16px 20px" }}>
-        {[
-          {
-            label: "Товаров",
-            value: allProducts.length,
-            icon: <Package size={20} />,
-            href: `/${ADMIN_PATH}/products`,
-            iconBg: "rgba(27,43,75,0.08)",
-            iconColor: "#1b2b4b",
-            sub: `${allProducts.filter((p) => (p.stockQty ?? 0) > 0).length} в наличии`,
-          },
-          {
-            label: "Категорий",
-            value: allCats.length,
-            icon: <FolderOpen size={20} />,
-            href: `/${ADMIN_PATH}/categories`,
-            iconBg: "rgba(217,119,6,0.12)",
-            iconColor: "#d97706",
-            sub: `${allCats.filter((c) => c.isVisible !== false).length} видимых`,
-          },
-          {
-            label: "Новых заявок",
-            value: newOrdersCount,
-            icon: <TrendingUp size={20} />,
-            href: `/${ADMIN_PATH}/orders?status=new`,
-            iconBg: "#fef2f2",
-            iconColor: "#ef4444",
-            sub: "требуют обработки",
-          },
-
-          {
-            label: "Выручка",
-            value:
-              financeIncoming - financeOutgoing !== 0
-                ? `${((financeIncoming - financeOutgoing) / 1000).toFixed(0)}К ₽`
-                : "—",
-            icon: <BarChart3 size={20} />,
-            href: `/${ADMIN_PATH}/orders?status=completed`,
-            iconBg: "rgba(16,185,129,0.1)",
-            iconColor: "#10b981",
-            sub: `оплаты минус расходы · ${dashboardDate.slice(0, 7)}`,
-          },
-          {
-            label: "К оплате нам",
-            value: `${(bankSummary.expectedIn / 1000).toFixed(0)}К ₽`,
-            icon: <TrendingUp size={20} />,
-            href: `/${ADMIN_PATH}/warehouse?tab=bank`,
-            iconBg: "rgba(16,185,129,0.1)",
-            iconColor: "#10b981",
-            sub: `${unpaidDeals.length} неоплаченных заказов`,
-          },
-          {
-            label: "Мы должны",
-            value: `${(bankSummary.expectedOut / 1000).toFixed(0)}К ₽`,
-            icon: <AlertTriangle size={20} />,
-            href: `/${ADMIN_PATH}/warehouse?tab=bank`,
-            iconBg: "#fef2f2",
-            iconColor: "#ef4444",
-            sub: `${unpaidReceipts.length} поставок + ${unpaidIndependentPayments.length} платежей`,
-          },
-          {
-            label: "Склад в ценах",
-            value: `${(stockValue / 1000).toFixed(0)}К ₽`,
-            icon: <Package size={20} />,
-            href: `/${ADMIN_PATH}/warehouse?tab=stock`,
-            iconBg: "rgba(27,43,75,0.08)",
-            iconColor: "#1b2b4b",
-            sub: `${outOfStockProducts.length} нет, ${lowStockProducts.length} скоро закончатся`,
-          },
-          {
-            label: "Акции",
-            value: promotions.length,
-            icon: <Megaphone size={20} />,
-            href: `/${ADMIN_PATH}/promotions`,
-            iconBg: "rgba(234,179,8,0.12)",
-            iconColor: "#eaaf08",
-            sub: `${promotions.filter((p) => p.isVisible !== false).length} активных`,
-          },
-          {
-            label: "Отзывы",
-            value: 0,
-            icon: <Star size={20} />,
-            href: `/${ADMIN_PATH}/reviews`,
-            iconBg: "rgba(245,166,35,0.12)",
-            iconColor: "#f5a623",
-            sub: "управление отзывами",
-          },
-        ].map((stat) => (
-          <Link key={stat.label} href={stat.href} className="admin-stat" prefetch={false}>
-            <div
-              className="admin-stat__icon"
-              style={{
-                background: stat.iconBg,
-                color: stat.iconColor,
-              }}
-            >
-              {stat.icon}
-            </div>
-            <div className="admin-stat__value">{stat.value}</div>
-            <div className="admin-stat__label">{stat.label}</div>
-            {stat.sub && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--adm-muted)",
-                  marginTop: 2,
-                }}
-              >
-                {stat.sub}
-              </div>
-            )}
-          </Link>
-        ))}
-      </div>
-      </CollapsibleSection>
+        <CollapsibleSection
+          id="stats"
+          title="Главные показатели"
+          subtitle="Товары, заявки, деньги — быстрый взгляд"
+          defaultOpen
+          accent="blue"
+        >
+          <div className="admin-stat-grid" style={{ margin: 0, padding: 16 }}>
+            {[
+              {
+                label: "Товаров",
+                value: allProducts.length,
+                icon: <Package size={18} />,
+                href: `/${ADMIN_PATH}/products`,
+                iconBg: "var(--adm-sand-pale)",
+                iconColor: "var(--adm-ink)",
+                sub: `${allProducts.filter((p) => (p.stockQty ?? 0) > 0).length} в наличии`,
+              },
+              {
+                label: "Категорий",
+                value: allCats.length,
+                icon: <FolderOpen size={18} />,
+                href: `/${ADMIN_PATH}/categories`,
+                iconBg: "var(--adm-kraft-pale)",
+                iconColor: "var(--adm-kraft)",
+                sub: `${allCats.filter((c) => c.isVisible !== false).length} видимых`,
+              },
+              {
+                label: "Новых заявок",
+                value: newOrdersCount,
+                icon: <TrendingUp size={18} />,
+                href: `/${ADMIN_PATH}/orders?status=new`,
+                iconBg: "var(--adm-rust-pale)",
+                iconColor: "var(--adm-rust)",
+                sub: "требуют обработки",
+              },
+              {
+                label: "Выручка",
+                value:
+                  financeIncoming - financeOutgoing !== 0
+                    ? `${((financeIncoming - financeOutgoing) / 1000).toFixed(0)}К ₽`
+                    : "—",
+                icon: <BarChart3 size={18} />,
+                href: `/${ADMIN_PATH}/orders?status=completed`,
+                iconBg: "var(--adm-pine-pale)",
+                iconColor: "var(--adm-pine)",
+                sub: `оплаты минус расходы · ${dashboardDate.slice(0, 7)}`,
+              },
+              {
+                label: "К оплате нам",
+                value: `${(bankSummary.expectedIn / 1000).toFixed(0)}К ₽`,
+                icon: <TrendingUp size={18} />,
+                href: `/${ADMIN_PATH}/warehouse?tab=bank`,
+                iconBg: "var(--adm-pine-pale)",
+                iconColor: "var(--adm-pine)",
+                sub: `${unpaidDeals.length} неоплаченных заказов`,
+              },
+              {
+                label: "Мы должны",
+                value: `${(bankSummary.expectedOut / 1000).toFixed(0)}К ₽`,
+                icon: <AlertTriangle size={18} />,
+                href: `/${ADMIN_PATH}/warehouse?tab=bank`,
+                iconBg: "var(--adm-rust-pale)",
+                iconColor: "var(--adm-rust)",
+                sub: `${unpaidReceipts.length} поставок + ${unpaidIndependentPayments.length} платежей`,
+              },
+              {
+                label: "Склад в ценах",
+                value: `${(stockValue / 1000).toFixed(0)}К ₽`,
+                icon: <Package size={18} />,
+                href: `/${ADMIN_PATH}/warehouse?tab=stock`,
+                iconBg: "var(--adm-sand-pale)",
+                iconColor: "var(--adm-ink)",
+                sub: `${outOfStockProducts.length} нет, ${lowStockProducts.length} скоро закончатся`,
+              },
+              {
+                label: "Акции",
+                value: promotions.length,
+                icon: <Megaphone size={18} />,
+                href: `/${ADMIN_PATH}/promotions`,
+                iconBg: "var(--adm-kraft-pale)",
+                iconColor: "var(--adm-kraft)",
+                sub: `${promotions.filter((p) => p.isVisible !== false).length} активных`,
+              },
+            ].map((stat) => (
+              <Link key={stat.label} href={stat.href} className="admin-stat" prefetch={false}>
+                <div className="admin-stat__icon" style={{ background: stat.iconBg, color: stat.iconColor }}>
+                  {stat.icon}
+                </div>
+                <div className="admin-stat__value">{stat.value}</div>
+                <div className="admin-stat__label">{stat.label}</div>
+                {stat.sub && (
+                  <div style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 2 }}>{stat.sub}</div>
+                )}
+              </Link>
+            ))}
+          </div>
+        </CollapsibleSection>
       )}
 
-      <div className="dash-report-grid">
-      {/* Полная аналитика по банку и кассе */}
-      <CollapsibleSection
-        id="finance"
-        title="Финансовая отчётность"
-        subtitle="Приходы/расходы, банк и касса"
-        icon={<Banknote size={18} />}
-        accent="green"
-        badge={money(bankSummary.balance)}
-        sideContent={!isLawyer && (
-          <Link
-            href={`/${ADMIN_PATH}/warehouse?tab=bank`}
-            className="admin-btn admin-btn--ghost"
-            prefetch={false}
-            style={{ textDecoration: "none", fontSize: 13 }}
-          >
-            <ExternalLink size={13} /> Открыть банк
-          </Link>
-        )}
-      >
-      <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
-        <div className="dash-section-head" style={{ padding: "0 20px" }}>
-          <div>
-            <p id="dash-finance-period-label" style={{ margin: "4px 0 0" }}>Фактические проведённые операции за текущий месяц.</p>
-          </div>
-        </div>
-
-        <div className="dash-finance-totals" style={{ padding: "0 20px", marginTop: 12 }}>
-          <div className="dash-finance-total dash-finance-total--in">
-            <span className="dash-finance-total__icon" aria-hidden="true">
-              <ArrowDownLeft size={18} />
-            </span>
-            <span className="dash-finance-total__content">
-              <span id="dash-finance-in-label">Приход за месяц</span>
-              <strong id="dash-finance-in-value">+{money(financeIncoming)}</strong>
-            </span>
-          </div>
-          <div className="dash-finance-total dash-finance-total--out">
-            <span className="dash-finance-total__icon" aria-hidden="true">
-              <ArrowUpRight size={18} />
-            </span>
-            <span className="dash-finance-total__content">
-              <span id="dash-finance-out-label">Расход за месяц</span>
-              <strong id="dash-finance-out-value">−{money(financeOutgoing)}</strong>
-            </span>
-          </div>
-          <div className="dash-finance-total dash-finance-total--bank">
-            <span className="dash-finance-total__icon" aria-hidden="true">
-              <CreditCard size={18} />
-            </span>
-            <span className="dash-finance-total__content">
-              <span>Расчётный счёт сейчас</span>
-              <strong>{money(bankSummary.bankBalance)}</strong>
-            </span>
-          </div>
-          <div className="dash-finance-total dash-finance-total--cash">
-            <span className="dash-finance-total__icon" aria-hidden="true">
-              <Banknote size={18} />
-            </span>
-            <span className="dash-finance-total__content">
-              <span>Касса сейчас</span>
-              <strong>{money(bankSummary.cashBalance)}</strong>
-            </span>
-          </div>
-        </div>
-
-        <div className="dash-account-grid">
-          <div className="dash-account-card dash-account-card--bank">
-            <div className="dash-account-card__head">
-              <div className="dash-account-card__icon" aria-hidden="true">
-                <CreditCard size={18} />
-              </div>
-              <div className="dash-account-card__copy">
-                <strong>Расчётный счёт</strong>
-                <span>Безналичные операции</span>
-              </div>
-            </div>
-            <div className="dash-account-card__balance">
-              <span>Текущий остаток</span>
-              <strong>{money(bankSummary.bankBalance)}</strong>
-            </div>
-            <div className="dash-account-card__turnover">
-              <span>Приход <b id="dash-finance-bank-in" className="dash-money-in">+{money(bankIncoming)}</b></span>
-              <span>Расход <b id="dash-finance-bank-out" className="dash-money-out">−{money(bankOutgoing)}</b></span>
-            </div>
-          </div>
-          <div className="dash-account-card dash-account-card--cash">
-            <div className="dash-account-card__head">
-              <div className="dash-account-card__icon" aria-hidden="true">
-                <Banknote size={18} />
-              </div>
-              <div className="dash-account-card__copy">
-                <strong>Касса</strong>
-                <span>С прошлых дней: {money(cashCarryover.previousDaysRemaining)}</span>
-              </div>
-            </div>
-            <div className="dash-account-card__balance">
-              <span>Сейчас в кассе</span>
-              <strong>{money(bankSummary.cashBalance)}</strong>
-            </div>
-            <div className="dash-account-card__turnover">
-              <span>Приход <b id="dash-finance-cash-in" className="dash-money-in">+{money(cashIncoming)}</b></span>
-              <span>Расход <b id="dash-finance-cash-out" className="dash-money-out">−{money(cashOutgoing)}</b></span>
-            </div>
-          </div>
-        </div>
-
-        <DashboardFinanceHistory
-          rows={financeRows}
-          adminPath={ADMIN_PATH}
-          allowNavigation={!isLawyer}
-        />
-      </section>
-      </CollapsibleSection>
-
-      {/* Учёт аренды: отдельный банк БАУ и ИП Пакин */}
-      {rentSummary && (
+      {/* === ДВУХКОЛОНОЧНАЯ СЕТКА ДАШБОРДА === */}
+      <div className="dash-main-grid">
+        {/* Финансы */}
         <CollapsibleSection
-          id="rent"
-          title="Учёт аренды"
-          subtitle="Банк аренды, арендаторы, просрочки"
-          icon={<Building2 size={18} />}
-          accent="amber"
-          badge={rentSummary.overdueSum > 0 ? `просрочено ${money(rentSummary.overdueSum)}` : "просрочек нет"}
-          sideContent={
-            <Link
-              href={`/${ADMIN_PATH}/rent`}
-              className="admin-btn admin-btn--ghost"
-              prefetch={false}
-              style={{ textDecoration: "none", fontSize: 13 }}
-            >
-              <ExternalLink size={13} /> Открыть учёт аренды
+          id="finance"
+          title="Финансовая отчётность"
+          subtitle="Приходы/расходы, банк и касса"
+          icon={<Banknote size={16} />}
+          accent="green"
+          badge={money(bankSummary.balance)}
+          sideContent={!isLawyer && (
+            <Link href={`/${ADMIN_PATH}/warehouse?tab=bank`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
+              <ExternalLink size={12} /> Банк
             </Link>
-          }
+          )}
         >
-          <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
-            <div className="dash-finance-totals" style={{ padding: "0 20px", marginTop: 12 }}>
-              {Object.entries(rentSummary.balances).map(([orgId, b]) => (
-                <div key={orgId} className="dash-finance-total dash-finance-total--bank">
-                  <span className="dash-finance-total__icon" aria-hidden="true">
-                    <CreditCard size={18} />
-                  </span>
-                  <span className="dash-finance-total__content">
-                    <span>{RENT_ORG_LABELS[orgId] || orgId} · всего</span>
-                    <strong>{money(b.balance)}</strong>
-                  </span>
-                </div>
-              ))}
+          <div className="dash-finance-flat">
+            <div className="dash-section__desc">Фактические проведённые операции за текущий месяц</div>
+            <div className="dash-finance-totals">
               <div className="dash-finance-total dash-finance-total--in">
-                <span className="dash-finance-total__icon" aria-hidden="true">
-                  <ArrowDownLeft size={18} />
-                </span>
+                <span className="dash-finance-total__icon"><ArrowDownLeft size={16} /></span>
                 <span className="dash-finance-total__content">
-                  <span>Должны нам по счетам</span>
-                  <strong>{money(rentSummary.totalDebt)}</strong>
+                  <span>Приход за месяц</span>
+                  <strong>+{money(financeIncoming)}</strong>
                 </span>
               </div>
               <div className="dash-finance-total dash-finance-total--out">
-                <span className="dash-finance-total__icon" aria-hidden="true">
-                  <AlertTriangle size={18} />
-                </span>
+                <span className="dash-finance-total__icon"><ArrowUpRight size={16} /></span>
                 <span className="dash-finance-total__content">
-                  <span>Просрочено (после отсрочки)</span>
-                  <strong>{money(rentSummary.overdueSum)} · {rentSummary.overdueCount} аренд.</strong>
+                  <span>Расход за месяц</span>
+                  <strong>−{money(financeOutgoing)}</strong>
+                </span>
+              </div>
+              <div className="dash-finance-total dash-finance-total--bank">
+                <span className="dash-finance-total__icon"><CreditCard size={16} /></span>
+                <span className="dash-finance-total__content">
+                  <span>Расчётный счёт сейчас</span>
+                  <strong>{money(bankSummary.bankBalance)}</strong>
+                </span>
+              </div>
+              <div className="dash-finance-total dash-finance-total--cash">
+                <span className="dash-finance-total__icon"><Banknote size={16} /></span>
+                <span className="dash-finance-total__content">
+                  <span>Касса сейчас</span>
+                  <strong>{money(bankSummary.cashBalance)}</strong>
                 </span>
               </div>
             </div>
-            <p style={{ padding: "8px 20px 16px", margin: 0, color: "var(--adm-muted)", fontSize: 13 }}>
-              Активных арендаторов: <b>{rentSummary.activeTenants}</b> · оплат в ближайшие 7
-              дней: <b>{rentSummary.upcomingCount}</b>. Подробности, напоминания и банк аренды —
-              в разделе «Аренда».
-            </p>
-          </section>
+
+            <div className="dash-account-grid">
+              <div className="dash-account-card dash-account-card--bank">
+                <div className="dash-account-card__head">
+                  <div className="dash-account-card__icon"><CreditCard size={16} /></div>
+                  <div className="dash-account-card__copy"><strong>Расчётный счёт</strong><span>Безнал</span></div>
+                </div>
+                <div className="dash-account-card__balance"><span>Остаток</span><strong>{money(bankSummary.bankBalance)}</strong></div>
+                <div className="dash-account-card__turnover">
+                  <span>Приход <b className="dash-money-in">+{money(bankIncoming)}</b></span>
+                  <span>Расход <b className="dash-money-out">−{money(bankOutgoing)}</b></span>
+                </div>
+              </div>
+              <div className="dash-account-card dash-account-card--cash">
+                <div className="dash-account-card__head">
+                  <div className="dash-account-card__icon"><Banknote size={16} /></div>
+                  <div className="dash-account-card__copy"><strong>Касса</strong><span>С прошлых: {money(cashCarryover.previousDaysRemaining)}</span></div>
+                </div>
+                <div className="dash-account-card__balance"><span>Сейчас в кассе</span><strong>{money(bankSummary.cashBalance)}</strong></div>
+                <div className="dash-account-card__turnover">
+                  <span>Приход <b className="dash-money-in">+{money(cashIncoming)}</b></span>
+                  <span>Расход <b className="dash-money-out">−{money(cashOutgoing)}</b></span>
+                </div>
+              </div>
+            </div>
+
+            <DashboardFinanceHistory rows={financeRows} adminPath={ADMIN_PATH} allowNavigation={!isLawyer} />
+          </div>
         </CollapsibleSection>
-      )}
 
-      {/* Оплаченные заказы, которые нужно доставить */}
-      <CollapsibleSection
-        id="deliveries"
-        title="Доставки и перевозки"
-        subtitle="Заказы к доставке и самостоятельные рейсы"
-        icon={<Truck size={18} />}
-        accent="blue"
-        badge={dashboardDeliveries.length}
-        sideContent={!isLawyer && (
-          <Link
-            href={`/${ADMIN_PATH}/warehouse?tab=deliveries`}
-            className="admin-btn admin-btn--ghost"
-            prefetch={false}
-            style={{ textDecoration: "none", fontSize: 13 }}
-          >
-            <Truck size={13} /> Все перевозки
-          </Link>
-        )}
-      >
-      <section className="admin-card dash-deliveries" style={{ margin: 0, border: "none", borderRadius: 0 }}>
-        <div className="dash-section-head" style={{ padding: "0 20px" }}>
-          <div>
-            <p style={{ margin: "4px 0 0" }}>Оплаченные заказы + самостоятельные рейсы (вывоз макулатуры, отправки).</p>
-          </div>
-        </div>
-        {dashboardDeliveries.length > 0 ? (
-          <div className="dash-delivery-list">
-            {dashboardDeliveries.map((del) => (
-              <div key={del.id} className="dash-delivery-row">
-                <span className="dash-delivery-row__icon" aria-hidden="true"><Truck size={17} /></span>
-                <div className="dash-delivery-row__main">
-                  <div className="dash-delivery-row__top">
-                    {isLawyer ? (
-                      <strong>{del.number}</strong>
-                    ) : (
-                      <Link
-                        href={del.link}
-                        prefetch={false}
-                      >
-                        {del.number}
-                      </Link>
-                    )}
-                    <strong>{del.customerName}</strong>
-                    {del.isPaid ? (
-                      <span className="admin-badge admin-badge--green">оплачен</span>
-                    ) : (
-                      <span className="admin-badge admin-badge--blue">перевозка</span>
-                    )}
-                    {del.date && (
-                      <span className="admin-badge admin-badge--amber">
-                        план {formatDate(del.date)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="dash-delivery-row__address">
-                    <MapPin size={13} />
-                    {del.address}
-                  </div>
-                  <div className="dash-delivery-row__meta">
-                    {del.phone && (
-                      <span>{del.phone}</span>
-                    )}
-                    <span>{del.itemCount} ед.</span>
-                    {del.totalSum !== null && <span>{money(del.totalSum)}</span>}
-                    {del.note && <span>{del.note}</span>}
-                  </div>
-                </div>
-                {!isLawyer && (
-                  <div className="dash-delivery-row__actions">
-                    <Link
-                      href={del.link}
-                      prefetch={false}
-                    >
-                      Открыть →
-                    </Link>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="admin-empty">
-            <CheckCircle2 size={30} />
-            <p>Оплаченных заказов и самостоятельных перевозок к выполнению нет</p>
-          </div>
-        )}
-      </section>
-      </CollapsibleSection>
-      </div>
-
-      {/* Финансовая отчётность по макулатуре — отдельно от основной */}
-      {wpFinance && (
-      <CollapsibleSection
-        id="wastepaper"
-        title="Макулатура (отдельный учёт)"
-        subtitle="Приход/расход и остатки по макулатуре — не смешиваются с банком"
-        icon={<Recycle size={18} />}
-        accent="green"
-        badge={money(wpBalance.total)}
-        defaultOpen={false}
-        sideContent={session.role === "admin" && (
-          <Link
-            href={`/${ADMIN_PATH}/wastepaper-account`}
-            className="admin-btn admin-btn--ghost"
-            prefetch={false}
-            style={{ textDecoration: "none", fontSize: 13 }}
-          >
-            <Recycle size={13} /> Открыть учёт
-          </Link>
-        )}
-      >
-        <section className="admin-card dash-finance" style={{ margin: 0, border: "none", borderRadius: 0 }}>
-        <div style={{ padding: "0 20px" }}>
-          <p style={{ margin: "4px 0 0" }}>Наличка/безнал и прогноз по приходам и расходам отдельно от товарного учёта.</p>
-        </div>
-
-          <div className="dash-finance-totals">
-            <div className="dash-finance-total dash-finance-total--in">
-              <span className="dash-finance-total__icon" aria-hidden="true">
-                <ArrowDownLeft size={18} />
-              </span>
-              <span className="dash-finance-total__content">
-                <span>Приход за месяц (макулатура)</span>
-                <strong>+{money(wpMonthIncoming)}</strong>
-              </span>
-            </div>
-            <div className="dash-finance-total dash-finance-total--out">
-              <span className="dash-finance-total__icon" aria-hidden="true">
-                <ArrowUpRight size={18} />
-              </span>
-              <span className="dash-finance-total__content">
-                <span>Расход за месяц (макулатура)</span>
-                <strong>−{money(wpMonthOutgoing)}</strong>
-              </span>
-            </div>
-            <div className="dash-finance-total dash-finance-total--in">
-              <span className="dash-finance-total__icon" aria-hidden="true">
-                <ArrowDownLeft size={18} />
-              </span>
-              <span className="dash-finance-total__content">
-                <span>Прогноз прихода</span>
-                <strong>+{money(wpForecast.inTotal)}</strong>
-              </span>
-            </div>
-            <div className="dash-finance-total dash-finance-total--out">
-              <span className="dash-finance-total__icon" aria-hidden="true">
-                <ArrowUpRight size={18} />
-              </span>
-              <span className="dash-finance-total__content">
-                <span>Прогноз расхода</span>
-                <strong>−{money(wpForecast.outTotal)}</strong>
-              </span>
-            </div>
-          </div>
-
-          <div className="dash-account-grid">
-            <div className="dash-account-card dash-account-card--cash">
-              <div className="dash-account-card__head">
-                <div className="dash-account-card__icon" aria-hidden="true">
-                  <Banknote size={18} />
-                </div>
-                <div className="dash-account-card__copy">
-                  <strong>Наличка макулатуры</strong>
-                  <span>
-                    Прогноз: +{money(wpForecast.inCash)} / −{money(wpForecast.outCash)}
-                  </span>
-                </div>
-              </div>
-              <div className="dash-account-card__balance">
-                <span>Сейчас наличкой</span>
-                <strong>{money(wpBalance.cash)}</strong>
-              </div>
-              <div className="dash-account-card__turnover">
-                <span>
-                  Итого по учёту <b>{money(wpBalance.total)}</b>
-                </span>
-              </div>
-            </div>
-            <div className="dash-account-card dash-account-card--bank">
-              <div className="dash-account-card__head">
-                <div className="dash-account-card__icon" aria-hidden="true">
-                  <CreditCard size={18} />
-                </div>
-                <div className="dash-account-card__copy">
-                  <strong>Безнал макулатуры</strong>
-                  <span>
-                    Прогноз: +{money(wpForecast.inBank)} / −{money(wpForecast.outBank)}
-                  </span>
-                </div>
-              </div>
-              <div className="dash-account-card__balance">
-                <span>Сейчас безналом</span>
-                <strong>{money(wpBalance.bank)}</strong>
-              </div>
-              <div className="dash-account-card__turnover">
-                <span>
-                  Макулатуры на площадке{" "}
-                  <b>
-                    {(Math.round(wpStockTotalKg * 10) / 10).toLocaleString("ru-RU")} кг
-                  </b>
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-        </CollapsibleSection>
-      )}
-
-      {!isLawyer && (
-        <>
-      {/* Воронка статусов */}
-      <CollapsibleSection
-        id="statuses"
-        title="Статусы заявок"
-        subtitle="Сколько заявок на каком этапе"
-        icon={<Clock size={18} />}
-        accent="amber"
-        badge={totalOrdersCount}
-        defaultOpen={false}
-      >
-      <div
-        className="admin-card"
-        style={{ margin: 0, border: "none", borderRadius: 0, padding: "20px 24px" }}
-      >
-        <div
-          style={{
-            fontFamily: "Oswald, sans-serif",
-            fontWeight: 700,
-            color: "#1b2b4b",
-            fontSize: 16,
-            marginBottom: 16,
-          }}
-        >
-          Статусы заявок
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {[
-            {
-              label: "Новые",
-              count: newOrdersCount,
-              icon: <Clock size={16} />,
-              color: "#f59e0b",
-              bg: "#fffbeb",
-              status: "new",
-            },
-            {
-              label: "В работе",
-              count: inProgressOrdersCount,
-              icon: <TrendingUp size={16} />,
-              color: "#3b82f6",
-              bg: "#eff6ff",
-              status: "in_progress",
-            },
-            {
-              label: "Готов к выдаче",
-              count: readyOrdersCount,
-              icon: <Package size={16} />,
-              color: "#7c3aed",
-              bg: "#f5f3ff",
-              status: "ready",
-            },
-            {
-              label: "Выполнены",
-              count: completedOrdersCount,
-              icon: <CheckCircle size={16} />,
-              color: "#16a34a",
-              bg: "#f0fdf4",
-              status: "completed",
-            },
-            {
-              label: "Отменены",
-              count: rejectedOrdersCount,
-              icon: <XCircle size={16} />,
-              color: "#ef4444",
-              bg: "#fef2f2",
-              status: "rejected",
-            },
-          ].map((s) => (
-            <Link
-              key={s.status}
-              href={`/${ADMIN_PATH}/orders?status=${s.status}`}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                padding: "16px 12px",
-                borderRadius: 12,
-                background: s.bg,
-                border: `1px solid ${s.color}30`,
-                textDecoration: "none",
-                gap: 6,
-              }}
-             prefetch={false}>
-              <div style={{ color: s.color }}>{s.icon}</div>
-              <div
-                style={{
-                  fontSize: 28,
-                  fontWeight: 800,
-                  color: s.color,
-                  lineHeight: 1,
-                }}
-              >
-                {s.count}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: s.color,
-                  fontWeight: 600,
-                }}
-              >
-                {s.label}
-              </div>
-              {totalOrdersCount > 0 && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: `${s.color}99`,
-                  }}
-                >
-                  {Math.round((s.count / totalOrdersCount) * 100)}%
-                </div>
-              )}
+        {/* Доставки */}
+        <CollapsibleSection
+          id="deliveries"
+          title="Доставки и перевозки"
+          subtitle={`К выполнению: ${dashboardDeliveries.length}`}
+          icon={<Truck size={16} />}
+          accent="blue"
+          badge={dashboardDeliveries.length}
+          sideContent={!isLawyer && (
+            <Link href={`/${ADMIN_PATH}/warehouse?tab=deliveries`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
+              <Truck size={12} /> Все
             </Link>
-          ))}
-        </div>
-      </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        id="recent"
-        title="Последние заявки, склад и быстрые действия"
-        subtitle="Свежие заказы, заканчивающиеся товары и кнопки"
-        icon={<Clock size={18} />}
-        accent="gray"
-        defaultOpen={false}
-      >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 20,
-          margin: 0,
-          padding: "0 20px 20px",
-        }}
-        className="admin-dash-grid"
-      >
-        {/* Последние заявки */}
-        <div className="admin-card">
-          <div
-            style={{
-              padding: "16px 24px",
-              borderBottom: "1px solid rgba(200,196,188,0.35)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <h2
-              style={{
-                fontFamily: "Oswald, sans-serif",
-                fontWeight: 700,
-                color: "#1b2b4b",
-                fontSize: 16,
-              }}
-            >
-              Последние заявки
-            </h2>
-            <Link
-              href={`/${ADMIN_PATH}/orders`}
-              style={{
-                fontSize: 13,
-                color: "#d97706",
-                fontWeight: 600,
-              }}
-             prefetch={false}>
-              Все →
-            </Link>
-          </div>
-
-          {recentOrders.length > 0 ? (
-            <div>
-              {recentOrders.map((order) => {
-                const o = order as any;
-                return (
-                  <div
-                    key={o.id}
-                    style={{
-                      padding: "12px 24px",
-                      borderBottom: "1px solid rgba(200,196,188,0.15)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 120 }}>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          color: "#1b2b4b",
-                          fontSize: 13,
-                        }}
-                      >
-                        {o.customerName}
+          )}
+        >
+          <div className="dash-deliveries-flat">
+            <div className="dash-section__desc">Оплаченные заказы + самостоятельные рейсы</div>
+            {dashboardDeliveries.length > 0 ? (
+              <div className="dash-delivery-list">
+                {dashboardDeliveries.map((del) => (
+                  <div key={del.id} className="dash-delivery-row">
+                    <span className="dash-delivery-row__icon"><Truck size={15} /></span>
+                    <div className="dash-delivery-row__main">
+                      <div className="dash-delivery-row__top">
+                        {isLawyer ? <strong>{del.number}</strong> : <Link href={del.link} prefetch={false}>{del.number}</Link>}
+                        <strong style={{ fontSize: 12 }}>{del.customerName}</strong>
+                        {del.isPaid ? <span className="admin-badge admin-badge--green">оплачен</span> : <span className="admin-badge admin-badge--blue">перевозка</span>}
+                        {del.date && <span className="admin-badge admin-badge--amber">план {formatDate(del.date)}</span>}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "rgba(55,65,81,0.5)",
-                        }}
-                      >
-                        {o.customerPhone}
+                      <div className="dash-delivery-row__address"><MapPin size={11} />{del.address}</div>
+                      <div className="dash-delivery-row__meta">
+                        {del.phone && <span>{del.phone}</span>}
+                        <span>{del.itemCount} ед.</span>
+                        {del.totalSum !== null && <span>{money(del.totalSum)}</span>}
                       </div>
                     </div>
-                    <span
-                      className={
-                        statusColors[o.status || "new"] ||
-                        statusColors.new
-                      }
-                    >
-                      {statusLabels[o.status || "new"] || o.status}
-                    </span>
-                    {o.totalSum > 0 && (
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "#1b2b4b",
-                        }}
-                      >
-                        {o.totalSum.toLocaleString("ru-RU")} ₽
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: "rgba(55,65,81,0.4)",
-                      }}
-                    >
-                      {formatDate(o.createdAt)}
-                    </span>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div
-              style={{
-                padding: "32px 24px",
-                textAlign: "center",
-                color: "rgba(55,65,81,0.4)",
-                fontSize: 14,
-              }}
-            >
-              Заявок пока нет
-            </div>
-          )}
-        </div>
-
-        {/* Правая колонка */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Мало на складе */}
-          <div className="admin-card" style={{ flex: 1 }}>
-            <div
-              style={{
-                padding: "16px 24px",
-                borderBottom: "1px solid rgba(200,196,188,0.35)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <h2
-                style={{
-                  fontFamily: "Oswald, sans-serif",
-                  fontWeight: 700,
-                  color: "#1b2b4b",
-                  fontSize: 16,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <AlertTriangle size={15} />
-                Мало на складе
-              </h2>
-              <Link
-                href={`/${ADMIN_PATH}/products/bulk`}
-                style={{
-                  fontSize: 13,
-                  color: "#d97706",
-                  fontWeight: 600,
-                }}
-               prefetch={false}>
-                Редактировать →
-              </Link>
-            </div>
-
-            {outOfStockProducts.length + lowStockProducts.length > 0 ? (
-              <div>
-                {[...outOfStockProducts, ...lowStockProducts].slice(0, 8).map((p) => {
-                  const qty = Number(p.stockQty) || 0;
-                  const warn = p.stockWarnQty != null ? Number(p.stockWarnQty) : 10;
-                  return (
-                    <Link
-                      key={p.id}
-                      href={`/${ADMIN_PATH}/products/${p.id}`}
-                      prefetch={false}
-                      style={{
-                        padding: "10px 24px",
-                        borderBottom: "1px solid rgba(200,196,188,0.15)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        textDecoration: "none",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          color: "#1b2b4b",
-                          fontWeight: 500,
-                          flex: 1,
-                        }}
-                      >
-                        {p.name}
-                        <div style={{ color: "var(--adm-muted)", fontSize: 11 }}>
-                          порог предупреждения: {warn} шт.
-                        </div>
-                      </div>
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: qty <= 0 ? "#ef4444" : "#f59e0b",
-                          background: qty <= 0 ? "#fef2f2" : "#fffbeb",
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {qty <= 0 ? "нет в наличии" : `пополните: ${qty} шт.`}
-                      </span>
-                    </Link>
-                  );
-                })}
-                {outOfStockProducts.length + lowStockProducts.length > 8 && (
-                  <div
-                    style={{
-                      padding: "10px 24px",
-                      fontSize: 12,
-                      color: "var(--adm-muted)",
-                    }}
-                  >
-                    + ещё {outOfStockProducts.length + lowStockProducts.length - 8} товаров
-                  </div>
-                )}
+                ))}
               </div>
             ) : (
-              <div
-                style={{
-                  padding: "24px",
-                  textAlign: "center",
-                  color: "rgba(55,65,81,0.4)",
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <CheckCircle2 size={15} />
-                  Склад в норме
-                </span>
-              </div>
+              <div className="admin-empty" style={{ padding: 20 }}><p>Нет доставок к выполнению</p></div>
             )}
           </div>
+        </CollapsibleSection>
 
-          {/* Быстрые действия */}
-          <div
-            className="admin-card"
-            style={{ padding: "16px 24px" }}
+        {/* Аренда */}
+        {rentSummary && (
+          <CollapsibleSection
+            id="rent"
+            title="Учёт аренды"
+            subtitle="Банк аренды и просрочки"
+            icon={<Building2 size={16} />}
+            accent="amber"
+            badge={rentSummary.overdueSum > 0 ? `просрочено ${money(rentSummary.overdueSum)}` : "ок"}
+            sideContent={
+              <Link href={`/${ADMIN_PATH}/rent`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
+                <ExternalLink size={12} /> Аренда
+              </Link>
+            }
           >
-            <div
-              style={{
-                fontFamily: "Oswald, sans-serif",
-                fontWeight: 700,
-                color: "#1b2b4b",
-                fontSize: 16,
-                marginBottom: 14,
-              }}
-            >
-              Быстрые действия
+            <div className="dash-finance-flat">
+              <div className="dash-finance-totals">
+                {Object.entries(rentSummary.balances).map(([orgId, b]: any) => (
+                  <div key={orgId} className="dash-finance-total dash-finance-total--bank">
+                    <span className="dash-finance-total__icon"><CreditCard size={16} /></span>
+                    <span className="dash-finance-total__content">
+                      <span>{RENT_ORG_LABELS[orgId] || orgId}</span>
+                      <strong>{money(b.balance)}</strong>
+                    </span>
+                  </div>
+                ))}
+                <div className="dash-finance-total dash-finance-total--in">
+                  <span className="dash-finance-total__icon"><ArrowDownLeft size={16} /></span>
+                  <span className="dash-finance-total__content">
+                    <span>Должны по счетам</span>
+                    <strong>{money(rentSummary.totalDebt)}</strong>
+                  </span>
+                </div>
+                <div className="dash-finance-total dash-finance-total--out">
+                  <span className="dash-finance-total__icon"><AlertTriangle size={16} /></span>
+                  <span className="dash-finance-total__content">
+                    <span>Просрочено</span>
+                    <strong>{money(rentSummary.overdueSum)} · {rentSummary.overdueCount}</strong>
+                  </span>
+                </div>
+              </div>
+              <div className="dash-section__desc" style={{ borderTop: "1px solid var(--adm-border)", borderBottom: "none" }}>
+                Активных: <b>{rentSummary.activeTenants}</b> · в ближайшие 7 дней: <b>{rentSummary.upcomingCount}</b>
+              </div>
             </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              {[
-                {
-                  href: `/${ADMIN_PATH}/products/new`,
-                  label: "Добавить товар",
-                  icon: <Plus size={14} />,
-                },
-                {
-                  href: `/${ADMIN_PATH}/products/bulk`,
-                  label: "Массовое редактирование",
-                  icon: <Pencil size={14} />,
-                },
-                {
-                  href: `/${ADMIN_PATH}/orders?status=new`,
-                  label: `Новые заявки (${newOrdersCount})`,
-                  icon: <ClipboardList size={14} />,
-                },
-                {
-                  href: `/${ADMIN_PATH}/deliveries`,
-                  label: "Доставки и планирование",
-                  icon: <TrendingUp size={14} />,
-                },
-                {
-                  href: `/${ADMIN_PATH}/categories`,
-                  label: "Управление категориями",
-                  icon: <FolderOpen size={14} />,
-                },
-                {
-                  href: `/${ADMIN_PATH}/promotions`,
-                  label: `Акции и спецпредложения (${promotions.length})`,
-                  icon: <Megaphone size={14} />,
-                },
-                {
-                  href: `/${ADMIN_PATH}/reviews`,
-                  label: "Отзывы покупателей",
-                  icon: <Star size={14} />,
-                },
-                {
-                  href: `/${ADMIN_PATH}/settings`,
-                  label: "Настройки сайта",
-                  icon: <Settings size={14} />,
-                },
-              ]
-                .filter(
-                  (action) =>
-                    session.role === "admin" ||
-                    action.href !== `/${ADMIN_PATH}/settings`
-                )
-                .map((action) => (
-                <Link
-                  key={action.href}
-                  href={action.href}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    background: "var(--adm-bg, #f8f7f4)",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: "#1b2b4b",
-                    textDecoration: "none",
-                    border: "1px solid transparent",
-                    transition: "border-color 0.15s",
-                  }}
-                 prefetch={false}>
-                  {action.icon}
-                  {action.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-      </CollapsibleSection>
-        </>
-      )}
+          </CollapsibleSection>
+        )}
 
-      <style>{`\n        @media (max-width: 768px) {\n          .admin-dash-grid {\n            grid-template-columns: 1fr !important;\n          }\n        }\n      `}</style>
+        {/* Макулатура */}
+        {wpFinance && (
+          <CollapsibleSection
+            id="wastepaper"
+            title="Макулатура"
+            subtitle="Отдельный учёт"
+            icon={<Recycle size={16} />}
+            accent="green"
+            badge={money(wpBalance.total)}
+            defaultOpen={false}
+            sideContent={session.role === "admin" && (
+              <Link href={`/${ADMIN_PATH}/wastepaper-account`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
+                <Recycle size={12} /> Учёт
+              </Link>
+            )}
+          >
+            <div className="dash-finance-flat">
+              <div className="dash-section__desc">Наличка/безнал и прогноз — не смешиваются с основным банком</div>
+              <div className="dash-finance-totals">
+                <div className="dash-finance-total dash-finance-total--in">
+                  <span className="dash-finance-total__icon"><ArrowDownLeft size={16} /></span>
+                  <span className="dash-finance-total__content"><span>Приход мес</span><strong>+{money(wpMonthIncoming)}</strong></span>
+                </div>
+                <div className="dash-finance-total dash-finance-total--out">
+                  <span className="dash-finance-total__icon"><ArrowUpRight size={16} /></span>
+                  <span className="dash-finance-total__content"><span>Расход мес</span><strong>−{money(wpMonthOutgoing)}</strong></span>
+                </div>
+                <div className="dash-finance-total dash-finance-total--in">
+                  <span className="dash-finance-total__icon"><ArrowDownLeft size={16} /></span>
+                  <span className="dash-finance-total__content"><span>Прогноз приход</span><strong>+{money(wpForecast.inTotal)}</strong></span>
+                </div>
+                <div className="dash-finance-total dash-finance-total--out">
+                  <span className="dash-finance-total__icon"><ArrowUpRight size={16} /></span>
+                  <span className="dash-finance-total__content"><span>Прогноз расход</span><strong>−{money(wpForecast.outTotal)}</strong></span>
+                </div>
+              </div>
+              <div className="dash-account-grid">
+                <div className="dash-account-card dash-account-card--cash">
+                  <div className="dash-account-card__head"><div className="dash-account-card__icon"><Banknote size={16} /></div><div className="dash-account-card__copy"><strong>Наличка</strong><span>Прогноз +{money(wpForecast.inCash)} / −{money(wpForecast.outCash)}</span></div></div>
+                  <div className="dash-account-card__balance"><span>Сейчас</span><strong>{money(wpBalance.cash)}</strong></div>
+                  <div className="dash-account-card__turnover"><span>Итого <b>{money(wpBalance.total)}</b> · {Math.round(wpStockTotalKg)} кг</span></div>
+                </div>
+                <div className="dash-account-card dash-account-card--bank">
+                  <div className="dash-account-card__head"><div className="dash-account-card__icon"><CreditCard size={16} /></div><div className="dash-account-card__copy"><strong>Безнал</strong><span>Прогноз +{money(wpForecast.inBank)} / −{money(wpForecast.outBank)}</span></div></div>
+                  <div className="dash-account-card__balance"><span>Сейчас</span><strong>{money(wpBalance.bank)}</strong></div>
+                  <div className="dash-account-card__turnover"><span>На площадке <b>{wpStockTotalKg.toFixed(1)} кг</b></span></div>
+                </div>
+              </div>
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {!isLawyer && (
+          <>
+            <div className="dash-section--full">
+              <CollapsibleSection id="statuses" title="Статусы заявок" subtitle={`Всего ${totalOrdersCount}`} icon={<Clock size={16} />} accent="amber" badge={totalOrdersCount} defaultOpen={false}>
+              <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
+                {[
+                  { label: "Новые", count: newOrdersCount, color: "var(--adm-kraft)", bg: "var(--adm-kraft-pale)", line: "var(--adm-kraft-line)", status: "new", icon: <Clock size={14} /> },
+                  { label: "В работе", count: inProgressOrdersCount, color: "var(--adm-steel)", bg: "var(--adm-steel-pale)", line: "var(--adm-steel-line)", status: "in_progress", icon: <TrendingUp size={14} /> },
+                  { label: "Готов", count: readyOrdersCount, color: "var(--adm-indigo)", bg: "var(--adm-indigo-pale)", line: "var(--adm-indigo-line)", status: "ready", icon: <Package size={14} /> },
+                  { label: "Выполнены", count: completedOrdersCount, color: "var(--adm-pine)", bg: "var(--adm-pine-pale)", line: "var(--adm-pine-line)", status: "completed", icon: <CheckCircle size={14} /> },
+                  { label: "Отменены", count: rejectedOrdersCount, color: "var(--adm-rust)", bg: "var(--adm-rust-pale)", line: "var(--adm-rust-line)", status: "rejected", icon: <XCircle size={14} /> },
+                ].map((s) => (
+                  <Link key={s.status} href={`/${ADMIN_PATH}/orders?status=${s.status}`} prefetch={false} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "12px 8px", borderRadius: 10, background: s.bg, border: `1px solid ${s.line}`, textDecoration: "none", gap: 4 }}>
+                    <div style={{ color: s.color }}>{s.icon}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.count}</div>
+                    <div style={{ fontSize: 11, color: s.color, fontWeight: 600 }}>{s.label}</div>
+                  </Link>
+                ))}
+              </div>
+            </CollapsibleSection>
+            </div>
+
+            <div className="dash-section--full">
+              <CollapsibleSection id="recent" title="Заявки и склад" subtitle="Последние операции и остатки" icon={<Clock size={16} />} accent="gray" defaultOpen={false}>
+                <div className="admin-dash-grid" style={{ padding: 12, gap: 12 }}>
+                  <div className="admin-card" style={{ borderRadius: 10, border: "1px solid var(--adm-border-soft)" }}>
+                    <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--adm-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h3 style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>Последние заявки</h3>
+                      <Link href={`/${ADMIN_PATH}/orders`} style={{ fontSize: 11, color: "var(--adm-kraft)", fontWeight: 600 }} prefetch={false}>Все →</Link>
+                    </div>
+                    {recentOrders.length > 0 ? (
+                      <div>
+                        {recentOrders.map((order: any) => (
+                          <div key={order.id} style={{ padding: "8px 12px", borderBottom: "1px solid var(--adm-border-soft)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <div style={{ flex: 1, minWidth: 100 }}>
+                              <div style={{ fontWeight: 600, fontSize: 12 }}>{order.customerName}</div>
+                              <div style={{ fontSize: 10, color: "var(--adm-muted)" }}>{order.customerPhone}</div>
+                            </div>
+                            <span className={statusColors[order.status || "new"] || statusColors.new} style={{ fontSize: 9 }}>{statusLabels[order.status || "new"] || order.status}</span>
+                            {order.totalSum > 0 && <span style={{ fontSize: 12, fontWeight: 700 }}>{order.totalSum.toLocaleString("ru-RU")} ₽</span>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: 20, textAlign: "center", color: "var(--adm-muted)", fontSize: 12 }}>Заявок нет</div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div className="admin-card" style={{ borderRadius: 10, border: "1px solid var(--adm-border-soft)" }}>
+                      <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--adm-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <h3 style={{ fontSize: 13, fontWeight: 700, margin: 0, display: "flex", gap: 6, alignItems: "center" }}><AlertTriangle size={12} /> Мало на складе</h3>
+                        <Link href={`/${ADMIN_PATH}/products/bulk`} style={{ fontSize: 11, color: "var(--adm-kraft)", fontWeight: 600 }} prefetch={false}>Ред. →</Link>
+                      </div>
+                      {outOfStockProducts.length + lowStockProducts.length > 0 ? (
+                        <div>
+                          {[...outOfStockProducts, ...lowStockProducts].slice(0, 6).map((p: any) => {
+                            const qty = Number(p.stockQty) || 0;
+                            return (
+                              <Link key={p.id} href={`/${ADMIN_PATH}/products/${p.id}`} prefetch={false} style={{ padding: "8px 12px", borderBottom: "1px solid var(--adm-border-soft)", display: "flex", justifyContent: "space-between", gap: 8, textDecoration: "none" }}>
+                                <span style={{ fontSize: 12, color: "var(--adm-ink)", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: qty <= 0 ? "var(--adm-rust)" : "var(--adm-kraft)", background: qty <= 0 ? "var(--adm-rust-pale)" : "var(--adm-kraft-pale)", padding: "1px 6px", borderRadius: 999 }}>{qty <= 0 ? "нет" : `${qty} шт`}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{ padding: 16, textAlign: "center", color: "var(--adm-muted)", fontSize: 12 }}><CheckCircle2 size={12} /> Склад в норме</div>
+                      )}
+                    </div>
+
+                    <div className="admin-card" style={{ padding: 12, borderRadius: 10, border: "1px solid var(--adm-border-soft)" }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>Быстрые действия</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {[
+                          { href: `/${ADMIN_PATH}/products/new`, label: "Добавить товар", icon: <Plus size={12} /> },
+                          { href: `/${ADMIN_PATH}/products/bulk`, label: "Массовое редактирование", icon: <Pencil size={12} /> },
+                          { href: `/${ADMIN_PATH}/orders?status=new`, label: `Новые заявки (${newOrdersCount})`, icon: <ClipboardList size={12} /> },
+                          { href: `/${ADMIN_PATH}/warehouse?tab=deliveries`, label: "Доставки", icon: <Truck size={12} /> },
+                          { href: `/${ADMIN_PATH}/categories`, label: "Категории", icon: <FolderOpen size={12} /> },
+                        ].map((a) => (
+                          <Link key={a.href} href={a.href} prefetch={false} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 6, background: "var(--adm-paper-warm)", fontSize: 12, fontWeight: 500, color: "var(--adm-ink)", textDecoration: "none" }}>
+                            {a.icon}
+                            {a.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CollapsibleSection>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

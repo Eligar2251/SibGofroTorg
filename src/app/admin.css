@@ -40,6 +40,47 @@
   --adm-sand:       #8c8070;
   --adm-sand-pale:  #f0ede5;
 
+  /* ── Специальные токены темизации ──
+     ink-deep — поверхность, которая ВСЕГДА тёмная (сайдбар,
+     тёмные кнопки, активные чипы, экран входа). В тёмных темах
+     --adm-ink становится светлым, поэтому опираться на него для
+     «тёмных подложек с белым текстом» нельзя — был баг «белый
+     перекрывает всё». */
+  --adm-ink-deep:      #1a1a18;
+  --adm-ink-deep-soft: #2e2e2a;
+  /* Сайдбар и мобильная панель: поверхность и тексты.
+     По умолчанию — тёмные; тема «Бумага» делает их светлыми. */
+  --adm-sidebar-bg:           var(--adm-ink-deep);
+  --adm-sidebar-line:         rgba(255,255,255,0.07);
+  --adm-sidebar-text:         rgba(255,255,255,0.45);
+  --adm-sidebar-text-hover:   rgba(255,255,255,0.85);
+  --adm-sidebar-text-active:  #ffffff;
+  --adm-sidebar-muted:        rgba(255,255,255,0.22);
+  --adm-sidebar-hover-bg:     rgba(255,255,255,0.06);
+  --adm-sidebar-active-bg:    rgba(200,134,10,0.14);
+  /* on-accent — цвет текста на акцентном фоне (--adm-kraft).
+     Подбирается под контраст в каждой теме отдельно. */
+  --adm-on-accent:     #1a1a18;
+  /* on-* — цвет текста/иконок на сплошных подложках
+     pine/rust/steel. В светлых темах это белый; в тёмных темах
+     семантические цвета становятся светлыми пастельными,
+     поэтому текст на них должен быть тёмным. */
+  --adm-on-pine:       #ffffff;
+  --adm-on-rust:       #ffffff;
+  --adm-on-steel:      #ffffff;
+  /* Плейсхолдеры и стрелка селекта — тоже зависят от темы. */
+  --adm-placeholder:   #9a958a;
+  --adm-select-arrow:  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%236b6b60' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+
+  /* Дополнительные семантические цвета (индиго/бирюза) — раньше
+     были захардкожены светлыми и ломались в тёмных темах. */
+  --adm-indigo:      #4338ca;
+  --adm-indigo-pale: #f0f0ff;
+  --adm-indigo-line: #c7c7f5;
+  --adm-teal:        #0d7377;
+  --adm-teal-pale:   #f0fafa;
+  --adm-teal-line:   #9ae0e0;
+
   --adm-r: 10px;
   --adm-r-sm: 6px;
   --adm-r-lg: 14px;
@@ -265,7 +306,7 @@
 /* Активный .admin-check — когда чекбокс внутри отмечен */
 .admin-check:has(input:checked) {
   border-color: var(--adm-kraft-line);
-  background: linear-gradient(135deg, var(--adm-kraft-pale), rgba(253,243,220,0.5));
+  background: linear-gradient(135deg, var(--adm-kraft-pale), var(--adm-card));
 }
 
 .admin-check:has(input:checked):hover {
@@ -299,10 +340,14 @@
   inset: 0 auto 0 0;
   z-index: 40;
   height: 100vh;
-  background: var(--adm-ink);
+  background: var(--adm-sidebar-bg);
   border-right: 2px solid var(--adm-kraft);
   overflow: hidden;
-  transition: transform 0.22s ease, opacity 0.18s ease;
+  /* Раскрытие/скрытие: transform+opacity идут с ОДНОЙ кривой и
+     длительностью, что и margin-left у контента (ниже), — панель
+     и контент двигаются как одно целое, без рассинхрона. */
+  transition: transform 0.24s cubic-bezier(0.33, 1, 0.68, 1),
+              opacity 0.24s cubic-bezier(0.33, 1, 0.68, 1);
   will-change: transform;
 }
 
@@ -338,7 +383,7 @@
   align-items: flex-start;
   justify-content: center;
   gap: 5px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid var(--adm-sidebar-line);
   position: relative;
   flex-shrink: 0;
 }
@@ -354,9 +399,9 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.55);
+  border: 1px solid var(--adm-sidebar-line);
+  background: var(--adm-sidebar-hover-bg);
+  color: var(--adm-sidebar-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -414,7 +459,7 @@
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  color: rgba(255,255,255,0.22);
+  color: var(--adm-sidebar-muted);
   margin-top: 2px;
   font-weight: 500;
 }
@@ -427,7 +472,7 @@
   flex-direction: column;
   gap: 1px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.08) transparent;
+  scrollbar-color: var(--adm-sidebar-line) transparent;
 }
 
 /* Разделитель секций */
@@ -448,7 +493,7 @@
   border-radius: var(--adm-r-sm);
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255,255,255,0.45);
+  color: var(--adm-sidebar-text);
   text-decoration: none;
   transition: color 0.15s, background 0.15s;
   position: relative;
@@ -464,8 +509,8 @@
 }
 
 .admin-sidebar__link:hover {
-  color: #fff;
-  background: rgba(255,255,255,0.06);
+  color: var(--adm-sidebar-text-hover);
+  background: var(--adm-sidebar-hover-bg);
 }
 
 .admin-sidebar__link:hover svg {
@@ -474,8 +519,8 @@
 }
 
 .admin-sidebar__link--active {
-  color: #fff;
-  background: rgba(200,134,10,0.14);
+  color: var(--adm-sidebar-text-active);
+  background: var(--adm-sidebar-active-bg);
   font-weight: 600;
 }
 
@@ -497,7 +542,7 @@
 
 .admin-sidebar__footer {
   padding: 8px 10px 12px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid var(--adm-sidebar-line);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -512,7 +557,7 @@
   padding: 8px 10px;
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255,255,255,0.3);
+  color: var(--adm-sidebar-text);
   background: none;
   border: none;
   border-radius: var(--adm-r-sm);
@@ -526,8 +571,8 @@
 }
 
 .admin-sidebar__footer-link:hover {
-  color: rgba(255,255,255,0.7);
-  background: rgba(255,255,255,0.04);
+  color: var(--adm-sidebar-text-hover);
+  background: var(--adm-sidebar-hover-bg);
 }
 
 .admin-sidebar__logout:hover {
@@ -543,7 +588,7 @@
   left: 0;
   right: 0;
   z-index: 50;
-  background: var(--adm-ink);
+  background: var(--adm-sidebar-bg);
   border-bottom: 2px solid var(--adm-kraft);
   padding: 0 16px;
   height: 56px;
@@ -563,7 +608,7 @@
   font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--adm-sidebar-text-active);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -590,7 +635,7 @@
   min-width: 0;
   height: 40px;
   padding: 0 4px;
-  color: rgba(255,255,255,0.48);
+  color: var(--adm-sidebar-text);
   border-radius: var(--adm-r-sm);
   transition: color 0.15s, background-color 0.15s;
   display: flex;
@@ -601,18 +646,18 @@
   flex-shrink: 0;
 }
 
+.admin-mobile-bar__link:hover,
+.admin-mobile-bar__link--active {
+  color: var(--adm-kraft-mid);
+  background: var(--adm-sidebar-hover-bg);
+}
+
 .admin-mobile-bar__link svg {
   display: block;
   width: 17px;
   height: 17px;
   max-width: 100%;
   flex: 0 0 auto;
-}
-
-.admin-mobile-bar__link:hover,
-.admin-mobile-bar__link--active {
-  color: var(--adm-kraft-mid);
-  background: rgba(255,255,255,0.08);
 }
 
 @media (max-width: 360px) {
@@ -638,7 +683,11 @@
 @media (min-width: 1024px) {
   .admin-content {
     margin-left: 240px;
-    transition: margin-left 0.22s ease;
+    /* Та же кривая и длительность, что у transform сайдбара, —
+       контент и панель раскрываются синхронно и плавно.
+       margin-right — для раскладки «сайдбар справа». */
+    transition: margin-left 0.24s cubic-bezier(0.33, 1, 0.68, 1),
+                margin-right 0.24s cubic-bezier(0.33, 1, 0.68, 1);
   }
 
   .admin-shell--sidebar-hidden .admin-content {
@@ -686,7 +735,7 @@
   border: 1px solid var(--adm-kraft);
   border-left: none;
   border-radius: 0 999px 999px 0;
-  background: var(--adm-ink);
+  background: var(--adm-ink-deep);
   color: var(--adm-kraft-mid);
 
   align-items: center;
@@ -790,7 +839,7 @@
    ══════════════════════════════════════ */
 .admin-login {
   min-height: 100vh;
-  background: var(--adm-ink);
+  background: var(--adm-ink-deep);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -857,7 +906,7 @@
   font-family: var(--adm-font-head);
   font-weight: 700;
   font-size: 22px;
-  color: var(--adm-ink);
+  color: var(--adm-on-accent);
   box-shadow: 0 4px 20px rgba(200,134,10,0.35);
 }
 
@@ -1059,7 +1108,7 @@
   font-weight: 600;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.14s ease;
   text-decoration: none;
   font-family: var(--adm-font-body);
   line-height: 1.2;
@@ -1073,10 +1122,12 @@
   cursor: not-allowed;
 }
 
-/* Основная — крафтовая */
+/* Основная — крафтовая. Цвет текста на акценте задаёт тема
+   (--adm-on-accent): на жёлтом акценте тёмных тем нужен тёмный
+   текст, на синем «Бумаги» — белый. */
 .admin-btn--primary {
   background: var(--adm-kraft);
-  color: var(--adm-ink);
+  color: var(--adm-on-accent);
   border-color: var(--adm-kraft);
   font-weight: 700;
 }
@@ -1084,19 +1135,20 @@
 .admin-btn--primary:hover:not(:disabled) {
   background: var(--adm-kraft-mid);
   border-color: var(--adm-kraft-mid);
-  box-shadow: 0 2px 10px rgba(200,134,10,0.3);
+  box-shadow: 0 2px 10px var(--adm-kraft-line);
 }
 
-/* Тёмная — чернильная */
+/* Тёмная — чернильная. Поверхность ink-deep остаётся тёмной
+   в любой теме, поэтому белый текст всегда читаем. */
 .admin-btn--navy {
-  background: var(--adm-ink);
+  background: var(--adm-ink-deep);
   color: #fff;
-  border-color: var(--adm-ink);
+  border-color: var(--adm-ink-deep);
 }
 
 .admin-btn--navy:hover:not(:disabled) {
-  background: var(--adm-ink-soft);
-  border-color: var(--adm-ink-soft);
+  background: var(--adm-ink-deep-soft);
+  border-color: var(--adm-ink-deep-soft);
 }
 
 /* Призрачная */
@@ -1126,7 +1178,7 @@
 
 /* Контурная */
 .admin-btn--outline {
-  background: #fff;
+  background: var(--adm-card);
   color: var(--adm-ink);
   border-color: var(--adm-border-mid);
 }
@@ -1220,7 +1272,12 @@
 .admin-select:focus,
 .admin-textarea:focus {
   border-color: var(--adm-kraft);
-  box-shadow: 0 0 0 3px rgba(200,134,10,0.14);
+  box-shadow: 0 0 0 3px var(--adm-kraft-line);
+}
+
+.admin-input::placeholder,
+.admin-textarea::placeholder {
+  color: var(--adm-placeholder);
 }
 
 .admin-textarea {
@@ -1230,7 +1287,8 @@
 
 .admin-select {
   cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%236b6b60' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Стрелка — переменная: в тёмных темах рисуется светлой. */
+  background-image: var(--adm-select-arrow);
   background-repeat: no-repeat;
   background-position: right 11px center;
   padding-right: 32px;
@@ -1358,7 +1416,7 @@
 
 .admin-table td {
   padding: 11px 14px;
-  border-bottom: 1px solid rgba(219,216,208,0.5);
+  border-bottom: 1px solid var(--adm-border-soft);
   vertical-align: middle;
   color: var(--adm-ink-soft);
 }
@@ -1497,15 +1555,15 @@
 }
 
 .admin-badge--indigo {
-  background: #f0f0ff;
-  color: #4338ca;
-  border-color: #c7c7f5;
+  background: var(--adm-indigo-pale);
+  color: var(--adm-indigo);
+  border-color: var(--adm-indigo-line);
 }
 
 .admin-badge--teal {
-  background: #f0fafa;
-  color: #0d7377;
-  border-color: #9ae0e0;
+  background: var(--adm-teal-pale);
+  color: var(--adm-teal);
+  border-color: var(--adm-teal-line);
 }
 
 .admin-badge--muted {
@@ -1533,7 +1591,7 @@
   background: var(--adm-card);
   color: var(--adm-ink-muted);
   text-decoration: none;
-  transition: all 0.13s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.13s ease;
   letter-spacing: 0.02em;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1546,13 +1604,13 @@
 }
 
 .admin-filter--active {
-  background: var(--adm-ink);
+  background: var(--adm-ink-deep);
   color: #fff;
-  border-color: var(--adm-ink);
+  border-color: var(--adm-ink-deep);
 }
 
 .admin-filter--active:hover {
-  background: var(--adm-ink-soft);
+  background: var(--adm-ink-deep-soft);
   color: #fff;
 }
 
@@ -1933,15 +1991,17 @@
 
 .admin-status__btn--primary {
   background: var(--adm-pine);
-  color: #fff;
+  color: var(--adm-on-pine);
 }
 
 .admin-status__btn--primary:hover:not(:disabled) {
-  background: #163a22;
+  /* Чуть темнее/светлее в зависимости от темы — brightness
+     работает в обе стороны и не ломает контраст. */
+  filter: brightness(0.92);
 }
 
 .admin-status__btn--outline {
-  background: #fff;
+  background: var(--adm-card);
   color: var(--adm-ink);
   border-color: var(--adm-border-mid);
 }
@@ -1952,7 +2012,7 @@
 }
 
 .admin-status__btn--outline-red {
-  background: #fff;
+  background: var(--adm-card);
   color: var(--adm-rust);
   border-color: var(--adm-rust-line);
 }
@@ -1969,7 +2029,7 @@
 }
 
 .admin-status__btn--delete:hover:not(:disabled) {
-  background: #fbe3de;
+  filter: brightness(0.96);
   border-color: var(--adm-rust);
 }
 
@@ -2006,9 +2066,9 @@
   padding: 16px;
 }
 
-/* Отступ под фиксированную мобильную панель (высота 104px ≤1099px),
+/* Отступ под фиксированную мобильную панель (высота 104px ≤1023px),
    чтобы модалка не пряталась под неё и появлялась по центру, а не «снизу» */
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   .admin-modal-overlay {
     padding-top: 116px;
   }
@@ -2158,7 +2218,7 @@
   padding: 28px 16px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.14s ease;
   background: var(--adm-paper);
 }
 
@@ -2215,7 +2275,7 @@
   left: 4px;
   padding: 2px 5px;
   background: var(--adm-kraft);
-  color: var(--adm-ink);
+  color: var(--adm-on-accent);
   font-size: 9px;
   font-weight: 700;
   border-radius: 3px;
@@ -2230,7 +2290,7 @@
   width: 22px;
   height: 22px;
   background: var(--adm-rust);
-  color: #fff;
+  color: var(--adm-on-rust);
   border: none;
   border-radius: 50%;
   display: flex;
@@ -2489,17 +2549,34 @@ body:has(.admin-login) > main {
 /* ══════════════════════════════════════
    ДАШБОРД: финансовая отчётность и оплаченные доставки
    ══════════════════════════════════════ */
-.dash-report-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(330px, .85fr); align-items: start; gap: 20px; margin-bottom: 24px; }
-.dash-finance, .dash-deliveries { min-width: 0; overflow: hidden; }
-.dash-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; background: linear-gradient(115deg, var(--adm-paper), var(--adm-card)); border-bottom: 1px solid var(--adm-border); }
+/* ── Дашборд: 2 колонки вместо 1 ──
+   Основной контейнер для всех раскрывающихся блоков.
+   На десктопе — 2 колонки, на <1100px — 1 колонка.
+   Блоки типа «Главные показатели» и «Статусы» растягиваются на 2 колонки через .dash-section--full
+*/
+.dash-report-grid,
+.dash-main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; margin-bottom: 20px; }
+.dash-report-grid .dash-section,
+.dash-main-grid .dash-section { margin-bottom: 0; }
+.dash-finance-flat,
+.dash-deliveries-flat { display: flex; flex-direction: column; background: var(--adm-card); min-width: 0; }
+.dash-finance-flat .dash-finance-totals,
+.dash-finance-flat .dash-account-grid,
+.dash-deliveries-flat .dash-delivery-list { border-left: none; border-right: none; border-radius: 0; }
+/* Внутренняя карточка секции: сама секция уже карточка,
+   поэтому вложенную рисуем без рамки и скруглений — плоский слой без двойных углов. */
+.dash-inner-card { margin: 0 !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; }
+.dash-finance, .dash-deliveries { min-width: 0; overflow: hidden; background: transparent; }
+/* Старый внутренний заголовок (dash-section-head) внутри collapsible — теперь просто описание, без градиента и скруглений */
+.dash-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 12px 16px; background: transparent; border-bottom: 1px solid var(--adm-border); }
 .dash-section-head > div { min-width: 0; }
 .dash-section-head .admin-btn { display: inline-flex; align-items: center; flex-wrap: nowrap; white-space: nowrap; }
 .dash-section-head .admin-btn > svg { display: block; flex: 0 0 auto; margin: 0; }
 .dash-section-head h2 { margin: 2px 0 3px; color: var(--adm-ink); font-family: var(--adm-font-head); font-size: 18px; }
 .dash-section-head p { margin: 0; color: var(--adm-sand); font-size: 11px; line-height: 1.4; }
 .dash-section-kicker { color: var(--adm-steel); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
-.dash-finance-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px 16px; background: var(--adm-paper); border-bottom: 1px solid var(--adm-border); }
-.dash-finance-total { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 12px 13px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: 9px; box-shadow: var(--adm-sh-xs); }
+.dash-finance-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px 16px; background: var(--adm-paper-warm); border-bottom: 1px solid var(--adm-border); border-top: 1px solid var(--adm-border); }
+.dash-finance-total { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 12px 14px; background: var(--adm-card); border: 1px solid var(--adm-border-soft); border-radius: 10px; box-shadow: none; transition: border-color 0.15s, box-shadow 0.15s; }
 .dash-finance-total__icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: 0 0 34px; color: currentColor; background: color-mix(in srgb, currentColor 10%, transparent); border-radius: 9px; line-height: 0; }
 .dash-finance-total__icon > svg { display: block; width: 18px; height: 18px; margin: 0; }
 .dash-finance-total__content { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: center; min-width: 0; overflow: hidden; }
@@ -2509,8 +2586,8 @@ body:has(.admin-login) > main {
 .dash-finance-total--out { color: var(--adm-rust); border-color: var(--adm-rust-line); }
 .dash-finance-total--bank { color: var(--adm-steel); border-color: var(--adm-steel-line); }
 .dash-finance-total--cash { color: var(--adm-kraft); border-color: var(--adm-kraft-line); }
-.dash-account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px 16px; }
-.dash-account-card { overflow: hidden; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: 11px; box-shadow: var(--adm-sh-xs); }
+.dash-account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px 16px; background: var(--adm-paper); border-bottom: 1px solid var(--adm-border); }
+.dash-account-card { overflow: hidden; background: var(--adm-card); border: 1px solid var(--adm-border-soft); border-radius: 10px; box-shadow: none; }
 .dash-account-card--bank { border-color: var(--adm-steel-line); }
 .dash-account-card--cash { border-color: var(--adm-kraft-line); }
 .dash-account-card__head { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 11px 12px; background: var(--adm-paper); border-bottom: 1px solid var(--adm-border); }
@@ -2584,7 +2661,8 @@ body:has(.admin-login) > main {
 }
 
 @media (max-width: 1050px) {
-  .dash-report-grid { grid-template-columns: 1fr; }
+  .dash-report-grid,
+  .dash-main-grid { grid-template-columns: 1fr; }
   .dash-delivery-list { max-height: 620px; }
 }
 
@@ -2621,7 +2699,7 @@ body:has(.admin-login) > main {
   overscroll-behavior: contain;
 }
 
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   /* Под мобильной шапкой 104px + верхний отступ оверлея 116px. */
   .wh-modal {
     max-height: calc(100dvh - 136px);
@@ -2880,6 +2958,7 @@ body:has(.admin-modal-overlay) {
 .spicker__check--on {
   background: var(--adm-pine);
   border-color: var(--adm-pine);
+  color: var(--adm-on-pine);
 }
 
 .spicker__opt-text {
@@ -2950,7 +3029,7 @@ body:has(.admin-modal-overlay) {
   gap: 5px;
   max-width: 100%;
   padding: 3px 9px;
-  background: var(--adm-ink);
+  background: var(--adm-ink-deep);
   color: #fff;
   border: none;
   border-radius: 999px;
@@ -2969,6 +3048,7 @@ body:has(.admin-modal-overlay) {
 
 .spicker__chip:hover {
   background: var(--adm-rust);
+  color: var(--adm-on-rust);
 }
 
 /* ── Позиции документа ── */
@@ -3157,7 +3237,7 @@ body:has(.admin-modal-overlay) {
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.13s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.13s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -3165,13 +3245,13 @@ body:has(.admin-modal-overlay) {
 .wh-direction__btn--in.wh-direction__btn--active {
   background: var(--adm-pine);
   border-color: var(--adm-pine);
-  color: #fff;
+  color: var(--adm-on-pine);
 }
 
 .wh-direction__btn--out.wh-direction__btn--active {
   background: var(--adm-rust);
   border-color: var(--adm-rust);
-  color: #fff;
+  color: var(--adm-on-rust);
 }
 
 @media (max-width: 600px) {
@@ -3208,7 +3288,7 @@ body:has(.admin-modal-overlay) {
   cursor: pointer;
   font-family: inherit;
   text-align: left;
-  transition: all 0.12s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.12s ease;
   min-width: 0;
   max-width: 100%;
 }
@@ -3224,8 +3304,8 @@ body:has(.admin-modal-overlay) {
 }
 
 .wh-deal-chip--active {
-  background: var(--adm-ink);
-  border-color: var(--adm-ink);
+  background: var(--adm-ink-deep);
+  border-color: var(--adm-ink-deep);
   color: #fff;
 }
 
@@ -3496,7 +3576,7 @@ body:has(.admin-modal-overlay) {
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.13s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.13s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -3507,8 +3587,8 @@ body:has(.admin-modal-overlay) {
 }
 
 .wh-linkmode__btn--active {
-  background: var(--adm-ink);
-  border-color: var(--adm-ink);
+  background: var(--adm-ink-deep);
+  border-color: var(--adm-ink-deep);
   color: #fff;
 }
 
@@ -3830,8 +3910,9 @@ body:has(.admin-modal-overlay) {
 /* Баланс по контрагентам */
 .bank-due {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 @media (max-width: 760px) {
@@ -3845,6 +3926,7 @@ body:has(.admin-modal-overlay) {
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-r-lg);
   padding: 14px 16px;
+  min-width: 0;
 }
 
 .bank-due__title {
@@ -3870,17 +3952,20 @@ body:has(.admin-modal-overlay) {
 .bank-due__row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 8px;
   padding: 8px 0;
   border-top: 1px solid rgba(219, 216, 208, 0.45);
+  text-align: left;
 }
 
 .bank-due__name {
+  flex: 1 1 auto;
   min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--adm-ink);
+  text-align: left;
 }
 
 .bank-due__meta {
@@ -3893,10 +3978,12 @@ body:has(.admin-modal-overlay) {
 
 .bank-due__sum {
   flex-shrink: 0;
+  margin-left: auto;
   font-family: var(--adm-font-head);
   font-size: 16px;
   font-weight: 700;
   white-space: nowrap;
+  text-align: right;
 }
 
 .bank-due__sum--debt {
@@ -3946,7 +4033,7 @@ body:has(.admin-modal-overlay) {
 .bank-period-presets { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 7px; padding: 0 4px; }
 .bank-period-presets > span { margin-right: 3px; color: var(--adm-sand); font-size: 9px; font-weight: 750; text-transform: uppercase; }
 .bank-period-presets button { padding: 3px 8px; color: var(--adm-steel); background: var(--adm-steel-pale); border: 1px solid var(--adm-steel-line); border-radius: 999px; cursor: pointer; font: inherit; font-size: 9px; font-weight: 700; }
-.bank-period-presets button:hover { color: #fff; background: var(--adm-steel); }
+.bank-period-presets button:hover { color: var(--adm-on-steel); background: var(--adm-steel); }
 
 @media (max-width: 640px) {
   .bank-toolbar__search {
@@ -4054,13 +4141,16 @@ body:has(.admin-modal-overlay) {
   border-color: var(--adm-border-mid);
 }
 
+/* Полоски «ожидания»: вторая полоса замешивается из цвета
+   карточки и акцента темы, поэтому в любой теме узор остаётся
+   деликатным и не светит белым (раньше был захардкожен #fdfaf2). */
 .bank-pay--pending {
   background: repeating-linear-gradient(
     -45deg,
     var(--adm-card),
     var(--adm-card) 14px,
-    #fdfaf2 14px,
-    #fdfaf2 28px
+    color-mix(in srgb, var(--adm-card) 94%, var(--adm-kraft)) 14px,
+    color-mix(in srgb, var(--adm-card) 94%, var(--adm-kraft)) 28px
   );
   border-style: dashed;
   border-color: var(--adm-kraft-line);
@@ -4337,7 +4427,7 @@ body:has(.admin-modal-overlay) {
 .popup-admin-intro {
   justify-content: space-between;
   padding: 18px 20px;
-  background: linear-gradient(120deg, var(--adm-ink), var(--adm-ink-soft));
+  background: linear-gradient(120deg, var(--adm-ink-deep), var(--adm-ink-deep-soft));
   border-bottom: 3px solid var(--adm-kraft);
   border-radius: var(--adm-r-lg);
   color: #fff;
@@ -4353,7 +4443,7 @@ body:has(.admin-modal-overlay) {
 .popup-admin-preview { --preview-accent: var(--adm-pine); position: sticky; top: 80px; overflow: hidden; background: #fff; border: 1px solid var(--adm-border-mid); border-radius: 12px; box-shadow: var(--adm-sh-md); }
 .popup-admin-preview--promo { --preview-accent: var(--adm-kraft); }
 .popup-admin-preview--important { --preview-accent: var(--adm-rust); }
-.popup-admin-preview__bar { display: flex; align-items: center; gap: 7px; padding: 10px 12px; color: #fff; background: var(--adm-ink); border-bottom: 3px solid var(--preview-accent); font-size: 11px; font-weight: 700; }
+.popup-admin-preview__bar { display: flex; align-items: center; gap: 7px; padding: 10px 12px; color: #fff; background: var(--adm-ink-deep); border-bottom: 3px solid var(--preview-accent); font-size: 11px; font-weight: 700; }
 .popup-admin-preview__bar svg:last-child { margin-left: auto; }
 .popup-admin-preview > img { width: 100%; height: 150px; object-fit: cover; }
 .popup-admin-preview__body { padding: 22px; }
@@ -4386,9 +4476,39 @@ body:has(.admin-modal-overlay) {
 
 /* Ручной остаток на складе */
 .stock-inline-editor { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
-.stock-inline-editor input { width: 76px; height: 32px; padding: 4px 7px; text-align: right; color: var(--adm-ink); background: #fff; border: 1px solid var(--adm-border-mid); border-radius: 5px; font-weight: 700; }
+.stock-inline-editor input { width: 76px; height: 32px; padding: 4px 7px; text-align: right; color: var(--adm-ink); background: var(--adm-card); border: 1px solid var(--adm-border-mid); border-radius: 5px; font-weight: 700; }
 .stock-inline-editor button { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; padding: 0; color: var(--adm-pine); background: var(--adm-pine-pale); border: 1px solid var(--adm-pine-line); border-radius: 5px; }
 .stock-inline-editor button:disabled { opacity: .35; cursor: default; }
+
+/* Закупочная цена в таблице склада — менее контрастная, чтобы не
+   бросалась в глаза: приглушённый текст и рамка, проявляется при
+   наведении/фокусе. */
+.stock-inline-editor--purchase input {
+  color: var(--adm-sand);
+  background: transparent;
+  border-color: var(--adm-border);
+  font-weight: 500;
+}
+.stock-inline-editor--purchase input:hover,
+.stock-inline-editor--purchase input:focus {
+  color: var(--adm-ink);
+  border-color: var(--adm-border-mid);
+}
+.stock-inline-editor--purchase button {
+  color: var(--adm-sand);
+  background: transparent;
+  border-color: var(--adm-border);
+}
+.stock-inline-editor--purchase button:hover:not(:disabled),
+.stock-inline-editor--purchase button:focus-visible {
+  color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+  border-color: var(--adm-pine-line);
+}
+
+/* Разница «продажа − закуп» */
+.wh-stock-diff { font-weight: 700; font-size: 12px; white-space: nowrap; }
+
 .wh-counterparty-details { margin: 10px 0 14px; padding: 10px 12px; background: var(--adm-paper); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
 .wh-counterparty-details summary { cursor: pointer; color: var(--adm-steel); font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; }
 .wh-counterparty-details[open] summary { margin-bottom: 10px; }
@@ -4450,9 +4570,9 @@ body:has(.admin-modal-overlay) {
 .bulk-step strong { color: inherit; font-size: 12px; }
 .bulk-step small { margin-top: 2px; font-size: 10px; font-weight: 400; }
 .bulk-step--active { color: var(--adm-steel); background: var(--adm-steel-pale); border-color: var(--adm-steel-line); box-shadow: inset 0 -3px 0 var(--adm-steel); }
-.bulk-step--active > span { color: #fff; background: var(--adm-steel); }
+.bulk-step--active > span { color: var(--adm-on-steel); background: var(--adm-steel); }
 .bulk-step--done { color: var(--adm-pine); border-color: var(--adm-pine-line); }
-.bulk-step--done > span { color: #fff; background: var(--adm-pine); }
+.bulk-step--done > span { color: var(--adm-on-pine); background: var(--adm-pine); }
 .bulk-toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); }
 .bulk-toolbar > div:first-child { flex: 1; }
 .bulk-toolbar strong, .bulk-toolbar span { display: block; }
@@ -4560,7 +4680,7 @@ body:has(.admin-modal-overlay) {
   width: 18px;
   height: 18px;
   background: var(--adm-rust);
-  color: #fff;
+  color: var(--adm-on-rust);
   border: none;
   border-radius: 50%;
   display: flex;
@@ -4603,7 +4723,7 @@ body:has(.admin-modal-overlay) {
 .cp-table__contacts a { color: var(--adm-steel); }
 .cp-table__turnover { color: var(--adm-pine); white-space: nowrap; }
 .cp-table__row--expanded { background: var(--adm-steel-pale) !important; }
-.cp-table__details-row > td { padding: 0 !important; background: #f9faf9; }
+.cp-table__details-row > td { padding: 0 !important; background: var(--adm-paper); }
 .cp-table__details { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(340px, 1.2fr); gap: 20px; padding: 18px 22px; border-bottom: 2px solid var(--adm-steel-line); }
 .cp-table__details h4 { margin: 0 0 10px; color: var(--adm-ink); font-family: var(--adm-font-head); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .cp-table__profile dl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin: 0; }
@@ -4704,7 +4824,7 @@ body:has(.admin-modal-overlay) {
 .admin-loading__stats span { height: 92px; }
 .admin-loading__table { display: flex; flex-direction: column; gap: 1px; padding: 8px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); }
 .admin-loading__table span { height: 46px; }
-.admin-loading span { display: block; overflow: hidden; background: linear-gradient(90deg, var(--adm-paper-warm) 25%, #faf9f6 50%, var(--adm-paper-warm) 75%); background-size: 200% 100%; border-radius: 6px; animation: admin-loading-shimmer 1.2s linear infinite; }
+.admin-loading span { display: block; overflow: hidden; background: linear-gradient(90deg, var(--adm-paper-warm) 25%, var(--adm-card) 50%, var(--adm-paper-warm) 75%); background-size: 200% 100%; border-radius: 6px; animation: admin-loading-shimmer 1.2s linear infinite; }
 .admin-loading p { margin: 0; color: var(--adm-sand); font-size: 11px; text-align: center; }
 @keyframes admin-loading-shimmer { to { background-position: -200% 0; } }
 @keyframes admin-loading-in { from { opacity: 0; } }
@@ -4899,8 +5019,8 @@ body:has(.admin-modal-overlay) {
 }
 
 .deliv-day--active {
-  background: var(--adm-ink);
-  border-color: var(--adm-ink);
+  background: var(--adm-ink-deep);
+  border-color: var(--adm-ink-deep);
   color: rgba(255, 255, 255, 0.7);
   box-shadow: var(--adm-sh-sm);
 }
@@ -5275,7 +5395,7 @@ body:has(.admin-modal-overlay) {
 
 /* На мобильных опускаем колокольчик ниже двухрядной шапки (104 px):
    в углу он перекрывал кнопки «Сайт»/«Выйти» — их было не нажать. */
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   .admin-notify { top: 112px; }
 }
 
@@ -5303,7 +5423,7 @@ body:has(.admin-modal-overlay) {
 .admin-notify__btn--active {
   color: var(--adm-rust);
   border-color: var(--adm-rust-line);
-  background: #fff7ed;
+  background: var(--adm-rust-pale);
 }
 
 .admin-notify__badge {
@@ -5315,11 +5435,11 @@ body:has(.admin-modal-overlay) {
   padding: 0 5px;
   border-radius: 999px;
   background: var(--adm-rust);
-  color: #fff;
+  color: var(--adm-on-rust);
   font-size: 10px;
   line-height: 19px;
   font-weight: 800;
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px var(--adm-card);
 }
 
 .admin-notify__panel {
@@ -5331,7 +5451,7 @@ body:has(.admin-modal-overlay) {
   overflow: hidden;
   border-radius: 18px;
   border: 1px solid var(--adm-border-mid);
-  background: #fff;
+  background: var(--adm-card);
   box-shadow: var(--adm-sh-lg);
   display: flex;
   flex-direction: column;
@@ -5370,7 +5490,7 @@ body:has(.admin-modal-overlay) {
   height: 30px;
   border-radius: 9px;
   border: 1px solid var(--adm-border-mid);
-  background: #fff;
+  background: var(--adm-card);
   color: var(--adm-ink);
   display: inline-flex;
   align-items: center;
@@ -5395,7 +5515,7 @@ body:has(.admin-modal-overlay) {
   border: 1px solid var(--adm-border-soft);
   text-decoration: none;
   color: inherit;
-  background: #fff;
+  background: var(--adm-card);
 }
 
 .admin-notify__item:hover {
@@ -5420,7 +5540,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .admin-notify__item--danger .admin-notify__item-icon {
-  background: #fff;
+  background: var(--adm-card);
   color: var(--adm-rust);
 }
 
@@ -5510,7 +5630,7 @@ body:has(.admin-modal-overlay) {
   border-radius: var(--adm-r-sm);
   color: var(--adm-ink-soft);
   cursor: pointer;
-  transition: all 0.13s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.13s ease;
   flex-shrink: 0;
 }
 
@@ -5690,7 +5810,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-th--weekend {
-  background: #f7e9bf;
+  background: var(--adm-kraft-pale);
   color: var(--adm-kraft);
 }
 
@@ -5772,7 +5892,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-row:hover .whsal-td {
-  background: #faf8f2;
+  background: var(--adm-paper-warm);
 }
 
 .whsal-total-row .whsal-td {
@@ -5950,11 +6070,11 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-day--weekend {
-  background: #fdf3d3;
+  background: var(--adm-kraft-pale);
 }
 
 .whsal-row:hover .whsal-day--weekend {
-  background: #f9ecbf;
+  background: color-mix(in srgb, var(--adm-kraft-pale) 80%, var(--adm-kraft-mid));
 }
 
 .whsal-day--paid {
@@ -6001,7 +6121,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-day--scheduled {
-  background: #e8eef6;
+  background: var(--adm-steel-pale);
   box-shadow: inset 0 0 0 1px var(--adm-steel-line);
 }
 
@@ -6150,7 +6270,7 @@ body:has(.admin-modal-overlay) {
 
 .whsal-legend__swatch--paid    { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
 .whsal-legend__swatch--planned { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
-.whsal-legend__swatch--weekend { background: #fdf3d3; border-color: var(--adm-kraft-line); }
+.whsal-legend__swatch--weekend { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
 .whsal-legend__swatch--rent    { background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
 
 .whsal-hint {
@@ -6314,7 +6434,7 @@ body:has(.admin-modal-overlay) {
   border-right: 1px solid var(--adm-border);
   cursor: pointer;
   color: var(--adm-ink-muted);
-  transition: all 0.12s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.12s ease;
   font-family: var(--adm-font-body);
 }
 
@@ -6329,7 +6449,7 @@ body:has(.admin-modal-overlay) {
 
 .whsal-seg__btn--cash { background: var(--adm-pine-pale); color: var(--adm-pine); }
 .whsal-seg__btn--bank { background: var(--adm-steel-pale); color: var(--adm-steel); }
-.whsal-seg__btn--rent { background: #f0f0ff; color: #4338ca; }
+.whsal-seg__btn--rent { background: var(--adm-indigo-pale); color: var(--adm-indigo); }
 
 .whsal-check {
   display: flex;
@@ -6385,7 +6505,7 @@ body:has(.admin-modal-overlay) {
   align-items: center;
   justify-content: center;
   gap: 1px;
-  transition: all 0.12s ease;
+  transition: background-color, color, border-color, box-shadow, transform, opacity 0.12s ease;
   padding: 2px;
 }
 
@@ -6402,7 +6522,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .whsal-cal-day--off {
-  background: #fdf3d3;
+  background: var(--adm-kraft-pale);
   border-color: var(--adm-kraft);
   color: var(--adm-kraft);
   font-weight: 800;
@@ -6538,7 +6658,7 @@ body:has(.admin-modal-overlay) {
   padding: 8px 12px;
   border: 1px solid var(--adm-border-mid);
   border-radius: 8px;
-  background: #fff;
+  background: var(--adm-card);
   cursor: pointer;
   text-align: left;
   transition: border-color 0.15s, background 0.15s;
@@ -6566,7 +6686,7 @@ body:has(.admin-modal-overlay) {
   border-radius: 4px;
   font-size: 10px;
   font-weight: 700;
-  color: #fff;
+  color: var(--adm-on-pine);
   background: var(--adm-pine);
 }
 
@@ -6758,15 +6878,15 @@ body:has(.admin-modal-overlay) {
 
 .cashc-seg__btn--cash {
   background: var(--adm-pine);
-  color: #fff;
+  color: var(--adm-on-pine);
 }
-.cashc-seg__btn--cash:hover { background: var(--adm-pine); }
+.cashc-seg__btn--cash:hover { background: var(--adm-pine); filter: brightness(0.94); }
 
 .cashc-seg__btn--transfer {
   background: var(--adm-steel);
-  color: #fff;
+  color: var(--adm-on-steel);
 }
-.cashc-seg__btn--transfer:hover { background: var(--adm-steel); }
+.cashc-seg__btn--transfer:hover { background: var(--adm-steel); filter: brightness(0.94); }
 
 .cashc-hint {
   display: flex;
@@ -7293,7 +7413,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .wh-cc-box {
-  background: #fff;
+  background: var(--adm-card);
   border: 1px solid var(--adm-border-mid);
   border-radius: 8px;
   padding: 8px 10px;
@@ -7398,7 +7518,7 @@ body:has(.admin-modal-overlay) {
   padding: 8px 10px;
   border: 1px dashed var(--adm-border-mid);
   border-radius: 8px;
-  background: #fff;
+  background: var(--adm-card);
 }
 
 .cashc-split__field {
@@ -7479,7 +7599,7 @@ body:has(.admin-modal-overlay) {
 .featured-sort-tabs { display: inline-flex; gap: 4px; margin-top: 12px; padding: 4px; background: var(--adm-paper-warm); border: 1px solid var(--adm-border); border-radius: 9px; }
 .featured-sort-tab { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; color: var(--adm-ink-muted); background: transparent; border: 0; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
 .featured-sort-tab > span { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 5px; background: var(--adm-card); border-radius: 999px; font-size: 9px; }
-.featured-sort-tab--active { color: #fff; background: var(--adm-ink); }
+.featured-sort-tab--active { color: #fff; background: var(--adm-ink-deep); }
 .featured-sort-tab--active > span { color: var(--adm-ink); }
 @media (max-width: 520px) { .featured-sort-tabs { display: flex; width: 100%; } .featured-sort-tab { flex: 1; justify-content: center; } }
 
@@ -7546,7 +7666,7 @@ body:has(.admin-modal-overlay) {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--adm-border);
-  background: #fff;
+  background: var(--adm-card);
   font-size: 12px;
   font-weight: 700;
   color: var(--adm-ink-soft);
@@ -7865,7 +7985,7 @@ body:has(.admin-modal-overlay) {
   height: 38px;
   padding: 0 16px;
   background: var(--adm-kraft);
-  color: var(--adm-ink);
+  color: var(--adm-on-accent);
   border: none;
   border-radius: var(--adm-r-sm);
   font-size: 13px;
@@ -8080,7 +8200,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .scan-page__stock--low {
-  background: #fdf3d3;
+  background: var(--adm-kraft-pale);
   color: var(--adm-kraft);
   border: 1px solid var(--adm-kraft-line);
 }
@@ -8214,7 +8334,7 @@ body:has(.admin-modal-overlay) {
 .scan-page__btn--primary {
   background: var(--adm-kraft);
   border-color: var(--adm-kraft);
-  color: var(--adm-ink);
+  color: var(--adm-on-accent);
 }
 
 .scan-page__btn--primary:hover {
@@ -8412,7 +8532,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .qrprint__seg-btn--active {
-  background: var(--adm-ink);
+  background: var(--adm-ink-deep);
   color: #fff;
 }
 
@@ -8440,7 +8560,7 @@ body:has(.admin-modal-overlay) {
   height: 36px;
   padding: 0 16px;
   background: var(--adm-kraft);
-  color: var(--adm-ink);
+  color: var(--adm-on-accent);
   border: 1px solid var(--adm-kraft);
   border-radius: var(--adm-r-sm);
   font-size: 13px;
@@ -8498,7 +8618,7 @@ body:has(.admin-modal-overlay) {
 }
 
 .qrprint__row--on:hover {
-  background: #def0e0;
+  filter: brightness(0.97);
 }
 
 .qrprint__row--out {
@@ -9042,7 +9162,7 @@ body:has(.admin-modal-overlay) {
    ОТЧЁТЫ УЧЁТА — конструктор в стиле управленческой системы
    ══════════════════════════════════════ */
 .wh-report-page { display: grid; gap: 14px; }
-.wh-report-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px 20px; color: #fff; background: linear-gradient(125deg, var(--adm-ink), #294563); border-radius: var(--adm-r-lg); box-shadow: var(--adm-sh-sm); }
+.wh-report-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px 20px; color: #fff; background: linear-gradient(125deg, var(--adm-ink-deep), var(--adm-ink-deep-soft)); border-radius: var(--adm-r-lg); box-shadow: var(--adm-sh-sm); }
 .wh-report-head > div:first-child > span { color: rgba(255,255,255,.58); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .wh-report-head h2 { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-family: var(--adm-font-head); font-size: 21px; }
 .wh-report-head p { max-width: 720px; margin: 0; color: rgba(255,255,255,.7); font-size: 11px; line-height: 1.45; }
@@ -9062,7 +9182,7 @@ body:has(.admin-modal-overlay) {
 .wh-report-period-presets { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
 .wh-report-period-presets > span { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; color: var(--adm-sand); font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .wh-report-period-presets button { padding: 4px 8px; color: var(--adm-steel); background: var(--adm-steel-pale); border: 1px solid var(--adm-steel-line); border-radius: 999px; cursor: pointer; font: inherit; font-size: 9px; font-weight: 700; }
-.wh-report-period-presets button:hover { color: #fff; background: var(--adm-steel); }
+.wh-report-period-presets button:hover { color: var(--adm-on-steel); background: var(--adm-steel); }
 .wh-report-fields { display: grid; grid-template-columns: 150px 150px minmax(220px, 1fr) 160px; gap: 9px; }
 .wh-report-fields label { display: grid; gap: 4px; min-width: 0; }
 .wh-report-fields label > span { color: var(--adm-sand); font-size: 9px; font-weight: 750; text-transform: uppercase; }
@@ -9774,7 +9894,7 @@ body:has(.admin-modal-overlay) {
 .payment-details-modal__eyebrow { display: block; margin-bottom: 2px; color: var(--adm-steel); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .payment-details-modal__state { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 42px 16px; color: var(--adm-sand); font-size: 12px; }
 .payment-details { display: grid; gap: 12px; }
-.payment-details__hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 14px; color: #fff; background: linear-gradient(120deg, var(--adm-ink), var(--adm-steel)); border-radius: 10px; }
+.payment-details__hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 14px; color: #fff; background: linear-gradient(120deg, var(--adm-ink-deep), var(--adm-ink-deep-soft)); border-radius: 10px; }
 .payment-details__direction { display: inline-flex; align-items: center; justify-content: center; padding: 10px; border-radius: 50%; }
 .payment-details__direction--incoming { color: #9de3a5; background: rgba(125,209,129,.14); }
 .payment-details__direction--outgoing { color: #ffad98; background: rgba(239,143,118,.14); }
@@ -10146,7 +10266,7 @@ body:has(.admin-modal-overlay) {
 /* ══════════════════════════════════════
    ADMIN NAVIGATION — accessible compact layout
    ══════════════════════════════════════ */
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   .admin-sidebar { display: none; }
   .admin-content { margin-left: 0 !important; }
   .admin-mobile-bar {
@@ -10220,11 +10340,6 @@ body:has(.admin-modal-overlay) {
   .admin-sidebar-handle { display: none !important; }
 }
 
-/* На малом десктопе сохраняем широкую рабочую область вместо резкого
-   появления 240px сайдбара. */
-@media (min-width: 1024px) and (max-width: 1099px) {
-  .admin-mobile-bar { display: block; }
-}
 
 @media (max-width: 380px) {
   .admin-mobile-bar { height: 100px; }
@@ -10284,9 +10399,9 @@ body:has(.admin-modal-overlay) {
   gap: 8px;
   margin: 12px 0;
   padding: 12px;
-  border: 1px solid #f2bd68;
+  border: 1px solid var(--adm-kraft-line);
   border-radius: 8px;
-  background: #fff8e8;
+  background: var(--adm-kraft-pale);
   color: var(--adm-ink);
   font-size: 12px;
 }
@@ -10473,70 +10588,94 @@ body:has(.admin-modal-overlay) {
   }
 }
 
-/* ── Сворачиваемые секции дашборда (удобство для бухгалтера) ── */
+/* ── Сворачиваемые секции дашборда — редизайн ──
+   Одна внешняя карточка .dash-section, внутри — плоский контент без второй карточки со скруглениями.
+   Заголовок — компактный, без градиента, с лёгким hover. Тело — без лишних рамок.
+*/
 .dash-section {
-  background: #fff;
-  border-radius: 14px;
-  border: 1px solid var(--adm-border, #dbd8d0);
-  margin-bottom: 20px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  background: var(--adm-card);
+  border-radius: 12px;
+  border: 1px solid var(--adm-border);
+  margin-bottom: 16px;
+  box-shadow: var(--adm-sh-xs);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
+.dash-section--full { grid-column: 1 / -1; }
 .dash-section__head {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  background: #fafaf7;
+  background: var(--adm-card);
   border: none;
-  padding: 14px 20px;
+  border-bottom: 1px solid var(--adm-border);
+  padding: 12px 16px;
   cursor: pointer;
   text-align: left;
   font-family: inherit;
-  border-bottom: 1px solid rgba(200,196,188,0.35);
-  transition: background 0.15s;
+  transition: background-color 0.15s ease;
+  user-select: none;
 }
-.dash-section__head:hover { background: #f4f2ec; }
+.dash-section__head:hover {
+  background: var(--adm-paper);
+}
+.dash-section__head:focus-visible {
+  outline: 2px solid var(--adm-kraft);
+  outline-offset: -2px;
+}
 .dash-section__chevron {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #888;
-  transition: transform 0.2s ease;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--adm-paper-warm);
+  color: var(--adm-sand);
+  transition: transform 0.2s ease, background 0.15s;
   flex-shrink: 0;
 }
+.dash-section__head:hover .dash-section__chevron { background: var(--adm-kraft-pale); color: var(--adm-kraft); }
 .dash-section__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--adm-paper-warm);
   flex-shrink: 0;
 }
 .dash-section__title {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   flex: 1;
   min-width: 0;
 }
 .dash-section__title-text {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
-  color: #1b2b4b;
+  color: var(--adm-ink);
   line-height: 1.2;
+  letter-spacing: 0.01em;
 }
 .dash-section__subtitle {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--adm-muted, #8b8678);
   font-weight: 400;
+  line-height: 1.3;
 }
 .dash-section__badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 10px;
+  padding: 2px 9px;
   border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 750;
   border: 1px solid transparent;
   white-space: nowrap;
 }
@@ -10544,9 +10683,43 @@ body:has(.admin-modal-overlay) {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
+  gap: 8px;
 }
 .dash-section__body {
   padding: 0;
+  background: var(--adm-card);
+  display: flex;
+  flex-direction: column;
+}
+/* Описание внутри тела — тонкая подсказка, без отдельного блока со скруглениями */
+.dash-section__desc {
+  padding: 10px 16px;
+  font-size: 11px;
+  color: var(--adm-sand);
+  background: var(--adm-paper-warm);
+  border-bottom: 1px solid var(--adm-border);
+  line-height: 1.4;
+}
+
+/* Страница дашборда: единая максимальная ширина, чтобы на
+   ультрашироких экранах секции не растягивались во всю стену. */
+.dash-page {
+  max-width: 1560px;
+  margin: 0 auto;
+}
+
+/* Двухколоночный блок «Последние заявки / склад»: колонки
+   равные, на узких экранах складываются в одну. */
+.admin-dash-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  padding: 20px;
+}
+@media (min-width: 1100px) {
+  .admin-dash-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
 }
 
 /* Панель настройки видимости */
@@ -10566,15 +10739,15 @@ body:has(.admin-modal-overlay) {
   padding: 6px 12px;
   border: 1px solid var(--adm-border, #dbd8d0);
   border-radius: 8px;
-  background: #fff;
+  background: var(--adm-card);
   font-size: 12px;
   font-weight: 600;
-  color: #1b2b4b;
+  color: var(--adm-ink);
   cursor: pointer;
 }
-.dash-visibility__toggle:hover { background: #f4f2ec; }
+.dash-visibility__toggle:hover { background: var(--adm-paper-warm); }
 .dash-visibility__count {
-  background: #1b2b4b;
+  background: var(--adm-ink-deep);
   color: #fff;
   padding: 1px 7px;
   border-radius: 10px;
@@ -10584,7 +10757,7 @@ body:has(.admin-modal-overlay) {
   position: absolute;
   right: 0;
   top: calc(100% + 6px);
-  background: #fff;
+  background: var(--adm-card);
   border: 1px solid var(--adm-border, #dbd8d0);
   border-radius: 10px;
   padding: 12px;
@@ -10611,7 +10784,7 @@ body:has(.admin-modal-overlay) {
   font-size: 13px;
   cursor: pointer;
 }
-.dash-visibility__item:hover { background: #f4f2ec; }
+.dash-visibility__item:hover { background: var(--adm-paper-warm); }
 .dash-visibility__item input { cursor: pointer; }
 .dash-visibility__hint {
   margin-top: 10px;
@@ -10639,13 +10812,14 @@ body:has(.admin-modal-overlay) {
 }
 .deal-reserve-hint {
   font-size: 12px;
-  color: #4338ca;
+  color: var(--adm-indigo);
   font-weight: 600;
 }
 
 /* ══════════════════════════════════════
    ЭТИКЕТКИ ЯЩИКОВ — отдельная печать A4
    (страница /[admin]/box-labels)
+   Полосы 60мм высотой, горизонтальные, несколько на листе A4
    ══════════════════════════════════════ */
 
 /* Редактор на экране: карточки товаров с полями этикетки */
@@ -10694,9 +10868,87 @@ body:has(.admin-modal-overlay) {
   background: var(--adm-paper);
 }
 
-/* Печатный лист на экране скрыт — виден только при печати */
+/* ── Превью на экране (видно когда есть выбранные) ── */
 .boxlabel-sheet {
   display: none;
+}
+.boxlabel-sheet--preview {
+  display: flex !important;
+  flex-direction: column;
+  gap: 6mm;
+  padding: 10mm;
+  background: #f5f3ee;
+  border: 1px dashed #ccc9c0;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+.boxlabel-sheet--preview .boxlabel {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-bottom: 2px solid #000;
+  border-radius: 0;
+  height: 60mm;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  color: #000;
+}
+.boxlabel-sheet--preview .boxlabel__band {
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+}
+.boxlabel-sheet--preview .boxlabel__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4mm 5mm;
+  min-width: 0;
+}
+.boxlabel-sheet--preview .boxlabel__vsep {
+  width: 1px;
+  background: #000;
+  flex-shrink: 0;
+}
+.boxlabel-sheet--preview .boxlabel__num {
+  font-family: var(--adm-font-head);
+  font-size: 48pt;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  flex: 1 1 35%;
+  text-align: center;
+}
+.boxlabel-sheet--preview .boxlabel__info {
+  flex: 1 1 30%;
+  gap: 2mm;
+  text-align: center;
+}
+.boxlabel-sheet--preview .boxlabel__sizes {
+  font-size: 14pt;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.boxlabel-sheet--preview .boxlabel__note {
+  font-size: 10pt;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.boxlabel-sheet--preview .boxlabel__code {
+  flex: 1 1 35%;
+  gap: 2mm;
+}
+.boxlabel-sheet--preview .boxlabel__bc {
+  height: 22mm;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+.boxlabel-sheet--preview .boxlabel__ean {
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: 0.12em;
 }
 
 @media print {
@@ -10721,34 +10973,42 @@ body:has(.admin-modal-overlay) {
   }
 
   body.boxlabel-mode .boxlabel-sheet {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column;
+    gap: 4mm;
+    padding: 0 !important;
+    background: #fff !important;
+    border: none !important;
+    margin: 0 !important;
   }
 
-  /* Одна этикетка = одна страница A4: полоса по центру страницы */
+  /* Каждая этикетка — горизонтальная полоса 60мм, несколько на листе */
   body.boxlabel-mode .boxlabel {
     break-inside: avoid;
     page-break-inside: avoid;
-    break-after: page;
-    page-break-after: always;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 265mm;
-    color: #000;
-  }
-
-  body.boxlabel-mode .boxlabel:last-child {
-    break-after: auto;
-    page-break-after: auto;
-  }
-
-  /* Горизонтальная полоса через весь лист: № | размеры | штрихкод */
-  body.boxlabel-mode .boxlabel__band {
-    width: 100%;
+    height: 60mm;
+    min-height: 60mm;
+    max-height: 60mm;
     display: flex;
     align-items: stretch;
-    border: 3px solid #000;
-    border-radius: 2mm;
+    color: #000;
+    background: #fff !important;
+    border: none;
+    border-bottom: 1px solid #000;
+    border-radius: 0;
+    overflow: hidden;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Горизонтальная полоса: № | размеры | штрихкод — растянута на всю ширину */
+  body.boxlabel-mode .boxlabel__band {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+    border: none;
+    border-radius: 0;
     overflow: hidden;
   }
 
@@ -10757,62 +11017,61 @@ body:has(.admin-modal-overlay) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 8mm 6mm;
+    padding: 4mm 5mm;
     min-width: 0;
   }
 
-  /* Вертикальная разделительная черта */
   body.boxlabel-mode .boxlabel__vsep {
-    width: 3px;
+    width: 1px;
     background: #000;
     flex-shrink: 0;
   }
 
-  /* № ящика слева: буква ~3 см ≈ 85pt, только номер */
   body.boxlabel-mode .boxlabel__num {
     font-family: var(--adm-font-head);
-    font-size: 85pt;
-    font-weight: 700;
+    font-size: 54pt;
+    font-weight: 800;
     line-height: 1;
     letter-spacing: 0.01em;
     white-space: nowrap;
-    flex: 1 1 auto;
+    flex: 1 1 35%;
+    text-align: center;
   }
 
-  /* Середина: размеры 18pt + примечание под ними */
   body.boxlabel-mode .boxlabel__info {
-    flex: 1 1 auto;
-    gap: 3mm;
+    flex: 1 1 30%;
+    gap: 2mm;
     text-align: center;
   }
 
   body.boxlabel-mode .boxlabel__sizes {
-    font-size: 18pt;
-    font-weight: 700;
-    line-height: 1.2;
+    font-size: 16pt;
+    font-weight: 800;
+    line-height: 1.15;
   }
 
   body.boxlabel-mode .boxlabel__note {
-    font-size: 14pt;
+    font-size: 11pt;
     font-weight: 500;
-    line-height: 1.25;
+    line-height: 1.2;
   }
 
-  /* Справа: штрихкод (векторный SVG) и цифры под ним */
   body.boxlabel-mode .boxlabel__code {
-    flex: 1 1 auto;
+    flex: 1 1 35%;
     gap: 2mm;
   }
 
   body.boxlabel-mode .boxlabel__bc {
-    height: 20mm;
+    height: 25mm;
     width: auto;
+    max-width: 100%;
+    object-fit: contain;
   }
 
   body.boxlabel-mode .boxlabel__ean {
-    font-size: 11pt;
+    font-size: 9pt;
     font-weight: 600;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
   }
 
   body.boxlabel-mode .boxlabel,
@@ -10847,4 +11106,268 @@ body:has(.admin-modal-overlay) {
 
 .bank-due__row--skipped:hover {
   background: var(--adm-rust-pale);
+}
+
+/* ── Раскрытие списка платежей «Должны нам / Мы должны» ──
+   Клик по контрагенту вычёркивает его целиком; стрелка раскрывает
+   платежи, из которых складывается сумма, — клик по платежу вычитает
+   только его часть. */
+.bank-due__item {
+  border-top: 1px solid rgba(219, 216, 208, 0.45);
+  min-width: 0;
+}
+.bank-due__item:first-child {
+  border-top: none;
+}
+.bank-due__item .bank-due__row {
+  border-top: none;
+}
+
+.bank-due__expand {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--adm-r-sm);
+  background: transparent;
+  color: var(--adm-sand);
+  cursor: pointer;
+  transition: transform 0.18s ease, background var(--transition), color var(--transition);
+}
+.bank-due__expand:hover {
+  background: var(--adm-paper-warm);
+  color: var(--adm-ink);
+}
+.bank-due__expand--open {
+  transform: rotate(180deg);
+}
+.bank-due__expand--placeholder {
+  cursor: default;
+  pointer-events: none;
+}
+
+.bank-due__pays {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 8px 30px;
+  min-width: 0;
+}
+.bank-due__pay {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--adm-r-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+  transition: background var(--transition);
+  min-width: 0;
+}
+.bank-due__pay:hover {
+  background: var(--adm-paper);
+}
+.bank-due__pay--skipped,
+.bank-due__pay--skipped .bank-due__pay-num,
+.bank-due__pay--skipped .bank-due__pay-date,
+.bank-due__pay--skipped .bank-due__pay-sum {
+  color: var(--adm-rust) !important;
+}
+.bank-due__pay--skipped .bank-due__pay-sum {
+  text-decoration: line-through;
+}
+.bank-due__pay--skipped:hover {
+  background: var(--adm-rust-pale);
+}
+.bank-due__pay-num {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.bank-due__pay-date {
+  color: var(--adm-sand);
+  white-space: nowrap;
+}
+.bank-due__pay-comment {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--adm-sand);
+}
+.bank-due__pay-sum {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--adm-font-head);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════
+   АНИМАЦИИ АДМИНКИ
+   Только transform/opacity — эти свойства исполняются
+   на композиторе GPU и не вызывают layout/paint,
+   поэтому интерфейс держит 60–120 fps.
+   Отключаются при data-admin-anim="reduced" и
+   prefers-reduced-motion (см. ниже).
+   ══════════════════════════════════════ */
+@keyframes adm-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes adm-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes adm-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* Пульс счётчика уведомлений: кольцо расходится через
+   transform+opacity на ::after — дёшево для композитора. */
+@keyframes adm-badge-pulse {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* Появление контента при загрузке страницы */
+[data-admin="true"] .admin-h1,
+[data-admin="true"] .admin-filters,
+[data-admin="true"] .admin-card,
+[data-admin="true"] .admin-stat,
+[data-admin="true"] .dash-section {
+  animation: adm-rise 0.3s ease-out both;
+}
+
+/* Лёгкая «волна» для гридов карточек (первые 8 элементов) */
+[data-admin="true"] .admin-grid-2 > *,
+[data-admin="true"] .admin-grid-3 > *,
+[data-admin="true"] .admin-grid-4 > *,
+[data-admin="true"] .admin-stat-grid > * {
+  animation: adm-rise 0.3s ease-out both;
+}
+[data-admin="true"] .admin-grid-2 > *:nth-child(2),
+[data-admin="true"] .admin-grid-3 > *:nth-child(2),
+[data-admin="true"] .admin-grid-4 > *:nth-child(2),
+[data-admin="true"] .admin-stat-grid > *:nth-child(2) { animation-delay: 0.04s; }
+[data-admin="true"] .admin-grid-2 > *:nth-child(3),
+[data-admin="true"] .admin-grid-3 > *:nth-child(3),
+[data-admin="true"] .admin-grid-4 > *:nth-child(3),
+[data-admin="true"] .admin-stat-grid > *:nth-child(3) { animation-delay: 0.08s; }
+[data-admin="true"] .admin-grid-3 > *:nth-child(4),
+[data-admin="true"] .admin-grid-4 > *:nth-child(4),
+[data-admin="true"] .admin-stat-grid > *:nth-child(4) { animation-delay: 0.12s; }
+[data-admin="true"] .admin-grid-4 > *:nth-child(n+5),
+[data-admin="true"] .admin-stat-grid > *:nth-child(n+5) { animation-delay: 0.16s; }
+
+/* Модалки: плавный вход оверлея и окна */
+[data-admin="true"] .admin-modal-overlay {
+  animation: adm-overlay-in 0.18s ease-out both;
+}
+[data-admin="true"] .admin-modal {
+  animation: adm-modal-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* Тактильный отклик кнопок: нажатие чуть сжимает кнопку.
+   transform — композиторное свойство, 120 fps без перерисовки. */
+[data-admin="true"] .admin-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Пункты меню слегка сдвигаются при наведении */
+[data-admin="true"] .admin-sidebar__link {
+  transition: color 0.15s, background 0.15s, transform 0.15s;
+}
+[data-admin="true"] .admin-sidebar__link:hover {
+  transform: translateX(2px);
+}
+
+/* Пульсирующее кольцо у бейджа уведомлений.
+   Бейдж уже position:absolute — кольцо позиционируется по нему. */
+[data-admin="true"] .admin-notify__badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--adm-rust);
+  animation: adm-badge-pulse 2.4s ease-out infinite;
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════
+   ПРОИЗВОДИТЕЛЬНОСТЬ 60–120 FPS
+   ══════════════════════════════════════ */
+
+/* content-visibility: браузер пропускает рендеринг секций
+   за пределами экрана. contain-intrinsic-size резервирует
+   высоту, чтобы скроллбар не «прыгал». Самая тяжёлая
+   страница — дашборд с десятками секций. */
+[data-admin="true"] .dash-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+/* Списки заявок тоже бывают длинными */
+[data-admin="true"] .admin-order {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+
+/* Сайдбар уже анимируется transform'ом — подсказываем
+   браузеру держать его на отдельном GPU-слое. */
+[data-admin="true"] .admin-sidebar {
+  will-change: transform;
+}
+
+/* Тема/плотность меняются мгновенно: короткий переход цветов
+   только у верхнеуровневых контейнеров (уже задан в
+   admin-themes.css), у вложенных элементов — без переходов,
+   чтобы смена темы не вызывала сотни одновременных анимаций. */
+
+/* Темизированный скроллбар страниц админки */
+html:has([data-admin="true"]) {
+  scrollbar-color: var(--adm-border-mid) transparent;
+}
+html:has([data-admin="true"])::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html:has([data-admin="true"])::-webkit-scrollbar-track {
+  background: transparent;
+}
+html:has([data-admin="true"])::-webkit-scrollbar-thumb {
+  background: var(--adm-border-mid);
+  border-radius: 999px;
+  border: 2px solid var(--adm-paper);
+}
+html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
+  background: var(--adm-ink-muted);
+}
+
+/* Выделение текста в цветах темы */
+[data-admin="true"] ::selection {
+  background: color-mix(in srgb, var(--adm-kraft) 30%, transparent);
+  color: var(--adm-ink);
+}
+
+/* Видимый фокус с клавиатуры (доступность) */
+[data-admin="true"] a:focus-visible,
+[data-admin="true"] button:focus-visible {
+  outline: 2px solid var(--adm-kraft);
+  outline-offset: 2px;
+}
+
+/* Уважение к системной настройке «меньше движения» */
+@media (prefers-reduced-motion: reduce) {
+  [data-admin="true"] *,
+  [data-admin="true"] *::before,
+  [data-admin="true"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

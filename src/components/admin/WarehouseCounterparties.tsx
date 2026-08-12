@@ -13,7 +13,8 @@ import {
   Search,
   X,
 } from "lucide-react";
-import type { CounterpartyRole } from "@/lib/warehouse-shared";
+import type { CounterpartyRole, PriceTier } from "@/lib/warehouse-shared";
+import { normalizePriceTier } from "@/lib/warehouse-shared";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 
 export interface CounterpartyOption {
@@ -21,6 +22,8 @@ export interface CounterpartyOption {
   name: string;
   roles: CounterpartyRole[];
   supplierPrices?: Record<string, number>;
+  /** Вариант цены (обычная / спец / эксклюзив) — скидка при оформлении заказа. */
+  priceTier?: PriceTier;
   phone?: string | null;
   email?: string | null;
   inn?: string | null;
@@ -69,6 +72,7 @@ interface FormState {
   address: string;
   contactName: string;
   comment: string;
+  priceTier: PriceTier;
 }
 
 const EMPTY: FormState = {
@@ -91,6 +95,7 @@ const EMPTY: FormState = {
   address: "",
   contactName: "",
   comment: "",
+  priceTier: "regular",
 };
 
 const fmt = (value: number) => value.toLocaleString("ru-RU");
@@ -111,9 +116,12 @@ function uniqueById(list: CounterpartyOption[]): CounterpartyOption[] {
 export function CounterpartiesManager({
   initialCounterparties,
   documents,
+  tierDiscounts = { special: 5, exclusive: 10 },
 }: {
   initialCounterparties: CounterpartyOption[];
   documents: Record<string, CounterpartyDocument[]>;
+  /** Скидки ценовых уровней (из настроек) — для подписей в селекте. */
+  tierDiscounts?: { special: number; exclusive: number };
 }) {
   const router = useRouter();
   const [items, setItems] = useState(() => uniqueById(initialCounterparties));
@@ -180,6 +188,7 @@ export function CounterpartiesManager({
       address: item.address || "",
       contactName: item.contactName || "",
       comment: item.comment || "",
+      priceTier: normalizePriceTier(item.priceTier),
     });
     setError("");
   }
@@ -199,7 +208,7 @@ export function CounterpartiesManager({
     setSaving(true);
     setError("");
     const isNew = editingId === "new";
-    const payload = { ...form, roles, name: form.name.trim() };
+    const payload = { ...form, roles, name: form.name.trim(), priceTier: normalizePriceTier(form.priceTier) };
     try {
       const response = await fetch(
         isNew
@@ -219,6 +228,7 @@ export function CounterpartiesManager({
         roles,
         supplierPrices:
           items.find((item) => item.id === editingId)?.supplierPrices || {},
+        priceTier: normalizePriceTier(form.priceTier),
         phone: form.phone || null,
         email: form.email || null,
         inn: form.inn || null,
@@ -329,6 +339,12 @@ export function CounterpartiesManager({
                         >
                           <span><Building2 size={16} /></span>
                           <strong>{item.name}</strong>
+                          {item.priceTier === "special" && (
+                            <span className="admin-badge admin-badge--blue" title={`Спеццена: скидка ${tierDiscounts.special}% при заказе`}>спеццена −{tierDiscounts.special}%</span>
+                          )}
+                          {item.priceTier === "exclusive" && (
+                            <span className="admin-badge admin-badge--indigo" title={`Эксклюзивная цена: скидка ${tierDiscounts.exclusive}% при заказе`}>эксклюзив −{tierDiscounts.exclusive}%</span>
+                          )}
                           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
                       </td>
@@ -381,6 +397,7 @@ export function CounterpartiesManager({
                                 <div><dt>БИК</dt><dd>{item.bik || "—"}</dd></div>
                                 <div><dt>Корр. счёт</dt><dd>{item.correspondentAccount || "—"}</dd></div>
                                 <div><dt>Цен поставщика</dt><dd>{Object.keys(item.supplierPrices || {}).length}</dd></div>
+                                <div><dt>Вариант цены</dt><dd>{item.priceTier === "special" ? `Спеццена −${tierDiscounts.special}%` : item.priceTier === "exclusive" ? `Эксклюзив −${tierDiscounts.exclusive}%` : "Обычная"}</dd></div>
                               </dl>
                               {item.comment && <p>{item.comment}</p>}
                             </div>
@@ -438,6 +455,14 @@ export function CounterpartiesManager({
               <div className="cp-role-checks">
                 <label className="admin-check"><input type="checkbox" checked={form.supplier} onChange={(e) => patch("supplier", e.target.checked)} /> Поставщик</label>
                 <label className="admin-check"><input type="checkbox" checked={form.customer} onChange={(e) => patch("customer", e.target.checked)} /> Покупатель</label>
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Вариант цены (для покупателей)</label>
+                <select className="admin-select" value={form.priceTier} onChange={(e) => patch("priceTier", e.target.value)}>
+                  <option value="regular">Обычная — цена как в карточке товара</option>
+                  <option value="special">Спеццена — скидка {tierDiscounts.special}% при заказе</option>
+                  <option value="exclusive">Эксклюзивная — скидка {tierDiscounts.exclusive}% при заказе</option>
+                </select>
               </div>
               <div className="admin-grid-2">
                 <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={form.contactName} onChange={(e) => patch("contactName", e.target.value)} /></div>

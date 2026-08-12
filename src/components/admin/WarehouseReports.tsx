@@ -24,6 +24,7 @@ import {
   getReceiptPaidMap,
   getCashCarryoverSummary,
   isSalaryExcludedFromBalance,
+  isRentSalaryComment,
   isDebtSalaryComment,
   stripSalaryMetaTags,
   type BankPayment,
@@ -359,6 +360,9 @@ export function WarehouseReports({
       };
     });
     const salaryRowsLocal = salaries.map((salary) => {
+      const isRent = isRentSalaryComment(salary.comment, salary.source);
+      const isYm = salary.source === "ym_card" || (salary.comment && salary.comment.includes("[Карта ЮМ]"));
+      const accountLabel = isRent ? "Аренда (отд. счёт)" : isYm ? "Карта ЮМ" : salary.source === "cash" ? "Касса" : "Аренда (отд. счёт)";
       const accountKey = salary.source === "cash" ? ("cash" as const) : ("bank" as const);
       return {
         id: `salary-${salary.id}`,
@@ -366,12 +370,14 @@ export function WarehouseReports({
         kind: "salary" as const,
         date: salary.paidAt || salary.date,
         counterparty: salary.employeeName,
-        purpose: isDebtSalaryComment(salary.comment)
+        purpose: isRent
+          ? "Аренда (отдельный счёт)"
+          : isDebtSalaryComment(salary.comment)
           ? "Выплата в счёт долга"
           : "Зарплата",
         direction: "outgoing" as const,
         accountKey,
-        account: ACCOUNT_LABEL[accountKey],
+        account: accountLabel,
         amount: salary.amount,
         paid: salary.isPaid,
         status: salary.isPaid ? "Выплачена" : "Запланирована",
@@ -649,8 +655,18 @@ export function WarehouseReports({
           <h2><FileBarChart size={20} /> Отчёты</h2>
           <p>Формирование подробных отчётов по документам и движениям — с расшифровкой до исходной записи.</p>
         </div>
-        <div className="wh-report-head__stamp">
-          Сформировано {generatedAt || "—"}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Link
+            href={`/${adminPath}/products/box-report`}
+            className="admin-btn admin-btn--ghost"
+            style={{ background: 'rgba(59,130,246,0.08)', color: 'var(--adm-primary)', borderColor: 'rgba(59,130,246,0.3)' }}
+            prefetch={false}
+          >
+            Отчёт по коробкам (печать размеров Д×Ш×В)
+          </Link>
+          <div className="wh-report-head__stamp">
+            Сформировано {generatedAt || "—"}
+          </div>
         </div>
       </div>
 
@@ -953,7 +969,7 @@ export function WarehouseReports({
         )}
 
         {filters.kind === "product-sales" && (
-          <ProductSalesPopularity deals={deals} receipts={receipts} from={filters.from} to={filters.to} />
+          <ProductSalesPopularity deals={deals} receipts={receipts} stock={stock} from={filters.from} to={filters.to} />
         )}
 
         {filters.kind === "stock" && (

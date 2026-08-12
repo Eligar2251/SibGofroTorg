@@ -20,7 +20,8 @@ export function StockQtyEditor({
 
   async function save() {
     if (value === "") return;
-    const quantity = Math.max(0, Math.floor(Number(value) || 0));
+    // Для резаных товаров (плёнка) разрешаем дробные рулоны: 5.9 = 5 рул + 90м
+    const quantity = Math.max(0, Math.round((Number(value) || 0) * 1000) / 1000);
     setSaving(true);
     setSaved(false);
     try {
@@ -46,7 +47,7 @@ export function StockQtyEditor({
       <input
         type="number"
         min={0}
-        step={1}
+        step={0.001}
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {

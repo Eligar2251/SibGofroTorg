@@ -34,6 +34,11 @@ import {
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
+import {
+  priceTierDiscountPercent,
+  applyTierDiscount,
+  normalizePriceTier,
+} from "@/lib/warehouse-shared";
 import type { BankPayment } from "@/lib/warehouse-shared";
 
 /** Округление до копеек */
@@ -80,9 +85,20 @@ interface DealItemDraft {
   productId: string;
   name: string;
   sku: string | null;
+  // quantity в единице продажи (рулон или метры)
   quantity: number | "";
   price: number | "";
   stockQty: number;
+  /** Цена подставлена автоматически (со скидкой уровня покупателя) —
+      при смене покупателя пересчитывается; ручная правка снимает флаг. */
+  autoPrice?: boolean;
+  // вариативность
+  isCuttable?: boolean;
+  metersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
+  unit?: 'roll' | 'meter';
+  // baseQty для списания склада (дробные рулоны)
+  baseQty?: number;
 }
 
 export interface EditableDeal {
@@ -130,6 +146,28 @@ function fmtDate(raw: string | null | undefined): string {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
+function cuttableStockBreakdown(stockRolls: number, metersPerRoll: number | null | undefined) {
+  const rolls = Math.max(0, Number(stockRolls) || 0);
+  const mpr = Math.max(0, Number(metersPerRoll) || 0);
+  if (!mpr) return { fullRolls: Math.floor(rolls), remainderMeters: 0, totalMeters: rolls, rolls };
+  const fullRolls = Math.floor(rolls + 1e-9);
+  const remainderMeters = Math.round((rolls - fullRolls) * mpr * 100) / 100;
+  const totalMeters = Math.round(rolls * mpr * 100) / 100;
+  return { fullRolls, remainderMeters, totalMeters, rolls };
+}
+function formatCutStock(rolls: number, mpr: number | null | undefined, unitName?: string) {
+  const u = unitName || 'м';
+  const bd = cuttableStockBreakdown(rolls, mpr);
+  if (!mpr) return `${Number(rolls || 0).toLocaleString('ru-RU')} шт.`;
+  if (bd.remainderMeters > 0.009) return `${bd.fullRolls} рул. + ${bd.remainderMeters} ${u} (${bd.totalMeters} ${u})`;
+  return `${bd.fullRolls} рул. · ${bd.totalMeters} ${u}`;
+}
+function baseQtyForSale(qty: number, unit: 'roll'|'meter', mpr: number | null | undefined): number {
+  if (unit === 'meter' && mpr && mpr > 0) return qty / mpr;
+  return qty;
+}
+
+
 export function DealForm({
   products,
   counterparties = [],
@@ -138,6 +176,7 @@ export function DealForm({
   deliveryPrice = 800,
   freeDeliveryThreshold = 30000,
   reservedStockById,
+  tierDiscounts = { special: 5, exclusive: 10 },
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
@@ -149,6 +188,8 @@ export function DealForm({
   freeDeliveryThreshold?: number;
   /** Карта зарезервированного кол-ва по другим заказам (для подсказки «свободно X»). */
   reservedStockById?: Map<string, number>;
+  /** Скидки ценовых уровней контрагентов (из настроек админки). */
+  tierDiscounts?: { special: number; exclusive: number };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -331,6 +372,17 @@ export function DealForm({
 
   function selectCustomer(value: string) {
     setCustomerName(value);
+    // Сменили покупателя — пересчитываем автоцены позиций под скидку
+    // его ценового уровня (правленные вручную цены не трогаем).
+    const nextDiscount = discountPercentForName(value);
+    setItems((prev) =>
+      prev.map((it) => {
+        if (!it.autoPrice) return it;
+        const product = products.find((p) => p.id === it.productId);
+        if (!product || product.price == null || product.price <= 0) return it;
+        return { ...it, price: applyTierDiscount(product.price, nextDiscount) };
+      })
+    );
     const found = counterparties.find(
       (item) =>
         item.roles.includes("customer") &&
@@ -365,18 +417,40 @@ export function DealForm({
     }
   }
 
+  /** Скидка ценового уровня покупателя по имени (0 — обычный уровень). */
+  function discountPercentForName(name: string): number {
+    const found = counterparties.find(
+      (item) =>
+        item.roles.includes("customer") &&
+        item.name.toLocaleLowerCase("ru-RU") ===
+          name.trim().toLocaleLowerCase("ru-RU")
+    );
+    if (!found) return 0;
+    return priceTierDiscountPercent(normalizePriceTier(found.priceTier), tierDiscounts);
+  }
+
   function addItem(p: PickerProduct) {
     setItems((prev) => {
       const existing = prev.find((it) => it.productId === p.id);
       if (existing) {
+        // для резаных — не суммируем автоматом, чтобы не путать единицы
+        if (existing.isCuttable) {
+          return prev;
+        }
         return prev.map((it) =>
           it.productId === p.id
-            ? { ...it, quantity: (Number(it.quantity) || 0) + 1 }
+            ? { ...it, quantity: (Number(it.quantity) || 0) + 1, baseQty: it.unit === 'meter' ? ((Number(it.quantity) || 0) + 1) / (Number(it.metersPerRoll) || 100) : (Number(it.quantity) || 0) + 1 }
             : it
         );
       }
-      // Цена продажи подставляется автоматически (со скидкой),
-      // спец. цену можно вписать вручную
+      // Цена продажи подставляется автоматически СО СКИДКОЙ ценового
+      // уровня покупателя (спец/эксклюзив из карточки контрагента).
+      // Цену можно переписать вручную — тогда автопересчёт снимается.
+      const basePrice = p.price != null && p.price > 0 ? p.price : null;
+      const discount = discountPercentForName(customerName);
+      const isCut = Boolean((p as any).isCuttable);
+      const mpr = (p as any).cutMetersPerRoll != null ? Number((p as any).cutMetersPerRoll) : null;
+      const pricePerMeter = (p as any).cutPricePerMeter != null ? Number((p as any).cutPricePerMeter) : null;
       return [
         ...prev,
         {
@@ -384,8 +458,14 @@ export function DealForm({
           name: p.name,
           sku: p.sku,
           quantity: 1,
-          price: p.price != null && p.price > 0 ? p.price : "",
+          price: basePrice != null ? applyTierDiscount(basePrice, discount) : "",
           stockQty: p.stockQty,
+          autoPrice: basePrice != null,
+          isCuttable: isCut,
+          metersPerRoll: mpr,
+          cutPricePerMeter: pricePerMeter,
+          unit: (isCut ? 'roll' : 'piece') as any,
+          baseQty: 1,
         },
       ];
     });
@@ -484,13 +564,27 @@ export function DealForm({
             hasDelivery && deliveryNote.trim() ? deliveryNote.trim() : null,
           deliveryContact: hasDelivery ? deliveryContact.trim() || null : null,
           deliveryPhone: hasDelivery ? deliveryPhone.trim() || null : null,
-          items: items.map((it) => ({
-            productId: it.productId,
-            name: it.name,
-            sku: it.sku,
-            quantity: Number(it.quantity) || 0,
-            price: Number(it.price) || 0,
-          })),
+          items: items.map((it) => {
+            const isMeter = it.unit === 'meter';
+            const mpr = it.metersPerRoll || 100;
+            const saleQty = Number(it.quantity) || 0;
+            const baseQty = isMeter ? saleQty / mpr : saleQty;
+            return {
+              productId: it.productId,
+              name: it.name,
+              sku: it.sku,
+              // quantity для совместимости — base (рулоны)
+              quantity: baseQty,
+              price: baseQty > 0 ? Math.round(((saleQty * (Number(it.price)||0)) / baseQty) * 100) / 100 : Number(it.price)||0,
+              lineTotal: Math.round(saleQty * (Number(it.price)||0) * 100) / 100,
+              // расширенные поля для резаных
+              unit: it.isCuttable ? (it.unit || 'roll') : 'piece',
+              metersPerRoll: it.isCuttable ? (it.metersPerRoll || null) : null,
+              saleQuantity: saleQty,
+              salePrice: Number(it.price)||0,
+              cutUnitName: it.isCuttable ? 'м' : null,
+            };
+          }),
           linkedPaymentIds: selectedPayments,
           paymentSplits: buildPaymentSplits(),
           paymentMethod,
@@ -576,6 +670,16 @@ export function DealForm({
                     placeholder="Начните вводить название..."
                     emptyText="Такого покупателя нет — впишите нового"
                   />
+                  {(() => {
+                    const pct = discountPercentForName(customerName);
+                    return pct > 0 ? (
+                      <span className="admin-hint" style={{ marginTop: 4 }}>
+                        Ценовой уровень со скидкой {pct}% — цены товаров
+                        подставляются уже со скидкой (уровень меняется в
+                        карточке контрагента).
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Ставка НДС</label>
@@ -647,47 +751,100 @@ export function DealForm({
                 <div className="wh-items wh-items--deal">
                   <div className="wh-item-row wh-item-row--head">
                     <span>Товар</span>
-                    <span>Кол-во</span>
+                    <span>Кол-во / Ед.</span>
                     <span>Цена, ₽</span>
                     <span>Сумма</span>
                     <span />
                   </div>
                   {items.map((it) => {
                     // Свободный остаток = на складе − резерв по ДРУГИМ заказам
-                    // (текущий редактируемый заказ, если он зарезервирован, из резерва вычтен).
+                    const baseRequested = it.unit === 'meter' ? baseQtyForSale(Number(it.quantity) || 0, 'meter', it.metersPerRoll) : Number(it.quantity) || 0;
                     const otherReserved =
                       (reservedStockById?.get(it.productId) || 0) -
                       (initialDeal?.isReserved
-                        ? Math.max(0, Number(it.quantity) || 0)
+                        ? Math.max(0, baseRequested)
                         : 0);
                     const freeQty = Math.max(0, (it.stockQty || 0) - Math.max(0, otherReserved));
-                    const overFree = Number(it.quantity) > freeQty;
+                    const freeBreakdown = it.isCuttable ? cuttableStockBreakdown(freeQty, it.metersPerRoll) : null;
+                    const overFree = baseRequested > freeQty + 0.0009;
+                    const stockHint = it.isCuttable
+                      ? `${formatCutStock(it.stockQty, it.metersPerRoll)}${freeBreakdown ? ` · своб. ${formatCutStock(freeQty, it.metersPerRoll)}` : ''}`
+                      : `ост. ${it.stockQty}`;
                     return (
-                    <div key={it.productId} className="wh-item-row">
-                      <span className="wh-item-row__name">
-                        {it.name}
-                        {it.sku && <span className="wh-item-row__sku">{it.sku}</span>}
+                    <div key={it.productId} className="wh-item-row" style={{ alignItems: 'flex-start' }}>
+                      <span className="wh-item-row__name" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span>{it.name}{it.sku && <span className="wh-item-row__sku" style={{ marginLeft: 6 }}>{it.sku}</span>}</span>
+                        <span style={{ fontSize: 11, color: 'var(--adm-muted)' }}>{stockHint}</span>
+                        {it.isCuttable && (
+                          <span style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                            <button
+                              type="button"
+                              className={`admin-btn admin-btn--sm ${it.unit === 'roll' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                              style={{ padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => {
+                                const newUnit: 'roll'|'meter' = 'roll';
+                                const mpr = it.metersPerRoll || 100;
+                                const curQty = Number(it.quantity) || 0;
+                                // если было в метрах, конвертим метры -> рулоны
+                                const newQty = it.unit === 'meter' ? Math.max(0.1, Math.round((curQty / mpr) * 100) / 100) : curQty;
+                                setItem(it.productId, {
+                                  unit: newUnit,
+                                  quantity: newQty || 1,
+                                  price: (products.find(p=>p.id===it.productId) as any)?.price || it.price,
+                                  baseQty: Number(newQty||0),
+                                });
+                              }}
+                            >
+                              Рулон
+                            </button>
+                            <button
+                              type="button"
+                              className={`admin-btn admin-btn--sm ${it.unit === 'meter' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                              style={{ padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => {
+                                const newUnit: 'roll'|'meter' = 'meter';
+                                const mpr = it.metersPerRoll || 100;
+                                const curQty = Number(it.quantity) || 0;
+                                const newQtyMeters = it.unit === 'roll' ? Math.round(curQty * mpr) : curQty || 10;
+                                const perMeter = it.cutPricePerMeter || (Number(it.price)||0) / (mpr||100);
+                                setItem(it.productId, {
+                                  unit: newUnit,
+                                  quantity: newQtyMeters,
+                                  price: perMeter,
+                                  cutPricePerMeter: perMeter,
+                                  baseQty: newQtyMeters / mpr,
+                                  autoPrice: false,
+                                });
+                              }}
+                            >
+                              Метры
+                            </button>
+                          </span>
+                        )}
                         {overFree && (
                           <span className="wh-item-row__warn">
-                            свободно: {freeQty} {reservedStockById ? "(с учётом резервов)" : ""}
+                            не хватает! свободно: {it.isCuttable ? formatCutStock(freeQty, it.metersPerRoll) : freeQty} {reservedStockById ? "(с учётом резервов)" : ""}
                           </span>
                         )}
                       </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <input
                         type="number"
                         className="admin-input"
-                        min={1}
-                        step={1}
+                        min={0.01}
+                        step={it.isCuttable ? (it.unit === 'meter' ? 1 : 0.1) : 1}
                         value={it.quantity}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const raw = e.target.value === "" ? "" : Number(e.target.value);
+                          const mpr = it.metersPerRoll || 100;
                           setItem(it.productId, {
-                            quantity:
-                              e.target.value === ""
-                                ? ""
-                                : Number(e.target.value),
-                          })
-                        }
+                            quantity: raw,
+                            baseQty: raw === "" ? 0 : (it.unit === 'meter' ? (Number(raw)||0)/mpr : Number(raw)||0),
+                          });
+                        }}
                       />
+                      <span style={{ fontSize: 10, color: 'var(--adm-muted)', textAlign: 'center' }}>{it.isCuttable ? (it.unit === 'meter' ? 'м' : 'рул.') : 'шт.'}</span>
+                      </div>
                       <input
                         type="number"
                         className="admin-input"
@@ -700,11 +857,17 @@ export function DealForm({
                               e.target.value === ""
                                 ? ""
                                 : Number(e.target.value),
+                            autoPrice: false,
                           })
                         }
                       />
-                      <span className="wh-item-row__sum">
-                        {fmt((Number(it.quantity) || 0) * (Number(it.price) || 0))} ₽
+                      <span className="wh-item-row__sum" style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span>{fmt((Number(it.quantity) || 0) * (Number(it.price) || 0))} ₽</span>
+                        {it.isCuttable && it.unit === 'meter' && (
+                          <span style={{ fontSize: 10, color: 'var(--adm-muted)' }}>
+                            {baseQtyForSale(Number(it.quantity)||0, 'meter', it.metersPerRoll).toFixed(3)} рул.
+                          </span>
+                        )}
                       </span>
                       <button
                         type="button"
@@ -782,7 +945,7 @@ export function DealForm({
                       >
                         <label className="admin-label">
                           Адрес доставки{" "}
-                          <span style={{ color: "#ef4444" }}>*</span>
+                          <span style={{ color: "var(--adm-rust)" }}>*</span>
                         </label>
                         <input
                           className="admin-input"
@@ -967,7 +1130,7 @@ export function DealForm({
                     onChange={(e) => setIsReserved(e.target.checked)}
                   />
                   <span>
-                    <b style={{ color: "#4338ca" }}>
+                    <b style={{ color: "var(--adm-indigo)" }}>
                       {isReserved ? "🔒 Зарезервировать товар" : "📋 Зарезервировать товар (выставлен счёт)"}
                     </b>
                     <span className="wh-form-hint" style={{ display: "block", fontWeight: 400, marginTop: 2 }}>

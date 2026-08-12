@@ -12,6 +12,8 @@ import { verifySession } from "@/lib/auth";
 import "../admin.css";
 import "../admin-users.css";
 import "../rent.css";
+import "../admin-themes.css";
+import { AdminThemeProvider } from "@/components/admin/AdminTheme";
 
 // Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому
 // единственный источник истины — публичная переменная. Legacy-переменная
@@ -39,12 +41,16 @@ export default async function AdminLayout({
   const session = await verifySession();
 
   return (
-    <AdminShell
-      adminPath={ADMIN_PATH}
-      role={session?.role ?? null}
-      displayName={session?.displayName ?? null}
-    >
-      {children}
-    </AdminShell>
+    <>
+      <AdminThemeProvider>
+        <AdminShell
+          adminPath={ADMIN_PATH}
+          role={session?.role ?? null}
+          displayName={session?.displayName ?? null}
+        >
+          {children}
+        </AdminShell>
+      </AdminThemeProvider>
+    </>
   );
 }

@@ -26,12 +26,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const src = String(body.source || "");
+    const safeSource = (src === "cash" || src === "ym_card" || src === "rent" || src === "bank" ? src : "bank");
     const result = await createSalary({
       employeeId,
       employeeName,
       amount: Number(body.amount) || 0,
       date: String(body.date || ""),
-      source: body.source === "cash" ? "cash" : "bank",
+      source: safeSource as any,
       isPaid: body.isPaid === true,
       comment: body.comment ?? null,
     });

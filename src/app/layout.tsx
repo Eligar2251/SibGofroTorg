@@ -24,6 +24,7 @@ import {
   buildLocalBusinessJsonLd,
   buildWebSiteJsonLd,
 } from "@/lib/seo";
+import { adminThemeInitScript } from "@/lib/admin-theme";
 
 const FONTS_CSS_URL =
   "https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@800;900&display=swap";
@@ -37,6 +38,11 @@ export const metadata: Metadata = {
   description: DEFAULT_DESCRIPTION,
   applicationName: SITE_NAME,
   robots: { index: true, follow: true },
+  // Подтверждение прав на сайт в Яндекс.Вебмастере (мета-тег).
+  // Файловый способ (public/yandex_a4c02cbb98296a7e.html) оставлен как запасной.
+  verification: {
+    yandex: "a4c02cbb98296a7e",
+  },
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
@@ -109,7 +115,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="ru" data-scroll-behavior="smooth">
+    <html lang="ru" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         {/* Ранние подключения источников (экономия на handshake/TLS). */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -123,6 +129,10 @@ export default async function RootLayout({
         <JsonLd
           data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}
         />
+        {/* Кастомизация админки: применяем сохранённые тему/раскладку/стиль
+            до первой отрисовки (анти-FOUC). Список настроек и скрипт
+            генерируются из единого источника — src/lib/admin-theme.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: adminThemeInitScript() }} />
       </head>
       <body>
         <CartProvider>

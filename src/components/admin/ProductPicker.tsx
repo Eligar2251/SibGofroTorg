@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
+import { getCuttableStockBreakdown as getCuttableBreakdown } from "@/lib/types";
 
 export interface PickerProduct {
   id: string;
@@ -16,7 +17,26 @@ export interface PickerProduct {
   price: number | null;
   /** Оптовая цена — подсказка для закупки */
   priceWholesale: number | null;
+  /** Закупочная цена товара (если задана в карточке) */
+  purchasePrice?: number | null;
   stockQty: number;
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
+  cutUnitName?: string | null;
+}
+
+function formatStock(p: PickerProduct): string {
+  if (p.isCuttable && p.cutMetersPerRoll) {
+    const bd = getCuttableBreakdown(p.stockQty, p.cutMetersPerRoll);
+    if (bd.remainderMeters > 0.009) {
+      return `${bd.fullRolls} рул. + ${bd.remainderMeters} м`;
+    }
+    return `${bd.fullRolls} рул.`;
+  }
+  const n = Number(p.stockQty) || 0;
+  // показываем дробные рулоны как 5.9
+  return Number.isInteger(n) ? `${n}` : `${n}`;
 }
 
 export function ProductPicker({
@@ -97,10 +117,25 @@ export function ProductPicker({
                 <span className="wh-picker__opt-name">
                   {p.name}
                   {p.sku && <span className="wh-picker__opt-sku">{p.sku}</span>}
+                  {p.isCuttable && (
+                    <span
+                      className="admin-badge"
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 10,
+                        padding: "0 4px",
+                        background: "rgba(59,130,246,0.12)",
+                        border: "1px solid rgba(59,130,246,0.25)",
+                      }}
+                    >
+                      рулон/м
+                    </span>
+                  )}
                 </span>
                 <span className="wh-picker__opt-meta">
-                  ост. {p.stockQty}
+                  ост. {formatStock(p)}
                   {p.price != null && ` · ${p.price.toLocaleString("ru-RU")} ₽`}
+                  {p.isCuttable && p.cutPricePerMeter ? ` / ${p.cutPricePerMeter} ₽/м` : ""}
                 </span>
               </button>
             ))

@@ -48,11 +48,13 @@ const statusLabels: Record<string, string> = {
   rejected: "Отменена",
 };
 
-const statusColors: Record<string, string> = {
-  new: "#f59e0b",
-  in_progress: "#3b82f6",
-  completed: "#16a34a",
-  rejected: "#ef4444",
+// Цвета статусов — темызированные пары (фон/текст), чтобы
+     // контраст сохранялся в любой теме админки.
+const statusColors: Record<string, { bg: string; fg: string }> = {
+  new: { bg: "var(--adm-kraft-pale)", fg: "var(--adm-kraft)" },
+  in_progress: { bg: "var(--adm-steel-pale)", fg: "var(--adm-steel)" },
+  completed: { bg: "var(--adm-pine-pale)", fg: "var(--adm-pine)" },
+  rejected: { bg: "var(--adm-rust-pale)", fg: "var(--adm-rust)" },
 };
 
 function formatDate(raw: string | null): string {
@@ -101,7 +103,7 @@ function ClientRow({ client }: { client: Client }) {
           }}
         >
           {client.customerType === "legal" ? (
-            <Building2 size={18} style={{ color: "#2563eb" }} />
+            <Building2 size={18} style={{ color: "var(--adm-steel)" }} />
           ) : (
             <User size={18} style={{ color: "var(--adm-navy)" }} />
           )}
@@ -121,7 +123,7 @@ function ClientRow({ client }: { client: Client }) {
               <span
                 style={{
                   fontSize: 12,
-                  color: "#2563eb",
+                  color: "var(--adm-steel)",
                   marginLeft: 8,
                   fontWeight: 500,
                 }}
@@ -195,7 +197,7 @@ function ClientRow({ client }: { client: Client }) {
               style={{
                 fontSize: 18,
                 fontWeight: 800,
-                color: "#16a34a",
+                color: "var(--adm-pine)",
               }}
             >
               {client.completedCount}
@@ -311,10 +313,10 @@ function ClientRow({ client }: { client: Client }) {
                       fontSize: 11,
                       background:
                         order.type === "order"
-                          ? "rgba(99,102,241,0.1)"
-                          : "rgba(20,184,166,0.1)",
+                          ? "var(--adm-indigo-pale)"
+                          : "var(--adm-teal-pale)",
                       color:
-                        order.type === "order" ? "#6366f1" : "#0d9488",
+                        order.type === "order" ? "var(--adm-indigo)" : "var(--adm-teal)",
                       padding: "2px 8px",
                       borderRadius: 999,
                       fontWeight: 600,
@@ -334,8 +336,8 @@ function ClientRow({ client }: { client: Client }) {
                   <span
                     style={{
                       fontSize: 11,
-                      background: `${statusColors[order.status]}20`,
-                      color: statusColors[order.status],
+                      background: statusColors[order.status].bg,
+                      color: statusColors[order.status].fg,
                       padding: "2px 8px",
                       borderRadius: 999,
                       fontWeight: 600,
@@ -440,12 +442,12 @@ export function ClientsManager({ clients }: { clients: Client[] }) {
           {
             label: "Юридических лиц",
             value: legalCount,
-            color: "#2563eb",
+            color: "var(--adm-steel)",
           },
           {
             label: "Физических лиц",
             value: clients.length - legalCount,
-            color: "#16a34a",
+            color: "var(--adm-pine)",
           },
           {
             label: "Выручка (выполненные)",

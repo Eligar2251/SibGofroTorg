@@ -290,8 +290,14 @@ export function ReceiptForm({
           item.name.toLocaleLowerCase("ru-RU") ===
           supplier.trim().toLocaleLowerCase("ru-RU")
       );
+      // Сначала берём последнюю закупочную цену именно этого поставщика,
+      // затем закупочную цену из карточки товара. Продажные цены
+      // (оптовая/розничная) — только крайний запасной вариант, иначе
+      // в поставках «на реализации» закупочная цена оказывалась
+      // равной цене продажи.
       const suggested =
         selectedSupplier?.supplierPrices?.[p.id] ??
+        (p.purchasePrice != null && p.purchasePrice > 0 ? p.purchasePrice : undefined) ??
         p.priceWholesale ??
         p.price ??
         0;

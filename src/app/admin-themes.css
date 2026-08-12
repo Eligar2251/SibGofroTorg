@@ -1,0 +1,1229 @@
+/* =========================================================
+   FILE: src/app/admin-themes.css
+   Кастомизация админки — мгновенное переключение без
+   перезагрузки. Только цвета и оформление (#fff остаётся
+   для печати, этикеток и QR-превью).
+
+   Как это устроено:
+   • Стандартная тема «Крафт» — это :root в admin.css.
+   • Каждая тема переопределяет набор переменных --adm-*
+     по атрибуту data-admin-theme на <html>.
+   • data-admin-layout — расположение навигации,
+     data-admin-style — стиль элементов,
+     data-admin-density — плотность интерфейса,
+     data-admin-anim — анимации.
+   • Важные токены:
+     --adm-ink-deep — поверхность, которая ВСЕГДА тёмная
+       (сайдбар, тёмные кнопки, активные чипы). Раньше такие
+       места опирались на --adm-ink, который в тёмных темах
+       становится светлым — из-за этого «белый всё перекрывал».
+     --adm-on-accent / --adm-on-pine / --adm-on-rust /
+     --adm-on-steel — цвет текста на сплошных цветных
+       подложках (контраст подбирается под каждую тему).
+   ========================================================= */
+
+/* Плавный переход для всего админского UI (только цвета) */
+[data-admin="true"],
+[data-admin="true"] .admin-card,
+[data-admin="true"] .admin-sidebar,
+[data-admin="true"] .admin-main,
+[data-admin="true"] .admin-stat,
+[data-admin="true"] .bank-hero,
+[data-admin="true"] .bank-due__group,
+[data-admin="true"] .admin-table,
+[data-admin="true"] .admin-btn,
+[data-admin="true"] .admin-input,
+[data-admin="true"] .admin-select {
+  transition: background-color 0.22s ease, color 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+/* ── Стандарт (крафт) — без переопределений, это :root ── */
+[data-admin-theme="standard"] {}
+
+/* ══════════════════════════════════════
+   СВЕТЛЫЕ ТЕМЫ
+   ══════════════════════════════════════ */
+
+/* ── Светлая — «Бумага»: воздушная, минимал, акцент Google Blue ── */
+[data-admin-theme="light"] {
+  --adm-ink:        #1a1c1e;
+  --adm-ink-soft:   #2e3133;
+  --adm-ink-muted:  #5f6368;
+  --adm-muted:      #5f6368;
+  --adm-kraft:      #1a73e8;
+  --adm-kraft-mid:  #4285f4;
+  --adm-kraft-pale: #e8f0fe;
+  --adm-kraft-line: rgba(26,115,232,0.22);
+  --adm-paper:      #f8f9fa;
+  --adm-paper-warm: #f1f3f4;
+  --adm-card:       #ffffff;
+  --adm-border:     #dadce0;
+  --adm-border-mid: #c4c7ca;
+  --adm-border-soft: rgba(0,0,0,0.07);
+  --adm-pine:       #0d652d;
+  --adm-pine-pale:  #e6f4ea;
+  --adm-pine-line:  #a8dab5;
+  --adm-rust:       #c5221f;
+  --adm-rust-pale:  #fce8e6;
+  --adm-rust-line:  #f6aea9;
+  --adm-steel:      #1a73e8;
+  --adm-steel-pale: #e8f0fe;
+  --adm-steel-line: #aecbfa;
+  --adm-sand:       #5f6368;
+  --adm-sand-pale:  #f1f3f4;
+  --adm-ink-deep:      #202124;
+  --adm-ink-deep-soft: #3c4043;
+  --adm-on-accent:  #ffffff;
+  --adm-on-pine:    #ffffff;
+  --adm-on-rust:    #ffffff;
+  --adm-on-steel:   #ffffff;
+  --adm-placeholder: #80868b;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%235f6368' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: строгий Google-минимализм, почти без теней */
+  --adm-r: 8px;
+  --adm-r-sm: 6px;
+  --adm-r-lg: 12px;
+  --adm-sh-xs: 0 1px 2px rgba(60,64,67,0.08);
+  --adm-sh-sm: 0 1px 3px rgba(60,64,67,0.10);
+  --adm-sh-md: 0 4px 12px rgba(60,64,67,0.10);
+  --adm-sh-lg: 0 8px 24px rgba(60,64,67,0.12);
+  --adm-sh-up: 0 -1px 4px rgba(60,64,67,0.05);
+  /* Фишка темы: СВЕТЛЫЙ сайдбар вместо тёмного */
+  --adm-sidebar-bg:          #ffffff;
+  --adm-sidebar-line:        rgba(0,0,0,0.08);
+  --adm-sidebar-text:        rgba(26,28,30,0.55);
+  --adm-sidebar-text-hover:  rgba(26,28,30,0.90);
+  --adm-sidebar-text-active: #1a73e8;
+  --adm-sidebar-muted:       rgba(26,28,30,0.35);
+  --adm-sidebar-hover-bg:    rgba(26,115,232,0.06);
+  --adm-sidebar-active-bg:   rgba(26,115,232,0.10);
+}
+[data-admin-theme="light"] .admin-sidebar::before {
+  display: none;
+}
+[data-admin-theme="light"] .bank-hero {
+  background: linear-gradient(135deg, #202124 0%, #2d2e30 52%, #1e3a5a 100%);
+}
+
+/* ── Лесная — «Тайга»: глубокие зелёные, тёплый крафт как мох ── */
+[data-admin-theme="forest"] {
+  --adm-ink:        #1b2a1e;
+  --adm-ink-soft:   #2a3d2e;
+  --adm-ink-muted:  #6b7c6e;
+  --adm-muted:      #6b7c6e;
+  --adm-kraft:      #6a8d73;
+  --adm-kraft-mid:  #8ab09a;
+  --adm-kraft-pale: #e8f0e6;
+  --adm-kraft-line: rgba(106,141,115,0.22);
+  --adm-paper:      #f6f7f3;
+  --adm-paper-warm: #eceee6;
+  --adm-card:       #ffffff;
+  --adm-border:     #d4ddd6;
+  --adm-border-mid: #b8c4bb;
+  --adm-border-soft: rgba(27,42,30,0.12);
+  --adm-pine:       #2d5a3a;
+  --adm-pine-pale:  #e8f0e6;
+  --adm-pine-line:  #a8c4b0;
+  --adm-rust:       #8b3a2d;
+  --adm-rust-pale:  #f5e6e3;
+  --adm-rust-line:  #d4a9a0;
+  --adm-steel:      #4a6b5a;
+  --adm-steel-pale: #e8f0e6;
+  --adm-steel-line: #a8c4b0;
+  --adm-sand:       #7a8a7e;
+  --adm-sand-pale:  #f0f2ef;
+  --adm-ink-deep:      #1b2a1e;
+  --adm-ink-deep-soft: #2a3d2e;
+  --adm-on-accent:  #14201a;
+  --adm-on-pine:    #ffffff;
+  --adm-on-rust:    #ffffff;
+  --adm-on-steel:   #ffffff;
+  --adm-placeholder: #7f8f81;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%236b7c6e' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: мягкая органика, крупные скругления */
+  --adm-r: 14px;
+  --adm-r-sm: 10px;
+  --adm-r-lg: 18px;
+  --adm-sh-xs: 0 1px 2px rgba(27,42,30,0.06);
+  --adm-sh-sm: 0 2px 10px rgba(27,42,30,0.08);
+  --adm-sh-md: 0 8px 26px rgba(27,42,30,0.10);
+  --adm-sh-lg: 0 14px 40px rgba(27,42,30,0.13);
+  --adm-sh-up: 0 -2px 8px rgba(27,42,30,0.04);
+}
+[data-admin-theme="forest"] .bank-hero {
+  background: linear-gradient(135deg, #1b2a1e 0%, #2a3d2e 52%, #2d4a3a 100%);
+}
+
+/* ── Морская — «Байкал»: холодные синие, лёд и глубина ── */
+[data-admin-theme="ocean"] {
+  --adm-ink:        #0f2040;
+  --adm-ink-soft:   #1a365d;
+  --adm-ink-muted:  #5a7aa0;
+  --adm-muted:      #5a7aa0;
+  --adm-kraft:      #0ea5e9;
+  --adm-kraft-mid:  #38bdf8;
+  --adm-kraft-pale: #e0f2fe;
+  --adm-kraft-line: rgba(14,165,233,0.22);
+  --adm-paper:      #f0f7fa;
+  --adm-paper-warm: #e6f0f6;
+  --adm-card:       #ffffff;
+  --adm-border:     #cbdde8;
+  --adm-border-mid: #a8c4d8;
+  --adm-border-soft: rgba(15,32,64,0.12);
+  --adm-pine:       #0e7490;
+  --adm-pine-pale:  #ecfeff;
+  --adm-pine-line:  #a5f3fc;
+  --adm-rust:       #be123c;
+  --adm-rust-pale:  #ffe4e6;
+  --adm-rust-line:  #fecdd3;
+  --adm-steel:      #0369a1;
+  --adm-steel-pale: #e0f2fe;
+  --adm-steel-line: #7dd3fc;
+  --adm-sand:       #64748b;
+  --adm-sand-pale:  #f1f5f9;
+  --adm-ink-deep:      #0f2040;
+  --adm-ink-deep-soft: #1a365d;
+  --adm-on-accent:  #082636;
+  --adm-on-pine:    #ffffff;
+  --adm-on-rust:    #ffffff;
+  --adm-on-steel:   #ffffff;
+  --adm-placeholder: #6d87a8;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%235a7aa0' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: льдистые скругления, холодные тени */
+  --adm-r: 12px;
+  --adm-r-sm: 8px;
+  --adm-r-lg: 16px;
+  --adm-sh-xs: 0 1px 2px rgba(15,32,64,0.06);
+  --adm-sh-sm: 0 2px 10px rgba(15,32,64,0.08);
+  --adm-sh-md: 0 8px 26px rgba(15,32,64,0.10);
+  --adm-sh-lg: 0 14px 40px rgba(15,32,64,0.13);
+  --adm-sh-up: 0 -2px 8px rgba(15,32,64,0.04);
+}
+[data-admin-theme="ocean"] .bank-hero {
+  background: linear-gradient(135deg, #0f2040 0%, #1a365d 52%, #0c4a6e 100%);
+}
+
+/* ── Лаванда: светлая, сиреневый акцент ── */
+[data-admin-theme="lavender"] {
+  --adm-ink:        #2a2438;
+  --adm-ink-soft:   #3d3552;
+  --adm-ink-muted:  #6f6787;
+  --adm-muted:      #6f6787;
+  --adm-kraft:      #7c3aed;
+  --adm-kraft-mid:  #8b5cf6;
+  --adm-kraft-pale: #f0e9fd;
+  --adm-kraft-line: rgba(124,58,237,0.20);
+  --adm-paper:      #f8f6fc;
+  --adm-paper-warm: #f1edf9;
+  --adm-card:       #ffffff;
+  --adm-border:     #e2dcf0;
+  --adm-border-mid: #cfc6e4;
+  --adm-border-soft: rgba(42,36,56,0.10);
+  --adm-pine:       #15803d;
+  --adm-pine-pale:  #e9f6ee;
+  --adm-pine-line:  #a9d9b8;
+  --adm-rust:       #be123c;
+  --adm-rust-pale:  #fdeef1;
+  --adm-rust-line:  #f3b3c0;
+  --adm-steel:      #4f46e5;
+  --adm-steel-pale: #eceafd;
+  --adm-steel-line: #c3bdf7;
+  --adm-sand:       #7d7690;
+  --adm-sand-pale:  #f2f0f7;
+  --adm-ink-deep:      #2a2438;
+  --adm-ink-deep-soft: #3d3552;
+  --adm-on-accent:  #ffffff;
+  --adm-on-pine:    #ffffff;
+  --adm-on-rust:    #ffffff;
+  --adm-on-steel:   #ffffff;
+  --adm-placeholder: #8f88a3;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%236f6787' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: воздушный — большие радиусы, сиреневатые тени */
+  --adm-r: 18px;
+  --adm-r-sm: 12px;
+  --adm-r-lg: 24px;
+  --adm-sh-xs: 0 1px 2px rgba(124,58,237,0.05);
+  --adm-sh-sm: 0 2px 10px rgba(124,58,237,0.07);
+  --adm-sh-md: 0 8px 26px rgba(124,58,237,0.09);
+  --adm-sh-lg: 0 14px 40px rgba(124,58,237,0.12);
+  --adm-sh-up: 0 -2px 8px rgba(124,58,237,0.04);
+}
+[data-admin-theme="lavender"] .bank-hero {
+  background: linear-gradient(135deg, #2a2438 0%, #3d3552 52%, #4c1d95 100%);
+}
+
+/* ── Закат: тёплый персиковый, терракотовый акцент ── */
+[data-admin-theme="sunset"] {
+  --adm-ink:        #33231c;
+  --adm-ink-soft:   #4a332a;
+  --adm-ink-muted:  #85695c;
+  --adm-muted:      #85695c;
+  --adm-kraft:      #ea580c;
+  --adm-kraft-mid:  #f97316;
+  --adm-kraft-pale: #fdecdc;
+  --adm-kraft-line: rgba(234,88,12,0.20);
+  --adm-paper:      #fdf7f2;
+  --adm-paper-warm: #f8efe6;
+  --adm-card:       #ffffff;
+  --adm-border:     #eddcd0;
+  --adm-border-mid: #dcc4b2;
+  --adm-border-soft: rgba(51,35,28,0.10);
+  --adm-pine:       #15803d;
+  --adm-pine-pale:  #e9f6ee;
+  --adm-pine-line:  #a9d9b8;
+  --adm-rust:       #b91c1c;
+  --adm-rust-pale:  #fdecec;
+  --adm-rust-line:  #f2b8b8;
+  --adm-steel:      #0369a1;
+  --adm-steel-pale: #e5f2fa;
+  --adm-steel-line: #a9d3ec;
+  --adm-sand:       #97826f;
+  --adm-sand-pale:  #f6efe8;
+  --adm-ink-deep:      #33231c;
+  --adm-ink-deep-soft: #4a332a;
+  --adm-on-accent:  #2a1200;
+  --adm-on-pine:    #ffffff;
+  --adm-on-rust:    #ffffff;
+  --adm-on-steel:   #ffffff;
+  --adm-placeholder: #9c8b7d;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2385695c' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: тёплый закатный, средние скругления */
+  --adm-r: 12px;
+  --adm-r-sm: 8px;
+  --adm-r-lg: 16px;
+  --adm-sh-xs: 0 1px 2px rgba(51,35,28,0.06);
+  --adm-sh-sm: 0 2px 10px rgba(51,35,28,0.08);
+  --adm-sh-md: 0 8px 26px rgba(51,35,28,0.10);
+  --adm-sh-lg: 0 14px 40px rgba(51,35,28,0.13);
+  --adm-sh-up: 0 -2px 8px rgba(51,35,28,0.04);
+}
+[data-admin-theme="sunset"] .bank-hero {
+  background: linear-gradient(135deg, #33231c 0%, #4a332a 52%, #7c2d12 100%);
+}
+
+/* ── Мята: свежая светло-зелёная, изумрудный акцент ── */
+[data-admin-theme="mint"] {
+  --adm-ink:        #14271e;
+  --adm-ink-soft:   #254033;
+  --adm-ink-muted:  #5d7a6b;
+  --adm-muted:      #5d7a6b;
+  --adm-kraft:      #059669;
+  --adm-kraft-mid:  #10b981;
+  --adm-kraft-pale: #dcf5ec;
+  --adm-kraft-line: rgba(5,150,105,0.20);
+  --adm-paper:      #f4faf7;
+  --adm-paper-warm: #eaf4ee;
+  --adm-card:       #ffffff;
+  --adm-border:     #d5e6dc;
+  --adm-border-mid: #b9d2c4;
+  --adm-border-soft: rgba(20,39,30,0.10);
+  --adm-pine:       #166534;
+  --adm-pine-pale:  #e7f6ec;
+  --adm-pine-line:  #a7d8b9;
+  --adm-rust:       #b91c1c;
+  --adm-rust-pale:  #fdecec;
+  --adm-rust-line:  #f2b8b8;
+  --adm-steel:      #155e75;
+  --adm-steel-pale: #e6f6fa;
+  --adm-steel-line: #a3dbe8;
+  --adm-sand:       #6f8579;
+  --adm-sand-pale:  #eff5f1;
+  --adm-ink-deep:      #122b21;
+  --adm-ink-deep-soft: #1d4032;
+  --adm-on-accent:  #04150d;
+  --adm-on-pine:    #ffffff;
+  --adm-on-rust:    #ffffff;
+  --adm-on-steel:   #ffffff;
+  --adm-placeholder: #7a8f82;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%235d7a6b' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: свежий, аккуратные скругления */
+  --adm-r: 10px;
+  --adm-r-sm: 8px;
+  --adm-r-lg: 14px;
+  --adm-sh-xs: 0 1px 2px rgba(20,39,30,0.06);
+  --adm-sh-sm: 0 2px 10px rgba(20,39,30,0.08);
+  --adm-sh-md: 0 8px 26px rgba(20,39,30,0.10);
+  --adm-sh-lg: 0 14px 40px rgba(20,39,30,0.12);
+  --adm-sh-up: 0 -2px 8px rgba(20,39,30,0.04);
+}
+[data-admin-theme="mint"] .bank-hero {
+  background: linear-gradient(135deg, #122b21 0%, #1d4032 52%, #065f46 100%);
+}
+
+/* ══════════════════════════════════════
+   ТЁМНЫЕ ТЕМЫ
+   ══════════════════════════════════════ */
+
+/* ── Тёмная — «Ночь»: для работы вечером, бережёт глаза ── */
+[data-admin-theme="dark"] {
+  --adm-ink:        #e8eaed;
+  --adm-ink-soft:   #dadce0;
+  --adm-ink-muted:  #9aa0a6;
+  --adm-muted:      #9aa0a6;
+  --adm-kraft:      #fdd663;
+  --adm-kraft-mid:  #fde293;
+  --adm-kraft-pale: #3c2f14;
+  --adm-kraft-line: rgba(253,214,99,0.22);
+  --adm-paper:      #0f1115;
+  --adm-paper-warm: #171a1f;
+  --adm-card:       #1f2328;
+  --adm-border:     #2f333a;
+  --adm-border-mid: #3c4043;
+  --adm-border-soft: rgba(255,255,255,0.08);
+  --adm-pine:       #81c995;
+  --adm-pine-pale:  #1e2e1f;
+  --adm-pine-line:  rgba(129,201,149,0.22);
+  --adm-rust:       #f28b82;
+  --adm-rust-pale:  #2e1e1d;
+  --adm-rust-line:  rgba(242,139,130,0.22);
+  --adm-steel:      #8ab4f8;
+  --adm-steel-pale: #1e2a3a;
+  --adm-steel-line: rgba(138,180,248,0.22);
+  --adm-sand:       #9aa0a6;
+  --adm-sand-pale:  #1f2328;
+  --adm-ink-deep:      #0b0e14;
+  --adm-ink-deep-soft: #1c2027;
+  --adm-on-accent:  #241a00;
+  --adm-on-pine:    #0d2614;
+  --adm-on-rust:    #3a100c;
+  --adm-on-steel:   #0b1e36;
+  --adm-placeholder: #6f757c;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239aa0a6' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: глубокие тени на тёмном */
+  --adm-r: 10px;
+  --adm-r-sm: 6px;
+  --adm-r-lg: 14px;
+  --adm-sh-xs: 0 1px 2px rgba(0,0,0,0.40);
+  --adm-sh-sm: 0 2px 8px rgba(0,0,0,0.45);
+  --adm-sh-md: 0 6px 24px rgba(0,0,0,0.50);
+  --adm-sh-lg: 0 12px 38px rgba(0,0,0,0.55);
+  --adm-sh-up: 0 -2px 8px rgba(0,0,0,0.35);
+}
+[data-admin-theme="dark"] .bank-hero {
+  background: linear-gradient(135deg, #0b0e14 0%, #1a1d23 52%, #1e2a3a 100%);
+  border-color: rgba(138,180,248,0.22);
+}
+
+/* ── Ультра-тёмная — «Космос»: глубокий чёрный, глаза отдыхают ── */
+[data-admin-theme="superdark"] {
+  --adm-ink:        #f3f4f6;
+  --adm-ink-soft:   #e5e7eb;
+  --adm-ink-muted:  #9ca3af;
+  --adm-muted:      #9ca3af;
+  --adm-kraft:      #10b981;
+  --adm-kraft-mid:  #34d399;
+  --adm-kraft-pale: #062216;
+  --adm-kraft-line: rgba(16,185,129,0.22);
+  --adm-paper:      #000000;
+  --adm-paper-warm: #080808;
+  --adm-card:       #0d0d0d;
+  --adm-border:     #1a1a1a;
+  --adm-border-mid: #2d2d2d;
+  --adm-border-soft: rgba(255,255,255,0.09);
+  --adm-pine:       #059669;
+  --adm-pine-pale:  #022c22;
+  --adm-pine-line:  rgba(5,150,105,0.22);
+  --adm-rust:       #ef4444;
+  --adm-rust-pale:  #450a0a;
+  --adm-rust-line:  rgba(239,68,68,0.22);
+  --adm-steel:      #3b82f6;
+  --adm-steel-pale: #172554;
+  --adm-steel-line: rgba(59,130,246,0.22);
+  --adm-sand:       #9ca3af;
+  --adm-sand-pale:  #0f172a;
+  --adm-ink-deep:      #000000;
+  --adm-ink-deep-soft: #151515;
+  --adm-on-accent:  #001a10;
+  --adm-on-pine:    #031710;
+  --adm-on-rust:    #2b0505;
+  --adm-on-steel:   #061027;
+  --adm-placeholder: #52525b;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: рубленые углы и неоновое свечение вместо теней */
+  --adm-r: 4px;
+  --adm-r-sm: 3px;
+  --adm-r-lg: 6px;
+  --adm-sh-xs: 0 0 0 1px rgba(16,185,129,0.06);
+  --adm-sh-sm: 0 0 14px rgba(16,185,129,0.08);
+  --adm-sh-md: 0 0 24px rgba(16,185,129,0.10);
+  --adm-sh-lg: 0 0 38px rgba(16,185,129,0.14);
+  --adm-sh-up: 0 0 10px rgba(16,185,129,0.06);
+}
+[data-admin-theme="superdark"] .bank-hero {
+  background: linear-gradient(135deg, #000000 0%, #0d0d0d 52%, #041d13 100%);
+  border-color: rgba(16,185,129,0.22);
+}
+
+/* ── Гранит: нейтральный тёмно-серый, оранжевый акцент ── */
+[data-admin-theme="graphite"] {
+  --adm-ink:        #eceff1;
+  --adm-ink-soft:   #d3d8dc;
+  --adm-ink-muted:  #99a2ab;
+  --adm-muted:      #99a2ab;
+  --adm-kraft:      #ff8a3d;
+  --adm-kraft-mid:  #ffa25c;
+  --adm-kraft-pale: #33200f;
+  --adm-kraft-line: rgba(255,138,61,0.24);
+  --adm-paper:      #141618;
+  --adm-paper-warm: #1a1d20;
+  --adm-card:       #202429;
+  --adm-border:     #2c3238;
+  --adm-border-mid: #3a4148;
+  --adm-border-soft: rgba(255,255,255,0.08);
+  --adm-pine:       #7fd69a;
+  --adm-pine-pale:  #12291a;
+  --adm-pine-line:  rgba(127,214,154,0.24);
+  --adm-rust:       #ff7b70;
+  --adm-rust-pale:  #2f1512;
+  --adm-rust-line:  rgba(255,123,112,0.24);
+  --adm-steel:      #82aaff;
+  --adm-steel-pale: #16233a;
+  --adm-steel-line: rgba(130,170,255,0.24);
+  --adm-sand:       #9aa3ab;
+  --adm-sand-pale:  #23272c;
+  --adm-ink-deep:      #0c0e10;
+  --adm-ink-deep-soft: #1a1d21;
+  --adm-on-accent:  #2a1200;
+  --adm-on-pine:    #0c2413;
+  --adm-on-rust:    #3a0d08;
+  --adm-on-steel:   #0a1633;
+  --adm-placeholder: #6b747c;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2399a2ab' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: индустриальный — острые углы, жёсткие тени-ступеньки */
+  --adm-r: 2px;
+  --adm-r-sm: 2px;
+  --adm-r-lg: 4px;
+  --adm-sh-xs: 0 1px 0 rgba(0,0,0,0.50);
+  --adm-sh-sm: 0 2px 0 rgba(0,0,0,0.45);
+  --adm-sh-md: 0 3px 0 rgba(0,0,0,0.40), 0 8px 20px rgba(0,0,0,0.35);
+  --adm-sh-lg: 0 4px 0 rgba(0,0,0,0.40), 0 14px 34px rgba(0,0,0,0.45);
+  --adm-sh-up: 0 -2px 0 rgba(0,0,0,0.35);
+}
+[data-admin-theme="graphite"] .bank-hero {
+  background: linear-gradient(135deg, #0c0e10 0%, #1a1d21 52%, #2b1a0c 100%);
+  border-color: rgba(255,138,61,0.24);
+}
+
+/* ── Рубин: тёмный бордовый, розово-красный акцент ── */
+[data-admin-theme="ruby"] {
+  --adm-ink:        #f2e8e8;
+  --adm-ink-soft:   #e3d3d4;
+  --adm-ink-muted:  #a8908f;
+  --adm-muted:      #a8908f;
+  --adm-kraft:      #fb7185;
+  --adm-kraft-mid:  #fda4af;
+  --adm-kraft-pale: #3a1218;
+  --adm-kraft-line: rgba(251,113,133,0.24);
+  --adm-paper:      #170f11;
+  --adm-paper-warm: #1e1416;
+  --adm-card:       #251a1d;
+  --adm-border:     #37252a;
+  --adm-border-mid: #473036;
+  --adm-border-soft: rgba(255,255,255,0.08);
+  --adm-pine:       #86d993;
+  --adm-pine-pale:  #14291a;
+  --adm-pine-line:  rgba(134,217,147,0.24);
+  --adm-rust:       #f87171;
+  --adm-rust-pale:  #33100e;
+  --adm-rust-line:  rgba(248,113,113,0.24);
+  --adm-steel:      #93b4f0;
+  --adm-steel-pale: #17223a;
+  --adm-steel-line: rgba(147,180,240,0.24);
+  --adm-sand:       #a89894;
+  --adm-sand-pale:  #241a1e;
+  --adm-ink-deep:      #0e0708;
+  --adm-ink-deep-soft: #1e1113;
+  --adm-on-accent:  #3a0711;
+  --adm-on-pine:    #0c2412;
+  --adm-on-rust:    #330b06;
+  --adm-on-steel:   #0c1a36;
+  --adm-placeholder: #75605f;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23a8908f' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: роскошь — крупные скругления, глубокие тени */
+  --adm-r: 16px;
+  --adm-r-sm: 10px;
+  --adm-r-lg: 20px;
+  --adm-sh-xs: 0 1px 2px rgba(0,0,0,0.45);
+  --adm-sh-sm: 0 3px 12px rgba(0,0,0,0.50);
+  --adm-sh-md: 0 10px 30px rgba(0,0,0,0.55);
+  --adm-sh-lg: 0 18px 44px rgba(0,0,0,0.60);
+  --adm-sh-up: 0 -2px 10px rgba(0,0,0,0.40);
+}
+[data-admin-theme="ruby"] .bank-hero {
+  background: linear-gradient(135deg, #0e0708 0%, #1e1113 52%, #4c0519 100%);
+  border-color: rgba(251,113,133,0.24);
+}
+
+/* ── Эспрессо: тёмный тёплый коричневый, карамельный акцент ── */
+[data-admin-theme="coffee"] {
+  --adm-ink:        #ede4d8;
+  --adm-ink-soft:   #ded2c2;
+  --adm-ink-muted:  #a3937f;
+  --adm-muted:      #a3937f;
+  --adm-kraft:      #d9a05b;
+  --adm-kraft-mid:  #e5b578;
+  --adm-kraft-pale: #2e2010;
+  --adm-kraft-line: rgba(217,160,91,0.24);
+  --adm-paper:      #171310;
+  --adm-paper-warm: #1d1815;
+  --adm-card:       #241e19;
+  --adm-border:     #332a23;
+  --adm-border-mid: #443830;
+  --adm-border-soft: rgba(255,255,255,0.08);
+  --adm-pine:       #93c98a;
+  --adm-pine-pale:  #1a2715;
+  --adm-pine-line:  rgba(147,201,138,0.24);
+  --adm-rust:       #e07856;
+  --adm-rust-pale:  #2d1810;
+  --adm-rust-line:  rgba(224,120,86,0.24);
+  --adm-steel:      #9db4c9;
+  --adm-steel-pale: #1b222b;
+  --adm-steel-line: rgba(157,180,201,0.24);
+  --adm-sand:       #a89880;
+  --adm-sand-pale:  #262019;
+  --adm-ink-deep:      #0f0c0a;
+  --adm-ink-deep-soft: #201913;
+  --adm-on-accent:  #241300;
+  --adm-on-pine:    #10230c;
+  --adm-on-rust:    #2e1206;
+  --adm-on-steel:   #101c28;
+  --adm-placeholder: #6f6252;
+  --adm-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23a3937f' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  /* Характер: тёплый, мягкие скругления, плотные тени */
+  --adm-r: 12px;
+  --adm-r-sm: 8px;
+  --adm-r-lg: 16px;
+  --adm-sh-xs: 0 1px 2px rgba(0,0,0,0.40);
+  --adm-sh-sm: 0 2px 10px rgba(0,0,0,0.45);
+  --adm-sh-md: 0 8px 26px rgba(0,0,0,0.50);
+  --adm-sh-lg: 0 14px 40px rgba(0,0,0,0.55);
+  --adm-sh-up: 0 -2px 8px rgba(0,0,0,0.35);
+}
+[data-admin-theme="coffee"] .bank-hero {
+  background: linear-gradient(135deg, #0f0c0a 0%, #201913 52%, #3b2410 100%);
+  border-color: rgba(217,160,91,0.24);
+}
+
+/* ── Индиго/бирюза: в тёмных темах нужны светлые версии ── */
+[data-admin-theme="dark"],
+[data-admin-theme="superdark"],
+[data-admin-theme="graphite"],
+[data-admin-theme="ruby"],
+[data-admin-theme="coffee"] {
+  --adm-indigo:      #a5b4fc;
+  --adm-indigo-pale: #1e1e3a;
+  --adm-indigo-line: rgba(165,180,252,0.30);
+  --adm-teal:        #5eead4;
+  --adm-teal-pale:   #0f2b2b;
+  --adm-teal-line:   rgba(94,234,212,0.30);
+}
+
+/* ══════════════════════════════════════
+   ПЕЧАТЬ: всегда белая, вне зависимости от темы
+   ══════════════════════════════════════ */
+@media print {
+  html[data-admin-theme] {
+    --adm-ink: #000 !important;
+    --adm-ink-soft: #111 !important;
+    --adm-paper: #fff !important;
+    --adm-card: #fff !important;
+    --adm-border: #ccc !important;
+  }
+  .boxlabel-sheet,
+  .boxlabel,
+  .boxlabel__band {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Скрываем элементы навигации и управления при печати */
+  .admin-sidebar,
+  .admin-sidebar-handle,
+  .admin-mobile-bar,
+  .admin-notifications,
+  .no-print,
+  #admin-sidebar {
+    display: none !important;
+  }
+
+  /* Обнуляем отступы у контента при печати */
+  .admin-content {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+  }
+}
+
+/* ══════════════════════════════════════
+   РАЗДЕЛ НАСТРОЕК: РАСПОЛОЖЕНИЕ ЭЛЕМЕНТОВ
+   ══════════════════════════════════════ */
+
+/* ── Сайдбар справа ── */
+@media (min-width: 1024px) {
+  [data-admin-layout="sidebar-right"] .admin-shell {
+    flex-direction: row-reverse;
+  }
+  [data-admin-layout="sidebar-right"] .admin-sidebar {
+    inset: 0 0 0 auto;
+    border-right: none;
+    border-left: 2px solid var(--adm-kraft);
+  }
+  [data-admin-layout="sidebar-right"] .admin-content {
+    margin-left: 0 !important;
+    margin-right: 240px !important;
+  }
+  [data-admin-layout="sidebar-right"] .admin-shell--sidebar-hidden .admin-content {
+    margin-right: 0 !important;
+  }
+  [data-admin-layout="sidebar-right"] .admin-sidebar-handle {
+    left: auto;
+    right: 0;
+    border-radius: 4px 0 0 4px;
+    transform: rotate(180deg);
+  }
+}
+
+/* ── Сайдбар сверху (Верхнее горизонтальное меню) ──
+   Ровная шапка: логотип слева, меню по центру (переносится
+   аккуратными строками), справа — «на сайт» и «выйти». */
+@media (min-width: 1024px) {
+  [data-admin-layout="sidebar-top"] .admin-shell {
+    flex-direction: column;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar {
+    width: 100% !important;
+    height: auto !important;
+    position: sticky !important;
+    inset: 0 0 auto 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 12px;
+    padding: 8px 18px !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--adm-kraft) !important;
+    flex-shrink: 0 !important;
+    overflow: visible !important;
+  }
+  /* Свёрнутая панель в верхней раскладке не прячется:
+     без неё остаётся пустая страница. */
+  [data-admin-layout="sidebar-top"] .admin-sidebar--hidden {
+    transform: none !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar::before {
+    display: none !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__brand {
+    border-bottom: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-shrink: 0 !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__logo-svg {
+    height: 26px !important;
+    width: auto !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__sub,
+  [data-admin-layout="sidebar-top"] .admin-sidebar__toggle {
+    display: none !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__nav {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+    scrollbar-width: none;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__link {
+    padding: 7px 10px !important;
+    font-size: 12px !important;
+    border-radius: var(--adm-r-sm) !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    flex: 0 0 auto !important;
+  }
+  /* Активная ссылка в горизонтальном меню — полоска снизу,
+     а не слева (так ровнее). */
+  [data-admin-layout="sidebar-top"] .admin-sidebar__link--active::before {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 1px;
+    width: auto;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__footer {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    border-top: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 2px !important;
+    width: auto !important;
+    flex-shrink: 0 !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar__footer-link,
+  [data-admin-layout="sidebar-top"] .admin-sidebar__logout {
+    width: auto !important;
+    padding: 7px 8px !important;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  [data-admin-layout="sidebar-top"] .admin-content {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar-handle {
+    display: none !important;
+  }
+}
+
+/* ── Компактный сайдбар: только иконки, максимум места ──
+   Подписи прячутся (текст обёрнут в .admin-sidebar__label),
+   широкий логотип заменяется монограммой «С», кнопка
+   сворачивания встаёт под монограмму. Ничего не обрезается. */
+@media (min-width: 1024px) {
+  [data-admin-layout="compact"] .admin-sidebar {
+    width: 76px;
+  }
+  [data-admin-layout="compact"] .admin-content {
+    margin-left: 76px !important;
+  }
+  [data-admin-layout="compact"] .admin-shell--sidebar-hidden .admin-content {
+    margin-left: 0 !important;
+  }
+  [data-admin-layout="compact"] .admin-sidebar__label,
+  [data-admin-layout="compact"] .admin-sidebar__sub,
+  [data-admin-layout="compact"] .admin-sidebar__link > span,
+  [data-admin-layout="compact"] .admin-sidebar__footer-link > span,
+  [data-admin-layout="compact"] .admin-sidebar__logout > span {
+    display: none !important;
+  }
+  /* Двойная страховка «только иконки»: даже если подпись почему-то не
+     спряталась display:none, нулевой размер шрифта не даст ей
+     occupать место и уезжать за поля. Иконки (svg) имеют свои
+     размеры и от font-size не зависят. */
+  [data-admin-layout="compact"] .admin-sidebar__link,
+  [data-admin-layout="compact"] .admin-sidebar__footer-link,
+  [data-admin-layout="compact"] .admin-sidebar__logout {
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 0;
+    line-height: 0;
+  }
+  /* Горизонтальный логотип (знак + текст) в 76px не помещается —
+     вместо него аккуратная монограмма в фирменном цвете. */
+  [data-admin-layout="compact"] .admin-sidebar__logo-svg {
+    display: none !important;
+  }
+  [data-admin-layout="compact"] .admin-sidebar__brand::before {
+    content: 'С';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--adm-r-sm);
+    background: var(--adm-kraft);
+    color: var(--adm-on-accent);
+    font-family: var(--adm-font-head);
+    font-weight: 700;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  [data-admin-layout="compact"] .admin-sidebar__brand {
+    padding: 12px 8px 10px !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+  /* Кнопка сворачивания — обычным элементом под монограммой,
+     чтобы не наезжала на неё. */
+  [data-admin-layout="compact"] .admin-sidebar__toggle {
+    position: static !important;
+    width: 26px;
+    height: 26px;
+  }
+  [data-admin-layout="compact"] .admin-sidebar__nav {
+    padding: 10px 8px !important;
+    gap: 4px !important;
+  }
+  [data-admin-layout="compact"] .admin-sidebar__link {
+    justify-content: center !important;
+    padding: 10px 0 !important;
+    gap: 0 !important;
+  }
+  [data-admin-layout="compact"] .admin-sidebar__footer {
+    padding: 8px 8px 10px !important;
+    align-items: center;
+  }
+  [data-admin-layout="compact"] .admin-sidebar__footer-link,
+  [data-admin-layout="compact"] .admin-sidebar__logout {
+    justify-content: center !important;
+    padding: 9px 0 !important;
+    gap: 0 !important;
+    width: 40px;
+  }
+}
+
+/* ══════════════════════════════════════
+   РАЗДЕЛ НАСТРОЕК: ОФОРМЛЕНИЕ И СТИЛИ
+   ══════════════════════════════════════ */
+
+/* ── Мягкий Нео (Неоморфизм) ── */
+[data-admin-style="neo"] {
+  --adm-r-md: 16px !important;
+  --adm-r-sm: 8px !important;
+}
+[data-admin-style="neo"] .admin-card,
+[data-admin-style="neo"] .admin-stat {
+  border-radius: 16px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid var(--adm-border) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+[data-admin-style="neo"] .admin-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.07), 0 4px 10px rgba(0, 0, 0, 0.03) !important;
+}
+[data-admin-style="neo"] .admin-btn {
+  border-radius: 999px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+[data-admin-style="neo"] .admin-input,
+[data-admin-style="neo"] .admin-select,
+[data-admin-style="neo"] .admin-textarea {
+  border-radius: 12px !important;
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.03) !important;
+}
+/* В тёмных темах чёрные тени почти не видны — усиливаем */
+[data-admin-style="neo"]:is([data-admin-theme="dark"],
+[data-admin-theme="superdark"],
+[data-admin-theme="graphite"],
+[data-admin-theme="ruby"],
+[data-admin-theme="coffee"]) .admin-card,
+[data-admin-style="neo"]:is([data-admin-theme="dark"],
+[data-admin-theme="superdark"],
+[data-admin-theme="graphite"],
+[data-admin-theme="ruby"],
+[data-admin-theme="coffee"]) .admin-stat {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* ── Ретро-панель (90-е) ── */
+[data-admin-style="retro"] {
+  --adm-r-md: 0px !important;
+  --adm-r-sm: 0px !important;
+}
+[data-admin-style="retro"] .admin-card,
+[data-admin-style="retro"] .admin-stat {
+  border: 2px solid var(--adm-ink) !important;
+  border-radius: 0px !important;
+  box-shadow: 4px 4px 0px var(--adm-border-mid) !important;
+}
+[data-admin-style="retro"] .admin-btn {
+  border: 2px solid var(--adm-ink) !important;
+  border-radius: 0px !important;
+  box-shadow: 3px 3px 0px var(--adm-ink) !important;
+  font-weight: 900 !important;
+  text-transform: uppercase;
+}
+[data-admin-style="retro"] .admin-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px var(--adm-ink) !important;
+}
+[data-admin-style="retro"] .admin-input,
+[data-admin-style="retro"] .admin-select,
+[data-admin-style="retro"] .admin-textarea {
+  border: 2px solid var(--adm-ink) !important;
+  border-radius: 0px !important;
+}
+
+/* ── Киберпанк (Неон) ── */
+[data-admin-style="cyberpunk"] {
+  font-family: monospace, sans-serif !important;
+}
+[data-admin-style="cyberpunk"] .admin-card {
+  border: 1px solid var(--adm-kraft) !important;
+  box-shadow: 0 0 10px var(--adm-kraft-line) !important;
+  position: relative;
+  border-radius: 2px !important;
+}
+[data-admin-style="cyberpunk"] .admin-card::before {
+  content: "⚡ SYS_ACTIVE";
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  font-size: 8px;
+  background: var(--adm-card);
+  padding: 0 4px;
+  color: var(--adm-kraft);
+}
+[data-admin-style="cyberpunk"] .admin-btn {
+  border: 1px solid var(--adm-kraft) !important;
+  box-shadow: 0 0 6px var(--adm-kraft-line) !important;
+  text-transform: uppercase;
+  font-weight: 700;
+  border-radius: 2px !important;
+}
+
+/* ── Минимализм: ничего лишнего — без теней, тонкие рамки ── */
+[data-admin-style="minimal"] .admin-card,
+[data-admin-style="minimal"] .admin-stat {
+  box-shadow: none !important;
+  border: 1px solid var(--adm-border-soft) !important;
+  border-radius: 8px !important;
+}
+[data-admin-style="minimal"] .admin-card:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+[data-admin-style="minimal"] .admin-btn {
+  box-shadow: none !important;
+}
+[data-admin-style="minimal"] .admin-input,
+[data-admin-style="minimal"] .admin-select,
+[data-admin-style="minimal"] .admin-textarea {
+  box-shadow: none !important;
+}
+
+/* ── Контраст: жирные рамки и заметный фокус — для доступности ── */
+[data-admin-style="contrast"] .admin-card,
+[data-admin-style="contrast"] .admin-stat {
+  border: 2px solid var(--adm-border-mid) !important;
+}
+[data-admin-style="contrast"] .admin-btn {
+  border: 2px solid var(--adm-border-mid) !important;
+  font-weight: 700 !important;
+}
+[data-admin-style="contrast"] .admin-btn--primary {
+  border-color: var(--adm-kraft) !important;
+}
+[data-admin-style="contrast"] .admin-input,
+[data-admin-style="contrast"] .admin-select,
+[data-admin-style="contrast"] .admin-textarea {
+  border: 2px solid var(--adm-border-mid) !important;
+}
+[data-admin-style="contrast"] .admin-table td {
+  border-bottom: 1px solid var(--adm-border-mid) !important;
+}
+[data-admin-style="contrast"] [data-admin="true"] a:focus-visible,
+[data-admin-style="contrast"] [data-admin="true"] button:focus-visible,
+[data-admin-style="contrast"] [data-admin="true"] input:focus-visible,
+[data-admin-style="contrast"] [data-admin="true"] select:focus-visible,
+[data-admin-style="contrast"] [data-admin="true"] textarea:focus-visible {
+  outline: 3px solid var(--adm-kraft) !important;
+  outline-offset: 2px !important;
+}
+
+/* ══════════════════════════════════════
+   РАЗДЕЛ НАСТРОЕК: ПЛОТНОСТЬ ИНТЕРФЕЙСА
+   ══════════════════════════════════════ */
+
+/* ── Компактная плотность: меньше отступов и размеры ниже ── */
+[data-admin-density="compact"] .admin-main {
+  padding: 12px;
+  padding-top: 68px;
+}
+[data-admin-density="compact"] .admin-h1 {
+  font-size: 1.25rem;
+  margin-bottom: 0.9rem;
+}
+[data-admin-density="compact"] .admin-card__pad {
+  padding: 12px 14px;
+}
+[data-admin-density="compact"] .admin-card__title {
+  font-size: 13px;
+}
+[data-admin-density="compact"] .admin-stat {
+  padding: 12px 14px;
+}
+[data-admin-density="compact"] .admin-btn {
+  padding: 6px 12px;
+}
+[data-admin-density="compact"] .admin-btn--sm {
+  padding: 4px 8px;
+}
+[data-admin-density="compact"] .admin-input,
+[data-admin-density="compact"] .admin-select,
+[data-admin-density="compact"] .admin-textarea {
+  padding: 6px 10px;
+}
+[data-admin-density="compact"] .admin-table th {
+  padding: 7px 10px;
+}
+[data-admin-density="compact"] .admin-table td {
+  padding: 7px 10px;
+}
+[data-admin-density="compact"] .admin-filters {
+  margin-bottom: 10px;
+}
+[data-admin-density="compact"] .admin-stack {
+  gap: 10px;
+}
+[data-admin-density="compact"] .admin-stack--lg {
+  gap: 14px;
+}
+
+/* ══════════════════════════════════════
+   РАЗДЕЛ НАСТРОЕК: АНИМАЦИИ
+   ══════════════════════════════════════ */
+
+/* ── Уменьшенные анимации: всё статично, без движения ── */
+[data-admin-anim="reduced"] [data-admin="true"] *,
+[data-admin-anim="reduced"] [data-admin="true"] *::before,
+[data-admin-anim="reduced"] [data-admin="true"] *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}
+[data-admin-anim="reduced"] html[data-scroll-behavior="smooth"] {
+  scroll-behavior: auto;
+}
+
+/* ══════════════════════════════════════
+   РАЗДЕЛ НАСТРОЕК: ЭФФЕКТ СТЕКЛА
+   Включается отдельной кнопкой в Настройках
+   (data-admin-glass="on"). Полупрозрачные карточки
+   с размытием фона. Blur умеренный (10px) и применён
+   только к основным контейнерам, чтобы эффект не
+   снижал FPS на слабых машинах.
+   ══════════════════════════════════════ */
+[data-admin-glass="on"] .admin-card,
+[data-admin-glass="on"] .admin-stat,
+[data-admin-glass="on"] .dash-section,
+[data-admin-glass="on"] .admin-modal,
+[data-admin-glass="on"] .admin-notify__panel {
+  background: color-mix(in srgb, var(--adm-card) 72%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  backdrop-filter: blur(10px) saturate(1.15);
+  border-color: color-mix(in srgb, var(--adm-border-mid) 65%, transparent);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+}
+/* Внутренняя шапка секции дашборда не должна перекрывать стекло */
+[data-admin-glass="on"] .dash-section__head {
+  background: transparent;
+}
+/* Сайдбар и мобильная панель — тёмное стекло поверх контента */
+[data-admin-glass="on"] .admin-sidebar,
+[data-admin-glass="on"] .admin-mobile-bar {
+  background: color-mix(in srgb, var(--adm-sidebar-bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  backdrop-filter: blur(12px) saturate(1.1);
+}
+
+/* Печать: стекло отключается, поверхности всегда белые */
+@media print {
+  [data-admin-glass="on"] .admin-card,
+  [data-admin-glass="on"] .admin-stat,
+  [data-admin-glass="on"] .dash-section,
+  [data-admin-glass="on"] .admin-modal,
+  [data-admin-glass="on"] .admin-notify__panel {
+    background: #fff !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+/* ══════════════════════════════════════
+   ОБЩИЕ ФИКСЫ РАЗМЕТКИ И НАКЛАДЫВАНИЯ ЭЛЕМЕНТОВ
+   ══════════════════════════════════════ */
+
+/* Разрешаем перенос заголовков и кнопок в карточках, предотвращая их наложение */
+[data-admin="true"] .admin-card__head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+[data-admin="true"] .admin-card__title {
+  flex-grow: 1;
+  min-width: 0;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Исправляем сжатие фильтров на средних экранах */
+[data-admin="true"] .admin-filters {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+/* Таблицы: предотвращаем сужение важных колонок и наложение текста */
+[data-admin="true"] .admin-table td {
+  word-break: break-word;
+  white-space: normal;
+}
+
+/* Кнопки действий в таблицах не должны перекрывать друг друга */
+[data-admin="true"] .admin-table .admin-actions,
+[data-admin="true"] .admin-table td .admin-btn-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+  min-width: max-content;
+}
+
+/* Поля ввода и гриды форм: делаем адаптивный грид для настроек */
+@media (min-width: 900px) and (max-width: 1200px) {
+  .settings-main-grid {
+    grid-template-columns: 1fr !important; /* На средних экранах одна колонка удобнее для предотвращения сжатия */
+  }
+}
+
+/* ── Выделение правой кнопкой в Банке ( Counterparties & Payments ) ── */
+
+/* 1. Контрагенты (Покупатели) - Деликатная подсветка цветом */
+[data-admin="true"] .bank-due__group:first-of-type .bank-due__row--selected {
+  background: var(--adm-steel-pale) !important;
+  border-left: 4px solid var(--adm-steel) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 2. Контрагенты (Поставщики) - Деликатная подсветка цветом */
+[data-admin="true"] .bank-due__group:last-of-type .bank-due__row--selected {
+  background: var(--adm-rust-pale) !important;
+  border-left: 4px solid var(--adm-rust) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 3. Платежи (Приход) - Деликатная подсветка цветом */
+[data-admin="true"] .bank-pay--selected.bank-pay--incoming {
+  background: var(--adm-pine-pale) !important;
+  border-left: 4px solid var(--adm-pine) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 4. Платежи (Расход) - Деликатная подсветка цветом */
+[data-admin="true"] .bank-pay--selected.bank-pay--outgoing {
+  background: var(--adm-rust-pale) !important;
+  border-left: 4px solid var(--adm-rust) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}

@@ -43,6 +43,7 @@ export interface SiteSettings {
   /** Дефолт «8:30–17:00» для случая, когда админ задал только свои часы */
   hoursWeekday: string;
   messengerBanner: MessengerBannerSettings;
+  registrationField: "phone" | "email";
   ready: boolean;
 }
 
@@ -89,6 +90,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
       const workingHours = String(data.workingHours || "").trim();
       const hoursWeekday =
         String(data.hoursWeekday || "").trim() || DEFAULT_HOURS_WEEKDAY;
+      const registrationField = String(data.registrationField || "phone").toLowerCase() === "email" ? "email" as const : "phone" as const;
       const rawBanner = data.messengerBanner || {};
       const messengerBanner: MessengerBannerSettings = {
         enabled: rawBanner.enabled === true,
@@ -120,6 +122,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         hoursLabel: buildHoursLabel(workingHours, hoursWeekday),
         hoursWeekday,
         messengerBanner,
+        registrationField,
         ready: true,
       };
       cache = settings;
@@ -136,6 +139,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         hoursLabel: "",
         hoursWeekday: DEFAULT_HOURS_WEEKDAY,
         messengerBanner: EMPTY_MESSENGER_BANNER,
+        registrationField: "phone",
         ready: false,
       };
       cache = empty;
@@ -163,6 +167,7 @@ export function useSiteSettings(): SiteSettings {
     hoursLabel: "",
     hoursWeekday: DEFAULT_HOURS_WEEKDAY,
     messengerBanner: EMPTY_MESSENGER_BANNER,
+    registrationField: "phone",
     ready: false,
   });
 

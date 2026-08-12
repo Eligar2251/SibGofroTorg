@@ -12,6 +12,7 @@ import {
   Edit2,
   QrCode,
   RefreshCw,
+  Printer,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 
@@ -29,6 +30,10 @@ interface ProductItem {
   isPromo: boolean;
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
+  madeToOrderMinQty?: number | null;
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
   isVisible: boolean;
   isFeatured?: boolean;
   featuredOrder?: number | null;
@@ -55,6 +60,17 @@ export function ProductListClient({
   const [barcodeMessage, setBarcodeMessage] = useState<string | null>(null);
 
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
+
+  function formatCutStock(rolls: number, mpr: number | null | undefined) {
+    const r = Math.max(0, Number(rolls)||0);
+    const m = Math.max(0, Number(mpr)||0);
+    if (!m) return `${r} шт.`;
+    const full = Math.floor(r + 1e-9);
+    const rem = Math.round((r - full) * m * 100)/100;
+    const total = Math.round(r*m*100)/100;
+    if (rem > 0.009) return `${full} рул.+${rem}м (${total}м)`;
+    return `${full} рул. (${total}м)`;
+  }
 
   const filtered = products.filter((p) => {
     if (selectedCategory !== "all" && p.categoryId !== selectedCategory) return false;
@@ -227,6 +243,16 @@ export function ProductListClient({
           Обновить штрихкоды
         </button>
 
+        <Link
+          href={`/${adminPath}/products/box-report`}
+          className="admin-btn admin-btn--ghost"
+          style={{ background: 'rgba(59,130,246,0.08)', color: 'var(--adm-primary)', borderColor: 'rgba(59,130,246,0.3)' }}
+          prefetch={false}
+          title="Отчёт по коробкам: выбор столбцов, печать и скачивание таблицы (например, только размеры без названия)"
+        >
+          <Printer size={14} /> Отчёт по коробкам
+        </Link>
+
         {selectedIds.size > 0 && (
           <button
             type="button"
@@ -345,7 +371,7 @@ export function ProductListClient({
                       <div className="admin-price">
                         {product.madeToOrder ? (
                           <span style={{ color: "var(--green-dark)", fontWeight: 700 }}>
-                            Под заказ
+                            Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
                           </span>
                         ) : product.price != null ? (
                           `${product.price.toLocaleString("ru-RU")} ₽`
@@ -372,9 +398,12 @@ export function ProductListClient({
                               : ""
                           }`}
                         >
-                          {product.stockQty.toLocaleString("ru-RU")} шт.
+                          {product.isCuttable && Number(product.cutMetersPerRoll) > 0 ? formatCutStock(product.stockQty, product.cutMetersPerRoll) : `${product.stockQty.toLocaleString("ru-RU")} шт.`}
                         </span>
                       </Link>
+                      {product.isCuttable && Number(product.cutMetersPerRoll) > 0 && (
+                        <div style={{ fontSize: 10, color: 'var(--adm-muted)' }}>рулон {product.cutMetersPerRoll || 100}м · {product.cutPricePerMeter ? `${product.cutPricePerMeter} ₽/м` : ''}</div>
+                      )}
                     </td>
                     <td>
                       <span
@@ -383,12 +412,17 @@ export function ProductListClient({
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 6,
-                          fontWeight: 600,
-                          color: (product.viewCount ?? 0) > 0 ? "var(--ink)" : "var(--ink-faint)",
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 12,
+                          background: (product.viewCount ?? 0) > 0 ? "#ffffff" : "#1a1a18",
+                          color: (product.viewCount ?? 0) > 0 ? "#111111" : "#ffffff",
+                          border: (product.viewCount ?? 0) > 0 ? "1px solid #dbd8d0" : "1px solid #1a1a18",
                         }}
                         title="Уникальные посетители страницы товара"
                       >
-                        <Eye size={14} style={{ opacity: 0.55, flexShrink: 0 }} />
+                        <Eye size={12} style={{ opacity: (product.viewCount ?? 0) > 0 ? 0.7 : 0.9, flexShrink: 0 }} />
                         {(product.viewCount ?? 0).toLocaleString("ru-RU")}
                       </span>
                     </td>

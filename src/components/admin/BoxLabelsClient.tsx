@@ -256,11 +256,9 @@ export function BoxLabelsClient({ products, categories }: Props) {
         </button>
       </div>
 
-      {/* ── Печатный лист: на экране скрыт, при печати — только он ──
-          Одна горизонтальная полоса на A4 (вертикальный лист):
-          слева крупный №, вертикальная черта, размеры (+примечание),
-          ещё черта, штрихкод. Всё в одну линию. */}
-      <div className="boxlabel-sheet">
+      {/* ── Печатный лист: превью на экране + печать ──
+          Горизонтальные полосы 60мм высотой, несколько на листе A4 вертикально */}
+      <div className={`boxlabel-sheet${selectedProducts.length ? " boxlabel-sheet--preview" : ""}`}>
         {selectedProducts.map((p) => {
           const label = getLabel(p);
           return (
@@ -280,7 +278,7 @@ export function BoxLabelsClient({ products, categories }: Props) {
                 <div className="boxlabel__vsep" />
                 <div className="boxlabel__cell boxlabel__code">
                   <img
-                    src={`/api/admin/qr/barcode/${p.id}?format=svg&height=20`}
+                    src={`/api/admin/qr/barcode/${p.id}?format=svg&height=35`}
                     alt={`Штрихкод ${p.barcode}`}
                     className="boxlabel__bc"
                   />

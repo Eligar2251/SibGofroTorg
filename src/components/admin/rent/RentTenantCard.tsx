@@ -166,13 +166,13 @@ export function TenantCardModal({
             </div>
             <div className="rent-card-stat">
               <span className="rent-card-stat__label">Долг по счетам</span>
-              <strong style={{ color: st.debt > 0 ? "#b83a1e" : "#1e4a2d" }}>
+              <strong style={{ color: st.debt > 0 ? "var(--adm-rust)" : "var(--adm-pine)" }}>
                 {rentFmt(st.debt)} ₽
               </strong>
             </div>
             <div className="rent-card-stat">
               <span className="rent-card-stat__label">Просрочка</span>
-              <strong style={{ color: st.overdue > 0 ? "#b83a1e" : undefined }}>
+              <strong style={{ color: st.overdue > 0 ? "var(--adm-rust)" : undefined }}>
                 {st.overdue > 0 ? `${rentFmt(st.overdue)} ₽ · ${st.overdueDays} дн.` : "нет"}
               </strong>
             </div>
@@ -186,7 +186,7 @@ export function TenantCardModal({
             </div>
             <div className="rent-card-stat">
               <span className="rent-card-stat__label">Аванс (без счёта)</span>
-              <strong style={{ color: advance > 0 ? "#1e4a2d" : undefined }}>
+              <strong style={{ color: advance > 0 ? "var(--adm-pine)" : undefined }}>
                 {advance !== 0 ? `${advance > 0 ? "+" : ""}${rentFmt(advance)} ₽` : "—"}
               </strong>
             </div>
@@ -286,7 +286,7 @@ export function TenantCardModal({
                         <strong
                           style={{
                             fontSize: 13,
-                            color: p.direction === "incoming" ? "#1e4a2d" : "#b83a1e",
+                            color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)",
                           }}
                         >
                           {p.direction === "incoming" ? "+" : "−"}

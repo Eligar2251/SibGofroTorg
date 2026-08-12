@@ -20,6 +20,7 @@ export interface FirestoreProduct {
   price: number | null;
   priceWholesale?: number | null | undefined;
   minWholesaleQty?: number | null | undefined;
+  purchasePrice?: number | null | undefined;
   dimensionLength?: number | null | undefined;
   dimensionWidth?: number | null | undefined;
   dimensionHeight?: number | null | undefined;
@@ -35,6 +36,12 @@ export interface FirestoreProduct {
   isPromo: boolean;
   promoLabel?: string | null | undefined;
   madeToOrder?: boolean | null | undefined;
+  madeToOrderMinQty?: number | null | undefined;
+  // Вариативность рулон / метры (плёнка пузырчатая и т.п.)
+  isCuttable?: boolean | null | undefined;
+  cutMetersPerRoll?: number | null | undefined;
+  cutPricePerMeter?: number | null | undefined;
+  cutUnitName?: string | null | undefined;
   discountType?: "percent" | "fixed" | null | undefined;
   discountValue?: number | null | undefined;
   discountBadge?: string | null | undefined;
@@ -420,4 +427,29 @@ export interface UserProductView {
   productId: string;
   viewCount: number;
   lastViewedAt: any;
+}
+
+// ── Вариативность рулон / метры: хелперы отображения остатка ────────
+
+export function getCuttableStockBreakdown(stockRolls: number | null | undefined, metersPerRoll: number | null | undefined) {
+  const rolls = Math.max(0, Number(stockRolls) || 0);
+  const mpr = Math.max(0, Number(metersPerRoll) || 0);
+  if (!mpr) {
+    return { fullRolls: Math.floor(rolls), remainderMeters: 0, totalMeters: rolls, rolls };
+  }
+  const fullRolls = Math.floor(rolls + 1e-9);
+  const remainderFraction = rolls - fullRolls;
+  const remainderMeters = Math.round(remainderFraction * mpr * 100) / 100;
+  const totalMeters = Math.round(rolls * mpr * 100) / 100;
+  return { fullRolls, remainderMeters, totalMeters, rolls };
+}
+
+export function formatCuttableStock(stockRolls: number | null | undefined, metersPerRoll: number | null | undefined, unitName?: string | null): string {
+  const { fullRolls, remainderMeters, totalMeters } = getCuttableStockBreakdown(stockRolls, metersPerRoll);
+  const u = unitName || 'м';
+  if (!metersPerRoll) return `${Number(stockRolls || 0).toLocaleString('ru-RU')} шт.`;
+  if (remainderMeters > 0.009) {
+    return `${fullRolls} рул. + ${remainderMeters} ${u} (${totalMeters} ${u} всего)`;
+  }
+  return `${fullRolls} рул. · ${totalMeters} ${u}`;
 }

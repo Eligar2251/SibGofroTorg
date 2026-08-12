@@ -5,7 +5,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, Loader2, CheckCircle, Send, MessageCircle, AlertTriangle, Bot, RefreshCw } from "lucide-react";
+import { Save, Loader2, CheckCircle, Send, MessageCircle, AlertTriangle, Bot, RefreshCw, History } from "lucide-react";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import {
   CASH_CARD_HOLDER_SETTING_KEY,
@@ -67,6 +67,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     const defaults: Record<string, string> = {
       delivery_price: "800",
       free_delivery_threshold: "30000",
+      registration_contact_field: "phone",
       messenger_banner_enabled: "true",
       messenger_banner_text: "Мы есть в мессенджерах",
       messenger_banner_color: "#1b2b4b",
@@ -84,6 +85,12 @@ export function SettingsForm({ settings }: SettingsFormProps) {
   const [testingMax, setTestingMax] = useState(false);
   const [maxResult, setMaxResult] = useState<{ ok: boolean; error?: string } | null>(null);
   // Диагностика подключения бота: откуда взяты токен/chat_id и жив ли токен.
+  // Журнал последних отправок уведомлений (in-memory на сервере).
+  const [notifyLog, setNotifyLog] = useState<
+    { at: string; channel: "telegram" | "max"; label: string; ok: boolean; error?: string }[] | null
+  >(null);
+  const [notifyLogLoading, setNotifyLogLoading] = useState(false);
+
   const [tgDiag, setTgDiag] = useState<null | {
     configured: boolean;
     tokenSource: "env" | "settings" | "none";
@@ -112,6 +119,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
 
   useEffect(() => {
     loadTgDiag();
+    loadNotifyLog();
   }, []);
 
   async function testTelegram() {
@@ -129,6 +137,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           error: body.error || "Не удалось отправить тестовое сообщение",
         });
       loadTgDiag();
+      loadNotifyLog();
     } catch {
       setTgResult({ ok: false, error: "Сетевая ошибка" });
     } finally {
@@ -150,10 +159,25 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           ok: false,
           error: body.error || "Не удалось отправить тестовое сообщение MAX",
         });
+      loadNotifyLog();
     } catch {
       setMaxResult({ ok: false, error: "Сетевая ошибка" });
     } finally {
       setTestingMax(false);
+    }
+  }
+
+  async function loadNotifyLog() {
+    setNotifyLogLoading(true);
+    try {
+      const res = await fetch("/api/admin/settings/notify-log", { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) setNotifyLog(Array.isArray(body.entries) ? body.entries : []);
+      else setNotifyLog([]);
+    } catch {
+      setNotifyLog([]);
+    } finally {
+      setNotifyLogLoading(false);
     }
   }
 
@@ -208,6 +232,11 @@ export function SettingsForm({ settings }: SettingsFormProps) {
       [`messenger_${id}_icon_public_id`]: image?.publicId || "",
     }));
   }
+
+  const authFieldOptions = [
+  { value: "phone", label: "Телефон (как сейчас)" },
+  { value: "email", label: "Email (для 152-ФЗ, корпоративная почта)" },
+] as const;
 
   const cardStyle = { height: "100%", minWidth: 0 } as const;
   const cardPadStyle = {
@@ -286,6 +315,46 @@ export function SettingsForm({ settings }: SettingsFormProps) {
 
         <div className="admin-card" style={cardStyle}>
           <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Регистрация на сайте (152-ФЗ)</h2>
+            <div className="admin-field">
+              <label className="admin-label">Чем регистрироваться?</label>
+              <select
+                className="admin-select"
+                value={values.registration_contact_field || "phone"}
+                onChange={(e) => setValues({ ...values, registration_contact_field: e.target.value })}
+              >
+                {authFieldOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <span className="admin-hint">
+                Телефон — старый вариант. Email — для 152-ФЗ: корпоративная обезличенная почта (info@, zakaz@) не считается ПД. Можно вернуть телефон одной кнопкой, переключив обратно.
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={`admin-btn ${ (values.registration_contact_field || "phone") === "phone" ? "admin-btn--primary" : "admin-btn--ghost"}`}
+                onClick={() => setValues({ ...values, registration_contact_field: "phone" })}
+              >
+                📞 Телефон
+              </button>
+              <button
+                type="button"
+                className={`admin-btn ${ (values.registration_contact_field || "phone") === "email" ? "admin-btn--primary" : "admin-btn--ghost"}`}
+                onClick={() => setValues({ ...values, registration_contact_field: "email" })}
+              >
+                ✉️ Email
+              </button>
+            </div>
+            <p className="admin-hint" style={{ marginTop: "auto" }}>
+              При Email: формы входа/регистрации просят корпоративный email, а не телефон. Логика входа поддерживает оба варианта, старые пользователи по телефону продолжат входить. Чекбокс согласия и политика конфиденциальности обязательны.
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
             <h2 className="admin-h2" style={{ margin: 0 }}>Доставка</h2>
             <div className="admin-grid-2" style={{ minWidth: 0 }}>
               {deliveryFields.map((field) => (
@@ -309,6 +378,51 @@ export function SettingsForm({ settings }: SettingsFormProps) {
             <p className="admin-hint" style={{ marginTop: "auto" }}>
               Эти значения показываются покупателю в корзине при оформлении
               заказа.
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Варианты цен (скидки контрагентов)</h2>
+            <div className="admin-grid-2" style={{ minWidth: 0 }}>
+              <div className="admin-field">
+                <label className="admin-label">Спеццена, скидка %</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.5"
+                  value={values["price_tier_special_discount"] ?? ""}
+                  placeholder="5"
+                  onChange={(e) =>
+                    setValues({ ...values, price_tier_special_discount: e.target.value })
+                  }
+                  className="admin-input"
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Эксклюзивная цена, скидка %</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.5"
+                  value={values["price_tier_exclusive_discount"] ?? ""}
+                  placeholder="10"
+                  onChange={(e) =>
+                    setValues({ ...values, price_tier_exclusive_discount: e.target.value })
+                  }
+                  className="admin-input"
+                />
+              </div>
+            </div>
+            <p className="admin-hint" style={{ marginTop: "auto" }}>
+              Три уровня цен контрагентов: «Обычная» (без скидки, у всех по
+              умолчанию), «Спеццена» и «Эксклюзивная». Уровень выбирается в
+              карточке контрагента (Учёт → Контрагенты). При оформлении заказа
+              цена товара подставляется автоматически со скидкой уровня.
+              Пустые поля = 5% и 10%.
             </p>
           </div>
         </div>
@@ -475,7 +589,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                   <span>
                     Токен:{" "}
                     {tgDiag.tokenSource === "none" ? (
-                      <b style={{ color: "#dc2626" }}>не задан</b>
+                      <b style={{ color: "var(--adm-rust)" }}>не задан</b>
                     ) : (
                       <>
                         <b>{tgDiag.tokenMasked}</b>{" "}
@@ -488,7 +602,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                   <span>
                     Chat ID:{" "}
                     {tgDiag.chatIdSource === "none" ? (
-                      <b style={{ color: "#dc2626" }}>не задан</b>
+                      <b style={{ color: "var(--adm-rust)" }}>не задан</b>
                     ) : (
                       <>
                         <b>{tgDiag.chatIdNormalized || tgDiag.chatIdMasked}</b>{" "}
@@ -502,12 +616,12 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                     <span>
                       Проверка токена:{" "}
                       {tgDiag.getMe.ok ? (
-                        <b style={{ color: "#15803d" }}>
+                        <b style={{ color: "var(--adm-pine)" }}>
                           OK{tgDiag.getMe.username ? ` — @${tgDiag.getMe.username}` : ""}
                           {tgDiag.getMe.base ? ` (через ${tgDiag.getMe.base})` : ""}
                         </b>
                       ) : (
-                        <b style={{ color: "#dc2626" }}>
+                        <b style={{ color: "var(--adm-rust)" }}>
                           ошибка{tgDiag.getMe.error ? `: ${tgDiag.getMe.error}` : ""}
                         </b>
                       )}
@@ -524,7 +638,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                     </span>
                   )}
                   {!tgDiag.configured && (
-                    <span style={{ color: "#b45309", display: "inline-flex", gap: 6 }}>
+                    <span style={{ color: "var(--adm-kraft)", display: "inline-flex", gap: 6 }}>
                       <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
                       Подключение не готово — заполните поля ниже и сохраните (или задайте
                       переменные окружения на хостинге) и нажмите «Проверить Telegram».
@@ -590,6 +704,12 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                   <code>https://tg-relay.ваш-домен.ru</code>. Альтернатива без VPN — настроить
                   MAX-бота ниже, он работает из РФ без ограничений.
                 </p>
+                <p className="admin-hint" style={{ margin: "6px 0 0" }}>
+                  Если уведомления уходят (журнал ниже показывает «✓ отправлено»),
+                  но не приходят на телефон без VPN — Telegram заблокирован на
+                  стороне клиента в РФ; сервер тут ни при чём. Решение: читать
+                  дубли в MAX (без VPN) или открыть Telegram через VPN.
+                </p>
               </div>
               <div className="settings-messenger-item">
                 <strong>MAX-бот</strong>
@@ -620,7 +740,13 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                   />
                 </div>
                 <p className="admin-hint" style={{ margin: 0 }}>
-                  Необязательно: если заполнено — уведомления дублируются в MAX.
+                  Необязательно, но рекомендуется: если заполнено — уведомления
+                  дублируются в MAX. MAX работает из РФ без VPN — это запасной
+                  канал на случай блокировок Telegram. Как настроить: в MAX
+                  напишите боту <code>@MasterBot</code> → создайте бота →
+                  скопируйте токен сюда; затем напишите своему боту любое
+                  сообщение и возьмите chat_id (например, через журнал
+                  отправок ниже или webhook).
                 </p>
               </div>
             </div>
@@ -667,6 +793,78 @@ export function SettingsForm({ settings }: SettingsFormProps) {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Журнал отправок: видно, ушли ли последние уведомления и почему нет */}
+      <div className="admin-card" style={{ marginTop: 14 }}>
+        <div className="admin-card__head">
+          <h3 className="admin-card__title">Журнал последних отправок</h3>
+          <button
+            type="button"
+            className="admin-btn admin-btn--outline admin-btn--sm"
+            onClick={loadNotifyLog}
+            disabled={notifyLogLoading}
+          >
+            {notifyLogLoading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <History size={14} />
+            )}
+            Обновить
+          </button>
+        </div>
+        <div className="admin-card__pad">
+          <p className="admin-hint" style={{ margin: "0 0 8px" }}>
+            Показаны последние отправки с момента перезапуска сервера. Если
+            заказа здесь нет — значит сервер не пытался отправить уведомление
+            по этому заказу; если есть ошибка — причина указана в строке.
+          </p>
+          {notifyLog === null ? (
+            <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>Загрузка…</span>
+          ) : notifyLog.length === 0 ? (
+            <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>
+              Пока пусто: отправок ещё не было (или сервер перезапускался).
+              Нажмите «Проверить Telegram» / «Проверить MAX», чтобы добавить запись.
+            </span>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {notifyLog.map((e, i) => (
+                <div
+                  key={`${e.at}-${i}`}
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "baseline",
+                    gap: 8,
+                    fontSize: 12,
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--adm-border)",
+                    background: e.ok ? "var(--adm-pine-pale)" : "var(--adm-rust-pale)",
+                  }}
+                >
+                  <span style={{ color: "var(--adm-ink-muted)", whiteSpace: "nowrap" }}>
+                    {new Date(e.at).toLocaleString("ru-RU")}
+                  </span>
+                  <b style={{ textTransform: "uppercase", fontSize: 10, letterSpacing: "0.06em" }}>
+                    {e.channel === "telegram" ? "Telegram" : "MAX"}
+                  </b>
+                  <span style={{ color: "var(--adm-ink-soft)" }}>{e.label}</span>
+                  {e.ok ? (
+                    <b style={{ color: "var(--adm-pine)" }}>✓ отправлено</b>
+                  ) : (
+                    <b style={{ color: "var(--adm-rust)" }}>✗ не ушло</b>
+                  )}
+                  {e.error && (
+                    <span style={{ color: "var(--adm-ink-muted)", overflowWrap: "anywhere" }}>
+                      — {e.error}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

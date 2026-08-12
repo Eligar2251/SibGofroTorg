@@ -826,7 +826,7 @@ function DaysTab({
         <div className="admin-stat">
           <div
             className="admin-stat__icon"
-            style={{ background: "rgba(13,148,136,0.12)", color: "#0d9488" }}
+            style={{ background: "var(--adm-teal-pale)", color: "var(--adm-teal)" }}
             aria-hidden="true"
           >
             <Banknote size={18} />
@@ -837,7 +837,7 @@ function DaysTab({
         <div className="admin-stat">
           <div
             className="admin-stat__icon"
-            style={{ background: "rgba(79,70,229,0.12)", color: "#4f46e5" }}
+            style={{ background: "var(--adm-indigo-pale)", color: "var(--adm-indigo)" }}
             aria-hidden="true"
           >
             <CreditCard size={18} />
@@ -848,7 +848,7 @@ function DaysTab({
         <div className="admin-stat">
           <div
             className="admin-stat__icon"
-            style={{ background: "rgba(37,99,235,0.12)", color: "#2563eb" }}
+            style={{ background: "var(--adm-steel-pale)", color: "var(--adm-steel)" }}
             aria-hidden="true"
           >
             <Scale size={18} />
@@ -859,7 +859,7 @@ function DaysTab({
         <div className="admin-stat">
           <div
             className="admin-stat__icon"
-            style={{ background: "rgba(22,163,74,0.12)", color: "#16a34a" }}
+            style={{ background: "var(--adm-pine-pale)", color: "var(--adm-pine)" }}
             aria-hidden="true"
           >
             <ArrowDownLeft size={18} />
@@ -875,7 +875,7 @@ function DaysTab({
         <div className="admin-stat">
           <div
             className="admin-stat__icon"
-            style={{ background: "rgba(217,119,6,0.12)", color: "#d97706" }}
+            style={{ background: "var(--adm-kraft-pale)", color: "var(--adm-kraft)" }}
             aria-hidden="true"
           >
             <ArrowUpRight size={18} />
@@ -1053,10 +1053,10 @@ function DayRowFragment({
           )}
         </td>
         <td>{fmtMoney(opening)}</td>
-        <td style={{ color: "#16a34a", fontWeight: 600 }}>
+        <td style={{ color: "var(--adm-pine)", fontWeight: 600 }}>
           {incoming > 0 ? `+${fmtMoney(incoming)}` : "—"}
         </td>
-        <td style={{ color: "#d97706", fontWeight: 600 }}>
+        <td style={{ color: "var(--adm-kraft)", fontWeight: 600 }}>
           {outgoing > 0 ? `−${fmtMoney(outgoing)}` : "—"}
         </td>
         <td style={{ fontWeight: 700 }}>{fmtMoney(closing)}</td>
@@ -1084,7 +1084,7 @@ function DayRowFragment({
                 </span>
                 <strong
                   style={{
-                    color: e.direction === "incoming" ? "#16a34a" : "#d97706",
+                    color: e.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-kraft)",
                   }}
                 >
                   {e.direction === "incoming" ? "+" : "−"}
@@ -1122,7 +1122,7 @@ function ForecastCard({
     <div className="admin-card">
       <div className="admin-card__head">
         <span className="admin-card__title">{title}</span>
-        <strong style={{ color: tone === "in" ? "#16a34a" : "#d97706" }}>
+        <strong style={{ color: tone === "in" ? "var(--adm-pine)" : "var(--adm-kraft)" }}>
           {tone === "in" ? "+" : "−"}
           {fmtMoney(total)}
         </strong>
@@ -1318,8 +1318,8 @@ function PaymentsTab({
 
       <p className="admin-hint" style={{ marginTop: -4 }}>
         Показано операций: {filtered.length}. По оплаченным: приход{" "}
-        <b style={{ color: "#16a34a" }}>+{fmtMoney(totals.inSum)}</b>, расход{" "}
-        <b style={{ color: "#d97706" }}>−{fmtMoney(totals.outSum)}</b>.
+        <b style={{ color: "var(--adm-pine)" }}>+{fmtMoney(totals.inSum)}</b>, расход{" "}
+        <b style={{ color: "var(--adm-kraft)" }}>−{fmtMoney(totals.outSum)}</b>.
       </p>
 
       {filtered.length === 0 ? (
@@ -1360,7 +1360,7 @@ function PaymentsTab({
                     style={{
                       whiteSpace: "nowrap",
                       fontWeight: 700,
-                      color: e.direction === "incoming" ? "#16a34a" : "#d97706",
+                      color: e.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-kraft)",
                     }}
                   >
                     {e.direction === "incoming" ? "+" : "−"}
@@ -1654,7 +1654,7 @@ function ShipmentsTab({
                 <div
                   style={{
                     fontWeight: 700,
-                    color: row.stockKg > 0 ? "#16a34a" : "var(--adm-muted)",
+                    color: row.stockKg > 0 ? "var(--adm-pine)" : "var(--adm-muted)",
                   }}
                 >
                   <PackageOpen size={13} style={{ marginRight: 4, verticalAlign: "-2px" }} />
