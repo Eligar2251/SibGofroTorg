@@ -775,8 +775,10 @@ async function returnLegacyCompletedDealToStock(deal: {
 
 export async function setWarehouseStock(productId: string, quantity: number): Promise<void> {
   const db = getAdminDb();
+  const qty = Math.max(0, Number(quantity) || 0);
   const { error } = await db.from("products").update({
-    stock_qty: Math.floor(quantity), in_stock: Math.floor(quantity) > 0,
+    stock_qty: Math.round(qty * 1000) / 1000,
+    in_stock: qty > 0,
     updated_at: new Date().toISOString(),
   }).eq("id", productId);
   if (error) throw error;
@@ -828,7 +830,8 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
       skipped += 1;
       continue;
     }
-    const actual = Math.max(0, Math.floor(Number(item.actualQty) || 0));
+    const rawActual = Number(item.actualQty);
+    const actual = Math.max(0, Math.round((Number.isFinite(rawActual) ? rawActual : 0) * 1000) / 1000);
     const variantId =
       item.variantId == null || item.variantId === ""
         ? null
@@ -926,17 +929,7 @@ function itemsTotal(items: StockDocItem[]): number {
 function cleanItems(rawItems: any[]): StockDocItem[] {
   return (Array.isArray(rawItems) ? rawItems : [])
     .map((it: any) => {
-      const quantity = Math.max(0, Math.min(100_000, Number(it.quantity) || 0));
-      let lineTotal = Math.max(0, Number(it.lineTotal) || 0);
-      let price = Math.max(0, Number(it.price) || 0);
-      if (lineTotal > 0 && quantity > 0) {
-        price = round2(lineTotal / quantity);
-      } else {
-        lineTotal = round2(price * quantity);
-      }
-      // Идентификатор варианта: если не передан (старые заявки) — null,
-      // и тогда «товар без варианта». Имя варианта — snapshot, чтобы при
-      // переименовании в админке в учёте осталось то, что заказывал клиент.
+      // Вариант
       const variantId =
         it.variantId == null || it.variantId === ""
           ? null
@@ -945,18 +938,115 @@ function cleanItems(rawItems: any[]): StockDocItem[] {
         it.variantName == null || it.variantName === ""
           ? null
           : String(it.variantName).slice(0, 200);
-      return {
+
+      // Вариативность рулон/метры
+      let unit: 'roll' | 'meter' | 'piece' | null = null;
+      const rawUnit = String(it.unit || it.saleUnit || "").toLowerCase();
+      if (rawUnit === 'meter' || rawUnit === 'm' || rawUnit === 'м') unit = 'meter';
+      else if (rawUnit === 'roll' || rawUnit === 'рулон') unit = 'roll';
+      else if (rawUnit === 'piece' || rawUnit === 'шт') unit = 'piece';
+
+      let metersPerRoll: number | null = null;
+      if (it.metersPerRoll != null) {
+        const m = Number(it.metersPerRoll);
+        if (Number.isFinite(m) && m > 0) metersPerRoll = m;
+      }
+
+      // saleQuantity — исходное в единице продажи, base — в рулонах
+      let saleQuantity: number | null = null;
+      if (it.saleQuantity != null) {
+        const sq = Number(it.saleQuantity);
+        if (Number.isFinite(sq) && sq >= 0) saleQuantity = sq;
+      }
+      let baseQuantity: number | null = null;
+      // quantity в старом формате — это base (рулоны). В новом может быть sale или base.
+      const rawQty = it.quantity != null ? Number(it.quantity) : NaN;
+
+      // Если указана saleQuantity и unit meter — base = sale / mpr
+      if (saleQuantity != null && unit === 'meter' && metersPerRoll) {
+        baseQuantity = saleQuantity / metersPerRoll;
+      } else if (saleQuantity != null && unit !== 'meter') {
+        baseQuantity = saleQuantity;
+      } else if (Number.isFinite(rawQty)) {
+        // rawQty считаем base, если unit meter и saleQuantity не указана, но metersPerRoll есть,
+        // пробуем определить: если rawQty большая (метры) > base, то возможно это метры?
+        // Для совместимости: если unit meter и metersPerRoll, а saleQuantity отсутствует,
+        // считаем rawQty как метры.
+        if (unit === 'meter' && metersPerRoll && saleQuantity == null) {
+          saleQuantity = rawQty;
+          baseQuantity = rawQty / metersPerRoll;
+        } else {
+          baseQuantity = rawQty;
+          if (saleQuantity == null) saleQuantity = rawQty;
+        }
+      }
+
+      // Если до сих пор нет base, пробуем baseQuantity поле
+      if (baseQuantity == null && it.baseQuantity != null) {
+        const bq = Number(it.baseQuantity);
+        if (Number.isFinite(bq)) baseQuantity = bq;
+      }
+
+      baseQuantity = Math.max(0, Math.min(100_000, Number(baseQuantity) || 0));
+      // Разрешаем дробные рулоны (5.9) — не floor
+      // Сохраняем до 3 знаков после запятой
+      baseQuantity = Math.round(baseQuantity * 1000) / 1000;
+
+      saleQuantity = saleQuantity == null ? baseQuantity : Math.max(0, Number(saleQuantity) || 0);
+
+      let lineTotal = Math.max(0, Number(it.lineTotal) || 0);
+      let price = Math.max(0, Number(it.price) || 0);
+      let salePrice: number | null = null;
+      if (it.salePrice != null) {
+        const sp = Number(it.salePrice);
+        if (Number.isFinite(sp) && sp >= 0) salePrice = sp;
+      }
+
+      // Если salePrice нет, но price есть и unit meter — считаем price как за метр
+      if (salePrice == null && unit === 'meter') {
+        salePrice = price || 0;
+        // Пересчитаем lineTotal если не указан
+        if (lineTotal <= 0 && saleQuantity > 0 && salePrice > 0) {
+          lineTotal = round2(saleQuantity * salePrice);
+        }
+      }
+
+      if (lineTotal > 0 && baseQuantity > 0) {
+        price = round2(lineTotal / baseQuantity);
+      } else if (saleQuantity > 0 && salePrice != null) {
+        lineTotal = round2(saleQuantity * salePrice);
+        price = baseQuantity > 0 ? round2(lineTotal / baseQuantity) : salePrice;
+      } else {
+        lineTotal = round2(price * baseQuantity);
+      }
+
+      // Если unit не указан, но есть saleQuantity отличающаяся — определим
+      if (!unit && saleQuantity != null && baseQuantity != null && metersPerRoll) {
+        // Если saleQuantity сильно больше base (в 10+ раз) — вероятно это метры
+        if (Math.abs(saleQuantity - baseQuantity * metersPerRoll) < 0.01) {
+          unit = 'meter';
+        }
+      }
+
+      const result: any = {
         productId: String(it.productId || ""),
         variantId,
         variantName,
         name: String(it.name || "").slice(0, 300),
         sku: it.sku ? String(it.sku).slice(0, 60) : null,
-        quantity,
+        quantity: baseQuantity,
         price,
         lineTotal: round2(lineTotal),
       };
+      if (unit && unit !== 'piece') result.unit = unit;
+      if (metersPerRoll) result.metersPerRoll = metersPerRoll;
+      if (saleQuantity != null && Math.abs(saleQuantity - baseQuantity) > 0.0001) result.saleQuantity = Math.round(saleQuantity * 100) / 100;
+      else if (unit === 'meter') result.saleQuantity = Math.round(saleQuantity * 100) / 100;
+      if (salePrice != null && unit === 'meter') result.salePrice = salePrice;
+      if (it.cutUnitName) result.cutUnitName = String(it.cutUnitName).slice(0,10);
+      return result;
     })
-    .filter((it) => it.productId && it.quantity > 0);
+    .filter((it: any) => it.productId && it.quantity > 0);
 }
 
 // ─── Receipts CRUD ─────────────────────────────────────────
@@ -3695,7 +3785,7 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("products")
-    .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, purchase_price, is_visible, dimension_length, dimension_width, dimension_height, dimension_unit")
+    .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, purchase_price, is_visible, is_cuttable, cut_meters_per_roll, cut_price_per_meter, cut_unit_name, dimension_length, dimension_width, dimension_height, dimension_unit")
     .order("name", { ascending: true });
   if (error) throw error;
   return (data || []).map((row: any) => ({
@@ -3707,8 +3797,11 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
     purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
     isVisible: row.is_visible ?? true,
-    // Габариты — нужны в бланке/акте ревизии, чтобы кладовщик сразу видел
-    // «670×370×370» и не пересчитывал «абстрактный» SKU наугад.
+    isCuttable: row.is_cuttable ?? false,
+    cutMetersPerRoll: row.cut_meters_per_roll != null ? Number(row.cut_meters_per_roll) : null,
+    cutPricePerMeter: row.cut_price_per_meter != null ? Number(row.cut_price_per_meter) : null,
+    cutUnitName: row.cut_unit_name || 'м',
+    // Габариты — нужны в бланке/акте ревизии
     dimensionLength: row.dimension_length != null ? Number(row.dimension_length) : null,
     dimensionWidth: row.dimension_width != null ? Number(row.dimension_width) : null,
     dimensionHeight: row.dimension_height != null ? Number(row.dimension_height) : null,

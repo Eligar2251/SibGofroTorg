@@ -30,6 +30,9 @@ interface ProductItem {
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
   isVisible: boolean;
   isFeatured?: boolean;
   featuredOrder?: number | null;
@@ -56,6 +59,17 @@ export function ProductListClient({
   const [barcodeMessage, setBarcodeMessage] = useState<string | null>(null);
 
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
+
+  function formatCutStock(rolls: number, mpr: number | null | undefined) {
+    const r = Math.max(0, Number(rolls)||0);
+    const m = Math.max(0, Number(mpr)||0);
+    if (!m) return `${r} шт.`;
+    const full = Math.floor(r + 1e-9);
+    const rem = Math.round((r - full) * m * 100)/100;
+    const total = Math.round(r*m*100)/100;
+    if (rem > 0.009) return `${full} рул.+${rem}м (${total}м)`;
+    return `${full} рул. (${total}м)`;
+  }
 
   const filtered = products.filter((p) => {
     if (selectedCategory !== "all" && p.categoryId !== selectedCategory) return false;
@@ -373,9 +387,12 @@ export function ProductListClient({
                               : ""
                           }`}
                         >
-                          {product.stockQty.toLocaleString("ru-RU")} шт.
+                          {product.isCuttable ? formatCutStock(product.stockQty, product.cutMetersPerRoll) : `${product.stockQty.toLocaleString("ru-RU")} шт.`}
                         </span>
                       </Link>
+                      {product.isCuttable && (
+                        <div style={{ fontSize: 10, color: 'var(--adm-muted)' }}>рулон {product.cutMetersPerRoll || 100}м · {product.cutPricePerMeter ? `${product.cutPricePerMeter} ₽/м` : ''}</div>
+                      )}
                     </td>
                     <td>
                       <span

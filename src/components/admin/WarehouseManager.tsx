@@ -2623,6 +2623,10 @@ export function WarehouseManager({
                             {d.items.map((it, idx) => {
                               const shipped = (Array.isArray(d.shippedItems) ? d.shippedItems : []).find((s: any) => s.productId === it.productId)?.shippedQty || 0;
                               const remaining = it.quantity - shipped;
+                              const isMeter = (it as any).unit === 'meter';
+                              const saleQty = (it as any).saleQuantity != null ? (it as any).saleQuantity : (isMeter && (it as any).metersPerRoll ? Number(it.quantity) * Number((it as any).metersPerRoll) : Number(it.quantity));
+                              const unitLabel = isMeter ? `${saleQty} м` : `${it.quantity} рул.`;
+                              const priceLabel = isMeter ? `${fmt((it as any).salePrice || it.price)} ₽/м` : `${fmt(it.price)} ₽/шт`;
                               return (
                                 <div key={idx} className={`admin-order__item${shipped > 0 && remaining > 0 ? " admin-order__item--partial" : ""}`}>
                                   <Link
@@ -2630,8 +2634,8 @@ export function WarehouseManager({
                                     prefetch={false}
                                     style={{ color: "inherit", fontWeight: 650 }}
                                   >
-                                    {it.name} × {it.quantity}
-                                    <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
+                                    {it.name} × {unitLabel}
+                                    <span className="wh-item-unit">{priceLabel}</span>
                                     {shipped > 0 && remaining > 0 && (
                                       <span className="wh-item-row__warn" style={{ marginLeft: 8, whiteSpace: "nowrap" }}>
                                         отгружено: {shipped} · осталось: {remaining}
@@ -2824,14 +2828,25 @@ export function WarehouseManager({
                               // чтобы наличный заказ не «переезжал» в безнал.
                               paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
                               isReserved: Boolean(d.isReserved),
-                              items: d.items.map((item) => ({
-                                productId: item.productId,
-                                name: item.name,
-                                sku: item.sku ?? null,
-                                quantity: item.quantity,
-                                price: item.price,
-                                stockQty: stockById.get(item.productId) ?? 0,
-                              })),
+                              items: d.items.map((item) => {
+                                const prod = productById.get(item.productId) as any;
+                                const unit = (item as any).unit || 'roll';
+                                const metersPerRoll = (item as any).metersPerRoll || prod?.cutMetersPerRoll || null;
+                                const saleQty = (item as any).saleQuantity != null ? (item as any).saleQuantity : (unit === 'meter' && metersPerRoll ? Number(item.quantity) * Number(metersPerRoll) : Number(item.quantity));
+                                return {
+                                  productId: item.productId,
+                                  name: item.name,
+                                  sku: item.sku ?? null,
+                                  quantity: saleQty,
+                                  price: (item as any).salePrice != null ? (item as any).salePrice : item.price,
+                                  stockQty: stockById.get(item.productId) ?? 0,
+                                  isCuttable: Boolean(prod?.isCuttable),
+                                  metersPerRoll: metersPerRoll,
+                                  cutPricePerMeter: prod?.cutPricePerMeter || (item as any).salePrice || null,
+                                  unit: unit as any,
+                                  baseQty: Number(item.quantity) || 0,
+                                };
+                              }),
                             }}
                           />
                           <DealActions

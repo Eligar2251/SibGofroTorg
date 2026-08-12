@@ -175,9 +175,9 @@ export function StockRevisionSheet({
                   </td>
                   <td className="rev-col-sku">{r.sku || "—"}</td>
                   <td className="rev-col-dims">{formatDimensions(r)}</td>
-                  <td className="rev-col-num">{r.stockQty.toLocaleString("ru-RU")}</td>
+                  <td className="rev-col-num">{Number.isInteger(r.stockQty) ? r.stockQty.toLocaleString("ru-RU") : r.stockQty.toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 3 })}</td>
                   <td className="rev-col-num rev-col-fact">
-                    {filled && actual != null ? actual.toLocaleString("ru-RU") : ""}
+                    {filled && actual != null ? (Number.isInteger(actual) ? actual.toLocaleString("ru-RU") : actual.toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 3 })) : ""}
                   </td>
                   {filled && (
                     <td
@@ -185,7 +185,7 @@ export function StockRevisionSheet({
                         diff != null && diff !== 0 ? " rev-diff" : ""
                       }`}
                     >
-                      {diff == null ? "" : diff === 0 ? "0" : diff > 0 ? `+${diff}` : diff}
+                      {diff == null ? "" : diff === 0 ? "0" : diff > 0 ? `+${Number.isInteger(diff) ? diff : diff.toFixed(3)}` : `${Number.isInteger(diff) ? diff : diff.toFixed(3)}`}
                     </td>
                   )}
                   <td className="rev-col-num">{formatPrice(r.price)}</td>
@@ -198,14 +198,14 @@ export function StockRevisionSheet({
               <td colSpan={4} className="rev-total-label">
                 Итого единиц
               </td>
-              <td className="rev-col-num">{totalAccounted.toLocaleString("ru-RU")}</td>
+              <td className="rev-col-num">{totalAccounted.toLocaleString("ru-RU", { maximumFractionDigits: 3 })}</td>
               <td className="rev-col-num rev-col-fact">
-                {filled ? totalActual.toLocaleString("ru-RU") : ""}
+                {filled ? totalActual.toLocaleString("ru-RU", { maximumFractionDigits: 3 }) : ""}
               </td>
               {filled && (
                 <td className="rev-col-num">
                   {(totalActual - totalAccounted) > 0 ? "+" : ""}
-                  {(totalActual - totalAccounted).toLocaleString("ru-RU")}
+                  {(totalActual - totalAccounted).toLocaleString("ru-RU", { maximumFractionDigits: 3 })}
                 </td>
               )}
               <td className="rev-col-num">—</td>

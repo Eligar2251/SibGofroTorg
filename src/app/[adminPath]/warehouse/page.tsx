@@ -176,6 +176,10 @@ export default async function AdminWarehousePage({
     priceWholesale: p.priceWholesale,
     purchasePrice: p.purchasePrice ?? null,
     stockQty: p.stockQty,
+    isCuttable: (p as any).isCuttable ?? false,
+    cutMetersPerRoll: (p as any).cutMetersPerRoll ?? null,
+    cutPricePerMeter: (p as any).cutPricePerMeter ?? null,
+    cutUnitName: (p as any).cutUnitName || 'м',
   }));
 
   const counterpartyOptions: CounterpartyOption[] = counterpartyRows.map(

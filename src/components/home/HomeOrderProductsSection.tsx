@@ -18,6 +18,10 @@ interface OrderProduct {
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
+  cutUnitName?: string | null;
   stockQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;

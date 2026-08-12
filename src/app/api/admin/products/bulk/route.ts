@@ -34,6 +34,7 @@ export async function PUT(request: NextRequest) {
       isPromo: "is_promo", isFeatured: "is_featured", categoryId: "category_id",
       sku: "sku", promoLabel: "promo_label",
       madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
+      isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
       images: "images", imageUrl: "image_url",
     };
 

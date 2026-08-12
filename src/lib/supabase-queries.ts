@@ -146,6 +146,18 @@ function isMissingMadeToOrderMinQtyColumnError(err: any): boolean {
   );
 }
 
+function isMissingCuttableColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("is_cuttable") && !msg.includes("cut_meters_per_roll") && !msg.includes("cut_price_per_meter") && !msg.includes("cut_unit_name")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 function isMissingPurchasePriceColumnError(err: any): boolean {
   if (!err) return false;
   const msg = String(err.message || err.details || "").toLowerCase();
@@ -192,6 +204,10 @@ function mapProductRow(row: any): FirestoreProduct {
     promoLabel: row.promo_label || null,
     madeToOrder: row.made_to_order ?? false,
     madeToOrderMinQty: row.made_to_order_min_qty != null ? Number(row.made_to_order_min_qty) : null,
+    isCuttable: row.is_cuttable ?? false,
+    cutMetersPerRoll: row.cut_meters_per_roll != null ? Number(row.cut_meters_per_roll) : null,
+    cutPricePerMeter: row.cut_price_per_meter != null ? Number(row.cut_price_per_meter) : null,
+    cutUnitName: row.cut_unit_name || "м",
     discountType: row.discount_type || null,
     discountValue: row.discount_value != null ? Number(row.discount_value) : null,
     discountBadge: row.discount_badge || null,
@@ -650,6 +666,10 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     promo_label: data.promoLabel || null,
     made_to_order: data.madeToOrder ?? false,
     made_to_order_min_qty: data.madeToOrderMinQty ?? null,
+    is_cuttable: data.isCuttable ?? false,
+    cut_meters_per_roll: data.cutMetersPerRoll ?? null,
+    cut_price_per_meter: data.cutPricePerMeter ?? null,
+    cut_unit_name: data.cutUnitName || "м",
     discount_type: data.discountType || null,
     discount_value: data.discountValue ?? null,
     discount_badge: data.discountBadge || null,
@@ -693,6 +713,13 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
       if (retry3.error) throw retry3.error;
       result = retry3.data;
       insertErr = null;
+    } else if (isMissingCuttableColumnError(first.error)) {
+      console.warn("[products] Колонки is_cuttable нет — запись без вариативности");
+      const { is_cuttable: _cut, cut_meters_per_roll: _cmpr, cut_price_per_meter: _cppm, cut_unit_name: _cun, ...payloadNoCut } = payload;
+      const retry4 = await db.from("products").insert(payloadNoCut).select("id").single();
+      if (retry4.error) throw retry4.error;
+      result = retry4.data;
+      insertErr = null;
     }
   } else {
     result = first.data;
@@ -730,6 +757,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     packQty: "pack_qty", volume: "volume", note: "note", inStock: "in_stock",
     stockQty: "stock_qty", stockWarnQty: "stock_warn_qty", isPromo: "is_promo",
     promoLabel: "promo_label", madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
+    isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
     discountType: "discount_type", discountValue: "discount_value",
     discountBadge: "discount_badge", isVisible: "is_visible",
     isFeatured: "is_featured", imageUrl: "image_url", images: "images",
@@ -774,6 +802,22 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       ? null
       : Math.max(1, Math.floor(Number(data.madeToOrderMinQty) || 0));
   }
+  if (data.isCuttable !== undefined) {
+    payload.is_cuttable = Boolean(data.isCuttable);
+  }
+  if (data.cutMetersPerRoll !== undefined) {
+    payload.cut_meters_per_roll = data.cutMetersPerRoll == null || data.cutMetersPerRoll === ""
+      ? null
+      : Math.max(0.01, Number(data.cutMetersPerRoll) || 0);
+  }
+  if (data.cutPricePerMeter !== undefined) {
+    payload.cut_price_per_meter = data.cutPricePerMeter == null || data.cutPricePerMeter === ""
+      ? null
+      : Math.max(0, Number(data.cutPricePerMeter) || 0);
+  }
+  if (data.cutUnitName !== undefined) {
+    payload.cut_unit_name = data.cutUnitName ? String(data.cutUnitName).slice(0,20) : "м";
+  }
   // Ретрай без barcode/purchase_price, если колонки ещё нет в БД (миграция не
   // применена) — сохранение товара не должно падать из-за этого.
   let { error } = await db.from("products").update(payload).eq("id", id);
@@ -791,6 +835,11 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     console.warn("[products] Колонки made_to_order_min_qty нет — сохранение без неё");
     const { made_to_order_min_qty: _moq, ...payloadNoMoq } = payload;
     ({ error } = await db.from("products").update(payloadNoMoq).eq("id", id));
+  }
+  if (error && isMissingCuttableColumnError(error) && ("is_cuttable" in payload || "cut_meters_per_roll" in payload || "cut_price_per_meter" in payload)) {
+    console.warn("[products] Колонки cuttable нет — сохранение без неё");
+    const { is_cuttable: _cut, cut_meters_per_roll: _cmpr, cut_price_per_meter: _cppm, cut_unit_name: _cun, ...payloadNoCut } = payload;
+    ({ error } = await db.from("products").update(payloadNoCut).eq("id", id));
   }
   if (error) throw error;
   invalidateProductsCache();

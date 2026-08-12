@@ -13,9 +13,24 @@ export interface StockDocItem {
   variantName?: string | null;
   name: string;
   sku?: string | null;
+  /** 
+   * Базовое кол-во для списания склада — в рулонах/шт (может быть дробным 5.9).
+   * Для резаных товаров: если продажа в метрах, сюда попадает base = meters / metersPerRoll
+   */
   quantity: number;
   price: number;
   lineTotal: number;
+  // ── Вариативность рулон / метры ──
+  /** Единица продажи: roll | meter | piece (по умолчанию roll/piece) */
+  unit?: 'roll' | 'meter' | 'piece' | null;
+  /** Метров в рулоне на момент продажи (снапшот) */
+  metersPerRoll?: number | null;
+  /** Исходное кол-во в единице продажи (напр. 10 метров) */
+  saleQuantity?: number | null;
+  /** Цена за единицу продажи (напр. за метр) */
+  salePrice?: number | null;
+  /** Единица отмотки подпись, напр. 'м' */
+  cutUnitName?: string | null;
 }
 
 export type CounterpartyRole = "supplier" | "customer";
@@ -216,6 +231,11 @@ export interface WarehouseStockRow {
   priceWholesale: number | null;
   purchasePrice?: number | null;
   isVisible: boolean;
+  // Вариативность
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
+  cutUnitName?: string | null;
   /** Габариты товара в мм (или в иных единицах из dimensionUnit).
    *  Подхватываются в ревизию склада, чтобы кладовщик мог
    *  пересчитать остатки по позициям и сразу видеть, что именно
@@ -225,6 +245,49 @@ export interface WarehouseStockRow {
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
 }
+
+ // ── Хелперы для резаных товаров ──
+export function getCuttableBreakdown(stockRolls: number, metersPerRoll: number | null | undefined) {
+  const rolls = Math.max(0, Number(stockRolls) || 0);
+  const mpr = Math.max(0, Number(metersPerRoll) || 0);
+  if (!mpr) return { fullRolls: Math.floor(rolls), remainderMeters: 0, totalMeters: rolls, rolls };
+  const fullRolls = Math.floor(rolls + 1e-9);
+  const remainderMeters = Math.round((rolls - fullRolls) * mpr * 100) / 100;
+  const totalMeters = Math.round(rolls * mpr * 100) / 100;
+  return { fullRolls, remainderMeters, totalMeters, rolls };
+}
+
+export function formatCuttableStock(stockRolls: number, metersPerRoll: number | null | undefined, unitName?: string | null) {
+  const { fullRolls, remainderMeters, totalMeters } = getCuttableBreakdown(stockRolls, metersPerRoll);
+  const u = unitName || 'м';
+  if (!metersPerRoll) return `${Number(stockRolls || 0).toLocaleString('ru-RU')} шт.`;
+  if (remainderMeters > 0.009) return `${fullRolls} рул. + ${remainderMeters} ${u} (${totalMeters} ${u} всего)`;
+  return `${fullRolls} рул. · ${totalMeters} ${u}`;
+}
+
+export function getStockItemBaseQuantity(item: { quantity?: number; baseQuantity?: number; saleQuantity?: number; unit?: string | null; metersPerRoll?: number | null } & any): number {
+  if (item == null) return 0;
+  // quantity уже base
+  const q = Number(item.quantity);
+  if (Number.isFinite(q) && q > 0) return q;
+  // fallback: saleQuantity / mpr
+  if (item.unit === 'meter' && item.metersPerRoll) {
+    const sale = Number(item.saleQuantity);
+    const mpr = Number(item.metersPerRoll);
+    if (sale > 0 && mpr > 0) return sale / mpr;
+  }
+  return 0;
+}
+
+export function getStockItemDisplaySale(item: StockDocItem): { saleQty: number; unit: 'roll'|'meter'|'piece'; pricePerSale: number; metersPerRoll?: number | null } {
+  const base = Number(item.quantity) || 0;
+  const unit = (item.unit as any) === 'meter' ? 'meter' : (item.unit as any) === 'roll' ? 'roll' : 'piece';
+  const mpr = item.metersPerRoll != null ? Number(item.metersPerRoll) : null;
+  const saleQty = item.saleQuantity != null ? Number(item.saleQuantity) : (unit === 'meter' && mpr ? base * mpr : base);
+  const pricePerSale = item.salePrice != null ? Number(item.salePrice) : Number(item.price) || 0;
+  return { saleQty, unit, pricePerSale, metersPerRoll: mpr };
+}
+
 
 /** Строка поступления в расширенной складской сводке товара. */
 export interface ProductStockReceiptHistory {

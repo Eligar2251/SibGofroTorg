@@ -36,6 +36,10 @@ interface CompactProduct {
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
+  cutUnitName?: string | null;
   stockQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;
@@ -268,6 +272,11 @@ export function ProductCardCompact({
             </>
           ) : (
             <span className="pcc__price-muted">Цена по запросу</span>
+          )}
+          {(product as any).isCuttable && (
+            <span className="pcc__mto-note" style={{ background: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.2)' }}>
+              Рулон {(product as any).cutMetersPerRoll || 100}м · можно метрами
+            </span>
           )}
           {orderOffer && (
             <span className="pcc__mto-note">

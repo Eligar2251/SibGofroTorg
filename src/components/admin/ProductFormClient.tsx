@@ -61,6 +61,10 @@ interface ProductData {
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
+  isCuttable?: boolean | null;
+  cutMetersPerRoll?: number | null;
+  cutPricePerMeter?: number | null;
+  cutUnitName?: string | null;
   discountType?: "percent" | "fixed" | null;
   discountValue?: number | null;
   discountBadge?: string | null;
@@ -125,6 +129,14 @@ export function ProductFormClient({
   const [madeToOrderMinQty, setMadeToOrderMinQty] = useState<string>(
     product?.madeToOrderMinQty != null ? String(product.madeToOrderMinQty) : ""
   );
+  const [isCuttableChecked, setIsCuttableChecked] = useState(product?.isCuttable ?? false);
+  const [cutMetersPerRoll, setCutMetersPerRoll] = useState<string>(
+    product?.cutMetersPerRoll != null ? String(product.cutMetersPerRoll) : "100"
+  );
+  const [cutPricePerMeter, setCutPricePerMeter] = useState<string>(
+    product?.cutPricePerMeter != null ? String(product.cutPricePerMeter) : ""
+  );
+  const [cutUnitName, setCutUnitName] = useState<string>(product?.cutUnitName || "м");
 
   // Markdown-редактор описания
   const [descValue, setDescValue] = useState(product?.description || "");
@@ -253,6 +265,10 @@ export function ProductFormClient({
       promoLabel: data.get("promoLabel") || null,
       madeToOrder: madeToOrderChecked,
       madeToOrderMinQty: madeToOrderChecked && madeToOrderMinQty !== "" ? Math.max(1, Math.floor(Number(madeToOrderMinQty) || 1)) : null,
+      isCuttable: isCuttableChecked,
+      cutMetersPerRoll: isCuttableChecked && cutMetersPerRoll !== "" ? Math.max(0.01, Number(cutMetersPerRoll) || 0) : null,
+      cutPricePerMeter: isCuttableChecked && cutPricePerMeter !== "" ? Math.max(0, Number(cutPricePerMeter) || 0) : null,
+      cutUnitName: isCuttableChecked ? (cutUnitName || "м") : null,
       discountType: data.get("discountType") || null,
       discountValue: data.get("discountValue")
         ? Number(data.get("discountValue"))
@@ -850,6 +866,70 @@ export function ProductFormClient({
                 </div>
                 <div style={{ fontSize: 12, color: "var(--adm-muted)", maxWidth: 320, lineHeight: 1.4 }}>
                   Если указано — на карточке товара и в каталоге будет «Под заказ от {madeToOrderMinQty || "…"} шт.» и в отдельной вкладке «Товары под заказ» можно массово менять это число.
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div
+            className="admin-field"
+            style={{
+              marginTop: 12,
+              padding: 14,
+              border: "1px solid var(--adm-border)",
+              borderRadius: 10,
+              background: isCuttableChecked ? "rgba(59,130,246,0.06)" : "transparent",
+            }}
+          >
+            <label className="admin-check" style={{ marginBottom: 8 }}>
+              <input
+                type="checkbox"
+                checked={isCuttableChecked}
+                onChange={(e) => setIsCuttableChecked(e.target.checked)}
+              />
+              <span style={{ fontWeight: 700 }}>Можно продавать рулонами и метрами (плёнка, отмотка)</span>
+            </label>
+            {isCuttableChecked && (
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginTop: 8 }}>
+                <div className="admin-field" style={{ margin: 0, minWidth: 160 }}>
+                  <label className="admin-label">Метров в рулоне</label>
+                  <input
+                    type="number"
+                    min={0.01}
+                    step={0.01}
+                    value={cutMetersPerRoll}
+                    onChange={(e) => setCutMetersPerRoll(e.target.value)}
+                    placeholder="100"
+                    className="admin-input"
+                  />
+                  <span className="admin-hint">Обычно 100 м</span>
+                </div>
+                <div className="admin-field" style={{ margin: 0, minWidth: 160 }}>
+                  <label className="admin-label">Цена за метр, ₽</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={cutPricePerMeter}
+                    onChange={(e) => setCutPricePerMeter(e.target.value)}
+                    placeholder="например: 12"
+                    className="admin-input"
+                  />
+                  <span className="admin-hint">Если не указана — считается из цены рулона</span>
+                </div>
+                <div className="admin-field" style={{ margin: 0, minWidth: 100 }}>
+                  <label className="admin-label">Ед. изм.</label>
+                  <input
+                    type="text"
+                    value={cutUnitName}
+                    onChange={(e) => setCutUnitName(e.target.value)}
+                    placeholder="м"
+                    className="admin-input"
+                    maxLength={5}
+                  />
+                </div>
+                <div style={{ fontSize: 12, color: "var(--adm-muted)", maxWidth: 340, lineHeight: 1.4 }}>
+                  Товар можно будет добавить в заказ как рулоны и как метры. Остаток показывается автоматом: напр. 5 рулонов по 100 м + 90 м = 5.9 рулона. При отмотке 10 м остаток станет 5 рул. + 80 м. На карточке сайта будет пометка «Можно рулоном и метрами».
                 </div>
               </div>
             )}
