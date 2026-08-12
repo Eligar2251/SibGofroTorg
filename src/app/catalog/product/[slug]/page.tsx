@@ -475,10 +475,15 @@ export default async function ProductPage({
                   </span>
                 </div>
               ) : product.madeToOrder ? (
-                <div className="pdp-price-row">
+                <div className="pdp-price-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
                   <span className="pdp-price-current pdp-price-current--mto">
-                    Под заказ
+                    Под заказ{(product as any).madeToOrderMinQty ? ` от ${(product as any).madeToOrderMinQty} шт.` : ""}
                   </span>
+                  {(product as any).madeToOrderMinQty && (
+                    <span style={{ fontSize: 13, color: "var(--ink-soft, #666)", fontWeight: 500 }}>
+                      Минимальный заказ: {(product as any).madeToOrderMinQty} шт.
+                    </span>
+                  )}
                 </div>
               ) : displayPrice == null ? (
                 <div className="pdp-price-row">
@@ -551,8 +556,9 @@ export default async function ProductPage({
                   <div className="pdp-made-to-order">
                     <div className="pdp-made-to-order__text">
                       <FileText size={15} />
-                      Изготавливается под заказ — оставьте заявку, менеджер
+                      Изготавливается под заказ{(product as any).madeToOrderMinQty ? ` от ${(product as any).madeToOrderMinQty} шт.` : ""} — оставьте заявку, менеджер
                       рассчитает стоимость и сроки
+                      {(product as any).madeToOrderMinQty ? ` (мин. ${(product as any).madeToOrderMinQty} шт.)` : ""}
                     </div>
                     <PriceInquiryButton
                       productName={product.name}

@@ -33,6 +33,7 @@ export async function PUT(request: NextRequest) {
       stockQty: "stock_qty", inStock: "in_stock", isVisible: "is_visible",
       isPromo: "is_promo", isFeatured: "is_featured", categoryId: "category_id",
       sku: "sku", promoLabel: "promo_label",
+      madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
       images: "images", imageUrl: "image_url",
     };
 

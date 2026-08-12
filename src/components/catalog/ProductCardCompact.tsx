@@ -35,6 +35,7 @@ interface CompactProduct {
   inStock?: boolean;
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
+  madeToOrderMinQty?: number | null;
   stockQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;
@@ -232,7 +233,11 @@ export function ProductCardCompact({
             </span>
           ) : product.madeToOrder && product.price == null ? (
             <span className="pcc__price-muted pcc__price-muted--mto">
-              Под заказ
+              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
+            </span>
+          ) : product.madeToOrder ? (
+            <span className="pcc__price-muted pcc__price-muted--mto">
+              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
             </span>
           ) : product.price != null ? (
             <>
@@ -267,7 +272,7 @@ export function ProductCardCompact({
           {orderOffer && (
             <span className="pcc__mto-note">
               <Clock3 size={10} />
-              Под заказ · 2–3 дня
+              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : " · 2–3 дня"}
             </span>
           )}
           {inCart && (

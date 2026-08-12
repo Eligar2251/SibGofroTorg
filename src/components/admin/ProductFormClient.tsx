@@ -60,6 +60,7 @@ interface ProductData {
   isPromo?: boolean | null;
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
+  madeToOrderMinQty?: number | null;
   discountType?: "percent" | "fixed" | null;
   discountValue?: number | null;
   discountBadge?: string | null;
@@ -118,6 +119,12 @@ export function ProductFormClient({
   // кнопка «Перегенерировать» могла сразу подставить новый код.
   const [barcodeValue, setBarcodeValue] = useState(product?.barcode || "");
   const [regeneratingBarcode, setRegeneratingBarcode] = useState(false);
+  const [madeToOrderChecked, setMadeToOrderChecked] = useState(
+    product?.madeToOrder ?? false
+  );
+  const [madeToOrderMinQty, setMadeToOrderMinQty] = useState<string>(
+    product?.madeToOrderMinQty != null ? String(product.madeToOrderMinQty) : ""
+  );
 
   // Markdown-редактор описания
   const [descValue, setDescValue] = useState(product?.description || "");
@@ -244,7 +251,8 @@ export function ProductFormClient({
       inStock: data.get("inStock") === "on",
       isPromo: data.get("isPromo") === "on",
       promoLabel: data.get("promoLabel") || null,
-      madeToOrder: data.get("madeToOrder") === "on",
+      madeToOrder: madeToOrderChecked,
+      madeToOrderMinQty: madeToOrderChecked && madeToOrderMinQty !== "" ? Math.max(1, Math.floor(Number(madeToOrderMinQty) || 1)) : null,
       discountType: data.get("discountType") || null,
       discountValue: data.get("discountValue")
         ? Number(data.get("discountValue"))
@@ -794,11 +802,6 @@ export function ProductFormClient({
                 label: "Популярный товар",
                 defaultChecked: product?.isFeatured ?? false,
               },
-              {
-                name: "madeToOrder",
-                label: "Под заказ (без цены на сайте)",
-                defaultChecked: product?.madeToOrder ?? false,
-              },
             ].map((flag) => (
               <label key={flag.name} className="admin-check">
                 <input
@@ -810,7 +813,49 @@ export function ProductFormClient({
               </label>
             ))}
           </div>
-          <div className="admin-grid-2">
+
+          <div
+            className="admin-field"
+            style={{
+              marginTop: 12,
+              padding: 14,
+              border: "1px solid var(--adm-border)",
+              borderRadius: 10,
+              background: madeToOrderChecked ? "rgba(200,134,10,0.06)" : "transparent",
+            }}
+          >
+            <label className="admin-check" style={{ marginBottom: 8 }}>
+              <input
+                name="madeToOrder"
+                type="checkbox"
+                checked={madeToOrderChecked}
+                onChange={(e) => setMadeToOrderChecked(e.target.checked)}
+              />
+              <span style={{ fontWeight: 700 }}>Под заказ (без цены на сайте)</span>
+            </label>
+            {madeToOrderChecked && (
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div className="admin-field" style={{ margin: 0, minWidth: 220 }}>
+                  <label className="admin-label">Минимальное кол-во для заказа, шт.</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={madeToOrderMinQty}
+                    onChange={(e) => setMadeToOrderMinQty(e.target.value)}
+                    placeholder="например: 100"
+                    className="admin-input"
+                  />
+                  <span className="admin-hint">От какого количества изготавливаем. На сайте покажется «От N шт.»</span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--adm-muted)", maxWidth: 320, lineHeight: 1.4 }}>
+                  Если указано — на карточке товара и в каталоге будет «Под заказ от {madeToOrderMinQty || "…"} шт.» и в отдельной вкладке «Товары под заказ» можно массово менять это число.
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="admin-grid-2" style={{ marginTop: 12 }}>
             <div className="admin-field">
               <label className="admin-label">Метка акции</label>
               <input

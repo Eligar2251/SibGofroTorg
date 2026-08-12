@@ -62,6 +62,7 @@ export default async function AdminProductsPage({
     isPromo: p.isPromo,
     promoLabel: p.promoLabel ?? null,
     madeToOrder: p.madeToOrder ?? false,
+    madeToOrderMinQty: (p as any).madeToOrderMinQty ?? null,
     isVisible: p.isVisible,
     isFeatured: p.isFeatured,
     featuredOrder: featuredOrderMap.get(p.id) ?? null,
@@ -128,6 +129,9 @@ export default async function AdminProductsPage({
       <div className="admin-filters">
         <Link href={`/${ADMIN_PATH}/products?tab=products`} className={`admin-filter${activeTab === "products" ? " admin-filter--active" : ""}`} prefetch={false}>
           <Package size={13} /> Товары
+        </Link>
+        <Link href={`/${ADMIN_PATH}/products/made-to-order`} className="admin-filter" prefetch={false}>
+          <Package size={13} /> Под заказ · {allProducts.filter((p:any)=>p.madeToOrder).length}
         </Link>
         <Link href={`/${ADMIN_PATH}/products?tab=categories`} className={`admin-filter${activeTab === "categories" ? " admin-filter--active" : ""}`} prefetch={false}>
           <FolderOpen size={13} /> Категории

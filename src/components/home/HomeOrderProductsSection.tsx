@@ -17,6 +17,7 @@ interface OrderProduct {
   inStock?: boolean;
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
+  madeToOrderMinQty?: number | null;
   stockQty?: number | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;

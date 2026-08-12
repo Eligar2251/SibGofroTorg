@@ -29,6 +29,7 @@ interface ProductItem {
   isPromo: boolean;
   promoLabel?: string | null;
   madeToOrder?: boolean | null;
+  madeToOrderMinQty?: number | null;
   isVisible: boolean;
   isFeatured?: boolean;
   featuredOrder?: number | null;
@@ -345,7 +346,7 @@ export function ProductListClient({
                       <div className="admin-price">
                         {product.madeToOrder ? (
                           <span style={{ color: "var(--green-dark)", fontWeight: 700 }}>
-                            Под заказ
+                            Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
                           </span>
                         ) : product.price != null ? (
                           `${product.price.toLocaleString("ru-RU")} ₽`

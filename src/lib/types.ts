@@ -36,6 +36,7 @@ export interface FirestoreProduct {
   isPromo: boolean;
   promoLabel?: string | null | undefined;
   madeToOrder?: boolean | null | undefined;
+  madeToOrderMinQty?: number | null | undefined;
   discountType?: "percent" | "fixed" | null | undefined;
   discountValue?: number | null | undefined;
   discountBadge?: string | null | undefined;

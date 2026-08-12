@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS products (
   is_promo BOOLEAN DEFAULT FALSE,
   promo_label TEXT,
   made_to_order BOOLEAN DEFAULT FALSE,
+  made_to_order_min_qty INT,
   discount_type TEXT CHECK (discount_type IN ('percent', 'fixed')),
   discount_value NUMERIC,
   discount_badge TEXT,

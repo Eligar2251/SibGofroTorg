@@ -134,6 +134,18 @@ export function firstImageUrl(images: { url: string }[]): string | null {
   return found ? found.url.trim() : null;
 }
 
+function isMissingMadeToOrderMinQtyColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("made_to_order_min_qty")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 function isMissingPurchasePriceColumnError(err: any): boolean {
   if (!err) return false;
   const msg = String(err.message || err.details || "").toLowerCase();
@@ -179,6 +191,7 @@ function mapProductRow(row: any): FirestoreProduct {
     isPromo: row.is_promo ?? false,
     promoLabel: row.promo_label || null,
     madeToOrder: row.made_to_order ?? false,
+    madeToOrderMinQty: row.made_to_order_min_qty != null ? Number(row.made_to_order_min_qty) : null,
     discountType: row.discount_type || null,
     discountValue: row.discount_value != null ? Number(row.discount_value) : null,
     discountBadge: row.discount_badge || null,
@@ -636,6 +649,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     is_promo: data.isPromo ?? false,
     promo_label: data.promoLabel || null,
     made_to_order: data.madeToOrder ?? false,
+    made_to_order_min_qty: data.madeToOrderMinQty ?? null,
     discount_type: data.discountType || null,
     discount_value: data.discountValue ?? null,
     discount_badge: data.discountBadge || null,
@@ -671,6 +685,13 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
       const retry2 = await db.from("products").insert(payloadNoPP).select("id").single();
       if (retry2.error) throw retry2.error;
       result = retry2.data;
+      insertErr = null;
+    } else if (isMissingMadeToOrderMinQtyColumnError(first.error)) {
+      console.warn("[products] Колонки made_to_order_min_qty нет — запись без мин. кол-ва");
+      const { made_to_order_min_qty: _moq, ...payloadNoMoq } = payload;
+      const retry3 = await db.from("products").insert(payloadNoMoq).select("id").single();
+      if (retry3.error) throw retry3.error;
+      result = retry3.data;
       insertErr = null;
     }
   } else {
@@ -708,7 +729,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     dimensionUnit: "dimension_unit", weight: "weight", material: "material",
     packQty: "pack_qty", volume: "volume", note: "note", inStock: "in_stock",
     stockQty: "stock_qty", stockWarnQty: "stock_warn_qty", isPromo: "is_promo",
-    promoLabel: "promo_label", madeToOrder: "made_to_order",
+    promoLabel: "promo_label", madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
     discountType: "discount_type", discountValue: "discount_value",
     discountBadge: "discount_badge", isVisible: "is_visible",
     isFeatured: "is_featured", imageUrl: "image_url", images: "images",
@@ -748,6 +769,11 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       ? null
       : Number(data.packQty);
   }
+  if (data.madeToOrderMinQty !== undefined) {
+    payload.made_to_order_min_qty = data.madeToOrderMinQty == null || data.madeToOrderMinQty === ""
+      ? null
+      : Math.max(1, Math.floor(Number(data.madeToOrderMinQty) || 0));
+  }
   // Ретрай без barcode/purchase_price, если колонки ещё нет в БД (миграция не
   // применена) — сохранение товара не должно падать из-за этого.
   let { error } = await db.from("products").update(payload).eq("id", id);
@@ -760,6 +786,11 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     console.warn("[products] Колонки purchase_price нет — сохранение без неё");
     const { purchase_price: _pp, ...payloadNoPP } = payload;
     ({ error } = await db.from("products").update(payloadNoPP).eq("id", id));
+  }
+  if (error && isMissingMadeToOrderMinQtyColumnError(error) && "made_to_order_min_qty" in payload) {
+    console.warn("[products] Колонки made_to_order_min_qty нет — сохранение без неё");
+    const { made_to_order_min_qty: _moq, ...payloadNoMoq } = payload;
+    ({ error } = await db.from("products").update(payloadNoMoq).eq("id", id));
   }
   if (error) throw error;
   invalidateProductsCache();
