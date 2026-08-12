@@ -807,6 +807,58 @@ export function getCashCarryoverSummary(
     });
   }
 
+  for (const collection of collections) {
+    // Для кассы учитываем только ту часть инкассации, которая относится
+    // к регулярной наличке. Переводы (transfer / cashDestination=card)
+    // никогда не были в кассе, поэтому из кассы не вычитаются.
+    const eligibleCardItems: { paymentId: string; amount: number }[] = [];
+    let eligibleCardTotal = 0;
+    for (const item of collection.items || []) {
+      const pid = String(item.paymentId || "");
+      if (!pid) continue;
+      if (pid.startsWith("manual:")) {
+        const card = Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+        if (card > 0) {
+          eligibleCardItems.push({ paymentId: pid, amount: card });
+          eligibleCardTotal += card;
+        }
+        continue;
+      }
+      const pay = paymentById.get(pid);
+      if (pay && isImmediateYmPayment(pay)) {
+        // перевод — никогда не был в кассе, пропускаем
+        continue;
+      }
+      const card = Math.max(
+        0,
+        Number(
+          item.cardAmount != null
+            ? item.cardAmount
+            : item.kind === "card"
+              ? item.amount
+              : 0
+        ) || 0
+      );
+      if (card > 0) {
+        eligibleCardItems.push({ paymentId: pid, amount: card });
+        eligibleCardTotal += card;
+      }
+    }
+    if (eligibleCardTotal <= 0) continue;
+    const rawTotal = eligibleCardItems.reduce((sum, it) => sum + it.amount, 0);
+    const factor = rawTotal > 0 ? Math.min(1, eligibleCardTotal / rawTotal) : 0;
+    events.push({
+      date: String(collection.date || "").slice(0, 10),
+      priority: 2,
+      type: "card",
+      amount: eligibleCardTotal,
+      targets: eligibleCardItems.map((item) => ({
+        paymentId: item.paymentId,
+        amount: item.amount * factor,
+      })),
+    });
+  }
+
   events.sort(
     (a, b) =>
       a.date.localeCompare(b.date) || a.priority - b.priority
@@ -1047,6 +1099,7 @@ export function getBankSummary(
       eligibleTransfer += Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
     }
     collectedTransfer += eligibleTransfer;
+    ymCardBalance += eligibleTransfer;
   }
   const bankForecast = bankBalance + expectedIn - expectedOut;
   const bankIncomeTotal = bankBalance + expectedIn;
