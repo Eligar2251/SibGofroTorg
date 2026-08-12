@@ -2613,12 +2613,15 @@ export async function getPendingCashPayments(): Promise<{
   };
 }
 
-/** Платёж относится к кассе: наличное поступление, влияющее на остаток. */
+/** Платёж относится к кассе: только регулярная наличка.
+ * Переводы (transfer / cashDestination=card) сразу в ЮМ, минуя кассу.
+ */
 function isCashDeskIncome(p: BankPayment): boolean {
   return (
     p.isPaid &&
     !p.excludeFromBalance &&
-    (p.type === "cash" || p.type === "transfer") &&
+    p.type === "cash" &&
+    p.cashDestination !== "card" &&
     p.direction === "incoming" &&
     p.amount > 0
   );

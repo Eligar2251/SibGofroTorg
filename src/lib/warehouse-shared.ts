@@ -627,6 +627,23 @@ function collectionCashOutflow(collection: CashCollection): number {
     : Math.max(0, Number(collection.amount) || 0);
 }
 
+/** Платеж, который сразу должен попадать в карту ЮМ, минуя кассу. */
+export function isImmediateYmPayment(p: BankPayment | null | undefined): boolean {
+  if (!p) return false;
+  if (p.type === "transfer") return true;
+  if (p.type === "cash" && p.cashDestination === "card") return true;
+  return false;
+}
+
+/** Платеж, который считается наличкой в кассе (только регулярная наличка). */
+function isRegularCashForCashDesk(p: BankPayment): boolean {
+  if (!p.isPaid || p.excludeFromBalance) return false;
+  if (p.type !== "cash") return false;
+  if (p.amount <= 0) return false;
+  if (p.direction === "incoming" && p.cashDestination === "card") return false;
+  return true;
+}
+
 /** Рабочая дата компании — Новосибирск, а не UTC сервера/Vercel. */
 export function getWarehouseBusinessDate(date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -646,6 +663,10 @@ export function getWarehouseBusinessDate(date = new Date()): string {
  * смены помечены «на карту». Остальные расходы списываются FIFO. Поэтому
  * перенесённая наличка не только входит в баланс, но и сохраняет ссылку на
  * исходный ПЛ и контрагента.
+ *
+ * ВАЖНО (2026): переводы (type=transfer и cashDestination=card) в кассу
+ * НЕ входят, а сразу отображаются в карте ЮМ. Здесь учитывается только
+ * регулярная наличка (cash + destination != card).
  */
 export function getCashCarryoverSummary(
   payments: BankPayment[],
@@ -664,11 +685,15 @@ export function getCashCarryoverSummary(
         targets?: { paymentId: string; amount: number }[];
       };
 
+  const paymentById = new Map<string, BankPayment>();
+  for (const p of payments) paymentById.set(String(p.id), p);
+
   const events: CashEvent[] = [];
   for (const payment of payments) {
-    if (!payment.isPaid || payment.excludeFromBalance || (payment.type !== "cash" && payment.type !== "transfer")) {
-      continue;
-    }
+    if (!payment.isPaid || payment.excludeFromBalance) continue;
+    // В кассу попадает только регулярная наличка, без переводов на ЮМ
+    if (payment.type !== "cash") continue;
+    if (payment.direction === "incoming" && payment.cashDestination === "card") continue;
     const amount = Math.max(0, Number(payment.amount) || 0);
     if (amount <= 0) continue;
     // Именно дата платежа определяет, в какой дневной баланс он входит.
@@ -713,31 +738,51 @@ export function getCashCarryoverSummary(
   }
 
   for (const collection of collections) {
-    const amount = collectionCashOutflow(collection);
-    if (amount <= 0) continue;
-    const rawTargets = (collection.items || [])
-      .map((item) => ({
-        paymentId: String(item.paymentId || ""),
-        amount: Math.max(
-          0,
-          Number(
-            item.cardAmount != null
-              ? item.cardAmount
-              : item.kind === "card"
-                ? item.amount
-                : 0
-          ) || 0
-        ),
-      }))
-      .filter((item) => item.paymentId && item.amount > 0);
-    const rawTotal = rawTargets.reduce((sum, item) => sum + item.amount, 0);
-    const factor = rawTotal > 0 ? Math.min(1, amount / rawTotal) : 0;
+    // Для кассы учитываем только ту часть инкассации, которая относится
+    // к регулярной наличке. Переводы (transfer / cashDestination=card)
+    // никогда не были в кассе, поэтому из кассы не вычитаются.
+    const eligibleCardItems: { paymentId: string; amount: number }[] = [];
+    let eligibleCardTotal = 0;
+    for (const item of collection.items || []) {
+      const pid = String(item.paymentId || "");
+      if (!pid) continue;
+      if (pid.startsWith("manual:")) {
+        const card = Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+        if (card > 0) {
+          eligibleCardItems.push({ paymentId: pid, amount: card });
+          eligibleCardTotal += card;
+        }
+        continue;
+      }
+      const pay = paymentById.get(pid);
+      if (pay && isImmediateYmPayment(pay)) {
+        // перевод — никогда не был в кассе, пропускаем
+        continue;
+      }
+      const card = Math.max(
+        0,
+        Number(
+          item.cardAmount != null
+            ? item.cardAmount
+            : item.kind === "card"
+              ? item.amount
+              : 0
+        ) || 0
+      );
+      if (card > 0) {
+        eligibleCardItems.push({ paymentId: pid, amount: card });
+        eligibleCardTotal += card;
+      }
+    }
+    if (eligibleCardTotal <= 0) continue;
+    const rawTotal = eligibleCardItems.reduce((sum, it) => sum + it.amount, 0);
+    const factor = rawTotal > 0 ? Math.min(1, eligibleCardTotal / rawTotal) : 0;
     events.push({
       date: String(collection.date || "").slice(0, 10),
       priority: 2,
       type: "card",
-      amount,
-      targets: rawTargets.map((item) => ({
+      amount: eligibleCardTotal,
+      targets: eligibleCardItems.map((item) => ({
         paymentId: item.paymentId,
         amount: item.amount * factor,
       })),
@@ -832,47 +877,17 @@ export interface PendingTransfersSummary {
 }
 
 /**
- * Наличка, которую ещё предстоит перевести на карту: поступления в кассу,
- * помеченные «к переводу» (тип «Безнал на карту» или наличка с
- * cashDestination="card"), ещё не вошедшие ни в одну сдачу кассы.
- *
- * После сдачи кассы эта сумма обнуляется — так кассир видит «Перевод:
- * сколько ещё нужно перевести», а не исторический факт переводов.
+ * Раньше наличка, которую предстояло перевести на карту, считалась
+ * отдельно (type=transfer / cashDestination=card). Теперь переводы сразу
+ * отображаются в карте ЮМ, минуя кассу, поэтому pending = 0.
+ * Оставлено для обратной совместимости, чтобы UI не ломался.
  */
 export function getPendingTransfersSummary(
-  payments: BankPayment[],
-  collections: CashCollection[] = [],
-  date = getWarehouseBusinessDate()
+  _payments: BankPayment[] = [],
+  _collections: CashCollection[] = [],
+  _date = getWarehouseBusinessDate()
 ): PendingTransfersSummary {
-  const collected = new Set<string>();
-  for (const collection of collections) {
-    for (const item of collection.items || []) {
-      if (item?.paymentId) collected.add(String(item.paymentId));
-    }
-  }
-  let today = 0;
-  let older = 0;
-  for (const payment of payments) {
-    if (!payment.isPaid || payment.excludeFromBalance) continue;
-    if (payment.direction !== "incoming") continue;
-    if (payment.type !== "cash" && payment.type !== "transfer") continue;
-    // К переводу относится: безналичный перевод на карту или наличка,
-    // которую менеджер предпочёл инкассировать.
-    const toCard =
-      payment.type === "transfer" || payment.cashDestination === "card";
-    if (!toCard) continue;
-    if (collected.has(String(payment.id))) continue;
-    const amount = Math.max(0, Number(payment.amount) || 0);
-    if (amount <= 0) continue;
-    const day = String(payment.date || "").slice(0, 10);
-    if (day === date) today += amount;
-    else if (day < date) older += amount;
-  }
-  return {
-    today: Math.round(today * 100) / 100,
-    older: Math.round(older * 100) / 100,
-    total: Math.round((today + older) * 100) / 100,
-  };
+  return { today: 0, older: 0, total: 0 };
 }
 
 /** Сводка по банку и кассе. Зарплата влияет только после фактической
@@ -882,7 +897,13 @@ export function isYmCardSalaryComment(comment: string | null | undefined): boole
   return c.includes(SALARY_YM_CARD_TAG) || c.includes(SALARY_YM_CARD_TAG_SHORT);
 }
 
-/** Сводка по банку, кассе и карте ЮМ. */
+/** Сводка по банку, кассе и карте ЮМ.
+ * ИЗМЕНЕНИЕ 2026: переводы (type=transfer и cash с cashDestination=card)
+ * в кассе НЕ учитываются, а сразу отображаются в карте ЮМ. При этом
+ * после сдачи кассы они не начисляются повторно — коллекции с
+ * такими платежами игнорируются для кассы и для ЮМ (они уже учтены
+ * напрямую как immediate YM).
+ */
 export function getBankSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
@@ -898,24 +919,33 @@ export function getBankSummary(
   let ymExpectedIn = 0;
   let ymExpectedOut = 0;
   const debtPool = deals ? getDealDebtPool(deals, payments) : null;
+  const paymentById = new Map<string, BankPayment>();
+  for (const p of payments) paymentById.set(String(p.id), p);
+
   for (const p of payments) {
     if (p.excludeFromBalance) continue;
     const isYm = p.type === "ym_card";
+    const isImmediateYm = isImmediateYmPayment(p);
     if (p.isPaid) {
       const paymentDate = String(p.date || "").slice(0, 10);
       if (!paymentDate || paymentDate > asOfDate) continue;
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
-      if (p.type === "cash" || p.type === "transfer") {
-        // cash handled separately
+      if (isImmediateYm) {
+        // переводы сразу в ЮМ, минуя кассу
+        ymCardBalance += amt;
+      } else if (p.type === "cash") {
+        // регулярная наличка — считается отдельно через getCashCarryoverSummary
       } else if (isYm) {
         ymCardBalance += amt;
       } else {
         bankBalance += amt;
       }
     } else {
-      if (isYm) {
+      if (isImmediateYm || isYm) {
         if (p.direction === "incoming") ymExpectedIn += p.amount;
         else ymExpectedOut += p.amount;
+      } else if (p.type === "cash") {
+        // наличка ожидаемая не влияет на р/с прогноз (по новому ТЗ)
       } else {
         if (p.direction === "incoming") {
           expectedIn += offsetIncomingByDealPayments(p, debtPool);
@@ -935,7 +965,6 @@ export function getBankSummary(
       } else if (s.source === "bank") {
         bankBalance -= s.amount;
       }
-      // cash source handled in cash carryover, but exclude YM tagged if cash source was mistakenly used
     } else {
       if (isYm) {
         ymExpectedOut += s.amount;
@@ -952,14 +981,32 @@ export function getBankSummary(
   let collectedCash = 0;
   let collectedCashOnly = 0;
   let collectedTransfer = 0;
+  // Переводы из кассы в ЮМ теперь учитываются только для регулярной налички,
+  // которая была переведена через сдачу. Immediate YM платежи (transfer /
+  // cashDestination=card) уже учтены напрямую, чтобы не было двойного начисления.
   for (const c of collections) {
     const collectionDate = String(c.date || "").slice(0, 10);
     if (!collectionDate || collectionDate > asOfDate) continue;
     collectedCash += c.amount;
     collectedCashOnly += Math.max(0, Number(c.cashAmount) || 0);
-    const out = collectionCashOutflow(c);
-    collectedTransfer += out;
-    ymCardBalance += out;
+    // Считаем только eligible переводы (регулярная наличка, переведённая через сдачу)
+    let eligibleTransfer = 0;
+    for (const item of c.items || []) {
+      const pid = String(item.paymentId || "");
+      if (!pid) continue;
+      if (pid.startsWith("manual:")) {
+        eligibleTransfer += Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+        continue;
+      }
+      const pay = paymentById.get(pid);
+      if (pay && isImmediateYmPayment(pay)) {
+        // уже учтён напрямую как immediate YM — не добавляем второй раз
+        continue;
+      }
+      eligibleTransfer += Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+    }
+    collectedTransfer += eligibleTransfer;
+    ymCardBalance += eligibleTransfer;
   }
   const bankForecast = bankBalance + expectedIn - expectedOut;
   const bankIncomeTotal = bankBalance + expectedIn;
@@ -982,13 +1029,13 @@ export function getBankSummary(
     bankForecast,
     bankIncomeTotal,
     forecast: totalForecast,
-    // детализация по просьбе: р/с отдельно, наличка отдельно, безнал с разбивкой переводов/налички
     forecastCashPlusBank: bankForecast + cashBalance,
     forecastWithYm: totalForecast,
     totalWithoutCash: bankBalance + ymCardBalance,
     totalWithoutCashForecast: bankForecast + ymForecast,
   };
 }
+
 
 /**
  * Сводка закрытых смен: сколько оставлено наличными для переноса и сколько
