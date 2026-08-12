@@ -961,6 +961,10 @@ export function getBankSummary(
     collectedTransfer += out;
     ymCardBalance += out;
   }
+  const bankForecast = bankBalance + expectedIn - expectedOut;
+  const bankIncomeTotal = bankBalance + expectedIn;
+  const ymForecast = ymCardBalance + ymExpectedIn - ymExpectedOut;
+  const totalForecast = bankBalance + cashBalance + ymCardBalance + expectedIn - expectedOut + ymExpectedIn - ymExpectedOut;
   return {
     balance: bankBalance + cashBalance + ymCardBalance,
     bankBalance,
@@ -974,8 +978,15 @@ export function getBankSummary(
     expectedOut,
     ymExpectedIn,
     ymExpectedOut,
-    ymForecast: ymCardBalance + ymExpectedIn - ymExpectedOut,
-    forecast: bankBalance + cashBalance + ymCardBalance + expectedIn - expectedOut + ymExpectedIn - ymExpectedOut,
+    ymForecast,
+    bankForecast,
+    bankIncomeTotal,
+    forecast: totalForecast,
+    // детализация по просьбе: р/с отдельно, наличка отдельно, безнал с разбивкой переводов/налички
+    forecastCashPlusBank: bankForecast + cashBalance,
+    forecastWithYm: totalForecast,
+    totalWithoutCash: bankBalance + ymCardBalance,
+    totalWithoutCashForecast: bankForecast + ymForecast,
   };
 }
 
