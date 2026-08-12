@@ -3910,8 +3910,9 @@ body:has(.admin-modal-overlay) {
 /* Баланс по контрагентам */
 .bank-due {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 @media (max-width: 760px) {
@@ -3925,6 +3926,7 @@ body:has(.admin-modal-overlay) {
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-r-lg);
   padding: 14px 16px;
+  min-width: 0;
 }
 
 .bank-due__title {
@@ -11112,6 +11114,7 @@ body:has(.admin-modal-overlay) {
    только его часть. */
 .bank-due__item {
   border-top: 1px solid rgba(219, 216, 208, 0.45);
+  min-width: 0;
 }
 .bank-due__item:first-child {
   border-top: none;
@@ -11151,6 +11154,7 @@ body:has(.admin-modal-overlay) {
   flex-direction: column;
   gap: 2px;
   padding: 2px 0 8px 30px;
+  min-width: 0;
 }
 .bank-due__pay {
   display: flex;
@@ -11162,6 +11166,7 @@ body:has(.admin-modal-overlay) {
   font-size: 12px;
   color: var(--adm-ink-soft);
   transition: background var(--transition);
+  min-width: 0;
 }
 .bank-due__pay:hover {
   background: var(--adm-paper);
