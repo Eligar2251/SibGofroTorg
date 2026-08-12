@@ -3239,21 +3239,10 @@ export function WarehouseManager({
                 </div>
               </div>
 
-              <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)', fontSize: 12, lineHeight: 1.5 }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12 }}>
-                  <span>Всего факт (банк+касса+ЮМ): <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong></span>
-                  <span>· Общий прогноз: <strong>{fmt(bankSummary.forecast)} ₽</strong></span>
-                </div>
-                <div style={{ marginTop: 8, padding: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
-                  <div style={{ fontWeight: 700, color: '#fff', marginBottom: 4 }}>Разбивка безналички и налички:</div>
-                  <div>Р/С расчётный счёт — факт: <b>{fmt(bankSummary.bankBalance)} ₽</b> · приход ожид. <b>+{fmt(bankSummary.expectedIn)} ₽</b> · расход ожид. <b>−{fmt(bankSummary.expectedOut)} ₽</b> · <span style={{ color: '#7dd181' }}>прогноз р/с: <b>{fmt(bankSummary.bankForecast)} ₽</b></span></div>
-                  <div style={{ marginTop: 4 }}>Наличка касса — факт: <b>{fmt(bankSummary.cashBalance)} ₽</b> (без ожидания, касса не считается в прогнозе р/с)</div>
-                  <div style={{ marginTop: 4 }}>Переводы карта ЮМ — факт: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymCardBalance)} ₽</b> · ожид. +{fmt(bankSummary.ymExpectedIn)} −{fmt(bankSummary.ymExpectedOut)} · прогноз: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymForecast)} ₽</b></div>
-                  <div style={{ marginTop: 6, borderTop: '1px dashed rgba(255,255,255,0.12)', paddingTop: 6, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                    <span>Итого с наличкой: <b style={{ color: '#fff' }}>{fmt(bankSummary.bankForecast + bankSummary.cashBalance)} ₽</b> (р/с прогноз + касса)</span>
-                    <span>· С наличкой + ЮМ: <b style={{ color: '#fff' }}>{fmt(bankSummary.forecast)} ₽</b></span>
-                  </div>
-                </div>
+              <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, lineHeight: 1.4, color: 'rgba(255,255,255,0.65)' }}>
+                <div>Р/С: {fmt(bankSummary.bankBalance)} ₽ · +{fmt(bankSummary.expectedIn)} −{fmt(bankSummary.expectedOut)} = <b style={{ color: '#fff' }}>{fmt(bankSummary.bankForecast)} ₽</b></div>
+                <div>Касса: {fmt(bankSummary.cashBalance)} ₽ · ЮМ: {fmt(bankSummary.ymCardBalance)} ₽ (прогн. {fmt(bankSummary.ymForecast)} ₽)</div>
+                <div>Всего: {fmt(bankSummary.balance)} ₽ · прогноз {fmt(bankSummary.forecast)} ₽</div>
               </div>
             </div>
 

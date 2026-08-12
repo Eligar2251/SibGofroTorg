@@ -830,8 +830,6 @@ export default async function AdminDashboard() {
                 ))}
               </div>
             </CollapsibleSection>
-
-            </CollapsibleSection>
             </div>
 
             <div className="dash-section--full">
