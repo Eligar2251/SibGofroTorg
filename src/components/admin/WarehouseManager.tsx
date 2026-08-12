@@ -34,6 +34,8 @@ import {
   Lock,
   LockOpen,
   Calculator,
+  Scissors,
+  Package,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -90,6 +92,8 @@ import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
+import { DueSummaryModal } from "@/components/admin/DueSummaryModal";
+import { PaymentProductsModal } from "@/components/admin/PaymentProductsModal";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -636,10 +640,13 @@ export function WarehouseManager({
           <div className="bank-due__pays">
             {duePays.map((p) => {
               const pSkipped = skippedPaymentIds.has(p.id);
+              const prodInfo = paymentProductsSummaryById.get(String(p.id));
+              const hasBoxes = prodInfo && (prodInfo.itemsList.length > 0 || prodInfo.summaryText);
               return (
                 <div
                   key={p.id}
                   className={`bank-due__pay${pSkipped ? " bank-due__pay--skipped" : ""}`}
+                  style={{ display: "flex", flexDirection: "column", gap: 3, padding: "8px 12px" }}
                   role="button"
                   tabIndex={0}
                   title="ЛКМ — вычеркнуть/вернуть этот платёж · ПКМ — выделить для прикидки"
@@ -652,10 +659,46 @@ export function WarehouseManager({
                     }
                   }}
                 >
-                  <span className="bank-due__pay-num">{p.invoiceNumber || `ПЛ-${p.number}`}</span>
-                  <span className="bank-due__pay-date">{fmtDate(p.date)}</span>
-                  {p.comment ? <span className="bank-due__pay-comment">{p.comment}</span> : null}
-                  <span className="bank-due__pay-sum">{paySign}{fmt(p.amount)} ₽</span>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span className="bank-due__pay-num" style={{ fontWeight: 700 }}>{p.invoiceNumber || `ПЛ-${p.number}`}</span>
+                      <span className="bank-due__pay-date" style={{ color: "var(--adm-muted)", fontSize: 12 }}>{fmtDate(p.date)}</span>
+                      {p.comment ? <span className="bank-due__pay-comment" style={{ fontSize: 12 }}>{p.comment}</span> : null}
+                      {hasBoxes && prodInfo.itemsList.length > 0 && (
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost admin-btn--sm"
+                          style={{ padding: "1px 6px", fontSize: 11, height: 20 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDetailPaymentProductsId(String(p.id));
+                          }}
+                          title="Посмотреть подробный состав коробок (размеры, количество, цена)"
+                        >
+                          Состав ({prodInfo.itemsList.length})
+                        </button>
+                      )}
+                    </div>
+                    <span className="bank-due__pay-sum" style={{ fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>
+                      {paySign}{fmt(p.amount)} ₽
+                    </span>
+                  </div>
+
+                  {/* Коробки / товары мелкими буквами через запятую */}
+                  {hasBoxes && prodInfo.summaryText ? (
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: pSkipped ? "var(--adm-muted)" : "var(--adm-primary)",
+                        lineHeight: 1.35,
+                        wordBreak: "break-word",
+                        fontWeight: 550,
+                      }}
+                      title="Коробки / позиции документа"
+                    >
+                      📦 {prodInfo.summaryText}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -671,6 +714,9 @@ export function WarehouseManager({
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<Set<string>>(new Set());
   const [selectedPartyKeys, setSelectedPartyKeys] = useState<Set<string>>(new Set());
   const [showCalculator, setShowCalculator] = useState(false);
+  const [showDueSummaryModal, setShowDueSummaryModal] = useState(false);
+  const [dueModalTab, setDueModalTab] = useState<"skipped" | "all">("skipped");
+  const [detailPaymentProductsId, setDetailPaymentProductsId] = useState<string | null>(null);
   const [calcExpression, setCalcExpression] = useState("");
   const [calcResult, setCalcResult] = useState<string>("");
 
@@ -1415,6 +1461,93 @@ export function WarehouseManager({
     return Math.max(0, (stockById.get(productId) ?? 0) - (reservedTotalById.get(productId) || 0));
   }
   const productById = useMemo(() => new Map(stock.map((p) => [p.id, p])), [stock]);
+
+  const dealById = useMemo(() => new Map(deals.map((d) => [String(d.id), d])), [deals]);
+  const receiptById = useMemo(() => new Map(receipts.map((r) => [String(r.id), r])), [receipts]);
+
+  const paymentProductsSummaryById = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        summaryText: string;
+        itemsList: {
+          name: string;
+          sku?: string | null;
+          qty: number;
+          unitLabel?: string;
+          price?: number;
+        }[];
+      }
+    >();
+    for (const p of payments) {
+      const itemsList: {
+        name: string;
+        sku?: string | null;
+        qty: number;
+        unitLabel?: string;
+        price?: number;
+      }[] = [];
+      const namesSet = new Set<string>();
+
+      for (const dealId of p.dealIds || []) {
+        const d = dealById.get(String(dealId));
+        if (d && Array.isArray(d.items)) {
+          for (const it of d.items) {
+            if (!it.name) continue;
+            const unitStr =
+              (it as any).unit === "meter"
+                ? "м"
+                : (it as any).unit === "roll" &&
+                  ((it as any).isCuttable || (it as any).metersPerRoll)
+                ? "рул."
+                : "шт.";
+            itemsList.push({
+              name: it.name,
+              sku: it.sku ?? null,
+              qty: it.quantity,
+              unitLabel: unitStr,
+              price: Number(it.price) || 0,
+            });
+            namesSet.add(it.name.trim());
+          }
+        }
+      }
+
+      for (const recId of p.receiptIds || []) {
+        const r = receiptById.get(String(recId));
+        if (r && Array.isArray(r.items)) {
+          for (const it of r.items) {
+            if (!it.name) continue;
+            const unitStr =
+              (it as any).unit === "meter"
+                ? "м"
+                : (it as any).unit === "roll" &&
+                  ((it as any).isCuttable || (it as any).metersPerRoll)
+                ? "рул."
+                : "шт.";
+            itemsList.push({
+              name: it.name,
+              sku: it.sku ?? null,
+              qty: it.quantity,
+              unitLabel: unitStr,
+              price: Number(it.price) || 0,
+            });
+            namesSet.add(it.name.trim());
+          }
+        }
+      }
+
+      const namesArr = Array.from(namesSet);
+      let summaryText = "";
+      if (namesArr.length > 0) {
+        summaryText = namesArr.join(", ");
+      } else if (p.comment) {
+        summaryText = p.comment;
+      }
+      map.set(String(p.id), { summaryText, itemsList });
+    }
+    return map;
+  }, [payments, dealById, receiptById]);
   const supplierRows = useMemo(() => {
     return counterpartyOptions
       .filter((cp) => cp.roles.includes("supplier"))
@@ -3420,6 +3553,31 @@ export function WarehouseManager({
             </div>
           )}
 
+          {/* Кнопки расширенной сводки по коробкам и вычёркиваниям */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              style={{ background: 'rgba(59,130,246,0.08)', color: 'var(--adm-primary)', borderColor: 'rgba(59,130,246,0.3)', fontWeight: 700 }}
+              onClick={() => { setDueModalTab("all"); setShowDueSummaryModal(true); }}
+            >
+              <Boxes size={14} /> Расширенная сводка долгов по коробкам ({counterpartiesWithDebt.length})
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              style={{
+                background: (skippedParties.size > 0 || skippedPaymentIds.size > 0) ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.03)',
+                color: (skippedParties.size > 0 || skippedPaymentIds.size > 0) ? 'var(--adm-rust)' : 'var(--adm-muted)',
+                borderColor: (skippedParties.size > 0 || skippedPaymentIds.size > 0) ? 'rgba(239,68,68,0.3)' : 'var(--adm-border)',
+                fontWeight: 700,
+              }}
+              onClick={() => { setDueModalTab("skipped"); setShowDueSummaryModal(true); }}
+            >
+              <Scissors size={14} /> Что вычеркнуто из расчётов ({skippedParties.size + skippedPaymentIds.size})
+            </button>
+          </div>
+
           {/* Баланс по контрагентам (только с долгами) */}
           <div className="bank-due">
             <div className="bank-due__group">
@@ -3532,6 +3690,53 @@ export function WarehouseManager({
               </div>
             </ModalPortal>
           )}
+
+          <DueSummaryModal
+            isOpen={showDueSummaryModal}
+            onClose={() => setShowDueSummaryModal(false)}
+            initialTab={dueModalTab}
+            counterpartiesWithDebt={counterpartiesWithDebt}
+            dueBreakdown={dueBreakdown}
+            skippedParties={skippedParties}
+            skippedPaymentIds={skippedPaymentIds}
+            onRestoreParty={(key) => {
+              setSkippedParties((prev) => {
+                const next = new Set(prev);
+                next.delete(key);
+                return next;
+              });
+            }}
+            onRestorePayment={(id) => {
+              setSkippedPaymentIds((prev) => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+              });
+            }}
+            onRestoreAll={() => {
+              setSkippedParties(new Set());
+              setSkippedPaymentIds(new Set());
+            }}
+            paymentProductsSummaryById={paymentProductsSummaryById}
+            adminPath={adminPath}
+          />
+
+          <PaymentProductsModal
+            isOpen={detailPaymentProductsId !== null}
+            onClose={() => setDetailPaymentProductsId(null)}
+            payment={
+              detailPaymentProductsId
+                ? payments.find((p) => String(p.id) === detailPaymentProductsId) ||
+                  null
+                : null
+            }
+            itemsList={
+              detailPaymentProductsId
+                ? paymentProductsSummaryById.get(detailPaymentProductsId)?.itemsList ||
+                  []
+                : []
+            }
+          />
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>
             <button
