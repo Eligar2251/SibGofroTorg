@@ -110,7 +110,9 @@ export default async function AdminWarehousePage({
   // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
   // только необходимые ей коллекции.
   const needStock = ["stock", "deals", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
-  const needReceipts = ["supplies", "receipts", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
+  // На вкладке заказов поступления нужны для пометки «в поставке»: связь
+  // хранится на приходном ордере в linked_deal_ids.
+  const needReceipts = ["supplies", "receipts", "deals", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
   // Ручные продажи реестра «Товар на реализации» (лёгкий запрос).
   const needConsignmentManual = needReceipts;
   // "receipts" обязателен: на вкладке «Поставки» работает реестр

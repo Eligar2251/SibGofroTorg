@@ -1444,6 +1444,22 @@ export function WarehouseManager({
 
   const dealById = useMemo(() => new Map(deals.map((d) => [String(d.id), d])), [deals]);
   const receiptById = useMemo(() => new Map(receipts.map((r) => [String(r.id), r])), [receipts]);
+  // Связь «поставка → заказ» хранится на приходном ордере. Учитываем только
+  // активные (ещё не проведённые) поставки: проведённый товар уже находится
+  // на складе и отдельно помечать заказ как ожидающий поставку не нужно.
+  const activeSuppliesByDealId = useMemo(() => {
+    const map = new Map<string, WarehouseReceipt[]>();
+    for (const receipt of receipts) {
+      if (receipt.status !== "draft") continue;
+      for (const dealId of receipt.linkedDealIds || []) {
+        const key = String(dealId);
+        const linked = map.get(key) || [];
+        linked.push(receipt);
+        map.set(key, linked);
+      }
+    }
+    return map;
+  }, [receipts]);
 
   const paymentProductsSummaryById = useMemo(() => {
     const map = new Map<
@@ -2636,6 +2652,9 @@ export function WarehouseManager({
                         .filter((r) => r.missing > 0)
                     : [];
                 const hasShortage = shortage.length > 0;
+                const linkedActiveSupplies = activeSuppliesByDealId.get(String(d.id)) || [];
+                const isInSupply = d.status === "new" && linkedActiveSupplies.length > 0;
+                const supplyNumbers = linkedActiveSupplies.map((receipt) => `ПО-${receipt.number}`).join(", ");
                 const expanded = expandedDealId === d.id;
                 return (
                   <div key={d.id} id={`deal-${d.id}`} className="admin-order">
@@ -2665,7 +2684,14 @@ export function WarehouseManager({
                           <Lock size={10} /> в резерве
                         </span>
                       ) : null}
-                      {hasShortage && (
+                      {isInSupply ? (
+                        <span
+                          className="admin-badge admin-badge--blue"
+                          title={`Товар ожидается по привязанной поставке ${supplyNumbers}`}
+                        >
+                          <Truck size={10} /> в поставке
+                        </span>
+                      ) : hasShortage ? (
                         <span
                           className="admin-badge admin-badge--red"
                           title={shortage
@@ -2682,7 +2708,7 @@ export function WarehouseManager({
                         >
                           <AlertTriangle size={10} /> не хватает товара
                         </span>
-                      )}
+                      ) : null}
                       {(() => {
                         const shippedArr = Array.isArray(d.shippedItems) ? d.shippedItems : [];
                         const totalOrdered = d.items.reduce((s: number, it: any) => s + it.quantity, 0);
