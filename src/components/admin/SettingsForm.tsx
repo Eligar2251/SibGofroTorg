@@ -67,6 +67,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     const defaults: Record<string, string> = {
       delivery_price: "800",
       free_delivery_threshold: "30000",
+      registration_contact_field: "phone",
       messenger_banner_enabled: "true",
       messenger_banner_text: "Мы есть в мессенджерах",
       messenger_banner_color: "#1b2b4b",
@@ -232,6 +233,11 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     }));
   }
 
+  const authFieldOptions = [
+  { value: "phone", label: "Телефон (как сейчас)" },
+  { value: "email", label: "Email (для 152-ФЗ, корпоративная почта)" },
+] as const;
+
   const cardStyle = { height: "100%", minWidth: 0 } as const;
   const cardPadStyle = {
     height: "100%",
@@ -303,6 +309,46 @@ export function SettingsForm({ settings }: SettingsFormProps) {
             <p className="admin-hint" style={{ marginTop: "auto" }}>
               Эти цены показываются на главной странице и на странице «Приём
               макулатуры» (в тарифах и калькуляторе).
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-card" style={cardStyle}>
+          <div className="admin-card__pad" style={cardPadStyle}>
+            <h2 className="admin-h2" style={{ margin: 0 }}>Регистрация на сайте (152-ФЗ)</h2>
+            <div className="admin-field">
+              <label className="admin-label">Чем регистрироваться?</label>
+              <select
+                className="admin-select"
+                value={values.registration_contact_field || "phone"}
+                onChange={(e) => setValues({ ...values, registration_contact_field: e.target.value })}
+              >
+                {authFieldOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <span className="admin-hint">
+                Телефон — старый вариант. Email — для 152-ФЗ: корпоративная обезличенная почта (info@, zakaz@) не считается ПД. Можно вернуть телефон одной кнопкой, переключив обратно.
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={`admin-btn ${ (values.registration_contact_field || "phone") === "phone" ? "admin-btn--primary" : "admin-btn--ghost"}`}
+                onClick={() => setValues({ ...values, registration_contact_field: "phone" })}
+              >
+                📞 Телефон
+              </button>
+              <button
+                type="button"
+                className={`admin-btn ${ (values.registration_contact_field || "phone") === "email" ? "admin-btn--primary" : "admin-btn--ghost"}`}
+                onClick={() => setValues({ ...values, registration_contact_field: "email" })}
+              >
+                ✉️ Email
+              </button>
+            </div>
+            <p className="admin-hint" style={{ marginTop: "auto" }}>
+              При Email: формы входа/регистрации просят корпоративный email, а не телефон. Логика входа поддерживает оба варианта, старые пользователи по телефону продолжат входить. Чекбокс согласия и политика конфиденциальности обязательны.
             </p>
           </div>
         </div>

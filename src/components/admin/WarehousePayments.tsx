@@ -370,6 +370,7 @@ export function PaymentForm({
     { value: "refund", label: "Возврат", icon: RotateCcw },
     { value: "cash", label: "Наличка (в кассу)", icon: Banknote },
     { value: "transfer", label: "Безнал на карту (в кассу)", icon: CreditCard },
+    { value: "ym_card", label: "Карта ЮМ", icon: CreditCard },
     { value: "deposit", label: "Внесение", icon: Download },
   ];
 
@@ -913,6 +914,7 @@ export function PaymentControls({
                     { value: "refund", label: "Возврат", icon: RotateCcw },
                     { value: "cash", label: "Наличка (в кассу)", icon: Banknote },
                     { value: "transfer", label: "Безнал на карту (в кассу)", icon: CreditCard },
+                    { value: "ym_card", label: "Карта ЮМ", icon: CreditCard },
                     { value: "deposit", label: "Внесение", icon: Download },
                   ] as const).map((t) => (
                     <button

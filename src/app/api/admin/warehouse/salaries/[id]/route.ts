@@ -11,12 +11,15 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const src = body.source ? String(body.source) : undefined;
+    const safeSource =
+      src === "cash" || src === "bank" || src === "ym_card" ? src : undefined;
     await updateSalary(id, {
       employeeId: body.employeeId,
       employeeName: body.employeeName,
       amount: body.amount !== undefined ? Number(body.amount) : undefined,
       date: body.date,
-      source: body.source === "cash" || body.source === "bank" ? body.source : undefined,
+      source: safeSource as any,
       isPaid: body.isPaid,
       paidAt: body.paidAt,
       comment: body.comment,

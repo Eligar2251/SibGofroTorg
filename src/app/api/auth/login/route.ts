@@ -1,12 +1,13 @@
 // =========================================================
-// FILE: src/app/api/auth/login/route.ts
+// FILE: src/app/api/auth/login/route.ts — вход по телефону или email
 // =========================================================
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
 import {
   createUserSession,
-  findUserByPhone,
+  findUserByPhoneOrEmail,
   formatPhoneDisplay,
+  normalizeEmail,
   normalizePhone,
   verifyPassword,
 } from "@/lib/user-auth";
@@ -17,12 +18,14 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const phone = String(body.phone || "").trim();
+    const phoneRaw = body.phone ? String(body.phone).trim() : "";
+    const emailRaw = body.email ? String(body.email).trim() : "";
+    const identifier = emailRaw || phoneRaw || String(body.identifier || "").trim();
     const password = String(body.password || "");
 
-    if (!phone || !password) {
+    if (!identifier || !password) {
       return NextResponse.json(
-        { error: "Телефон и пароль обязательны" },
+        { error: "Логин и пароль обязательны" },
         { status: 400 }
       );
     }
@@ -36,7 +39,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // password min 8
     if (password.length < 8) {
       return NextResponse.json(
         { error: "Пароль минимум 8 символов" },
@@ -44,30 +46,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const phoneDigits = normalizePhone(phone);
-    const user = await findUserByPhone(phoneDigits);
+    const user = await findUserByPhoneOrEmail(identifier);
 
     if (!user || !verifyPassword(password, user.passwordHash)) {
+      const isEmail = identifier.includes("@");
       return NextResponse.json(
-        { error: "Неверный телефон или пароль" },
+        { error: isEmail ? "Неверный email или пароль" : "Неверный телефон или пароль" },
         { status: 401 }
       );
     }
 
-    
+    const sessionIdentifier = user.email && identifier.includes("@")
+      ? normalizeEmail(user.email)
+      : user.phoneDigits && !user.phoneDigits.startsWith("email_")
+        ? user.phoneDigits
+        : normalizeEmail(user.email || identifier);
 
     await createUserSession({
       uid: user.id,
-      phone: user.phoneDigits,
+      phone: sessionIdentifier,
       name: user.name || undefined,
     });
+
+    const isEmailUser = !!user.email && (!user.phoneDigits || user.phoneDigits.startsWith("email_") || identifier.includes("@"));
 
     return NextResponse.json(
       {
         success: true,
         user: {
           id: user.id,
-          phone: formatPhoneDisplay(user.phoneDigits),
+          phone: isEmailUser ? user.email : formatPhoneDisplay(user.phoneDigits),
+          email: user.email || null,
           name: user.name || null,
         },
       },

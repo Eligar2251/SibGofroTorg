@@ -66,6 +66,7 @@ import {
   composeSalaryComment,
   isDebtSalaryComment,
   isRentSalaryComment,
+  isYmCardSalaryComment,
   isSalaryExcludedFromBalance,
   getSalaryPeriodMonth,
   stripSalaryMetaTags,
@@ -202,15 +203,17 @@ function initialsOf(name: string): string {
     .join("");
 }
 
-type QuickSource = "cash" | "bank" | "rent";
+type QuickSource = "cash" | "bank" | "rent" | "ym_card";
 
 function sourceLabel(s: Salary): string {
   if (isRentSalary(s)) return "Аренда → карта";
+  if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "Карта ЮМ";
   return s.source === "cash" ? "Касса · наличные" : "Банк · безнал";
 }
 
 function sourceBadgeClass(s: Salary): string {
   if (isRentSalary(s)) return "admin-badge--indigo";
+  if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "admin-badge--amber";
   return s.source === "cash" ? "admin-badge--green" : "admin-badge--blue";
 }
 
@@ -308,6 +311,7 @@ function SalaryFormModal({
             comment: composeSalaryComment({
               comment,
               rent: initialRent,
+              ymCard: source === "ym_card" || (initial ? isYmCardSalaryComment(initial.comment) || initial.source === "ym_card" : false),
               excludeFromBalance,
               debtPayment,
               periodMonth,
@@ -433,6 +437,15 @@ function SalaryFormModal({
                   onClick={() => setSource("bank")}
                 >
                   <CreditCard size={14} /> Банк (безнал)
+                </button>
+                <button
+                  type="button"
+                  className={`wh-direction__btn wh-direction__btn--out${
+                    source === "ym_card" ? " wh-direction__btn--active" : ""
+                  }`}
+                  onClick={() => setSource("ym_card")}
+                >
+                  <CreditCard size={14} /> Карта ЮМ
                 </button>
               </div>
             </div>
@@ -771,6 +784,13 @@ function QuickPayForm({
           onClick={() => setSource("bank")}
         >
           <CreditCard size={12} /> Безнал
+        </button>
+        <button
+          type="button"
+          className={`whsal-seg__btn${source === "ym_card" ? " whsal-seg__btn--bank" : ""}`}
+          onClick={() => setSource("ym_card")}
+        >
+          <CreditCard size={12} /> Карта ЮМ
         </button>
         <button
           type="button"
@@ -1316,13 +1336,16 @@ export function WarehouseSalaries({
   const paidTotal = paidSalary.reduce((s, x) => s + x.amount, 0);
   const paidDebtTotal = paidDebt.reduce((s, x) => s + x.amount, 0);
   const paidCash = paidSalary
-    .filter((s) => s.source === "cash" && !isRentSalary(s))
+    .filter((s) => s.source === "cash" && !isRentSalary(s) && s.source !== "ym_card" && !isYmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
   const paidBank = paidSalary
-    .filter((s) => s.source === "bank" && !isRentSalary(s))
+    .filter((s) => s.source === "bank" && !isRentSalary(s) && !isYmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
   const paidRent = paidSalary
     .filter((s) => isRentSalary(s))
+    .reduce((s, x) => s + x.amount, 0);
+  const paidYm = paidSalary
+    .filter((s) => s.source === "ym_card" || isYmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
 
   // ── Excel-таблица: выходные дни месяца ──
@@ -1621,6 +1644,7 @@ export function WarehouseSalaries({
       const finalComment = composeSalaryComment({
         comment: data.comment,
         rent: data.source === "rent",
+        ymCard: data.source === "ym_card",
         excludeFromBalance: data.excludeFromBalance,
         debtPayment: data.debtPayment,
         periodMonth: activeMonth,
@@ -2173,6 +2197,7 @@ export function WarehouseSalaries({
           </div>
           <div className="whsal-card__sub">
             {progressPct}% от начисленного · касса {fmt(paidCash)} · безнал {fmt(paidBank)}
+            {paidYm ? ` · карта ЮМ ${fmt(paidYm)}` : ""}
             {paidRent ? ` · аренда ${fmt(paidRent)}` : ""}
             {paidDebtTotal > 0 ? ` · в счёт долга ${fmt(paidDebtTotal)} ₽ (не входит в факт месяца)` : ""}
           </div>

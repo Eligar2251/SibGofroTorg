@@ -175,7 +175,8 @@ export type BankPaymentType =
   | "refund"
   | "cash"
   | "transfer"
-  | "deposit";
+  | "deposit"
+  | "ym_card";
 
 export interface BankPayment {
   id: string;
@@ -301,7 +302,7 @@ export interface Employee {
 }
 
 /** Счёт, с которого выплачивается зарплата */
-export type SalarySource = "cash" | "bank";
+export type SalarySource = "cash" | "bank" | "ym_card";
 
 /** Начисление/выплата зарплаты сотруднику */
 export interface Salary {
@@ -325,6 +326,8 @@ export interface Salary {
 export const SALARY_RENT_TAG = "[Аренда]";
 export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
 export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
+export const SALARY_YM_CARD_TAG = "[Карта ЮМ]";
+export const SALARY_YM_CARD_TAG_SHORT = "[ЮМ]";
 /** Расчётный месяц хранится служебной пометкой — миграция БД не нужна. */
 export const SALARY_PERIOD_TAG_PREFIX = "Период:";
 const SALARY_PERIOD_TAG_RE = /\[Период:(\d{4}-\d{2})\]/g;
@@ -367,6 +370,8 @@ export function stripSalaryMetaTags(comment: string | null | undefined): string 
     .replaceAll(SALARY_RENT_TAG, "")
     .replaceAll(SALARY_EXCLUDE_BALANCE_TAG, "")
     .replaceAll(SALARY_DEBT_PAYMENT_TAG, "")
+    .replaceAll(SALARY_YM_CARD_TAG, "")
+    .replaceAll(SALARY_YM_CARD_TAG_SHORT, "")
     .replace(SALARY_PERIOD_TAG_RE, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -378,6 +383,7 @@ export function composeSalaryComment(options: {
   rent?: boolean;
   excludeFromBalance?: boolean;
   debtPayment?: boolean;
+  ymCard?: boolean;
   /** Расчётный месяц YYYY-MM: например, выплата в июле за июнь. */
   periodMonth?: string | null;
 }): string | null {
@@ -385,6 +391,7 @@ export function composeSalaryComment(options: {
   if (options.rent) tags.push(SALARY_RENT_TAG);
   if (options.excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
   if (options.debtPayment) tags.push(SALARY_DEBT_PAYMENT_TAG);
+  if (options.ymCard) tags.push(SALARY_YM_CARD_TAG);
   if (/^\d{4}-\d{2}$/.test(options.periodMonth || "")) {
     tags.push(`[${SALARY_PERIOD_TAG_PREFIX}${options.periodMonth}]`);
   }
@@ -870,6 +877,12 @@ export function getPendingTransfersSummary(
 
 /** Сводка по банку и кассе. Зарплата влияет только после фактической
  *  выплаты; начисленная зарплата не является ожидаемым банковским платежом. */
+export function isYmCardSalaryComment(comment: string | null | undefined): boolean {
+  const c = String(comment || "");
+  return c.includes(SALARY_YM_CARD_TAG) || c.includes(SALARY_YM_CARD_TAG_SHORT);
+}
+
+/** Сводка по банку, кассе и карте ЮМ. */
 export function getBankSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
@@ -879,43 +892,56 @@ export function getBankSummary(
 ) {
   let bankBalance = 0;
   let cashBalance = 0;
+  let ymCardBalance = 0;
   let expectedIn = 0;
   let expectedOut = 0;
-  // Остатки долгов по заказам: ожидаемый приход по заказу уменьшается
-  // на суммы, уже пришедшие отдельными проведёнными платежами
-  // (частичная оплата 90 000 из 213 000 → в ожидании остаётся 123 000).
+  let ymExpectedIn = 0;
+  let ymExpectedOut = 0;
   const debtPool = deals ? getDealDebtPool(deals, payments) : null;
   for (const p of payments) {
-    // Платёж «вне баланса» не имеет отношения к текущему банку/кассе:
-    // не учитываем его ни в факте, ни в ожидаемых оплатах.
     if (p.excludeFromBalance) continue;
-
+    const isYm = p.type === "ym_card";
     if (p.isPaid) {
       const paymentDate = String(p.date || "").slice(0, 10);
       if (!paymentDate || paymentDate > asOfDate) continue;
       const amt = p.direction === "incoming" ? p.amount : -p.amount;
-      // Касса ниже считается единым кассовым регистром, чтобы перенос и
-      // источники использовали ту же формулу, что и число на дашборде.
-      if (p.type !== "cash" && p.type !== "transfer") bankBalance += amt;
+      if (p.type === "cash" || p.type === "transfer") {
+        // cash handled separately
+      } else if (isYm) {
+        ymCardBalance += amt;
+      } else {
+        bankBalance += amt;
+      }
     } else {
-      if (p.direction === "incoming") {
-        expectedIn += offsetIncomingByDealPayments(p, debtPool);
-      } else expectedOut += p.amount;
+      if (isYm) {
+        if (p.direction === "incoming") ymExpectedIn += p.amount;
+        else ymExpectedOut += p.amount;
+      } else {
+        if (p.direction === "incoming") {
+          expectedIn += offsetIncomingByDealPayments(p, debtPool);
+        } else expectedOut += p.amount;
+      }
     }
   }
-  // Зарплаты — это расход: выплаченные уменьшают кассу/банк,
-  // начисленные, но ещё не выплаченные — это долг «к оплате».
   for (const s of salaries) {
     const bypassBalance = isSalaryExcludedFromBalance(s.comment);
+    if (bypassBalance) continue;
+    const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
     if (s.isPaid) {
-      if (bypassBalance) continue;
       const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
       if (!salaryDate || salaryDate > asOfDate) continue;
-      if (s.source === "bank") bankBalance -= s.amount;
+      if (isYm) {
+        ymCardBalance -= s.amount;
+      } else if (s.source === "bank") {
+        bankBalance -= s.amount;
+      }
+      // cash source handled in cash carryover, but exclude YM tagged if cash source was mistakenly used
+    } else {
+      if (isYm) {
+        ymExpectedOut += s.amount;
+      }
     }
   }
-  // Единый кассовый регистр — тот же расчёт используется для переноса и
-  // детальной расшифровки источников налички.
   cashBalance = getCashCarryoverSummary(
     payments,
     salaries,
@@ -931,26 +957,25 @@ export function getBankSummary(
     if (!collectionDate || collectionDate > asOfDate) continue;
     collectedCash += c.amount;
     collectedCashOnly += Math.max(0, Number(c.cashAmount) || 0);
-    collectedTransfer += collectionCashOutflow(c);
+    const out = collectionCashOutflow(c);
+    collectedTransfer += out;
+    ymCardBalance += out;
   }
   return {
-    balance: bankBalance + cashBalance,
+    balance: bankBalance + cashBalance + ymCardBalance,
     bankBalance,
     cashBalance,
-    /**
-     * Касса ушла в минус — так быть не должно. Обычно это значит, что
-     * приход, который покрывала старая сдача кассы, сменил тип на
-     * безналичный: сдача продолжает вычитать сумму, а прихода в кассе
-     * уже нет. Показываем предупреждение вместо тихой поломки цифр.
-     */
+    ymCardBalance,
     cashBalanceNegative: cashBalance < -0.009,
     collectedCash,
-    /** Из закрытых смен — оставлено наличными и перенесено дальше */
     collectedCashOnly,
-    /** Из закрытых смен — инкассацией на карту (вне расчётного счёта) */
     collectedTransfer,
     expectedIn,
     expectedOut,
+    ymExpectedIn,
+    ymExpectedOut,
+    ymForecast: ymCardBalance + ymExpectedIn - ymExpectedOut,
+    forecast: bankBalance + cashBalance + ymCardBalance + expectedIn - expectedOut + ymExpectedIn - ymExpectedOut,
   };
 }
 

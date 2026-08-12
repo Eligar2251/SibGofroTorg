@@ -58,6 +58,7 @@ import {
   VAT_RATE,
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
+  isYmCardSalaryComment,
   stripSalaryMetaTags,
   getWarehouseBusinessDate,
   type ConsignmentManualSale,
@@ -184,6 +185,7 @@ const paymentTypeLabels: Record<string, string> = {
   cash: "Наличные",
   transfer: "Перевод",
   deposit: "Внесение",
+  ym_card: "Карта ЮМ",
 };
 
 type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries" | "reports";
@@ -191,7 +193,7 @@ type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
-type BankSub = "summary" | "pending" | "history" | "cash";
+type BankSub = "summary" | "pending" | "history" | "cash" | "ym";
 type ProcurementCartItem = { productId: string; supplierId: string; quantity: number; price: number; vatRate: number };
 type BankEntry =
   | (BankPayment & { entryKind: "payment" })
@@ -204,7 +206,7 @@ type BankEntry =
       counterparty: string;
       amount: number;
       isPaid: boolean;
-      source: "cash" | "bank";
+      source: "cash" | "bank" | "ym_card";
       comment?: string | null;
       excludeFromBalance?: boolean;
       createdAt?: string | null;
@@ -1175,12 +1177,28 @@ export function WarehouseManager({
       ...salaryEntries,
     ].filter((p) => {
       if (bankSub === "cash") return false;
-      // ЗП ведётся в отдельном разделе «Зарплаты». В «Ожидают оплаты»
-      // банка показываем только реальные платёжные поручения, а не
-      // начисления сотрудникам.
-      if (bankSub === "pending" && p.entryKind === "salary") return false;
-      const matchesTab = bankSub === "pending" ? !p.isPaid : p.isPaid;
-      if (!matchesTab) return false;
+      const isYmPayment = p.entryKind === "payment" && (p as any).type === "ym_card";
+      const isYmSalary = p.entryKind === "salary" && (p.source === "ym_card" || isYmCardSalaryComment((p as any).salary?.comment));
+      if (bankSub === "ym") {
+        if (!isYmPayment && !isYmSalary) return false;
+      } else {
+        // В обычных вкладках скрываем операции карты ЮМ — у них отдельная вкладка
+        if (isYmPayment || isYmSalary) return false;
+        // ЗП ведётся в отдельном разделе «Зарплаты». В «Ожидают оплаты»
+        // банка показываем только реальные платёжные поручения, а не
+        // начисления сотрудникам.
+        if (bankSub === "pending" && p.entryKind === "salary") return false;
+      }
+      const matchesTab = bankSub === "pending" || bankSub === "ym" ? !p.isPaid : p.isPaid;
+      // Для карты ЮМ показываем и ожидающие и проведённые в одном списке? Требование: вкладка с балансом и операциями.
+      // Делаем как в банке: pending — неоплаченные, history — оплаченные, ym — показываем все если не фильтруем по paid? Для простоты покажем все в ym, независимо от isPaid, если выбран ym. Если хотим разделить, покажем через paid-фильтр ниже.
+      // Сейчас для ym показываем и ожидающие и проведённые — не фильтруем по isPaid, а оставляем оба.
+      if (bankSub !== "ym") {
+        if (!matchesTab && bankSub !== "summary") return false;
+        if (bankSub === "summary") {
+          // в сводке не показываем список — bankList не используется, но для безопасности
+        }
+      }
       if (bdir !== "all" && p.direction !== bdir) return false;
       const operationDate = String(p.date || "").slice(0, 10);
       if (bankDateFrom && operationDate < bankDateFrom) return false;
@@ -1195,7 +1213,7 @@ export function WarehouseManager({
               ...p.dealNumbers.map((n) => `зк-${n}`),
               ...p.receiptNumbers.map((n) => `по-${n}`),
             ].join(" ").toLowerCase()
-          : ["зп", "зарплата", p.counterparty, p.comment || "", p.source === "cash" ? "касса" : "банк"].join(" ").toLowerCase();
+          : ["зп", "зарплата", p.counterparty, p.comment || "", p.source === "cash" ? "касса" : p.source === "ym_card" ? "карта юм" : "банк"].join(" ").toLowerCase();
         if (!hay.includes(query)) return false;
       }
       return true;
@@ -3191,8 +3209,32 @@ export function WarehouseManager({
                   Сдать кассу
                 </button>
               </div>
+              <div>
+                <div className="bank-hero__label">
+                  <CreditCard size={14} /> Карта ЮМ
+                </div>
+                <div className="bank-hero__value" style={{ color: '#e0b45a' }}>
+                  {fmt(bankSummary.ymCardBalance)} ₽
+                </div>
+                <div className="cash-carryover-hero" style={{ marginTop: 6 }}>
+                  <span>Ожидаем +: <b>{fmt(bankSummary.ymExpectedIn)} ₽</b></span>
+                  <span>К оплате −: <b>{fmt(bankSummary.ymExpectedOut)} ₽</b></span>
+                  <span>Прогноз: <b>{fmt(bankSummary.ymForecast)} ₽</b></span>
+                </div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 6, lineHeight: 1.3 }}>
+                  Сюда поступают инкассации из кассы. Отсюда можно оплачивать расходы, вносить и платить ЗП.
+                </div>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                  style={{ marginTop: 8, background: "rgba(224,180,90,0.12)", border: "1px solid rgba(224,180,90,0.25)", color: "#e0b45a" }}
+                  onClick={() => setBankSub("ym")}
+                >
+                  <CreditCard size={13} /> Открыть карту ЮМ
+                </button>
+              </div>
               <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-                Расчётный счёт + касса: <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong>
+                Всего (банк + касса + ЮМ): <strong style={{ color: '#7dd181' }}>{fmt(bankSummary.balance)} ₽</strong> · Прогноз: <strong>{fmt(bankSummary.forecast)} ₽</strong>
               </div>
             </div>
 
@@ -3452,6 +3494,13 @@ export function WarehouseManager({
             >
               <History size={12} />
               История (архив)
+            </button>
+            <button
+              onClick={() => setBankSub("ym")}
+              className={`admin-filter${bankSub === "ym" ? " admin-filter--active" : ""}`}
+            >
+              <CreditCard size={12} />
+              Карта ЮМ · {fmt(bankSummary.ymCardBalance)} ₽
             </button>
             <button
               onClick={() => setBankSub("cash")}

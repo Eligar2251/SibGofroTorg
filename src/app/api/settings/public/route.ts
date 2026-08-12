@@ -24,6 +24,7 @@ export async function GET() {
     )
       ? String(settings.messenger_banner_color)
       : "#1b2b4b";
+    const registrationField = String(settings.registration_contact_field || "phone").toLowerCase() === "email" ? "email" : "phone";
     return NextResponse.json(
       {
         // Публичные контактные данные берём из БД (админка),
@@ -41,6 +42,7 @@ export async function GET() {
           Number.isFinite(freeDeliveryThreshold) && freeDeliveryThreshold > 0
             ? freeDeliveryThreshold
             : 30000,
+        registrationField,
         messengerBanner: {
           enabled: settings.messenger_banner_enabled !== "false",
           text: (settings.messenger_banner_text || "Мы есть в мессенджерах").trim(),
@@ -75,6 +77,7 @@ export async function GET() {
         hoursWeekday: SITE_HOURS_WEEKDAY,
         deliveryPrice: 800,
         freeDeliveryThreshold: 30000,
+        registrationField: "phone",
         messengerBanner: {
           enabled: false,
           text: "Мы есть в мессенджерах",

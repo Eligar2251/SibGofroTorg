@@ -1,7 +1,9 @@
 // =========================================================
 // FILE: src/lib/user-auth.ts
 // Аутентификация пользователей — Supabase (PostgreSQL).
-// JWT-сессии (как раньше), хранение данных в таблице users.
+// JWT-сессии, хранение данных в таблице users.
+// Поддерживает регистрацию/вход как по телефону, так и по email.
+// Переключение метода — настройка в админке registration_contact_field.
 // =========================================================
 
 import { createHash, scryptSync, randomBytes, timingSafeEqual } from "crypto";
@@ -74,8 +76,27 @@ export function formatPhoneDisplay(digits: string): string {
   return `+${d[0]} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9, 11)}`;
 }
 
+export function normalizeEmail(raw: string): string {
+  return String(raw || "").trim().toLowerCase();
+}
+
+export function isValidEmail(raw: string): boolean {
+  const email = normalizeEmail(raw);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && email.length <= 254;
+}
+
 function userIdForPhone(phoneDigits: string): string {
   return `phone_${createHash("sha256").update(phoneDigits).digest("hex").slice(0, 40)}`;
+}
+
+function userIdForEmail(email: string): string {
+  const norm = normalizeEmail(email);
+  return `email_${createHash("sha256").update(norm).digest("hex").slice(0, 40)}`;
+}
+
+function phoneDigitsForEmail(email: string): string {
+  const norm = normalizeEmail(email);
+  return `email_${createHash("sha256").update(norm).digest("hex").slice(0, 32)}`;
 }
 
 export function hashPassword(password: string): string {
@@ -174,6 +195,7 @@ function mapUserRow(row: any): AppUser {
 export async function findUserByPhone(phoneDigits: string): Promise<AppUser | null> {
   const db = getAdminDb();
   const normalized = normalizePhone(phoneDigits);
+  if (!/^7\d{10}$/.test(normalized)) return null;
   const { data, error } = await db
     .from("users")
     .select("*")
@@ -182,6 +204,29 @@ export async function findUserByPhone(phoneDigits: string): Promise<AppUser | nu
     .maybeSingle();
   if (error || !data) return null;
   return mapUserRow(data);
+}
+
+export async function findUserByEmail(email: string): Promise<AppUser | null> {
+  const db = getAdminDb();
+  const norm = normalizeEmail(email);
+  if (!isValidEmail(norm)) return null;
+  const { data, error } = await db
+    .from("users")
+    .select("*")
+    .ilike("email", norm)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapUserRow(data);
+}
+
+export async function findUserByPhoneOrEmail(identifier: string): Promise<AppUser | null> {
+  const raw = String(identifier || "").trim();
+  if (!raw) return null;
+  if (raw.includes("@")) {
+    return findUserByEmail(raw);
+  }
+  return findUserByPhone(raw);
 }
 
 export async function getUserById(id: string): Promise<AppUser | null> {
@@ -220,7 +265,6 @@ export async function createUser(data: {
   const db = getAdminDb();
 
   try {
-    // INSERT с проверкой на дубликат через UNIQUE constraint
     const { error } = await db.from("users").insert({
       id,
       phone: formatPhoneDisplay(phoneDigits),
@@ -230,7 +274,7 @@ export async function createUser(data: {
     });
 
     if (error) {
-      if (error.code === "23505") { // unique_violation
+      if (error.code === "23505") {
         return { error: "Пользователь с таким телефоном уже зарегистрирован" };
       }
       throw error;
@@ -238,6 +282,58 @@ export async function createUser(data: {
     return { id, name };
   } catch (e: unknown) {
     console.error("createUser Supabase error:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    return { error: `Не удалось создать пользователя: ${msg}` };
+  }
+}
+
+export async function createUserByEmail(data: {
+  email: string;
+  password: string;
+  name?: string;
+}): Promise<{ id: string; name: string | null } | { error: string }> {
+  const email = normalizeEmail(data.email);
+  if (!isValidEmail(email)) {
+    return { error: "Некорректный email" };
+  }
+  if (!data.password || data.password.length < 8) {
+    return { error: "Пароль минимум 8 символов" };
+  }
+
+  try {
+    const existing = await findUserByEmail(email);
+    if (existing) {
+      return { error: "Пользователь с таким email уже зарегистрирован" };
+    }
+  } catch (e) {
+    console.error("findUserByEmail error:", e);
+    return { error: "Не удалось проверить email. Попробуйте ещё раз." };
+  }
+
+  const passwordHash = hashPassword(data.password);
+  const name = data.name?.trim().slice(0, 120) || null;
+  const id = userIdForEmail(email);
+  const db = getAdminDb();
+
+  try {
+    const { error } = await db.from("users").insert({
+      id,
+      phone: email,
+      phone_digits: phoneDigitsForEmail(email),
+      password_hash: passwordHash,
+      name,
+      email,
+    });
+
+    if (error) {
+      if (error.code === "23505") {
+        return { error: "Пользователь с таким email уже зарегистрирован" };
+      }
+      throw error;
+    }
+    return { id, name };
+  } catch (e: unknown) {
+    console.error("createUserByEmail Supabase error:", e);
     const msg = e instanceof Error ? e.message : String(e);
     return { error: `Не удалось создать пользователя: ${msg}` };
   }
