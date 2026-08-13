@@ -777,9 +777,13 @@ async function returnLegacyCompletedDealToStock(deal: {
 
 export async function setWarehouseStock(productId: string, quantity: number): Promise<void> {
   const db = getAdminDb();
-  const qty = Math.max(0, Number(quantity) || 0);
+  const rawQty = Number(quantity);
+  if (!Number.isFinite(rawQty)) throw new Error("Остаток должен быть числом");
+  // Отрицательный остаток — допустимый учётный долг: он показывает,
+  // сколько товара уже отдали клиентам и должны перекрыть поставкой.
+  const qty = Math.round(rawQty * 1000) / 1000;
   const { error } = await db.from("products").update({
-    stock_qty: Math.round(qty * 1000) / 1000,
+    stock_qty: qty,
     in_stock: qty > 0,
     updated_at: new Date().toISOString(),
   }).eq("id", productId);

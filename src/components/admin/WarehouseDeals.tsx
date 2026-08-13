@@ -1403,6 +1403,12 @@ export function DealActions({
               <p className="admin-modal__desc">
                 Укажите количество для отгрузки. Оставшиеся позиции останутся в заказе.
               </p>
+              {hasShortage && (
+                <div className="admin-order__close-reason" style={{ marginBottom: 12 }}>
+                  Товара на складе не хватает, но отгрузка разрешена. Остаток уйдёт в минус
+                  и покажет, сколько товара нужно довезти.
+                </div>
+              )}
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
                 {dealItems.map((item) => {
                   const shipped = shippedItems.find((s) => s.productId === item.productId)?.shippedQty || 0;

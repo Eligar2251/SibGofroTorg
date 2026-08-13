@@ -1942,9 +1942,17 @@ export function WarehouseManager({
                                   {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
                                     <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
                                   )}
-                                  {p.stockQty <= 0 && (
+                                  {p.stockQty < 0 ? (
+                                    <span
+                                      className="admin-badge admin-badge--red"
+                                      style={{ marginLeft: 6 }}
+                                      title="Отрицательный остаток разрешён: его перекроет следующая поставка"
+                                    >
+                                      довезти {fmt(Math.abs(p.stockQty))} шт.
+                                    </span>
+                                  ) : p.stockQty === 0 ? (
                                     <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
-                                  )}
+                                  ) : null}
                                 </td>
                                 <td>{p.sku || "—"}</td>
                                 <td style={{ textAlign: "right" }}>
@@ -2071,7 +2079,13 @@ export function WarehouseManager({
                               <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
                                 {p.name}
                               </Link>
-                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>Артикул: {p.sku || "—"}</span>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>
+                                Артикул: {p.sku || "—"} · Остаток:{" "}
+                                <b style={{ color: "var(--adm-rust)" }}>{fmt(p.stockQty)} шт.</b>
+                                {p.stockQty < 0 && (
+                                  <> · нужно довезти <b style={{ color: "var(--adm-rust)" }}>{fmt(Math.abs(p.stockQty))} шт.</b></>
+                                )}
+                              </span>
                             </div>
                             <div>
                               <button

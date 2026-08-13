@@ -32,15 +32,18 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const quantity = Number(body.stockQty);
-    if (!Number.isFinite(quantity) || quantity < 0) {
+    if (!Number.isFinite(quantity)) {
       return NextResponse.json(
-        { error: "Остаток должен быть числом от 0" },
+        { error: "Остаток должен быть числом" },
         { status: 400 }
       );
     }
     await setWarehouseStock(id, quantity);
     revalidateTag("products", { expire: 0 });
-    return NextResponse.json({ success: true, stockQty: Math.floor(quantity) });
+    return NextResponse.json({
+      success: true,
+      stockQty: Math.round(quantity * 1000) / 1000,
+    });
   } catch (error) {
     console.error("Update stock error:", error);
     return NextResponse.json({ error: "Не удалось изменить остаток" }, { status: 500 });
