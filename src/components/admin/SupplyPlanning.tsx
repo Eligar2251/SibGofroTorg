@@ -261,17 +261,24 @@ export function SupplyPlanning({
 
   const activeTotal = supplyPlansTotal(activePlans);
   const activeItems = supplyPlansItemsCount(activePlans);
+  const selectedPlan =
+    visiblePlans.find((plan) => plan.id === targetPlanId) || visiblePlans[0] || null;
+
+  function switchArchive(completed: boolean) {
+    setShowCompleted(completed);
+    const nextPlans = completed ? completedPlans : activePlans;
+    setTargetPlanId(nextPlans[0]?.id || "");
+  }
 
   return (
     <div className="supply-planning">
-      <div className="supply-planning__hero">
-        <div>
-          <span className="supply-planning__eyebrow"><Lightbulb size={13} /> Планирование закупок</span>
+      <header className="supply-planning__hero">
+        <div className="supply-planning__hero-copy">
+          <span className="supply-planning__eyebrow">
+            <Lightbulb size={13} /> Планирование закупок
+          </span>
           <h2>Планы поставок</h2>
-          <p>
-            Собирайте примерные поставки заранее, выбирайте поставщика для каждой позиции
-            и переносите товары между разными планами.
-          </p>
+          <p>Разделяйте будущие закупки на отдельные поставки и заранее оценивайте бюджет.</p>
         </div>
         <div className="supply-planning__actions">
           <button type="button" className="admin-btn admin-btn--ghost" onClick={createPlan}>
@@ -283,148 +290,274 @@ export function SupplyPlanning({
             disabled={!dirty || saving}
             onClick={save}
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
-            {saved ? "Сохранено" : "Сохранить планы"}
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : saved ? (
+              <CheckCircle2 size={14} />
+            ) : (
+              <Save size={14} />
+            )}
+            {saved ? "Сохранено" : dirty ? "Сохранить изменения" : "Всё сохранено"}
           </button>
         </div>
-      </div>
+      </header>
 
       <div className="supply-planning__stats">
-        <div><span>Активных планов</span><strong>{activePlans.length}</strong></div>
-        <div><span>Позиций</span><strong>{activeItems}</strong></div>
+        <div><span>Активные планы</span><strong>{activePlans.length}</strong></div>
+        <div><span>Товарные позиции</span><strong>{activeItems}</strong></div>
         <div><span>Примерный бюджет</span><strong>{fmt(activeTotal)} ₽</strong></div>
       </div>
 
       {error && <div className="admin-form-error">{error}</div>}
 
-      <div className="admin-card supply-planning__add">
-        <div className="admin-card__head">
-          <div>
-            <h3 className="admin-card__title">Добавить товар в план</h3>
-            <div className="admin-muted" style={{ fontSize: 12 }}>
-              Цена подставится из прайса выбранного поставщика, но её можно изменить для примерного расчёта.
+      <div className="supply-planning__workspace">
+        <aside className="supply-planning__sidebar">
+          <div className="supply-planning__sidebar-head">
+            <div>
+              <strong>Список поставок</strong>
+              <span>Выберите план для редактирования</span>
             </div>
+            <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={createPlan} title="Создать план">
+              <Plus size={14} />
+            </button>
           </div>
-        </div>
-        <div className="admin-card__pad supply-planning__add-grid">
-          <div className="admin-field supply-planning__product-picker">
-            <label className="admin-label">Товар</label>
-            <ProductPicker products={products} onPick={chooseProduct} />
-            {selectedProduct && (
-              <div className="supply-planning__selected-product">
-                <strong>{selectedProduct.name}</strong>
-                <span>{selectedProduct.sku ? `арт. ${selectedProduct.sku} · ` : ""}остаток {selectedProduct.stockQty} шт.</span>
-              </div>
-            )}
-          </div>
-          <div className="admin-field">
-            <label className="admin-label">В какой план</label>
-            <select className="admin-select" value={targetPlanId} onChange={(event) => setTargetPlanId(event.target.value)}>
-              <option value="">Выберите план</option>
-              {activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
-            </select>
-          </div>
-          <div className="admin-field">
-            <label className="admin-label">Откуда заказываем</label>
-            <select
-              className="admin-select"
-              value={supplierId}
-              onChange={(event) => {
-                const nextId = event.target.value;
-                setSupplierId(nextId);
-                if (selectedProduct) setEstimatedPrice(supplierPrice(nextId, selectedProduct.id));
-              }}
+
+          <div className="supply-planning__switch" role="tablist" aria-label="Статус планов">
+            <button
+              type="button"
+              className={!showCompleted ? "is-active" : ""}
+              onClick={() => switchArchive(false)}
             >
-              <option value="">Выберите поставщика</option>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                  {selectedProduct && supplier.supplierPrices?.[selectedProduct.id] !== undefined
-                    ? ` · ${fmt(Number(supplier.supplierPrices[selectedProduct.id]) || 0)} ₽`
-                    : ""}
-                </option>
-              ))}
-            </select>
+              Активные <span>{activePlans.length}</span>
+            </button>
+            <button
+              type="button"
+              className={showCompleted ? "is-active" : ""}
+              onClick={() => switchArchive(true)}
+            >
+              Завершённые <span>{completedPlans.length}</span>
+            </button>
           </div>
-          <div className="admin-field">
-            <label className="admin-label">Количество</label>
-            <input className="admin-input" type="number" min={0.001} step="any" value={quantity} onChange={(event) => setQuantity(Math.max(0.001, Number(event.target.value) || 1))} />
-          </div>
-          <div className="admin-field">
-            <label className="admin-label">Примерная цена, ₽</label>
-            <input className="admin-input" type="number" min={0} step="0.01" value={estimatedPrice} onChange={(event) => setEstimatedPrice(Math.max(0, Number(event.target.value) || 0))} />
-          </div>
-          <div className="admin-field">
-            <label className="admin-label">НДС</label>
-            <select className="admin-select" value={vatRate} onChange={(event) => setVatRate(Number(event.target.value))}>
-              <option value={22}>22%</option>
-              <option value={20}>20%</option>
-              <option value={10}>10%</option>
-              <option value={0}>0%</option>
-              <option value={-1}>Без НДС</option>
-            </select>
-          </div>
-          <button type="button" className="admin-btn admin-btn--primary supply-planning__add-btn" onClick={addItem} disabled={!selectedProduct || !targetPlanId || !supplierId}>
-            <Plus size={14} /> Добавить в план
-          </button>
-        </div>
-      </div>
 
-      <div className="admin-filters admin-filters--sub">
-        <button type="button" className={`admin-filter${!showCompleted ? " admin-filter--active" : ""}`} onClick={() => setShowCompleted(false)}>
-          Активные ({activePlans.length})
-        </button>
-        <button type="button" className={`admin-filter${showCompleted ? " admin-filter--active" : ""}`} onClick={() => setShowCompleted(true)}>
-          Завершённые ({completedPlans.length})
-        </button>
-      </div>
+          <div className="supply-planning__plan-list">
+            {visiblePlans.map((plan) => (
+              <button
+                key={plan.id}
+                type="button"
+                className={`supply-planning__plan-nav${selectedPlan?.id === plan.id ? " is-active" : ""}`}
+                onClick={() => setTargetPlanId(plan.id)}
+              >
+                <span className="supply-planning__plan-nav-icon"><Lightbulb size={15} /></span>
+                <span className="supply-planning__plan-nav-copy">
+                  <strong>{plan.name || "Без названия"}</strong>
+                  <small>
+                    {plan.items.length} поз. · {plan.plannedDate ? new Date(`${plan.plannedDate}T00:00:00`).toLocaleDateString("ru-RU") : "без даты"}
+                  </small>
+                </span>
+                <b>{fmt(supplyPlanTotal(plan))} ₽</b>
+              </button>
+            ))}
+          </div>
 
-      {visiblePlans.length === 0 ? (
-        <div className="admin-empty supply-planning__empty">
-          <Lightbulb size={34} />
-          <p>{showCompleted ? "Завершённых планов пока нет" : "Создайте первый план поставки и добавьте в него товары"}</p>
-          {!showCompleted && <button type="button" className="admin-btn admin-btn--primary" onClick={createPlan}><Plus size={14} /> Новый план</button>}
-        </div>
-      ) : (
-        <div className="supply-planning__plans">
-          {visiblePlans.map((plan) => (
-            <section key={plan.id} className="admin-card supply-plan-card">
-              <div className="supply-plan-card__head">
-                <div className="supply-plan-card__identity">
-                  <Lightbulb size={18} />
-                  <input className="admin-input supply-plan-card__name" value={plan.name} onChange={(event) => patchPlan(plan.id, { name: event.target.value })} aria-label="Название плана" />
+          {visiblePlans.length === 0 && (
+            <div className="supply-planning__sidebar-empty">
+              <Lightbulb size={22} />
+              <span>{showCompleted ? "Завершённых планов нет" : "Планов пока нет"}</span>
+              {!showCompleted && (
+                <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={createPlan}>
+                  <Plus size={13} /> Создать
+                </button>
+              )}
+            </div>
+          )}
+        </aside>
+
+        <main className="supply-planning__content">
+          {!selectedPlan ? (
+            <div className="supply-planning__content-empty">
+              <Lightbulb size={38} />
+              <strong>Выберите или создайте план поставки</strong>
+              <span>Здесь появятся товары, поставщики и примерный расчёт.</span>
+            </div>
+          ) : (
+            <section className="supply-plan-editor">
+              <div className="supply-plan-editor__head">
+                <div className="supply-plan-editor__title">
+                  <span><Lightbulb size={18} /></span>
+                  <div>
+                    <label className="admin-label">Название поставки</label>
+                    <input
+                      className="admin-input"
+                      value={selectedPlan.name}
+                      onChange={(event) => patchPlan(selectedPlan.id, { name: event.target.value })}
+                      placeholder="Например: Плёнка на август"
+                    />
+                  </div>
                 </div>
-                <div className="supply-plan-card__total">
-                  <span>{plan.items.length} поз.</span>
-                  <strong>≈ {fmt(supplyPlanTotal(plan))} ₽</strong>
+                <div className="supply-plan-editor__summary">
+                  <span>{selectedPlan.items.length} позиций</span>
+                  <strong>≈ {fmt(supplyPlanTotal(selectedPlan))} ₽</strong>
                 </div>
               </div>
 
-              <div className="supply-plan-card__meta">
-                <label>
-                  <CalendarDays size={13} /> Плановая дата
-                  <input type="date" className="admin-input" value={plan.plannedDate || ""} onChange={(event) => patchPlan(plan.id, { plannedDate: event.target.value || null })} />
+              <div className="supply-plan-editor__meta">
+                <label className="admin-field">
+                  <span className="admin-label"><CalendarDays size={13} /> Плановая дата</span>
+                  <input
+                    type="date"
+                    className="admin-input"
+                    value={selectedPlan.plannedDate || ""}
+                    onChange={(event) => patchPlan(selectedPlan.id, { plannedDate: event.target.value || null })}
+                  />
                 </label>
-                <label className="supply-plan-card__comment">
-                  Заметка
-                  <input className="admin-input" value={plan.comment || ""} onChange={(event) => patchPlan(plan.id, { comment: event.target.value || null })} placeholder="Например: заказать после согласования цены" />
+                <label className="admin-field">
+                  <span className="admin-label">Заметка к поставке</span>
+                  <input
+                    className="admin-input"
+                    value={selectedPlan.comment || ""}
+                    onChange={(event) => patchPlan(selectedPlan.id, { comment: event.target.value || null })}
+                    placeholder="Сроки, условия, договорённости…"
+                  />
                 </label>
               </div>
 
-              {plan.items.length > 0 ? (
-                <div className="admin-table-wrap">
-                  <table className="admin-table supply-plan-table">
-                    <thead>
-                      <tr><th>Товар</th><th>Поставщик</th><th>Кол-во</th><th>Цена, ₽</th><th>НДС</th><th>Сумма</th><th>Переместить</th><th /></tr>
-                    </thead>
-                    <tbody>
-                      {plan.items.map((item) => (
-                        <tr key={item.id}>
-                          <td>
-                            <Link href={`/${adminPath}/products/${item.productId}`} prefetch={false}><strong>{item.productName}</strong></Link>
-                            {item.sku && <small>арт. {item.sku}</small>}
-                          </td>
-                          <td>
+              {selectedPlan.status === "active" && (
+                <div className="supply-plan-add">
+                  <div className="supply-plan-add__head">
+                    <div>
+                      <strong><Plus size={14} /> Добавить товар</strong>
+                      <span>Сначала найдите товар, затем уточните поставщика и расчёт.</span>
+                    </div>
+                  </div>
+
+                  <div className="supply-plan-add__picker">
+                    <ProductPicker products={products} onPick={chooseProduct} />
+                  </div>
+
+                  {selectedProduct ? (
+                    <div className="supply-plan-add__draft">
+                      <div className="supply-plan-add__product">
+                        <strong>{selectedProduct.name}</strong>
+                        <span>
+                          {selectedProduct.sku ? `арт. ${selectedProduct.sku} · ` : ""}
+                          остаток {selectedProduct.stockQty} шт.
+                        </span>
+                      </div>
+                      <label className="admin-field">
+                        <span className="admin-label">Поставщик</span>
+                        <select
+                          className="admin-select"
+                          value={supplierId}
+                          onChange={(event) => {
+                            const nextId = event.target.value;
+                            setSupplierId(nextId);
+                            setEstimatedPrice(supplierPrice(nextId, selectedProduct.id));
+                          }}
+                        >
+                          <option value="">Выберите поставщика</option>
+                          {suppliers.map((supplier) => (
+                            <option key={supplier.id} value={supplier.id}>
+                              {supplier.name}
+                              {supplier.supplierPrices?.[selectedProduct.id] !== undefined
+                                ? ` · ${fmt(Number(supplier.supplierPrices[selectedProduct.id]) || 0)} ₽`
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="admin-field">
+                        <span className="admin-label">Количество</span>
+                        <input
+                          className="admin-input"
+                          type="number"
+                          min={0.001}
+                          step="any"
+                          value={quantity}
+                          onChange={(event) => setQuantity(Math.max(0.001, Number(event.target.value) || 1))}
+                        />
+                      </label>
+                      <label className="admin-field">
+                        <span className="admin-label">Цена за единицу</span>
+                        <input
+                          className="admin-input"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={estimatedPrice}
+                          onChange={(event) => setEstimatedPrice(Math.max(0, Number(event.target.value) || 0))}
+                        />
+                      </label>
+                      <label className="admin-field">
+                        <span className="admin-label">НДС</span>
+                        <select className="admin-select" value={vatRate} onChange={(event) => setVatRate(Number(event.target.value))}>
+                          <option value={22}>22%</option>
+                          <option value={20}>20%</option>
+                          <option value={10}>10%</option>
+                          <option value={0}>0%</option>
+                          <option value={-1}>Без НДС</option>
+                        </select>
+                      </label>
+                      <div className="supply-plan-add__result">
+                        <span>Сумма позиции</span>
+                        <strong>{fmt(quantity * estimatedPrice)} ₽</strong>
+                      </div>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--primary supply-plan-add__submit"
+                        onClick={addItem}
+                        disabled={!supplierId}
+                      >
+                        <Plus size={14} /> Добавить
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="supply-plan-add__hint">Выберите товар в поиске выше</div>
+                  )}
+                </div>
+              )}
+
+              <div className="supply-plan-items">
+                <div className="supply-plan-items__head">
+                  <div>
+                    <strong>Состав поставки</strong>
+                    <span>{selectedPlan.items.length ? `${selectedPlan.items.length} товарных позиций` : "Пока пусто"}</span>
+                  </div>
+                </div>
+
+                {selectedPlan.items.length === 0 ? (
+                  <div className="supply-plan-items__empty">
+                    <Plus size={24} />
+                    <span>Добавьте первый товар в этот план</span>
+                  </div>
+                ) : (
+                  <div className="supply-plan-items__list">
+                    {selectedPlan.items.map((item) => (
+                      <article key={item.id} className="supply-plan-item">
+                        <div className="supply-plan-item__head">
+                          <div>
+                            <Link href={`/${adminPath}/products/${item.productId}`} prefetch={false}>
+                              {item.productName}
+                            </Link>
+                            <span>{item.sku ? `арт. ${item.sku}` : "без артикула"}</span>
+                          </div>
+                          <div className="supply-plan-item__amount">
+                            <span>Сумма</span>
+                            <strong>{fmt(item.quantity * item.estimatedPrice)} ₽</strong>
+                          </div>
+                          <button
+                            type="button"
+                            className="supply-plan-item__remove"
+                            onClick={() => removeItem(selectedPlan.id, item.id)}
+                            title="Убрать позицию"
+                            aria-label={`Убрать ${item.productName}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        <div className="supply-plan-item__fields">
+                          <label className="admin-field supply-plan-item__supplier">
+                            <span className="admin-label">Поставщик</span>
                             <select
                               className="admin-select"
                               value={item.supplierId || ""}
@@ -432,7 +565,7 @@ export function SupplyPlanning({
                                 const nextSupplier = suppliers.find((supplier) => supplier.id === event.target.value);
                                 if (!nextSupplier) return;
                                 const nextPrice = supplierPrice(nextSupplier.id, item.productId);
-                                patchItem(plan.id, item.id, {
+                                patchItem(selectedPlan.id, item.id, {
                                   supplierId: nextSupplier.id,
                                   supplierName: nextSupplier.name,
                                   ...(nextPrice > 0 ? { estimatedPrice: nextPrice } : {}),
@@ -440,47 +573,86 @@ export function SupplyPlanning({
                               }}
                             >
                               <option value="">Не выбран</option>
-                              {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                              {suppliers.map((supplier) => (
+                                <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                              ))}
                             </select>
-                          </td>
-                          <td><input className="admin-input" type="number" min={0.001} step="any" value={item.quantity} onChange={(event) => patchItem(plan.id, item.id, { quantity: Math.max(0.001, Number(event.target.value) || 1) })} /></td>
-                          <td><input className="admin-input" type="number" min={0} step="0.01" value={item.estimatedPrice} onChange={(event) => patchItem(plan.id, item.id, { estimatedPrice: Math.max(0, Number(event.target.value) || 0) })} /></td>
-                          <td>
-                            <select className="admin-select" value={item.vatRate} onChange={(event) => patchItem(plan.id, item.id, { vatRate: Number(event.target.value) })}>
-                              <option value={22}>22%</option><option value={20}>20%</option><option value={10}>10%</option><option value={0}>0%</option><option value={-1}>без НДС</option>
+                          </label>
+                          <label className="admin-field">
+                            <span className="admin-label">Количество</span>
+                            <input
+                              className="admin-input"
+                              type="number"
+                              min={0.001}
+                              step="any"
+                              value={item.quantity}
+                              onChange={(event) => patchItem(selectedPlan.id, item.id, { quantity: Math.max(0.001, Number(event.target.value) || 1) })}
+                            />
+                          </label>
+                          <label className="admin-field">
+                            <span className="admin-label">Цена, ₽</span>
+                            <input
+                              className="admin-input"
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={item.estimatedPrice}
+                              onChange={(event) => patchItem(selectedPlan.id, item.id, { estimatedPrice: Math.max(0, Number(event.target.value) || 0) })}
+                            />
+                          </label>
+                          <label className="admin-field">
+                            <span className="admin-label">НДС</span>
+                            <select
+                              className="admin-select"
+                              value={item.vatRate}
+                              onChange={(event) => patchItem(selectedPlan.id, item.id, { vatRate: Number(event.target.value) })}
+                            >
+                              <option value={22}>22%</option>
+                              <option value={20}>20%</option>
+                              <option value={10}>10%</option>
+                              <option value={0}>0%</option>
+                              <option value={-1}>без НДС</option>
                             </select>
-                          </td>
-                          <td><strong>{fmt(item.quantity * item.estimatedPrice)} ₽</strong></td>
-                          <td>
-                            {activePlans.filter((entry) => entry.id !== plan.id).length > 0 ? (
-                              <select className="admin-select" value="" onChange={(event) => moveItem(plan.id, item.id, event.target.value)} title="Переместить позицию в другой план">
-                                <option value="">Выбрать…</option>
-                                {activePlans.filter((entry) => entry.id !== plan.id).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-                              </select>
-                            ) : <span className="admin-muted">—</span>}
-                          </td>
-                          <td><button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => removeItem(plan.id, item.id)} title="Убрать позицию"><Trash2 size={13} /></button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="supply-plan-card__empty">В этом плане пока нет товаров</div>
-              )}
-
-              <div className="supply-plan-card__footer">
-                {plan.status === "active" ? (
-                  <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => completePlan(plan.id)}><CheckCircle2 size={13} /> Завершить план</button>
-                ) : (
-                  <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => patchPlan(plan.id, { status: "active" })}><RotateCcw size={13} /> Вернуть в активные</button>
+                          </label>
+                          <label className="admin-field supply-plan-item__move">
+                            <span className="admin-label">Переместить в</span>
+                            <select
+                              className="admin-select"
+                              value=""
+                              disabled={activePlans.filter((entry) => entry.id !== selectedPlan.id).length === 0}
+                              onChange={(event) => moveItem(selectedPlan.id, item.id, event.target.value)}
+                            >
+                              <option value="">Другой план…</option>
+                              {activePlans
+                                .filter((entry) => entry.id !== selectedPlan.id)
+                                .map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
                 )}
-                <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => removePlan(plan.id)}><Trash2 size={13} /> Удалить</button>
               </div>
+
+              <footer className="supply-plan-editor__footer">
+                {selectedPlan.status === "active" ? (
+                  <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => completePlan(selectedPlan.id)}>
+                    <CheckCircle2 size={13} /> Завершить план
+                  </button>
+                ) : (
+                  <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => patchPlan(selectedPlan.id, { status: "active" })}>
+                    <RotateCcw size={13} /> Вернуть в активные
+                  </button>
+                )}
+                <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => removePlan(selectedPlan.id)}>
+                  <Trash2 size={13} /> Удалить план
+                </button>
+              </footer>
             </section>
-          ))}
-        </div>
-      )}
+          )}
+        </main>
+      </div>
     </div>
   );
 }

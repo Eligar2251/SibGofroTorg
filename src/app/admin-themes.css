@@ -1227,3 +1227,51 @@
   border-bottom-left-radius: 0 !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
 }
+
+/* ── Плавающие уведомления и планы в тёмных темах ──
+   admin-themes.css подключается после admin.css, поэтому фикс держим здесь:
+   кнопки используют поверхность текущей темы, а не белую подложку. */
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) .admin-notify__btn {
+  color: var(--adm-ink) !important;
+  background: var(--adm-card) !important;
+  border-color: var(--adm-border-mid) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .38);
+}
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) .admin-notify__btn--active {
+  color: var(--adm-rust) !important;
+  background: var(--adm-rust-pale) !important;
+  border-color: var(--adm-rust-line) !important;
+}
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) .admin-plans-shortcut__btn--active {
+  color: var(--adm-kraft) !important;
+  background: var(--adm-kraft-pale) !important;
+  border-color: var(--adm-kraft-line) !important;
+}
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(.admin-notify__panel, .admin-notify__item, .admin-notify__iconbtn) {
+  background: var(--adm-card) !important;
+  border-color: var(--adm-border-mid) !important;
+}
