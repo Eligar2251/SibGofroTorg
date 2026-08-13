@@ -10890,6 +10890,251 @@ body:has(.admin-modal-overlay) {
   background: var(--adm-paper);
 }
 
+/* ── Быстрая настройка шрифта перед печатью ── */
+.boxlabel-settings-overlay {
+  z-index: 180;
+}
+
+.boxlabel-settings {
+  width: min(1120px, 100%);
+  max-width: 1120px;
+  padding: 20px;
+}
+
+.boxlabel-settings__head {
+  align-items: flex-start;
+}
+
+.boxlabel-settings__eyebrow {
+  margin-bottom: 4px;
+  color: var(--adm-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.boxlabel-settings__desc {
+  margin-bottom: 14px;
+}
+
+.boxlabel-settings__bulk {
+  padding: 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  background: var(--adm-paper);
+}
+
+.boxlabel-settings__bulk-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+  color: var(--adm-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.boxlabel-settings__list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.boxlabel-settings__item {
+  padding: 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  background: var(--adm-card);
+}
+
+.boxlabel-settings__item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  color: var(--adm-ink);
+  font-size: 12px;
+}
+
+.boxlabel-settings__item-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boxlabel-settings__item-head span {
+  flex: 0 0 auto;
+  color: var(--adm-ink-muted);
+  font-weight: 700;
+}
+
+.boxlabel-settings__preview {
+  display: grid;
+  grid-template-columns: minmax(0, 35fr) 1px minmax(0, 30fr) 1px minmax(0, 35fr);
+  width: 100%;
+  height: 42mm;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d3d0c8;
+  background: #fff;
+  color: #000;
+}
+
+.boxlabel-settings__preview-cell {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  padding: 3mm;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  overflow: hidden;
+}
+
+.boxlabel-settings__preview-number {
+  font-family: var(--adm-font-head);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.boxlabel-settings__preview-sizes {
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.boxlabel-settings__preview-code {
+  flex-direction: column;
+  gap: 1.5mm;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.boxlabel-settings__preview-code img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: 17mm;
+  object-fit: contain;
+}
+
+.boxlabel-settings__preview-code span {
+  width: 100%;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.boxlabel-settings__preview-separator {
+  width: 1px;
+  height: 100%;
+  background: #000;
+}
+
+.boxlabel-settings__controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.boxlabel-settings__controls--bulk {
+  grid-template-columns: repeat(3, minmax(110px, 1fr)) auto;
+  align-items: end;
+  margin-top: 0;
+}
+
+.boxlabel-settings__field {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--adm-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.boxlabel-settings__field input {
+  width: 68px;
+  height: 34px;
+  padding: 5px 7px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  outline: none;
+  background: var(--adm-card);
+  color: var(--adm-ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+}
+
+.boxlabel-settings__field input:focus {
+  border-color: var(--adm-kraft);
+  box-shadow: 0 0 0 2px var(--adm-kraft-line);
+}
+
+.boxlabel-settings__field small {
+  color: var(--adm-ink-muted);
+  font-size: 10px;
+}
+
+.boxlabel-settings__apply {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.boxlabel-settings__actions {
+  position: sticky;
+  bottom: -20px;
+  z-index: 2;
+  margin: 16px -20px -20px;
+  padding: 14px 20px 20px;
+  border-top: 1px solid var(--adm-border);
+  background: var(--adm-card);
+}
+
+@media (max-width: 720px) {
+  .boxlabel-settings {
+    padding: 14px;
+  }
+
+  .boxlabel-settings__preview {
+    height: 32mm;
+  }
+
+  .boxlabel-settings__preview-cell {
+    padding: 1.5mm;
+  }
+
+  .boxlabel-settings__preview-code img {
+    height: 12mm;
+  }
+
+  .boxlabel-settings__controls,
+  .boxlabel-settings__controls--bulk {
+    grid-template-columns: 1fr;
+  }
+
+  .boxlabel-settings__field {
+    grid-template-columns: minmax(80px, 1fr) 74px auto;
+  }
+
+  .boxlabel-settings__field input {
+    width: 74px;
+  }
+
+  .boxlabel-settings__actions {
+    bottom: -14px;
+    margin: 14px -14px -14px;
+    padding: 12px 14px 14px;
+  }
+}
+
 /* ── Превью на экране (видно когда есть выбранные) ── */
 .boxlabel-sheet {
   display: none;
@@ -10934,8 +11179,12 @@ body:has(.admin-modal-overlay) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
   padding: 4mm 5mm;
   min-width: 0;
+  box-sizing: border-box;
+  text-align: center;
 }
 .boxlabel-sheet--preview .boxlabel__vsep {
   width: 1px;
@@ -10957,9 +11206,11 @@ body:has(.admin-modal-overlay) {
   text-align: center;
 }
 .boxlabel-sheet--preview .boxlabel__sizes {
+  width: 100%;
   font-size: 14pt;
   font-weight: 800;
   line-height: 1.15;
+  text-align: center;
 }
 .boxlabel-sheet--preview .boxlabel__code {
   flex: 0 0 35%;
@@ -10972,9 +11223,11 @@ body:has(.admin-modal-overlay) {
   object-fit: contain;
 }
 .boxlabel-sheet--preview .boxlabel__ean {
+  width: 100%;
   font-size: 8pt;
   font-weight: 600;
   letter-spacing: 0.12em;
+  text-align: center;
 }
 
 @media print {
@@ -11004,13 +11257,19 @@ body:has(.admin-modal-overlay) {
     visibility: visible !important;
     opacity: 1 !important;
   }
+  /* Оставляем лист в обычном потоке и центрируем через auto margins.
+     В отличие от привязки к left: 0 это сохраняет центр листа, когда
+     браузер уменьшает масштаб печати и расширяет область раскладки. */
   body.boxlabel-mode .boxlabel-sheet {
-    position: absolute !important;
-    inset: 0 auto auto 0 !important;
+    position: static !important;
+    inset: auto !important;
     width: 210mm !important;
     min-width: 210mm !important;
     max-width: 210mm !important;
     box-sizing: border-box !important;
+    margin-right: auto !important;
+    margin-left: auto !important;
+    align-self: center !important;
   }
 
   body.boxlabel-mode .no-print {
@@ -11024,7 +11283,7 @@ body:has(.admin-modal-overlay) {
     padding: 0 !important;
     background: #fff !important;
     border: none !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
   }
 
   /* Каждая этикетка — горизонтальная полоса 60мм, несколько на листе */
@@ -11070,8 +11329,12 @@ body:has(.admin-modal-overlay) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    height: 100%;
     padding: 4mm 5mm;
     min-width: 0;
+    box-sizing: border-box;
+    text-align: center;
   }
 
   body.boxlabel-mode .boxlabel__vsep {
@@ -11098,9 +11361,11 @@ body:has(.admin-modal-overlay) {
   }
 
   body.boxlabel-mode .boxlabel__sizes {
+    width: 100%;
     font-size: 16pt;
     font-weight: 800;
     line-height: 1.15;
+    text-align: center;
   }
 
   body.boxlabel-mode .boxlabel__code {
@@ -11116,9 +11381,11 @@ body:has(.admin-modal-overlay) {
   }
 
   body.boxlabel-mode .boxlabel__ean {
+    width: 100%;
     font-size: 9pt;
     font-weight: 600;
     letter-spacing: 0.12em;
+    text-align: center;
   }
 
   body.boxlabel-mode .boxlabel,
