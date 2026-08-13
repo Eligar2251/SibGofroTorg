@@ -26,6 +26,7 @@ import {
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
+import { AdminSupplyPlans } from "./AdminSupplyPlans";
 import {
   canAccessAdminPage,
   type AdminRole,
@@ -328,7 +329,10 @@ export function AdminShell({
         {/* Уведомления тянут API основной админки — макулатурщику,
             как и юристу, эта панель не нужна (и недоступна). */}
         {role && role !== "lawyer" && role !== "wastepaper" && (
-          <AdminNotifications adminPath={adminPath} />
+          <>
+            <AdminSupplyPlans adminPath={adminPath} />
+            <AdminNotifications adminPath={adminPath} />
+          </>
         )}
         <main className="admin-main">{children}</main>
       </div>

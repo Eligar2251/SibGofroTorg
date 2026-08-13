@@ -9116,6 +9116,28 @@ body:has(.admin-modal-overlay) {
     background: #fff !important;
   }
 
+  /* Печатаем только саму сетку/ленту. Явная изоляция защищает от
+     тем, раскладок админки и contain/overflow у внешних контейнеров —
+     именно из-за них Chromium иногда показывал пустой белый лист. */
+  body.qrprint-mode * {
+    visibility: hidden !important;
+  }
+  body.qrprint-mode .qrprint__sheet,
+  body.qrprint-mode .qrprint__sheet *,
+  body.qrprint-mode .qrprint__tape,
+  body.qrprint-mode .qrprint__tape * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  body.qrprint-mode .qrprint__sheet,
+  body.qrprint-mode .qrprint__tape {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+  }
+  body.qrprint-mode .qrprint__sheet {
+    display: grid !important;
+  }
+
   /* В режиме печати у ленты убираем рамки и тень превью */
   body.qrprint-mode .qrprint__tape {
     display: block !important;
@@ -10968,6 +10990,21 @@ body:has(.admin-modal-overlay) {
     background: #fff !important;
   }
 
+  /* Изолируем печатный лист от интерфейса админки. Без этого некоторые
+     раскладки/темы оставляли в предпросмотре только белую страницу. */
+  body.boxlabel-mode * {
+    visibility: hidden !important;
+  }
+  body.boxlabel-mode .boxlabel-sheet,
+  body.boxlabel-mode .boxlabel-sheet * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  body.boxlabel-mode .boxlabel-sheet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+  }
+
   body.boxlabel-mode .no-print {
     display: none !important;
   }
@@ -11370,4 +11407,115 @@ html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ══════════════════════════════════════
+   ПЛАНИРОВАНИЕ ПОСТАВОК
+   ══════════════════════════════════════ */
+.admin-plans-shortcut {
+  position: fixed;
+  top: 14px;
+  right: 68px;
+  z-index: 80;
+}
+@media (min-width: 1024px) {
+  .admin-plans-shortcut { right: 76px; }
+}
+@media (max-width: 1023px) {
+  .admin-plans-shortcut { top: 112px; right: 66px; }
+}
+.admin-plans-shortcut__btn--active {
+  color: var(--adm-kraft);
+  border-color: var(--adm-kraft-line);
+  background: var(--adm-kraft-pale);
+}
+.admin-plans-shortcut__badge { background: var(--adm-kraft); }
+.admin-plans-shortcut__panel { width: min(430px, calc(100vw - 24px)); }
+.admin-plans-shortcut__item { grid-template-columns: 34px minmax(0, 1fr); }
+.admin-plans-shortcut__footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--adm-border-soft);
+  background: var(--adm-paper-warm);
+  text-align: right;
+}
+.admin-plans-shortcut__footer a {
+  color: var(--adm-kraft);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.supply-planning { display: grid; gap: 14px; }
+.supply-planning__hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  color: #fff;
+  background: linear-gradient(125deg, var(--adm-ink-deep), var(--adm-ink-deep-soft));
+  border-radius: var(--adm-r-lg);
+  box-shadow: var(--adm-sh-sm);
+}
+.supply-planning__eyebrow { display: inline-flex; align-items: center; gap: 6px; color: var(--adm-kraft-light); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.supply-planning__hero h2 { margin: 5px 0 3px; font-family: var(--adm-font-head); font-size: 23px; }
+.supply-planning__hero p { max-width: 720px; margin: 0; color: rgba(255,255,255,.68); font-size: 12px; line-height: 1.45; }
+.supply-planning__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.supply-planning__hero .admin-btn--ghost { color: #fff; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.08); }
+.supply-planning__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.supply-planning__stats > div { padding: 12px 14px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); }
+.supply-planning__stats span { display: block; color: var(--adm-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.supply-planning__stats strong { display: block; margin-top: 3px; color: var(--adm-ink); font-size: 18px; }
+.supply-planning__add-grid { display: grid; grid-template-columns: minmax(240px, 2fr) repeat(5, minmax(120px, 1fr)); gap: 10px; align-items: end; }
+.supply-planning__product-picker { grid-row: span 2; }
+.supply-planning__selected-product { display: grid; gap: 2px; margin-top: 6px; padding: 8px 10px; color: var(--adm-ink); background: var(--adm-kraft-pale); border: 1px solid var(--adm-kraft-line); border-radius: var(--adm-r-sm); font-size: 12px; }
+.supply-planning__selected-product span { color: var(--adm-muted); font-size: 11px; }
+.supply-planning__add-btn { min-height: 38px; }
+.supply-planning__plans { display: grid; gap: 12px; }
+.supply-planning__empty { min-height: 190px; }
+.supply-plan-card { overflow: hidden; }
+.supply-plan-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--adm-paper-warm); border-bottom: 1px solid var(--adm-border); }
+.supply-plan-card__identity { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; color: var(--adm-kraft); }
+.supply-plan-card__name { max-width: 460px; color: var(--adm-ink); font-weight: 800; }
+.supply-plan-card__total { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.supply-plan-card__total span { color: var(--adm-muted); font-size: 11px; }
+.supply-plan-card__total strong { color: var(--adm-ink); }
+.supply-plan-card__meta { display: grid; grid-template-columns: minmax(180px, .6fr) minmax(260px, 2fr); gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--adm-border-soft); }
+.supply-plan-card__meta label { display: flex; align-items: center; gap: 6px; color: var(--adm-muted); font-size: 11px; font-weight: 700; }
+.supply-plan-card__meta .admin-input { flex: 1; }
+.supply-plan-table td:first-child small { display: block; margin-top: 2px; color: var(--adm-muted); font-size: 10px; }
+.supply-plan-table .admin-input { min-width: 82px; }
+.supply-plan-table .admin-select { min-width: 130px; }
+.supply-plan-card__empty { padding: 22px; color: var(--adm-muted); text-align: center; font-size: 12px; }
+.supply-plan-card__footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--adm-border-soft); }
+.supply-planning-link-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; border-color: var(--adm-kraft-line); background: var(--adm-kraft-pale); }
+.supply-planning-link-card > div { display: grid; gap: 4px; }
+.supply-planning-link-card span { display: inline-flex; align-items: center; gap: 6px; color: var(--adm-kraft); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.supply-planning-link-card strong { color: var(--adm-ink); }
+.supply-planning-link-card p { margin: 0; color: var(--adm-muted); font-size: 12px; }
+.dashboard-supply-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 9px; padding: 12px; }
+.dashboard-supply-plan { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; padding: 10px; color: inherit; text-decoration: none; background: var(--adm-card); border: 1px solid var(--adm-border-soft); border-radius: 10px; }
+.dashboard-supply-plan:hover { border-color: var(--adm-kraft-line); background: var(--adm-kraft-pale); }
+.dashboard-supply-plan__icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; color: var(--adm-kraft); background: var(--adm-kraft-pale); border-radius: 10px; }
+.dashboard-supply-plan__main { display: grid; gap: 2px; min-width: 0; }
+.dashboard-supply-plan__main strong { overflow: hidden; color: var(--adm-ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-supply-plan__main small { overflow: hidden; color: var(--adm-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-supply-plan__total { color: var(--adm-ink); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.dashboard-supply-plan__date { grid-column: 2 / -1; color: var(--adm-muted); font-size: 10px; }
+
+@media (max-width: 900px) {
+  .supply-planning__hero { flex-direction: column; }
+  .supply-planning__add-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .supply-planning__product-picker { grid-column: 1 / -1; grid-row: auto; }
+  .supply-plan-card__meta { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .supply-planning__stats { grid-template-columns: 1fr; }
+  .supply-planning__add-grid { grid-template-columns: 1fr; }
+  .supply-plan-card__head, .supply-planning-link-card { align-items: stretch; flex-direction: column; }
+  .supply-plan-card__total { justify-content: space-between; }
+  .supply-plan-card__meta label { align-items: stretch; flex-direction: column; }
+}
+@media print {
+  .admin-plans-shortcut { display: none !important; }
 }

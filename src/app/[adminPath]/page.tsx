@@ -30,6 +30,7 @@ import {
   ExternalLink,
   Recycle,
   Building2,
+  Lightbulb,
 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -37,6 +38,8 @@ import { getAdminDb } from "@/lib/supabase";
 import { verifySession } from "@/lib/auth";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
 import { getRentSummary } from "@/lib/rent";
+import { getSupplyPlans } from "@/lib/supply-plans";
+import { supplyPlanTotal, supplyPlansItemsCount, supplyPlansTotal } from "@/lib/supply-plans-shared";
 import { RENT_ORG_LABELS } from "@/lib/rent-shared";
 import { getWpFinanceData } from "@/lib/wastepaper-account";
 import {
@@ -165,6 +168,7 @@ export default async function AdminDashboard() {
     receipts,
     cashCollections,
     transports,
+    supplyPlans,
   ] = await Promise.all([
     isLawyer ? Promise.resolve([]) : getProducts({ includeHidden: true }),
     isLawyer ? Promise.resolve([]) : getOrders({ limit: 50 }),
@@ -185,6 +189,7 @@ export default async function AdminDashboard() {
     isLawyer ? Promise.resolve([]) : getReceipts(),
     getCashCollections(),
     getTransports(),
+    isLawyer ? Promise.resolve([]) : getSupplyPlans(),
   ]);
 
   const wpFinance = await getWpFinanceData().catch((error) => {
@@ -228,6 +233,9 @@ export default async function AdminDashboard() {
     dashboardDate
   );
   const recentOrders = recentOrderPool.slice(0, 8);
+  const activeSupplyPlans = supplyPlans.filter((plan) => plan.status === "active");
+  const plannedSupplyItems = supplyPlansItemsCount(activeSupplyPlans);
+  const plannedSupplyTotal = supplyPlansTotal(activeSupplyPlans);
 
   const wpEvents = wpFinance
     ? wpCollectMoneyEvents(
@@ -564,6 +572,15 @@ export default async function AdminDashboard() {
                 sub: `${outOfStockProducts.length} нет, ${lowStockProducts.length} скоро закончатся`,
               },
               {
+                label: "Планы поставок",
+                value: activeSupplyPlans.length,
+                icon: <Lightbulb size={18} />,
+                href: `/${ADMIN_PATH}/warehouse?tab=plans`,
+                iconBg: "var(--adm-kraft-pale)",
+                iconColor: "var(--adm-kraft)",
+                sub: `${plannedSupplyItems} поз. · ≈ ${money(plannedSupplyTotal)}`,
+              },
+              {
                 label: "Акции",
                 value: promotions.length,
                 icon: <Megaphone size={18} />,
@@ -584,6 +601,42 @@ export default async function AdminDashboard() {
                 )}
               </Link>
             ))}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {!isLawyer && activeSupplyPlans.length > 0 && (
+        <CollapsibleSection
+          id="supply-plans"
+          title="Планы поставок"
+          subtitle={`${plannedSupplyItems} позиций · примерный бюджет ${money(plannedSupplyTotal)}`}
+          icon={<Lightbulb size={16} />}
+          accent="amber"
+          badge={activeSupplyPlans.length}
+          sideContent={(
+            <Link href={`/${ADMIN_PATH}/warehouse?tab=plans`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
+              Открыть планы →
+            </Link>
+          )}
+        >
+          <div className="dashboard-supply-plans">
+            {activeSupplyPlans.map((plan) => {
+              const suppliers = [...new Set(plan.items.map((item) => item.supplierName).filter(Boolean))];
+              return (
+                <Link key={plan.id} href={`/${ADMIN_PATH}/warehouse?tab=plans`} prefetch={false} className="dashboard-supply-plan">
+                  <span className="dashboard-supply-plan__icon"><Lightbulb size={16} /></span>
+                  <span className="dashboard-supply-plan__main">
+                    <strong>{plan.name}</strong>
+                    <small>
+                      {plan.items.length} поз. · {suppliers.slice(0, 2).join(", ") || "поставщик не выбран"}
+                      {suppliers.length > 2 ? ` +${suppliers.length - 2}` : ""}
+                    </small>
+                  </span>
+                  <span className="dashboard-supply-plan__total">≈ {money(supplyPlanTotal(plan))}</span>
+                  <span className="dashboard-supply-plan__date">{plan.plannedDate ? formatDate(plan.plannedDate) : "без даты"}</span>
+                </Link>
+              );
+            })}
           </div>
         </CollapsibleSection>
       )}

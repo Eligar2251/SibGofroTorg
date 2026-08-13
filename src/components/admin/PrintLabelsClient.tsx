@@ -52,6 +52,7 @@ import {
   Barcode,
   QrCode,
   Boxes,
+  Loader2,
 } from "lucide-react";
 
 type Product = {
@@ -180,6 +181,7 @@ export function PrintLabelsClient({
   const [showName, setShowName] = useState(true);
   const [showPrice, setShowPrice] = useState(true);
   const [showSizes, setShowSizes] = useState(true);
+  const [printPreparing, setPrintPreparing] = useState(false);
   // ── Партия от N шт ──
   // Ценники-тикеры под термопринтер: на этикетке печатается строка
   // «Партия от N шт» (просто слово и число). Пресеты: 1 / 1000 / 2000
@@ -233,6 +235,44 @@ export function PrintLabelsClient({
     document.body.classList.add("qrprint-mode");
     return () => document.body.classList.remove("qrprint-mode");
   }, []);
+
+  async function handlePrint() {
+    if (printPreparing || selectedProducts.length === 0) return;
+    setPrintPreparing(true);
+    try {
+      // Диалог печати иногда открывался раньше, чем браузер успевал получить
+      // SVG штрихкодов/QR. В предпросмотре тогда оставался только белый лист.
+      // Ждём шрифты и все изображения именно из печатной области.
+      if (document.fonts?.ready) await document.fonts.ready;
+      const root = document.querySelector<HTMLElement>(
+        mode === "tape" ? ".qrprint__tape" : ".qrprint__sheet"
+      );
+      const images = Array.from(root?.querySelectorAll("img") || []);
+      await Promise.all(
+        images.map(
+          (image) =>
+            new Promise<void>((resolve) => {
+              if (image.complete && image.naturalWidth > 0) {
+                image.decode().catch(() => undefined).finally(resolve);
+                return;
+              }
+              const done = () => resolve();
+              image.addEventListener("load", done, { once: true });
+              image.addEventListener("error", done, { once: true });
+              window.setTimeout(done, 8000);
+            })
+        )
+      );
+      // Два кадра нужны Chromium, чтобы пересчитать print-media layout
+      // после загрузки SVG перед созданием предпросмотра.
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      window.print();
+    } finally {
+      setPrintPreparing(false);
+    }
+  }
 
   return (
     <div className="qrprint">
@@ -447,12 +487,12 @@ export function PrintLabelsClient({
           </div>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={handlePrint}
             className="qrprint__print-btn"
-            disabled={selectedProducts.length === 0}
+            disabled={selectedProducts.length === 0 || printPreparing}
           >
-            <Printer size={15} />
-            Печатать {selectedProducts.length} шт
+            {printPreparing ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+            {printPreparing ? "Подготавливаем коды…" : `Печатать ${selectedProducts.length} шт`}
           </button>
         </div>
         {mode === "tape" && (

@@ -23,7 +23,7 @@
 /* eslint-disable @next/next/no-img-element -- SVG штрихкода должен печататься нативным вектором. */
 
 import { useEffect, useMemo, useState } from "react";
-import { Filter, Hash, ListOrdered, Printer, Search } from "lucide-react";
+import { Filter, Hash, ListOrdered, Loader2, Printer, Search } from "lucide-react";
 
 type Product = {
   id: string;
@@ -67,6 +67,7 @@ export function BoxLabelsClient({ products, categories }: Props) {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [labels, setLabels] = useState<Record<string, LabelData>>({});
+  const [printPreparing, setPrintPreparing] = useState(false);
 
   // Режим печати: прячем интерфейс админки, оставляем только лист.
   useEffect(() => {
@@ -130,6 +131,38 @@ export function BoxLabelsClient({ products, categories }: Props) {
     const cur = getLabel(p).note.trim();
     if (cur.split(",").map((s) => s.trim()).includes(word)) return;
     setLabel(p, { note: cur ? `${cur}, ${word}` : word });
+  }
+
+  async function handlePrint() {
+    if (printPreparing || selectedProducts.length === 0) return;
+    setPrintPreparing(true);
+    try {
+      if (document.fonts?.ready) await document.fonts.ready;
+      const images = Array.from(
+        document.querySelectorAll<HTMLImageElement>(".boxlabel-sheet img")
+      );
+      await Promise.all(
+        images.map(
+          (image) =>
+            new Promise<void>((resolve) => {
+              if (image.complete && image.naturalWidth > 0) {
+                image.decode().catch(() => undefined).finally(resolve);
+                return;
+              }
+              const done = () => resolve();
+              image.addEventListener("load", done, { once: true });
+              image.addEventListener("error", done, { once: true });
+              window.setTimeout(done, 8000);
+            })
+        )
+      );
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      window.print();
+    } finally {
+      setPrintPreparing(false);
+    }
   }
 
   return (
@@ -249,10 +282,11 @@ export function BoxLabelsClient({ products, categories }: Props) {
         <button
           type="button"
           className="qrprint__print-btn"
-          disabled={selectedProducts.length === 0}
-          onClick={() => window.print()}
+          disabled={selectedProducts.length === 0 || printPreparing}
+          onClick={handlePrint}
         >
-          <Printer size={15} /> Печатать {selectedProducts.length} этикеток
+          {printPreparing ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+          {printPreparing ? "Подготавливаем штрихкоды…" : `Печатать ${selectedProducts.length} этикеток`}
         </button>
       </div>
 

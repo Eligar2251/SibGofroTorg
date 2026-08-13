@@ -476,6 +476,23 @@ CREATE INDEX IF NOT EXISTS idx_receipts_items_gin ON warehouse_receipts USING GI
 DROP TRIGGER IF EXISTS trg_receipts_updated ON warehouse_receipts;
 CREATE TRIGGER trg_receipts_updated BEFORE UPDATE ON warehouse_receipts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Планы будущих поставок: не влияют на склад/банк до создания реального поступления.
+CREATE TABLE IF NOT EXISTS warehouse_supply_plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  planned_date TEXT,
+  comment TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed')),
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_supply_plans_status ON warehouse_supply_plans(status);
+CREATE INDEX IF NOT EXISTS idx_supply_plans_date ON warehouse_supply_plans(planned_date);
+DROP TRIGGER IF EXISTS trg_supply_plans_updated ON warehouse_supply_plans;
+CREATE TRIGGER trg_supply_plans_updated BEFORE UPDATE ON warehouse_supply_plans FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE warehouse_supply_plans ENABLE ROW LEVEL SECURITY;
+
 -- =========================================================
 -- 19. ЗАКАЗЫ ПОКУПАТЕЛЕЙ
 -- =========================================================
