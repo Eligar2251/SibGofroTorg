@@ -1,6 +1,6 @@
 // Фактическая сводка смены кассы и карты ЮМ.
 // Документ ничего не переводит и не списывает: он только помечает
-// наличные и переводы, фиксирует расходы и остаток кассы на конец дня.
+// операции и отдельно фиксирует две кассы — наличные и карту ЮМ.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -38,6 +38,7 @@ interface CashExpense {
   date: string;
   title: string;
   amount: number;
+  sourceKind?: "cash" | "card";
   comment: string | null;
 }
 
@@ -47,8 +48,12 @@ interface DailyCashSummary {
   todayIncoming: number;
   /** Переводы на ЮМ, ещё не вошедшие в сохранённую сводку. */
   todayCardIncoming: number;
+  /** Общие расходы двух касс. */
   todayOutgoing: number;
+  todayCashOutgoing: number;
+  todayCardOutgoing: number;
   closingBalance: number;
+  closingCardBalance: number;
 }
 
 const fmt = (value: number) => value.toLocaleString("ru-RU", {
@@ -147,10 +152,14 @@ export function CashCollectModal({
       .sort((a, b) => b.localeCompare(a))
       .map((date) => {
         const items = pending.filter((payment) => payment.date === date);
+        const expenseItems = expenses.filter((expense) => expense.date === date);
         return {
           date,
-          count: items.length,
+          count: items.length + expenseItems.length,
           income: round2(items.reduce((sum, payment) => sum + payment.amount, 0)),
+          outgoing: round2(
+            expenseItems.reduce((sum, expense) => sum + expense.amount, 0)
+          ),
         };
       });
   }, [expenses, pending]);
@@ -181,10 +190,25 @@ export function CashCollectModal({
       ),
     [dayItems]
   );
-  const listedExpenses = useMemo(
-    () => round2(dayExpenses.reduce((sum, expense) => sum + expense.amount, 0)),
+  const listedCashExpenses = useMemo(
+    () =>
+      round2(
+        dayExpenses
+          .filter((expense) => expense.sourceKind !== "card")
+          .reduce((sum, expense) => sum + expense.amount, 0)
+      ),
     [dayExpenses]
   );
+  const listedCardExpenses = useMemo(
+    () =>
+      round2(
+        dayExpenses
+          .filter((expense) => expense.sourceKind === "card")
+          .reduce((sum, expense) => sum + expense.amount, 0)
+      ),
+    [dayExpenses]
+  );
+  const listedExpenses = round2(listedCashExpenses + listedCardExpenses);
 
   const rawDaySummary = dailySummaries[activeDate];
   const daySummary: DailyCashSummary = rawDaySummary
@@ -194,15 +218,21 @@ export function CashCollectModal({
         // сохранённых сводок намеренно не возвращаются в итог.
         todayIncoming: listedCashIncome,
         todayCardIncoming: listedCardIncome,
-        todayOutgoing: Number(rawDaySummary.todayOutgoing) || 0,
+        todayOutgoing: listedExpenses,
+        todayCashOutgoing: listedCashExpenses,
+        todayCardOutgoing: listedCardExpenses,
         closingBalance: Number(rawDaySummary.closingBalance) || 0,
+        closingCardBalance: Number(rawDaySummary.closingCardBalance) || 0,
       }
     : {
         openingBalance: round2(cashBalance),
         todayIncoming: listedCashIncome,
         todayCardIncoming: listedCardIncome,
         todayOutgoing: listedExpenses,
+        todayCashOutgoing: listedCashExpenses,
+        todayCardOutgoing: listedCardExpenses,
         closingBalance: round2(cashBalance),
+        closingCardBalance: 0,
       };
   const totalDayIncome = round2(listedCashIncome + listedCardIncome);
 
@@ -253,9 +283,12 @@ export function CashCollectModal({
       `Наличными: +${fmt(daySummary.todayIncoming)} ₽\n` +
       `На карту ЮМ: +${fmt(daySummary.todayCardIncoming)} ₽\n` +
       `Перенос наличных: ${fmt(daySummary.openingBalance)} ₽\n` +
-      `Расходы наличными: −${fmt(daySummary.todayOutgoing)} ₽\n` +
-      `Остаток наличных в кассе: ${fmt(daySummary.closingBalance)} ₽\n\n` +
-      "Сводка только пометит платежи: она ничего не переводит и не списывает.";
+      `Расходы всего: −${fmt(daySummary.todayOutgoing)} ₽\n` +
+      `Из наличной кассы: −${fmt(daySummary.todayCashOutgoing)} ₽\n` +
+      `С карты ЮМ: −${fmt(daySummary.todayCardOutgoing)} ₽\n` +
+      `Остаток наличных: ${fmt(daySummary.closingBalance)} ₽\n` +
+      `Остаток на ЮМ: ${fmt(daySummary.closingCardBalance)} ₽\n\n` +
+      "Сводка только пометит операции: она ничего не переводит и не списывает.";
     if (!confirm(message)) return;
 
     setSaving(true);
@@ -304,8 +337,8 @@ export function CashCollectModal({
             <div className="cashc-info">
               <Banknote size={17} />
               <span>
-                Здесь показаны только <b>ещё не сданные</b> наличные и поступления на карту ЮМ.
-                Уже сохранённые платежи не считаются повторно. Сводка ничего не списывает.
+                Наличная касса и карта ЮМ учитываются как <b>две отдельные кассы</b>.
+                Здесь показаны их новые поступления и расходы; сохранение ничего не списывает.
               </span>
             </div>
 
@@ -342,7 +375,10 @@ export function CashCollectModal({
                         {day.date === todayIso() && <span className="cashc-day__today">сегодня</span>}
                       </span>
                       <span className="cashc-day__sum">+{fmt(day.income)} ₽</span>
-                      <span className="cashc-day__count">{day.count} к сдаче</span>
+                      {day.outgoing > 0 && (
+                        <span className="cashc-day__expense">−{fmt(day.outgoing)} ₽ расходов</span>
+                      )}
+                      <span className="cashc-day__count">{day.count} операций</span>
                     </button>
                   ))}
                 </div>
@@ -369,14 +405,29 @@ export function CashCollectModal({
                     <small>Без уже сохранённых платежей</small>
                   </div>
                   <div className="cashc-fact cashc-fact--expense">
-                    <span><ArrowUpRight size={15} /> Расходы наличными</span>
+                    <span><ArrowUpRight size={15} /> Расходы всего</span>
                     <strong>−{fmt(daySummary.todayOutgoing)} ₽</strong>
+                    <small>Наличная касса + карта ЮМ</small>
+                  </div>
+                  <div className="cashc-fact cashc-fact--expense">
+                    <span><Banknote size={15} /> Расходы наличными</span>
+                    <strong>−{fmt(daySummary.todayCashOutgoing)} ₽</strong>
                     <small>Платежи и зарплаты из кассы</small>
+                  </div>
+                  <div className="cashc-fact cashc-fact--card">
+                    <span><CreditCard size={15} /> Расходы с ЮМ</span>
+                    <strong>−{fmt(daySummary.todayCardOutgoing)} ₽</strong>
+                    <small>Платежи и зарплаты с карты</small>
                   </div>
                   <div className="cashc-fact cashc-fact--balance">
                     <span><Banknote size={15} /> Остаток наличных</span>
                     <strong>{fmt(daySummary.closingBalance)} ₽</strong>
-                    <small>Факт в кассе на конец смены</small>
+                    <small>Факт в наличной кассе</small>
+                  </div>
+                  <div className="cashc-fact cashc-fact--card">
+                    <span><CreditCard size={15} /> Остаток на ЮМ</span>
+                    <strong>{fmt(daySummary.closingCardBalance)} ₽</strong>
+                    <small>Факт во второй кассе</small>
                   </div>
                 </div>
 
@@ -423,13 +474,24 @@ export function CashCollectModal({
                     </header>
                     <div className="cashc-ledger__rows">
                       {dayExpenses.length === 0 ? (
-                        <div className="cashc-ledger__empty">Наличных расходов не было</div>
-                      ) : dayExpenses.map((expense) => (
-                        <div key={`${expense.kind}-${expense.id}`} className="cashc-ledger__row">
-                          <span><b>{expense.title}</b>{expense.comment ? ` · ${expense.comment}` : ""}</span>
-                          <strong className="cashc-ledger__expense">−{fmt(expense.amount)} ₽</strong>
-                        </div>
-                      ))}
+                        <div className="cashc-ledger__empty">Расходов из двух касс не было</div>
+                      ) : dayExpenses.map((expense) => {
+                        const isCard = expense.sourceKind === "card";
+                        return (
+                          <div key={`${expense.kind}-${expense.id}`} className="cashc-ledger__row">
+                            <span className="cashc-ledger__payment">
+                              <span><b>{expense.title}</b>{expense.comment ? ` · ${expense.comment}` : ""}</span>
+                              <em className={`cashc-kind cashc-kind--${isCard ? "card" : "cash"}`}>
+                                {isCard ? <CreditCard size={10} /> : <Banknote size={10} />}
+                                {isCard ? "Карта ЮМ" : "Наличные"}
+                              </em>
+                            </span>
+                            <strong className={isCard ? "cashc-ledger__card-expense" : "cashc-ledger__expense"}>
+                              −{fmt(expense.amount)} ₽
+                            </strong>
+                          </div>
+                        );
+                      })}
                     </div>
                   </section>
                 </div>
@@ -440,9 +502,15 @@ export function CashCollectModal({
                   <b>+</b>
                   <span>{fmt(daySummary.todayCardIncoming)} ₽ на ЮМ</span>
                   <span className="cashc-equation__sep" aria-hidden="true" />
-                  <span>Фактический остаток наличных</span>
-                  <strong>{fmt(daySummary.closingBalance)} ₽</strong>
-                  <span>после сохранения не изменится</span>
+                  <strong>−{fmt(daySummary.todayOutgoing)} ₽ расходов:</strong>
+                  <span>{fmt(daySummary.todayCashOutgoing)} ₽ наличными</span>
+                  <b>+</b>
+                  <span>{fmt(daySummary.todayCardOutgoing)} ₽ с ЮМ</span>
+                  <span className="cashc-equation__sep" aria-hidden="true" />
+                  <span>Остатки:</span>
+                  <strong>{fmt(daySummary.closingBalance)} ₽ наличными</strong>
+                  <strong>{fmt(daySummary.closingCardBalance)} ₽ на ЮМ</strong>
+                  <span>сводка их не изменит</span>
                 </div>
 
                 {closed.length > 0 && (

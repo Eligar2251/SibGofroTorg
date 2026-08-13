@@ -506,12 +506,14 @@ export interface CashCollectionItem {
   noAccounting?: boolean;
 }
 
-/** Снимок наличного расхода смены (ЗП или проведённый платёж налом). */
+/** Снимок расхода одной из двух касс смены: наличной или карты ЮМ. */
 export interface CashCollectionExpense {
   kind: "salary" | "payment";
   id: string;
   title: string;
   amount: number;
+  /** Откуда фактически оплачено: наличная касса или карта ЮМ. */
+  sourceKind?: CashKind;
   comment?: string | null;
 }
 
@@ -532,11 +534,11 @@ export interface CashCollection {
   transferAmount?: number;
   /** Разметка платежей, вошедших в сдачу */
   items?: CashCollectionItem[];
-  /** Снимок наличных трат этого дня. */
+  /** Снимок трат этого дня из наличной кассы и с карты ЮМ. */
   expenses?: CashCollectionExpense[];
   /** Все поступления за день: наличные + карта ЮМ, без переноса. */
   incomeAmount?: number;
-  /** Сумма фактических трат наличными за день. */
+  /** Общая сумма трат двух касс за день. */
   expensesAmount?: number;
   note?: string | null;
   createdAt?: string | null;
@@ -597,6 +599,38 @@ export function getCashCollectionIncomeBreakdown(collection: CashCollection): {
     cash: Math.round((total - fallbackCard) * 100) / 100,
     card: Math.round(fallbackCard * 100) / 100,
     total: Math.round(total * 100) / 100,
+  };
+}
+
+/** Разбивка расходов сохранённой смены между наличной кассой и ЮМ. */
+export function getCashCollectionExpenseBreakdown(collection: CashCollection): {
+  cash: number;
+  card: number;
+  total: number;
+} {
+  let cash = 0;
+  let card = 0;
+  for (const expense of collection.expenses || []) {
+    const amount = Math.max(0, Number(expense.amount) || 0);
+    if (expense.sourceKind === "card") card += amount;
+    else cash += amount;
+  }
+
+  const detailedTotal = cash + card;
+  if (detailedTotal > 0.009 || (collection.expenses || []).length > 0) {
+    return {
+      cash: Math.round(cash * 100) / 100,
+      card: Math.round(card * 100) / 100,
+      total: Math.round(detailedTotal * 100) / 100,
+    };
+  }
+
+  // До появления sourceKind в сводку записывались только наличные расходы.
+  const legacyTotal = Math.max(0, Number(collection.expensesAmount) || 0);
+  return {
+    cash: Math.round(legacyTotal * 100) / 100,
+    card: 0,
+    total: Math.round(legacyTotal * 100) / 100,
   };
 }
 

@@ -2561,9 +2561,9 @@ export interface CashCollectionRow {
   transferAmount: number;
   /** Разметка платежей, вошедших в сдачу */
   items: CashCollectionItem[];
-  /** Наличные траты дня, вычтенные из прихода */
+  /** Траты дня из наличной кассы и с карты ЮМ. */
   expenses: CashCollectionExpense[];
-  /** Сумма трат налом */
+  /** Общая сумма трат двух касс. */
   expensesAmount: number;
   /** Все поступления за день: наличные + карта ЮМ. */
   incomeAmount: number;
@@ -2682,9 +2682,14 @@ export async function getPendingCashPayments(): Promise<{
       todayIncoming: number;
       /** Ещё не отмеченные поступления на карту ЮМ за день. */
       todayCardIncoming: number;
-      /** Ещё не отмеченные наличные расходы за день. */
+      /** Все ещё не отмеченные расходы двух касс за день. */
       todayOutgoing: number;
+      todayCashOutgoing: number;
+      todayCardOutgoing: number;
+      /** Фактический остаток наличной кассы. */
       closingBalance: number;
+      /** Фактический остаток карты ЮМ. */
+      closingCardBalance: number;
     }
   >;
 }> {
@@ -2717,16 +2722,15 @@ export async function getPendingCashPayments(): Promise<{
       }
     }
   }
-  const cashExpenses = listCashExpenses(payments, salaries).filter(
+  const shiftExpenses = listCashExpenses(payments, salaries).filter(
     (expense) =>
-      expense.sourceKind !== "card" &&
       expense.date === businessDate &&
       !collectedExpenseIds.has(`${expense.kind}:${expense.id}`)
   );
   const summaryDates = new Set<string>([
     businessDate,
     ...pendingCash.map((payment) => String(payment.date || "").slice(0, 10)),
-    ...cashExpenses.map((expense) => expense.date),
+    ...shiftExpenses.map((expense) => expense.date),
   ]);
   const dailySummaries: Record<
     string,
@@ -2735,7 +2739,10 @@ export async function getPendingCashPayments(): Promise<{
       todayIncoming: number;
       todayCardIncoming: number;
       todayOutgoing: number;
+      todayCashOutgoing: number;
+      todayCardOutgoing: number;
       closingBalance: number;
+      closingCardBalance: number;
     }
   > = {};
   for (const date of summaryDates) {
@@ -2750,15 +2757,23 @@ export async function getPendingCashPayments(): Promise<{
     const todayCardIncoming = pendingOfDay
       .filter((payment) => getShiftIncomeKind(payment) === "card")
       .reduce((sum, payment) => sum + payment.amount, 0);
-    const todayOutgoing = cashExpenses
-      .filter((expense) => expense.date === date)
+    const expensesOfDay = shiftExpenses.filter((expense) => expense.date === date);
+    const todayCashOutgoing = expensesOfDay
+      .filter((expense) => expense.sourceKind === "cash")
       .reduce((sum, expense) => sum + expense.amount, 0);
+    const todayCardOutgoing = expensesOfDay
+      .filter((expense) => expense.sourceKind === "card")
+      .reduce((sum, expense) => sum + expense.amount, 0);
+    const balances = getBankSummary(payments, salaries, collections, date);
     dailySummaries[date] = {
       openingBalance: summary.openingBalance,
       todayIncoming: round2(todayIncoming),
       todayCardIncoming: round2(todayCardIncoming),
-      todayOutgoing: round2(todayOutgoing),
+      todayOutgoing: round2(todayCashOutgoing + todayCardOutgoing),
+      todayCashOutgoing: round2(todayCashOutgoing),
+      todayCardOutgoing: round2(todayCardOutgoing),
       closingBalance: summary.currentBalance,
+      closingCardBalance: round2(balances.ymCardBalance),
     };
   }
 
@@ -2791,8 +2806,8 @@ export async function getPendingCashPayments(): Promise<{
       }))
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number),
     unlinkedCashBalance,
-    // Только реальные расходы наличными; расходы с ЮМ в кассовый отчёт не входят.
-    expenses: cashExpenses,
+    // Обе кассы равноправны: отдаём расходы наличными и с карты ЮМ.
+    expenses: shiftExpenses,
     dailySummaries,
   };
 }
@@ -2859,7 +2874,7 @@ export interface CashExpenseRow {
   title: string;
   amount: number;
   comment: string | null;
-  sourceKind?: "cash" | "card";
+  sourceKind: "cash" | "card";
 }
 
 /**
@@ -3048,15 +3063,16 @@ export async function collectCash(
   const allRows = [...mergedRows.values()];
 
   // Расходы уже являются отдельными проведёнными платежами/зарплатами и
-  // влияют на кассу сами. В закрытии смены мы только сохраняем их снимок.
+  // влияют на свою кассу сами. Здесь сохраняем только снимок обеих касс.
   const expensesOfDay = listCashExpenses(payments, salaries).filter(
-    (expense) => expense.date === date && expense.sourceKind !== "card"
+    (expense) => expense.date === date
   );
   const expenseRows: CashCollectionExpense[] = expensesOfDay.map((expense) => ({
     kind: expense.kind,
     id: expense.id,
     title: expense.title,
     amount: expense.amount,
+    sourceKind: expense.sourceKind,
     comment: expense.comment,
   }));
 
@@ -3071,7 +3087,9 @@ export async function collectCash(
   const closingBalance = round2(cashSummary.currentBalance);
   const collectionIncome = summarizeCollectionItems(allRows);
   const newlyMarkedIncome = summarizeCollectionItems(rows);
-  const factualExpenses = round2(cashSummary.todayOutgoing);
+  const factualExpenses = round2(
+    expenseRows.reduce((sum, expense) => sum + expense.amount, 0)
+  );
   const payload = {
     date,
     // Итог документа складывается только из его отмеченных items. Уже

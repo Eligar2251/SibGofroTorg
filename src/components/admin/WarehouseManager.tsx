@@ -46,6 +46,7 @@ import {
   getReceiptPaidMap,
   getCashCarryoverSummary,
   getCashCollectionIncomeBreakdown,
+  getCashCollectionExpenseBreakdown,
   type WarehouseStockRow,
   type ProductStockSummary,
   type WarehouseReceipt,
@@ -906,7 +907,16 @@ export function WarehouseManager({
   );
   const collectionsExpenseTotal = useMemo(
     () => collectionsSorted.reduce(
-      (sum, collection) => sum + (collection.expensesAmount || 0),
+      (sum, collection) =>
+        sum + getCashCollectionExpenseBreakdown(collection).total,
+      0
+    ),
+    [collectionsSorted]
+  );
+  const collectionsCardExpenseTotal = useMemo(
+    () => collectionsSorted.reduce(
+      (sum, collection) =>
+        sum + getCashCollectionExpenseBreakdown(collection).card,
       0
     ),
     [collectionsSorted]
@@ -3287,7 +3297,10 @@ export function WarehouseManager({
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <span className="admin-badge admin-badge--muted">
-                    Сейчас в кассе: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
+                    Наличная касса: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
+                  </span>
+                  <span className="admin-badge admin-badge--blue">
+                    Карта ЮМ: {fmt(Math.round(bankSummary.ymCardBalance * 100) / 100)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
                     <ArrowDownLeft size={10} /> Всего поступило: {fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
@@ -3296,14 +3309,17 @@ export function WarehouseManager({
                     <CreditCard size={10} /> На ЮМ: {fmt(Math.round(collectionsCardTotal * 100) / 100)} ₽
                   </span>
                   <span className="admin-badge admin-badge--red">
-                    <ArrowUpRight size={10} /> Расходы: {fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
+                    <ArrowUpRight size={10} /> Расходы всего: {fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
+                  </span>
+                  <span className="admin-badge admin-badge--blue">
+                    <CreditCard size={10} /> Расходы с ЮМ: {fmt(Math.round(collectionsCardExpenseTotal * 100) / 100)} ₽
                   </span>
                 </div>
               </div>
               <div className="admin-card__pad" style={{ display: "grid", gap: 12 }}>
                 <div className="admin-muted" style={{ fontSize: 12 }}>
-                  Наличные и поступления на карту ЮМ отмечаются отдельно. Перенос кассы — это входящий остаток,
-                  а не новый приход или прибыль. Сохранение смены ничего не переводит и не списывает.
+                  Наличная касса и карта ЮМ учитываются отдельно: по каждой видны поступления и расходы.
+                  Перенос наличных не является прибылью, а сохранение ничего не переводит и не списывает.
                 </div>
                 {collectionsSorted.length === 0 ? (
                   <div className="admin-empty" style={{ padding: 18 }}>
@@ -3333,12 +3349,14 @@ export function WarehouseManager({
                           const income = incomeBreakdown.total;
                           const cashIncome = incomeBreakdown.cash;
                           const cardIncome = incomeBreakdown.card;
-                          const expense = Math.round(
-                            (collection.expensesAmount || 0) * 100
-                          ) / 100;
+                          const expenseBreakdown =
+                            getCashCollectionExpenseBreakdown(collection);
+                          const expense = expenseBreakdown.total;
+                          const cashExpense = expenseBreakdown.cash;
+                          const cardExpense = expenseBreakdown.card;
                           const closing = collection.cashAmount != null
                             ? Math.round(collection.cashAmount * 100) / 100
-                            : Math.round((opening + cashIncome - expense) * 100) / 100;
+                            : Math.round((opening + cashIncome - cashExpense) * 100) / 100;
                           const items = collection.items || [];
                           const expenseRows = collection.expenses || [];
                           const noAccounting = items.some((item) => item.noAccounting);
@@ -3386,6 +3404,9 @@ export function WarehouseManager({
                                 </td>
                                 <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 700 }}>
                                   −{fmt(expense)} ₽
+                                  <small style={{ display: "block", color: "var(--adm-muted)", fontWeight: 500 }}>
+                                    нал {fmt(cashExpense)} · ЮМ {fmt(cardExpense)}
+                                  </small>
                                 </td>
                                 <td style={{ textAlign: "right", fontWeight: 800 }}>{fmt(closing)} ₽</td>
                                 <td>{collection.note || "—"}</td>
@@ -3445,21 +3466,30 @@ export function WarehouseManager({
                                         </div>
                                         {expenseRows.length === 0 ? (
                                           <div className="wh-cc-empty">Расходов не было</div>
-                                        ) : expenseRows.map((row, index) => (
-                                          <div key={`${collection.id}-expense-${index}`} className="wh-cc-line">
-                                            <span>{row.title}{row.comment ? ` · ${row.comment}` : ""}</span>
-                                            <span className="wh-cc-line__val" style={{ color: "var(--adm-rust)" }}>
-                                              −{fmt(row.amount)} ₽
-                                            </span>
-                                          </div>
-                                        ))}
+                                        ) : expenseRows.map((row, index) => {
+                                          const isCardExpense = row.sourceKind === "card";
+                                          return (
+                                            <div key={`${collection.id}-expense-${index}`} className="wh-cc-line">
+                                              <span>
+                                                {row.title}{row.comment ? ` · ${row.comment}` : ""}
+                                                <em className={`cashc-kind cashc-kind--${isCardExpense ? "card" : "cash"}`} style={{ marginLeft: 6 }}>
+                                                  {isCardExpense ? "Карта ЮМ" : "Наличные"}
+                                                </em>
+                                              </span>
+                                              <span className="wh-cc-line__val" style={{ color: isCardExpense ? "var(--adm-steel)" : "var(--adm-rust)" }}>
+                                                −{fmt(row.amount)} ₽
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                       <div className="wh-cc-box">
-                                        <div className="wh-cc-box__head">Расчёт наличной кассы</div>
+                                        <div className="wh-cc-box__head">Разбивка двух касс</div>
                                         <div className="wh-cc-line"><span><History size={11} /> Перенос наличных</span><b>+{fmt(opening)} ₽</b></div>
                                         <div className="wh-cc-line"><span><Banknote size={11} /> Поступило наличными</span><b>+{fmt(cashIncome)} ₽</b></div>
-                                        <div className="wh-cc-line"><span><CreditCard size={11} /> Отмечено на ЮМ</span><b style={{ color: "var(--adm-steel)" }}>+{fmt(cardIncome)} ₽</b></div>
-                                        <div className="wh-cc-line"><span><ArrowUpRight size={11} /> Расходы наличными</span><b>−{fmt(expense)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><ArrowUpRight size={11} /> Расходы наличными</span><b>−{fmt(cashExpense)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><CreditCard size={11} /> Поступило на ЮМ</span><b style={{ color: "var(--adm-steel)" }}>+{fmt(cardIncome)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><CreditCard size={11} /> Расходы с ЮМ</span><b style={{ color: "var(--adm-steel)" }}>−{fmt(cardExpense)} ₽</b></div>
                                         <div className="wh-cc-total">Остаток наличных: <b>{fmt(closing)} ₽</b></div>
                                       </div>
                                     </div>
@@ -3556,11 +3586,13 @@ export function WarehouseManager({
                     const opening = Math.round(
                       (cashOpeningByCollectionId.get(collection.id) || 0) * 100
                     ) / 100;
-                    const expenses = Math.round((collection.expensesAmount || 0) * 100) / 100;
+                    const expenseBreakdown =
+                      getCashCollectionExpenseBreakdown(collection);
+                    const expenses = expenseBreakdown.total;
                     const closing = collection.cashAmount != null
                       ? Math.round(collection.cashAmount * 100) / 100
                       : Math.round(
-                          (opening + (noAccounting ? 0 : incomeBreakdown.cash) - expenses) * 100
+                          (opening + (noAccounting ? 0 : incomeBreakdown.cash) - expenseBreakdown.cash) * 100
                         ) / 100;
                     return (
                       <div key={collection.id} className="bank-cash-posting">
@@ -3586,8 +3618,10 @@ export function WarehouseManager({
                                 <span>всего +{fmt(documentAmount)} ₽</span>
                                 <span>наличные +{fmt(incomeBreakdown.cash)} ₽</span>
                                 <span>ЮМ +{fmt(incomeBreakdown.card)} ₽</span>
-                                <span>расход −{fmt(expenses)} ₽</span>
-                                <span>остаток {fmt(closing)} ₽</span>
+                                <span>расход всего −{fmt(expenses)} ₽</span>
+                                <span>расход нал −{fmt(expenseBreakdown.cash)} ₽</span>
+                                <span>расход ЮМ −{fmt(expenseBreakdown.card)} ₽</span>
+                                <span>остаток наличных {fmt(closing)} ₽</span>
                               </>
                             )}
                             {collection.note && <span>{collection.note}</span>}

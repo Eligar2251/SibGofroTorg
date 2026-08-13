@@ -6696,6 +6696,12 @@ body:has(.admin-modal-overlay) {
   color: var(--adm-pine);
 }
 
+.cashc-day__expense {
+  color: var(--adm-rust);
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .cashc-day__count { font-size: 11px; color: var(--adm-sand); }
 
 .cashc-totals {
@@ -12299,6 +12305,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 .cashc-kind--card { color: var(--adm-steel); background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
 .cashc-ledger__card { color: var(--adm-steel) !important; }
 .cashc-ledger__expense { color: var(--adm-rust) !important; }
+.cashc-ledger__card-expense { color: var(--adm-steel) !important; }
 .cashc-ledger__empty { padding: 20px 10px; color: var(--adm-muted); font-size: 10px; text-align: center; }
 .cashc-equation { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 12px; color: var(--adm-muted); background: var(--adm-paper-warm); border: 1px dashed var(--adm-border-mid); border-radius: var(--adm-r-sm); font-size: 10px; }
 .cashc-equation b { color: var(--adm-sand); }

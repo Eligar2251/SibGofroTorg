@@ -24,6 +24,7 @@ import {
   getReceiptPaidMap,
   getCashCarryoverSummary,
   getCashCollectionIncomeBreakdown,
+  getCashCollectionExpenseBreakdown,
   isSalaryExcludedFromBalance,
   isRentSalaryComment,
   isDebtSalaryComment,
@@ -617,16 +618,19 @@ export function WarehouseReports({
     }
     if (filters.kind === "cash") {
       return [
-        ["Дата", "Перенос с прошлого дня (не прибыль)", "Всего поступило", "Наличными", "На карту ЮМ", "Расходы наличными", "Остаток кассы", "Комментарий"],
+        ["Дата", "Перенос с прошлого дня (не прибыль)", "Всего поступило", "Наличными", "На карту ЮМ", "Расходы всего", "Расходы наличными", "Расходы с ЮМ", "Остаток наличных", "Комментарий"],
         ...cashRows.map((collection) => {
           const income = getCashCollectionIncomeBreakdown(collection);
+          const expenses = getCashCollectionExpenseBreakdown(collection);
           return [
             collection.date,
             cashOpeningByCollectionId.get(collection.id) || 0,
             income.total,
             income.cash,
             income.card,
-            collection.expensesAmount || 0,
+            expenses.total,
+            expenses.cash,
+            expenses.card,
             collection.cashAmount || 0,
             collection.note || "",
           ];
@@ -940,10 +944,11 @@ export function WarehouseReports({
               <div><ClipboardList size={15} /><span>Смен</span><strong>{cashRows.length}</strong></div>
               <div><ArrowDownLeft size={15} /><span>Всего поступило</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionIncomeBreakdown(row).total, 0))}</strong></div>
               <div><CreditCard size={15} /><span>На карту ЮМ</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionIncomeBreakdown(row).card, 0))}</strong></div>
-              <div><ArrowUpRight size={15} /><span>Расходы наличными</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.expensesAmount || 0), 0))}</strong></div>
-              <div><Banknote size={15} /><span>Последний остаток</span><strong>{money(cashRows[0]?.cashAmount || 0)}</strong></div>
+              <div><ArrowUpRight size={15} /><span>Расходы всего</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionExpenseBreakdown(row).total, 0))}</strong></div>
+              <div><CreditCard size={15} /><span>Расходы с ЮМ</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionExpenseBreakdown(row).card, 0))}</strong></div>
+              <div><Banknote size={15} /><span>Последний остаток наличных</span><strong>{money(cashRows[0]?.cashAmount || 0)}</strong></div>
             </div>
-            <ReportTable headers={["Дата", "Платежи", "Расшифровка", "Перенос (не прибыль)", "Поступления за день", "Расходы наличными", "Остаток кассы", "Комментарий"]} empty={cashRows.length === 0}>
+            <ReportTable headers={["Дата", "Платежи", "Расшифровка", "Перенос (не прибыль)", "Поступления за день", "Расходы за день", "Остаток наличных", "Комментарий"]} empty={cashRows.length === 0}>
               {cashRows.map((collection) => (
                 <tr key={collection.id}>
                   <td>{fmtDate(collection.date)}</td>
@@ -999,7 +1004,19 @@ export function WarehouseReports({
                       );
                     })()}
                   </td>
-                  <td style={{ color: "var(--adm-rust)" }}>−{money(collection.expensesAmount || 0)}</td>
+                  <td style={{ color: "var(--adm-rust)" }}>
+                    {(() => {
+                      const expenses = getCashCollectionExpenseBreakdown(collection);
+                      return (
+                        <>
+                          −{money(expenses.total)}
+                          <small className="admin-muted" style={{ display: "block" }}>
+                            нал {money(expenses.cash)} · ЮМ {money(expenses.card)}
+                          </small>
+                        </>
+                      );
+                    })()}
+                  </td>
                   <td><strong>{money(collection.cashAmount || 0)}</strong></td>
                   <td>{collection.note || "—"}</td>
                 </tr>

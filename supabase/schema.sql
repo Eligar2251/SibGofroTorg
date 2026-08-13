@@ -631,9 +631,11 @@ CREATE TABLE IF NOT EXISTS cash_collections (
   -- Отмеченные поступления на ЮМ; это метка, а не новое движение денег.
   transfer_amount NUMERIC NOT NULL DEFAULT 0,
   items JSONB DEFAULT '[]'::jsonb,
+  -- Расходы двух касс: [{kind, id, title, amount, sourceKind:'cash'|'card'}].
   expenses JSONB DEFAULT '[]'::jsonb,
   -- Дублирует общий приход смены для отчётов: наличные + ЮМ.
   income_amount NUMERIC,
+  -- Общие расходы наличной кассы и карты ЮМ.
   expenses_amount NUMERIC NOT NULL DEFAULT 0,
   note TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
