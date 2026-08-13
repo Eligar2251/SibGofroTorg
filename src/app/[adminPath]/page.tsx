@@ -60,7 +60,6 @@ import {
   stripSalaryMetaTags,
   type BankPayment,
   type Salary,
-  type CashCollection,
 } from "@/lib/warehouse-shared";
 import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
 import {
@@ -346,34 +345,13 @@ export default async function AdminDashboard() {
       href: `/${ADMIN_PATH}/warehouse?tab=salaries`,
     }));
 
-  const collectionFinanceRows: DashboardFinanceRow[] = (
-    cashCollections as CashCollection[]
-  )
-    .map((collection) => {
-      const legacy = collection.cashAmount == null;
-      const amount = legacy
-        ? Number(collection.amount) || 0
-        : Number(collection.transferAmount) || 0;
-      return {
-        id: `collection-${collection.id}`,
-        date: collection.date,
-        direction: "outgoing" as const,
-        account: "cash" as const,
-        category: legacy
-          ? "Сдача кассы (старый учёт)"
-          : "Перевод на карту ЮМ",
-        counterparty: legacy ? "Сдача кассы" : "Карта ЮМ",
-        amount,
-        detail: collection.note || "Закрытие смены кассы",
-        href: `/${ADMIN_PATH}/warehouse?tab=bank`,
-      };
-    })
-    .filter((row) => row.amount > 0);
+  // Закрытие смены — справочная сводка, а не финансовая операция.
+  // Не добавляем её в прибыль/расход: реальные движения уже представлены
+  // исходными платежами, зарплатами и расходами.
 
   const financeRows: DashboardFinanceRow[] = [
     ...paymentFinanceRows,
     ...salaryFinanceRows,
-    ...collectionFinanceRows,
   ];
   const currentMonthFinanceRows = financeRows.filter((row) =>
     row.date.startsWith(dashboardDate.slice(0, 7))

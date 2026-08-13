@@ -115,7 +115,7 @@ const REPORTS: {
   {
     kind: "cash",
     label: "Кассовые смены",
-    description: "Переводы на карту, перенос наличных, расходы и закрытия смен",
+    description: "Перенос, наличный приход, расходы и фактический остаток смен",
     icon: <Banknote size={15} />,
   },
   {
@@ -543,26 +543,6 @@ export function WarehouseReports({
     return opening;
   }, [cashCollections, payments, salaries]);
 
-  const cashPaymentsByCollectionId = useMemo(() => {
-    const amounts = new Map<string, number>();
-    for (const collection of cashCollections) {
-      const amount = (collection.items || [])
-        .filter((item) => !String(item.paymentId || "").startsWith("manual:"))
-        .reduce(
-          (sum, item) =>
-            sum +
-            (item.cashAmount != null
-              ? Number(item.cashAmount) || 0
-              : item.kind === "cash"
-                ? Number(item.amount) || 0
-                : 0),
-          0
-        );
-      amounts.set(collection.id, Math.round(amount * 100) / 100);
-    }
-    return amounts;
-  }, [cashCollections]);
-
   const stockRows = useMemo(
     () =>
       [...stock]
@@ -612,15 +592,22 @@ export function WarehouseReports({
     }
     if (filters.kind === "cash") {
       return [
-        ["Дата", "Размечено", "На карту", "С прошлого дня", "Наличными по платежам смены", "Осталось в кассе", "Расходы", "Комментарий"],
-        ...cashRows.map((collection) => [collection.date, collection.amount, collection.transferAmount || 0, cashOpeningByCollectionId.get(collection.id) || 0, cashPaymentsByCollectionId.get(collection.id) || 0, collection.cashAmount || 0, collection.expensesAmount || 0, collection.note || ""]),
+        ["Дата", "Перенос с прошлого дня (не прибыль)", "Приход наличными за день", "Расходы за день", "Остаток кассы", "Комментарий"],
+        ...cashRows.map((collection) => [
+          collection.date,
+          cashOpeningByCollectionId.get(collection.id) || 0,
+          collection.incomeAmount ?? collection.amount ?? 0,
+          collection.expensesAmount || 0,
+          collection.cashAmount || 0,
+          collection.note || "",
+        ]),
       ];
     }
     return [
       ["Товар", "Артикул", "Остаток", "Порог", "Цена", "Стоимость", "Видимость"],
       ...stockRows.map((product) => [product.name, product.sku || "", product.stockQty, product.stockWarnQty ?? "", product.price ?? "", product.stockQty * (product.price || 0), product.isVisible ? "Виден" : "Скрыт"]),
     ];
-  }, [cashOpeningByCollectionId, cashPaymentsByCollectionId, cashRows, dealPaidMap, dealRows, filters.kind, moneyRows, receiptPaidMap, receiptRows, salaryRows, stockRows, transportRows]);
+  }, [cashOpeningByCollectionId, cashRows, dealPaidMap, dealRows, filters.kind, moneyRows, receiptPaidMap, receiptRows, salaryRows, stockRows, transportRows]);
 
   function exportReport() {
     const safeName = activeMeta.label.replace(/\s+/g, "_");
@@ -921,11 +908,11 @@ export function WarehouseReports({
           <>
             <div className="wh-report-summary">
               <div><ClipboardList size={15} /><span>Смен</span><strong>{cashRows.length}</strong></div>
-              <div><CreditCard size={15} /><span>На карту</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.transferAmount || 0), 0))}</strong></div>
-              <div><Banknote size={15} /><span>Осталось в кассе</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.cashAmount || 0), 0))}</strong></div>
+              <div><ArrowDownLeft size={15} /><span>Приход наличными</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.incomeAmount ?? row.amount ?? 0), 0))}</strong></div>
               <div><ArrowUpRight size={15} /><span>Расходы</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.expensesAmount || 0), 0))}</strong></div>
+              <div><Banknote size={15} /><span>Последний остаток</span><strong>{money(cashRows[0]?.cashAmount || 0)}</strong></div>
             </div>
-            <ReportTable headers={["Дата", "Платежи", "Расшифровка", "На карту", "С прошлого дня", "Наличными по платежам смены", "Осталось после смены", "Расходы", "Комментарий"]} empty={cashRows.length === 0}>
+            <ReportTable headers={["Дата", "Платежи", "Расшифровка", "Перенос (не прибыль)", "Приход за день", "Расходы", "Остаток кассы", "Комментарий"]} empty={cashRows.length === 0}>
               {cashRows.map((collection) => (
                 <tr key={collection.id}>
                   <td>{fmtDate(collection.date)}</td>
@@ -956,11 +943,10 @@ export function WarehouseReports({
                       "Старая запись без расшифровки"
                     )}
                   </td>
-                  <td>{money(collection.transferAmount || 0)}</td>
-                  <td>+{money(Math.max(0, cashOpeningByCollectionId.get(collection.id) || 0))}</td>
-                  <td>+{money(cashPaymentsByCollectionId.get(collection.id) || 0)}</td>
-                  <td>{money(collection.cashAmount || 0)}</td>
-                  <td>{money(collection.expensesAmount || 0)}</td>
+                  <td>+{money(cashOpeningByCollectionId.get(collection.id) || 0)} <small className="admin-muted">не прибыль</small></td>
+                  <td style={{ color: "var(--adm-pine)" }}>+{money(collection.incomeAmount ?? collection.amount ?? 0)}</td>
+                  <td style={{ color: "var(--adm-rust)" }}>−{money(collection.expensesAmount || 0)}</td>
+                  <td><strong>{money(collection.cashAmount || 0)}</strong></td>
                   <td>{collection.note || "—"}</td>
                 </tr>
               ))}

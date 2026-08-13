@@ -11946,3 +11946,71 @@ html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
 @media print {
   .admin-plans-shortcut { display: none !important; }
 }
+
+/* ── Фактическая сводка смены кассы ── */
+.cashc-title { display: inline-flex; align-items: center; gap: 8px; }
+.cashc-title svg { color: var(--adm-pine); }
+.cashc-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  color: var(--adm-ink-soft);
+  background: var(--adm-steel-pale);
+  border: 1px solid var(--adm-steel-line);
+  border-radius: var(--adm-r-sm);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.cashc-info svg { flex: 0 0 auto; color: var(--adm-steel); }
+.cashc-form-head { display: grid; grid-template-columns: minmax(170px, .45fr) minmax(260px, 1.55fr); gap: 10px; margin-bottom: 14px; }
+.cashc-form-head .admin-field { margin: 0; }
+.cashc-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+.cashc-fact {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 11px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+}
+.cashc-fact > span { display: inline-flex; align-items: center; gap: 5px; color: var(--adm-muted); font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.cashc-fact strong { overflow: hidden; color: var(--adm-ink); font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.cashc-fact small { color: var(--adm-muted); font-size: 9px; }
+.cashc-fact--carry { background: var(--adm-paper-warm); }
+.cashc-fact--carry strong { color: var(--adm-steel); }
+.cashc-fact--income { background: var(--adm-pine-pale); border-color: var(--adm-pine-line); }
+.cashc-fact--income strong { color: var(--adm-pine); }
+.cashc-fact--expense { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
+.cashc-fact--expense strong { color: var(--adm-rust); }
+.cashc-fact--balance { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
+.cashc-fact--balance strong { color: var(--adm-kraft); }
+.cashc-ledgers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.cashc-ledger { min-width: 0; overflow: hidden; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
+.cashc-ledger > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; background: var(--adm-paper-warm); border-bottom: 1px solid var(--adm-border-soft); }
+.cashc-ledger > header > div { display: inline-flex; align-items: center; gap: 6px; color: var(--adm-ink); font-size: 11px; }
+.cashc-ledger > header > b { color: var(--adm-pine); font-size: 11px; white-space: nowrap; }
+.cashc-ledger__rows { display: grid; max-height: 210px; overflow-y: auto; }
+.cashc-ledger__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0; padding: 8px 10px; color: var(--adm-ink-soft); background: transparent; border: 0; border-bottom: 1px solid var(--adm-border-soft); font: inherit; font-size: 10px; text-align: left; }
+button.cashc-ledger__row { cursor: pointer; }
+button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
+.cashc-ledger__row:last-child { border-bottom: 0; }
+.cashc-ledger__row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cashc-ledger__row > strong { flex: 0 0 auto; color: var(--adm-pine); white-space: nowrap; }
+.cashc-ledger__expense { color: var(--adm-rust) !important; }
+.cashc-ledger__empty { padding: 20px 10px; color: var(--adm-muted); font-size: 10px; text-align: center; }
+.cashc-equation { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 12px; color: var(--adm-muted); background: var(--adm-paper-warm); border: 1px dashed var(--adm-border-mid); border-radius: var(--adm-r-sm); font-size: 10px; }
+.cashc-equation b { color: var(--adm-sand); }
+.cashc-equation strong { color: var(--adm-ink); font-size: 12px; }
+.cashc-actions { justify-content: flex-end; margin-top: 14px; }
+@media (max-width: 760px) {
+  .cashc-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cashc-ledgers { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .cashc-form-head, .cashc-facts { grid-template-columns: 1fr; }
+  .cashc-actions { align-items: stretch; flex-direction: column-reverse; }
+  .cashc-actions .admin-btn { justify-content: center; }
+}

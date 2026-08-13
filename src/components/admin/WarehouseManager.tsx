@@ -42,11 +42,9 @@ import {
   getBankSummary,
   getPendingPaymentCounterpartyBalances,
   normalizeName,
-  getCollectedBreakdown,
   getDealPaidMap,
   getReceiptPaidMap,
   getCashCarryoverSummary,
-  getPendingTransfersSummary,
   type WarehouseStockRow,
   type ProductStockSummary,
   type WarehouseReceipt,
@@ -718,13 +716,6 @@ export function WarehouseManager({
       ),
     [payments, salaries, cashCollections]
   );
-  // «Перевод»: сколько налички ещё ждёт перевода на карту.
-  // После сдачи кассы (платежи вошли в смену) обнуляется.
-  const pendingTransfers = useMemo(
-    () => getPendingTransfersSummary(payments, cashCollections, localDateIso()),
-    [payments, cashCollections]
-  );
-
   // --- Helper to get purchase price for any product ---
   const getProductPurchasePrice = (productId: string) => {
     // 0. Check product's own purchasePrice (set via card or report)
@@ -888,7 +879,7 @@ export function WarehouseManager({
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
   }, [deals, paymentsForTotals, receipts]);
 
-  // Закрытые смены кассы — перевод на карту и перенос наличного остатка.
+  // Закрытые смены кассы — фактические сводки без движения денег.
   const collectionsSorted = useMemo(
     () =>
       [...cashCollections]
@@ -896,8 +887,18 @@ export function WarehouseManager({
         .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id)),
     [cashCollections]
   );
-  const collectionsTotal = useMemo(
-    () => collectionsSorted.reduce((sum, c) => sum + (c.amount || 0), 0),
+  const collectionsIncomeTotal = useMemo(
+    () => collectionsSorted.reduce(
+      (sum, collection) => sum + (collection.incomeAmount ?? collection.amount ?? 0),
+      0
+    ),
+    [collectionsSorted]
+  );
+  const collectionsExpenseTotal = useMemo(
+    () => collectionsSorted.reduce(
+      (sum, collection) => sum + (collection.expensesAmount || 0),
+      0
+    ),
     [collectionsSorted]
   );
   // Для каждой смены отдельно показываем остаток, пришедший на её начало.
@@ -915,12 +916,6 @@ export function WarehouseManager({
     }
     return opening;
   }, [payments, salaries, cashCollections]);
-  // Раскладка смен: сколько перенесено наличными, сколько ушло на карту.
-  const collectedBreakdown = useMemo(
-    () => getCollectedBreakdown(collectionsSorted),
-    [collectionsSorted]
-  );
-
   // Старая версия «закрыть без перевода» не создавала документ сдачи,
   // а просто ставила платежам «вне баланса». Восстанавливаем виртуальные
   // документы по общему updatedAt, чтобы они были видны в проведённых и
@@ -962,15 +957,12 @@ export function WarehouseManager({
     return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date));
   }, [payments]);
 
-  // Сдача кассы идёт через модалку: там каждый платёж помечается
-  // «наличные / перевод», чтобы в отчёте было видно, сколько куда ушло.
+  // Сводка смены показывает перенос, наличный приход, расходы и остаток.
+  // Она ничего не переводит и не списывает.
   function handleCollectCash() {
-    if (bankSummary.cashBalance < -0.009) {
-      setCollectError("Остаток кассы отрицательный — сначала проверьте учёт прошлых операций.");
-      return;
-    }
-    // Сдача кассы — это закрытие смены. Нулевая смена тоже должна попасть
-    // в журнал, а перенесённый остаток при этом остаётся в кассе.
+    // Сводка фиксирует фактические цифры и ничего не списывает, поэтому её
+    // можно сохранить даже при отрицательном остатке — это помогает увидеть
+    // расхождение, а не скрывает его.
     setCollectError("");
     setShowCollect(true);
   }
@@ -1008,8 +1000,8 @@ export function WarehouseManager({
 
   async function handleDeleteCollection(id: string, noAccounting = false) {
     const message = noAccounting
-      ? "Вернуть скрытые старые платежи в список сдачи? Баланс кассы не изменится."
-      : "Отменить закрытие смены? Инкассированная сумма вернётся в кассу, а платежи снова появятся для разметки.";
+      ? "Вернуть скрытые старые платежи в список сводки? Баланс кассы не изменится."
+      : "Удалить сводку смены? Деньги и баланс не изменятся; наличные платежи снова появятся в отчёте.";
     if (!confirm(message)) return;
     setCollecting(true);
     try {
@@ -2704,9 +2696,9 @@ export function WarehouseManager({
                       >
                         <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
                         <span>
-                          Касса в минусе. Обычно это значит, что приход, покрытый
-                          прошлой сдачей, стал безналичным. Проверьте типы платежей
-                          и суммы сдач — цифры разошлись.
+                          Касса в минусе: наличные расходы превысили доступный приход
+                          и перенос прошлых дней. Сводку всё равно можно сохранить,
+                          чтобы зафиксировать фактическое расхождение.
                         </span>
                       </div>
                     )}
@@ -2715,11 +2707,11 @@ export function WarehouseManager({
                     <button
                       type="button"
                       className="admin-btn admin-btn--primary admin-btn--sm"
-                      disabled={collecting || bankSummary.cashBalance < -0.009}
+                      disabled={collecting}
                       onClick={handleCollectCash}
                     >
                       {collecting ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
-                      Сдать кассу
+                      Сводка кассы
                     </button>
                   </div>
                 </div>
@@ -3274,413 +3266,181 @@ export function WarehouseManager({
 
             <div className="admin-card wh-cashcollect" style={{ marginTop: 12 }}>
               <div className="admin-card__head">
-                <h3 className="admin-card__title">
-                  <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                  Отчёт по закрытым сменам кассы
-                </h3>
+                <div>
+                  <h3 className="admin-card__title">
+                    <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
+                    Фактические сводки кассы
+                  </h3>
+                  <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
+                    Сводка не является платёжной операцией и не влияет на прибыль
+                  </div>
+                </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <span className="admin-badge admin-badge--muted">
-                    В кассе: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
-                  </span>
-                  <span className="admin-badge admin-badge--blue">
-                    <CreditCard size={10} /> На карту: {fmt(collectedBreakdown.transfer)} ₽
+                    Сейчас в кассе: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
-                    <Banknote size={10} /> Перенесено в кассе: {fmt(collectedBreakdown.cash)} ₽
+                    <ArrowDownLeft size={10} /> Приход: {fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
                   </span>
-                  <span className="admin-badge admin-badge--green">
-                    Размечено по сменам: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
+                  <span className="admin-badge admin-badge--red">
+                    <ArrowUpRight size={10} /> Расходы: {fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
                   </span>
                 </div>
               </div>
-              <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
-                <div className="admin-muted" style={{ fontSize: 13 }}>
-                  Кнопка «Сдать кассу» находится в верхнем блоке банка рядом с остатком наличных.
-                  В смену попадают <b>только наличные платежи</b> — безналичный счёт не
-                  затрагивается. Часть <b>на карту ЮМ</b> вычитается
-                  из кассы, а часть <b>наличными</b> остаётся в кассе и автоматически
-                  переносится на следующий день.
+              <div className="admin-card__pad" style={{ display: "grid", gap: 12 }}>
+                <div className="admin-muted" style={{ fontSize: 12 }}>
+                  Перенос с прошлого дня указан отдельно: это входящий остаток, а не новый приход и не прибыль.
+                  Сохранение смены ничего не переводит и не списывает.
                 </div>
                 {collectionsSorted.length === 0 ? (
-                  <div className="admin-empty" style={{ padding: 16 }}>
-                    <p>Касса ещё ни разу не сдавалась</p>
+                  <div className="admin-empty" style={{ padding: 18 }}>
+                    <p>Сводок кассы пока нет</p>
                   </div>
                 ) : (
-                  <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
+                  <div className="admin-table-wrap" style={{ maxHeight: 560, overflow: "auto" }}>
                     <table className="admin-table">
                       <thead>
                         <tr>
                           <th>Дата</th>
-                          <th style={{ textAlign: "right" }}>На карту</th>
-                          <th style={{ textAlign: "right" }}>В кассе после смены</th>
-                          <th style={{ textAlign: "right" }}>Размечено</th>
+                          <th style={{ textAlign: "right" }}>Перенос</th>
+                          <th style={{ textAlign: "right" }}>Приход за день</th>
+                          <th style={{ textAlign: "right" }}>Расходы</th>
+                          <th style={{ textAlign: "right" }}>Остаток</th>
                           <th>Комментарий</th>
-                          <th></th>
+                          <th />
                         </tr>
                       </thead>
                       <tbody>
-                        {collectionsSorted.map((c) => {
-                          const legacyCollection = c.cashAmount == null;
-                          const transfer =
-                            Math.round(
-                              (legacyCollection
-                                ? c.amount || 0
-                                : c.transferAmount || 0) * 100
-                            ) / 100;
-                          // У старых записей разбивки не было и вся сумма
-                          // уменьшала кассу — не считаем её переносом.
-                          const cashPart =
-                            Math.round(
-                              (legacyCollection ? 0 : c.cashAmount || 0) * 100
-                            ) / 100;
-                          const carriedFromPreviousDays = Math.max(
-                            0,
-                            Math.round((cashOpeningByCollectionId.get(c.id) || 0) * 100) / 100
-                          );
-                          // В кассовом приходе отделяем реальные платежи смены
-                          // от технической строки старого остатка (manual:*).
-                          const cashFromShiftPayments = Math.round(
-                            (c.items || [])
-                              .filter((item) => !String(item.paymentId || "").startsWith("manual:"))
-                              .reduce(
-                                (sum, item) =>
-                                  sum +
-                                  (item.cashAmount != null
-                                    ? Number(item.cashAmount) || 0
-                                    : item.kind === "cash"
-                                      ? Number(item.amount) || 0
-                                      : 0),
-                                0
-                              ) * 100
+                        {collectionsSorted.map((collection) => {
+                          const opening = Math.round(
+                            (cashOpeningByCollectionId.get(collection.id) || 0) * 100
                           ) / 100;
-                          const marked = (c.items || []).length;
-                          const noAccounting = (c.items || []).some(
-                            (item) => item.noAccounting
-                          );
-                          const exp = c.expenses || [];
-                          const expSum =
-                            Math.round((c.expensesAmount || 0) * 100) / 100;
-                          const income =
-                            Math.round(
-                              (c.incomeAmount != null ? c.incomeAmount : c.amount) * 100
-                            ) / 100;
-                          const isOpen = openCollections.has(c.id);
-                          const canOpen = marked > 0 || exp.length > 0;
+                          const income = Math.round(
+                            (collection.incomeAmount ?? collection.amount ?? 0) * 100
+                          ) / 100;
+                          const expense = Math.round(
+                            (collection.expensesAmount || 0) * 100
+                          ) / 100;
+                          const closing = collection.cashAmount != null
+                            ? Math.round(collection.cashAmount * 100) / 100
+                            : Math.round((opening + income - expense) * 100) / 100;
+                          const items = collection.items || [];
+                          const expenseRows = collection.expenses || [];
+                          const noAccounting = items.some((item) => item.noAccounting);
+                          const canOpen = items.length > 0 || expenseRows.length > 0;
+                          const isOpen = openCollections.has(collection.id);
                           return (
-                            <React.Fragment key={c.id}>
-                            <tr
-                              className={canOpen ? "wh-cc-row" : undefined}
-                              onClick={
-                                canOpen
-                                  ? () =>
-                                      setOpenCollections((prev) => {
-                                        const next = new Set(prev);
-                                        if (next.has(c.id)) next.delete(c.id);
-                                        else next.add(c.id);
-                                        return next;
-                                      })
-                                  : undefined
-                              }
-                              style={canOpen ? { cursor: "pointer" } : undefined}
-                            >
-                              <td>
-                                {canOpen && (
-                                  <ChevronRight
-                                    size={13}
-                                    style={{
-                                      verticalAlign: "middle",
-                                      marginRight: 4,
-                                      transform: isOpen ? "rotate(90deg)" : "none",
-                                      transition: "transform 0.15s",
-                                    }}
-                                  />
-                                )}
-                                {fmtDate(c.date)}
-                                {noAccounting && (
-                                  <span
-                                    className="admin-badge admin-badge--amber"
-                                    style={{ marginLeft: 6 }}
-                                    title="Платежи только скрыты из списка сдачи; баланс не менялся"
+                            <React.Fragment key={collection.id}>
+                              <tr
+                                className={canOpen ? "wh-cc-row" : undefined}
+                                style={canOpen ? { cursor: "pointer" } : undefined}
+                                onClick={canOpen ? () => setOpenCollections((previous) => {
+                                  const next = new Set(previous);
+                                  if (next.has(collection.id)) next.delete(collection.id);
+                                  else next.add(collection.id);
+                                  return next;
+                                }) : undefined}
+                              >
+                                <td>
+                                  {canOpen && (
+                                    <ChevronRight
+                                      size={13}
+                                      style={{
+                                        verticalAlign: "middle",
+                                        marginRight: 4,
+                                        transform: isOpen ? "rotate(90deg)" : "none",
+                                      }}
+                                    />
+                                  )}
+                                  {fmtDate(collection.date)}
+                                  {noAccounting && (
+                                    <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>
+                                      старое закрытие
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ textAlign: "right", color: "var(--adm-steel)" }}>
+                                  +{fmt(opening)} ₽
+                                  <small style={{ display: "block", color: "var(--adm-muted)" }}>не прибыль</small>
+                                </td>
+                                <td style={{ textAlign: "right", color: "var(--adm-pine)", fontWeight: 700 }}>
+                                  +{fmt(income)} ₽
+                                </td>
+                                <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 700 }}>
+                                  −{fmt(expense)} ₽
+                                </td>
+                                <td style={{ textAlign: "right", fontWeight: 800 }}>{fmt(closing)} ₽</td>
+                                <td>{collection.note || "—"}</td>
+                                <td onClick={(event) => event.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                                    disabled={collecting}
+                                    onClick={() => handleDeleteCollection(collection.id, noAccounting)}
                                   >
-                                    без учёта и движения денег
-                                  </span>
-                                )}
-                                {legacyCollection && (
-                                  <span
-                                    className="admin-badge admin-badge--muted"
-                                    style={{ marginLeft: 6 }}
-                                    title="Старая запись без разбивки: вся сумма была вычтена из кассы"
-                                  >
-                                    старый учёт
-                                  </span>
-                                )}
-                                {marked > 0 && (
-                                  <span
-                                    className="admin-badge admin-badge--muted"
-                                    style={{ marginLeft: 6 }}
-                                    title="Платежей размечено в этой сдаче"
-                                  >
-                                    {marked} плат.
-                                  </span>
-                                )}
-                                {expSum > 0 && (
-                                  <span
-                                    className="admin-badge admin-badge--red"
-                                    style={{ marginLeft: 6 }}
-                                    title="Потрачено налом в этот день"
-                                  >
-                                    −{fmt(expSum)} ₽
-                                  </span>
-                                )}
-                              </td>
-                              <td style={{ textAlign: "right", fontWeight: 600, color: "var(--adm-steel)" }}>
-                                {transfer > 0 ? `${fmt(transfer)} ₽` : "—"}
-                              </td>
-                              <td style={{ textAlign: "right", fontWeight: 600 }}>
-                                {(() => {
-                                  // Пустая смена (платежей не было): показываем
-                                  // фактическую наличность на конец дня — перенос
-                                  // с прошлого дня минус траты (ЗП) и перевод на карту.
-                                  const endOfDayCash =
-                                    Math.round(
-                                      (carriedFromPreviousDays + cashPart - expSum - transfer) * 100
-                                    ) / 100;
-                                  if (cashPart > 0) return `${fmt(cashPart)} ₽`;
-                                  if (endOfDayCash > 0.009) {
-                                    return (
-                                      <>
-                                        {fmt(endOfDayCash)} ₽
-                                        <small
-                                          style={{ display: "block", marginTop: 2, color: "var(--adm-muted)", fontWeight: 500 }}
-                                        >
-                                          наличность на конец дня
-                                        </small>
-                                      </>
-                                    );
-                                  }
-                                  return "—";
-                                })()}
-                                {carriedFromPreviousDays > 0.009 && (
-                                  <small
-                                    style={{ display: "block", marginTop: 3, color: "var(--adm-muted)", fontWeight: 500 }}
-                                    title="Наличность, которая была в кассе на начало дня"
-                                  >
-                                    +{fmt(carriedFromPreviousDays)} ₽ с прошлого дня
-                                  </small>
-                                )}
-                                {cashFromShiftPayments > 0.009 && (
-                                  <small
-                                    style={{ display: "block", marginTop: 2, color: "var(--adm-pine)", fontWeight: 500 }}
-                                    title="Наличная часть платежей, размеченных в этой смене"
-                                  >
-                                    +{fmt(cashFromShiftPayments)} ₽ по платежам смены
-                                  </small>
-                                )}
-                              </td>
-                              <td style={{ textAlign: "right", fontWeight: 700, color: "var(--adm-pine)" }}>
-                                +{fmt(Math.round(c.amount * 100) / 100)} ₽
-                              </td>
-                              <td>{c.note || "—"}</td>
-                              <td style={{ textAlign: "right" }}>
-                                <button
-                                  type="button"
-                                  className="admin-btn admin-btn--ghost admin-btn--sm"
-                                  disabled={collecting}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteCollection(c.id, noAccounting);
-                                  }}
-                                >
-                                  <Trash2 size={13} /> {noAccounting ? "Вернуть в список" : "Отменить закрытие"}
-                                </button>
-                              </td>
-                            </tr>
-
-                            {/* ── Детализация смены: платежи, траты, куда ушло ── */}
-                            {isOpen && (
-                              <tr className="wh-cc-details">
-                                <td colSpan={6}>
-                                  <div className="wh-cc-grid">
-                                    {/* Платежи, вошедшие в сдачу */}
-                                    <div className="wh-cc-box">
-                                      <div className="wh-cc-box__head">
-                                        <Banknote size={13} /> Платежи за наличку
-                                        <b>+{fmt(cashFromShiftPayments)} ₽</b>
-                                      </div>
-                                      {carriedFromPreviousDays > 0.009 && (
-                                        <div className="wh-cc-line">
-                                          <span>
-                                            <History size={11} /> Наличка с прошлого дня
-                                          </span>
-                                          <span className="wh-cc-line__val">
-                                            +{fmt(carriedFromPreviousDays)} ₽
-                                          </span>
-                                        </div>
-                                      )}
-                                      {marked === 0 ? (
-                                        <div className="wh-cc-empty">
-                                          {legacyCollection
-                                            ? "Платежи не размечены (старая сдача)"
-                                            : "Наличных платежей в смене не было"}
-                                        </div>
-                                      ) : (
-                                        (c.items || []).map((it, i) => (
-                                          <div key={`${c.id}-i${i}`} className="wh-cc-line">
-                                            {/* Технические строки manual:* не являются платежом —
-                                                у них нет карточки, кнопка вела в ошибку. */}
-                                            {String(it.paymentId || "").startsWith("manual:") ? (
-                                              <span className="wh-cc-payment-link" style={{ cursor: "default" }}>
-                                                {it.number ? `ПЛ-${it.number} · ` : ""}
-                                                {it.counterparty || "Без контрагента"}
-                                              </span>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                className="wh-cc-payment-link"
-                                                onClick={() => setDetailPaymentId(it.paymentId)}
-                                              >
-                                                {it.number ? `ПЛ-${it.number} · ` : ""}
-                                                {it.counterparty || "Без контрагента"}
-                                              </button>
-                                            )}
-                                            <span className="wh-cc-line__val">
-                                              {fmt(it.amount)} ₽
-                                              {/* Разбитый платёж: показываем все части */}
-                                              {(it.cashAmount != null ||
-                                                it.cardAmount != null ||
-                                                it.expenseAmount != null) &&
-                                              (it.expenseAmount || 0) > 0 ? (
-                                                <>
-                                                  {(it.cashAmount || 0) > 0 && (
-                                                    <span className="wh-cc-dest wh-cc-dest--cash">
-                                                      <Banknote size={10} />{" "}
-                                                      {fmt(it.cashAmount || 0)} нал
-                                                    </span>
-                                                  )}
-                                                  {(it.cardAmount || 0) > 0 && (
-                                                    <span className="wh-cc-dest wh-cc-dest--card">
-                                                      <CreditCard size={10} />{" "}
-                                                      {fmt(it.cardAmount || 0)} карта
-                                                    </span>
-                                                  )}
-                                                  <span className="wh-cc-dest wh-cc-dest--exp">
-                                                    <Wallet size={10} />{" "}
-                                                    {fmt(it.expenseAmount || 0)} расход
-                                                  </span>
-                                                </>
-                                              ) : (
-                                                <span
-                                                  className={`wh-cc-dest wh-cc-dest--${
-                                                    it.kind === "cash" ? "cash" : "card"
-                                                  }`}
-                                                >
-                                                  {it.kind === "cash" ? (
-                                                    <>
-                                                      <Banknote size={10} /> наличка
-                                                    </>
-                                                  ) : (
-                                                    <>
-                                                      <CreditCard size={10} /> на карту
-                                                    </>
-                                                  )}
-                                                </span>
-                                              )}
-                                            </span>
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
-
-                                    {/* Траты налом */}
-                                    <div className="wh-cc-box">
-                                      <div className="wh-cc-box__head">
-                                        <Wallet size={13} /> Потрачено налом
-                                        <b style={{ color: "var(--adm-rust)" }}>
-                                          −{fmt(expSum)} ₽
-                                        </b>
-                                      </div>
-                                      {exp.length === 0 ? (
-                                        <div className="wh-cc-empty">Трат не было</div>
-                                      ) : (
-                                        exp.map((e, i) => (
-                                          <div key={`${c.id}-e${i}`} className="wh-cc-line">
-                                            <span>
-                                              {e.title}
-                                              {e.comment && (
-                                                <span className="wh-cc-note"> · {e.comment}</span>
-                                              )}
-                                            </span>
-                                            <span
-                                              className="wh-cc-line__val"
-                                              style={{ color: "var(--adm-rust)" }}
-                                            >
-                                              −{fmt(e.amount)} ₽
-                                            </span>
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
-
-                                    {/* Куда поступили деньги */}
-                                    <div className="wh-cc-box">
-                                      <div className="wh-cc-box__head">
-                                        Куда поступили деньги
-                                      </div>
-                                      <div className="wh-cc-line">
-                                        <span>
-                                          <CreditCard size={11} /> Перевод на карту
-                                        </span>
-                                        <span
-                                          className="wh-cc-line__val"
-                                          style={{ color: "var(--adm-steel)" }}
-                                        >
-                                          {fmt(transfer)} ₽
-                                        </span>
-                                      </div>
-                                      {carriedFromPreviousDays > 0.009 && (
-                                        <div className="wh-cc-line">
-                                          <span>
-                                            <History size={11} /> Перенесено с прошлого дня
-                                          </span>
-                                          <span className="wh-cc-line__val">
-                                            {fmt(carriedFromPreviousDays)} ₽
-                                          </span>
-                                        </div>
-                                      )}
-                                      <div className="wh-cc-line">
-                                        <span>
-                                          <Banknote size={11} /> Осталось после смены
-                                        </span>
-                                        <span className="wh-cc-line__val">
-                                          {fmt(cashPart)} ₽
-                                        </span>
-                                      </div>
-                                      <div className="wh-cc-total">
-                                        В наличных: {carriedFromPreviousDays > 0.009 && (
-                                          <>+{fmt(carriedFromPreviousDays)} ₽ с прошлого дня, </>
-                                        )}
-                                        +{fmt(cashFromShiftPayments)} ₽ по платежам смены.
-                                        {expSum > 0 && <> Траты наличными: −{fmt(expSum)} ₽.</>}
-                                        {" "}<b>После смены: {fmt(cashPart)} ₽</b>
-                                      </div>
-                                    </div>
-                                  </div>
+                                    <RotateCcw size={12} /> Отменить
+                                  </button>
                                 </td>
                               </tr>
-                            )}
+                              {isOpen && (
+                                <tr className="wh-cc-detail-row">
+                                  <td colSpan={7}>
+                                    <div className="wh-cc-detail-grid">
+                                      <div className="wh-cc-box">
+                                        <div className="wh-cc-box__head">
+                                          <ArrowDownLeft size={13} /> Наличный приход
+                                          <b style={{ color: "var(--adm-pine)" }}>+{fmt(income)} ₽</b>
+                                        </div>
+                                        {items.length === 0 ? (
+                                          <div className="wh-cc-empty">Поступлений не было</div>
+                                        ) : items.map((item) => (
+                                          <div key={`${collection.id}-${item.paymentId}`} className="wh-cc-line">
+                                            <span>ПЛ-{item.number || "—"} · {item.counterparty || ""}</span>
+                                            <span className="wh-cc-line__val">+{fmt(item.amount || 0)} ₽</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="wh-cc-box">
+                                        <div className="wh-cc-box__head">
+                                          <ArrowUpRight size={13} /> Расходы за день
+                                          <b style={{ color: "var(--adm-rust)" }}>−{fmt(expense)} ₽</b>
+                                        </div>
+                                        {expenseRows.length === 0 ? (
+                                          <div className="wh-cc-empty">Расходов не было</div>
+                                        ) : expenseRows.map((row, index) => (
+                                          <div key={`${collection.id}-expense-${index}`} className="wh-cc-line">
+                                            <span>{row.title}{row.comment ? ` · ${row.comment}` : ""}</span>
+                                            <span className="wh-cc-line__val" style={{ color: "var(--adm-rust)" }}>
+                                              −{fmt(row.amount)} ₽
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="wh-cc-box">
+                                        <div className="wh-cc-box__head">Расчёт остатка</div>
+                                        <div className="wh-cc-line"><span><History size={11} /> Перенос</span><b>+{fmt(opening)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><ArrowDownLeft size={11} /> Приход</span><b>+{fmt(income)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><ArrowUpRight size={11} /> Расходы</span><b>−{fmt(expense)} ₽</b></div>
+                                        <div className="wh-cc-total">Остаток на конец дня: <b>{fmt(closing)} ₽</b></div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
                             </React.Fragment>
                           );
                         })}
                         <tr className="wh-cashcollect__total">
-                          <td style={{ fontWeight: 800 }}>Итого по сменам</td>
-                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-steel)" }}>
-                            {fmt(collectedBreakdown.transfer)} ₽
+                          <td style={{ fontWeight: 800 }}>Итого за период</td>
+                          <td />
+                          <td style={{ textAlign: "right", color: "var(--adm-pine)", fontWeight: 800 }}>
+                            +{fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
+                          </td>
+                          <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 800 }}>
+                            −{fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
                           </td>
                           <td style={{ textAlign: "right", fontWeight: 800 }}>
-                            {fmt(collectedBreakdown.cash)} ₽
-                          </td>
-                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-pine)" }}>
-                            +{fmt(Math.round(collectionsTotal * 100) / 100)} ₽
+                            {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
                           </td>
                           <td colSpan={2} />
                         </tr>
@@ -3700,10 +3460,10 @@ export function WarehouseManager({
                   <div>
                     <h3 className="admin-card__title">
                       <Banknote size={15} style={{ verticalAlign: "middle", marginRight: 7 }} />
-                      Проведённые сдачи кассы
+                      Сохранённые сводки кассы
                     </h3>
                     <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
-                      Отдельные документы кассы — не банковские платежи
+                      Справочные отчёты — не платежи и не движения денег
                     </div>
                   </div>
                   <span className="admin-badge admin-badge--muted">
@@ -3751,7 +3511,14 @@ export function WarehouseManager({
                           (sum, item) => sum + (item.amount || 0),
                           0
                         )
-                      : collection.amount;
+                      : (collection.incomeAmount ?? collection.amount);
+                    const opening = Math.round(
+                      (cashOpeningByCollectionId.get(collection.id) || 0) * 100
+                    ) / 100;
+                    const expenses = Math.round((collection.expensesAmount || 0) * 100) / 100;
+                    const closing = collection.cashAmount != null
+                      ? Math.round(collection.cashAmount * 100) / 100
+                      : Math.round((opening + documentAmount - expenses) * 100) / 100;
                     return (
                       <div key={collection.id} className="bank-cash-posting">
                         <span className="bank-cash-posting__icon"><Banknote size={15} /></span>
@@ -3760,9 +3527,9 @@ export function WarehouseManager({
                             <strong>
                               {noAccounting
                                 ? "Закрытие старых платежей без движения денег"
-                                : "Сдача кассы"}
+                                : "Сводка смены кассы"}
                             </strong>
-                            <span className="admin-badge admin-badge--green">проведено</span>
+                            <span className="admin-badge admin-badge--green">сохранено</span>
                             {noAccounting && (
                               <span className="admin-badge admin-badge--blue">без учёта</span>
                             )}
@@ -3772,8 +3539,10 @@ export function WarehouseManager({
                             <span>{(collection.items || []).length} платежей</span>
                             {!noAccounting && (
                               <>
-                                <span>на карту {fmt(collection.transferAmount || 0)} ₽</span>
-                                <span>в кассе {fmt(collection.cashAmount || 0)} ₽</span>
+                                <span>перенос +{fmt(opening)} ₽</span>
+                                <span>приход +{fmt(documentAmount)} ₽</span>
+                                <span>расход −{fmt(expenses)} ₽</span>
+                                <span>остаток {fmt(closing)} ₽</span>
                               </>
                             )}
                             {collection.note && <span>{collection.note}</span>}
@@ -3788,7 +3557,7 @@ export function WarehouseManager({
                             handleDeleteCollection(collection.id, noAccounting)
                           }
                         >
-                          <RotateCcw size={12} /> Отменить проведение
+                          <RotateCcw size={12} /> Удалить сводку
                         </button>
                       </div>
                     );

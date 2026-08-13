@@ -5,42 +5,24 @@ import {
   restoreClosedOldCashPayments,
   getCashCollections,
   getPendingCashPayments,
-  normalizeCashKind,
 } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
-import { getSettings } from "@/lib/supabase-queries";
-import {
-  CASH_CARD_HOLDER_SETTING_KEY,
-  DEFAULT_CASH_CARD_HOLDER,
-} from "@/lib/warehouse-shared";
 import { logAdminAction } from "@/lib/activity-log";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
   try {
-    // ?pending=1 — наличные поступления кассы, ещё не вошедшие в сдачу.
-    // Безналичные платежи расчётного счёта сюда не попадают.
-    // При сдаче их размечают: «на карту (инкассация)» или «наличными».
+    // ?pending=1 — данные для фактической сводки смены. Только наличный
+    // приход кассы, расходы и перенос; без банка, ЮМ и переводов.
     const { searchParams } = new URL(request.url);
     if (searchParams.get("pending")) {
-      const [cashData, settings] = await Promise.all([
-        getPendingCashPayments(),
-        getSettings().catch(() => ({} as Record<string, string>))
-      ]);
-      // Имя получателя инкассации на карту настраивается в «Настройках».
-      const cardHolder =
-        String(settings[CASH_CARD_HOLDER_SETTING_KEY] || "").trim() ||
-        DEFAULT_CASH_CARD_HOLDER;
+      const cashData = await getPendingCashPayments();
       return NextResponse.json({
         pending: cashData.pending,
-        // Платежи, которые старая версия ошибочно убрала из баланса.
-        // Показываем их в настройках сдачи с возможностью возврата.
         closed: cashData.closed,
-        unlinkedCashBalance: cashData.unlinkedCashBalance,
-        // Наличные траты (ЗП и прочее): уменьшают сумму к сдаче.
         expenses: cashData.expenses,
-        cardHolder,
+        dailySummaries: cashData.dailySummaries,
       });
     }
     const collections = await getCashCollections();
@@ -94,43 +76,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, ...res });
     }
 
-    // Разметка платежей: [{ paymentId, kind: "card" | "cash" }]
-    // "card" — инкассация на карту, "cash" — оставить в кассе на следующий день.
+    // Закрытие смены лишь фиксирует, какие наличные платежи вошли в отчёт.
+    // Никаких направлений, переводов и ручных списаний здесь больше нет.
     const items = Array.isArray(body.items)
       ? body.items
-          .map((it: any) => ({
-            paymentId: String(it?.paymentId || "").trim(),
-            kind: normalizeCashKind(it?.kind),
-            // Ручная разбивка платежа: наличка / карта / расход.
-            // Суммы проверяются на сервере против суммы платежа.
-            cashAmount:
-              it?.cashAmount != null ? Number(it.cashAmount) : undefined,
-            cardAmount:
-              it?.cardAmount != null ? Number(it.cardAmount) : undefined,
-            expenseAmount:
-              it?.expenseAmount != null ? Number(it.expenseAmount) : undefined,
+          .map((item: any) => ({
+            paymentId: String(item?.paymentId || "").trim(),
           }))
-          .filter((it: { paymentId: string }) => it.paymentId)
+          .filter((item: { paymentId: string }) => item.paymentId)
       : undefined;
 
     const result = await collectCash(
       body.note || null,
       items,
-      body.date || null,
-      body.unlinkedCashAmount != null
-        ? {
-            amount: Number(body.unlinkedCashAmount) || 0,
-            kind: normalizeCashKind(body.unlinkedCashKind),
-          }
-        : null,
-      // Расход с остатка кассы (например, ЗП в смену без приходов):
-      // вычитается из переноса прошлых дней даже при нулевом приходе.
-      body.carryoverExpenseAmount != null && Number(body.carryoverExpenseAmount) > 0
-        ? {
-            amount: Number(body.carryoverExpenseAmount) || 0,
-            comment: body.carryoverExpenseComment || null,
-          }
-        : null
+      body.date || null
     );
 
     await logAdminAction(
@@ -139,12 +98,11 @@ export async function POST(request: NextRequest) {
       "create",
       "cash-collection",
       "cash-collection",
-      `Закрыта смена за ${result.date} на ${result.amount} ₽ (оставлено в кассе ${result.cashAmount} ₽, на карту ${result.transferAmount} ₽)`,
+      `Сохранена сводка кассы за ${result.date}: приход ${result.amount} ₽, остаток ${result.cashAmount} ₽`,
       {
         date: result.date,
-        amount: result.amount,
-        cashAmount: result.cashAmount,
-        cardAmount: result.transferAmount,
+        incomeAmount: result.amount,
+        closingBalance: result.cashAmount,
       }
     );
 

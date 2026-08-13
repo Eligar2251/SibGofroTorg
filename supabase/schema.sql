@@ -617,15 +617,23 @@ DROP TRIGGER IF EXISTS trg_salaries_updated ON salaries;
 CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
--- 22.1. СДАЧА КАССЫ
--- Списание всего остатка наличных из кассы в отдельный журнал сдач.
--- В безналичный банковский счёт эти суммы не прибавляются.
--- Каждая запись = одна сданная смена (дата + сумма + примечание).
+-- 22.1. ФАКТИЧЕСКИЕ СВОДКИ КАССОВЫХ СМЕН
+-- Справочный снимок дня: перенос, наличный приход, расходы и остаток.
+-- Запись не является движением денег и не влияет на прибыль/баланс сама.
 -- =========================================================
 CREATE TABLE IF NOT EXISTS cash_collections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   date TEXT NOT NULL DEFAULT '',
+  -- Наличный приход за день без переноса прошлых дней.
   amount NUMERIC NOT NULL DEFAULT 0,
+  -- Фактический остаток кассы на конец дня.
+  cash_amount NUMERIC NOT NULL DEFAULT 0,
+  -- Устаревшее поле; новые сводки всегда сохраняют 0.
+  transfer_amount NUMERIC NOT NULL DEFAULT 0,
+  items JSONB DEFAULT '[]'::jsonb,
+  expenses JSONB DEFAULT '[]'::jsonb,
+  income_amount NUMERIC,
+  expenses_amount NUMERIC NOT NULL DEFAULT 0,
   note TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
