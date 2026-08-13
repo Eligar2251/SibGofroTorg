@@ -9232,7 +9232,7 @@ body:has(.admin-modal-overlay) {
 .wh-report-table th, .wh-report-table td { padding: 8px 10px; font-size: 10px; vertical-align: top; }
 .wh-report-table td { max-width: 340px; line-height: 1.4; }
 .wh-report-table td a,
-.wh-report-payment-open { padding: 0; color: var(--adm-steel); background: none; border: 0; cursor: pointer; font: inherit; font-weight: 800; text-align: left; }
+.wh-report-payment-open { display: inline-flex; align-items: center; gap: 6px; padding: 0; color: var(--adm-steel); background: none; border: 0; cursor: pointer; font: inherit; font-weight: 800; text-align: left; }
 .wh-report-payment-links { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .wh-report-empty { padding: 42px 20px; color: var(--adm-sand); font-size: 12px; text-align: center; }
 
@@ -12243,7 +12243,7 @@ html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
 .cashc-info svg { flex: 0 0 auto; color: var(--adm-steel); }
 .cashc-form-head { display: grid; grid-template-columns: minmax(170px, .45fr) minmax(260px, 1.55fr); gap: 10px; margin-bottom: 14px; }
 .cashc-form-head .admin-field { margin: 0; }
-.cashc-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+.cashc-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
 .cashc-fact {
   display: grid;
   gap: 3px;
@@ -12258,8 +12258,12 @@ html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
 .cashc-fact small { color: var(--adm-muted); font-size: 9px; }
 .cashc-fact--carry { background: var(--adm-paper-warm); }
 .cashc-fact--carry strong { color: var(--adm-steel); }
-.cashc-fact--income { background: var(--adm-pine-pale); border-color: var(--adm-pine-line); }
-.cashc-fact--income strong { color: var(--adm-pine); }
+.cashc-fact--income,
+.cashc-fact--cash { background: var(--adm-pine-pale); border-color: var(--adm-pine-line); }
+.cashc-fact--income strong,
+.cashc-fact--cash strong { color: var(--adm-pine); }
+.cashc-fact--card { background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
+.cashc-fact--card strong { color: var(--adm-steel); }
 .cashc-fact--expense { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
 .cashc-fact--expense strong { color: var(--adm-rust); }
 .cashc-fact--balance { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
@@ -12276,11 +12280,30 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 .cashc-ledger__row:last-child { border-bottom: 0; }
 .cashc-ledger__row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cashc-ledger__row > strong { flex: 0 0 auto; color: var(--adm-pine); white-space: nowrap; }
+.cashc-ledger__payment { display: flex; align-items: center; gap: 6px; }
+.cashc-ledger__payment > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cashc-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid var(--adm-border);
+  border-radius: 999px;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+}
+.cashc-kind--cash { color: var(--adm-pine); background: var(--adm-pine-pale); border-color: var(--adm-pine-line); }
+.cashc-kind--card { color: var(--adm-steel); background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
+.cashc-ledger__card { color: var(--adm-steel) !important; }
 .cashc-ledger__expense { color: var(--adm-rust) !important; }
 .cashc-ledger__empty { padding: 20px 10px; color: var(--adm-muted); font-size: 10px; text-align: center; }
 .cashc-equation { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 12px; color: var(--adm-muted); background: var(--adm-paper-warm); border: 1px dashed var(--adm-border-mid); border-radius: var(--adm-r-sm); font-size: 10px; }
 .cashc-equation b { color: var(--adm-sand); }
 .cashc-equation strong { color: var(--adm-ink); font-size: 12px; }
+.cashc-equation__sep { width: 1px; height: 18px; margin: 0 3px; background: var(--adm-border-mid); }
 .cashc-actions { justify-content: flex-end; margin-top: 14px; }
 @media (max-width: 760px) {
   .cashc-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }

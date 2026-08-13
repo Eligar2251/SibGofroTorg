@@ -56,6 +56,7 @@ import {
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
   isYmCardSalaryComment,
+  isImmediateYmPayment,
   isRentSalaryComment,
   getSalaryPeriodMonth,
   stripSalaryMetaTags,
@@ -2552,10 +2553,11 @@ export async function deleteSalary(id: string): Promise<void> {
 export interface CashCollectionRow {
   id: string;
   date: string;
+  /** Все отмеченные поступления смены: наличные + карта ЮМ. */
   amount: number;
-  /** Фактический остаток кассы на конец смены; undefined у старых записей. */
+  /** Фактический остаток наличных в кассе; undefined у старых записей. */
   cashAmount?: number;
-  /** Устаревшее поле; новые сводки сохраняют 0 и ничего не переводят. */
+  /** Отмеченные поступления на карту ЮМ; сводка сама их не переводит. */
   transferAmount: number;
   /** Разметка платежей, вошедших в сдачу */
   items: CashCollectionItem[];
@@ -2563,7 +2565,7 @@ export interface CashCollectionRow {
   expenses: CashCollectionExpense[];
   /** Сумма трат налом */
   expensesAmount: number;
-  /** Приход за день до вычета трат */
+  /** Все поступления за день: наличные + карта ЮМ. */
   incomeAmount: number;
   note?: string | null;
   createdAt?: string | null;
@@ -2643,11 +2645,11 @@ function computeCashBalance(
 }
 
 /**
- * Наличные поступления, ещё не вошедшие в фактическую сводку смены.
+ * Поступления, ещё не отмеченные в фактической сводке смены.
  *
- * В список попадают ТОЛЬКО проведённые входящие платежи с типом "cash" —
- * то есть деньги, которые физически поступили в кассу. Банк, переводы и ЮМ
- * здесь не показываются. Сводка лишь фиксирует факт и ничего не списывает.
+ * В список входят и наличные в кассу, и уже проведённые поступления на
+ * карту ЮМ. Сохранение сводки только помечает оба вида платежей и не
+ * создаёт переводов, списаний или повторных начислений.
  */
 export async function getPendingCashPayments(): Promise<{
   pending: {
@@ -2656,6 +2658,7 @@ export async function getPendingCashPayments(): Promise<{
     date: string;
     counterparty: string;
     amount: number;
+    kind: CashKind;
     comment: string | null;
   }[];
   /** Ранее скрытые старые наличные платежи (старой версией функции). */
@@ -2675,7 +2678,10 @@ export async function getPendingCashPayments(): Promise<{
     string,
     {
       openingBalance: number;
+      /** Наличные поступления за день. */
       todayIncoming: number;
+      /** Поступления на карту ЮМ за день. */
+      todayCardIncoming: number;
       todayOutgoing: number;
       closingBalance: number;
     }
@@ -2701,24 +2707,43 @@ export async function getPendingCashPayments(): Promise<{
     round2(carryover.currentBalance - linkedRemaining)
   );
   const pendingCash = listPendingCashPayments(payments, collections);
+  const businessDate = getWarehouseBusinessDate();
+  const shiftIncomes = payments.filter((payment) => {
+    const paymentDate = String(payment.date || "").slice(0, 10);
+    return getShiftIncomeKind(payment) != null && paymentDate <= businessDate;
+  });
   const cashExpenses = listCashExpenses(payments, salaries).filter(
     (expense) => expense.sourceKind !== "card"
   );
   const summaryDates = new Set<string>([
-    getWarehouseBusinessDate(),
-    ...pendingCash.map((payment) => String(payment.date || "").slice(0, 10)),
+    businessDate,
+    ...shiftIncomes.map((payment) => String(payment.date || "").slice(0, 10)),
     ...cashExpenses.map((expense) => expense.date),
   ]);
   const dailySummaries: Record<
     string,
-    { openingBalance: number; todayIncoming: number; todayOutgoing: number; closingBalance: number }
+    {
+      openingBalance: number;
+      todayIncoming: number;
+      todayCardIncoming: number;
+      todayOutgoing: number;
+      closingBalance: number;
+    }
   > = {};
   for (const date of summaryDates) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     const summary = getCashCarryoverSummary(payments, salaries, collections, date);
+    const todayCardIncoming = shiftIncomes
+      .filter(
+        (payment) =>
+          String(payment.date || "").slice(0, 10) === date &&
+          getShiftIncomeKind(payment) === "card"
+      )
+      .reduce((sum, payment) => sum + payment.amount, 0);
     dailySummaries[date] = {
       openingBalance: summary.openingBalance,
       todayIncoming: summary.todayIncoming,
+      todayCardIncoming: round2(todayCardIncoming),
       todayOutgoing: summary.todayOutgoing,
       closingBalance: summary.currentBalance,
     };
@@ -2731,6 +2756,7 @@ export async function getPendingCashPayments(): Promise<{
       date: p.date,
       counterparty: p.counterparty,
       amount: p.amount,
+      kind: getShiftIncomeKind(p) || "cash",
       comment: p.comment ?? null,
     })),
     closed: payments
@@ -2758,18 +2784,24 @@ export async function getPendingCashPayments(): Promise<{
   };
 }
 
-/** Платёж относится к кассе: только регулярная наличка.
- * Переводы (transfer / cashDestination=card) сразу в ЮМ, минуя кассу.
- */
+/** Вид входящего платежа, который нужно отметить в сводке смены. */
+function getShiftIncomeKind(p: BankPayment): CashKind | null {
+  if (
+    !p.isPaid ||
+    p.excludeFromBalance ||
+    p.direction !== "incoming" ||
+    p.amount <= 0
+  ) {
+    return null;
+  }
+  if (isImmediateYmPayment(p)) return "card";
+  if (p.type === "cash") return "cash";
+  return null;
+}
+
+/** Платёж относится к наличной кассе, а не к карте ЮМ. */
 function isCashDeskIncome(p: BankPayment): boolean {
-  return (
-    p.isPaid &&
-    !p.excludeFromBalance &&
-    p.type === "cash" &&
-    p.cashDestination !== "card" &&
-    p.direction === "incoming" &&
-    p.amount > 0
-  );
+  return getShiftIncomeKind(p) === "cash";
 }
 
 /** Расход из кассы или с карты ЮМ (зарплата или исходящий платёж). */
@@ -2848,10 +2880,10 @@ function listPendingCashPayments(
   const today = getWarehouseBusinessDate();
   return payments
     .filter((p) => {
-      // Сводка кассы работает только с деньгами, реально поступившими
-      // наличными. Переводы/ЮМ/банк в неё не входят и потому не могут
-      // вызвать ошибку «это не наличное поступление» при сохранении.
-      if (!isCashDeskIncome(p)) return false;
+      // Отмечаем оба фактических способа получения денег в смене:
+      // наличные в кассу и поступление на карту ЮМ. Расчётный счёт сюда
+      // не относится. Сама отметка не меняет ни один из балансов.
+      if (getShiftIncomeKind(p) == null) return false;
       if (String(p.date || "").slice(0, 10) > today) return false;
       return !collected.has(String(p.id));
     })
@@ -2879,7 +2911,13 @@ export async function collectCash(
   // смены больше не создаёт ручных переводов или расходов.
   _unlinkedCash?: { amount: number; kind: CashKind } | null,
   _carryoverExpense?: { amount: number; comment?: string | null } | null
-): Promise<{ amount: number; cashAmount: number; transferAmount: number; date: string }> {
+): Promise<{
+  amount: number;
+  cashIncomeAmount: number;
+  cashAmount: number;
+  transferAmount: number;
+  date: string;
+}> {
   const db = getAdminDb();
   const [payments, salaries, collections] = await Promise.all([
     fetchPayments(),
@@ -2916,10 +2954,10 @@ export async function collectCash(
     if (!id || seen.has(id)) continue;
     const payment = paymentById.get(id);
     if (!payment) throw new Error("Платёж не найден");
-    if (!isCashDeskIncome(payment)) {
-      // Старый клиент мог прислать перевод/ЮМ вместе с наличкой. Для
-      // фактической сводки просто пропускаем его: такой ПЛ не должен
-      // блокировать закрытие смены и не относится к кассе.
+    const paymentKind = getShiftIncomeKind(payment);
+    if (!paymentKind) {
+      // Старый клиент мог прислать банковский или исходящий платёж. Он не
+      // должен блокировать закрытие смены, но к поступлениям смены не относится.
       continue;
     }
     if (alreadyCollected.has(id)) {
@@ -2937,9 +2975,9 @@ export async function collectCash(
       number: payment.number,
       counterparty: payment.counterparty,
       amount: payment.amount,
-      kind: "cash",
-      cashAmount: payment.amount,
-      cardAmount: 0,
+      kind: paymentKind,
+      cashAmount: paymentKind === "cash" ? payment.amount : 0,
+      cardAmount: paymentKind === "card" ? payment.amount : 0,
       expenseAmount: 0,
     });
   }
@@ -2979,15 +3017,26 @@ export async function collectCash(
     date
   );
   const closingBalance = round2(cashSummary.currentBalance);
-  const factualIncome = round2(cashSummary.todayIncoming);
+  const factualCashIncome = round2(cashSummary.todayIncoming);
+  const factualCardIncome = round2(
+    payments
+      .filter(
+        (payment) =>
+          String(payment.date || "").slice(0, 10) === date &&
+          getShiftIncomeKind(payment) === "card"
+      )
+      .reduce((sum, payment) => sum + payment.amount, 0)
+  );
+  const factualIncome = round2(factualCashIncome + factualCardIncome);
   const factualExpenses = round2(cashSummary.todayOutgoing);
   const payload = {
     date,
-    // Только новый приход дня. Перенос рассчитывается отдельно и никогда
-    // не считается прибылью.
+    // Все поступления дня отмечаем в одном отчёте. transfer_amount здесь
+    // лишь расшифровка уже существующих ПЛ на ЮМ: сводка не создаёт новое
+    // движение и не меняет ни кассу, ни карту.
     amount: factualIncome,
     cash_amount: closingBalance,
-    transfer_amount: 0,
+    transfer_amount: factualCardIncome,
     items: allRows,
     expenses: expenseRows,
     income_amount: factualIncome,
@@ -3002,8 +3051,9 @@ export async function collectCash(
   revalidateTag("warehouse-cash-collections", { expire: 0 });
   return {
     amount: factualIncome,
+    cashIncomeAmount: factualCashIncome,
     cashAmount: closingBalance,
-    transferAmount: 0,
+    transferAmount: factualCardIncome,
     date,
   };
 }

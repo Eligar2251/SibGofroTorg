@@ -618,20 +618,21 @@ CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECU
 
 -- =========================================================
 -- 22.1. ФАКТИЧЕСКИЕ СВОДКИ КАССОВЫХ СМЕН
--- Справочный снимок дня: перенос, наличный приход, расходы и остаток.
+-- Справочный снимок дня: наличные, карта ЮМ, расходы и остаток кассы.
 -- Запись не является движением денег и не влияет на прибыль/баланс сама.
 -- =========================================================
 CREATE TABLE IF NOT EXISTS cash_collections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   date TEXT NOT NULL DEFAULT '',
-  -- Наличный приход за день без переноса прошлых дней.
+  -- Все отмеченные поступления дня: наличные + карта ЮМ, без переноса.
   amount NUMERIC NOT NULL DEFAULT 0,
-  -- Фактический остаток кассы на конец дня.
+  -- Фактический остаток наличных в кассе на конец дня.
   cash_amount NUMERIC NOT NULL DEFAULT 0,
-  -- Устаревшее поле; новые сводки всегда сохраняют 0.
+  -- Отмеченные поступления на ЮМ; это метка, а не новое движение денег.
   transfer_amount NUMERIC NOT NULL DEFAULT 0,
   items JSONB DEFAULT '[]'::jsonb,
   expenses JSONB DEFAULT '[]'::jsonb,
+  -- Дублирует общий приход смены для отчётов: наличные + ЮМ.
   income_amount NUMERIC,
   expenses_amount NUMERIC NOT NULL DEFAULT 0,
   note TEXT,

@@ -45,6 +45,7 @@ import {
   getDealPaidMap,
   getReceiptPaidMap,
   getCashCarryoverSummary,
+  getCashCollectionIncomeBreakdown,
   type WarehouseStockRow,
   type ProductStockSummary,
   type WarehouseReceipt,
@@ -889,7 +890,16 @@ export function WarehouseManager({
   );
   const collectionsIncomeTotal = useMemo(
     () => collectionsSorted.reduce(
-      (sum, collection) => sum + (collection.incomeAmount ?? collection.amount ?? 0),
+      (sum, collection) =>
+        sum + getCashCollectionIncomeBreakdown(collection).total,
+      0
+    ),
+    [collectionsSorted]
+  );
+  const collectionsCardTotal = useMemo(
+    () => collectionsSorted.reduce(
+      (sum, collection) =>
+        sum + getCashCollectionIncomeBreakdown(collection).card,
       0
     ),
     [collectionsSorted]
@@ -957,8 +967,8 @@ export function WarehouseManager({
     return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date));
   }, [payments]);
 
-  // Сводка смены показывает перенос, наличный приход, расходы и остаток.
-  // Она ничего не переводит и не списывает.
+  // Сводка смены помечает наличные и поступления на ЮМ, показывает перенос,
+  // расходы и остаток кассы. Она ничего не переводит и не списывает.
   function handleCollectCash() {
     // Сводка фиксирует фактические цифры и ничего не списывает, поэтому её
     // можно сохранить даже при отрицательном остатке — это помогает увидеть
@@ -3269,7 +3279,7 @@ export function WarehouseManager({
                 <div>
                   <h3 className="admin-card__title">
                     <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                    Фактические сводки кассы
+                    Фактические сводки кассы и ЮМ
                   </h3>
                   <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
                     Сводка не является платёжной операцией и не влияет на прибыль
@@ -3280,7 +3290,10 @@ export function WarehouseManager({
                     Сейчас в кассе: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
-                    <ArrowDownLeft size={10} /> Приход: {fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
+                    <ArrowDownLeft size={10} /> Всего поступило: {fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
+                  </span>
+                  <span className="admin-badge admin-badge--blue">
+                    <CreditCard size={10} /> На ЮМ: {fmt(Math.round(collectionsCardTotal * 100) / 100)} ₽
                   </span>
                   <span className="admin-badge admin-badge--red">
                     <ArrowUpRight size={10} /> Расходы: {fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
@@ -3289,8 +3302,8 @@ export function WarehouseManager({
               </div>
               <div className="admin-card__pad" style={{ display: "grid", gap: 12 }}>
                 <div className="admin-muted" style={{ fontSize: 12 }}>
-                  Перенос с прошлого дня указан отдельно: это входящий остаток, а не новый приход и не прибыль.
-                  Сохранение смены ничего не переводит и не списывает.
+                  Наличные и поступления на карту ЮМ отмечаются отдельно. Перенос кассы — это входящий остаток,
+                  а не новый приход или прибыль. Сохранение смены ничего не переводит и не списывает.
                 </div>
                 {collectionsSorted.length === 0 ? (
                   <div className="admin-empty" style={{ padding: 18 }}>
@@ -3303,7 +3316,7 @@ export function WarehouseManager({
                         <tr>
                           <th>Дата</th>
                           <th style={{ textAlign: "right" }}>Перенос</th>
-                          <th style={{ textAlign: "right" }}>Приход за день</th>
+                          <th style={{ textAlign: "right" }}>Поступления за день</th>
                           <th style={{ textAlign: "right" }}>Расходы</th>
                           <th style={{ textAlign: "right" }}>Остаток</th>
                           <th>Комментарий</th>
@@ -3315,15 +3328,17 @@ export function WarehouseManager({
                           const opening = Math.round(
                             (cashOpeningByCollectionId.get(collection.id) || 0) * 100
                           ) / 100;
-                          const income = Math.round(
-                            (collection.incomeAmount ?? collection.amount ?? 0) * 100
-                          ) / 100;
+                          const incomeBreakdown =
+                            getCashCollectionIncomeBreakdown(collection);
+                          const income = incomeBreakdown.total;
+                          const cashIncome = incomeBreakdown.cash;
+                          const cardIncome = incomeBreakdown.card;
                           const expense = Math.round(
                             (collection.expensesAmount || 0) * 100
                           ) / 100;
                           const closing = collection.cashAmount != null
                             ? Math.round(collection.cashAmount * 100) / 100
-                            : Math.round((opening + income - expense) * 100) / 100;
+                            : Math.round((opening + cashIncome - expense) * 100) / 100;
                           const items = collection.items || [];
                           const expenseRows = collection.expenses || [];
                           const noAccounting = items.some((item) => item.noAccounting);
@@ -3365,6 +3380,9 @@ export function WarehouseManager({
                                 </td>
                                 <td style={{ textAlign: "right", color: "var(--adm-pine)", fontWeight: 700 }}>
                                   +{fmt(income)} ₽
+                                  <small style={{ display: "block", color: "var(--adm-muted)", fontWeight: 500 }}>
+                                    нал {fmt(cashIncome)} · ЮМ {fmt(cardIncome)}
+                                  </small>
                                 </td>
                                 <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 700 }}>
                                   −{fmt(expense)} ₽
@@ -3388,17 +3406,37 @@ export function WarehouseManager({
                                     <div className="wh-cc-detail-grid">
                                       <div className="wh-cc-box">
                                         <div className="wh-cc-box__head">
-                                          <ArrowDownLeft size={13} /> Наличный приход
+                                          <ArrowDownLeft size={13} /> Поступления за день
                                           <b style={{ color: "var(--adm-pine)" }}>+{fmt(income)} ₽</b>
                                         </div>
                                         {items.length === 0 ? (
                                           <div className="wh-cc-empty">Поступлений не было</div>
-                                        ) : items.map((item) => (
-                                          <div key={`${collection.id}-${item.paymentId}`} className="wh-cc-line">
-                                            <span>ПЛ-{item.number || "—"} · {item.counterparty || ""}</span>
-                                            <span className="wh-cc-line__val">+{fmt(item.amount || 0)} ₽</span>
-                                          </div>
-                                        ))}
+                                        ) : items.map((item) => {
+                                          const itemAmount = Number(item.amount) || 0;
+                                          const itemCard = Math.max(
+                                            0,
+                                            Number(
+                                              item.cardAmount != null
+                                                ? item.cardAmount
+                                                : item.kind === "card"
+                                                  ? itemAmount
+                                                  : 0
+                                            ) || 0
+                                          );
+                                          const hasCard = itemCard > 0.009;
+                                          const hasCash = itemAmount - itemCard > 0.009;
+                                          return (
+                                            <div key={`${collection.id}-${item.paymentId}`} className="wh-cc-line">
+                                              <span>
+                                                ПЛ-{item.number || "—"} · {item.counterparty || ""}
+                                                <em className={`cashc-kind cashc-kind--${hasCard && !hasCash ? "card" : "cash"}`} style={{ marginLeft: 6 }}>
+                                                  {hasCard && hasCash ? "Нал + ЮМ" : hasCard ? "Карта ЮМ" : "Наличные"}
+                                                </em>
+                                              </span>
+                                              <span className="wh-cc-line__val">+{fmt(itemAmount)} ₽</span>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                       <div className="wh-cc-box">
                                         <div className="wh-cc-box__head">
@@ -3417,11 +3455,12 @@ export function WarehouseManager({
                                         ))}
                                       </div>
                                       <div className="wh-cc-box">
-                                        <div className="wh-cc-box__head">Расчёт остатка</div>
-                                        <div className="wh-cc-line"><span><History size={11} /> Перенос</span><b>+{fmt(opening)} ₽</b></div>
-                                        <div className="wh-cc-line"><span><ArrowDownLeft size={11} /> Приход</span><b>+{fmt(income)} ₽</b></div>
-                                        <div className="wh-cc-line"><span><ArrowUpRight size={11} /> Расходы</span><b>−{fmt(expense)} ₽</b></div>
-                                        <div className="wh-cc-total">Остаток на конец дня: <b>{fmt(closing)} ₽</b></div>
+                                        <div className="wh-cc-box__head">Расчёт наличной кассы</div>
+                                        <div className="wh-cc-line"><span><History size={11} /> Перенос наличных</span><b>+{fmt(opening)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><Banknote size={11} /> Поступило наличными</span><b>+{fmt(cashIncome)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><CreditCard size={11} /> Отмечено на ЮМ</span><b style={{ color: "var(--adm-steel)" }}>+{fmt(cardIncome)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><ArrowUpRight size={11} /> Расходы наличными</span><b>−{fmt(expense)} ₽</b></div>
+                                        <div className="wh-cc-total">Остаток наличных: <b>{fmt(closing)} ₽</b></div>
                                       </div>
                                     </div>
                                   </td>
@@ -3506,19 +3545,23 @@ export function WarehouseManager({
                     const noAccounting = (collection.items || []).some(
                       (item) => item.noAccounting
                     );
+                    const incomeBreakdown =
+                      getCashCollectionIncomeBreakdown(collection);
                     const documentAmount = noAccounting
                       ? (collection.items || []).reduce(
                           (sum, item) => sum + (item.amount || 0),
                           0
                         )
-                      : (collection.incomeAmount ?? collection.amount);
+                      : incomeBreakdown.total;
                     const opening = Math.round(
                       (cashOpeningByCollectionId.get(collection.id) || 0) * 100
                     ) / 100;
                     const expenses = Math.round((collection.expensesAmount || 0) * 100) / 100;
                     const closing = collection.cashAmount != null
                       ? Math.round(collection.cashAmount * 100) / 100
-                      : Math.round((opening + documentAmount - expenses) * 100) / 100;
+                      : Math.round(
+                          (opening + (noAccounting ? 0 : incomeBreakdown.cash) - expenses) * 100
+                        ) / 100;
                     return (
                       <div key={collection.id} className="bank-cash-posting">
                         <span className="bank-cash-posting__icon"><Banknote size={15} /></span>
@@ -3540,7 +3583,9 @@ export function WarehouseManager({
                             {!noAccounting && (
                               <>
                                 <span>перенос +{fmt(opening)} ₽</span>
-                                <span>приход +{fmt(documentAmount)} ₽</span>
+                                <span>всего +{fmt(documentAmount)} ₽</span>
+                                <span>наличные +{fmt(incomeBreakdown.cash)} ₽</span>
+                                <span>ЮМ +{fmt(incomeBreakdown.card)} ₽</span>
                                 <span>расход −{fmt(expenses)} ₽</span>
                                 <span>остаток {fmt(closing)} ₽</span>
                               </>

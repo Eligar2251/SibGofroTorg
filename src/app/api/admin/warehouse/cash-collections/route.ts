@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
   try {
-    // ?pending=1 — данные для фактической сводки смены. Только наличный
-    // приход кассы, расходы и перенос; без банка, ЮМ и переводов.
+    // ?pending=1 — данные для фактической сводки смены: наличные,
+    // поступления на карту ЮМ, расходы наличными и перенос кассы.
     const { searchParams } = new URL(request.url);
     if (searchParams.get("pending")) {
       const cashData = await getPendingCashPayments();
@@ -76,8 +76,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, ...res });
     }
 
-    // Закрытие смены лишь фиксирует, какие наличные платежи вошли в отчёт.
-    // Никаких направлений, переводов и ручных списаний здесь больше нет.
+    // Закрытие смены лишь фиксирует, какие наличные и переводы на ЮМ
+    // вошли в отчёт. Никаких новых переводов или списаний здесь нет.
     const items = Array.isArray(body.items)
       ? body.items
           .map((item: any) => ({
@@ -98,11 +98,14 @@ export async function POST(request: NextRequest) {
       "create",
       "cash-collection",
       "cash-collection",
-      `Сохранена сводка кассы за ${result.date}: приход ${result.amount} ₽, остаток ${result.cashAmount} ₽`,
+      `Сохранена сводка за ${result.date}: наличные ${result.cashIncomeAmount} ₽, ЮМ ${result.transferAmount} ₽, без движений денег`,
       {
         date: result.date,
         incomeAmount: result.amount,
+        cashIncomeAmount: result.cashIncomeAmount,
+        ymIncomeAmount: result.transferAmount,
         closingBalance: result.cashAmount,
+        accountingOnly: true,
       }
     );
 
