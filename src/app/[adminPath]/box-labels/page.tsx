@@ -1,16 +1,14 @@
 // =========================================================
 // FILE: src/app/[adminPath]/box-labels/page.tsx
 // Отдельная печать этикеток ЯЩИКОВ на листе A4 (вертикально):
-// крупный № ящика, название товара, размеры коробки и примечание,
-// разделитель и штрихкод. Этикетка растягивается на всю печатную
-// ширину листа A4.
+// строгий макет на всю физическую ширину A4:
+// [№ и указанное число] | [размеры] | [штрихкод].
 // =========================================================
 
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getAllCategories, getProducts } from "@/lib/supabase-queries";
-import { getAdminDb } from "@/lib/supabase";
 import { computeBarcode } from "@/lib/qr";
 import { BoxLabelsClient } from "@/components/admin/BoxLabelsClient";
 
@@ -27,23 +25,10 @@ export default async function BoxLabelsPage({
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
-  const db = getAdminDb();
-  const [allProducts, categories, variantsRes] = await Promise.all([
+  const [allProducts, categories] = await Promise.all([
     getProducts({ includeHidden: true }),
     getAllCategories(),
-    // Все варианты одним запросом: названия вариантов — это готовые
-    // «примечания» для этикеток (например, «более крепкий»).
-    db.from("product_variants").select("product_id,name,sort_order").order("sort_order"),
   ]);
-
-  const variantNames: Record<string, string[]> = {};
-  for (const v of variantsRes?.data || []) {
-    const pid = String(v.product_id);
-    const name = String(v.name || "").trim();
-    if (!name) continue;
-    if (!variantNames[pid]) variantNames[pid] = [];
-    variantNames[pid].push(name);
-  }
 
   const products = allProducts
     .map((p) => ({
@@ -56,7 +41,6 @@ export default async function BoxLabelsPage({
       dimensionWidth: p.dimensionWidth ?? null,
       dimensionHeight: p.dimensionHeight ?? null,
       dimensionUnit: p.dimensionUnit ?? null,
-      variantNames: variantNames[p.id] || [],
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 

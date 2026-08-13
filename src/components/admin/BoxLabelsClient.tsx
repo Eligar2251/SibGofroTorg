@@ -3,14 +3,9 @@
 // Отдельная печать этикеток ЯЩИКОВ: лист A4 вертикально,
 // одна этикетка = одна страница.
 //
-// Макет — одна ГОРИЗОНТАЛЬНАЯ полоса через всю страницу:
-//   [ № 670 | название + размеры + примечание | штрихкод ]
-//   • слева крупный № (буква ~3 см = 85pt);
-//   • в центре название товара, размеры и примечание;
-//   • вертикальные разделительные черты между блоками;
-//   • варианты товара («более крепкий», «с отверстиями»…) добавляются
-//     чипами или дописываются руками;
-//   • справа штрихкод EAN-13 (SVG — вектор, чёткая печать).
+// Макет — одна ГОРИЗОНТАЛЬНАЯ полоса на всю ширину A4:
+//   [ № 670 | размеры | штрихкод ]
+// Название товара, артикул и прочий текст на этикетке не печатаются.
 //
 // Товары подставляются автоматически (№ = артикул, размеры из
 // карточки), но каждая этикетка редактируется вручную прямо
@@ -34,13 +29,11 @@ type Product = {
   dimensionWidth: number | null;
   dimensionHeight: number | null;
   dimensionUnit: string | null;
-  variantNames: string[];
 };
 
 interface LabelData {
   boxNumber: string;
   sizes: string;
-  note: string;
 }
 
 interface Props {
@@ -58,7 +51,7 @@ function autoSizes(p: Product): string {
 }
 
 function defaultLabel(p: Product): LabelData {
-  return { boxNumber: p.sku || "", sizes: autoSizes(p), note: "" };
+  return { boxNumber: p.sku || "", sizes: autoSizes(p) };
 }
 
 export function BoxLabelsClient({ products, categories }: Props) {
@@ -125,13 +118,6 @@ export function BoxLabelsClient({ products, categories }: Props) {
     });
   }
 
-  /** Добавить слово варианта в примечание (через запятую). */
-  function appendNote(p: Product, word: string) {
-    const cur = getLabel(p).note.trim();
-    if (cur.split(",").map((s) => s.trim()).includes(word)) return;
-    setLabel(p, { note: cur ? `${cur}, ${word}` : word });
-  }
-
   async function handlePrint() {
     if (printPreparing || selectedProducts.length === 0) return;
     setPrintPreparing(true);
@@ -166,8 +152,8 @@ export function BoxLabelsClient({ products, categories }: Props) {
 
   return (
     <div className="qrprint">
-      {/* @page — только A4 вертикально для этого режима печати. */}
-      <style>{`@media print { @page { size: A4 portrait; margin: 10mm; } }`}</style>
+      {/* Полоса занимает физическую ширину A4 — 210 мм, без CSS-полей. */}
+      <style>{`@media print { @page { size: A4 portrait; margin: 0; } }`}</style>
 
       <div className="qrprint__filters no-print">
         <div className="qrprint__filter-row">
@@ -231,30 +217,6 @@ export function BoxLabelsClient({ products, categories }: Props) {
                       placeholder="400×300×200 мм"
                     />
                   </div>
-                  <div className="admin-field" style={{ marginBottom: 0 }}>
-                    <label className="admin-label">Примечание (дописать руками)</label>
-                    <input
-                      className="admin-input"
-                      value={label.note}
-                      onChange={(e) => setLabel(p, { note: e.target.value })}
-                      placeholder="более крепкий, с отверстиями…"
-                    />
-                  </div>
-                  {p.variantNames.length > 0 && (
-                    <div className="rent-chips">
-                      {p.variantNames.map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          className="rent-chip"
-                          title="Добавить вариант в примечание"
-                          onClick={() => appendNote(p, v)}
-                        >
-                          + {v}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -302,12 +264,7 @@ export function BoxLabelsClient({ products, categories }: Props) {
                 </div>
                 <div className="boxlabel__vsep" />
                 <div className="boxlabel__cell boxlabel__info">
-                  <div className="boxlabel__name">{p.name}</div>
-                  {label.sizes && <div className="boxlabel__sizes">{label.sizes}</div>}
-                  {label.note && <div className="boxlabel__note">{label.note}</div>}
-                  {!label.sizes && !label.note && (
-                    <div className="boxlabel__sizes">—</div>
-                  )}
+                  <div className="boxlabel__sizes">{label.sizes || "—"}</div>
                 </div>
                 <div className="boxlabel__vsep" />
                 <div className="boxlabel__cell boxlabel__code">
