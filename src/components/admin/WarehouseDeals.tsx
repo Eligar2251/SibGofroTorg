@@ -831,8 +831,8 @@ export function DealForm({
                       <input
                         type="number"
                         className="admin-input"
-                        min={0.01}
-                        step={it.isCuttable ? (it.unit === 'meter' ? 1 : 0.1) : 1}
+                        min={it.isCuttable && it.unit === 'roll' ? 0.1 : 1}
+                        step={it.isCuttable && it.unit === 'roll' ? 0.1 : 1}
                         value={it.quantity}
                         onChange={(e) => {
                           const raw = e.target.value === "" ? "" : Number(e.target.value);
