@@ -722,8 +722,10 @@ export function getWarehouseBusinessDate(date = new Date()): string {
  * перенесённая наличка не только входит в баланс, но и сохраняет ссылку на
  * исходный ПЛ и контрагента.
  *
- * Документы сводки смены в расчёте не участвуют: они только снимок факта.
- * Переводы и ЮМ также не входят в кассу — учитывается регулярная наличка.
+ * Новые документы сводки смены в расчёте не участвуют: они только снимок
+ * факта. Исторические записи с реальным cardAmount сохраняют прежний перевод
+ * из кассы в ЮМ, чтобы обновление кода не меняло уже сложившиеся балансы.
+ * Прямые переводы и ЮМ сами по себе в наличную кассу не входят.
  */
 export function getCashCarryoverSummary(
   payments: BankPayment[],
@@ -734,7 +736,16 @@ export function getCashCarryoverSummary(
   type CashLot = CashCarryoverOrigin;
   type CashEvent =
     | { date: string; priority: number; type: "in"; amount: number; lot: CashLot }
-    | { date: string; priority: number; type: "out"; amount: number };
+    | {
+        date: string;
+        priority: number;
+        type: "out" | "card";
+        amount: number;
+        targets?: { paymentId: string; amount: number }[];
+      };
+
+  const paymentById = new Map<string, BankPayment>();
+  for (const payment of payments) paymentById.set(String(payment.id), payment);
 
   const events: CashEvent[] = [];
   for (const payment of payments) {
@@ -786,10 +797,62 @@ export function getCashCarryoverSummary(
     });
   }
 
-  // Закрытия смены — только отчёты. Они намеренно не создают кассовых
-  // событий: ни переводов, ни списаний, ни повторных приходов. Перенос
-  // прошлого дня получается из остатка предыдущих платежей автоматически.
-  void collections;
+  // Новые фактические сводки имеют transferAmount=0 и ничего не меняют.
+  // Но исторические документы до перехода на новую модель содержат реальные
+  // переводы из наличной кассы в ЮМ. Их нельзя забывать: иначе ЮМ резко
+  // уменьшается, а касса на ту же сумму искусственно растёт.
+  for (const collection of collections) {
+    const eligibleCardItems: { paymentId: string; amount: number }[] = [];
+    let eligibleCardTotal = 0;
+    for (const item of collection.items || []) {
+      const paymentId = String(item.paymentId || "");
+      if (!paymentId) continue;
+      if (paymentId.startsWith("manual:")) {
+        const cardAmount = Math.max(
+          0,
+          Number(
+            item.cardAmount != null
+              ? item.cardAmount
+              : item.kind === "card"
+                ? item.amount
+                : 0
+          ) || 0
+        );
+        if (cardAmount > 0) {
+          eligibleCardItems.push({ paymentId, amount: cardAmount });
+          eligibleCardTotal += cardAmount;
+        }
+        continue;
+      }
+      const payment = paymentById.get(paymentId);
+      if (payment && isImmediateYmPayment(payment)) {
+        // Уже учтён самим платежом как прямой перевод в ЮМ.
+        continue;
+      }
+      const cardAmount = Math.max(
+        0,
+        Number(
+          item.cardAmount != null
+            ? item.cardAmount
+            : item.kind === "card"
+              ? item.amount
+              : 0
+        ) || 0
+      );
+      if (cardAmount > 0) {
+        eligibleCardItems.push({ paymentId, amount: cardAmount });
+        eligibleCardTotal += cardAmount;
+      }
+    }
+    if (eligibleCardTotal <= 0) continue;
+    events.push({
+      date: String(collection.date || "").slice(0, 10),
+      priority: 2,
+      type: "card",
+      amount: eligibleCardTotal,
+      targets: eligibleCardItems,
+    });
+  }
 
   events.sort(
     (a, b) =>
@@ -801,7 +864,7 @@ export function getCashCarryoverSummary(
   let currentBalance = 0;
   let todayIncoming = 0;
   let todayOutgoing = 0;
-  const todayCardTransfers = 0;
+  let todayCardTransfers = 0;
 
   const consumeLot = (lot: CashLot, requested: number): number => {
     const used = Math.min(lot.remainingAmount, Math.max(0, requested));
@@ -828,6 +891,7 @@ export function getCashCarryoverSummary(
     if (event.date < date) openingBalance += signed;
     if (event.date === date) {
       if (event.type === "in") todayIncoming += event.amount;
+      else if (event.type === "card") todayCardTransfers += event.amount;
       else todayOutgoing += event.amount;
     }
 
@@ -836,7 +900,14 @@ export function getCashCarryoverSummary(
       continue;
     }
 
-    consumeFifo(event.amount);
+    let targeted = 0;
+    for (const target of event.targets || []) {
+      const lot = lots.find(
+        (item) => item.paymentId === target.paymentId && item.remainingAmount > 0
+      );
+      if (lot) targeted += consumeLot(lot, target.amount);
+    }
+    consumeFifo(Math.max(0, event.amount - targeted));
   }
 
   const origins = lots
@@ -998,14 +1069,49 @@ export function getBankSummary(
   let collectedCash = 0;
   let collectedCashOnly = 0;
   let collectedTransfer = 0;
-  // Документы закрытия смены — только фактические отчёты. Эти агрегаты
-  // оставляем для старых экранов, но баланс кассы/ЮМ они не меняют.
+  // Новые сводки transferAmount=0 и не влияют на баланс. Исторические
+  // документы с cardAmount отражают уже совершённые переводы в ЮМ — их
+  // сохраняем в расчёте, иначе баланс ЮМ проваливается на всю их сумму.
   for (const collection of collections) {
     const collectionDate = String(collection.date || "").slice(0, 10);
     if (!collectionDate || collectionDate > asOfDate) continue;
     collectedCash += Number(collection.amount) || 0;
     collectedCashOnly = Number(collection.cashAmount) || collectedCashOnly;
-    collectedTransfer += Number(collection.transferAmount) || 0;
+    let eligibleTransfer = 0;
+    for (const item of collection.items || []) {
+      const paymentId = String(item.paymentId || "");
+      if (!paymentId) continue;
+      if (paymentId.startsWith("manual:")) {
+        eligibleTransfer += Math.max(
+          0,
+          Number(
+            item.cardAmount != null
+              ? item.cardAmount
+              : item.kind === "card"
+                ? item.amount
+                : 0
+          ) || 0
+        );
+        continue;
+      }
+      const payment = paymentById.get(paymentId);
+      if (payment && isImmediateYmPayment(payment)) {
+        // Прямой перевод уже учтён самим ПЛ — не начисляем второй раз.
+        continue;
+      }
+      eligibleTransfer += Math.max(
+        0,
+        Number(
+          item.cardAmount != null
+            ? item.cardAmount
+            : item.kind === "card"
+              ? item.amount
+              : 0
+        ) || 0
+      );
+    }
+    collectedTransfer += eligibleTransfer;
+    ymCardBalance += eligibleTransfer;
   }
   const bankForecast = bankBalance + expectedIn - expectedOut;
   const bankIncomeTotal = bankBalance + expectedIn;
