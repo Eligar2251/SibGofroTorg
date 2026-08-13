@@ -43,9 +43,9 @@ interface CashExpense {
 
 interface DailyCashSummary {
   openingBalance: number;
-  /** Наличные поступления. */
+  /** Наличные, ещё не вошедшие в сохранённую сводку. */
   todayIncoming: number;
-  /** Уже поступившие переводы на карту ЮМ. */
+  /** Переводы на ЮМ, ещё не вошедшие в сохранённую сводку. */
   todayCardIncoming: number;
   todayOutgoing: number;
   closingBalance: number;
@@ -112,10 +112,12 @@ export function CashCollectModal({
         setExpenses(nextExpenses);
         setDailySummaries(nextSummaries);
 
+        // В переключателе оставляем только текущий день и даты, где есть
+        // ещё не отмеченные платежи или расходы. Закрытые смены остаются
+        // в истории и не возвращаются в эту модалку.
         const dates = [
           ...nextPending.map((payment: PendingCashPayment) => payment.date),
           ...nextExpenses.map((expense: CashExpense) => expense.date),
-          ...Object.keys(nextSummaries),
           todayIso(),
         ].filter(Boolean).sort((a, b) => b.localeCompare(a));
         const latest = dates[0] || todayIso();
@@ -139,25 +141,19 @@ export function CashCollectModal({
       todayIso(),
       ...pending.map((payment) => payment.date),
       ...expenses.map((expense) => expense.date),
-      ...Object.keys(dailySummaries),
     ]);
     return [...dates]
       .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
       .sort((a, b) => b.localeCompare(a))
       .map((date) => {
         const items = pending.filter((payment) => payment.date === date);
-        const summary = dailySummaries[date];
-        const income = summary
-          ? (Number(summary.todayIncoming) || 0) +
-            (Number(summary.todayCardIncoming) || 0)
-          : items.reduce((sum, payment) => sum + payment.amount, 0);
         return {
           date,
           count: items.length,
-          income: round2(income),
+          income: round2(items.reduce((sum, payment) => sum + payment.amount, 0)),
         };
       });
-  }, [dailySummaries, expenses, pending]);
+  }, [expenses, pending]);
 
   const dayItems = useMemo(
     () => pending.filter((payment) => payment.date === activeDate),
@@ -194,24 +190,21 @@ export function CashCollectModal({
   const daySummary: DailyCashSummary = rawDaySummary
     ? {
         openingBalance: Number(rawDaySummary.openingBalance) || 0,
-        todayIncoming: Number(rawDaySummary.todayIncoming) || 0,
-        todayCardIncoming: Number(rawDaySummary.todayCardIncoming) || 0,
+        // Для новой сдачи считаем только pending. Поступления из уже
+        // сохранённых сводок намеренно не возвращаются в итог.
+        todayIncoming: listedCashIncome,
+        todayCardIncoming: listedCardIncome,
         todayOutgoing: Number(rawDaySummary.todayOutgoing) || 0,
         closingBalance: Number(rawDaySummary.closingBalance) || 0,
       }
     : {
-        openingBalance: Math.max(
-          0,
-          round2(cashBalance - listedCashIncome + listedExpenses)
-        ),
+        openingBalance: round2(cashBalance),
         todayIncoming: listedCashIncome,
         todayCardIncoming: listedCardIncome,
         todayOutgoing: listedExpenses,
         closingBalance: round2(cashBalance),
       };
-  const totalDayIncome = round2(
-    daySummary.todayIncoming + daySummary.todayCardIncoming
-  );
+  const totalDayIncome = round2(listedCashIncome + listedCardIncome);
 
   function pickDate(date: string) {
     setActiveDate(date);
@@ -249,10 +242,14 @@ export function CashCollectModal({
       setError("Дата отчёта должна совпадать с выбранным днём");
       return;
     }
+    if (dayItems.length === 0 && dayExpenses.length === 0) {
+      setError("За выбранный день нет новых платежей или расходов к сдаче");
+      return;
+    }
 
     const message =
       `Сохранить фактическую сводку за ${fmtDate(activeDate)}?\n\n` +
-      `Всего поступило: +${fmt(totalDayIncome)} ₽\n` +
+      `Новых платежей к сдаче: +${fmt(totalDayIncome)} ₽\n` +
       `Наличными: +${fmt(daySummary.todayIncoming)} ₽\n` +
       `На карту ЮМ: +${fmt(daySummary.todayCardIncoming)} ₽\n` +
       `Перенос наличных: ${fmt(daySummary.openingBalance)} ₽\n` +
@@ -307,8 +304,8 @@ export function CashCollectModal({
             <div className="cashc-info">
               <Banknote size={17} />
               <span>
-                Здесь отмечаются и <b>наличные</b>, и <b>поступления на карту ЮМ</b>.
-                Сводка не переводит и не списывает деньги, а перенос наличных не входит в прибыль.
+                Здесь показаны только <b>ещё не сданные</b> наличные и поступления на карту ЮМ.
+                Уже сохранённые платежи не считаются повторно. Сводка ничего не списывает.
               </span>
             </div>
 
@@ -345,7 +342,7 @@ export function CashCollectModal({
                         {day.date === todayIso() && <span className="cashc-day__today">сегодня</span>}
                       </span>
                       <span className="cashc-day__sum">+{fmt(day.income)} ₽</span>
-                      <span className="cashc-day__count">{day.count} плат.</span>
+                      <span className="cashc-day__count">{day.count} к сдаче</span>
                     </button>
                   ))}
                 </div>
@@ -357,19 +354,19 @@ export function CashCollectModal({
                     <small>Справочно, не прибыль</small>
                   </div>
                   <div className="cashc-fact cashc-fact--income">
-                    <span><ArrowDownLeft size={15} /> Всего поступило</span>
+                    <span><ArrowDownLeft size={15} /> Всего к сдаче</span>
                     <strong>+{fmt(totalDayIncome)} ₽</strong>
-                    <small>Наличные + карта ЮМ</small>
+                    <small>Только ещё не отмеченные ПЛ</small>
                   </div>
                   <div className="cashc-fact cashc-fact--cash">
-                    <span><Banknote size={15} /> Наличными</span>
+                    <span><Banknote size={15} /> Наличными к сдаче</span>
                     <strong>+{fmt(daySummary.todayIncoming)} ₽</strong>
-                    <small>Поступило в кассу</small>
+                    <small>Без уже сохранённых платежей</small>
                   </div>
                   <div className="cashc-fact cashc-fact--card">
-                    <span><CreditCard size={15} /> На карту ЮМ</span>
+                    <span><CreditCard size={15} /> ЮМ к сдаче</span>
                     <strong>+{fmt(daySummary.todayCardIncoming)} ₽</strong>
-                    <small>Уже учтено исходными ПЛ</small>
+                    <small>Без уже сохранённых платежей</small>
                   </div>
                   <div className="cashc-fact cashc-fact--expense">
                     <span><ArrowUpRight size={15} /> Расходы наличными</span>
@@ -386,7 +383,7 @@ export function CashCollectModal({
                 <div className="cashc-ledgers">
                   <section className="cashc-ledger">
                     <header>
-                      <div><ArrowDownLeft size={15} /><strong>Поступления за день</strong></div>
+                      <div><ArrowDownLeft size={15} /><strong>Новые платежи к сдаче</strong></div>
                       <b>+{fmt(totalDayIncome)} ₽</b>
                     </header>
                     <div className="cashc-ledger__rows">
@@ -438,18 +435,14 @@ export function CashCollectModal({
                 </div>
 
                 <div className="cashc-equation">
-                  <strong>{fmt(totalDayIncome)} ₽ отмечено за смену:</strong>
+                  <strong>{fmt(totalDayIncome)} ₽ к сдаче:</strong>
                   <span>{fmt(daySummary.todayIncoming)} ₽ наличными</span>
                   <b>+</b>
                   <span>{fmt(daySummary.todayCardIncoming)} ₽ на ЮМ</span>
                   <span className="cashc-equation__sep" aria-hidden="true" />
-                  <span>{fmt(daySummary.openingBalance)} ₽ перенос наличных</span>
-                  <b>+</b>
-                  <span>{fmt(daySummary.todayIncoming)} ₽ наличными</span>
-                  <b>−</b>
-                  <span>{fmt(daySummary.todayOutgoing)} ₽ расходов</span>
-                  <b>=</b>
-                  <strong>{fmt(daySummary.closingBalance)} ₽ в кассе</strong>
+                  <span>Фактический остаток наличных</span>
+                  <strong>{fmt(daySummary.closingBalance)} ₽</strong>
+                  <span>после сохранения не изменится</span>
                 </div>
 
                 {closed.length > 0 && (
@@ -473,7 +466,7 @@ export function CashCollectModal({
 
                 <div className="admin-modal__actions cashc-actions">
                   <button type="button" className="admin-btn admin-btn--ghost" onClick={onClose} disabled={saving}>Отмена</button>
-                  <button type="button" className="admin-btn admin-btn--primary" onClick={submit} disabled={saving}>
+                  <button type="button" className="admin-btn admin-btn--primary" onClick={submit} disabled={saving || (dayItems.length === 0 && dayExpenses.length === 0)}>
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                     Сохранить сводку смены
                   </button>

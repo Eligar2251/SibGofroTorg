@@ -2647,9 +2647,9 @@ function computeCashBalance(
 /**
  * Поступления, ещё не отмеченные в фактической сводке смены.
  *
- * В список входят и наличные в кассу, и уже проведённые поступления на
- * карту ЮМ. Сохранение сводки только помечает оба вида платежей и не
- * создаёт переводов, списаний или повторных начислений.
+ * В список входят наличные и ЮМ только текущей рабочей даты. Старые
+ * переводы не подтягиваются задним числом из уже закрытых смен, а будущие
+ * появятся в свой день. Сохранение лишь ставит отметку без движения денег.
  */
 export async function getPendingCashPayments(): Promise<{
   pending: {
@@ -2678,10 +2678,11 @@ export async function getPendingCashPayments(): Promise<{
     string,
     {
       openingBalance: number;
-      /** Наличные поступления за день. */
+      /** Ещё не отмеченные наличные поступления за день. */
       todayIncoming: number;
-      /** Поступления на карту ЮМ за день. */
+      /** Ещё не отмеченные поступления на карту ЮМ за день. */
       todayCardIncoming: number;
+      /** Ещё не отмеченные наличные расходы за день. */
       todayOutgoing: number;
       closingBalance: number;
     }
@@ -2708,16 +2709,23 @@ export async function getPendingCashPayments(): Promise<{
   );
   const pendingCash = listPendingCashPayments(payments, collections);
   const businessDate = getWarehouseBusinessDate();
-  const shiftIncomes = payments.filter((payment) => {
-    const paymentDate = String(payment.date || "").slice(0, 10);
-    return getShiftIncomeKind(payment) != null && paymentDate <= businessDate;
-  });
+  const collectedExpenseIds = new Set<string>();
+  for (const collection of collections) {
+    for (const expense of collection.expenses || []) {
+      if (expense?.kind && expense?.id) {
+        collectedExpenseIds.add(`${expense.kind}:${expense.id}`);
+      }
+    }
+  }
   const cashExpenses = listCashExpenses(payments, salaries).filter(
-    (expense) => expense.sourceKind !== "card"
+    (expense) =>
+      expense.sourceKind !== "card" &&
+      expense.date === businessDate &&
+      !collectedExpenseIds.has(`${expense.kind}:${expense.id}`)
   );
   const summaryDates = new Set<string>([
     businessDate,
-    ...shiftIncomes.map((payment) => String(payment.date || "").slice(0, 10)),
+    ...pendingCash.map((payment) => String(payment.date || "").slice(0, 10)),
     ...cashExpenses.map((expense) => expense.date),
   ]);
   const dailySummaries: Record<
@@ -2733,18 +2741,23 @@ export async function getPendingCashPayments(): Promise<{
   for (const date of summaryDates) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     const summary = getCashCarryoverSummary(payments, salaries, collections, date);
-    const todayCardIncoming = shiftIncomes
-      .filter(
-        (payment) =>
-          String(payment.date || "").slice(0, 10) === date &&
-          getShiftIncomeKind(payment) === "card"
-      )
+    const pendingOfDay = pendingCash.filter(
+      (payment) => String(payment.date || "").slice(0, 10) === date
+    );
+    const todayIncoming = pendingOfDay
+      .filter((payment) => getShiftIncomeKind(payment) === "cash")
       .reduce((sum, payment) => sum + payment.amount, 0);
+    const todayCardIncoming = pendingOfDay
+      .filter((payment) => getShiftIncomeKind(payment) === "card")
+      .reduce((sum, payment) => sum + payment.amount, 0);
+    const todayOutgoing = cashExpenses
+      .filter((expense) => expense.date === date)
+      .reduce((sum, expense) => sum + expense.amount, 0);
     dailySummaries[date] = {
       openingBalance: summary.openingBalance,
-      todayIncoming: summary.todayIncoming,
+      todayIncoming: round2(todayIncoming),
       todayCardIncoming: round2(todayCardIncoming),
-      todayOutgoing: summary.todayOutgoing,
+      todayOutgoing: round2(todayOutgoing),
       closingBalance: summary.currentBalance,
     };
   }
@@ -2802,6 +2815,40 @@ function getShiftIncomeKind(p: BankPayment): CashKind | null {
 /** Платёж относится к наличной кассе, а не к карте ЮМ. */
 function isCashDeskIncome(p: BankPayment): boolean {
   return getShiftIncomeKind(p) === "cash";
+}
+
+/** Суммы только по платежам, реально отмеченным в конкретной сводке. */
+function summarizeCollectionItems(items: CashCollectionItem[]): {
+  cash: number;
+  card: number;
+  total: number;
+} {
+  let cash = 0;
+  let card = 0;
+  for (const item of items) {
+    if (item.noAccounting) continue;
+    const amount = Math.max(0, Number(item.amount) || 0);
+    const cardAmount = Math.min(
+      amount,
+      Math.max(
+        0,
+        Number(
+          item.cardAmount != null
+            ? item.cardAmount
+            : item.kind === "card"
+              ? amount
+              : 0
+        ) || 0
+      )
+    );
+    card += cardAmount;
+    cash += Math.max(0, amount - cardAmount);
+  }
+  return {
+    cash: round2(cash),
+    card: round2(card),
+    total: round2(cash + card),
+  };
 }
 
 /** Расход из кассы или с карты ЮМ (зарплата или исходящий платёж). */
@@ -2884,7 +2931,12 @@ function listPendingCashPayments(
       // наличные в кассу и поступление на карту ЮМ. Расчётный счёт сюда
       // не относится. Сама отметка не меняет ни один из балансов.
       if (getShiftIncomeKind(p) == null) return false;
-      if (String(p.date || "").slice(0, 10) > today) return false;
+      const paymentDate = String(p.date || "").slice(0, 10);
+      // После перехода на фактические сводки не подтягиваем задним числом
+      // старые переводы, которых не было в прежней разметке. В текущую
+      // сдачу входят только операции сегодняшней смены; будущие появятся
+      // в свой день.
+      if (paymentDate !== today) return false;
       return !collected.has(String(p.id));
     })
     .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
@@ -3017,29 +3069,20 @@ export async function collectCash(
     date
   );
   const closingBalance = round2(cashSummary.currentBalance);
-  const factualCashIncome = round2(cashSummary.todayIncoming);
-  const factualCardIncome = round2(
-    payments
-      .filter(
-        (payment) =>
-          String(payment.date || "").slice(0, 10) === date &&
-          getShiftIncomeKind(payment) === "card"
-      )
-      .reduce((sum, payment) => sum + payment.amount, 0)
-  );
-  const factualIncome = round2(factualCashIncome + factualCardIncome);
+  const collectionIncome = summarizeCollectionItems(allRows);
+  const newlyMarkedIncome = summarizeCollectionItems(rows);
   const factualExpenses = round2(cashSummary.todayOutgoing);
   const payload = {
     date,
-    // Все поступления дня отмечаем в одном отчёте. transfer_amount здесь
-    // лишь расшифровка уже существующих ПЛ на ЮМ: сводка не создаёт новое
-    // движение и не меняет ни кассу, ни карту.
-    amount: factualIncome,
+    // Итог документа складывается только из его отмеченных items. Уже
+    // сданные платежи остаются в сохранённой истории, но повторно в новую
+    // сумму не попадают. transfer_amount — только расшифровка, не движение.
+    amount: collectionIncome.total,
     cash_amount: closingBalance,
-    transfer_amount: factualCardIncome,
+    transfer_amount: collectionIncome.card,
     items: allRows,
     expenses: expenseRows,
-    income_amount: factualIncome,
+    income_amount: collectionIncome.total,
     expenses_amount: factualExpenses,
     note: cleanNote,
   };
@@ -3050,10 +3093,12 @@ export async function collectCash(
 
   revalidateTag("warehouse-cash-collections", { expire: 0 });
   return {
-    amount: factualIncome,
-    cashIncomeAmount: factualCashIncome,
+    // В ответе — только сумма платежей, отмеченных этим сохранением.
+    // Старые items нужны в документе для истории, но повторно не считаются.
+    amount: newlyMarkedIncome.total,
+    cashIncomeAmount: newlyMarkedIncome.cash,
     cashAmount: closingBalance,
-    transferAmount: factualCardIncome,
+    transferAmount: newlyMarkedIncome.card,
     date,
   };
 }

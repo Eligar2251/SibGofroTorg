@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
   try {
-    // ?pending=1 — данные для фактической сводки смены: наличные,
-    // поступления на карту ЮМ, расходы наличными и перенос кассы.
+    // ?pending=1 — только ещё не отмеченные операции сегодняшней смены.
+    // Старые сданные кассы и их платежи остаются только в истории.
     const { searchParams } = new URL(request.url);
     if (searchParams.get("pending")) {
       const cashData = await getPendingCashPayments();
