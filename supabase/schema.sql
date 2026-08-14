@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS products (
   stock_warn_qty INT,
   is_promo BOOLEAN DEFAULT FALSE,
   promo_label TEXT,
+  promo_label_color TEXT,
+  promo_label_text_color TEXT,
   made_to_order BOOLEAN DEFAULT FALSE,
   made_to_order_min_qty INT,
   -- Вариативность: продажа рулонами и метрами (отмотка)
@@ -89,6 +91,39 @@ CREATE INDEX IF NOT EXISTS idx_products_promo ON products(is_promo) WHERE is_pro
 CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock) WHERE in_stock = TRUE;
 DROP TRIGGER IF EXISTS trg_products_updated ON products;
 CREATE TRIGGER trg_products_updated BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE OR REPLACE FUNCTION calculate_product_box_volume()
+RETURNS TRIGGER AS $$
+DECLARE
+  cubic_units NUMERIC;
+  normalized_unit TEXT;
+BEGIN
+  IF NEW.dimension_length IS NULL OR NEW.dimension_length <= 0
+     OR NEW.dimension_width IS NULL OR NEW.dimension_width <= 0
+     OR NEW.dimension_height IS NULL OR NEW.dimension_height <= 0 THEN
+    NEW.volume = NULL;
+    RETURN NEW;
+  END IF;
+
+  cubic_units := NEW.dimension_length * NEW.dimension_width * NEW.dimension_height;
+  normalized_unit := LOWER(COALESCE(NULLIF(TRIM(NEW.dimension_unit), ''), 'мм'));
+  NEW.volume := ROUND(
+    CASE
+      WHEN normalized_unit IN ('м', 'm') THEN cubic_units * 1000
+      WHEN normalized_unit IN ('см', 'cm') THEN cubic_units / 1000
+      ELSE cubic_units / 1000000
+    END,
+    3
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_products_calculate_volume ON products;
+CREATE TRIGGER trg_products_calculate_volume
+  BEFORE INSERT OR UPDATE OF dimension_length, dimension_width, dimension_height, dimension_unit
+  ON products
+  FOR EACH ROW EXECUTE FUNCTION calculate_product_box_volume();
 
 -- =========================================================
 -- 3. ПОЛЬЗОВАТЕЛИ

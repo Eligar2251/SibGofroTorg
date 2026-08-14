@@ -22,6 +22,11 @@ import {
 import { ImageUploader } from "./ImageUploader";
 import { MarkdownText } from "@/components/catalog/MarkdownText";
 import { VariantsEditor } from "./VariantsEditor";
+import {
+  calculateBoxVolumeLiters,
+  DEFAULT_PRODUCT_LABEL_COLOR,
+  DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
+} from "@/lib/product-fields";
 
 interface Category {
   id: string;
@@ -59,6 +64,8 @@ interface ProductData {
   inStock?: boolean | null;
   isPromo?: boolean | null;
   promoLabel?: string | null;
+  promoLabelColor?: string | null;
+  promoLabelTextColor?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
   isCuttable?: boolean | null;
@@ -137,6 +144,29 @@ export function ProductFormClient({
     product?.cutPricePerMeter != null ? String(product.cutPricePerMeter) : ""
   );
   const [cutUnitName, setCutUnitName] = useState<string>(product?.cutUnitName || "м");
+  const [dimensionLength, setDimensionLength] = useState(
+    product?.dimensionLength != null ? String(product.dimensionLength) : ""
+  );
+  const [dimensionWidth, setDimensionWidth] = useState(
+    product?.dimensionWidth != null ? String(product.dimensionWidth) : ""
+  );
+  const [dimensionHeight, setDimensionHeight] = useState(
+    product?.dimensionHeight != null ? String(product.dimensionHeight) : ""
+  );
+  const [dimensionUnit, setDimensionUnit] = useState(product?.dimensionUnit || "мм");
+  const [promoLabel, setPromoLabel] = useState(product?.promoLabel || "");
+  const [promoLabelColor, setPromoLabelColor] = useState(
+    product?.promoLabelColor || DEFAULT_PRODUCT_LABEL_COLOR
+  );
+  const [promoLabelTextColor, setPromoLabelTextColor] = useState(
+    product?.promoLabelTextColor || DEFAULT_PRODUCT_LABEL_TEXT_COLOR
+  );
+  const calculatedVolume = calculateBoxVolumeLiters(
+    dimensionLength,
+    dimensionWidth,
+    dimensionHeight,
+    dimensionUnit,
+  );
 
   // Markdown-редактор описания
   const [descValue, setDescValue] = useState(product?.description || "");
@@ -220,6 +250,7 @@ export function ProductFormClient({
 
     const form = e.currentTarget;
     const data = new FormData(form);
+    const cleanPromoLabel = promoLabel.trim();
 
     const isFeatured = data.get("isFeatured") === "on";
     const featuredOrderRaw = String(data.get("featuredOrder") || "").trim();
@@ -258,11 +289,13 @@ export function ProductFormClient({
       dimensionUnit: data.get("dimensionUnit") || "мм",
       material: data.get("material") || null,
       packQty: data.get("packQty") ? Number(data.get("packQty")) : null,
-      volume: data.get("volume") ? Number(data.get("volume")) : null,
+      volume: calculatedVolume,
       note: data.get("note") || null,
       inStock: data.get("inStock") === "on",
       isPromo: data.get("isPromo") === "on",
-      promoLabel: data.get("promoLabel") || null,
+      promoLabel: cleanPromoLabel || null,
+      promoLabelColor: cleanPromoLabel ? promoLabelColor : null,
+      promoLabelTextColor: cleanPromoLabel ? promoLabelTextColor : null,
       madeToOrder: madeToOrderChecked,
       madeToOrderMinQty: madeToOrderChecked && madeToOrderMinQty !== "" ? Math.max(1, Math.floor(Number(madeToOrderMinQty) || 1)) : null,
       isCuttable: isCuttableChecked,
@@ -673,29 +706,38 @@ export function ProductFormClient({
           <h2 className="admin-h2">Характеристики</h2>
           <div className="admin-grid-4">
             <div className="admin-field">
-              <label className="admin-label">Длина, мм</label>
+              <label className="admin-label">Длина, {dimensionUnit}</label>
               <input
                 name="dimensionLength"
                 type="number"
-                defaultValue={product?.dimensionLength ?? ""}
+                min="0"
+                step="any"
+                value={dimensionLength}
+                onChange={(event) => setDimensionLength(event.target.value)}
                 className="admin-input"
               />
             </div>
             <div className="admin-field">
-              <label className="admin-label">Ширина, мм</label>
+              <label className="admin-label">Ширина, {dimensionUnit}</label>
               <input
                 name="dimensionWidth"
                 type="number"
-                defaultValue={product?.dimensionWidth ?? ""}
+                min="0"
+                step="any"
+                value={dimensionWidth}
+                onChange={(event) => setDimensionWidth(event.target.value)}
                 className="admin-input"
               />
             </div>
             <div className="admin-field">
-              <label className="admin-label">Высота, мм</label>
+              <label className="admin-label">Высота, {dimensionUnit}</label>
               <input
                 name="dimensionHeight"
                 type="number"
-                defaultValue={product?.dimensionHeight ?? ""}
+                min="0"
+                step="any"
+                value={dimensionHeight}
+                onChange={(event) => setDimensionHeight(event.target.value)}
                 className="admin-input"
               />
             </div>
@@ -704,10 +746,18 @@ export function ProductFormClient({
               <input
                 name="volume"
                 type="number"
-                step="0.1"
-                defaultValue={product?.volume ?? ""}
+                step="0.001"
+                value={calculatedVolume ?? ""}
+                readOnly
+                placeholder="Заполните Д × Ш × В"
                 className="admin-input"
+                aria-describedby="product-volume-hint"
               />
+              <span id="product-volume-hint" className="admin-hint">
+                {calculatedVolume != null
+                  ? "Рассчитан автоматически по трём размерам"
+                  : "Появится автоматически, когда заполнены длина, ширина и высота"}
+              </span>
             </div>
           </div>
 
@@ -760,7 +810,8 @@ export function ProductFormClient({
             <label className="admin-label">Ед. измерения</label>
             <select
               name="dimensionUnit"
-              defaultValue={product?.dimensionUnit || "мм"}
+              value={dimensionUnit}
+              onChange={(event) => setDimensionUnit(event.target.value)}
               className="admin-select"
             >
               <option value="мм">мм</option>
@@ -937,14 +988,47 @@ export function ProductFormClient({
 
           <div className="admin-grid-2" style={{ marginTop: 12 }}>
             <div className="admin-field">
-              <label className="admin-label">Метка акции</label>
+              <label className="admin-label">Метка товара</label>
               <input
                 name="promoLabel"
                 type="text"
-                defaultValue={product?.promoLabel || ""}
+                value={promoLabel}
+                onChange={(event) => setPromoLabel(event.target.value)}
                 placeholder='например: "Хит", "Акция"'
                 className="admin-input"
               />
+              <div className="product-label-colors">
+                <label className="product-label-color">
+                  <span>Цвет метки</span>
+                  <input
+                    name="promoLabelColor"
+                    type="color"
+                    value={promoLabelColor}
+                    onChange={(event) => setPromoLabelColor(event.target.value)}
+                  />
+                  <code>{promoLabelColor}</code>
+                </label>
+                <label className="product-label-color">
+                  <span>Цвет текста</span>
+                  <input
+                    name="promoLabelTextColor"
+                    type="color"
+                    value={promoLabelTextColor}
+                    onChange={(event) => setPromoLabelTextColor(event.target.value)}
+                  />
+                  <code>{promoLabelTextColor}</code>
+                </label>
+              </div>
+              <div className="product-label-preview" aria-live="polite">
+                <span
+                  style={{
+                    backgroundColor: promoLabelColor,
+                    color: promoLabelTextColor,
+                  }}
+                >
+                  {promoLabel || "Пример метки"}
+                </span>
+              </div>
             </div>
             <div className="admin-field">
               <label className="admin-label">Порядок в популярных</label>

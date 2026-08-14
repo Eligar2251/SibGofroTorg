@@ -54,6 +54,8 @@ export default async function FeaturedOrderPage({
     imageUrl: p.imageUrl ?? null,
     inStock: p.inStock,
     promoLabel: p.promoLabel ?? null,
+    promoLabelColor: p.promoLabelColor ?? null,
+    promoLabelTextColor: p.promoLabelTextColor ?? null,
     madeToOrder: p.madeToOrder ?? false,
     stockQty: p.stockQty ?? null,
     dimensionLength: p.dimensionLength ?? null,

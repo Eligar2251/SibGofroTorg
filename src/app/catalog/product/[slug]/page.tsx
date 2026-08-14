@@ -41,6 +41,7 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { normalizeProductLabelColor } from "@/lib/product-fields";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
 import {
@@ -348,7 +349,15 @@ export default async function ProductPage({
             {(product.promoLabel || discountPercent > 0) && (
               <div className="gallery-badges">
                 {product.promoLabel && (
-                  <span className="badge-promo">{product.promoLabel}</span>
+                  <span
+                    className="badge-promo"
+                    style={{
+                      backgroundColor: normalizeProductLabelColor(product.promoLabelColor) || undefined,
+                      color: normalizeProductLabelColor(product.promoLabelTextColor) || undefined,
+                    }}
+                  >
+                    {product.promoLabel}
+                  </span>
                 )}
                 {discountPercent > 0 && (
                   <span className="badge-discount">−{discountPercent}%</span>

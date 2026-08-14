@@ -15,6 +15,7 @@ import {
   Printer,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { normalizeProductLabelColor } from "@/lib/product-fields";
 
 interface ProductItem {
   id: string;
@@ -29,6 +30,8 @@ interface ProductItem {
   inStock: boolean;
   isPromo: boolean;
   promoLabel?: string | null;
+  promoLabelColor?: string | null;
+  promoLabelTextColor?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
   isCuttable?: boolean | null;
@@ -438,7 +441,14 @@ export function ProductListClient({
                           </span>
                         )}
                         {product.isPromo && (
-                          <span className="admin-badge admin-badge--amber">
+                          <span
+                            className="admin-badge admin-badge--amber"
+                            style={{
+                              backgroundColor: normalizeProductLabelColor(product.promoLabelColor) || undefined,
+                              color: normalizeProductLabelColor(product.promoLabelTextColor) || undefined,
+                              borderColor: normalizeProductLabelColor(product.promoLabelColor) || undefined,
+                            }}
+                          >
                             {product.promoLabel || "Акция"}
                           </span>
                         )}

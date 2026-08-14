@@ -16,6 +16,8 @@ interface OrderProduct {
   imageUrl?: string | null;
   inStock?: boolean;
   promoLabel?: string | null;
+  promoLabelColor?: string | null;
+  promoLabelTextColor?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
   isCuttable?: boolean | null;

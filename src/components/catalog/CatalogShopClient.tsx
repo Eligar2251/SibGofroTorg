@@ -28,6 +28,8 @@ interface CatalogProduct {
   imageUrl?: string | null;
   inStock?: boolean;
   promoLabel?: string | null;
+  promoLabelColor?: string | null;
+  promoLabelTextColor?: string | null;
   madeToOrder?: boolean | null;
   stockQty?: number | null;
   dimensionLength?: number | null;

@@ -61,6 +61,8 @@ export default async function AdminProductsPage({
     barcode: p.barcode ?? null,
     isPromo: p.isPromo,
     promoLabel: p.promoLabel ?? null,
+    promoLabelColor: p.promoLabelColor ?? null,
+    promoLabelTextColor: p.promoLabelTextColor ?? null,
     madeToOrder: p.madeToOrder ?? false,
     madeToOrderMinQty: (p as any).madeToOrderMinQty ?? null,
     isCuttable: (p as any).isCuttable ?? false,
