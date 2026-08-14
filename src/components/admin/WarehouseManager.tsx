@@ -3535,128 +3535,57 @@ export function WarehouseManager({
             </>
           ) : (
             <>
-          {bankSub === "history" &&
-            (collectionsSorted.length > 0 || legacyCashClosures.length > 0) && (
-              <div className="admin-card bank-cash-postings">
-                <div className="admin-card__head">
-                  <div>
-                    <h3 className="admin-card__title">
-                      <Banknote size={15} style={{ verticalAlign: "middle", marginRight: 7 }} />
-                      Сохранённые сводки кассы
-                    </h3>
-                    <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
-                      Справочные отчёты — не платежи и не движения денег
-                    </div>
+          {bankSub === "history" && legacyCashClosures.length > 0 && (
+            <div className="admin-card bank-cash-postings">
+              <div className="admin-card__head">
+                <div>
+                  <h3 className="admin-card__title">
+                    <Archive size={15} style={{ verticalAlign: "middle", marginRight: 7 }} />
+                    Старые проведения кассы
+                  </h3>
+                  <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
+                    Только платежи, закрытые до появления фактических сводок
                   </div>
-                  <span className="admin-badge admin-badge--muted">
-                    {collectionsSorted.length + legacyCashClosures.length} док.
-                  </span>
                 </div>
-                <div className="bank-cash-postings__list">
-                  {legacyCashClosures.map((closure) => (
-                    <div key={closure.id} className="bank-cash-posting bank-cash-posting--legacy">
-                      <span className="bank-cash-posting__icon"><Archive size={15} /></span>
-                      <div className="bank-cash-posting__main">
-                        <div className="bank-cash-posting__top">
-                          <strong>Сдача кассы без перевода · старое проведение</strong>
-                          <span className="admin-badge admin-badge--green">проведено</span>
-                          <span className="admin-badge admin-badge--amber">вне баланса</span>
-                        </div>
-                        <div className="bank-cash-posting__meta">
-                          <span>{fmtDateTime(closure.date)}</span>
-                          <span>{closure.paymentIds.length} платежей</span>
-                          <span>ПЛ-{closure.numbers.join(", ПЛ-")}</span>
-                        </div>
-                      </div>
-                      <strong className="bank-cash-posting__amount">{fmt(closure.amount)} ₽</strong>
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--ghost admin-btn--sm"
-                        disabled={collecting}
-                        onClick={() =>
-                          handleRestoreLegacyClosure(
-                            closure.paymentIds,
-                            closure.amount
-                          )
-                        }
-                      >
-                        <RotateCcw size={12} /> Отменить проведение
-                      </button>
-                    </div>
-                  ))}
-                  {collectionsSorted.map((collection) => {
-                    const noAccounting = (collection.items || []).some(
-                      (item) => item.noAccounting
-                    );
-                    const incomeBreakdown =
-                      getCashCollectionIncomeBreakdown(collection);
-                    const documentAmount = noAccounting
-                      ? (collection.items || []).reduce(
-                          (sum, item) => sum + (item.amount || 0),
-                          0
-                        )
-                      : incomeBreakdown.total;
-                    const opening = Math.round(
-                      (cashOpeningByCollectionId.get(collection.id) || 0) * 100
-                    ) / 100;
-                    const expenseBreakdown =
-                      getCashCollectionExpenseBreakdown(collection);
-                    const expenses = expenseBreakdown.total;
-                    const closing = collection.cashAmount != null
-                      ? Math.round(collection.cashAmount * 100) / 100
-                      : Math.round(
-                          (opening + (noAccounting ? 0 : incomeBreakdown.cash) - expenseBreakdown.cash) * 100
-                        ) / 100;
-                    return (
-                      <div key={collection.id} className="bank-cash-posting">
-                        <span className="bank-cash-posting__icon"><Banknote size={15} /></span>
-                        <div className="bank-cash-posting__main">
-                          <div className="bank-cash-posting__top">
-                            <strong>
-                              {noAccounting
-                                ? "Закрытие старых платежей без движения денег"
-                                : "Сводка смены кассы"}
-                            </strong>
-                            <span className="admin-badge admin-badge--green">сохранено</span>
-                            {noAccounting && (
-                              <span className="admin-badge admin-badge--blue">без учёта</span>
-                            )}
-                          </div>
-                          <div className="bank-cash-posting__meta">
-                            <span>{fmtDate(collection.date)}</span>
-                            <span>{(collection.items || []).length} платежей</span>
-                            {!noAccounting && (
-                              <>
-                                <span>перенос +{fmt(opening)} ₽</span>
-                                <span>всего +{fmt(documentAmount)} ₽</span>
-                                <span>наличные +{fmt(incomeBreakdown.cash)} ₽</span>
-                                <span>ЮМ +{fmt(incomeBreakdown.card)} ₽</span>
-                                <span>расход всего −{fmt(expenses)} ₽</span>
-                                <span>расход нал −{fmt(expenseBreakdown.cash)} ₽</span>
-                                <span>расход ЮМ −{fmt(expenseBreakdown.card)} ₽</span>
-                                <span>остаток наличных {fmt(closing)} ₽</span>
-                              </>
-                            )}
-                            {collection.note && <span>{collection.note}</span>}
-                          </div>
-                        </div>
-                        <strong className="bank-cash-posting__amount">{fmt(documentAmount)} ₽</strong>
-                        <button
-                          type="button"
-                          className="admin-btn admin-btn--ghost admin-btn--sm"
-                          disabled={collecting}
-                          onClick={() =>
-                            handleDeleteCollection(collection.id, noAccounting)
-                          }
-                        >
-                          <RotateCcw size={12} /> Удалить сводку
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <span className="admin-badge admin-badge--muted">
+                  {legacyCashClosures.length} док.
+                </span>
               </div>
-            )}
+              <div className="bank-cash-postings__list">
+                {legacyCashClosures.map((closure) => (
+                  <div key={closure.id} className="bank-cash-posting bank-cash-posting--legacy">
+                    <span className="bank-cash-posting__icon"><Archive size={15} /></span>
+                    <div className="bank-cash-posting__main">
+                      <div className="bank-cash-posting__top">
+                        <strong>Сдача кассы без перевода · старое проведение</strong>
+                        <span className="admin-badge admin-badge--green">проведено</span>
+                        <span className="admin-badge admin-badge--amber">вне баланса</span>
+                      </div>
+                      <div className="bank-cash-posting__meta">
+                        <span>{fmtDateTime(closure.date)}</span>
+                        <span>{closure.paymentIds.length} платежей</span>
+                        <span>ПЛ-{closure.numbers.join(", ПЛ-")}</span>
+                      </div>
+                    </div>
+                    <strong className="bank-cash-posting__amount">{fmt(closure.amount)} ₽</strong>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      disabled={collecting}
+                      onClick={() =>
+                        handleRestoreLegacyClosure(
+                          closure.paymentIds,
+                          closure.amount
+                        )
+                      }
+                    >
+                      <RotateCcw size={12} /> Отменить проведение
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="bank-toolbar">
             <div className="bank-toolbar__search" style={{ position: "relative" }}>
               <Search
