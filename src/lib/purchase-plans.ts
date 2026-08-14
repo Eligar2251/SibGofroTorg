@@ -5,6 +5,10 @@ import { revalidateTag } from "next/cache";
 import { getAdminDb } from "@/lib/supabase";
 import { getWarehouseBusinessDate } from "@/lib/warehouse-shared";
 import {
+  fetchOzonProduct,
+  normalizeOzonProductUrl,
+} from "@/lib/ozon-product";
+import {
   purchaseSavedAmount,
   type PurchaseAccount,
   type PurchaseContribution,
@@ -21,6 +25,15 @@ function round2(value: unknown): number {
 
 function normalizeAccount(value: unknown): PurchaseAccount {
   return value === "cash" || value === "ym_card" ? value : "bank";
+}
+
+function safeOzonUrl(value: unknown): string | null {
+  if (!value) return null;
+  try {
+    return normalizeOzonProductUrl(value);
+  } catch {
+    return null;
+  }
 }
 
 function normalizeContributions(raw: unknown): PurchaseContribution[] {
@@ -49,6 +62,12 @@ function mapPlan(row: Record<string, any>): PurchasePlan {
     productId: String(row.product_id || ""),
     productName: String(row.product_name || "Товар"),
     sku: row.sku ? String(row.sku) : null,
+    ozonUrl: safeOzonUrl(row.ozon_url),
+    ozonImageUrl: row.ozon_image_url ? String(row.ozon_image_url) : null,
+    ozonPrice: row.ozon_price != null ? Math.max(0, round2(row.ozon_price)) : null,
+    ozonCheckedAt: row.ozon_checked_at ? String(row.ozon_checked_at) : null,
+    ozonPriceUpdatedAt: row.ozon_price_updated_at ? String(row.ozon_price_updated_at) : null,
+    ozonLastError: row.ozon_last_error ? String(row.ozon_last_error) : null,
     targetAmount: Math.max(0, round2(row.target_amount)),
     contributionAmount: Math.max(0.01, round2(row.contribution_amount) || 500),
     account: normalizeAccount(row.account),
@@ -64,10 +83,17 @@ function mapPlan(row: Record<string, any>): PurchasePlan {
 }
 
 function migrationError(error: { code?: string; message?: string }): Error {
-  if (error.code === "42P01" || String(error.message || "").includes("does not exist")) {
+  const message = String(error.message || "");
+  if (
+    message.includes("ozon_") &&
+    (error.code === "PGRST204" || error.code === "42703" || message.includes("schema cache"))
+  ) {
+    return new Error("Примените миграцию migration_purchase_plan_ozon.sql");
+  }
+  if (error.code === "42P01" || message.includes("does not exist")) {
     return new Error("Примените миграцию migration_purchase_plans.sql");
   }
-  return new Error(error.message || "Ошибка планов закупок");
+  return new Error(message || "Ошибка планов закупок");
 }
 
 export async function getPurchasePlans(): Promise<PurchasePlan[]> {
@@ -88,23 +114,51 @@ export async function createPurchasePlan(input: {
   productId: unknown;
   productName: unknown;
   sku?: unknown;
+  ozonUrl?: unknown;
   targetAmount?: unknown;
   contributionAmount?: unknown;
   account?: unknown;
 }): Promise<PurchasePlan> {
-  const productName = cleanText(input.productName, 300);
-  if (!productName) throw new Error("Введите название товара");
+  const rawOzonUrl = cleanText(input.ozonUrl, 1500);
+  const ozonUrl = rawOzonUrl ? normalizeOzonProductUrl(rawOzonUrl) : null;
+  let ozonSnapshot: Awaited<ReturnType<typeof fetchOzonProduct>> | null = null;
+  let ozonLastError: string | null = null;
+  if (ozonUrl) {
+    try {
+      ozonSnapshot = await fetchOzonProduct(ozonUrl);
+    } catch (error) {
+      ozonLastError = cleanText(
+        error instanceof Error ? error.message : "Не удалось проверить Ozon",
+        500
+      );
+    }
+  }
+
+  const productName = cleanText(input.productName, 300) || ozonSnapshot?.title || "";
+  if (!productName) {
+    throw new Error(
+      ozonLastError || "Введите название товара или вставьте рабочую ссылку Ozon"
+    );
+  }
   // Связь с каталогом необязательна: для произвольного названия
   // сохраняем стабильный внутренний идентификатор без внешнего FK.
   const productId = cleanText(input.productId, 100) || `custom:${randomUUID()}`;
   const db = getAdminDb();
   const now = new Date().toISOString();
+  const currentOzonUrl = ozonSnapshot?.url || ozonUrl;
+  const currentOzonPrice = ozonSnapshot?.price ?? null;
   const row = {
     id: randomUUID(),
     product_id: productId,
-    product_name: productName,
+    product_name: ozonSnapshot?.title || productName,
     sku: cleanText(input.sku, 80) || null,
-    target_amount: Math.max(0, round2(input.targetAmount)),
+    ozon_url: currentOzonUrl,
+    ozon_image_url: ozonSnapshot?.imageUrl || null,
+    ozon_price: currentOzonPrice,
+    ozon_checked_at: ozonUrl ? now : null,
+    ozon_price_updated_at: ozonSnapshot ? now : null,
+    ozon_last_error: ozonLastError,
+    target_amount: currentOzonPrice ?? Math.max(0, round2(input.targetAmount)),
     contribution_amount: Math.max(0.01, round2(input.contributionAmount) || 500),
     account: normalizeAccount(input.account),
     status: "active",
@@ -123,6 +177,65 @@ export async function createPurchasePlan(input: {
   if (error) throw migrationError(error);
   revalidateTag("purchase-plans", { expire: 0 });
   return mapPlan(data);
+}
+
+export async function refreshPurchasePlanOzon(idValue: unknown): Promise<{
+  plan: PurchasePlan;
+  warning: string | null;
+}> {
+  const id = cleanText(idValue, 100);
+  if (!id) throw new Error("План не найден");
+  const db = getAdminDb();
+  const { data: existing, error: readError } = await db
+    .from("warehouse_purchase_plans")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) throw migrationError(readError);
+  if (!existing) throw new Error("План не найден");
+  if (!existing.ozon_url) throw new Error("У плана нет ссылки Ozon");
+
+  const checkedAt = new Date().toISOString();
+  try {
+    const snapshot = await fetchOzonProduct(existing.ozon_url);
+    const { data, error } = await db
+      .from("warehouse_purchase_plans")
+      .update({
+        product_name: snapshot.title || existing.product_name,
+        ozon_url: snapshot.url,
+        ozon_image_url: snapshot.imageUrl || existing.ozon_image_url || null,
+        ozon_price: snapshot.price,
+        ozon_checked_at: checkedAt,
+        ozon_price_updated_at: checkedAt,
+        ozon_last_error: null,
+        target_amount: snapshot.price,
+        updated_at: checkedAt,
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw migrationError(error);
+    revalidateTag("purchase-plans", { expire: 0 });
+    return { plan: mapPlan(data), warning: null };
+  } catch (error) {
+    const warning = cleanText(
+      error instanceof Error ? error.message : "Не удалось обновить цену Ozon",
+      500
+    );
+    const { data, error: updateError } = await db
+      .from("warehouse_purchase_plans")
+      .update({
+        ozon_checked_at: checkedAt,
+        ozon_last_error: warning,
+        updated_at: checkedAt,
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (updateError) throw migrationError(updateError);
+    revalidateTag("purchase-plans", { expire: 0 });
+    return { plan: mapPlan(data), warning };
+  }
 }
 
 export async function addPurchaseContribution(input: {

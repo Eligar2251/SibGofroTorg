@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Banknote,
   CheckCircle2,
   CreditCard,
+  ExternalLink,
   Loader2,
   PiggyBank,
   Plus,
+  RefreshCw,
   Trash2,
   Wallet,
 } from "lucide-react";
@@ -22,6 +24,50 @@ import {
 const fmt = (value: number) => value.toLocaleString("ru-RU", {
   maximumFractionDigits: 2,
 });
+
+const OZON_AUTO_REFRESH_MS = 60 * 60 * 1000;
+
+type OzonPreview = {
+  url: string;
+  title: string;
+  price: number;
+  imageUrl: string | null;
+  fetchedAt: string;
+};
+
+function isOzonRefreshDue(plan: PurchasePlan): boolean {
+  if (!plan.ozonUrl || plan.status !== "active") return false;
+  const checkedAt = plan.ozonCheckedAt
+    ? new Date(plan.ozonCheckedAt).getTime()
+    : 0;
+  return !Number.isFinite(checkedAt) || Date.now() - checkedAt >= OZON_AUTO_REFRESH_MS;
+}
+
+async function requestOzonRefresh(
+  id: string,
+  silent: boolean,
+): Promise<{ plan: PurchasePlan; warning: string | null }> {
+  const response = await fetch("/api/admin/warehouse/purchase-plans", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "refresh-ozon", id, silent }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || "Не удалось обновить цену Ozon");
+  return body;
+}
+
+function formatCheckedAt(value: string | null | undefined): string {
+  if (!value) return "ещё не проверялась";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "ещё не проверялась";
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function todayIso(): string {
   const date = new Date();
@@ -47,6 +93,11 @@ export function PurchasePlanning({
   const [plans, setPlans] = useState(initialPlans);
   const [productName, setProductName] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<PickerProduct | null>(null);
+  const [ozonUrl, setOzonUrl] = useState("");
+  const [ozonPreview, setOzonPreview] = useState<OzonPreview | null>(null);
+  const [loadingOzon, setLoadingOzon] = useState(false);
+  const [refreshingOzonIds, setRefreshingOzonIds] = useState<Set<string>>(new Set());
+  const ozonPreviewRequestRef = useRef(0);
   const [targetAmount, setTargetAmount] = useState(0);
   const [contributionAmount, setContributionAmount] = useState(500);
   const [account, setAccount] = useState<PurchaseAccount>("bank");
@@ -68,6 +119,39 @@ export function PurchasePlanning({
   const visiblePlans = showCompleted ? completedPlans : activePlans;
   const totalSaved = activePlans.reduce((sum, plan) => sum + plan.savedAmount, 0);
 
+  useEffect(() => {
+    const stalePlans = initialPlans.filter(isOzonRefreshDue).slice(0, 4);
+    if (stalePlans.length === 0) return;
+    let cancelled = false;
+    const ids = stalePlans.map((plan) => plan.id);
+    setRefreshingOzonIds((current) => new Set([...current, ...ids]));
+
+    void Promise.allSettled(
+      stalePlans.map((plan) => requestOzonRefresh(plan.id, true))
+    ).then((results) => {
+      if (!cancelled) {
+        const refreshed = results.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value.plan] : []
+        );
+        if (refreshed.length > 0) {
+          const byId = new Map(refreshed.map((plan) => [plan.id, plan]));
+          setPlans((current) =>
+            current.map((plan) => byId.get(plan.id) || plan)
+          );
+        }
+      }
+      setRefreshingOzonIds((current) => {
+        const next = new Set(current);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialPlans]);
+
   function replacePlan(nextPlan: PurchasePlan) {
     setPlans((previous) => {
       const exists = previous.some((plan) => plan.id === nextPlan.id);
@@ -83,10 +167,69 @@ export function PurchasePlanning({
     setError("");
   }
 
+  async function loadOzonPreview(urlValue = ozonUrl) {
+    const value = urlValue.trim();
+    if (!value) {
+      setOzonPreview(null);
+      return;
+    }
+    const requestId = ++ozonPreviewRequestRef.current;
+    setLoadingOzon(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/warehouse/purchase-plans/ozon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: value }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Не удалось прочитать ссылку Ozon");
+      if (requestId !== ozonPreviewRequestRef.current) return;
+      const preview = body.product as OzonPreview;
+      setOzonUrl(preview.url);
+      setOzonPreview(preview);
+      setProductName(preview.title);
+      setSelectedProduct(null);
+      setTargetAmount(preview.price);
+    } catch (previewError) {
+      if (requestId !== ozonPreviewRequestRef.current) return;
+      setOzonPreview(null);
+      setError(
+        previewError instanceof Error
+          ? previewError.message
+          : "Не удалось получить данные товара Ozon"
+      );
+    } finally {
+      if (requestId === ozonPreviewRequestRef.current) setLoadingOzon(false);
+    }
+  }
+
+  async function refreshOzonPlan(plan: PurchasePlan) {
+    setRefreshingOzonIds((current) => new Set(current).add(plan.id));
+    setError("");
+    try {
+      const result = await requestOzonRefresh(plan.id, false);
+      replacePlan(result.plan);
+      if (result.warning) setError(result.warning);
+    } catch (refreshError) {
+      setError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : "Не удалось обновить цену Ozon"
+      );
+    } finally {
+      setRefreshingOzonIds((current) => {
+        const next = new Set(current);
+        next.delete(plan.id);
+        return next;
+      });
+    }
+  }
+
   async function createPlan() {
     const cleanProductName = productName.trim();
-    if (!cleanProductName) {
-      setError("Введите название товара для закупки");
+    if (!cleanProductName && !ozonUrl.trim()) {
+      setError("Введите название товара или вставьте ссылку Ozon");
       return;
     }
     setCreating(true);
@@ -99,6 +242,7 @@ export function PurchasePlanning({
           productId: selectedProduct?.id || null,
           productName: cleanProductName,
           sku: selectedProduct?.sku || null,
+          ozonUrl: ozonUrl.trim() || null,
           targetAmount,
           contributionAmount,
           account,
@@ -109,6 +253,8 @@ export function PurchasePlanning({
       replacePlan(body.plan);
       setProductName("");
       setSelectedProduct(null);
+      setOzonUrl("");
+      setOzonPreview(null);
       setTargetAmount(0);
       setContributionAmount(500);
     } catch (createError) {
@@ -220,6 +366,75 @@ export function PurchasePlanning({
 
       <section className="purchase-create">
         <div className="purchase-create__picker">
+          <label className="admin-field purchase-create__ozon-field">
+            <span className="admin-label">Ссылка на товар Ozon — необязательно</span>
+            <div className="purchase-create__ozon-input">
+              <input
+                className="admin-input"
+                type="url"
+                value={ozonUrl}
+                placeholder="https://www.ozon.ru/product/…"
+                onChange={(event) => {
+                  ozonPreviewRequestRef.current += 1;
+                  if (ozonPreview && productName === ozonPreview.title) {
+                    setProductName("");
+                  }
+                  if (ozonPreview && targetAmount === ozonPreview.price) {
+                    setTargetAmount(0);
+                  }
+                  setOzonUrl(event.target.value);
+                  setOzonPreview(null);
+                }}
+                onPaste={(event) => {
+                  event.preventDefault();
+                  const value = event.clipboardData.getData("text");
+                  if (ozonPreview && productName === ozonPreview.title) {
+                    setProductName("");
+                  }
+                  if (ozonPreview && targetAmount === ozonPreview.price) {
+                    setTargetAmount(0);
+                  }
+                  setOzonPreview(null);
+                  setOzonUrl(value);
+                  void loadOzonPreview(value);
+                }}
+                onBlur={() => {
+                  if (ozonUrl.trim() && !ozonPreview && !loadingOzon) {
+                    void loadOzonPreview();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="admin-btn admin-btn--outline"
+                disabled={loadingOzon || !ozonUrl.trim()}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => void loadOzonPreview()}
+              >
+                {loadingOzon ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+                Подтянуть
+              </button>
+            </div>
+          </label>
+          {ozonPreview && (
+            <div className="purchase-create__ozon-preview">
+              {ozonPreview.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={ozonPreview.imageUrl} alt="" />
+              ) : (
+                <span className="purchase-create__ozon-placeholder">Ozon</span>
+              )}
+              <div>
+                <strong>{ozonPreview.title}</strong>
+                <b>{fmt(ozonPreview.price)} ₽</b>
+                <small>Публичная цена Ozon; будет проверяться автоматически</small>
+              </div>
+            </div>
+          )}
           <label className="admin-field purchase-create__name">
             <span className="admin-label">Название товара *</span>
             <input
@@ -254,8 +469,20 @@ export function PurchasePlanning({
           )}
         </div>
         <label className="admin-field">
-          <span className="admin-label">Цель, ₽</span>
-          <input className="admin-input" type="number" min={0} step={100} value={targetAmount || ""} onChange={(event) => setTargetAmount(Math.max(0, Number(event.target.value) || 0))} placeholder="необязательно" />
+          <span className="admin-label">{ozonPreview ? "Цена Ozon, ₽" : "Цель, ₽"}</span>
+          <input
+            className="admin-input"
+            type="number"
+            min={0}
+            step={100}
+            value={targetAmount || ""}
+            readOnly={Boolean(ozonPreview)}
+            onChange={(event) => setTargetAmount(Math.max(0, Number(event.target.value) || 0))}
+            placeholder="необязательно"
+          />
+          {ozonPreview && (
+            <span className="admin-hint">Автоматически меняется вслед за ценой Ozon</span>
+          )}
         </label>
         <label className="admin-field">
           <span className="admin-label">Откладывать, ₽</span>
@@ -267,7 +494,12 @@ export function PurchasePlanning({
             {Object.entries(PURCHASE_ACCOUNT_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
-        <button type="button" className="admin-btn admin-btn--primary" disabled={creating || !productName.trim()} onClick={createPlan}>
+        <button
+          type="button"
+          className="admin-btn admin-btn--primary"
+          disabled={creating || loadingOzon || (!productName.trim() && !ozonUrl.trim())}
+          onClick={createPlan}
+        >
           {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
           Создать план
         </button>
@@ -292,6 +524,7 @@ export function PurchasePlanning({
             ? Math.min(100, Math.round((plan.savedAmount / plan.targetAmount) * 100))
             : 0;
           const planAccount = accountDrafts[plan.id] || plan.account;
+          const ozonRefreshing = refreshingOzonIds.has(plan.id);
           return (
             <article key={plan.id} className={`purchase-plan${plan.status === "completed" ? " purchase-plan--completed" : ""}`}>
               <div className="purchase-plan__head">
@@ -316,6 +549,55 @@ export function PurchasePlanning({
                   <button type="button" className="admin-btn admin-btn--icon admin-btn--danger-ghost" onClick={() => remove(plan)} disabled={busyId === plan.id} title="Удалить план"><Trash2 size={14} /></button>
                 )}
               </div>
+
+              {plan.ozonUrl && (
+                <div className="purchase-plan__ozon">
+                  <a
+                    href={plan.ozonUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="purchase-plan__ozon-media"
+                    title="Открыть товар на Ozon"
+                  >
+                    {plan.ozonImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={plan.ozonImageUrl} alt="" />
+                    ) : (
+                      <span>Ozon</span>
+                    )}
+                  </a>
+                  <div className="purchase-plan__ozon-info">
+                    <a href={plan.ozonUrl} target="_blank" rel="noopener noreferrer">
+                      Ozon <ExternalLink size={11} />
+                    </a>
+                    <strong>
+                      {plan.ozonPrice != null
+                        ? `${fmt(plan.ozonPrice)} ₽`
+                        : "цена не получена"}
+                    </strong>
+                    <small>
+                      Проверено: {formatCheckedAt(plan.ozonCheckedAt)}
+                    </small>
+                    {plan.ozonLastError && (
+                      <em>{plan.ozonLastError}</em>
+                    )}
+                  </div>
+                  {plan.status === "active" && (
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      disabled={ozonRefreshing}
+                      onClick={() => void refreshOzonPlan(plan)}
+                    >
+                      <RefreshCw
+                        size={12}
+                        className={ozonRefreshing ? "animate-spin" : undefined}
+                      />
+                      Обновить цену
+                    </button>
+                  )}
+                </div>
+              )}
 
               {plan.targetAmount > 0 && (
                 <div className="purchase-plan__progress"><span style={{ width: `${progress}%` }} /><b>{progress}%</b></div>

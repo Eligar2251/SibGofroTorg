@@ -14,6 +14,12 @@ export interface PurchasePlan {
   productId: string;
   productName: string;
   sku?: string | null;
+  ozonUrl?: string | null;
+  ozonImageUrl?: string | null;
+  ozonPrice?: number | null;
+  ozonCheckedAt?: string | null;
+  ozonPriceUpdatedAt?: string | null;
+  ozonLastError?: string | null;
   targetAmount: number;
   contributionAmount: number;
   account: PurchaseAccount;

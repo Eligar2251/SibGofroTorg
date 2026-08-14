@@ -6,6 +6,7 @@ import {
   createPurchasePlan,
   deletePurchasePlan,
   getPurchasePlans,
+  refreshPurchasePlanOzon,
   spendPurchasePlan,
 } from "@/lib/purchase-plans";
 
@@ -35,7 +36,12 @@ export async function POST(request: NextRequest) {
       "purchase-plan",
       plan.id,
       `Создан план закупки «${plan.productName}»`,
-      { targetAmount: plan.targetAmount, contributionAmount: plan.contributionAmount }
+      {
+        targetAmount: plan.targetAmount,
+        contributionAmount: plan.contributionAmount,
+        ozonUrl: plan.ozonUrl,
+        ozonPrice: plan.ozonPrice,
+      }
     );
     return NextResponse.json({ plan });
   } catch (error) {
@@ -51,6 +57,26 @@ export async function PATCH(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   try {
     const body = await request.json().catch(() => ({}));
+    if (body.action === "refresh-ozon") {
+      const result = await refreshPurchasePlanOzon(body.id);
+      if (!body.silent) {
+        await logAdminAction(
+          auth.displayName,
+          auth.role,
+          "update",
+          "purchase-plan",
+          result.plan.id,
+          result.warning
+            ? `Не удалось обновить цену Ozon для «${result.plan.productName}»`
+            : `Цена Ozon для «${result.plan.productName}» обновлена: ${result.plan.ozonPrice} ₽`,
+          {
+            ozonPrice: result.plan.ozonPrice,
+            warning: result.warning,
+          }
+        );
+      }
+      return NextResponse.json(result);
+    }
     if (body.action === "contribute") {
       const plan = await addPurchaseContribution(body);
       await logAdminAction(
