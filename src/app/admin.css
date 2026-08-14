@@ -1862,6 +1862,32 @@
   white-space: nowrap;
 }
 
+.receipt-qty-progress {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px 9px;
+  flex: 1 1 auto;
+  color: var(--adm-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.receipt-qty-progress__received { color: var(--adm-pine); }
+.receipt-qty-progress__remaining { color: var(--adm-kraft); }
+
+.receipt-post-list { display: grid; gap: 0; overflow-x: auto; border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
+.receipt-post-row { display: grid; grid-template-columns: minmax(170px, 1fr) repeat(4, minmax(76px, .42fr)); gap: 8px; align-items: center; min-width: 580px; padding: 9px 10px; border-top: 1px solid var(--adm-border-soft); color: var(--adm-ink-soft); font-size: 11px; }
+.receipt-post-row:first-child { border-top: 0; }
+.receipt-post-row--head { color: var(--adm-muted); background: var(--adm-paper-warm); font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.receipt-post-row > :not(:first-child) { text-align: right; }
+.receipt-post-row .admin-input { width: 100%; min-width: 72px; padding: 7px 8px; text-align: right; }
+.receipt-post-row > b { color: var(--adm-kraft); }
+
+@media (max-width: 700px) {
+  .receipt-qty-progress { justify-content: flex-start; flex-basis: 100%; flex-wrap: wrap; }
+  .admin-order__item { flex-wrap: wrap; }
+}
+
 .admin-order__total {
   border-top: 1px solid var(--adm-border);
   margin-top: 6px;

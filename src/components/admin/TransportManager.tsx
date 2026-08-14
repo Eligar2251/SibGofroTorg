@@ -188,7 +188,13 @@ export function TransportManager({
       date: t.plannedDate || t.date,
       driverName: t.driverName,
       driverPhone: t.driverPhone,
-      items: t.items,
+      // В бланк попадает только реально выбранный/загруженный груз.
+      items: t.items
+        .map((deal) => ({
+          ...deal,
+          items: deal.items.filter((item) => Number(item.transportQty) > 0),
+        }))
+        .filter((deal) => deal.items.length > 0),
       companyPhone,
       companyAddress,
     });
@@ -314,7 +320,7 @@ export function TransportManager({
                         </span>
                       )}
                             </div>
-                            {deal.items.map((item, itemIdx) => (
+                            {deal.items.filter((item) => item.transportQty > 0).map((item, itemIdx) => (
                               <div key={item.productId || `it-${item.name}-${itemIdx}`} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", color: "var(--adm-ink-soft)" }}>
                                 <span>{item.name} × {item.transportQty} из {item.orderedQty}</span>
                                 <span style={{ color: "var(--adm-sand)" }}>
@@ -451,6 +457,17 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
     for (const dealId of selectedDeals) {
       const deal = deals.find((d) => d.id === dealId)!;
       const dealQtys = qtys[dealId] || {};
+      const loadedItems = deal.items
+        .map((item) => ({
+          productId: item.productId,
+          name: item.name,
+          orderedQty: item.quantity,
+          transportQty: dealQtys[item.productId] || 0,
+        }))
+        .filter((item) => item.transportQty > 0);
+      // Нулевые/невыбранные строки не сохраняем в перевозке: иначе они
+      // попадали в карточку и печатный бланк вместе с загруженным товаром.
+      if (loadedItems.length === 0) continue;
       items.push({
         dealId: deal.id,
         dealNumber: deal.number,
@@ -459,12 +476,7 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
         address: deal.deliveryAddress || null,
         phone: deal.customerPhone || null,
         deliveryNote: deal.deliveryNote || null,
-        items: deal.items.map((item) => ({
-          productId: item.productId,
-          name: item.name,
-          orderedQty: item.quantity,
-          transportQty: dealQtys[item.productId] || 0,
-        })),
+        items: loadedItems,
         totalSum: deal.totalSum || null,
       });
     }
@@ -504,6 +516,11 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
         // Для поездок по заказам всегда "delivery" (не задаём — по умолчанию).
         tripType,
       });
+    }
+
+    if (items.length === 0) {
+      setError("Укажите количество хотя бы одной загруженной позиции");
+      return;
     }
 
     setSaving(true);

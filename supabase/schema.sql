@@ -459,6 +459,8 @@ CREATE TABLE IF NOT EXISTS warehouse_receipts (
   contact_name TEXT,
   comment TEXT,
   items JSONB DEFAULT '[]'::jsonb,
+  -- Накопительно принято на склад: [{productId, name, receivedQty}].
+  received_items JSONB NOT NULL DEFAULT '[]'::jsonb,
   total NUMERIC NOT NULL DEFAULT 0,
   bank_adjustment NUMERIC DEFAULT 0,
   vat_rate NUMERIC DEFAULT 22,

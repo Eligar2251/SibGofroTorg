@@ -185,6 +185,20 @@ function mapCounterpartyRow(row: any): Counterparty {
 }
 
 function mapReceiptRow(row: any): WarehouseReceipt {
+  const items = Array.isArray(row.items) ? row.items : [];
+  const storedReceived = Array.isArray(row.received_items) ? row.received_items : [];
+  // Совместимость: старые полностью проведённые поставки создавались до
+  // received_items, но их товар уже лежит на складе — считаем принятым весь состав.
+  const receivedItems =
+    storedReceived.length > 0
+      ? storedReceived
+      : row.status === "posted"
+        ? items.map((item: any) => ({
+            productId: String(item.productId || ""),
+            name: String(item.name || ""),
+            receivedQty: Math.max(0, Number(item.quantity) || 0),
+          }))
+        : [];
   return {
     id: row.id,
     number: Number(row.number),
@@ -200,7 +214,8 @@ function mapReceiptRow(row: any): WarehouseReceipt {
     contactName: row.contact_name ?? null,
     comment: row.comment ?? null,
     isConsignment: row.is_consignment === true,
-    items: Array.isArray(row.items) ? row.items : [],
+    items,
+    receivedItems,
     total: Number(row.total || 0),
     bankAdjustment: Number(row.bank_adjustment || 0),
     vatRate: Number(row.vat_rate ?? VAT_RATE),
@@ -716,6 +731,35 @@ async function applyStockDelta(items: StockDocItem[], direction: 1 | -1): Promis
   }
 }
 
+/** Накопительно принятое количество поставки, включая старые posted-записи. */
+function receiptReceivedMap(receipt: {
+  status?: string | null;
+  items?: unknown;
+  received_items?: unknown;
+}): Map<string, number> {
+  const map = new Map<string, number>();
+  const stored = Array.isArray(receipt.received_items) ? receipt.received_items : [];
+  const source =
+    stored.length > 0
+      ? stored
+      : receipt.status === "posted" && Array.isArray(receipt.items)
+        ? receipt.items.map((item: any) => ({
+            productId: item?.productId,
+            receivedQty: item?.quantity,
+          }))
+        : [];
+  for (const item of source as any[]) {
+    const productId = String(item?.productId || "");
+    const quantity = Math.max(
+      0,
+      Number(item?.receivedQty ?? item?.quantity) || 0
+    );
+    if (!productId || quantity <= 0) continue;
+    map.set(productId, (map.get(productId) || 0) + quantity);
+  }
+  return map;
+}
+
 function normalizeShippedEntries(
   shippedItems: { productId: string; name?: string; shippedQty: number }[] | null | undefined
 ): { productId: string; shippedQty: number }[] {
@@ -1201,24 +1245,128 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
   return { id: receiptId, number };
 }
 
-export async function postReceipt(id: string): Promise<void> {
+export async function postReceipt(
+  id: string,
+  receivedItems?: { productId: string; quantity: number }[]
+): Promise<{ fullyReceived: boolean; receivedNow: number }> {
   const db = getAdminDb();
-  const { data: receipt } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
+  const { data: receipt, error: readError } = await db
+    .from("warehouse_receipts")
+    .select("id, status, items, received_items")
+    .eq("id", id)
+    .single();
+  if (readError) throw readError;
   if (!receipt) throw new Error("Поступление не найдено");
-  if (receipt.status === "posted") throw new Error("Уже проведено");
-  await applyStockDelta(receipt.items as StockDocItem[], 1);
-  await db.from("warehouse_receipts").update({ status: "posted", updated_at: new Date().toISOString() }).eq("id", id);
+  if (receipt.status === "posted") throw new Error("Поставка уже принята полностью");
+
+  const orderedItems = (Array.isArray(receipt.items) ? receipt.items : []) as StockDocItem[];
+  const orderedByProduct = new Map<string, number>();
+  const itemByProduct = new Map<string, StockDocItem>();
+  for (const item of orderedItems) {
+    const productId = String(item.productId || "");
+    if (!productId) continue;
+    orderedByProduct.set(
+      productId,
+      (orderedByProduct.get(productId) || 0) + Math.max(0, Number(item.quantity) || 0)
+    );
+    if (!itemByProduct.has(productId)) itemByProduct.set(productId, item);
+  }
+
+  const alreadyReceived = receiptReceivedMap(receipt);
+  const requested = new Map<string, number>();
+  if (receivedItems === undefined) {
+    // Старые вызовы (например импорт Excel) принимают весь остаток.
+    for (const [productId, ordered] of orderedByProduct) {
+      requested.set(productId, Math.max(0, ordered - (alreadyReceived.get(productId) || 0)));
+    }
+  } else {
+    for (const item of receivedItems) {
+      const productId = String(item?.productId || "");
+      const quantity = Math.max(0, Number(item?.quantity) || 0);
+      if (!productId || quantity <= 0) continue;
+      requested.set(productId, (requested.get(productId) || 0) + quantity);
+    }
+  }
+
+  const deltaItems: StockDocItem[] = [];
+  for (const [productId, ordered] of orderedByProduct) {
+    const previous = alreadyReceived.get(productId) || 0;
+    const remaining = Math.max(0, ordered - previous);
+    const receiveNow = Math.min(remaining, requested.get(productId) || 0);
+    if (receiveNow <= 0.0009) continue;
+    const source = itemByProduct.get(productId)!;
+    deltaItems.push({ ...source, quantity: Math.round(receiveNow * 1000) / 1000 });
+    alreadyReceived.set(productId, Math.round((previous + receiveNow) * 1000) / 1000);
+  }
+  if (deltaItems.length === 0) {
+    throw new Error("Укажите количество, которое фактически приехало");
+  }
+
+  await applyStockDelta(deltaItems, 1);
+
+  const fullyReceived = [...orderedByProduct].every(
+    ([productId, ordered]) => (alreadyReceived.get(productId) || 0) >= ordered - 0.0009
+  );
+  const receivedRows = [...orderedByProduct.keys()]
+    .map((productId) => ({
+      productId,
+      name: itemByProduct.get(productId)?.name || "",
+      receivedQty: Math.min(
+        orderedByProduct.get(productId) || 0,
+        alreadyReceived.get(productId) || 0
+      ),
+    }))
+    .filter((item) => item.receivedQty > 0.0009);
+
+  const { error } = await db
+    .from("warehouse_receipts")
+    .update({
+      status: fullyReceived ? "posted" : "draft",
+      received_items: receivedRows,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+
   revalidateTag("warehouse-receipts", { expire: 0 });
   revalidateTag("products", { expire: 0 });
+  return {
+    fullyReceived,
+    receivedNow: round2(
+      deltaItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
+    ),
+  };
 }
 
 export async function cancelReceipt(id: string): Promise<void> {
   const db = getAdminDb();
-  const { data: receipt } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
+  const { data: receipt, error: readError } = await db
+    .from("warehouse_receipts")
+    .select("id, status, items, received_items")
+    .eq("id", id)
+    .single();
+  if (readError) throw readError;
   if (!receipt) throw new Error("Поступление не найдено");
-  if (receipt.status !== "posted") throw new Error("Можно отменить только проведённое");
-  await applyStockDelta(receipt.items as StockDocItem[], -1);
-  await db.from("warehouse_receipts").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", id);
+  const received = receiptReceivedMap(receipt);
+  if (received.size === 0) throw new Error("По поставке ещё ничего не принято");
+
+  const items = (Array.isArray(receipt.items) ? receipt.items : []) as StockDocItem[];
+  const byProduct = new Map(items.map((item) => [String(item.productId), item]));
+  const reverseItems = [...received.entries()].map(([productId, quantity]) => ({
+    ...(byProduct.get(productId) || ({ productId, name: "", sku: null, price: 0, lineTotal: 0 } as StockDocItem)),
+    productId,
+    quantity,
+  }));
+  await applyStockDelta(reverseItems, -1);
+  const { error } = await db
+    .from("warehouse_receipts")
+    .update({
+      status: "draft",
+      received_items: [],
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
   revalidateTag("warehouse-receipts", { expire: 0 });
   revalidateTag("products", { expire: 0 });
 }
@@ -1228,6 +1376,9 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   const { data: existing, error: existErr } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
   if (existErr || !existing) throw new Error("Поступление не найдено");
   if (existing.status === "posted") throw new Error("Нельзя редактировать проведённое поступление");
+  if (receiptReceivedMap(existing).size > 0) {
+    throw new Error("Нельзя редактировать частично принятую поставку. Сначала отмените приход");
+  }
 
   const items = cleanItems(data.items);
   if (!data.supplier?.trim()) throw new Error("Укажите поставщика");
@@ -1456,7 +1607,9 @@ export async function deleteReceipt(id: string): Promise<void> {
   const db = getAdminDb();
   const { data: existing } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
   if (!existing) throw new Error("Поступление не найдено");
-  if (existing.status === "posted") throw new Error("Нельзя удалить проведённое поступление");
+  if (receiptReceivedMap(existing).size > 0) {
+    throw new Error("Сначала отмените уже принятый товар, затем удалите поставку");
+  }
 
   // Удаляем ВСЕ связанные платежи (оплаченные и неоплаченные)
   try {
@@ -3809,7 +3962,7 @@ async function fetchProductReceiptRows(productId: string): Promise<any[]> {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await db
       .from("warehouse_receipts")
-      .select("id, number, date, supplier, status, items")
+      .select("id, number, date, supplier, status, items, received_items")
       // Для JSONB-массива PostgREST нужен сериализованный JSON. Если передать
       // массив объектов напрямую, supabase-js превратит его в [object Object].
       .contains("items", JSON.stringify([{ productId }]))
@@ -3860,6 +4013,14 @@ function productShippedQuantity(items: unknown, productId: string): number {
   }, 0);
 }
 
+function productReceivedQuantity(items: unknown, productId: string): number {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum: number, item: any) => {
+    if (String(item?.productId || "") !== productId) return sum;
+    return sum + Math.max(0, Number(item?.receivedQty) || 0);
+  }, 0);
+}
+
 /**
  * Расширенная сводка товара: все поступления и все заказы, включая архив.
  * Загружается по кнопке конкретной строки склада, поэтому открытие вкладки
@@ -3885,8 +4046,17 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     const matchingItems = (Array.isArray(row.items) ? row.items : []).filter(
       (item: any) => String(item?.productId || "") === productId
     );
-    const quantity = productItemQuantity(matchingItems, productId);
-    const lineTotal = round2(
+    const orderedQty = productItemQuantity(matchingItems, productId);
+    const storedReceived = productReceivedQuantity(row.received_items, productId);
+    const receivedQty = Math.min(
+      orderedQty,
+      storedReceived > 0 || (Array.isArray(row.received_items) && row.received_items.length > 0)
+        ? storedReceived
+        : row.status === "posted"
+          ? orderedQty
+          : 0
+    );
+    const plannedLineTotal = round2(
       matchingItems.reduce((sum: number, item: any) => {
         const itemQty = Math.max(0, Number(item?.quantity) || 0);
         const rawTotal = item?.lineTotal;
@@ -3908,9 +4078,12 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
       date: String(row.date || ""),
       supplier: String(row.supplier || ""),
       status: row.status === "posted" ? "posted" : "draft",
-      quantity,
-      unitPrice: quantity > 0 ? round2(lineTotal / quantity) : 0,
-      lineTotal,
+      quantity: receivedQty,
+      orderedQty,
+      remainingQty: Math.max(0, orderedQty - receivedQty),
+      unitPrice: orderedQty > 0 ? round2(plannedLineTotal / orderedQty) : 0,
+      lineTotal:
+        orderedQty > 0 ? round2((plannedLineTotal / orderedQty) * receivedQty) : 0,
     };
   });
 
@@ -3949,12 +4122,16 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     };
   });
 
-  const postedReceiptQty = receipts
-    .filter((receipt) => receipt.status === "posted")
-    .reduce((sum, receipt) => sum + receipt.quantity, 0);
-  const draftReceiptQty = receipts
-    .filter((receipt) => receipt.status !== "posted")
-    .reduce((sum, receipt) => sum + receipt.quantity, 0);
+  // Фактически принятое учитывается на складе сразу, даже если поставка
+  // частичная и остаётся активной. «Ожидается» — только неполученный остаток.
+  const postedReceiptQty = receipts.reduce(
+    (sum, receipt) => sum + receipt.quantity,
+    0
+  );
+  const draftReceiptQty = receipts.reduce(
+    (sum, receipt) => sum + (receipt.remainingQty || 0),
+    0
+  );
   const activeDeals = deals.filter((deal) => deal.status !== "cancelled");
   const orderedQty = activeDeals.reduce((sum, deal) => sum + deal.orderedQty, 0);
   const shippedQty = activeDeals.reduce((sum, deal) => sum + deal.shippedQty, 0);
@@ -4099,18 +4276,20 @@ function capTransportItem(
 ): TransportItem | null {
   if (!remaining) return null;
   const left = new Map(remaining);
-  const items = item.items.map((line) => {
-    const available = left.get(line.productId) ?? 0;
-    const transportQty = Math.max(0, Math.min(Number(line.transportQty) || 0, available));
-    left.set(line.productId, available - transportQty);
-    return {
-      ...line,
-      // «Заказано» показываем как актуальный долг по заказу: то, что уже
-      // отпущено вручную, из перевозки уходит.
-      orderedQty: available,
-      transportQty,
-    };
-  });
+  const items = item.items
+    .map((line) => {
+      const available = left.get(line.productId) ?? 0;
+      const transportQty = Math.max(0, Math.min(Number(line.transportQty) || 0, available));
+      left.set(line.productId, available - transportQty);
+      return {
+        ...line,
+        // «Заказано» показываем как актуальный долг по заказу: то, что уже
+        // отпущено вручную, из перевозки уходит.
+        orderedQty: available,
+        transportQty,
+      };
+    })
+    .filter((line) => line.transportQty > 0);
   const total = items.reduce((s, l) => s + l.transportQty, 0);
   if (total <= 0) return null;
   return { ...item, items };
@@ -4278,6 +4457,17 @@ export async function getTransportById(id: string): Promise<Transport | null> {
   return transport;
 }
 
+function onlyLoadedTransportItems(items: TransportItem[]): TransportItem[] {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      ...item,
+      items: (Array.isArray(item.items) ? item.items : []).filter(
+        (line) => Number(line.transportQty) > 0
+      ),
+    }))
+    .filter((item) => item.items.length > 0);
+}
+
 export async function createTransport(data: {
   date: string;
   plannedDate?: string;
@@ -4288,10 +4478,11 @@ export async function createTransport(data: {
   items: TransportItem[];
 }): Promise<{ id: string; number: number }> {
   const db = getAdminDb();
-  if (!data.items || data.items.length === 0) throw new Error("Добавьте хотя бы один заказ");
+  const loadedItems = onlyLoadedTransportItems(data.items);
+  if (loadedItems.length === 0) throw new Error("Добавьте хотя бы одну загруженную позицию");
 
   const number = await nextNumber("deal"); // Используем тот же счётчик
-  const totalItems = data.items.reduce((s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
+  const totalItems = loadedItems.reduce((s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
 
   const { data: result, error } = await db.from("transports").insert({
     number,
@@ -4302,7 +4493,7 @@ export async function createTransport(data: {
     driver_phone: data.driverPhone || null,
     status: "draft",
     note: data.note || null,
-    items: data.items,
+    items: loadedItems,
     total_items: totalItems,
   }).select("id, number").single();
   if (error) throw error;
@@ -4330,8 +4521,12 @@ export async function updateTransport(id: string, data: {
   if (data.driverPhone !== undefined) payload.driver_phone = data.driverPhone || null;
   if (data.note !== undefined) payload.note = data.note || null;
   if (data.items !== undefined) {
-    payload.items = data.items;
-    payload.total_items = data.items.reduce((s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
+    const loadedItems = onlyLoadedTransportItems(data.items);
+    payload.items = loadedItems;
+    payload.total_items = loadedItems.reduce(
+      (s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0),
+      0
+    );
   }
   if (data.status !== undefined) payload.status = data.status;
   const { error } = await db.from("transports").update(payload).eq("id", id);

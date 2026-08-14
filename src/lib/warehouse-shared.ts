@@ -135,6 +135,8 @@ export interface WarehouseReceipt extends CounterpartyDetails {
   /** Поставка товара на реализацию: продажи учитываются по закупочной цене. */
   isConsignment?: boolean;
   items: StockDocItem[];
+  /** Накопительно принято на склад по позициям; пусто у непроведённой поставки. */
+  receivedItems?: { productId: string; name?: string; receivedQty: number }[];
   total: number;
   bankAdjustment: number;
   vatRate: number;
@@ -297,7 +299,12 @@ export interface ProductStockReceiptHistory {
   date: string;
   supplier: string;
   status: ReceiptStatus;
+  /** Фактически уже принято на склад. */
   quantity: number;
+  /** Заказано у поставщика. */
+  orderedQty?: number;
+  /** Осталось принять. */
+  remainingQty?: number;
   unitPrice: number;
   lineTotal: number;
 }

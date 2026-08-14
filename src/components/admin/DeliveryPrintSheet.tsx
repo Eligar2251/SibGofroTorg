@@ -78,6 +78,10 @@ export function DeliveryPrintSheet({
     month: "2-digit",
     year: "numeric",
   });
+  const printableItems = items.map((item) => ({
+    ...item,
+    items: (item.items || []).filter((line) => Number(line.quantity) > 0),
+  }));
 
   return (
     <div className="deliv-print-root" aria-hidden={false}>
@@ -113,10 +117,10 @@ export function DeliveryPrintSheet({
           </div>
         </header>
 
-        {items.length === 0 ? (
+        {printableItems.length === 0 ? (
           <div className="deliv-print-empty">Нет доставок для печати</div>
         ) : (
-          items.map((it, idx) => (
+          printableItems.map((it, idx) => (
             <article key={`${it.label}-${idx}`} className="deliv-print-strip">
               <div className="deliv-print-strip__num">{idx + 1}</div>
               <div className="deliv-print-strip__body">
