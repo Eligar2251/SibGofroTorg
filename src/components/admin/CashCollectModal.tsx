@@ -117,15 +117,13 @@ export function CashCollectModal({
         setExpenses(nextExpenses);
         setDailySummaries(nextSummaries);
 
-        // В переключателе оставляем только текущий день и даты, где есть
-        // ещё не отмеченные платежи или расходы. Закрытые смены остаются
-        // в истории и не возвращаются в эту модалку.
-        const dates = [
+        // Открываем последнюю НЕЗАКРЫТУЮ смену. Поэтому 13 августа остаётся
+        // выбранным и 14-го, если за 13-е сводку ещё не сохранили.
+        const operationDates = [
           ...nextPending.map((payment: PendingCashPayment) => payment.date),
           ...nextExpenses.map((expense: CashExpense) => expense.date),
-          todayIso(),
         ].filter(Boolean).sort((a, b) => b.localeCompare(a));
-        const latest = dates[0] || todayIso();
+        const latest = operationDates[0] || todayIso();
         setActiveDate(latest);
         setCollectionDate(latest);
       } catch (loadError) {

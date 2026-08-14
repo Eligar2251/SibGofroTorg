@@ -2644,12 +2644,23 @@ function computeCashBalance(
   return Math.round(cashBalance * 100) / 100;
 }
 
+/** Даты обычных сохранённых смен; служебные noAccounting сюда не входят. */
+function getSubmittedShiftDates(collections: CashCollectionRow[]): Set<string> {
+  const dates = new Set<string>();
+  for (const collection of collections) {
+    if ((collection.items || []).some((item) => item.noAccounting)) continue;
+    const date = String(collection.date || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) dates.add(date);
+  }
+  return dates;
+}
+
 /**
  * Поступления, ещё не отмеченные в фактической сводке смены.
  *
- * В список входят наличные и ЮМ только текущей рабочей даты. Старые
- * переводы не подтягиваются задним числом из уже закрытых смен, а будущие
- * появятся в свой день. Сохранение лишь ставит отметку без движения денег.
+ * В список входят операции текущего дня и незакрытых прошлых смен. Если
+ * за прошлую дату уже есть сохранённая сводка, её платежи не возвращаются.
+ * Будущие операции появятся в свой день. Сохранение не двигает деньги.
  */
 export async function getPendingCashPayments(): Promise<{
   pending: {
@@ -2714,6 +2725,7 @@ export async function getPendingCashPayments(): Promise<{
   );
   const pendingCash = listPendingCashPayments(payments, collections);
   const businessDate = getWarehouseBusinessDate();
+  const submittedShiftDates = getSubmittedShiftDates(collections);
   const collectedExpenseIds = new Set<string>();
   for (const collection of collections) {
     for (const expense of collection.expenses || []) {
@@ -2722,11 +2734,13 @@ export async function getPendingCashPayments(): Promise<{
       }
     }
   }
-  const shiftExpenses = listCashExpenses(payments, salaries).filter(
-    (expense) =>
-      expense.date === businessDate &&
-      !collectedExpenseIds.has(`${expense.kind}:${expense.id}`)
-  );
+  const shiftExpenses = listCashExpenses(payments, salaries).filter((expense) => {
+    if (!expense.date || expense.date > businessDate) return false;
+    if (expense.date < businessDate && submittedShiftDates.has(expense.date)) {
+      return false;
+    }
+    return !collectedExpenseIds.has(`${expense.kind}:${expense.id}`);
+  });
   const summaryDates = new Set<string>([
     businessDate,
     ...pendingCash.map((payment) => String(payment.date || "").slice(0, 10)),
@@ -2940,6 +2954,7 @@ function listPendingCashPayments(
     }
   }
   const today = getWarehouseBusinessDate();
+  const submittedShiftDates = getSubmittedShiftDates(collections);
   return payments
     .filter((p) => {
       // Отмечаем оба фактических способа получения денег в смене:
@@ -2947,11 +2962,13 @@ function listPendingCashPayments(
       // не относится. Сама отметка не меняет ни один из балансов.
       if (getShiftIncomeKind(p) == null) return false;
       const paymentDate = String(p.date || "").slice(0, 10);
-      // После перехода на фактические сводки не подтягиваем задним числом
-      // старые переводы, которых не было в прежней разметке. В текущую
-      // сдачу входят только операции сегодняшней смены; будущие появятся
-      // в свой день.
-      if (paymentDate !== today) return false;
+      if (!paymentDate || paymentDate > today) return false;
+      // Незакрытая вчерашняя смена должна оставаться доступной. Но если
+      // сводка за прошлую дату уже сохранена, не подтягиваем из неё старые
+      // переводы, которых не было в прежней версии разметки.
+      if (paymentDate < today && submittedShiftDates.has(paymentDate)) {
+        return false;
+      }
       return !collected.has(String(p.id));
     })
     .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);

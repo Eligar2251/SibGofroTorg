@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
   try {
-    // ?pending=1 — ещё не отмеченные операции двух касс за сегодня:
-    // поступления и расходы наличными и по карте ЮМ.
+    // ?pending=1 — ещё не отмеченные операции двух касс за сегодня и
+    // незакрытые прошлые смены. Уже сохранённые даты остаются в истории.
     const { searchParams } = new URL(request.url);
     if (searchParams.get("pending")) {
       const cashData = await getPendingCashPayments();
