@@ -66,6 +66,7 @@ const entityLabels: Record<string, string> = {
   salary: "Зарплата",
   "admin-user": "Пользователь админки",
   "cash-collection": "Сводка кассы",
+  "purchase-plan": "План закупки",
   "client-request": "Заявка клиента",
 };
 

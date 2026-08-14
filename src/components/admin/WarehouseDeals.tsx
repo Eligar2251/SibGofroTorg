@@ -123,8 +123,8 @@ export interface EditableDeal {
   deliveryNote?: string | null;
   deliveryContact?: string | null;
   deliveryPhone?: string | null;
-  /** Способ оплаты заказа: "cash" — наличные в кассу, иначе безнал. */
-  paymentMethod?: string | null;
+  /** Способ оплаты: расчётный счёт, наличная касса или карта ЮМ. */
+  paymentMethod?: "regular" | "cash" | "ym_card" | null;
   /** Заказ зарезервирован (выставлен счёт) — товар не уходит другим клиентам. */
   isReserved?: boolean;
 }
@@ -167,6 +167,11 @@ function baseQtyForSale(qty: number, unit: 'roll'|'meter', mpr: number | null | 
   return qty;
 }
 
+type DealPaymentMethod = "regular" | "cash" | "ym_card";
+
+function normalizeDealPaymentMethod(value: unknown): DealPaymentMethod {
+  return value === "cash" || value === "ym_card" ? value : "regular";
+}
 
 export function DealForm({
   products,
@@ -245,8 +250,8 @@ export function DealForm({
   // При редактировании подхватываем реальный способ оплаты заказа:
   // раньше здесь всегда стоял "regular", и сохранение наличного заказа
   // сбрасывало оплату в обычный неоплаченный счёт.
-  const [paymentMethod, setPaymentMethod] = useState<string>(
-    initialDeal?.paymentMethod === "cash" ? "cash" : "regular"
+  const [paymentMethod, setPaymentMethod] = useState<DealPaymentMethod>(
+    normalizeDealPaymentMethod(initialDeal?.paymentMethod)
   );
 
   // Резерв товара (выставлен счёт — не продаём другим).
@@ -358,7 +363,7 @@ export function DealForm({
     setPaymentCount(1);
     setSplitAmounts([""]);
     setSplitTouched(false);
-    setPaymentMethod(initialDeal?.paymentMethod === "cash" ? "cash" : "regular");
+    setPaymentMethod(normalizeDealPaymentMethod(initialDeal?.paymentMethod));
     setIsReserved(Boolean(initialDeal?.isReserved));
   }
 
@@ -515,7 +520,7 @@ export function DealForm({
       availablePayments.map((p) => ({
         id: p.id,
         title: `ПЛ-${p.number} · ${fmt(p.amount)} ₽`,
-        meta: `${fmtDate(p.date)} · ${p.type === "cash" ? "Наличные" : "Безнал"}`,
+        meta: `${fmtDate(p.date)} · ${p.type === "cash" ? "Наличные" : p.type === "ym_card" ? "Карта ЮМ" : "Расчётный счёт"}`,
         right: `${fmt(p.amount)} ₽`,
       })),
     [availablePayments]
@@ -1030,7 +1035,7 @@ export function DealForm({
                 <label className="admin-label">
                   <Wallet size={12} style={{ verticalAlign: "-1px" }} /> Способ оплаты
                 </label>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     className={`admin-btn ${paymentMethod === 'regular' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
@@ -1045,12 +1050,20 @@ export function DealForm({
                     style={{ flex: 1 }}
                     onClick={() => setPaymentMethod('cash')}
                   >
-                    <Banknote size={14} /> Наличные (касса)
+                    <Banknote size={14} /> Наличные
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-btn ${paymentMethod === 'ym_card' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => setPaymentMethod('ym_card')}
+                  >
+                    <CreditCard size={14} /> Карта ЮМ
                   </button>
                 </div>
-                {paymentMethod === 'cash' && (
+                {paymentMethod !== 'regular' && (
                   <p className="wh-form-hint" style={{ margin: 0 }}>
-                    Платёж сразу помечается как оплаченный и попадает в кассу.
+                    Платёж сразу помечается оплаченным и попадает {paymentMethod === 'cash' ? 'в наличную кассу' : 'на карту ЮМ'}.
                   </p>
                 )}
               </div>

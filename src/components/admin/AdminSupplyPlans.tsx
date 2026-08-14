@@ -4,13 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Lightbulb, Loader2, RefreshCw, X } from "lucide-react";
 import {
-  supplyPlanTotal,
   supplyPlansItemsCount,
-  supplyPlansTotal,
   type SupplyPlan,
 } from "@/lib/supply-plans-shared";
-
-const fmt = (value: number) => value.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 
 function formatDate(raw?: string | null): string {
   if (!raw) return "Дата не указана";
@@ -42,10 +38,10 @@ export function AdminSupplyPlans({ adminPath }: { adminPath: string }) {
     }
   }, []);
 
+  // Загружаем один раз. Старый опрос каждые 30 секунд будил всю админку,
+  // дёргал Supabase и был основной причиной тормозов этой секции.
   useEffect(() => {
     load();
-    const interval = window.setInterval(() => load(true), 30_000);
-    return () => window.clearInterval(interval);
   }, [load]);
 
   useEffect(() => {
@@ -61,7 +57,6 @@ export function AdminSupplyPlans({ adminPath }: { adminPath: string }) {
     () => plans.filter((plan) => plan.status === "active"),
     [plans]
   );
-  const total = supplyPlansTotal(activePlans);
   const items = supplyPlansItemsCount(activePlans);
 
   return (
@@ -87,7 +82,7 @@ export function AdminSupplyPlans({ adminPath }: { adminPath: string }) {
             <div>
               <div className="admin-notify__title">Планы поставок</div>
               <div className="admin-notify__sub">
-                {activePlans.length} планов · {items} поз. · ≈ {fmt(total)} ₽
+                {activePlans.length} планов · {items} позиций
               </div>
             </div>
             <div className="admin-notify__actions">
@@ -115,7 +110,7 @@ export function AdminSupplyPlans({ adminPath }: { adminPath: string }) {
                   <span className="admin-notify__item-main">
                     <span className="admin-notify__item-title">{plan.name}</span>
                     <span className="admin-notify__item-desc">
-                      {plan.items.length} поз. · ≈ {fmt(supplyPlanTotal(plan))} ₽ · {formatDate(plan.plannedDate)}
+                      {plan.items.length} поз. · {formatDate(plan.plannedDate)}
                     </span>
                   </span>
                 </Link>

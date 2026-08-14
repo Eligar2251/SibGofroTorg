@@ -495,6 +495,30 @@ DROP TRIGGER IF EXISTS trg_supply_plans_updated ON warehouse_supply_plans;
 CREATE TRIGGER trg_supply_plans_updated BEFORE UPDATE ON warehouse_supply_plans FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ALTER TABLE warehouse_supply_plans ENABLE ROW LEVEL SECURITY;
 
+-- Накопительные планы закупок. Пополнения виртуальные; фактическое
+-- списание создаёт отдельный проведённый платёж с выбранного счёта.
+CREATE TABLE IF NOT EXISTS warehouse_purchase_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id TEXT NOT NULL,
+  product_name TEXT NOT NULL DEFAULT '',
+  sku TEXT,
+  target_amount NUMERIC NOT NULL DEFAULT 0,
+  contribution_amount NUMERIC NOT NULL DEFAULT 500,
+  account TEXT NOT NULL DEFAULT 'bank' CHECK (account IN ('cash', 'bank', 'ym_card')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed')),
+  contributions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  spent_amount NUMERIC NOT NULL DEFAULT 0,
+  spent_payment_id UUID,
+  spent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_plans_status ON warehouse_purchase_plans(status);
+CREATE INDEX IF NOT EXISTS idx_purchase_plans_product ON warehouse_purchase_plans(product_id);
+DROP TRIGGER IF EXISTS trg_purchase_plans_updated ON warehouse_purchase_plans;
+CREATE TRIGGER trg_purchase_plans_updated BEFORE UPDATE ON warehouse_purchase_plans FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE warehouse_purchase_plans ENABLE ROW LEVEL SECURITY;
+
 -- =========================================================
 -- 19. ЗАКАЗЫ ПОКУПАТЕЛЕЙ
 -- =========================================================

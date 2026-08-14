@@ -33,6 +33,7 @@ export type EntityType =
   | "salary"
   | "admin-user"
   | "cash-collection"
+  | "purchase-plan"
   | "client-request"
   | "wp-intake"
   | "wp-shipment"

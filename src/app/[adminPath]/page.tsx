@@ -39,7 +39,7 @@ import { verifySession } from "@/lib/auth";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
 import { getRentSummary } from "@/lib/rent";
 import { getSupplyPlans } from "@/lib/supply-plans";
-import { supplyPlanTotal, supplyPlansItemsCount, supplyPlansTotal } from "@/lib/supply-plans-shared";
+import { supplyPlansItemsCount } from "@/lib/supply-plans-shared";
 import { RENT_ORG_LABELS } from "@/lib/rent-shared";
 import { getWpFinanceData } from "@/lib/wastepaper-account";
 import {
@@ -234,7 +234,6 @@ export default async function AdminDashboard() {
   const recentOrders = recentOrderPool.slice(0, 8);
   const activeSupplyPlans = supplyPlans.filter((plan) => plan.status === "active");
   const plannedSupplyItems = supplyPlansItemsCount(activeSupplyPlans);
-  const plannedSupplyTotal = supplyPlansTotal(activeSupplyPlans);
 
   const wpEvents = wpFinance
     ? wpCollectMoneyEvents(
@@ -556,7 +555,7 @@ export default async function AdminDashboard() {
                 href: `/${ADMIN_PATH}/warehouse?tab=plans`,
                 iconBg: "var(--adm-kraft-pale)",
                 iconColor: "var(--adm-kraft)",
-                sub: `${plannedSupplyItems} поз. · ≈ ${money(plannedSupplyTotal)}`,
+                sub: `${plannedSupplyItems} позиций без расчёта цен`,
               },
               {
                 label: "Акции",
@@ -587,7 +586,7 @@ export default async function AdminDashboard() {
         <CollapsibleSection
           id="supply-plans"
           title="Планы поставок"
-          subtitle={`${plannedSupplyItems} позиций · примерный бюджет ${money(plannedSupplyTotal)}`}
+          subtitle={`${plannedSupplyItems} позиций в активных планах`}
           icon={<Lightbulb size={16} />}
           accent="amber"
           badge={activeSupplyPlans.length}
@@ -598,23 +597,19 @@ export default async function AdminDashboard() {
           )}
         >
           <div className="dashboard-supply-plans">
-            {activeSupplyPlans.map((plan) => {
-              const suppliers = [...new Set(plan.items.map((item) => item.supplierName).filter(Boolean))];
-              return (
-                <Link key={plan.id} href={`/${ADMIN_PATH}/warehouse?tab=plans`} prefetch={false} className="dashboard-supply-plan">
-                  <span className="dashboard-supply-plan__icon"><Lightbulb size={16} /></span>
-                  <span className="dashboard-supply-plan__main">
-                    <strong>{plan.name}</strong>
-                    <small>
-                      {plan.items.length} поз. · {suppliers.slice(0, 2).join(", ") || "поставщик не выбран"}
-                      {suppliers.length > 2 ? ` +${suppliers.length - 2}` : ""}
-                    </small>
-                  </span>
-                  <span className="dashboard-supply-plan__total">≈ {money(supplyPlanTotal(plan))}</span>
-                  <span className="dashboard-supply-plan__date">{plan.plannedDate ? formatDate(plan.plannedDate) : "без даты"}</span>
-                </Link>
-              );
-            })}
+            {activeSupplyPlans.map((plan) => (
+              <Link key={plan.id} href={`/${ADMIN_PATH}/warehouse?tab=plans`} prefetch={false} className="dashboard-supply-plan">
+                <span className="dashboard-supply-plan__icon"><Lightbulb size={16} /></span>
+                <span className="dashboard-supply-plan__main">
+                  <strong>{plan.name}</strong>
+                  <small>
+                    {plan.items.length} поз. · {plan.items.slice(0, 3).map((item) => item.productName).join(", ") || "пока пусто"}
+                    {plan.items.length > 3 ? ` +${plan.items.length - 3}` : ""}
+                  </small>
+                </span>
+                <span className="dashboard-supply-plan__date">{plan.plannedDate ? formatDate(plan.plannedDate) : "без даты"}</span>
+              </Link>
+            ))}
           </div>
         </CollapsibleSection>
       )}

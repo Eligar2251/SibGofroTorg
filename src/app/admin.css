@@ -12347,3 +12347,72 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   .cashc-actions { align-items: stretch; flex-direction: column-reverse; }
   .cashc-actions .admin-btn { justify-content: center; }
 }
+
+/* ── Накопительные планы закупок ── */
+.purchase-planning { display: grid; gap: 14px; }
+.purchase-planning__hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 18px 20px; color: var(--adm-ink); background: linear-gradient(135deg, var(--adm-card), var(--adm-pine-pale)); border: 1px solid var(--adm-pine-line); border-radius: var(--adm-r-lg); }
+.purchase-planning__hero h2 { margin: 5px 0 4px; font-family: var(--adm-font-head); font-size: 23px; }
+.purchase-planning__hero p { max-width: 700px; margin: 0; color: var(--adm-muted); font-size: 12px; line-height: 1.45; }
+.purchase-planning__eyebrow { display: inline-flex; align-items: center; gap: 6px; color: var(--adm-pine); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.purchase-planning__summary { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.purchase-planning__summary span { padding: 7px 10px; color: var(--adm-muted); background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: 999px; font-size: 10px; white-space: nowrap; }
+.purchase-planning__summary b { color: var(--adm-ink); }
+.purchase-create { display: grid; grid-template-columns: minmax(260px, 1.5fr) repeat(3, minmax(140px, .65fr)) auto; gap: 10px; align-items: end; padding: 14px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); }
+.purchase-create .admin-field { margin: 0; }
+.purchase-create__picker { min-width: 0; }
+.purchase-create__selected { display: flex; gap: 8px; align-items: center; margin-top: 6px; color: var(--adm-ink); font-size: 11px; }
+.purchase-create__selected span { color: var(--adm-muted); }
+.purchase-plan-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(390px, 1fr)); gap: 12px; }
+.purchase-plan { min-width: 0; padding: 14px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); box-shadow: var(--adm-sh-xs); }
+.purchase-plan--completed { opacity: .78; }
+.purchase-plan__head { display: flex; align-items: center; gap: 10px; }
+.purchase-plan__product { display: flex; align-items: center; gap: 9px; flex: 1 1 auto; min-width: 0; }
+.purchase-plan__product > div { min-width: 0; }
+.purchase-plan__product strong, .purchase-plan__product small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.purchase-plan__product strong { color: var(--adm-ink); font-size: 13px; }
+.purchase-plan__product small { margin-top: 2px; color: var(--adm-muted); font-size: 9px; }
+.purchase-plan__icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; height: 34px; color: var(--adm-pine); background: var(--adm-pine-pale); border: 1px solid var(--adm-pine-line); border-radius: 50%; }
+.purchase-plan__amount { flex: 0 0 auto; text-align: right; }
+.purchase-plan__amount strong, .purchase-plan__amount span { display: block; }
+.purchase-plan__amount strong { color: var(--adm-pine); font-family: var(--adm-font-head); font-size: 18px; }
+.purchase-plan__amount span { color: var(--adm-muted); font-size: 9px; }
+.purchase-plan__progress { position: relative; height: 8px; margin: 12px 0; overflow: hidden; background: var(--adm-paper-warm); border-radius: 99px; }
+.purchase-plan__progress > span { display: block; height: 100%; background: var(--adm-pine); border-radius: inherit; }
+.purchase-plan__progress > b { position: absolute; right: 5px; top: -2px; color: var(--adm-ink); font-size: 8px; }
+.purchase-plan__actions { display: grid; grid-template-columns: minmax(110px, .6fr) auto minmax(150px, .9fr) auto; gap: 8px; align-items: end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--adm-border-soft); }
+.purchase-plan__actions .admin-field { margin: 0; }
+.purchase-plan__completed { display: flex; align-items: center; gap: 7px; margin-top: 12px; padding: 9px 10px; color: var(--adm-pine); background: var(--adm-pine-pale); border-radius: var(--adm-r-sm); font-size: 11px; font-weight: 700; }
+.purchase-plan__history { margin-top: 10px; color: var(--adm-muted); font-size: 10px; }
+.purchase-plan__history summary { cursor: pointer; font-weight: 700; }
+.purchase-plan__history > div { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.purchase-plan__history span { display: inline-flex; gap: 5px; padding: 4px 7px; background: var(--adm-paper); border: 1px solid var(--adm-border-soft); border-radius: 999px; }
+.purchase-plan__history b { color: var(--adm-pine); }
+@media (max-width: 1050px) {
+  .purchase-create { grid-template-columns: 1fr 1fr; }
+  .purchase-create__picker { grid-column: 1 / -1; }
+  .purchase-plan__actions { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 620px) {
+  .purchase-planning__hero { align-items: stretch; flex-direction: column; }
+  .purchase-planning__summary { justify-content: flex-start; }
+  .purchase-create, .purchase-plan__actions, .purchase-plan-list { grid-template-columns: 1fr; }
+  .purchase-create__picker { grid-column: auto; }
+  .purchase-plan__actions .admin-btn { justify-content: center; }
+}
+
+/* Упрощённый состав планов поставок: только товар и количество. */
+.supply-planning--simple .supply-planning__stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.supply-plan-add--simple { display: grid; gap: 10px; }
+.supply-plan-add--simple .supply-plan-add__draft { display: grid; grid-template-columns: minmax(180px, 1fr) 150px auto; align-items: end; gap: 10px; }
+.supply-plan-add--simple .supply-plan-add__draft > strong { align-self: center; color: var(--adm-ink); font-size: 13px; }
+.supply-plan-item--simple .supply-plan-item__head { display: grid; grid-template-columns: minmax(180px, 1fr) 130px minmax(160px, .7fr) 32px; align-items: end; gap: 10px; }
+.supply-plan-item--simple .supply-plan-item__head > div:first-child { align-self: center; min-width: 0; }
+.supply-plan-item--simple .supply-plan-item__head > div:first-child strong,
+.supply-plan-item--simple .supply-plan-item__head > div:first-child span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.supply-plan-item--simple .supply-plan-item__head > div:first-child span { margin-top: 2px; color: var(--adm-muted); font-size: 9px; }
+.supply-plan-item--simple .admin-field { margin: 0; }
+@media (max-width: 760px) {
+  .supply-plan-add--simple .supply-plan-add__draft,
+  .supply-plan-item--simple .supply-plan-item__head { grid-template-columns: 1fr; }
+  .supply-plan-item--simple .supply-plan-item__remove { justify-self: end; }
+}

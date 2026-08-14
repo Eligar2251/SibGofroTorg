@@ -43,10 +43,12 @@ export function ProductPicker({
   products,
   onPick,
   placeholder = "Начните вводить название или артикул...",
+  showPrice = true,
 }: {
   products: PickerProduct[];
   onPick: (p: PickerProduct) => void;
   placeholder?: string;
+  showPrice?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -134,8 +136,8 @@ export function ProductPicker({
                 </span>
                 <span className="wh-picker__opt-meta">
                   ост. {formatStock(p)}
-                  {p.price != null && ` · ${p.price.toLocaleString("ru-RU")} ₽`}
-                  {p.isCuttable && p.cutPricePerMeter ? ` / ${p.cutPricePerMeter} ₽/м` : ""}
+                  {showPrice && p.price != null && ` · ${p.price.toLocaleString("ru-RU")} ₽`}
+                  {showPrice && p.isCuttable && p.cutPricePerMeter ? ` / ${p.cutPricePerMeter} ₽/м` : ""}
                 </span>
               </button>
             ))

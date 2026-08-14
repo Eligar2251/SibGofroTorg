@@ -91,7 +91,9 @@ import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
 import { SupplyPlanning } from "@/components/admin/SupplyPlanning";
+import { PurchasePlanning } from "@/components/admin/PurchasePlanning";
 import type { SupplyPlan } from "@/lib/supply-plans-shared";
+import type { PurchasePlan } from "@/lib/purchase-plans-shared";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -190,7 +192,7 @@ const paymentTypeLabels: Record<string, string> = {
   ym_card: "Карта ЮМ",
 };
 
-type TabKey = "stock" | "receipts" | "plans" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
+type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
@@ -242,8 +244,8 @@ interface WarehouseManagerProps {
   cashCollections?: CashCollection[];
   consignmentManual?: ConsignmentManualSale[];
   supplyPlans?: SupplyPlan[];
+  purchasePlans?: PurchasePlan[];
   initialPlanProductId?: string | null;
-  initialPlanSupplierId?: string | null;
   companyPhone?: string;
   companyAddress?: string;
   /** Скидки ценовых уровней контрагентов (из настроек админки). */
@@ -278,14 +280,21 @@ export function WarehouseManager({
   cashCollections = [],
   consignmentManual = [],
   supplyPlans = [],
+  purchasePlans = [],
   initialPlanProductId,
-  initialPlanSupplierId,
   companyPhone,
   companyAddress,
   tierDiscounts = { special: 5, exclusive: 10 },
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<string>(initialSub);
+
+  // При переходе через query-параметр Next сохраняет экземпляр клиента.
+  // Синхронизируем вкладку с новыми серверными props, иначе URL менялся,
+  // а на экране оставалась предыдущая секция.
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   
   // --- States for Financial Summary (Feature 1) ---
   const [financePeriod, setFinancePeriod] = useState<"today" | "week" | "month">("today");
@@ -689,15 +698,17 @@ export function WarehouseManager({
   // Calculations
   const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
   const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
-  // Способ оплаты заказа: dealId → "cash" | "regular".
-  // Определяем по привязанным входящим платежам — отдельного поля
-  // у заказа нет, а форме редактирования способ нужен, чтобы наличная
-  // оплата при сохранении не превращалась в неоплаченный счёт.
+  // Способ оплаты заказа берём из входящего ПЛ: наличка, карта ЮМ или счёт.
   const dealPaymentMethod = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of payments) {
-      if (p.direction !== "incoming" || p.type !== "cash") continue;
-      for (const dealId of p.dealIds || []) map.set(dealId, "cash");
+    const map = new Map<string, "cash" | "ym_card" | "regular">();
+    for (const payment of payments) {
+      if (payment.direction !== "incoming") continue;
+      const method = payment.type === "cash"
+        ? "cash"
+        : payment.type === "ym_card" || payment.cashDestination === "card"
+          ? "ym_card"
+          : "regular";
+      for (const dealId of payment.dealIds || []) map.set(dealId, method);
     }
     return map;
   }, [payments]);
@@ -1264,6 +1275,7 @@ export function WarehouseManager({
     { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
     { key: "receipts", label: "Поставки", icon: <Truck size={13} /> },
     { key: "plans", label: "Планы поставок", icon: <Lightbulb size={13} /> },
+    { key: "purchases", label: "Закупки", icon: <Wallet size={13} /> },
     { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
     { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
@@ -1557,7 +1569,7 @@ export function WarehouseManager({
               key={t.key}
               onClick={() => {
                 if (t.key === activeTab) return;
-                window.location.href = `/${adminPath}/warehouse?tab=${t.key}`;
+                router.push(`/${adminPath}/warehouse?tab=${t.key}`);
               }}
               className={`admin-filter${activeTab === t.key ? " admin-filter--active" : ""}`}
             >
@@ -2173,11 +2185,13 @@ export function WarehouseManager({
         <SupplyPlanning
           initialPlans={supplyPlans}
           products={pickerProducts}
-          counterparties={counterpartyOptions}
-          adminPath={adminPath}
           initialProductId={initialPlanProductId}
-          initialSupplierId={initialPlanSupplierId}
         />
+      )}
+
+      {/* ============ ВКЛАДКА: НАКОПИТЕЛЬНЫЕ ЗАКУПКИ ============ */}
+      {activeTab === "purchases" && (
+        <PurchasePlanning initialPlans={purchasePlans} products={pickerProducts} />
       )}
 
       {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}
@@ -2564,8 +2578,7 @@ export function WarehouseManager({
                               deliveryNote: d.deliveryNote ?? null,
                               deliveryContact: d.deliveryContact ?? d.contactName ?? null,
                               deliveryPhone: d.deliveryPhone ?? d.customerPhone ?? null,
-                              // Способ оплаты берём из привязанных платежей,
-                              // чтобы наличный заказ не «переезжал» в безнал.
+                              // Способ оплаты берём из ПЛ: наличные, ЮМ или расчётный счёт.
                               paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
                               isReserved: Boolean(d.isReserved),
                               items: d.items.map((item) => {
