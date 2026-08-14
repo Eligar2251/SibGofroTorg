@@ -92,9 +92,11 @@ export async function createPurchasePlan(input: {
   contributionAmount?: unknown;
   account?: unknown;
 }): Promise<PurchasePlan> {
-  const productId = cleanText(input.productId, 100);
   const productName = cleanText(input.productName, 300);
-  if (!productId || !productName) throw new Error("Выберите товар");
+  if (!productName) throw new Error("Введите название товара");
+  // Связь с каталогом необязательна: для произвольного названия
+  // сохраняем стабильный внутренний идентификатор без внешнего FK.
+  const productId = cleanText(input.productId, 100) || `custom:${randomUUID()}`;
   const db = getAdminDb();
   const now = new Date().toISOString();
   const row = {

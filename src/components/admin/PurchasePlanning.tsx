@@ -45,6 +45,7 @@ export function PurchasePlanning({
 }) {
   const router = useRouter();
   const [plans, setPlans] = useState(initialPlans);
+  const [productName, setProductName] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<PickerProduct | null>(null);
   const [targetAmount, setTargetAmount] = useState(0);
   const [contributionAmount, setContributionAmount] = useState(500);
@@ -76,9 +77,16 @@ export function PurchasePlanning({
     });
   }
 
+  function selectCatalogProduct(product: PickerProduct) {
+    setSelectedProduct(product);
+    setProductName(product.name);
+    setError("");
+  }
+
   async function createPlan() {
-    if (!selectedProduct) {
-      setError("Выберите товар для закупки");
+    const cleanProductName = productName.trim();
+    if (!cleanProductName) {
+      setError("Введите название товара для закупки");
       return;
     }
     setCreating(true);
@@ -88,9 +96,9 @@ export function PurchasePlanning({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productId: selectedProduct.id,
-          productName: selectedProduct.name,
-          sku: selectedProduct.sku,
+          productId: selectedProduct?.id || null,
+          productName: cleanProductName,
+          sku: selectedProduct?.sku || null,
           targetAmount,
           contributionAmount,
           account,
@@ -99,6 +107,7 @@ export function PurchasePlanning({
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Не удалось создать план");
       replacePlan(body.plan);
+      setProductName("");
       setSelectedProduct(null);
       setTargetAmount(0);
       setContributionAmount(500);
@@ -211,11 +220,35 @@ export function PurchasePlanning({
 
       <section className="purchase-create">
         <div className="purchase-create__picker">
-          <span className="admin-label">Товар</span>
-          <ProductPicker products={products} onPick={setSelectedProduct} placeholder="Найти товар для будущей закупки…" />
+          <label className="admin-field purchase-create__name">
+            <span className="admin-label">Название товара *</span>
+            <input
+              className="admin-input"
+              type="text"
+              value={productName}
+              maxLength={300}
+              placeholder="Можно ввести любой товар"
+              onChange={(event) => {
+                const value = event.target.value;
+                setProductName(value);
+                if (selectedProduct && value !== selectedProduct.name) {
+                  setSelectedProduct(null);
+                }
+              }}
+            />
+          </label>
+          <span className="admin-label purchase-create__catalog-label">
+            Или выбрать из наших товаров — необязательно
+          </span>
+          <ProductPicker
+            products={products}
+            onPick={selectCatalogProduct}
+            placeholder="Поиск по текущему каталогу…"
+            showPrice={false}
+          />
           {selectedProduct && (
             <div className="purchase-create__selected">
-              <strong>{selectedProduct.name}</strong>
+              <strong>Выбран из каталога: {selectedProduct.name}</strong>
               <span>{selectedProduct.sku || "без артикула"}</span>
             </div>
           )}
@@ -234,7 +267,7 @@ export function PurchasePlanning({
             {Object.entries(PURCHASE_ACCOUNT_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
-        <button type="button" className="admin-btn admin-btn--primary" disabled={creating || !selectedProduct} onClick={createPlan}>
+        <button type="button" className="admin-btn admin-btn--primary" disabled={creating || !productName.trim()} onClick={createPlan}>
           {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
           Создать план
         </button>
@@ -264,7 +297,16 @@ export function PurchasePlanning({
               <div className="purchase-plan__head">
                 <div className="purchase-plan__product">
                   <span className="purchase-plan__icon"><PiggyBank size={17} /></span>
-                  <div><strong>{plan.productName}</strong><small>{plan.sku ? `арт. ${plan.sku}` : "без артикула"}</small></div>
+                  <div>
+                    <strong>{plan.productName}</strong>
+                    <small>
+                      {plan.sku
+                        ? `арт. ${plan.sku}`
+                        : plan.productId.startsWith("custom:")
+                          ? "произвольная закупка"
+                          : "без артикула"}
+                    </small>
+                  </div>
                 </div>
                 <div className="purchase-plan__amount">
                   <strong>{fmt(plan.savedAmount)} ₽</strong>
