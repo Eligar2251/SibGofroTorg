@@ -6,8 +6,11 @@ import { getAdminDb } from "@/lib/supabase";
 import { getWarehouseBusinessDate } from "@/lib/warehouse-shared";
 import {
   fetchOzonProduct,
+  normalizeOzonImageUrl,
   normalizeOzonProductUrl,
+  type OzonProductSnapshot,
 } from "@/lib/ozon-product";
+import { mirrorPurchaseImage } from "@/lib/cloudinary-purchases";
 import {
   purchaseSavedAmount,
   type PurchaseAccount,
@@ -64,6 +67,9 @@ function mapPlan(row: Record<string, any>): PurchasePlan {
     sku: row.sku ? String(row.sku) : null,
     ozonUrl: safeOzonUrl(row.ozon_url),
     ozonImageUrl: row.ozon_image_url ? String(row.ozon_image_url) : null,
+    ozonImagePublicId: row.ozon_image_public_id
+      ? String(row.ozon_image_public_id)
+      : null,
     ozonPrice: row.ozon_price != null ? Math.max(0, round2(row.ozon_price)) : null,
     ozonCheckedAt: row.ozon_checked_at ? String(row.ozon_checked_at) : null,
     ozonPriceUpdatedAt: row.ozon_price_updated_at ? String(row.ozon_price_updated_at) : null,
@@ -115,15 +121,31 @@ export async function createPurchasePlan(input: {
   productName: unknown;
   sku?: unknown;
   ozonUrl?: unknown;
+  ozonTitle?: unknown;
+  ozonPrice?: unknown;
+  ozonImageUrl?: unknown;
   targetAmount?: unknown;
   contributionAmount?: unknown;
   account?: unknown;
 }): Promise<PurchasePlan> {
   const rawOzonUrl = cleanText(input.ozonUrl, 1500);
   const ozonUrl = rawOzonUrl ? normalizeOzonProductUrl(rawOzonUrl) : null;
-  let ozonSnapshot: Awaited<ReturnType<typeof fetchOzonProduct>> | null = null;
+  const suppliedOzonTitle = cleanText(input.ozonTitle, 300);
+  const suppliedOzonPrice = Math.max(0, round2(input.ozonPrice));
+  let ozonSnapshot: OzonProductSnapshot | null =
+    ozonUrl && suppliedOzonTitle && suppliedOzonPrice > 0
+      ? {
+          url: ozonUrl,
+          title: suppliedOzonTitle,
+          price: suppliedOzonPrice,
+          imageUrl: normalizeOzonImageUrl(input.ozonImageUrl),
+          fetchedAt: new Date().toISOString(),
+        }
+      : null;
   let ozonLastError: string | null = null;
-  if (ozonUrl) {
+  // Если предпросмотр уже получил снимок, повторно Ozon не открываем.
+  // Прямое создание только по URL всё ещё поддерживается.
+  if (ozonUrl && !ozonSnapshot) {
     try {
       ozonSnapshot = await fetchOzonProduct(ozonUrl);
     } catch (error) {
@@ -143,17 +165,34 @@ export async function createPurchasePlan(input: {
   // Связь с каталогом необязательна: для произвольного названия
   // сохраняем стабильный внутренний идентификатор без внешнего FK.
   const productId = cleanText(input.productId, 100) || `custom:${randomUUID()}`;
+  const planId = randomUUID();
   const db = getAdminDb();
   const now = new Date().toISOString();
   const currentOzonUrl = ozonSnapshot?.url || ozonUrl;
   const currentOzonPrice = ozonSnapshot?.price ?? null;
+  let storedImageUrl = ozonSnapshot?.imageUrl || null;
+  let storedImagePublicId: string | null = null;
+  if (ozonSnapshot?.imageUrl) {
+    try {
+      const mirrored = await mirrorPurchaseImage(ozonSnapshot.imageUrl, planId);
+      storedImageUrl = mirrored.url;
+      storedImagePublicId = mirrored.publicId;
+    } catch (error) {
+      const imageWarning = cleanText(
+        error instanceof Error ? error.message : "Не удалось сохранить фото в Cloudinary",
+        300
+      );
+      ozonLastError = [ozonLastError, imageWarning].filter(Boolean).join(" · ");
+    }
+  }
   const row = {
-    id: randomUUID(),
+    id: planId,
     product_id: productId,
     product_name: ozonSnapshot?.title || productName,
     sku: cleanText(input.sku, 80) || null,
     ozon_url: currentOzonUrl,
-    ozon_image_url: ozonSnapshot?.imageUrl || null,
+    ozon_image_url: storedImageUrl,
+    ozon_image_public_id: storedImagePublicId,
     ozon_price: currentOzonPrice,
     ozon_checked_at: ozonUrl ? now : null,
     ozon_price_updated_at: ozonSnapshot ? now : null,
@@ -198,16 +237,32 @@ export async function refreshPurchasePlanOzon(idValue: unknown): Promise<{
   const checkedAt = new Date().toISOString();
   try {
     const snapshot = await fetchOzonProduct(existing.ozon_url);
+    let imageUrl = existing.ozon_image_url || snapshot.imageUrl || null;
+    let imagePublicId = existing.ozon_image_public_id || null;
+    let imageWarning: string | null = null;
+    if (snapshot.imageUrl) {
+      try {
+        const mirrored = await mirrorPurchaseImage(snapshot.imageUrl, id);
+        imageUrl = mirrored.url;
+        imagePublicId = mirrored.publicId;
+      } catch (error) {
+        imageWarning = cleanText(
+          error instanceof Error ? error.message : "Не удалось обновить фото в Cloudinary",
+          300
+        );
+      }
+    }
     const { data, error } = await db
       .from("warehouse_purchase_plans")
       .update({
         product_name: snapshot.title || existing.product_name,
         ozon_url: snapshot.url,
-        ozon_image_url: snapshot.imageUrl || existing.ozon_image_url || null,
+        ozon_image_url: imageUrl,
+        ozon_image_public_id: imagePublicId,
         ozon_price: snapshot.price,
         ozon_checked_at: checkedAt,
         ozon_price_updated_at: checkedAt,
-        ozon_last_error: null,
+        ozon_last_error: imageWarning,
         target_amount: snapshot.price,
         updated_at: checkedAt,
       })
@@ -216,7 +271,7 @@ export async function refreshPurchasePlanOzon(idValue: unknown): Promise<{
       .single();
     if (error) throw migrationError(error);
     revalidateTag("purchase-plans", { expire: 0 });
-    return { plan: mapPlan(data), warning: null };
+    return { plan: mapPlan(data), warning: imageWarning };
   } catch (error) {
     const warning = cleanText(
       error instanceof Error ? error.message : "Не удалось обновить цену Ozon",

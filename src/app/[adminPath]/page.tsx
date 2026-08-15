@@ -55,6 +55,7 @@ import {
   getReceiptPaidMap,
   getCashCarryoverSummary,
   dealNeedsDelivery,
+  dealRemainingItems,
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
   stripSalaryMetaTags,
@@ -407,21 +408,35 @@ export default async function AdminDashboard() {
   }
 
   const dashboardDeliveries = [
-    ...paidDeliveryDeals.map(deal => ({
-      id: `deal-${deal.id}`,
-      type: "deal",
-      number: `ЗК-${deal.number}`,
-      customerName: deal.customerName,
-      address: deal.deliveryAddress || deal.address || "Адрес не указан",
-      phone: deal.customerPhone || deal.phone,
-      note: deal.deliveryNote,
-      date: deal.deliveryPlannedDate,
-      itemCount: deal.items.reduce((sum, item) => sum + item.quantity, 0),
-      totalSum: deal.total,
-      isPaid: true,
-      link: `/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`,
-    })),
-    ...independentTrips
+    ...paidDeliveryDeals.flatMap((deal) => {
+      const remainingItems = dealRemainingItems(
+        deal.items,
+        deal.shippedItems
+      ).filter((item) => item.remaining > 0);
+      const itemCount = remainingItems.reduce(
+        (sum, item) => sum + item.remaining,
+        0
+      );
+      if (itemCount <= 0) return [];
+      return [{
+        id: `deal-${deal.id}`,
+        type: "deal",
+        number: `ЗК-${deal.number}`,
+        customerName: deal.customerName,
+        address: deal.deliveryAddress || deal.address || "Адрес не указан",
+        phone: deal.customerPhone || deal.phone,
+        note: deal.deliveryNote,
+        date: deal.deliveryPlannedDate,
+        itemCount,
+        itemSummary: remainingItems
+          .map((item) => `${item.name || "Товар"} × ${item.remaining}`)
+          .join(" · "),
+        totalSum: deal.total,
+        isPaid: true,
+        link: `/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`,
+      }];
+    }),
+    ...independentTrips.map((trip) => ({ ...trip, itemSummary: null })),
   ].sort((a, b) => {
     const aDate = a.date || "";
     const bDate = b.date || "";
@@ -707,7 +722,7 @@ export default async function AdminDashboard() {
           )}
         >
           <div className="dash-deliveries-flat">
-            <div className="dash-section__desc">Оплаченные заказы + самостоятельные рейсы</div>
+            <div className="dash-section__desc">Оплаченные заказы с недовезённым товаром + самостоятельные рейсы</div>
             {dashboardDeliveries.length > 0 ? (
               <div className="dash-delivery-list">
                 {dashboardDeliveries.map((del) => (
@@ -723,9 +738,12 @@ export default async function AdminDashboard() {
                       <div className="dash-delivery-row__address"><MapPin size={11} />{del.address}</div>
                       <div className="dash-delivery-row__meta">
                         {del.phone && <span>{del.phone}</span>}
-                        <span>{del.itemCount} ед.</span>
+                        <span>{del.type === "deal" ? "осталось довезти" : "в рейсе"}: {del.itemCount} ед.</span>
                         {del.totalSum !== null && <span>{money(del.totalSum)}</span>}
                       </div>
+                      {del.itemSummary && (
+                        <div className="dash-delivery-row__items">{del.itemSummary}</div>
+                      )}
                     </div>
                   </div>
                 ))}

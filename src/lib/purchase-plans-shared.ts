@@ -16,6 +16,7 @@ export interface PurchasePlan {
   sku?: string | null;
   ozonUrl?: string | null;
   ozonImageUrl?: string | null;
+  ozonImagePublicId?: string | null;
   ozonPrice?: number | null;
   ozonCheckedAt?: string | null;
   ozonPriceUpdatedAt?: string | null;

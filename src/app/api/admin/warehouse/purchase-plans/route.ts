@@ -59,22 +59,20 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     if (body.action === "refresh-ozon") {
       const result = await refreshPurchasePlanOzon(body.id);
-      if (!body.silent) {
-        await logAdminAction(
-          auth.displayName,
-          auth.role,
-          "update",
-          "purchase-plan",
-          result.plan.id,
-          result.warning
-            ? `Не удалось обновить цену Ozon для «${result.plan.productName}»`
-            : `Цена Ozon для «${result.plan.productName}» обновлена: ${result.plan.ozonPrice} ₽`,
-          {
-            ozonPrice: result.plan.ozonPrice,
-            warning: result.warning,
-          }
-        );
-      }
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "purchase-plan",
+        result.plan.id,
+        result.warning
+          ? `Не удалось обновить цену Ozon для «${result.plan.productName}»`
+          : `Цена Ozon для «${result.plan.productName}» обновлена: ${result.plan.ozonPrice} ₽`,
+        {
+          ozonPrice: result.plan.ozonPrice,
+          warning: result.warning,
+        }
+      );
       return NextResponse.json(result);
     }
     if (body.action === "contribute") {

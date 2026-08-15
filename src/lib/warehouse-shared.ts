@@ -738,9 +738,9 @@ export function isDealFullyShipped(
  * Нужно ли ещё везти заказ — единый критерий для всех списков доставки.
  *
  * Показываем, только пока есть долг по товару:
- *   • полностью отгружен (остатков нет) → заказ закрыт, в доставке не нужен;
+ *   • полностью отгружен или проведён   → заказ закрыт, в доставке не нужен;
  *   • отгружен частично                 → остаётся, надо довезти остаток;
- *   • отменён                           → не нужен.
+ *   • отменён / отмечен отпущенным      → не нужен.
  *
  * Важно: этим предикатом обязаны пользоваться ВСЕ места, где строится
  * список доставок. Раньше вкладка «Учёт → Доставки» фильтровала заказы
@@ -749,11 +749,20 @@ export function isDealFullyShipped(
 export function dealNeedsDelivery(deal: {
   hasDelivery?: boolean | null;
   status?: string | null;
+  deliveryReleasedAt?: string | null;
   items?: { productId: string; quantity: number }[] | null;
   shippedItems?: ShippedEntry[] | null;
 }): boolean {
   if (!deal.hasDelivery) return false;
-  if (deal.status === "cancelled") return false;
+  // Проведённый/отпущенный заказ уже увезён. Это также закрывает старые
+  // заказы, у которых shipped_items ещё не заполнялся.
+  if (
+    deal.status === "cancelled" ||
+    deal.status === "completed" ||
+    Boolean(deal.deliveryReleasedAt)
+  ) {
+    return false;
+  }
 
   const items = Array.isArray(deal.items) ? deal.items : [];
   // Заказ без позиций (например, только услуга доставки): ориентируемся

@@ -3,6 +3,7 @@
 ALTER TABLE warehouse_purchase_plans
   ADD COLUMN IF NOT EXISTS ozon_url TEXT,
   ADD COLUMN IF NOT EXISTS ozon_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS ozon_image_public_id TEXT,
   ADD COLUMN IF NOT EXISTS ozon_price NUMERIC,
   ADD COLUMN IF NOT EXISTS ozon_checked_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS ozon_price_updated_at TIMESTAMPTZ,

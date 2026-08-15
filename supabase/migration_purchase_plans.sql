@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS warehouse_purchase_plans (
   sku TEXT,
   ozon_url TEXT,
   ozon_image_url TEXT,
+  ozon_image_public_id TEXT,
   ozon_price NUMERIC,
   ozon_checked_at TIMESTAMPTZ,
   ozon_price_updated_at TIMESTAMPTZ,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Banknote,
@@ -25,8 +25,6 @@ const fmt = (value: number) => value.toLocaleString("ru-RU", {
   maximumFractionDigits: 2,
 });
 
-const OZON_AUTO_REFRESH_MS = 60 * 60 * 1000;
-
 type OzonPreview = {
   url: string;
   title: string;
@@ -35,22 +33,13 @@ type OzonPreview = {
   fetchedAt: string;
 };
 
-function isOzonRefreshDue(plan: PurchasePlan): boolean {
-  if (!plan.ozonUrl || plan.status !== "active") return false;
-  const checkedAt = plan.ozonCheckedAt
-    ? new Date(plan.ozonCheckedAt).getTime()
-    : 0;
-  return !Number.isFinite(checkedAt) || Date.now() - checkedAt >= OZON_AUTO_REFRESH_MS;
-}
-
 async function requestOzonRefresh(
   id: string,
-  silent: boolean,
 ): Promise<{ plan: PurchasePlan; warning: string | null }> {
   const response = await fetch("/api/admin/warehouse/purchase-plans", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "refresh-ozon", id, silent }),
+    body: JSON.stringify({ action: "refresh-ozon", id }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || "Не удалось обновить цену Ozon");
@@ -119,39 +108,6 @@ export function PurchasePlanning({
   const visiblePlans = showCompleted ? completedPlans : activePlans;
   const totalSaved = activePlans.reduce((sum, plan) => sum + plan.savedAmount, 0);
 
-  useEffect(() => {
-    const stalePlans = initialPlans.filter(isOzonRefreshDue).slice(0, 4);
-    if (stalePlans.length === 0) return;
-    let cancelled = false;
-    const ids = stalePlans.map((plan) => plan.id);
-    setRefreshingOzonIds((current) => new Set([...current, ...ids]));
-
-    void Promise.allSettled(
-      stalePlans.map((plan) => requestOzonRefresh(plan.id, true))
-    ).then((results) => {
-      if (!cancelled) {
-        const refreshed = results.flatMap((result) =>
-          result.status === "fulfilled" ? [result.value.plan] : []
-        );
-        if (refreshed.length > 0) {
-          const byId = new Map(refreshed.map((plan) => [plan.id, plan]));
-          setPlans((current) =>
-            current.map((plan) => byId.get(plan.id) || plan)
-          );
-        }
-      }
-      setRefreshingOzonIds((current) => {
-        const next = new Set(current);
-        for (const id of ids) next.delete(id);
-        return next;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [initialPlans]);
-
   function replacePlan(nextPlan: PurchasePlan) {
     setPlans((previous) => {
       const exists = previous.some((plan) => plan.id === nextPlan.id);
@@ -208,7 +164,7 @@ export function PurchasePlanning({
     setRefreshingOzonIds((current) => new Set(current).add(plan.id));
     setError("");
     try {
-      const result = await requestOzonRefresh(plan.id, false);
+      const result = await requestOzonRefresh(plan.id);
       replacePlan(result.plan);
       if (result.warning) setError(result.warning);
     } catch (refreshError) {
@@ -243,6 +199,9 @@ export function PurchasePlanning({
           productName: cleanProductName,
           sku: selectedProduct?.sku || null,
           ozonUrl: ozonUrl.trim() || null,
+          ozonTitle: ozonPreview?.title || null,
+          ozonPrice: ozonPreview?.price || null,
+          ozonImageUrl: ozonPreview?.imageUrl || null,
           targetAmount,
           contributionAmount,
           account,
@@ -431,7 +390,7 @@ export function PurchasePlanning({
               <div>
                 <strong>{ozonPreview.title}</strong>
                 <b>{fmt(ozonPreview.price)} ₽</b>
-                <small>Публичная цена Ozon; будет проверяться автоматически</small>
+                <small>Название, цена и фото сохранятся один раз в нашей базе</small>
               </div>
             </div>
           )}
@@ -481,7 +440,7 @@ export function PurchasePlanning({
             placeholder="необязательно"
           />
           {ozonPreview && (
-            <span className="admin-hint">Автоматически меняется вслед за ценой Ozon</span>
+            <span className="admin-hint">Обновится только при нажатии «Обновить цену»</span>
           )}
         </label>
         <label className="admin-field">
@@ -576,7 +535,7 @@ export function PurchasePlanning({
                         : "цена не получена"}
                     </strong>
                     <small>
-                      Проверено: {formatCheckedAt(plan.ozonCheckedAt)}
+                      Снимок сохранён: {formatCheckedAt(plan.ozonPriceUpdatedAt || plan.ozonCheckedAt)}
                     </small>
                     {plan.ozonLastError && (
                       <em>{plan.ozonLastError}</em>

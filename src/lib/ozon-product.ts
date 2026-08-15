@@ -84,6 +84,10 @@ function safeImageUrl(value: unknown): string | null {
   }
 }
 
+export function normalizeOzonImageUrl(value: unknown): string | null {
+  return safeImageUrl(value);
+}
+
 function parsePrice(value: unknown): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) && value > 0 && value < 100_000_000
@@ -148,20 +152,37 @@ async function fetchOzonText(initialUrl: string): Promise<{
   contentType: string;
 }> {
   let url = normalizeOzonProductUrl(initialUrl);
-  for (let redirect = 0; redirect <= 4; redirect++) {
+  const cookies = new Map<string, string>();
+  // Короткие ссылки Ozon могут пройти через несколько служебных
+  // перенаправлений (регион, canonical URL, мобильная ссылка).
+  for (let redirect = 0; redirect <= 12; redirect++) {
+    const headers: Record<string, string> = {
+      Accept: "text/html,application/json;q=0.9,*/*;q=0.8",
+      "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.6",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    };
+    if (cookies.size > 0) {
+      headers.Cookie = [...cookies.entries()]
+        .map(([name, value]) => `${name}=${value}`)
+        .join("; ");
+    }
     const response = await fetch(url, {
       method: "GET",
       redirect: "manual",
       cache: "no-store",
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: {
-        Accept: "text/html,application/json;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.6",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-          "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      },
+      headers,
     });
+    const setCookie = response.headers.get("set-cookie");
+    if (setCookie) {
+      const pair = setCookie.split(";", 1)[0];
+      const separator = pair.indexOf("=");
+      if (separator > 0) {
+        cookies.set(pair.slice(0, separator).trim(), pair.slice(separator + 1).trim());
+      }
+    }
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
