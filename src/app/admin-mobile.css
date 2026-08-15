@@ -1,0 +1,1153 @@
+/* =========================================================
+   ЕДИНЫЙ МОБИЛЬНЫЙ СЛОЙ АДМИН-ПАНЕЛИ
+   Телефоны и вертикальные планшеты до 768px, включая iOS safe areas.
+   Подключается последним и сводит разрозненные старые breakpoint'ы
+   к одной предсказуемой сетке.
+   ========================================================= */
+
+/* На планшетной ширине 769–1023px сохраняется прежняя горизонтальная
+   панель. display:contents не меняет её геометрию после добавления drawer. */
+.admin-mobile-menu {
+  display: contents;
+}
+.admin-mobile-bar__menu-toggle,
+.admin-mobile-menu__head,
+.admin-mobile-menu__backdrop {
+  display: none;
+}
+@media (min-width: 769px) and (max-width: 1023px) {
+  .admin-mobile-bar__action > span {
+    display: none;
+  }
+}
+
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  html:has([data-admin="true"]),
+  body:has([data-admin="true"]),
+  [data-admin="true"] .admin-shell {
+    min-height: 100dvh;
+    background: var(--adm-paper);
+  }
+
+  html:has([data-admin="true"]),
+  body:has([data-admin="true"]) {
+    overscroll-behavior-y: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --adm-mobile-safe-top: env(safe-area-inset-top, 0px);
+    --adm-mobile-safe-right: env(safe-area-inset-right, 0px);
+    --adm-mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --adm-mobile-safe-left: env(safe-area-inset-left, 0px);
+    --adm-mobile-bar-height: 56px;
+    --adm-mobile-touch: 44px;
+    --adm-mobile-gutter: clamp(10px, 3.2vw, 16px);
+  }
+
+  html:has([data-admin="true"]),
+  body:has([data-admin="true"]) {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100%;
+    margin: 0;
+    overflow-x: hidden;
+    background: var(--adm-paper);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  [data-admin="true"],
+  [data-admin="true"] .admin-shell,
+  [data-admin="true"] .admin-content,
+  [data-admin="true"] .admin-main {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  [data-admin="true"] .admin-shell,
+  [data-admin="true"] .admin-content {
+    min-height: 100dvh;
+    overflow-x: clip;
+  }
+
+  [data-admin="true"] *,
+  [data-admin="true"] *::before,
+  [data-admin="true"] *::after {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  [data-admin="true"] :is(button, a, input, select, textarea, summary, label) {
+    touch-action: manipulation;
+  }
+
+  /* ── Верхняя системная панель и меню-сетка ── */
+  [data-admin="true"] .admin-sidebar,
+  [data-admin="true"] .admin-sidebar-handle {
+    display: none !important;
+  }
+
+  [data-admin="true"] .admin-mobile-bar {
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 900;
+    display: flex;
+    width: 100%;
+    height: calc(var(--adm-mobile-bar-height) + var(--adm-mobile-safe-top));
+    padding:
+      var(--adm-mobile-safe-top)
+      calc(var(--adm-mobile-safe-right) + 10px)
+      0
+      calc(var(--adm-mobile-safe-left) + 12px);
+    align-items: center;
+    justify-content: flex-start;
+    border-bottom: 1px solid var(--adm-kraft);
+    background: var(--adm-sidebar-bg);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .16);
+    backdrop-filter: none;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__title {
+    display: block;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    padding-right: 150px;
+    overflow: hidden;
+    color: var(--adm-sidebar-text-active);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: var(--adm-mobile-bar-height);
+    letter-spacing: .035em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__menu-toggle {
+    position: absolute;
+    top: calc(var(--adm-mobile-safe-top) + 6px);
+    right: calc(var(--adm-mobile-safe-right) + 6px);
+    z-index: 3;
+    display: inline-grid;
+    width: var(--adm-mobile-touch);
+    height: var(--adm-mobile-touch);
+    padding: 0;
+    place-items: center;
+    color: var(--adm-sidebar-text-active);
+    background: var(--adm-sidebar-hover-bg);
+    border: 1px solid var(--adm-sidebar-line);
+    border-radius: 10px;
+  }
+
+  [data-admin="true"] .admin-mobile-menu {
+    position: fixed;
+    top: calc(var(--adm-mobile-safe-top) + var(--adm-mobile-bar-height));
+    right: 0;
+    left: 0;
+    z-index: 2;
+    display: grid;
+    max-height: calc(100dvh - var(--adm-mobile-safe-top) - var(--adm-mobile-bar-height));
+    padding:
+      12px
+      calc(var(--adm-mobile-safe-right) + var(--adm-mobile-gutter))
+      calc(14px + var(--adm-mobile-safe-bottom))
+      calc(var(--adm-mobile-safe-left) + var(--adm-mobile-gutter));
+    gap: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    color: var(--adm-sidebar-text-active);
+    background: var(--adm-sidebar-bg);
+    border-bottom: 2px solid var(--adm-kraft);
+    box-shadow: 0 16px 30px rgba(0, 0, 0, .25);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translate3d(0, -12px, 0);
+    transition: transform .16s ease-out, opacity .14s ease-out, visibility 0s linear .16s;
+  }
+
+  [data-admin="true"] .admin-mobile-menu--open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0);
+    transition: transform .16s ease-out, opacity .14s ease-out;
+  }
+
+  [data-admin="true"] .admin-mobile-menu__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  [data-admin="true"] .admin-mobile-menu__head strong {
+    color: var(--adm-sidebar-text-active);
+    font-size: 13px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  [data-admin="true"] .admin-mobile-menu__head span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--adm-sidebar-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__nav {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    max-width: none;
+    gap: 8px;
+    overflow: visible;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__link {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    min-height: 64px;
+    height: auto;
+    padding: 8px 5px;
+    place-items: center;
+    align-content: center;
+    gap: 5px;
+    color: var(--adm-sidebar-text);
+    background: var(--adm-sidebar-hover-bg);
+    border: 1px solid var(--adm-sidebar-line);
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 650;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__link svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__link span {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__link--active {
+    color: var(--adm-kraft-mid);
+    background: var(--adm-sidebar-active-bg);
+    border-color: var(--adm-kraft-line);
+    box-shadow: inset 0 -2px 0 var(--adm-kraft);
+  }
+
+  [data-admin="true"] .admin-mobile-bar__actions {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__actions form {
+    display: block;
+    min-width: 0;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__action {
+    display: inline-flex;
+    width: 100%;
+    min-height: var(--adm-mobile-touch);
+    padding: 8px 10px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    color: var(--adm-sidebar-text-hover);
+    background: var(--adm-sidebar-hover-bg);
+    border: 1px solid var(--adm-sidebar-line);
+    border-radius: 10px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  [data-admin="true"] .admin-mobile-menu__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 850;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    background: rgba(0, 0, 0, .42);
+    border: 0;
+  }
+
+  /* Планы и уведомления встроены визуально в верхнюю панель. */
+  [data-admin="true"] .admin-notify,
+  [data-admin="true"] .admin-plans-shortcut {
+    top: calc(var(--adm-mobile-safe-top) + 6px);
+    z-index: 930;
+  }
+
+  [data-admin="true"] .admin-notify {
+    right: calc(var(--adm-mobile-safe-right) + 56px);
+  }
+
+  [data-admin="true"] .admin-plans-shortcut {
+    right: calc(var(--adm-mobile-safe-right) + 106px);
+  }
+
+  [data-admin="true"] :is(.admin-notify__btn, .admin-mobile-bar__menu-toggle) {
+    width: var(--adm-mobile-touch);
+    height: var(--adm-mobile-touch);
+    min-height: var(--adm-mobile-touch);
+    box-shadow: none;
+  }
+
+  [data-admin="true"] .admin-notify__panel {
+    position: fixed;
+    top: calc(var(--adm-mobile-safe-top) + var(--adm-mobile-bar-height) + 6px);
+    right: calc(var(--adm-mobile-safe-right) + 8px);
+    left: calc(var(--adm-mobile-safe-left) + 8px);
+    width: auto;
+    max-height: calc(100dvh - var(--adm-mobile-safe-top) - var(--adm-mobile-bar-height) - var(--adm-mobile-safe-bottom) - 14px);
+    border-radius: 14px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .22);
+  }
+
+  /* ── Контент и вертикальный ритм ── */
+  [data-admin="true"] .admin-content {
+    margin: 0 !important;
+  }
+
+  [data-admin="true"] .admin-main {
+    padding:
+      calc(var(--adm-mobile-safe-top) + var(--adm-mobile-bar-height) + 14px)
+      calc(var(--adm-mobile-safe-right) + var(--adm-mobile-gutter))
+      calc(var(--adm-mobile-safe-bottom) + 24px)
+      calc(var(--adm-mobile-safe-left) + var(--adm-mobile-gutter));
+    overflow-x: clip;
+  }
+
+  [data-admin="true"] .admin-login {
+    min-height: 100dvh;
+    padding:
+      calc(var(--adm-mobile-safe-top) + 16px)
+      calc(var(--adm-mobile-safe-right) + 14px)
+      calc(var(--adm-mobile-safe-bottom) + 16px)
+      calc(var(--adm-mobile-safe-left) + 14px);
+  }
+
+  [data-admin="true"] .admin-login__brand {
+    margin-bottom: 18px;
+  }
+
+  [data-admin="true"] .admin-login__card {
+    padding: 20px 16px;
+    backdrop-filter: none;
+  }
+
+  [data-admin="true"] .admin-main > *,
+  [data-admin="true"] :is(.admin-card, .admin-card__pad, .admin-page-head, .admin-form, .admin-form--wide, .admin-stack, .admin-order, .admin-empty) {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  [data-admin="true"] .admin-page-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+  }
+
+  [data-admin="true"] .admin-h1 {
+    margin: 0;
+    font-size: clamp(22px, 6.4vw, 30px);
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] :is(.admin-h2, .admin-card__title, .admin-modal__title) {
+    font-size: clamp(15px, 4.3vw, 18px);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] :is(.admin-sub, .admin-hint, .admin-muted) {
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] .admin-card {
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  [data-admin="true"] .admin-card__head {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch !important;
+    gap: 9px !important;
+    padding: 12px !important;
+  }
+
+  [data-admin="true"] .admin-card__pad {
+    padding: 12px;
+  }
+
+  [data-admin="true"] :is(.admin-stack, .admin-stack--lg) {
+    gap: 12px;
+  }
+
+  /* ── Touch-контролы: ровная высота, без 8px текста ── */
+  [data-admin="true"] :is(
+    .admin-btn,
+    .admin-status__btn,
+    .scan-page__btn,
+    .wh-direction__btn,
+    .wh-linkmode__btn,
+    .cashc-seg__btn,
+    .whsal-seg__btn,
+    .ds-btn,
+    .saz-btn
+  ) {
+    min-width: 0 !important;
+    max-width: 100%;
+    min-height: var(--adm-mobile-touch);
+    height: auto;
+    padding: 9px 12px;
+    justify-content: center;
+    gap: 7px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal !important;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  [data-admin="true"] .admin-btn--sm {
+    min-height: 40px;
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  [data-admin="true"] :is(.admin-btn--icon, .admin-modal__close, .admin-notify__iconbtn, .wh-item-row__del) {
+    width: var(--adm-mobile-touch);
+    min-width: var(--adm-mobile-touch) !important;
+    height: var(--adm-mobile-touch);
+    min-height: var(--adm-mobile-touch);
+    padding: 0;
+  }
+
+  [data-admin="true"] :is(.admin-input, .admin-select, .admin-textarea),
+  [data-admin="true"] :is(.ds-field input, .ds-field select, .saz-field input, .saz-field select, .saz-input) {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: var(--adm-mobile-touch);
+    padding: 10px 11px;
+    border-radius: 8px;
+    font-size: 16px; /* iOS: не увеличивать viewport при фокусе */
+    line-height: 1.25;
+  }
+
+  [data-admin="true"] .admin-textarea {
+    min-height: 104px;
+  }
+
+  [data-admin="true"] .admin-label {
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  [data-admin="true"] input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
+  }
+
+  [data-admin="true"] .admin-check {
+    min-height: var(--adm-mobile-touch);
+    padding: 9px 10px;
+    gap: 9px;
+    font-size: 13px;
+  }
+
+  [data-admin="true"] .admin-badge {
+    max-width: 100%;
+    padding: 3px 7px;
+    font-size: 10px;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* Действия — предсказуемая мобильная сетка. */
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .popup-admin-actions, .cashc-actions) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .popup-admin-actions, .cashc-actions) > * {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .popup-admin-actions, .cashc-actions) .admin-btn {
+    width: 100%;
+  }
+
+  [data-admin="true"] .admin-actions {
+    display: flex;
+    width: max-content;
+    max-width: none;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  /* Фильтры и табы: одна горизонтальная touch-лента, контент не сжимается. */
+  [data-admin="true"] :is(.admin-filters, .admin-tabs, .admin-tabs-with-actions .admin-filters) {
+    display: flex !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 2px 0 6px;
+    flex-wrap: nowrap !important;
+    gap: 7px !important;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [data-admin="true"] :is(.admin-filters, .admin-tabs, .admin-tabs-with-actions .admin-filters)::-webkit-scrollbar {
+    display: none;
+  }
+
+  [data-admin="true"] .admin-filter {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 8px 12px;
+    font-size: 12px;
+    scroll-snap-align: start;
+    white-space: nowrap !important;
+  }
+
+  [data-admin="true"] .admin-tabs-with-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 9px;
+    margin-bottom: 12px;
+  }
+
+  [data-admin="true"] .admin-tabs-with-actions .admin-page-head__actions {
+    display: grid;
+  }
+
+  /* ── Формы и сетки ── */
+  [data-admin="true"] :is(
+    .admin-grid-2,
+    .admin-grid-3,
+    .admin-grid-4,
+    .wh-form-grid,
+    .settings-main-grid,
+    .settings-messenger-grid,
+    .cashc-form-head,
+    .cashc-ledgers,
+    .purchase-create,
+    .purchase-plan__actions,
+    .supply-planning__workspace,
+    .supply-plan-editor__meta,
+    .supply-plan-add__draft,
+    .popup-admin-layout,
+    .wh-report-constructor,
+    .wh-report-fields,
+    .rent-balances,
+    .rent-two-col,
+    .admin-user-passwords
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [data-admin="true"] .admin-main :not(table):not(thead):not(tbody):not(tr):not(th):not(td)[style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [data-admin="true"] .admin-main :not(table):not(th):not(td)[style*="min-width"] {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  [data-admin="true"] :is(.admin-field, .admin-grid-2 > *, .admin-grid-3 > *, .admin-grid-4 > *) {
+    min-width: 0;
+  }
+
+  [data-admin="true"] .admin-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  [data-admin="true"] :is(.dash-report-grid, .dash-main-grid, .admin-dash-grid, .dash-account-grid, .dash-finance-totals, .dash-finance-filter, .wh-report-summary, .cashc-facts, .supply-planning__stats) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* ── Таблицы: только внутренний scroll, страница не растягивается ── */
+  [data-admin="true"] :is(.admin-table-wrap, .admin-table-scroll, .wh-report-table-wrap, .ds-table-wrapper, .saz-table-wrap) {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [data-admin="true"] .admin-table-wrap::after {
+    content: "↔ таблица прокручивается";
+    left: 6px;
+    margin: 3px 0;
+    font-size: 9px;
+  }
+
+  [data-admin="true"] .admin-table {
+    font-size: 12px;
+  }
+
+  [data-admin="true"] .admin-table :is(th, td) {
+    padding: 9px 10px;
+    font-size: 11px;
+  }
+
+  /* ── Модалки: полноэкранный лист, безопасный для клавиатуры iOS ── */
+  [data-admin="true"] .admin-modal-overlay,
+  [data-admin="true"].admin-modal-overlay,
+  body:has(.admin-shell) > .admin-modal-overlay {
+    z-index: 1200;
+    display: block;
+    width: 100%;
+    height: 100dvh;
+    padding: 0;
+    overflow: hidden;
+    background: rgba(0, 0, 0, .55);
+    backdrop-filter: none;
+  }
+
+  [data-admin="true"] .admin-modal,
+  [data-admin="true"] .wh-modal,
+  [data-admin="true"] .transport-modal,
+  [data-admin="true"] .cp-modal,
+  [data-admin="true"] .admin-user-modal,
+  [data-admin="true"] .payment-details-modal,
+  [data-admin="true"] .boxlabel-settings,
+  body:has(.admin-shell) > .admin-modal-overlay > .admin-modal {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    min-width: 0 !important;
+    height: 100dvh;
+    max-height: 100dvh !important;
+    margin: 0;
+    padding:
+      max(14px, var(--adm-mobile-safe-top))
+      calc(var(--adm-mobile-safe-right) + 12px)
+      calc(var(--adm-mobile-safe-bottom) + 14px)
+      calc(var(--adm-mobile-safe-left) + 12px);
+    overflow-x: clip;
+    overflow-y: auto;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body:has(.admin-shell) > .admin-modal-overlay :is(.admin-btn, .admin-status__btn) {
+    min-height: var(--adm-mobile-touch);
+    padding: 9px 12px;
+    justify-content: center;
+    font-size: 13px;
+    white-space: normal;
+  }
+
+  body:has(.admin-shell) > .admin-modal-overlay :is(.admin-input, .admin-select, .admin-textarea) {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--adm-mobile-touch);
+    padding: 10px 11px;
+    font-size: 16px;
+  }
+
+  [data-admin="true"] .admin-modal__head,
+  body:has(.admin-shell) > .admin-modal-overlay .admin-modal__head {
+    position: sticky;
+    top: calc(-1 * max(14px, var(--adm-mobile-safe-top)));
+    z-index: 5;
+    display: flex !important;
+    min-height: 52px;
+    margin: 0 -12px 12px;
+    padding: max(10px, var(--adm-mobile-safe-top)) 12px 10px;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    background: var(--adm-card);
+    border-bottom: 1px solid var(--adm-border);
+  }
+
+  [data-admin="true"] :is(.admin-modal__actions, .transport-modal .admin-modal__actions, .boxlabel-settings__actions),
+  body:has(.admin-shell) > .admin-modal-overlay :is(.admin-modal__actions, .boxlabel-settings__actions) {
+    position: sticky;
+    right: auto;
+    bottom: calc(-1 * (var(--adm-mobile-safe-bottom) + 14px));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    left: auto;
+    z-index: 5;
+    margin: 14px -12px calc(-1 * (var(--adm-mobile-safe-bottom) + 14px)) !important;
+    padding: 10px 12px calc(10px + var(--adm-mobile-safe-bottom));
+    background: var(--adm-card);
+    border-top: 1px solid var(--adm-border);
+  }
+
+  /* ── Списки и карточки документов ── */
+  [data-admin="true"] .admin-order {
+    padding: 12px;
+  }
+
+  [data-admin="true"] :is(.admin-order__grid, .admin-order__row) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .admin-order__meta {
+    align-items: flex-start;
+    white-space: normal;
+  }
+
+  [data-admin="true"] .admin-order__meta-val,
+  [data-admin="true"] .admin-order__meta a {
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] .admin-order__date {
+    margin-left: 0;
+  }
+
+  [data-admin="true"] .admin-order__item,
+  [data-admin="true"] .admin-order__total {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  [data-admin="true"] .bank-hero,
+  [data-admin="true"] .bank-due {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .bank-hero {
+    padding: 14px;
+  }
+
+  [data-admin="true"] .bank-hero__value {
+    font-size: clamp(28px, 9vw, 40px);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] .bank-toolbar,
+  [data-admin="true"] .cp-toolbar,
+  [data-admin="true"] .bulk-toolbar,
+  [data-admin="true"] .whsal-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  [data-admin="true"] :is(.bank-toolbar__search, .bank-toolbar__select, .bank-toolbar__date, .cp-search, .cp-toolbar > .admin-select, .bulk-search) {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 auto;
+  }
+
+  [data-admin="true"] .bank-pay {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 8px;
+    padding: 11px;
+  }
+
+  [data-admin="true"] .bank-pay__side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-column: 1 / -1;
+    width: 100%;
+    align-items: stretch;
+  }
+
+  [data-admin="true"] .bank-pay__amount {
+    text-align: left;
+  }
+
+  [data-admin="true"] .bank-pay__side .wh-pay-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-admin="true"] .bank-pay__comment,
+  [data-admin="true"] .bank-pay__counterparty {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] .cash-carryover__stats,
+  [data-admin="true"] .cashc-facts {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Дашборд */
+  [data-admin="true"] .dash-section__head {
+    min-height: 56px;
+    padding: 11px 12px;
+    gap: 8px;
+  }
+
+  [data-admin="true"] .dash-section__side {
+    max-width: 42%;
+    gap: 5px;
+  }
+
+  [data-admin="true"] .dash-section__side .admin-btn {
+    min-height: 38px;
+    padding: 7px 9px;
+  }
+
+  [data-admin="true"] .dash-finance-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  [data-admin="true"] .dash-finance-row__side {
+    grid-column: 2;
+    justify-items: start;
+  }
+
+  [data-admin="true"] .dash-delivery-row {
+    grid-template-columns: 34px minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  [data-admin="true"] .dash-delivery-row__items {
+    white-space: normal;
+  }
+
+  [data-admin="true"] .admin-dash-grid {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  /* Контрагенты, попапы, пользователи, аренда */
+  [data-admin="true"] :is(.cp-grid, .popup-admin-layout, .rent-balances, .rent-two-col) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .cp-card__info {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .popup-admin-intro,
+  [data-admin="true"] .popup-admin-item,
+  [data-admin="true"] .rent-row,
+  [data-admin="true"] .admin-users-card__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  [data-admin="true"] .admin-user-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  [data-admin="true"] :is(.admin-user-row__role, .admin-user-row__status, .admin-user-row__buttons) {
+    grid-column: 2;
+  }
+
+  [data-admin="true"] .rent-row__side {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  /* Массовый редактор */
+  [data-admin="true"] .bulk-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-admin="true"] .bulk-step {
+    min-width: 0;
+    padding: 9px;
+  }
+
+  [data-admin="true"] .bulk-step small {
+    display: none;
+  }
+
+  [data-admin="true"] .bulk-footer {
+    position: static;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  [data-admin="true"] .bulk-footer > * {
+    width: 100%;
+  }
+
+  /* Поставки и закупки */
+  [data-admin="true"] .supply-planning__hero,
+  [data-admin="true"] .purchase-planning__hero,
+  [data-admin="true"] .supply-plan-editor__head,
+  [data-admin="true"] .supply-planning-link-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  [data-admin="true"] .supply-planning__plan-list {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: none;
+  }
+
+  [data-admin="true"] .supply-planning__sidebar {
+    position: static;
+  }
+
+  [data-admin="true"] :is(.supply-planning__stats, .purchase-create, .purchase-plan__actions) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [data-admin="true"] .purchase-plan {
+    padding: 12px;
+  }
+
+  [data-admin="true"] .purchase-plan__head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  [data-admin="true"] .purchase-plan__product {
+    grid-column: 1 / -1;
+  }
+
+  [data-admin="true"] .purchase-plan__amount {
+    text-align: left;
+  }
+
+  [data-admin="true"] .purchase-plan__ozon {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  [data-admin="true"] .purchase-plan__ozon-media {
+    width: 88px;
+    height: 88px;
+  }
+
+  [data-admin="true"] .purchase-plan__ozon > .admin-btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  /* Отчёты */
+  [data-admin="true"] .wh-report-head,
+  [data-admin="true"] .wh-report-result__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  [data-admin="true"] .wh-report-types {
+    grid-template-columns: minmax(0, 1fr);
+    border-right: 0;
+  }
+
+  [data-admin="true"] .wh-report-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Этикетки и QR: превью скроллится внутри, не растягивает страницу. */
+  [data-admin="true"] .boxlabel-edit,
+  [data-admin="true"] .boxlabel-settings__controls,
+  [data-admin="true"] .boxlabel-settings__controls--bulk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] :is(.boxlabel-settings__preview, .boxlabel-sheet--preview, .qrprint__sheet) {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  [data-admin="true"] .qrprint__toolbar,
+  [data-admin="true"] .qrprint__filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  /* Охрана и автозарплата: рабочая вертикальная оболочка. */
+  [data-admin="true"] :is(.ds-root, .saz-root) {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 10px;
+    overflow-x: clip;
+    border-radius: 8px;
+  }
+
+  [data-admin="true"] :is(.ds-header, .ds-toolbar, .saz-card__head) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  [data-admin="true"] :is(.ds-month-nav, .ds-toolbar-group, .saz-card__actions) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  [data-admin="true"] .ds-month-label {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  [data-admin="true"] :is(.ds-table-wrapper, .saz-table-wrap) {
+    border-radius: 6px;
+  }
+
+  [data-admin="true"] .ds-sticky-col {
+    min-width: 120px;
+  }
+
+  [data-admin="true"] .saz-settings,
+  [data-admin="true"] .saz-print-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .saz-days {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-admin="true"] :is(.ds-modal-overlay, .saz-print-root) {
+    padding: 0;
+  }
+
+  [data-admin="true"] .ds-modal {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    padding: max(14px, var(--adm-mobile-safe-top)) 12px calc(14px + var(--adm-mobile-safe-bottom));
+    overflow: auto;
+    border-radius: 0;
+  }
+
+  [data-admin="true"] .ds-modal-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-admin="true"] .ds-emp-table {
+    min-width: 640px;
+  }
+
+  /* Производительность 90–120 Гц: без blur и сотен entrance-анимаций. */
+  [data-admin="true"] :is(.admin-card, .admin-stat, .admin-order, .dash-section),
+  [data-admin="true"] :is(.admin-grid-2, .admin-grid-3, .admin-grid-4, .admin-stat-grid) > * {
+    animation: none !important;
+  }
+
+  [data-admin="true"] :is(.admin-modal-overlay, .admin-login__card) {
+    backdrop-filter: none !important;
+  }
+
+  [data-admin="true"] :is(.admin-btn, .admin-filter, .admin-card, .admin-order, .bank-pay, .rent-row) {
+    transition-duration: .1s;
+  }
+
+  @media (hover: none) {
+    [data-admin="true"] :is(.admin-card, .admin-stat, .admin-btn, .admin-sidebar__link):hover {
+      transform: none !important;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .popup-admin-actions, .cashc-actions),
+  [data-admin="true"] :is(.bank-pay__side .wh-pay-controls, .wh-report-actions, .ds-modal-actions),
+  body:has(.admin-shell) > .admin-modal-overlay .admin-modal__actions,
+  [data-admin="true"] .bulk-steps,
+  [data-admin="true"] .saz-days {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .admin-stat-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .admin-mobile-bar__nav {
+    gap: 6px;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__link {
+    min-height: 60px;
+    padding-inline: 3px;
+    font-size: 9px;
+  }
+
+  [data-admin="true"] .purchase-plan__ozon {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .purchase-plan__ozon-media {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+@media (max-width: 340px) {
+  [data-admin="true"] .admin-mobile-bar__nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-admin="true"] .admin-mobile-bar__title {
+    padding-right: 150px;
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 768px) {
+  [data-admin="true"] .admin-mobile-menu {
+    transition: none;
+  }
+}

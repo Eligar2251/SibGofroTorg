@@ -13,6 +13,9 @@ import "../admin.css";
 import "../admin-users.css";
 import "../rent.css";
 import "../admin-themes.css";
+// Единый финальный слой для телефонов/вертикальных планшетов. Он должен
+// идти последним, чтобы старые локальные media-правила не ломали сетку.
+import "../admin-mobile.css";
 import { AdminThemeProvider } from "@/components/admin/AdminTheme";
 
 // Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому
@@ -22,6 +25,13 @@ const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRE
 
 export const metadata: Metadata = {
   title: "Админ-панель — СибГофроТорг",
+  applicationName: "СибГофроТорг Админ",
+  manifest: "/admin-manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "СибГофроТорг Админ",
+    statusBarStyle: "black-translucent",
+  },
   robots: { index: false, follow: false },
 };
 

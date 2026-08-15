@@ -22,6 +22,8 @@ import {
   Headset,
   Recycle,
   Building2,
+  Menu,
+  X,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
@@ -48,11 +50,20 @@ export function AdminShell({
   const pathname = usePathname() || "";
   const isLogin = pathname === `/${adminPath}/login`;
   const [sidebarHidden, setSidebarHidden] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileDrawerEnabled, setMobileDrawerEnabled] = useState(false);
   // Текущая раскладка (data-admin-layout на <html>): в «Верхнем меню»
   // панель обязана быть видна всегда, даже если раньше её сворачивали.
   const [layout, setLayout] = useState("sidebar-left");
 
   useEffect(() => {
+    // Минимальный service worker делает админку устанавливаемым PWA.
+    // Он не кеширует учётные данные и не перехватывает API-запросы.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/admin-sw.js", { scope: "/" }).catch(() => {
+        /* установка PWA недоступна — обычная веб-версия продолжает работать */
+      });
+    }
     try {
       setSidebarHidden(window.localStorage.getItem(SIDEBAR_PREF_KEY) === "1");
     } catch {
@@ -79,6 +90,42 @@ export function AdminShell({
       window.removeEventListener("storage", onStorage);
     };
   }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const sync = () => {
+      setMobileDrawerEnabled(media.matches);
+      if (!media.matches) setMobileMenuOpen(false);
+    };
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  // Мобильное меню закрывается после перехода и не оставляет страницу
+  // заблокированной при повороте телефона/переходе на десктопную ширину.
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+    const closeOnDesktop = () => {
+      if (window.innerWidth >= 1024) setMobileMenuOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnDesktop, { passive: true });
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnDesktop);
+    };
+  }, [mobileMenuOpen]);
 
   // В раскладке «сайдбар сверху» скрывать панель нельзя: другой
   // навигации на странице нет.
@@ -264,41 +311,73 @@ export function AdminShell({
         <span className="admin-mobile-bar__title" aria-live="polite">
           {nav.find((link) => link.href === `/${adminPath}` ? pathname === link.href : pathname.startsWith(link.href))?.label || "Управление"}
         </span>
-        <div className="admin-mobile-bar__nav">
-          {nav.map((link) => {
-            const active =
-              link.href === `/${adminPath}`
-                ? pathname === link.href
-                : pathname.startsWith(link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                prefetch={false}
-                className={`admin-mobile-bar__link${
-                  active ? " admin-mobile-bar__link--active" : ""
-                }`}
-                title={link.label}
-                aria-label={link.label}
-                aria-current={active ? "page" : undefined}
-              >
-                {link.icon}
-                <span>{link.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-        <div className="admin-mobile-bar__actions">
-          <Link href="/" prefetch={false} target="_blank" className="admin-mobile-bar__action" aria-label="Открыть сайт" title="Открыть сайт">
-            <ExternalLink size={17} aria-hidden="true" />
-          </Link>
-          <form action={`/${adminPath}/api/logout`}>
-            <button type="submit" className="admin-mobile-bar__action" aria-label="Выйти из аккаунта" title="Выйти из аккаунта">
-              <LogOut size={17} aria-hidden="true" />
-            </button>
-          </form>
+        <button
+          type="button"
+          className="admin-mobile-bar__menu-toggle"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          aria-label={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
+          aria-expanded={mobileMenuOpen}
+          aria-controls="admin-mobile-menu"
+        >
+          {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+        <div
+          id="admin-mobile-menu"
+          className={`admin-mobile-menu${mobileMenuOpen ? " admin-mobile-menu--open" : ""}`}
+          aria-hidden={mobileDrawerEnabled ? !mobileMenuOpen : undefined}
+          inert={mobileDrawerEnabled && !mobileMenuOpen}
+        >
+          <div className="admin-mobile-menu__head">
+            <strong>Разделы</strong>
+            <span>{displayName || roleLabel || "Админ-панель"}</span>
+          </div>
+          <div className="admin-mobile-bar__nav">
+            {nav.map((link) => {
+              const active =
+                link.href === `/${adminPath}`
+                  ? pathname === link.href
+                  : pathname.startsWith(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  prefetch={false}
+                  className={`admin-mobile-bar__link${
+                    active ? " admin-mobile-bar__link--active" : ""
+                  }`}
+                  title={link.label}
+                  aria-label={link.label}
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {link.icon}
+                  <span>{link.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+          <div className="admin-mobile-bar__actions">
+            <Link href="/" prefetch={false} target="_blank" className="admin-mobile-bar__action" aria-label="Открыть сайт" title="Открыть сайт" onClick={() => setMobileMenuOpen(false)}>
+              <ExternalLink size={17} aria-hidden="true" />
+              <span>Открыть сайт</span>
+            </Link>
+            <form action={`/${adminPath}/api/logout`} method="POST">
+              <button type="submit" className="admin-mobile-bar__action" aria-label="Выйти из аккаунта" title="Выйти из аккаунта">
+                <LogOut size={17} aria-hidden="true" />
+                <span>Выйти</span>
+              </button>
+            </form>
+          </div>
         </div>
       </div>
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          className="admin-mobile-menu__backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-label="Закрыть меню"
+        />
+      )}
 
       {/*
        * ── Язычок раскрытия панели ──
