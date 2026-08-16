@@ -489,14 +489,23 @@ export function ProductStockSummaryPanel({
                           <span className="admin-badge admin-badge--green">
                             проведено · архив
                           </span>
+                        ) : receipt.quantity > 0 ? (
+                          <span className="admin-badge admin-badge--blue">
+                            принято частично · осталось {fmt(receipt.remainingQty || 0)}
+                          </span>
                         ) : (
                           <span className="admin-badge admin-badge--amber">
-                            активное
+                            ожидается
                           </span>
                         )}
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <strong>{fmt(receipt.quantity)} шт.</strong>
+                        {receipt.orderedQty != null && (
+                          <small className="admin-muted" style={{ display: "block" }}>
+                            из {fmt(receipt.orderedQty)}
+                          </small>
+                        )}
                       </td>
                       <td style={{ textAlign: "right" }}>
                         {fmt(receipt.unitPrice)} ₽

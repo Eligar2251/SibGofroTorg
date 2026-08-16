@@ -135,6 +135,8 @@ export interface WarehouseReceipt extends CounterpartyDetails {
   /** Поставка товара на реализацию: продажи учитываются по закупочной цене. */
   isConsignment?: boolean;
   items: StockDocItem[];
+  /** Накопительно принято на склад по позициям; пусто у непроведённой поставки. */
+  receivedItems?: { productId: string; name?: string; receivedQty: number }[];
   total: number;
   bankAdjustment: number;
   vatRate: number;
@@ -297,7 +299,12 @@ export interface ProductStockReceiptHistory {
   date: string;
   supplier: string;
   status: ReceiptStatus;
+  /** Фактически уже принято на склад. */
   quantity: number;
+  /** Заказано у поставщика. */
+  orderedQty?: number;
+  /** Осталось принять. */
+  remainingQty?: number;
   unitPrice: number;
   lineTotal: number;
 }
@@ -470,14 +477,9 @@ export function composeSalaryComment(options: {
 }
 
 /**
- * Куда относится наличный платёж при закрытии смены:
- *  - "card" — инкассация на карту (по умолчанию Юлия Марковна), эта часть
- *    физически уходит из кассы;
- *  - "cash" — остаётся наличными в кассе и переносится на следующий день.
- *
- * Это НЕ способ поступления денег и НЕ основной расчётный счёт: безналичный
- * счёт в банке к кассе не относится и в закрытии смены не участвует.
- * Значение "transfer" — устаревший псевдоним "card" (старые записи в БД).
+ * Устаревшее направление старых кассовых документов. Новая фактическая
+ * сводка смены ничего не распределяет, но тип сохранён для чтения истории.
+ * Значение "transfer" — прежний псевдоним "card".
  */
 export type CashKind = "cash" | "card";
 
@@ -492,18 +494,18 @@ export function normalizeCashKind(raw: unknown): CashKind {
   return raw === "card" || raw === "transfer" ? "card" : "cash";
 }
 
-/** Платёж, вошедший в сдачу кассы, с пометкой «куда ушёл». */
+/** Платёж, вошедший в сводку смены; поля разбивки оставлены для истории. */
 export interface CashCollectionItem {
   paymentId: string;
   number?: number | null;
   counterparty?: string | null;
   /** Полная сумма платежа */
   amount: number;
-  /** Преобладающее направление (для совместимости со старыми записями) */
+  /** Способ поступления; у старых записей — направление инкассации. */
   kind: CashKind;
-  /** Сколько из платежа осталось наличными */
+  /** Наличная часть поступления. */
   cashAmount?: number;
-  /** Сколько из платежа ушло инкассацией на карту */
+  /** Часть, поступившая на ЮМ; в новой сводке это метка без движения денег. */
   cardAmount?: number;
   /** Сколько из платежа забрали на расходы (ЗП и прочее) */
   expenseAmount?: number;
@@ -511,36 +513,132 @@ export interface CashCollectionItem {
   noAccounting?: boolean;
 }
 
-/** Наличный расход, вычтенный при сдаче кассы (ЗП или платёж налом). */
+/** Снимок расхода одной из двух касс смены: наличной или карты ЮМ. */
 export interface CashCollectionExpense {
   kind: "salary" | "payment";
   id: string;
   title: string;
   amount: number;
+  /** Откуда фактически оплачено: наличная касса или карта ЮМ. */
+  sourceKind?: CashKind;
   comment?: string | null;
 }
 
-/** Закрытие смены кассы: инкассация на карту + перенос наличного остатка */
+/**
+ * Фактическая сводка закрытой смены. Документ ничего не переводит и не
+ * списывает: он только помечает поступления наличными и на карту ЮМ.
+ * Балансы формируются исходными платежами и расходами, а не этой записью.
+ */
 export interface CashCollection {
   id: string;
   /** Дата закрытия смены (YYYY-MM-DD) */
   date: string;
-  /** Общая размеченная сумма смены (перенос наличных + инкассация) */
+  /** Все отмеченные поступления смены: наличные + карта ЮМ, без переноса. */
   amount: number;
-  /** Часть, оставленная наличными в кассе для переноса на следующий день */
+  /** Фактический остаток наличных в кассе на конец смены. */
   cashAmount?: number;
-  /** Часть, сданная инкассацией на карту (к расчётному счёту не относится) */
+  /** Поступления смены на карту ЮМ. Это метка, а не новое движение денег. */
   transferAmount?: number;
   /** Разметка платежей, вошедших в сдачу */
   items?: CashCollectionItem[];
-  /** Наличные траты этого дня, вычтенные из суммы сдачи */
+  /** Снимок трат этого дня из наличной кассы и с карты ЮМ. */
   expenses?: CashCollectionExpense[];
-  /** Приход за день до вычета трат */
+  /** Все поступления за день: наличные + карта ЮМ, без переноса. */
   incomeAmount?: number;
-  /** Сумма трат налом, вычтенная из прихода */
+  /** Общая сумма трат двух касс за день. */
   expensesAmount?: number;
   note?: string | null;
   createdAt?: string | null;
+}
+
+/**
+ * Разбивка отмеченных поступлений смены. Для новых записей источником
+ * истины служат items; fallback сохраняет читаемость старых документов.
+ */
+export function getCashCollectionIncomeBreakdown(collection: CashCollection): {
+  cash: number;
+  card: number;
+  total: number;
+} {
+  let cash = 0;
+  let card = 0;
+
+  for (const item of collection.items || []) {
+    if (item.noAccounting) continue;
+    const amount = Math.max(0, Number(item.amount) || 0);
+    const cardAmount = Math.min(
+      amount,
+      Math.max(
+        0,
+        Number(
+          item.cardAmount != null
+            ? item.cardAmount
+            : item.kind === "card"
+              ? amount
+              : 0
+        ) || 0
+      )
+    );
+    card += cardAmount;
+    // Приход считается до расходов: expenseAmount не уменьшает сумму,
+    // фактически полученную от клиента в этой смене.
+    cash += Math.max(0, amount - cardAmount);
+  }
+
+  const itemTotal = cash + card;
+  if (itemTotal > 0.009) {
+    return {
+      cash: Math.round(cash * 100) / 100,
+      card: Math.round(card * 100) / 100,
+      total: Math.round(itemTotal * 100) / 100,
+    };
+  }
+
+  const total = Math.max(
+    0,
+    Number(collection.incomeAmount ?? collection.amount) || 0
+  );
+  const fallbackCard = Math.min(
+    total,
+    Math.max(0, Number(collection.transferAmount) || 0)
+  );
+  return {
+    cash: Math.round((total - fallbackCard) * 100) / 100,
+    card: Math.round(fallbackCard * 100) / 100,
+    total: Math.round(total * 100) / 100,
+  };
+}
+
+/** Разбивка расходов сохранённой смены между наличной кассой и ЮМ. */
+export function getCashCollectionExpenseBreakdown(collection: CashCollection): {
+  cash: number;
+  card: number;
+  total: number;
+} {
+  let cash = 0;
+  let card = 0;
+  for (const expense of collection.expenses || []) {
+    const amount = Math.max(0, Number(expense.amount) || 0);
+    if (expense.sourceKind === "card") card += amount;
+    else cash += amount;
+  }
+
+  const detailedTotal = cash + card;
+  if (detailedTotal > 0.009 || (collection.expenses || []).length > 0) {
+    return {
+      cash: Math.round(cash * 100) / 100,
+      card: Math.round(card * 100) / 100,
+      total: Math.round(detailedTotal * 100) / 100,
+    };
+  }
+
+  // До появления sourceKind в сводку записывались только наличные расходы.
+  const legacyTotal = Math.max(0, Number(collection.expensesAmount) || 0);
+  return {
+    cash: Math.round(legacyTotal * 100) / 100,
+    card: 0,
+    total: Math.round(legacyTotal * 100) / 100,
+  };
 }
 
 export function normalizeName(name: string): string {
@@ -640,9 +738,9 @@ export function isDealFullyShipped(
  * Нужно ли ещё везти заказ — единый критерий для всех списков доставки.
  *
  * Показываем, только пока есть долг по товару:
- *   • полностью отгружен (остатков нет) → заказ закрыт, в доставке не нужен;
+ *   • полностью отгружен или проведён   → заказ закрыт, в доставке не нужен;
  *   • отгружен частично                 → остаётся, надо довезти остаток;
- *   • отменён                           → не нужен.
+ *   • отменён / отмечен отпущенным      → не нужен.
  *
  * Важно: этим предикатом обязаны пользоваться ВСЕ места, где строится
  * список доставок. Раньше вкладка «Учёт → Доставки» фильтровала заказы
@@ -651,11 +749,20 @@ export function isDealFullyShipped(
 export function dealNeedsDelivery(deal: {
   hasDelivery?: boolean | null;
   status?: string | null;
+  deliveryReleasedAt?: string | null;
   items?: { productId: string; quantity: number }[] | null;
   shippedItems?: ShippedEntry[] | null;
 }): boolean {
   if (!deal.hasDelivery) return false;
-  if (deal.status === "cancelled") return false;
+  // Проведённый/отпущенный заказ уже увезён. Это также закрывает старые
+  // заказы, у которых shipped_items ещё не заполнялся.
+  if (
+    deal.status === "cancelled" ||
+    deal.status === "completed" ||
+    Boolean(deal.deliveryReleasedAt)
+  ) {
+    return false;
+  }
 
   const items = Array.isArray(deal.items) ? deal.items : [];
   // Заказ без позиций (например, только услуга доставки): ориентируемся
@@ -688,18 +795,10 @@ export interface CashCarryoverSummary {
   origins: CashCarryoverOrigin[];
 }
 
-function collectionCashOutflow(collection: CashCollection): number {
-  // У новых смен из кассы уходит только перевод на карту. У действительно
-  // старых записей без поля разбивки сохраняем прежнее списание всей суммы.
-  return collection.cashAmount != null
-    ? Math.max(0, Number(collection.transferAmount) || 0)
-    : Math.max(0, Number(collection.amount) || 0);
-}
-
-/** Платеж, который сразу должен попадать в карту ЮМ, минуя кассу. */
+/** Платёж, который уже учтён на карте ЮМ самим ПЛ, минуя наличную кассу. */
 export function isImmediateYmPayment(p: BankPayment | null | undefined): boolean {
   if (!p) return false;
-  if (p.type === "transfer") return true;
+  if (p.type === "transfer" || p.type === "ym_card") return true;
   if (p.type === "cash" && p.cashDestination === "card") return true;
   return false;
 }
@@ -728,14 +827,14 @@ export function getWarehouseBusinessDate(date = new Date()): string {
 /**
  * Детальный кассовый регистр: остаток, перенос с прошлых дней и источники.
  *
- * Инкассация по возможности гасит именно те платежи, которые в закрытии
- * смены помечены «на карту». Остальные расходы списываются FIFO. Поэтому
+ * Расходы списываются FIFO из исходных наличных поступлений, поэтому
  * перенесённая наличка не только входит в баланс, но и сохраняет ссылку на
  * исходный ПЛ и контрагента.
  *
- * ВАЖНО (2026): переводы (type=transfer и cashDestination=card) в кассу
- * НЕ входят, а сразу отображаются в карте ЮМ. Здесь учитывается только
- * регулярная наличка (cash + destination != card).
+ * Новые документы сводки смены в расчёте не участвуют: они только снимок
+ * факта. Исторические записи с реальным cardAmount сохраняют прежний перевод
+ * из кассы в ЮМ, чтобы обновление кода не меняло уже сложившиеся балансы.
+ * Прямые переводы и ЮМ сами по себе в наличную кассу не входят.
  */
 export function getCashCarryoverSummary(
   payments: BankPayment[],
@@ -755,7 +854,7 @@ export function getCashCarryoverSummary(
       };
 
   const paymentById = new Map<string, BankPayment>();
-  for (const p of payments) paymentById.set(String(p.id), p);
+  for (const payment of payments) paymentById.set(String(payment.id), payment);
 
   const events: CashEvent[] = [];
   for (const payment of payments) {
@@ -807,29 +906,40 @@ export function getCashCarryoverSummary(
     });
   }
 
+  // Новые фактические сводки могут помечать поступления на ЮМ, но каждый
+  // такой item ссылается на ПЛ, уже учтённый на карте, поэтому ниже он
+  // пропускается и повторного движения не создаёт. Исторические документы
+  // до перехода на новую модель содержат реальные переводы из наличной
+  // кассы в ЮМ — их по-прежнему нельзя забывать.
   for (const collection of collections) {
-    // Для кассы учитываем только ту часть инкассации, которая относится
-    // к регулярной наличке. Переводы (transfer / cashDestination=card)
-    // никогда не были в кассе, поэтому из кассы не вычитаются.
     const eligibleCardItems: { paymentId: string; amount: number }[] = [];
     let eligibleCardTotal = 0;
     for (const item of collection.items || []) {
-      const pid = String(item.paymentId || "");
-      if (!pid) continue;
-      if (pid.startsWith("manual:")) {
-        const card = Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
-        if (card > 0) {
-          eligibleCardItems.push({ paymentId: pid, amount: card });
-          eligibleCardTotal += card;
+      const paymentId = String(item.paymentId || "");
+      if (!paymentId) continue;
+      if (paymentId.startsWith("manual:")) {
+        const cardAmount = Math.max(
+          0,
+          Number(
+            item.cardAmount != null
+              ? item.cardAmount
+              : item.kind === "card"
+                ? item.amount
+                : 0
+          ) || 0
+        );
+        if (cardAmount > 0) {
+          eligibleCardItems.push({ paymentId, amount: cardAmount });
+          eligibleCardTotal += cardAmount;
         }
         continue;
       }
-      const pay = paymentById.get(pid);
-      if (pay && isImmediateYmPayment(pay)) {
-        // перевод — никогда не был в кассе, пропускаем
+      const payment = paymentById.get(paymentId);
+      if (payment && isImmediateYmPayment(payment)) {
+        // Уже учтён самим платежом как прямой перевод в ЮМ.
         continue;
       }
-      const card = Math.max(
+      const cardAmount = Math.max(
         0,
         Number(
           item.cardAmount != null
@@ -839,23 +949,18 @@ export function getCashCarryoverSummary(
               : 0
         ) || 0
       );
-      if (card > 0) {
-        eligibleCardItems.push({ paymentId: pid, amount: card });
-        eligibleCardTotal += card;
+      if (cardAmount > 0) {
+        eligibleCardItems.push({ paymentId, amount: cardAmount });
+        eligibleCardTotal += cardAmount;
       }
     }
     if (eligibleCardTotal <= 0) continue;
-    const rawTotal = eligibleCardItems.reduce((sum, it) => sum + it.amount, 0);
-    const factor = rawTotal > 0 ? Math.min(1, eligibleCardTotal / rawTotal) : 0;
     events.push({
       date: String(collection.date || "").slice(0, 10),
       priority: 2,
       type: "card",
       amount: eligibleCardTotal,
-      targets: eligibleCardItems.map((item) => ({
-        paymentId: item.paymentId,
-        amount: item.amount * factor,
-      })),
+      targets: eligibleCardItems,
     });
   }
 
@@ -1074,29 +1179,47 @@ export function getBankSummary(
   let collectedCash = 0;
   let collectedCashOnly = 0;
   let collectedTransfer = 0;
-  // Переводы из кассы в ЮМ теперь учитываются только для регулярной налички,
-  // которая была переведена через сдачу. Immediate YM платежи (transfer /
-  // cashDestination=card) уже учтены напрямую, чтобы не было двойного начисления.
-  for (const c of collections) {
-    const collectionDate = String(c.date || "").slice(0, 10);
+  // Новые сводки не влияют на баланс: их card-items ссылаются на ПЛ,
+  // которые уже сами учтены на ЮМ. Исторические документы с cardAmount
+  // отражают уже совершённые переводы в ЮМ — их сохраняем в расчёте,
+  // иначе баланс ЮМ проваливается на всю их сумму.
+  for (const collection of collections) {
+    const collectionDate = String(collection.date || "").slice(0, 10);
     if (!collectionDate || collectionDate > asOfDate) continue;
-    collectedCash += c.amount;
-    collectedCashOnly += Math.max(0, Number(c.cashAmount) || 0);
-    // Считаем только eligible переводы (регулярная наличка, переведённая через сдачу)
+    collectedCash += Number(collection.amount) || 0;
+    collectedCashOnly = Number(collection.cashAmount) || collectedCashOnly;
     let eligibleTransfer = 0;
-    for (const item of c.items || []) {
-      const pid = String(item.paymentId || "");
-      if (!pid) continue;
-      if (pid.startsWith("manual:")) {
-        eligibleTransfer += Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+    for (const item of collection.items || []) {
+      const paymentId = String(item.paymentId || "");
+      if (!paymentId) continue;
+      if (paymentId.startsWith("manual:")) {
+        eligibleTransfer += Math.max(
+          0,
+          Number(
+            item.cardAmount != null
+              ? item.cardAmount
+              : item.kind === "card"
+                ? item.amount
+                : 0
+          ) || 0
+        );
         continue;
       }
-      const pay = paymentById.get(pid);
-      if (pay && isImmediateYmPayment(pay)) {
-        // уже учтён напрямую как immediate YM — не добавляем второй раз
+      const payment = paymentById.get(paymentId);
+      if (payment && isImmediateYmPayment(payment)) {
+        // Прямой перевод уже учтён самим ПЛ — не начисляем второй раз.
         continue;
       }
-      eligibleTransfer += Math.max(0, Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? item.amount : 0) || 0);
+      eligibleTransfer += Math.max(
+        0,
+        Number(
+          item.cardAmount != null
+            ? item.cardAmount
+            : item.kind === "card"
+              ? item.amount
+              : 0
+        ) || 0
+      );
     }
     collectedTransfer += eligibleTransfer;
     ymCardBalance += eligibleTransfer;
@@ -1141,16 +1264,10 @@ export function getCollectedBreakdown(
 ): { cash: number; transfer: number; total: number } {
   let cash = 0;
   let transfer = 0;
-  for (const c of collections) {
-    const hasSplit = c.cashAmount != null;
-    // Старые записи целиком уменьшали кассу. В новой расшифровке относим их
-    // к выбывшей части, а не к перенесённой наличке.
-    const t = hasSplit
-      ? Number(c.transferAmount) || 0
-      : Number(c.amount) || 0;
-    const cashPart = hasSplit ? Number(c.cashAmount) || 0 : 0;
-    cash += cashPart;
-    transfer += t;
+  for (const collection of collections) {
+    const breakdown = getCashCollectionIncomeBreakdown(collection);
+    cash += breakdown.cash;
+    transfer += breakdown.card;
   }
   return {
     cash: Math.round(cash * 100) / 100,

@@ -23,6 +23,8 @@ import {
   getDealPaidMap,
   getReceiptPaidMap,
   getCashCarryoverSummary,
+  getCashCollectionIncomeBreakdown,
+  getCashCollectionExpenseBreakdown,
   isSalaryExcludedFromBalance,
   isRentSalaryComment,
   isDebtSalaryComment,
@@ -115,7 +117,7 @@ const REPORTS: {
   {
     kind: "cash",
     label: "Кассовые смены",
-    description: "Переводы на карту, перенос наличных, расходы и закрытия смен",
+    description: "Наличные, поступления на ЮМ, расходы и фактический остаток смен",
     icon: <Banknote size={15} />,
   },
   {
@@ -134,6 +136,30 @@ const REPORTS: {
 
 const fmt = (value: number) => value.toLocaleString("ru-RU");
 const money = (value: number) => `${fmt(Math.round(value * 100) / 100)} ₽`;
+
+function collectionItemKind(item: {
+  amount?: number;
+  kind?: "cash" | "card";
+  cardAmount?: number;
+}): { label: string; className: "cash" | "card" } {
+  const amount = Math.max(0, Number(item.amount) || 0);
+  const card = Math.max(
+    0,
+    Number(
+      item.cardAmount != null
+        ? item.cardAmount
+        : item.kind === "card"
+          ? amount
+          : 0
+    ) || 0
+  );
+  const hasCard = card > 0.009;
+  const hasCash = amount - card > 0.009;
+  return {
+    label: hasCard && hasCash ? "Нал + ЮМ" : hasCard ? "Карта ЮМ" : "Наличные",
+    className: hasCard && !hasCash ? "card" : "cash",
+  };
+}
 
 function localIso(date = new Date()): string {
   const year = date.getFullYear();
@@ -543,26 +569,6 @@ export function WarehouseReports({
     return opening;
   }, [cashCollections, payments, salaries]);
 
-  const cashPaymentsByCollectionId = useMemo(() => {
-    const amounts = new Map<string, number>();
-    for (const collection of cashCollections) {
-      const amount = (collection.items || [])
-        .filter((item) => !String(item.paymentId || "").startsWith("manual:"))
-        .reduce(
-          (sum, item) =>
-            sum +
-            (item.cashAmount != null
-              ? Number(item.cashAmount) || 0
-              : item.kind === "cash"
-                ? Number(item.amount) || 0
-                : 0),
-          0
-        );
-      amounts.set(collection.id, Math.round(amount * 100) / 100);
-    }
-    return amounts;
-  }, [cashCollections]);
-
   const stockRows = useMemo(
     () =>
       [...stock]
@@ -612,15 +618,30 @@ export function WarehouseReports({
     }
     if (filters.kind === "cash") {
       return [
-        ["Дата", "Размечено", "На карту", "С прошлого дня", "Наличными по платежам смены", "Осталось в кассе", "Расходы", "Комментарий"],
-        ...cashRows.map((collection) => [collection.date, collection.amount, collection.transferAmount || 0, cashOpeningByCollectionId.get(collection.id) || 0, cashPaymentsByCollectionId.get(collection.id) || 0, collection.cashAmount || 0, collection.expensesAmount || 0, collection.note || ""]),
+        ["Дата", "Перенос с прошлого дня (не прибыль)", "Всего поступило", "Наличными", "На карту ЮМ", "Расходы всего", "Расходы наличными", "Расходы с ЮМ", "Остаток наличных", "Комментарий"],
+        ...cashRows.map((collection) => {
+          const income = getCashCollectionIncomeBreakdown(collection);
+          const expenses = getCashCollectionExpenseBreakdown(collection);
+          return [
+            collection.date,
+            cashOpeningByCollectionId.get(collection.id) || 0,
+            income.total,
+            income.cash,
+            income.card,
+            expenses.total,
+            expenses.cash,
+            expenses.card,
+            collection.cashAmount || 0,
+            collection.note || "",
+          ];
+        }),
       ];
     }
     return [
       ["Товар", "Артикул", "Остаток", "Порог", "Цена", "Стоимость", "Видимость"],
       ...stockRows.map((product) => [product.name, product.sku || "", product.stockQty, product.stockWarnQty ?? "", product.price ?? "", product.stockQty * (product.price || 0), product.isVisible ? "Виден" : "Скрыт"]),
     ];
-  }, [cashOpeningByCollectionId, cashPaymentsByCollectionId, cashRows, dealPaidMap, dealRows, filters.kind, moneyRows, receiptPaidMap, receiptRows, salaryRows, stockRows, transportRows]);
+  }, [cashOpeningByCollectionId, cashRows, dealPaidMap, dealRows, filters.kind, moneyRows, receiptPaidMap, receiptRows, salaryRows, stockRows, transportRows]);
 
   function exportReport() {
     const safeName = activeMeta.label.replace(/\s+/g, "_");
@@ -921,11 +942,13 @@ export function WarehouseReports({
           <>
             <div className="wh-report-summary">
               <div><ClipboardList size={15} /><span>Смен</span><strong>{cashRows.length}</strong></div>
-              <div><CreditCard size={15} /><span>На карту</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.transferAmount || 0), 0))}</strong></div>
-              <div><Banknote size={15} /><span>Осталось в кассе</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.cashAmount || 0), 0))}</strong></div>
-              <div><ArrowUpRight size={15} /><span>Расходы</span><strong>{money(cashRows.reduce((sum, row) => sum + (row.expensesAmount || 0), 0))}</strong></div>
+              <div><ArrowDownLeft size={15} /><span>Всего поступило</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionIncomeBreakdown(row).total, 0))}</strong></div>
+              <div><CreditCard size={15} /><span>На карту ЮМ</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionIncomeBreakdown(row).card, 0))}</strong></div>
+              <div><ArrowUpRight size={15} /><span>Расходы всего</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionExpenseBreakdown(row).total, 0))}</strong></div>
+              <div><CreditCard size={15} /><span>Расходы с ЮМ</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionExpenseBreakdown(row).card, 0))}</strong></div>
+              <div><Banknote size={15} /><span>Последний остаток наличных</span><strong>{money(cashRows[0]?.cashAmount || 0)}</strong></div>
             </div>
-            <ReportTable headers={["Дата", "Платежи", "Расшифровка", "На карту", "С прошлого дня", "Наличными по платежам смены", "Осталось после смены", "Расходы", "Комментарий"]} empty={cashRows.length === 0}>
+            <ReportTable headers={["Дата", "Платежи", "Расшифровка", "Перенос (не прибыль)", "Поступления за день", "Расходы за день", "Остаток наличных", "Комментарий"]} empty={cashRows.length === 0}>
               {cashRows.map((collection) => (
                 <tr key={collection.id}>
                   <td>{fmtDate(collection.date)}</td>
@@ -933,34 +956,68 @@ export function WarehouseReports({
                   <td>
                     {(collection.items || []).length > 0 ? (
                       <div className="wh-report-payment-links">
-                        {(collection.items || []).map((item) => (
-                          /* Технические строки manual:* — не платёж,
-                             карточки у них нет; показываем как текст. */
-                          String(item.paymentId || "").startsWith("manual:") ? (
+                        {(collection.items || []).map((item) => {
+                          const kind = collectionItemKind(item);
+                          const content = (
+                            <>
+                              <span>
+                                ПЛ-{item.number || "—"} · {item.counterparty || ""} · {money(item.amount)}
+                              </span>
+                              <em className={`cashc-kind cashc-kind--${kind.className}`}>
+                                {kind.label}
+                              </em>
+                            </>
+                          );
+                          // Технические строки manual:* — не платёж,
+                          // карточки у них нет; показываем как текст.
+                          return String(item.paymentId || "").startsWith("manual:") ? (
                             <span key={item.paymentId} className="wh-report-payment-open">
-                              ПЛ-{item.number || "—"} · {item.counterparty || ""} · {money(item.amount)}
+                              {content}
                             </span>
                           ) : (
-                          <button
-                            key={item.paymentId}
-                            type="button"
-                            className="wh-report-payment-open"
-                            onClick={() => setDetailPaymentId(item.paymentId)}
-                          >
-                            ПЛ-{item.number || "—"} · {item.counterparty || ""} · {money(item.amount)}
-                          </button>
-                          )
-                        ))}
+                            <button
+                              key={item.paymentId}
+                              type="button"
+                              className="wh-report-payment-open"
+                              onClick={() => setDetailPaymentId(item.paymentId)}
+                            >
+                              {content}
+                            </button>
+                          );
+                        })}
                       </div>
                     ) : (
                       "Старая запись без расшифровки"
                     )}
                   </td>
-                  <td>{money(collection.transferAmount || 0)}</td>
-                  <td>+{money(Math.max(0, cashOpeningByCollectionId.get(collection.id) || 0))}</td>
-                  <td>+{money(cashPaymentsByCollectionId.get(collection.id) || 0)}</td>
-                  <td>{money(collection.cashAmount || 0)}</td>
-                  <td>{money(collection.expensesAmount || 0)}</td>
+                  <td>+{money(cashOpeningByCollectionId.get(collection.id) || 0)} <small className="admin-muted">не прибыль</small></td>
+                  <td style={{ color: "var(--adm-pine)" }}>
+                    {(() => {
+                      const income = getCashCollectionIncomeBreakdown(collection);
+                      return (
+                        <>
+                          +{money(income.total)}
+                          <small className="admin-muted" style={{ display: "block" }}>
+                            нал {money(income.cash)} · ЮМ {money(income.card)}
+                          </small>
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td style={{ color: "var(--adm-rust)" }}>
+                    {(() => {
+                      const expenses = getCashCollectionExpenseBreakdown(collection);
+                      return (
+                        <>
+                          −{money(expenses.total)}
+                          <small className="admin-muted" style={{ display: "block" }}>
+                            нал {money(expenses.cash)} · ЮМ {money(expenses.card)}
+                          </small>
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td><strong>{money(collection.cashAmount || 0)}</strong></td>
                   <td>{collection.note || "—"}</td>
                 </tr>
               ))}

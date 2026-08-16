@@ -173,6 +173,31 @@ export function DeliveriesManager({
   }
 
   function toPrintItem(o: DeliveryRow): PrintDeliveryItem {
+    const loadedItems = (o.deliveryItems || [])
+      .filter((item) => Number(item.quantity) > 0)
+      .map((loaded) => {
+        const source = (o.items || []).find(
+          (item) => (item.productId || item.name) === loaded.productId
+        );
+        return {
+          productId: loaded.productId,
+          name: loaded.name || source?.name || "Товар",
+          quantity: loaded.quantity,
+          variantName: source?.variantName || null,
+        };
+      });
+    const remainingItems = (o.items || [])
+      .map((item) => {
+        const productId = item.productId || item.name;
+        const shipped = (o.shippedItems || []).find(
+          (row) => row.productId === productId
+        )?.shippedQty || 0;
+        return {
+          ...item,
+          quantity: Math.max(0, Number(item.quantity) - shipped),
+        };
+      })
+      .filter((item) => item.quantity > 0);
     return {
       label: o.label,
       customerName: o.customerName,
@@ -184,7 +209,9 @@ export function DeliveriesManager({
       deliveryCost: o.deliveryCost,
       deliveryPlannedDate: o.deliveryPlannedDate,
       deliveryDriverName: o.deliveryDriverName,
-      items: o.items,
+      // Если загрузка сформирована частично, печатаем только реально
+      // выбранные позиции и их загруженное количество.
+      items: loadedItems.length > 0 ? loadedItems : remainingItems,
       totalSum: o.totalSum,
     };
   }

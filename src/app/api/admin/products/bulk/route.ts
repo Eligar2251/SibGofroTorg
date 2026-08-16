@@ -9,6 +9,42 @@ import {
   firstImageUrl,
 } from "@/lib/supabase-queries";
 
+/** Фотографии не входят в тяжёлую начальную загрузку редактора. */
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+
+  try {
+    const body = await request.json();
+    if (body?.action !== "load-images" || !Array.isArray(body.ids)) {
+      return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
+    }
+    const ids = [...new Set(body.ids.map((id: unknown) => String(id || "")).filter(Boolean))].slice(0, 1000);
+    if (ids.length === 0) return NextResponse.json({ products: [] });
+
+    const db = getAdminDb();
+    const { data, error } = await db
+      .from("products")
+      .select("id,images,image_url")
+      .in("id", ids);
+    if (error) throw error;
+
+    return NextResponse.json({
+      products: (data || []).map((row) => {
+        const images = normalizeProductImages(row.images);
+        return {
+          id: row.id,
+          images,
+          imageUrl: row.image_url || firstImageUrl(images) || null,
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("Bulk images load error:", error);
+    return NextResponse.json({ error: "Не удалось загрузить фотографии" }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
@@ -38,16 +74,18 @@ export async function PUT(request: NextRequest) {
       images: "images", imageUrl: "image_url",
     };
 
-    for (const p of products) {
-      if (!p.id) continue;
+    const updateOne = async (p: { id: string; [key: string]: any }) => {
+      if (!p.id) return;
       const { id: _id, ...rest } = p;
       const payload: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
         if (rest[jsKey] !== undefined) payload[dbKey] = rest[jsKey];
       }
-      // Фото: приводим массив к виду [{url, publicId}] (могут
-      // приехать старые строки-ссылки) и не даём затереть главное
-      // фото, если imageUrl не передан, а images — непустой.
+      if ("category_id" in payload && !payload.category_id) {
+        payload.category_id = null;
+      }
+      // Фото загружаются лениво только на третьем шаге. Если они ещё
+      // не загружены, ключа images нет и существующие фото не затрагиваются.
       if (rest.images !== undefined) {
         payload.images = normalizeProductImages(rest.images);
       }
@@ -57,7 +95,15 @@ export async function PUT(request: NextRequest) {
           firstImageUrl(normalizeProductImages(rest.images)) ||
           null;
       }
-      await db.from("products").update(payload).eq("id", p.id);
+      const { error } = await db.from("products").update(payload).eq("id", p.id);
+      if (error) throw error;
+    };
+
+    // Раньше каждый товар ждал предыдущего. Небольшие параллельные
+    // пачки заметно ускоряют сохранение и не создают пиковую нагрузку.
+    const batchSize = 10;
+    for (let index = 0; index < products.length; index += batchSize) {
+      await Promise.all(products.slice(index, index + batchSize).map(updateOne));
     }
 
     invalidateProductsCache();
@@ -81,15 +127,17 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Нет ID товаров для удаления" }, { status: 400 });
     }
 
-    const db = getAdminDb();
-    for (const id of ids) {
-      if (!id) continue;
-      await db.from("products").delete().eq("id", id);
+    const cleanIds = [...new Set(ids.map((id) => String(id || "")).filter(Boolean))];
+    if (cleanIds.length === 0) {
+      return NextResponse.json({ error: "Нет ID товаров для удаления" }, { status: 400 });
     }
+    const db = getAdminDb();
+    const { error } = await db.from("products").delete().in("id", cleanIds);
+    if (error) throw error;
 
     invalidateProductsCache();
     revalidateTag("products", { expire: 0 });
-    return NextResponse.json({ success: true, deleted: ids.length });
+    return NextResponse.json({ success: true, deleted: cleanIds.length });
   } catch (error) {
     console.error("Bulk delete error:", error);
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });

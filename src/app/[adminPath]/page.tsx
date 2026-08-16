@@ -30,6 +30,7 @@ import {
   ExternalLink,
   Recycle,
   Building2,
+  Lightbulb,
 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -37,6 +38,8 @@ import { getAdminDb } from "@/lib/supabase";
 import { verifySession } from "@/lib/auth";
 import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
 import { getRentSummary } from "@/lib/rent";
+import { getSupplyPlans } from "@/lib/supply-plans";
+import { supplyPlansItemsCount } from "@/lib/supply-plans-shared";
 import { RENT_ORG_LABELS } from "@/lib/rent-shared";
 import { getWpFinanceData } from "@/lib/wastepaper-account";
 import {
@@ -52,12 +55,12 @@ import {
   getReceiptPaidMap,
   getCashCarryoverSummary,
   dealNeedsDelivery,
+  dealRemainingItems,
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
   stripSalaryMetaTags,
   type BankPayment,
   type Salary,
-  type CashCollection,
 } from "@/lib/warehouse-shared";
 import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
 import {
@@ -165,6 +168,7 @@ export default async function AdminDashboard() {
     receipts,
     cashCollections,
     transports,
+    supplyPlans,
   ] = await Promise.all([
     isLawyer ? Promise.resolve([]) : getProducts({ includeHidden: true }),
     isLawyer ? Promise.resolve([]) : getOrders({ limit: 50 }),
@@ -185,6 +189,7 @@ export default async function AdminDashboard() {
     isLawyer ? Promise.resolve([]) : getReceipts(),
     getCashCollections(),
     getTransports(),
+    isLawyer ? Promise.resolve([]) : getSupplyPlans(),
   ]);
 
   const wpFinance = await getWpFinanceData().catch((error) => {
@@ -228,6 +233,8 @@ export default async function AdminDashboard() {
     dashboardDate
   );
   const recentOrders = recentOrderPool.slice(0, 8);
+  const activeSupplyPlans = supplyPlans.filter((plan) => plan.status === "active");
+  const plannedSupplyItems = supplyPlansItemsCount(activeSupplyPlans);
 
   const wpEvents = wpFinance
     ? wpCollectMoneyEvents(
@@ -338,34 +345,13 @@ export default async function AdminDashboard() {
       href: `/${ADMIN_PATH}/warehouse?tab=salaries`,
     }));
 
-  const collectionFinanceRows: DashboardFinanceRow[] = (
-    cashCollections as CashCollection[]
-  )
-    .map((collection) => {
-      const legacy = collection.cashAmount == null;
-      const amount = legacy
-        ? Number(collection.amount) || 0
-        : Number(collection.transferAmount) || 0;
-      return {
-        id: `collection-${collection.id}`,
-        date: collection.date,
-        direction: "outgoing" as const,
-        account: "cash" as const,
-        category: legacy
-          ? "Сдача кассы (старый учёт)"
-          : "Перевод на карту ЮМ",
-        counterparty: legacy ? "Сдача кассы" : "Карта ЮМ",
-        amount,
-        detail: collection.note || "Закрытие смены кассы",
-        href: `/${ADMIN_PATH}/warehouse?tab=bank`,
-      };
-    })
-    .filter((row) => row.amount > 0);
+  // Закрытие смены — справочная сводка, а не финансовая операция.
+  // Не добавляем её в прибыль/расход: реальные движения уже представлены
+  // исходными платежами, зарплатами и расходами.
 
   const financeRows: DashboardFinanceRow[] = [
     ...paymentFinanceRows,
     ...salaryFinanceRows,
-    ...collectionFinanceRows,
   ];
   const currentMonthFinanceRows = financeRows.filter((row) =>
     row.date.startsWith(dashboardDate.slice(0, 7))
@@ -422,21 +408,35 @@ export default async function AdminDashboard() {
   }
 
   const dashboardDeliveries = [
-    ...paidDeliveryDeals.map(deal => ({
-      id: `deal-${deal.id}`,
-      type: "deal",
-      number: `ЗК-${deal.number}`,
-      customerName: deal.customerName,
-      address: deal.deliveryAddress || deal.address || "Адрес не указан",
-      phone: deal.customerPhone || deal.phone,
-      note: deal.deliveryNote,
-      date: deal.deliveryPlannedDate,
-      itemCount: deal.items.reduce((sum, item) => sum + item.quantity, 0),
-      totalSum: deal.total,
-      isPaid: true,
-      link: `/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`,
-    })),
-    ...independentTrips
+    ...paidDeliveryDeals.flatMap((deal) => {
+      const remainingItems = dealRemainingItems(
+        deal.items,
+        deal.shippedItems
+      ).filter((item) => item.remaining > 0);
+      const itemCount = remainingItems.reduce(
+        (sum, item) => sum + item.remaining,
+        0
+      );
+      if (itemCount <= 0) return [];
+      return [{
+        id: `deal-${deal.id}`,
+        type: "deal",
+        number: `ЗК-${deal.number}`,
+        customerName: deal.customerName,
+        address: deal.deliveryAddress || deal.address || "Адрес не указан",
+        phone: deal.customerPhone || deal.phone,
+        note: deal.deliveryNote,
+        date: deal.deliveryPlannedDate,
+        itemCount,
+        itemSummary: remainingItems
+          .map((item) => `${item.name || "Товар"} × ${item.remaining}`)
+          .join(" · "),
+        totalSum: deal.total,
+        isPaid: true,
+        link: `/${ADMIN_PATH}/warehouse?tab=deals&deal=${deal.id}`,
+      }];
+    }),
+    ...independentTrips.map((trip) => ({ ...trip, itemSummary: null })),
   ].sort((a, b) => {
     const aDate = a.date || "";
     const bDate = b.date || "";
@@ -564,6 +564,15 @@ export default async function AdminDashboard() {
                 sub: `${outOfStockProducts.length} нет, ${lowStockProducts.length} скоро закончатся`,
               },
               {
+                label: "Планы поставок",
+                value: activeSupplyPlans.length,
+                icon: <Lightbulb size={18} />,
+                href: `/${ADMIN_PATH}/warehouse?tab=plans`,
+                iconBg: "var(--adm-kraft-pale)",
+                iconColor: "var(--adm-kraft)",
+                sub: `${plannedSupplyItems} позиций без расчёта цен`,
+              },
+              {
                 label: "Акции",
                 value: promotions.length,
                 icon: <Megaphone size={18} />,
@@ -582,6 +591,38 @@ export default async function AdminDashboard() {
                 {stat.sub && (
                   <div style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 2 }}>{stat.sub}</div>
                 )}
+              </Link>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {!isLawyer && activeSupplyPlans.length > 0 && (
+        <CollapsibleSection
+          id="supply-plans"
+          title="Планы поставок"
+          subtitle={`${plannedSupplyItems} позиций в активных планах`}
+          icon={<Lightbulb size={16} />}
+          accent="amber"
+          badge={activeSupplyPlans.length}
+          sideContent={(
+            <Link href={`/${ADMIN_PATH}/warehouse?tab=plans`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
+              Открыть планы →
+            </Link>
+          )}
+        >
+          <div className="dashboard-supply-plans">
+            {activeSupplyPlans.map((plan) => (
+              <Link key={plan.id} href={`/${ADMIN_PATH}/warehouse?tab=plans`} prefetch={false} className="dashboard-supply-plan">
+                <span className="dashboard-supply-plan__icon"><Lightbulb size={16} /></span>
+                <span className="dashboard-supply-plan__main">
+                  <strong>{plan.name}</strong>
+                  <small>
+                    {plan.items.length} поз. · {plan.items.slice(0, 3).map((item) => item.productName).join(", ") || "пока пусто"}
+                    {plan.items.length > 3 ? ` +${plan.items.length - 3}` : ""}
+                  </small>
+                </span>
+                <span className="dashboard-supply-plan__date">{plan.plannedDate ? formatDate(plan.plannedDate) : "без даты"}</span>
               </Link>
             ))}
           </div>
@@ -681,7 +722,7 @@ export default async function AdminDashboard() {
           )}
         >
           <div className="dash-deliveries-flat">
-            <div className="dash-section__desc">Оплаченные заказы + самостоятельные рейсы</div>
+            <div className="dash-section__desc">Оплаченные заказы с недовезённым товаром + самостоятельные рейсы</div>
             {dashboardDeliveries.length > 0 ? (
               <div className="dash-delivery-list">
                 {dashboardDeliveries.map((del) => (
@@ -697,9 +738,12 @@ export default async function AdminDashboard() {
                       <div className="dash-delivery-row__address"><MapPin size={11} />{del.address}</div>
                       <div className="dash-delivery-row__meta">
                         {del.phone && <span>{del.phone}</span>}
-                        <span>{del.itemCount} ед.</span>
+                        <span>{del.type === "deal" ? "осталось довезти" : "в рейсе"}: {del.itemCount} ед.</span>
                         {del.totalSum !== null && <span>{money(del.totalSum)}</span>}
                       </div>
+                      {del.itemSummary && (
+                        <div className="dash-delivery-row__items">{del.itemSummary}</div>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -1,5 +1,5 @@
 // src/app/[adminPath]/products/bulk/page.tsx
-import { getProducts, getAllCategories } from "@/lib/supabase-queries";
+import { getProductsForBulkEditor, getAllCategories } from "@/lib/supabase-queries";
 import { BulkProductEditor } from "@/components/admin/BulkProductEditor";
 import { notFound } from "next/navigation";
 
@@ -15,7 +15,7 @@ export default async function BulkProductsPage({
   if (adminPath !== ADMIN_PATH) notFound();
 
   const [products, categories] = await Promise.all([
-    getProducts({}),
+    getProductsForBulkEditor(),
     getAllCategories(),
   ]);
 
@@ -27,14 +27,8 @@ export default async function BulkProductsPage({
     price: p.price ?? null,
     priceWholesale: p.priceWholesale ?? null,
     minWholesaleQty: p.minWholesaleQty ?? null,
-    dimensionLength: p.dimensionLength ?? null,
-    dimensionWidth: p.dimensionWidth ?? null,
-    dimensionHeight: p.dimensionHeight ?? null,
-    dimensionUnit: p.dimensionUnit ?? "мм",
-    weight: p.weight ?? null,
     material: p.material ?? "",
     packQty: p.packQty ?? null,
-    volume: p.volume ?? null,
     note: p.note ?? "",
     stockQty: p.stockQty ?? null,
     inStock: p.inStock,
@@ -42,8 +36,6 @@ export default async function BulkProductsPage({
     isPromo: p.isPromo,
     isFeatured: p.isFeatured,
     promoLabel: p.promoLabel ?? "",
-    images: Array.isArray(p.images) ? p.images : [],
-    imageUrl: p.imageUrl ?? null,
   }));
 
   return (

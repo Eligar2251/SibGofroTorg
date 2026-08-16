@@ -12,6 +12,7 @@ import {
 } from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { Plus, Minus, ShoppingCart, Check, Package, Clock3 } from "lucide-react";
+import { normalizeProductLabelColor } from "@/lib/product-fields";
 
 /** Склонение для «N вариантов» на карточке. */
 function pluralVariants(n: number): string {
@@ -34,6 +35,8 @@ interface CompactProduct {
   imageUrl?: string | null;
   inStock?: boolean;
   promoLabel?: string | null;
+  promoLabelColor?: string | null;
+  promoLabelTextColor?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
   isCuttable?: boolean | null;
@@ -156,7 +159,15 @@ export function ProductCardCompact({
       {/* ── Фото ── */}
       <Link href={`/catalog/product/${product.slug}`} className="pcc__media">
         {product.promoLabel && (
-          <span className="pcc__badge pcc__badge--promo">{product.promoLabel}</span>
+          <span
+            className="pcc__badge pcc__badge--promo"
+            style={{
+              backgroundColor: normalizeProductLabelColor(product.promoLabelColor) || undefined,
+              color: normalizeProductLabelColor(product.promoLabelTextColor) || undefined,
+            }}
+          >
+            {product.promoLabel}
+          </span>
         )}
         {outOfStock && (
           <span className="pcc__badge pcc__badge--out">{OUT_OF_STOCK_LABEL}</span>

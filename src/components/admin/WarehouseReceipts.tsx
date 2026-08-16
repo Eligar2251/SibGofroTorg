@@ -76,6 +76,29 @@ function fmtDate(raw: string | null | undefined): string {
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+
+function receivedQtyMap(receipt: WarehouseReceipt): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const item of receipt.receivedItems || []) {
+    const productId = String(item.productId || "");
+    if (!productId) continue;
+    map.set(
+      productId,
+      (map.get(productId) || 0) + Math.max(0, Number(item.receivedQty) || 0)
+    );
+  }
+  // Типовой fallback для старых данных до применения миграции.
+  if (map.size === 0 && receipt.status === "posted") {
+    for (const item of receipt.items) {
+      map.set(
+        item.productId,
+        (map.get(item.productId) || 0) + Math.max(0, Number(item.quantity) || 0)
+      );
+    }
+  }
+  return map;
+}
+
 const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 /** Округление до копеек, чтобы не копился хвост из float-арифметики */
@@ -807,6 +830,21 @@ export function ReceiptCard({
   payments: BankPayment[];
 }) {
   const [expanded, setExpanded] = useState(false);
+  const receivedByProduct = receivedQtyMap(r);
+  const orderedQty = r.items.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.quantity) || 0),
+    0
+  );
+  const receivedQty = r.items.reduce(
+    (sum, item) =>
+      sum + Math.min(
+        Math.max(0, Number(item.quantity) || 0),
+        receivedByProduct.get(item.productId) || 0
+      ),
+    0
+  );
+  const hasReceived = receivedQty > 0.0009;
+  const isPartiallyReceived = hasReceived && r.status !== "posted";
   const hasNoPayment = payments.some(
     (p) =>
       p.direction === "outgoing" &&
@@ -828,11 +866,24 @@ export function ReceiptCard({
         <span className="admin-order__id">ПО-{r.number}</span>
         <span
           className={`admin-badge ${
-            r.status === "posted" ? "admin-badge--green" : "admin-badge--amber"
+            r.status === "posted"
+              ? "admin-badge--green"
+              : isPartiallyReceived
+                ? "admin-badge--blue"
+                : "admin-badge--amber"
           }`}
         >
-          {r.status === "posted" ? "На складе" : "Не проведено"}
+          {r.status === "posted"
+            ? "Принято полностью"
+            : isPartiallyReceived
+              ? "Принято частично"
+              : "Не принято"}
         </span>
+        {hasReceived && (
+          <span className="admin-badge admin-badge--indigo">
+            {fmt(receivedQty)} из {fmt(orderedQty)} шт.
+          </span>
+        )}
         {hasNoPayment ? (
           <span className="admin-badge admin-badge--blue">Без оплаты</span>
         ) : isFullyPaid ? (
@@ -880,19 +931,33 @@ export function ReceiptCard({
 
             <div className="admin-order__items">
               <div className="admin-order__items-title">Товары (с НДС)</div>
-              {r.items.map((it, idx) => (
-                <div key={idx} className="admin-order__item">
-                  <Link
-                    href={`/${ADMIN_PATH}/products/${it.productId}`}
-                    prefetch={false}
-                    style={{ color: "inherit", fontWeight: 650 }}
-                  >
-                    {it.name} × {it.quantity}
-                    <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
-                  </Link>
-                  <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
-                </div>
-              ))}
+              {r.items.map((it, idx) => {
+                const received = Math.min(
+                  Math.max(0, Number(it.quantity) || 0),
+                  receivedByProduct.get(it.productId) || 0
+                );
+                const remaining = Math.max(0, (Number(it.quantity) || 0) - received);
+                return (
+                  <div key={idx} className="admin-order__item">
+                    <Link
+                      href={`/${ADMIN_PATH}/products/${it.productId}`}
+                      prefetch={false}
+                      style={{ color: "inherit", fontWeight: 650 }}
+                    >
+                      {it.name}
+                      <span className="wh-item-unit">{fmt(it.price)} ₽/шт</span>
+                    </Link>
+                    <span className="receipt-qty-progress">
+                      <span>заказано <b>{fmt(it.quantity)}</b></span>
+                      <span className="receipt-qty-progress__received">принято <b>{fmt(received)}</b></span>
+                      {remaining > 0.0009 && (
+                        <span className="receipt-qty-progress__remaining">осталось <b>{fmt(remaining)}</b></span>
+                      )}
+                    </span>
+                    <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
+                  </div>
+                );
+              })}
               <div className="admin-order__total">
                 <span>
                   Итого (с НДС)
@@ -947,39 +1012,41 @@ export function ReceiptCard({
           </div>
 
           <div className="admin-order__side">
-            <ReceiptForm
-              products={products}
-              counterparties={counterparties}
-              deals={deals}
-              payments={payments}
-              initialReceipt={{
-                id: r.id,
-                date: r.date,
-                supplier: r.supplier,
-                phone: r.phone ?? null,
-                email: r.email ?? null,
-                inn: r.inn ?? null,
-                kpp: r.kpp ?? null,
-                address: r.address ?? null,
-                contactName: r.contactName ?? null,
-                comment: r.comment ?? null,
-                items: r.items.map((item) => ({
-                  productId: item.productId,
-                  name: item.name,
-                  sku: item.sku ?? null,
-                  quantity: item.quantity,
-                  lineTotal: item.lineTotal,
-                })),
-                vatRate: r.vatRate,
-                isConsignment: r.isConsignment,
-                linkedDealIds: r.linkedDealIds,
-              }}
-            />
-            {r.status === "draft" && (
-              <ReceiptPostButton receiptId={r.id} paidEnough={isFullyPaid} />
+            {!hasReceived && (
+              <ReceiptForm
+                products={products}
+                counterparties={counterparties}
+                deals={deals}
+                payments={payments}
+                initialReceipt={{
+                  id: r.id,
+                  date: r.date,
+                  supplier: r.supplier,
+                  phone: r.phone ?? null,
+                  email: r.email ?? null,
+                  inn: r.inn ?? null,
+                  kpp: r.kpp ?? null,
+                  address: r.address ?? null,
+                  contactName: r.contactName ?? null,
+                  comment: r.comment ?? null,
+                  items: r.items.map((item) => ({
+                    productId: item.productId,
+                    name: item.name,
+                    sku: item.sku ?? null,
+                    quantity: item.quantity,
+                    lineTotal: item.lineTotal,
+                  })),
+                  vatRate: r.vatRate,
+                  isConsignment: r.isConsignment,
+                  linkedDealIds: r.linkedDealIds,
+                }}
+              />
             )}
-            {r.status === "posted" && <ReceiptCancelButton receiptId={r.id} />}
-            <ReceiptDeleteButton receiptId={r.id} />
+            {r.status === "draft" && (
+              <ReceiptPostButton receipt={r} paidEnough={isFullyPaid} />
+            )}
+            {hasReceived && <ReceiptCancelButton receiptId={r.id} partial={r.status !== "posted"} />}
+            {!hasReceived && <ReceiptDeleteButton receiptId={r.id} />}
           </div>
         </div>
       )}
@@ -988,67 +1055,204 @@ export function ReceiptCard({
 }
 
 export function ReceiptPostButton({
-  receiptId,
+  receipt,
   paidEnough,
 }: {
-  receiptId: string;
+  receipt: WarehouseReceipt;
   paidEnough: boolean;
 }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const received = receivedQtyMap(receipt);
+  const remainingRows = receipt.items
+    .map((item) => ({
+      ...item,
+      received: Math.min(
+        Math.max(0, Number(item.quantity) || 0),
+        received.get(item.productId) || 0
+      ),
+      remaining: Math.max(
+        0,
+        (Number(item.quantity) || 0) - (received.get(item.productId) || 0)
+      ),
+    }))
+    .filter((item) => item.remaining > 0.0009);
+  const hasReceived = [...received.values()].some((quantity) => quantity > 0.0009);
 
-  async function post() {
+  function showPostModal() {
     if (
       !paidEnough &&
       !confirm(
-        "Поступление еще не оплачено в банке. Провести на склад без подтверждения оплаты?"
+        "Поступление еще не оплачено в банке. Принять фактически приехавший товар без подтверждения оплаты?"
       )
-    )
+    ) {
       return;
+    }
+    setQuantities(
+      Object.fromEntries(
+        remainingRows.map((item) => [item.productId, item.remaining])
+      )
+    );
+    setError("");
+    setOpen(true);
+  }
+
+  async function post() {
+    const items = remainingRows
+      .map((item) => ({
+        productId: item.productId,
+        quantity: Math.min(
+          item.remaining,
+          Math.max(0, Number(quantities[item.productId]) || 0)
+        ),
+      }))
+      .filter((item) => item.quantity > 0.0009);
+    if (items.length === 0) {
+      setError("Укажите количество, которое фактически приехало");
+      return;
+    }
+
     setSaving(true);
-    const response = await fetch(`/api/admin/warehouse/receipts/${receiptId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "post" }),
-    });
-    const body = await response.json().catch(() => ({}));
-    if (response.ok) router.refresh();
-    else alert(body.error || "Не удалось провести поступление");
-    setSaving(false);
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/warehouse/receipts/${receipt.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "post", items }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Не удалось принять поставку");
+      setOpen(false);
+      router.refresh();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Ошибка сети");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <button
-      type="button"
-      className={`admin-status__btn ${
-        paidEnough ? "admin-status__btn--primary" : "admin-status__btn--outline"
-      }`}
-      onClick={post}
-      disabled={saving}
-      title={
-        paidEnough
-          ? "Добавить товары на склад"
-          : "Товар будет зачислен, но останется долг перед поставщиком"
-      }
-    >
-      {saving ? (
-        <Loader2 size={14} className="animate-spin" />
-      ) : (
-        <CheckCircle size={14} />
+    <>
+      <button
+        type="button"
+        className={`admin-status__btn ${
+          paidEnough ? "admin-status__btn--primary" : "admin-status__btn--outline"
+        }`}
+        onClick={showPostModal}
+        disabled={saving || remainingRows.length === 0}
+        title={
+          paidEnough
+            ? "Указать фактически приехавшее количество"
+            : "Товар будет зачислен, но останется долг перед поставщиком"
+        }
+      >
+        {saving ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <CheckCircle size={14} />
+        )}
+        {hasReceived ? "Принять остаток" : paidEnough ? "Принять на склад" : "Принять без оплаты"}
+      </button>
+
+      {open && (
+        <ModalPortal>
+          <div className="admin-modal-overlay" data-admin="true" onClick={() => !saving && setOpen(false)}>
+            <div
+              className="admin-modal receipt-post-modal"
+              style={{ maxWidth: 680 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="admin-modal__head">
+                <div>
+                  <h3 className="admin-modal__title">Приёмка ПО-{receipt.number}</h3>
+                  <p className="admin-modal__desc" style={{ margin: "4px 0 0" }}>
+                    Укажите, сколько фактически приехало сейчас. Неполученный остаток останется в активных поставках.
+                  </p>
+                </div>
+                <button type="button" className="admin-modal__close" onClick={() => setOpen(false)} disabled={saving} aria-label="Закрыть">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="receipt-post-list">
+                <div className="receipt-post-row receipt-post-row--head">
+                  <span>Товар</span>
+                  <span>Заказано</span>
+                  <span>Уже принято</span>
+                  <span>Приехало сейчас</span>
+                  <span>Останется</span>
+                </div>
+                {remainingRows.map((item) => {
+                  const now = Math.min(
+                    item.remaining,
+                    Math.max(0, Number(quantities[item.productId]) || 0)
+                  );
+                  return (
+                    <div key={item.productId} className="receipt-post-row">
+                      <strong>{item.name}</strong>
+                      <span>{fmt(item.quantity)}</span>
+                      <span>{fmt(item.received)}</span>
+                      <input
+                        type="number"
+                        className="admin-input"
+                        min={0}
+                        max={item.remaining}
+                        step={0.001}
+                        value={quantities[item.productId] ?? item.remaining}
+                        onChange={(event) =>
+                          setQuantities((previous) => ({
+                            ...previous,
+                            [item.productId]: Math.min(
+                              item.remaining,
+                              Math.max(0, Number(event.target.value) || 0)
+                            ),
+                          }))
+                        }
+                      />
+                      <b>{fmt(Math.max(0, item.remaining - now))}</b>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {error && <div className="wh-form-error" style={{ marginTop: 12 }}>{error}</div>}
+
+              <div className="admin-modal__actions" style={{ marginTop: 16 }}>
+                <button type="button" className="admin-btn admin-btn--ghost" onClick={() => setOpen(false)} disabled={saving}>
+                  Отмена
+                </button>
+                <button type="button" className="admin-btn admin-btn--primary" onClick={post} disabled={saving}>
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                  Принять указанное
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
-      {paidEnough ? "Провести на склад" : "Провести без оплаты"}
-    </button>
+    </>
   );
 }
 
-export function ReceiptCancelButton({ receiptId }: { receiptId: string }) {
+export function ReceiptCancelButton({
+  receiptId,
+  partial = false,
+}: {
+  receiptId: string;
+  partial?: boolean;
+}) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
 
   async function cancel() {
     if (
       !confirm(
-        "Вернуть поступление в черновики? Остатки на складе будут уменьшены."
+        partial
+          ? "Отменить всю частичную приёмку? Уже принятые количества будут вычтены со склада."
+          : "Вернуть поступление в черновики? Остатки на складе будут уменьшены."
       )
     )
       return;
@@ -1070,14 +1274,14 @@ export function ReceiptCancelButton({ receiptId }: { receiptId: string }) {
       className="admin-status__btn admin-status__btn--outline-red"
       onClick={cancel}
       disabled={saving}
-      title="Вернуть в черновик (списать со склада)"
+      title={partial ? "Отменить частичную приёмку" : "Вернуть в черновик (списать со склада)"}
     >
       {saving ? (
         <Loader2 size={14} className="animate-spin" />
       ) : (
         <X size={14} />
       )}
-      Отменить приход
+      {partial ? "Отменить приёмку" : "Отменить приход"}
     </button>
   );
 }

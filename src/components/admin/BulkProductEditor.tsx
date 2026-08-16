@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useRef } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, useRef } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -30,14 +30,8 @@ interface BulkProduct {
   price: number | null;
   priceWholesale: number | null;
   minWholesaleQty: number | null;
-  dimensionLength: number | null;
-  dimensionWidth: number | null;
-  dimensionHeight: number | null;
-  dimensionUnit: string;
-  weight: number | null;
   material: string;
   packQty: number | null;
-  volume: number | null;
   note: string;
   stockQty: number | null;
   inStock: boolean;
@@ -45,8 +39,8 @@ interface BulkProduct {
   isPromo: boolean;
   isFeatured: boolean;
   promoLabel: string;
-  images: ImageEntry[];
-  imageUrl: string | null;
+  images?: ImageEntry[];
+  imageUrl?: string | null;
 }
 
 interface Category {
@@ -69,6 +63,9 @@ const STEPS = [
   { step: 4 as const, title: "Публикация", hint: "Видимость, наличие и акции", icon: Check },
 ];
 
+const INITIAL_RENDER_LIMIT = 60;
+const RENDER_PAGE_SIZE = 60;
+
 function numeric(value: string): number | null {
   return value === "" ? null : Number(value);
 }
@@ -85,8 +82,12 @@ export function BulkProductEditor({
   const [workingIds, setWorkingIds] = useState<Set<string>>(new Set());
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [renderLimit, setRenderLimit] = useState(INITIAL_RENDER_LIMIT);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(false);
+  const [loadedImageIds, setLoadedImageIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [finished, setFinished] = useState(false);
   // ID товара, для которого сейчас идёт загрузка
@@ -94,14 +95,74 @@ export function BulkProductEditor({
 
   const visibleProducts = useMemo(() => {
     if (step > 1) return products.filter((product) => workingIds.has(product.id));
-    const query = search.trim().toLocaleLowerCase("ru-RU");
+    const query = deferredSearch.trim().toLocaleLowerCase("ru-RU");
     if (!query) return products;
     return products.filter(
       (product) =>
         product.name.toLocaleLowerCase("ru-RU").includes(query) ||
         product.sku.toLocaleLowerCase("ru-RU").includes(query)
     );
-  }, [products, search, step, workingIds]);
+  }, [products, deferredSearch, step, workingIds]);
+
+  const displayedProducts = useMemo(
+    () => visibleProducts.slice(0, renderLimit),
+    [renderLimit, visibleProducts]
+  );
+  const searchPending = search !== deferredSearch;
+
+  useEffect(() => {
+    setRenderLimit(INITIAL_RENDER_LIMIT);
+  }, [deferredSearch, step]);
+
+  useEffect(() => {
+    if (step !== 3) return;
+    const missingIds = displayedProducts
+      .map((product) => product.id)
+      .filter((id) => !loadedImageIds.has(id));
+    if (missingIds.length === 0) return;
+
+    let cancelled = false;
+    setLoadingImages(true);
+    setError("");
+    void fetch("/api/admin/products/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "load-images", ids: missingIds }),
+    })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "Не удалось загрузить фотографии");
+        if (cancelled) return;
+        const byId = new Map<string, { images: ImageEntry[]; imageUrl: string | null }>(
+          (body.products || []).map((item: any) => [
+            String(item.id),
+            {
+              images: Array.isArray(item.images) ? item.images : [],
+              imageUrl: item.imageUrl || null,
+            },
+          ])
+        );
+        setProducts((items) =>
+          items.map((item) => {
+            const loaded = byId.get(item.id);
+            return loaded ? { ...item, ...loaded } : item;
+          })
+        );
+        setLoadedImageIds((current) => new Set([...current, ...missingIds]));
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Ошибка загрузки фотографий");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingImages(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, displayedProducts, loadedImageIds]);
 
   function update<K extends keyof BulkProduct>(
     id: string,
@@ -177,11 +238,11 @@ export function BulkProductEditor({
 
   function toggleVisible() {
     const allSelected =
-      visibleProducts.length > 0 &&
-      visibleProducts.every((product) => workingIds.has(product.id));
+      displayedProducts.length > 0 &&
+      displayedProducts.every((product) => workingIds.has(product.id));
     setWorkingIds((current) => {
       const next = new Set(current);
-      for (const product of visibleProducts) {
+      for (const product of displayedProducts) {
         if (allSelected) next.delete(product.id);
         else next.add(product.id);
       }
@@ -260,6 +321,8 @@ export function BulkProductEditor({
     setDirtyIds(new Set());
     setStep(1);
     setSearch("");
+    setRenderLimit(INITIAL_RENDER_LIMIT);
+    setLoadedImageIds(new Set());
     setError("");
     setFinished(false);
   }
@@ -297,7 +360,18 @@ export function BulkProductEditor({
         {step === 1 && (
           <div className="bulk-search">
             <Search size={14} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Название или артикул..." />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Название или артикул..."
+              autoComplete="off"
+              aria-label="Поиск товара для массового редактирования"
+            />
+            <small>
+              {searchPending
+                ? "Ищем…"
+                : `Найдено: ${visibleProducts.length}`}
+            </small>
           </div>
         )}
         {step === 1 && workingIds.size > 0 && (
@@ -323,10 +397,10 @@ export function BulkProductEditor({
           {step === 1 && (
             <table className="admin-table bulk-table bulk-table--stock">
               <thead><tr>
-                <th><input type="checkbox" checked={visibleProducts.length > 0 && visibleProducts.every((p) => workingIds.has(p.id))} onChange={toggleVisible} /></th>
+                <th><input type="checkbox" checked={displayedProducts.length > 0 && displayedProducts.every((p) => workingIds.has(p.id))} onChange={toggleVisible} title="Выбрать показанные строки" /></th>
                 <th>Название</th><th>Артикул</th><th>Категория</th><th>Количество на складе</th><th>В пачке</th><th>Материал</th>
               </tr></thead>
-              <tbody>{visibleProducts.map((product) => (
+              <tbody>{displayedProducts.map((product) => (
                 <tr key={product.id} className={workingIds.has(product.id) ? "bulk-row--selected" : ""}>
                   <td><input type="checkbox" checked={workingIds.has(product.id)} onChange={() => toggle(product.id)} /></td>
                   <td><input className="admin-input" value={product.name} onChange={(e) => update(product.id, "name", e.target.value)} /></td>
@@ -344,7 +418,7 @@ export function BulkProductEditor({
           {step === 2 && (
             <table className="admin-table bulk-table bulk-table--prices">
               <thead><tr><th>Товар</th><th>Цена, ₽</th><th>Оптовая цена, ₽</th><th>Опт от, шт.</th><th>Остаток</th><th>Пачка</th></tr></thead>
-              <tbody>{visibleProducts.map((product) => (
+              <tbody>{displayedProducts.map((product) => (
                 <tr key={product.id} className={dirtyIds.has(product.id) ? "bulk-row--dirty" : ""}>
                   <td><strong>{product.name}</strong><small className="bulk-sku">{product.sku || "без артикула"}</small></td>
                   <td><input type="number" min={0} step="0.01" className="admin-input" value={product.price ?? ""} onChange={(e) => update(product.id, "price", numeric(e.target.value))} /></td>
@@ -360,7 +434,12 @@ export function BulkProductEditor({
           {/* ── Шаг 3: Изображения (для каждого товара отдельно) ── */}
           {step === 3 && (
             <div className="bulk-images-list">
-              {visibleProducts.map((product) => (
+              {loadingImages ? (
+                <div className="bulk-images-loading">
+                  <Loader2 size={18} className="animate-spin" />
+                  Загружаем фотографии только выбранных товаров…
+                </div>
+              ) : displayedProducts.map((product) => (
                 <ProductImageRow
                   key={product.id}
                   product={product}
@@ -376,7 +455,7 @@ export function BulkProductEditor({
           {step === 4 && (
             <table className="admin-table bulk-table bulk-table--publish">
               <thead><tr><th>Товар</th><th>Примечание</th><th>Метка акции</th><th>В наличии</th><th>Виден</th><th>Акция</th><th>На главной</th></tr></thead>
-              <tbody>{visibleProducts.map((product) => (
+              <tbody>{displayedProducts.map((product) => (
                 <tr key={product.id} className={dirtyIds.has(product.id) ? "bulk-row--dirty" : ""}>
                   <td><strong>{product.name}</strong><small className="bulk-sku">остаток: {product.stockQty ?? 0}</small></td>
                   <td><input className="admin-input" value={product.note} onChange={(e) => update(product.id, "note", e.target.value)} /></td>
@@ -392,6 +471,21 @@ export function BulkProductEditor({
         </div>
       </div>
 
+      {visibleProducts.length > displayedProducts.length && (
+        <div className="bulk-load-more">
+          <span>
+            Показано {displayedProducts.length} из {visibleProducts.length}
+          </span>
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost"
+            onClick={() => setRenderLimit((current) => current + RENDER_PAGE_SIZE)}
+          >
+            Показать ещё {Math.min(RENDER_PAGE_SIZE, visibleProducts.length - displayedProducts.length)}
+          </button>
+        </div>
+      )}
+
       {visibleProducts.length === 0 && (
         <div className="admin-empty"><p>{step === 1 ? "Товары не найдены" : "На первом шаге не выбраны товары"}</p></div>
       )}
@@ -403,7 +497,7 @@ export function BulkProductEditor({
           <button className="admin-btn admin-btn--ghost" onClick={() => setStep((step - 1) as Step)}><ArrowLeft size={15} /> Назад</button>
         ) : <span />}
         <div className="bulk-footer__summary">В работе: <strong>{workingIds.size}</strong> товаров</div>
-        <button className="admin-btn admin-btn--primary" disabled={saving || workingIds.size === 0} onClick={saveAndContinue}>
+        <button className="admin-btn admin-btn--primary" disabled={saving || loadingImages || workingIds.size === 0} onClick={saveAndContinue}>
           {saving ? <Loader2 size={15} className="animate-spin" /> : step === 4 ? <Check size={15} /> : <ArrowRight size={15} />}
           {step === 4 ? "Сохранить и завершить" : step === 1 ? "Сохранить и перейти к ценам" : step === 2 ? "Сохранить и перейти к фото" : "Сохранить и перейти к публикации"}
         </button>

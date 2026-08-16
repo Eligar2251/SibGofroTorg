@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS products (
   stock_warn_qty INT,
   is_promo BOOLEAN DEFAULT FALSE,
   promo_label TEXT,
+  promo_label_color TEXT,
+  promo_label_text_color TEXT,
   made_to_order BOOLEAN DEFAULT FALSE,
   made_to_order_min_qty INT,
   -- Вариативность: продажа рулонами и метрами (отмотка)
@@ -89,6 +91,39 @@ CREATE INDEX IF NOT EXISTS idx_products_promo ON products(is_promo) WHERE is_pro
 CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock) WHERE in_stock = TRUE;
 DROP TRIGGER IF EXISTS trg_products_updated ON products;
 CREATE TRIGGER trg_products_updated BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE OR REPLACE FUNCTION calculate_product_box_volume()
+RETURNS TRIGGER AS $$
+DECLARE
+  cubic_units NUMERIC;
+  normalized_unit TEXT;
+BEGIN
+  IF NEW.dimension_length IS NULL OR NEW.dimension_length <= 0
+     OR NEW.dimension_width IS NULL OR NEW.dimension_width <= 0
+     OR NEW.dimension_height IS NULL OR NEW.dimension_height <= 0 THEN
+    NEW.volume = NULL;
+    RETURN NEW;
+  END IF;
+
+  cubic_units := NEW.dimension_length * NEW.dimension_width * NEW.dimension_height;
+  normalized_unit := LOWER(COALESCE(NULLIF(TRIM(NEW.dimension_unit), ''), 'мм'));
+  NEW.volume := ROUND(
+    CASE
+      WHEN normalized_unit IN ('м', 'm') THEN cubic_units * 1000
+      WHEN normalized_unit IN ('см', 'cm') THEN cubic_units / 1000
+      ELSE cubic_units / 1000000
+    END,
+    3
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_products_calculate_volume ON products;
+CREATE TRIGGER trg_products_calculate_volume
+  BEFORE INSERT OR UPDATE OF dimension_length, dimension_width, dimension_height, dimension_unit
+  ON products
+  FOR EACH ROW EXECUTE FUNCTION calculate_product_box_volume();
 
 -- =========================================================
 -- 3. ПОЛЬЗОВАТЕЛИ
@@ -459,6 +494,8 @@ CREATE TABLE IF NOT EXISTS warehouse_receipts (
   contact_name TEXT,
   comment TEXT,
   items JSONB DEFAULT '[]'::jsonb,
+  -- Накопительно принято на склад: [{productId, name, receivedQty}].
+  received_items JSONB NOT NULL DEFAULT '[]'::jsonb,
   total NUMERIC NOT NULL DEFAULT 0,
   bank_adjustment NUMERIC DEFAULT 0,
   vat_rate NUMERIC DEFAULT 22,
@@ -475,6 +512,57 @@ CREATE INDEX IF NOT EXISTS idx_receipts_date ON warehouse_receipts(date);
 CREATE INDEX IF NOT EXISTS idx_receipts_items_gin ON warehouse_receipts USING GIN (items jsonb_path_ops);
 DROP TRIGGER IF EXISTS trg_receipts_updated ON warehouse_receipts;
 CREATE TRIGGER trg_receipts_updated BEFORE UPDATE ON warehouse_receipts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Планы будущих поставок: не влияют на склад/банк до создания реального поступления.
+CREATE TABLE IF NOT EXISTS warehouse_supply_plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  planned_date TEXT,
+  comment TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed')),
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_supply_plans_status ON warehouse_supply_plans(status);
+CREATE INDEX IF NOT EXISTS idx_supply_plans_date ON warehouse_supply_plans(planned_date);
+DROP TRIGGER IF EXISTS trg_supply_plans_updated ON warehouse_supply_plans;
+CREATE TRIGGER trg_supply_plans_updated BEFORE UPDATE ON warehouse_supply_plans FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE warehouse_supply_plans ENABLE ROW LEVEL SECURITY;
+
+-- Накопительные планы закупок. Пополнения виртуальные; фактическое
+-- списание создаёт отдельный проведённый платёж с выбранного счёта.
+CREATE TABLE IF NOT EXISTS warehouse_purchase_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id TEXT NOT NULL,
+  product_name TEXT NOT NULL DEFAULT '',
+  sku TEXT,
+  ozon_url TEXT,
+  ozon_image_url TEXT,
+  ozon_image_public_id TEXT,
+  ozon_price NUMERIC,
+  ozon_checked_at TIMESTAMPTZ,
+  ozon_price_updated_at TIMESTAMPTZ,
+  ozon_last_error TEXT,
+  target_amount NUMERIC NOT NULL DEFAULT 0,
+  contribution_amount NUMERIC NOT NULL DEFAULT 500,
+  account TEXT NOT NULL DEFAULT 'bank' CHECK (account IN ('cash', 'bank', 'ym_card')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed')),
+  contributions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  spent_amount NUMERIC NOT NULL DEFAULT 0,
+  spent_payment_id UUID,
+  spent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_plans_status ON warehouse_purchase_plans(status);
+CREATE INDEX IF NOT EXISTS idx_purchase_plans_product ON warehouse_purchase_plans(product_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_plans_ozon_refresh
+  ON warehouse_purchase_plans(status, ozon_checked_at)
+  WHERE ozon_url IS NOT NULL;
+DROP TRIGGER IF EXISTS trg_purchase_plans_updated ON warehouse_purchase_plans;
+CREATE TRIGGER trg_purchase_plans_updated BEFORE UPDATE ON warehouse_purchase_plans FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE warehouse_purchase_plans ENABLE ROW LEVEL SECURITY;
 
 -- =========================================================
 -- 19. ЗАКАЗЫ ПОКУПАТЕЛЕЙ
@@ -600,15 +688,26 @@ DROP TRIGGER IF EXISTS trg_salaries_updated ON salaries;
 CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
--- 22.1. СДАЧА КАССЫ
--- Списание всего остатка наличных из кассы в отдельный журнал сдач.
--- В безналичный банковский счёт эти суммы не прибавляются.
--- Каждая запись = одна сданная смена (дата + сумма + примечание).
+-- 22.1. ФАКТИЧЕСКИЕ СВОДКИ КАССОВЫХ СМЕН
+-- Справочный снимок дня: наличные, карта ЮМ, расходы и остаток кассы.
+-- Запись не является движением денег и не влияет на прибыль/баланс сама.
 -- =========================================================
 CREATE TABLE IF NOT EXISTS cash_collections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   date TEXT NOT NULL DEFAULT '',
+  -- Все отмеченные поступления дня: наличные + карта ЮМ, без переноса.
   amount NUMERIC NOT NULL DEFAULT 0,
+  -- Фактический остаток наличных в кассе на конец дня.
+  cash_amount NUMERIC NOT NULL DEFAULT 0,
+  -- Отмеченные поступления на ЮМ; это метка, а не новое движение денег.
+  transfer_amount NUMERIC NOT NULL DEFAULT 0,
+  items JSONB DEFAULT '[]'::jsonb,
+  -- Расходы двух касс: [{kind, id, title, amount, sourceKind:'cash'|'card'}].
+  expenses JSONB DEFAULT '[]'::jsonb,
+  -- Дублирует общий приход смены для отчётов: наличные + ЮМ.
+  income_amount NUMERIC,
+  -- Общие расходы наличной кассы и карты ЮМ.
+  expenses_amount NUMERIC NOT NULL DEFAULT 0,
   note TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

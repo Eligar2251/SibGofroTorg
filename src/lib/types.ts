@@ -35,6 +35,8 @@ export interface FirestoreProduct {
   stockWarnQty?: number | null | undefined;
   isPromo: boolean;
   promoLabel?: string | null | undefined;
+  promoLabelColor?: string | null | undefined;
+  promoLabelTextColor?: string | null | undefined;
   madeToOrder?: boolean | null | undefined;
   madeToOrderMinQty?: number | null | undefined;
   // Вариативность рулон / метры (плёнка пузырчатая и т.п.)

@@ -51,15 +51,24 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    let result: Record<string, unknown> = {};
     if (body.action === "post") {
-      await postReceipt(id);
+      result = await postReceipt(
+        id,
+        Array.isArray(body.items)
+          ? body.items.map((item: any) => ({
+              productId: String(item?.productId || ""),
+              quantity: Number(item?.quantity) || 0,
+            }))
+          : undefined
+      );
     } else if (body.action === "cancel") {
       await cancelReceipt(id);
     } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }
     revalidateTag("products", { expire: 0 });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ошибка сервера" },

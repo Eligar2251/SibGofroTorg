@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -21,8 +21,6 @@ import {
   CreditCard,
   History,
   Archive,
-  Plus,
-  Send,
   Loader2,
   Save,
   Gift,
@@ -36,6 +34,7 @@ import {
   Calculator,
   Scissors,
   Package,
+  Lightbulb,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -43,11 +42,11 @@ import {
   getBankSummary,
   getPendingPaymentCounterpartyBalances,
   normalizeName,
-  getCollectedBreakdown,
   getDealPaidMap,
   getReceiptPaidMap,
   getCashCarryoverSummary,
-  getPendingTransfersSummary,
+  getCashCollectionIncomeBreakdown,
+  getCashCollectionExpenseBreakdown,
   type WarehouseStockRow,
   type ProductStockSummary,
   type WarehouseReceipt,
@@ -57,7 +56,6 @@ import {
   type Salary,
   type CashCollection,
   includedVat,
-  VAT_RATE,
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
   isYmCardSalaryComment,
@@ -92,6 +90,10 @@ import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
+import { SupplyPlanning } from "@/components/admin/SupplyPlanning";
+import { PurchasePlanning } from "@/components/admin/PurchasePlanning";
+import type { SupplyPlan } from "@/lib/supply-plans-shared";
+import type { PurchasePlan } from "@/lib/purchase-plans-shared";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -190,13 +192,12 @@ const paymentTypeLabels: Record<string, string> = {
   ym_card: "Карта ЮМ",
 };
 
-type TabKey = "stock" | "receipts" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "suppliers" | "deliveries" | "reports";
+type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
 type BankSub = "summary" | "pending" | "history" | "cash" | "ym";
-type ProcurementCartItem = { productId: string; supplierId: string; quantity: number; price: number; vatRate: number };
 type BankEntry =
   | (BankPayment & { entryKind: "payment" })
   | {
@@ -242,6 +243,9 @@ interface WarehouseManagerProps {
   drivers?: DriverOption[];
   cashCollections?: CashCollection[];
   consignmentManual?: ConsignmentManualSale[];
+  supplyPlans?: SupplyPlan[];
+  purchasePlans?: PurchasePlan[];
+  initialPlanProductId?: string | null;
   companyPhone?: string;
   companyAddress?: string;
   /** Скидки ценовых уровней контрагентов (из настроек админки). */
@@ -275,12 +279,22 @@ export function WarehouseManager({
   drivers = [],
   cashCollections = [],
   consignmentManual = [],
+  supplyPlans = [],
+  purchasePlans = [],
+  initialPlanProductId,
   companyPhone,
   companyAddress,
   tierDiscounts = { special: 5, exclusive: 10 },
 }: WarehouseManagerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<string>(initialSub);
+
+  // При переходе через query-параметр Next сохраняет экземпляр клиента.
+  // Синхронизируем вкладку с новыми серверными props, иначе URL менялся,
+  // а на экране оставалась предыдущая секция.
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   
   // --- States for Financial Summary (Feature 1) ---
   const [financePeriod, setFinancePeriod] = useState<"today" | "week" | "month">("today");
@@ -294,71 +308,6 @@ export function WarehouseManager({
 
   // --- States for Critical Stock Alerts (Feature 2) ---
   const [attentionCategory, setAttentionCategory] = useState<"outofstock" | "lowstock" | "popular" | "stagnant">("outofstock");
-  const [orderingProduct, setOrderingProduct] = useState<WarehouseStockRow | null>(null);
-  const [orderSupplierId, setOrderSupplierId] = useState("");
-  const [orderSupplierName, setOrderSupplierName] = useState("");
-  const [orderPrice, setOrderPrice] = useState<number>(0);
-  const [orderQty, setOrderQty] = useState<number>(10);
-  const [orderComment, setOrderComment] = useState("Автозаказ из уведомлений о критичных остатках");
-  const [orderVat, setOrderVat] = useState<number>(22);
-  const [orderSaving, setOrderSaving] = useState(false);
-  const [orderError, setOrderError] = useState("");
-
-  async function handleCreateOrderSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!orderingProduct) return;
-    if (!orderSupplierName.trim()) {
-      setOrderError("Укажите поставщика");
-      return;
-    }
-    if (orderQty <= 0) {
-      setOrderError("Укажите количество больше нуля");
-      return;
-    }
-    setOrderSaving(true);
-    setOrderError("");
-
-    try {
-      const cp = counterpartyOptions.find(c => c.id === orderSupplierId || c.name === orderSupplierName);
-      const res = await fetch("/api/admin/warehouse/receipts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: getWarehouseBusinessDate(new Date()),
-          supplier: orderSupplierName.trim(),
-          phone: cp?.phone || null,
-          email: cp?.email || null,
-          inn: cp?.inn || null,
-          kpp: cp?.kpp || null,
-          address: cp?.address || null,
-          contactName: cp?.contactName || null,
-          comment: orderComment,
-          items: [{
-            productId: orderingProduct.id,
-            name: orderingProduct.name,
-            sku: orderingProduct.sku,
-            quantity: Number(orderQty),
-            lineTotal: Number(orderPrice) * Number(orderQty),
-          }],
-          vatRate: orderVat,
-          noPayment: true,
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setOrderError(errData.error || "Не удалось создать заказ");
-        setOrderSaving(false);
-        return;
-      }
-
-      setOrderingProduct(null);
-      router.refresh();
-    } catch (err) {
-      setOrderError("Ошибка сети при отправке заказа");
-    }
-    setOrderSaving(false);
-  }
   const [suppliesSub, setSuppliesSub] = useState<SuppliesSub>("receipts");
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
@@ -372,12 +321,9 @@ export function WarehouseManager({
   const [stockSummaryLoading, setStockSummaryLoading] = useState<Set<string>>(new Set());
   const [stockSummaryErrors, setStockSummaryErrors] = useState<Record<string, string>>({});
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
-  const [procurementQuery, setProcurementQuery] = useState("");
   const [supplierPriceQuery, setSupplierPriceQuery] = useState("");
   const [supplierPriceDrafts, setSupplierPriceDrafts] = useState<Record<string, string>>({});
   const [supplierPriceSaving, setSupplierPriceSaving] = useState(false);
-  const [procurementCart, setProcurementCart] = useState<ProcurementCartItem[]>([]);
-  const [procurementSaving, setProcurementSaving] = useState(false);
   // В банке в первую очередь показываем документы, требующие действия.
   const [bankSub, setBankSub] = useState<BankSub>("pending");
   const [detailPaymentId, setDetailPaymentId] = useState<string | null>(
@@ -752,15 +698,17 @@ export function WarehouseManager({
   // Calculations
   const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
   const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
-  // Способ оплаты заказа: dealId → "cash" | "regular".
-  // Определяем по привязанным входящим платежам — отдельного поля
-  // у заказа нет, а форме редактирования способ нужен, чтобы наличная
-  // оплата при сохранении не превращалась в неоплаченный счёт.
+  // Способ оплаты заказа берём из входящего ПЛ: наличка, карта ЮМ или счёт.
   const dealPaymentMethod = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of payments) {
-      if (p.direction !== "incoming" || p.type !== "cash") continue;
-      for (const dealId of p.dealIds || []) map.set(dealId, "cash");
+    const map = new Map<string, "cash" | "ym_card" | "regular">();
+    for (const payment of payments) {
+      if (payment.direction !== "incoming") continue;
+      const method = payment.type === "cash"
+        ? "cash"
+        : payment.type === "ym_card" || payment.cashDestination === "card"
+          ? "ym_card"
+          : "regular";
+      for (const dealId of payment.dealIds || []) map.set(dealId, method);
     }
     return map;
   }, [payments]);
@@ -781,13 +729,6 @@ export function WarehouseManager({
       ),
     [payments, salaries, cashCollections]
   );
-  // «Перевод»: сколько налички ещё ждёт перевода на карту.
-  // После сдачи кассы (платежи вошли в смену) обнуляется.
-  const pendingTransfers = useMemo(
-    () => getPendingTransfersSummary(payments, cashCollections, localDateIso()),
-    [payments, cashCollections]
-  );
-
   // --- Helper to get purchase price for any product ---
   const getProductPurchasePrice = (productId: string) => {
     // 0. Check product's own purchasePrice (set via card or report)
@@ -813,41 +754,6 @@ export function WarehouseManager({
     }
     return lastPrice || 0;
   };
-
-  // --- Helper to find last supplier and price for critical stock alerts (Feature 2) ---
-  const findLastSupplierAndPrice = useCallback((productId: string) => {
-    let lastSupplierName = "";
-    let lastSupplierId = "";
-    let lastPrice = 0;
-    let lastDate = "";
-
-    // 1. Search in receipts
-    for (const r of receipts) {
-      const item = r.items?.find((it) => it.productId === productId);
-      if (item) {
-        if (!lastDate || r.date > lastDate) {
-          lastDate = r.date;
-          lastSupplierName = r.supplier;
-          lastSupplierId = r.counterpartyId || "";
-          lastPrice = item.price;
-        }
-      }
-    }
-
-    // 2. Search in supplierPrices of counterparties
-    if (!lastSupplierName) {
-      for (const cp of counterpartyOptions) {
-        if (cp.supplierPrices && cp.supplierPrices[productId] !== undefined) {
-          lastSupplierName = cp.name;
-          lastSupplierId = cp.id;
-          lastPrice = cp.supplierPrices[productId];
-          break;
-        }
-      }
-    }
-
-    return { supplierName: lastSupplierName, supplierId: lastSupplierId, price: lastPrice };
-  }, [receipts, counterpartyOptions]);
 
   // --- Critical Products Calculation (Feature 2) ---
   const criticalProducts = useMemo(() => {
@@ -891,18 +797,6 @@ export function WarehouseManager({
     return { outOfStock, lowStock, frequentlyOrderedAbsent, stagnantStock };
   }, [stock, deals]);
 
-  // Autopopulate order supplier and price when ordering product changes
-  useEffect(() => {
-    if (orderingProduct) {
-      const info = findLastSupplierAndPrice(orderingProduct.id);
-      setOrderSupplierName(info.supplierName);
-      setOrderSupplierId(info.supplierId);
-      setOrderPrice(info.price || orderingProduct.priceWholesale || 0);
-      setOrderQty(10); // Default to a standard 10 units
-      setOrderError("");
-    }
-  }, [orderingProduct, findLastSupplierAndPrice]);
-  
   const allCounterparties = useMemo(
     // Полный список платежей: строки «пропущенных» контрагентов должны
     // оставаться видимыми (чтобы их можно было вернуть в расчёт кликом).
@@ -998,7 +892,7 @@ export function WarehouseManager({
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
   }, [deals, paymentsForTotals, receipts]);
 
-  // Закрытые смены кассы — перевод на карту и перенос наличного остатка.
+  // Закрытые смены кассы — фактические сводки без движения денег.
   const collectionsSorted = useMemo(
     () =>
       [...cashCollections]
@@ -1006,8 +900,36 @@ export function WarehouseManager({
         .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id)),
     [cashCollections]
   );
-  const collectionsTotal = useMemo(
-    () => collectionsSorted.reduce((sum, c) => sum + (c.amount || 0), 0),
+  const collectionsIncomeTotal = useMemo(
+    () => collectionsSorted.reduce(
+      (sum, collection) =>
+        sum + getCashCollectionIncomeBreakdown(collection).total,
+      0
+    ),
+    [collectionsSorted]
+  );
+  const collectionsCardTotal = useMemo(
+    () => collectionsSorted.reduce(
+      (sum, collection) =>
+        sum + getCashCollectionIncomeBreakdown(collection).card,
+      0
+    ),
+    [collectionsSorted]
+  );
+  const collectionsExpenseTotal = useMemo(
+    () => collectionsSorted.reduce(
+      (sum, collection) =>
+        sum + getCashCollectionExpenseBreakdown(collection).total,
+      0
+    ),
+    [collectionsSorted]
+  );
+  const collectionsCardExpenseTotal = useMemo(
+    () => collectionsSorted.reduce(
+      (sum, collection) =>
+        sum + getCashCollectionExpenseBreakdown(collection).card,
+      0
+    ),
     [collectionsSorted]
   );
   // Для каждой смены отдельно показываем остаток, пришедший на её начало.
@@ -1025,12 +947,6 @@ export function WarehouseManager({
     }
     return opening;
   }, [payments, salaries, cashCollections]);
-  // Раскладка смен: сколько перенесено наличными, сколько ушло на карту.
-  const collectedBreakdown = useMemo(
-    () => getCollectedBreakdown(collectionsSorted),
-    [collectionsSorted]
-  );
-
   // Старая версия «закрыть без перевода» не создавала документ сдачи,
   // а просто ставила платежам «вне баланса». Восстанавливаем виртуальные
   // документы по общему updatedAt, чтобы они были видны в проведённых и
@@ -1072,15 +988,12 @@ export function WarehouseManager({
     return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date));
   }, [payments]);
 
-  // Сдача кассы идёт через модалку: там каждый платёж помечается
-  // «наличные / перевод», чтобы в отчёте было видно, сколько куда ушло.
+  // Сводка смены помечает наличные и поступления на ЮМ, показывает перенос,
+  // расходы и остаток кассы. Она ничего не переводит и не списывает.
   function handleCollectCash() {
-    if (bankSummary.cashBalance < -0.009) {
-      setCollectError("Остаток кассы отрицательный — сначала проверьте учёт прошлых операций.");
-      return;
-    }
-    // Сдача кассы — это закрытие смены. Нулевая смена тоже должна попасть
-    // в журнал, а перенесённый остаток при этом остаётся в кассе.
+    // Сводка фиксирует фактические цифры и ничего не списывает, поэтому её
+    // можно сохранить даже при отрицательном остатке — это помогает увидеть
+    // расхождение, а не скрывает его.
     setCollectError("");
     setShowCollect(true);
   }
@@ -1118,8 +1031,8 @@ export function WarehouseManager({
 
   async function handleDeleteCollection(id: string, noAccounting = false) {
     const message = noAccounting
-      ? "Вернуть скрытые старые платежи в список сдачи? Баланс кассы не изменится."
-      : "Отменить закрытие смены? Инкассированная сумма вернётся в кассу, а платежи снова появятся для разметки.";
+      ? "Вернуть скрытые старые платежи в список сводки? Баланс кассы не изменится."
+      : "Удалить сводку смены? Деньги и баланс не изменятся; наличные платежи снова появятся в отчёте.";
     if (!confirm(message)) return;
     setCollecting(true);
     try {
@@ -1361,6 +1274,8 @@ export function WarehouseManager({
   const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
     { key: "receipts", label: "Поставки", icon: <Truck size={13} /> },
+    { key: "plans", label: "Планы поставок", icon: <Lightbulb size={13} /> },
+    { key: "purchases", label: "Закупки", icon: <Wallet size={13} /> },
     { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
     { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
@@ -1444,6 +1359,22 @@ export function WarehouseManager({
 
   const dealById = useMemo(() => new Map(deals.map((d) => [String(d.id), d])), [deals]);
   const receiptById = useMemo(() => new Map(receipts.map((r) => [String(r.id), r])), [receipts]);
+  // Связь «поставка → заказ» хранится на приходном ордере. Учитываем только
+  // активные (ещё не проведённые) поставки: проведённый товар уже находится
+  // на складе и отдельно помечать заказ как ожидающий поставку не нужно.
+  const activeSuppliesByDealId = useMemo(() => {
+    const map = new Map<string, WarehouseReceipt[]>();
+    for (const receipt of receipts) {
+      if (receipt.status !== "draft") continue;
+      for (const dealId of receipt.linkedDealIds || []) {
+        const key = String(dealId);
+        const linked = map.get(key) || [];
+        linked.push(receipt);
+        map.set(key, linked);
+      }
+    }
+    return map;
+  }, [receipts]);
 
   const paymentProductsSummaryById = useMemo(() => {
     const map = new Map<
@@ -1554,67 +1485,6 @@ export function WarehouseManager({
       .sort((a, b) => b.needCount - a.needCount || a.supplier.name.localeCompare(b.supplier.name, "ru"));
   }, [counterpartyOptions, supplierRows]);
   const selectedSupplier = supplierCards.find((item) => item.supplier.id === selectedSupplierId) || null;
-  const suppliersByProduct = useMemo(() => {
-    const map = new Map<string, typeof supplierRows>();
-    for (const row of supplierRows) {
-      const current = map.get(row.productId) || [];
-      current.push(row);
-      current.sort((a, b) => a.price - b.price);
-      map.set(row.productId, current);
-    }
-    return map;
-  }, [supplierRows]);
-  const procurementProducts = useMemo(() => {
-    const query = procurementQuery.trim().toLocaleLowerCase("ru-RU");
-    return stock
-      .filter((product) => suppliersByProduct.has(product.id))
-      .filter((product) => {
-        if (!query) return true;
-        return `${product.name} ${product.sku || ""}`.toLocaleLowerCase("ru-RU").includes(query);
-      })
-      .slice(0, 50);
-  }, [procurementQuery, stock, suppliersByProduct]);
-  const procurementGroups = useMemo(() => {
-    return counterpartyOptions
-      .filter((supplier) => procurementCart.some((item) => item.supplierId === supplier.id))
-      .map((supplier) => ({
-        supplier,
-        items: procurementCart.filter((item) => item.supplierId === supplier.id),
-      }));
-  }, [counterpartyOptions, procurementCart]);
-
-  function addProcurementProduct(productId: string) {
-    const supplierOptions = suppliersByProduct.get(productId) || [];
-    if (supplierOptions.length === 0) {
-      alert("У товара нет поставщика с закупочной ценой");
-      return;
-    }
-    let selected = supplierOptions[0];
-    if (supplierOptions.length > 1) {
-      const message = supplierOptions
-        .map((row, index) => `${index + 1}. ${row.supplier.name} — ${fmt(row.price)} ₽`)
-        .join("\n");
-      const answer = window.prompt(`У какого поставщика взять товар?\n${message}`, "1");
-      const idx = Math.max(0, Math.min(supplierOptions.length - 1, Number(answer || 1) - 1));
-      selected = supplierOptions[idx] || supplierOptions[0];
-    }
-    setProcurementCart((prev) => {
-      const found = prev.find((item) => item.productId === productId && item.supplierId === selected.supplier.id);
-      if (found) {
-        return prev.map((item) =>
-          item.productId === productId && item.supplierId === selected.supplier.id
-            ? { ...item, quantity: item.quantity + 1, price: selected.price || item.price }
-            : item
-        );
-      }
-      return [...prev, { productId, supplierId: selected.supplier.id, quantity: 1, price: selected.price, vatRate: VAT_RATE }];
-    });
-  }
-
-  function patchProcurementItem(index: number, patch: Partial<ProcurementCartItem>) {
-    setProcurementCart((prev) => prev.map((item, idx) => idx === index ? { ...item, ...patch } : item));
-  }
-
   const supplierPriceProducts = useMemo(() => {
     const query = supplierPriceQuery.trim().toLocaleLowerCase("ru-RU");
     return pickerProducts
@@ -1645,67 +1515,6 @@ export function WarehouseManager({
       alert(error instanceof Error ? error.message : "Не удалось сохранить прайс");
     } finally {
       setSupplierPriceSaving(false);
-    }
-  }
-
-  async function sendProcurementToReceipts() {
-    if (procurementCart.length === 0) return;
-    setProcurementSaving(true);
-    try {
-      for (const group of procurementGroups) {
-        const byVat = new Map<number, ProcurementCartItem[]>();
-        for (const item of group.items) {
-          const vat = Math.max(0, Number(item.vatRate) || 0);
-          byVat.set(vat, [...(byVat.get(vat) || []), item]);
-        }
-        for (const [vatRate, vatItems] of byVat) {
-          const items = vatItems
-            .map((item) => {
-              const product = productById.get(item.productId);
-              const quantity = Math.max(1, Number(item.quantity) || 1);
-              const price = Math.max(0, Number(item.price) || 0);
-              return {
-                productId: item.productId,
-                name: product?.name || "Товар",
-                sku: product?.sku || null,
-                quantity,
-                price,
-                lineTotal: Math.round(quantity * price * 100) / 100,
-              };
-            })
-            .filter((item) => item.lineTotal > 0);
-          if (items.length === 0) continue;
-          const total = items.reduce((sum, item) => sum + item.lineTotal, 0);
-          const res = await fetch("/api/admin/warehouse/receipts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              date: new Date().toISOString().slice(0, 10),
-              supplier: group.supplier.name,
-              phone: group.supplier.phone ?? null,
-              email: group.supplier.email ?? null,
-              inn: group.supplier.inn ?? null,
-              kpp: group.supplier.kpp ?? null,
-              address: group.supplier.address ?? null,
-              contactName: group.supplier.contactName ?? null,
-              comment: `Создано из корзины заказа поставщику${byVat.size > 1 ? ` · НДС ${vatRate}%` : ""}`,
-              items,
-              vatRate,
-              paymentSplits: [total],
-            }),
-          });
-          if (!res.ok) {
-            const body = await res.json().catch(() => ({}));
-            throw new Error(body.error || `Не удалось создать поступление для ${group.supplier.name}`);
-          }
-        }
-      }
-      setProcurementCart([]);
-      window.location.href = `/${adminPath}/warehouse?tab=receipts`;
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "Не удалось отправить в поставки");
-    } finally {
-      setProcurementSaving(false);
     }
   }
 
@@ -1760,7 +1569,7 @@ export function WarehouseManager({
               key={t.key}
               onClick={() => {
                 if (t.key === activeTab) return;
-                window.location.href = `/${adminPath}/warehouse?tab=${t.key}`;
+                router.push(`/${adminPath}/warehouse?tab=${t.key}`);
               }}
               className={`admin-filter${activeTab === t.key ? " admin-filter--active" : ""}`}
             >
@@ -1926,9 +1735,17 @@ export function WarehouseManager({
                                   {p.stockQty > 0 && p.stockWarnQty != null && p.stockQty <= p.stockWarnQty && (
                                     <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>пополните</span>
                                   )}
-                                  {p.stockQty <= 0 && (
+                                  {p.stockQty < 0 ? (
+                                    <span
+                                      className="admin-badge admin-badge--red"
+                                      style={{ marginLeft: 6 }}
+                                      title="Отрицательный остаток разрешён: его перекроет следующая поставка"
+                                    >
+                                      довезти {fmt(Math.abs(p.stockQty))} шт.
+                                    </span>
+                                  ) : p.stockQty === 0 ? (
                                     <span className="admin-badge admin-badge--red" style={{ marginLeft: 6 }}>нет в наличии</span>
-                                  )}
+                                  ) : null}
                                 </td>
                                 <td>{p.sku || "—"}</td>
                                 <td style={{ textAlign: "right" }}>
@@ -2055,17 +1872,23 @@ export function WarehouseManager({
                               <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
                                 {p.name}
                               </Link>
-                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>Артикул: {p.sku || "—"}</span>
+                              <span style={{ fontSize: 11, color: "var(--adm-ink-soft)" }}>
+                                Артикул: {p.sku || "—"} · Остаток:{" "}
+                                <b style={{ color: "var(--adm-rust)" }}>{fmt(p.stockQty)} шт.</b>
+                                {p.stockQty < 0 && (
+                                  <> · нужно довезти <b style={{ color: "var(--adm-rust)" }}>{fmt(Math.abs(p.stockQty))} шт.</b></>
+                                )}
+                              </span>
                             </div>
                             <div>
-                              <button
-                                type="button"
-                                onClick={() => setOrderingProduct(p)}
+                              <Link
+                                href={`/${adminPath}/warehouse?tab=plans&planProduct=${encodeURIComponent(p.id)}`}
+                                prefetch={false}
                                 className="admin-btn admin-btn--primary admin-btn--sm"
                                 style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
                               >
-                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
-                              </button>
+                                <Lightbulb size={12} style={{ marginRight: 6 }} /> Запланировать поставку
+                              </Link>
                             </div>
                           </div>
                         ))}
@@ -2087,14 +1910,14 @@ export function WarehouseManager({
                               </span>
                             </div>
                             <div>
-                              <button
-                                type="button"
-                                onClick={() => setOrderingProduct(p)}
+                              <Link
+                                href={`/${adminPath}/warehouse?tab=plans&planProduct=${encodeURIComponent(p.id)}`}
+                                prefetch={false}
                                 className="admin-btn admin-btn--primary admin-btn--sm"
                                 style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
                               >
-                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
-                              </button>
+                                <Lightbulb size={12} style={{ marginRight: 6 }} /> Запланировать поставку
+                              </Link>
                             </div>
                           </div>
                         ))}
@@ -2116,14 +1939,14 @@ export function WarehouseManager({
                               </span>
                             </div>
                             <div>
-                              <button
-                                type="button"
-                                onClick={() => setOrderingProduct(p)}
+                              <Link
+                                href={`/${adminPath}/warehouse?tab=plans&planProduct=${encodeURIComponent(p.id)}`}
+                                prefetch={false}
                                 className="admin-btn admin-btn--primary admin-btn--sm"
                                 style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}
                               >
-                                <Truck size={12} style={{ marginRight: 6 }} /> Заказать у поставщика
-                              </button>
+                                <Lightbulb size={12} style={{ marginRight: 6 }} /> Запланировать поставку
+                              </Link>
                             </div>
                           </div>
                         ))}
@@ -2159,149 +1982,6 @@ export function WarehouseManager({
                 })()}
               </div>
 
-              {/* Native centered responsive ordering modal */}
-              {orderingProduct && (
-                <ModalPortal>
-                  <div className="admin-modal-overlay" onClick={() => setOrderingProduct(null)}>
-                    <div className="admin-modal wh-modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
-                      <div className="admin-modal__head">
-                        <h3 className="admin-modal__title">Заказать у поставщика</h3>
-                        <button onClick={() => setOrderingProduct(null)} className="admin-modal__close" aria-label="Закрыть">
-                          <X size={16} />
-                        </button>
-                      </div>
-                      <p className="admin-modal__desc">
-                        Создание черновика поступления для товара: <br />
-                        <b>{orderingProduct.name}</b> {orderingProduct.sku ? `(арт. ${orderingProduct.sku})` : ""}
-                      </p>
-
-                      <form onSubmit={handleCreateOrderSubmit}>
-                        {orderError && (
-                          <div className="wh-form-error" style={{ marginBottom: 12 }}>
-                            {orderError}
-                          </div>
-                        )}
-
-                        <div className="wh-form-grid">
-                          <div className="admin-field">
-                            <label className="admin-label">Поставщик из базы</label>
-                            <select
-                              value={orderSupplierId}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setOrderSupplierId(val);
-                                if (val) {
-                                  const found = counterpartyOptions.find(c => c.id === val);
-                                  if (found) {
-                                    setOrderSupplierName(found.name);
-                                    if (found.supplierPrices && found.supplierPrices[orderingProduct.id]) {
-                                      setOrderPrice(found.supplierPrices[orderingProduct.id]);
-                                    }
-                                  }
-                                }
-                              }}
-                              className="admin-select"
-                            >
-                              <option value="">-- Выберите поставщика --</option>
-                              {[...new Map(counterpartyOptions.filter(c => c.roles.includes("supplier")).map(c => [c.id, c])).values()]
-                                .map(c => (
-                                  <option key={c.id} value={c.id}>{c.name}</option>
-                                ))
-                              }
-                            </select>
-                          </div>
-
-                          <div className="admin-field">
-                            <label className="admin-label">Или имя поставщика вручную *</label>
-                            <input
-                              type="text"
-                              value={orderSupplierName}
-                              onChange={(e) => setOrderSupplierName(e.target.value)}
-                              placeholder="Имя поставщика"
-                              className="admin-input"
-                              required
-                            />
-                          </div>
-
-                          <div className="admin-field">
-                            <label className="admin-label">Цена закупки (₽) *</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={orderPrice || ""}
-                              onChange={(e) => setOrderPrice(Number(e.target.value) || 0)}
-                              placeholder="Закупочная цена"
-                              className="admin-input"
-                              required
-                            />
-                          </div>
-
-                          <div className="admin-field">
-                            <label className="admin-label">Количество (шт.) *</label>
-                            <input
-                              type="number"
-                              value={orderQty || ""}
-                              onChange={(e) => setOrderQty(Number(e.target.value) || 0)}
-                              placeholder="Кол-во для заказа"
-                              className="admin-input"
-                              required
-                            />
-                          </div>
-
-                          <div className="admin-field">
-                            <label className="admin-label">Ставка НДС</label>
-                            <select
-                              value={orderVat}
-                              onChange={(e) => setOrderVat(Number(e.target.value))}
-                              className="admin-select"
-                            >
-                              <option value={22}>22% (Стандартная)</option>
-                              <option value={20}>20%</option>
-                              <option value={10}>10%</option>
-                              <option value={0}>0%</option>
-                              <option value={-1}>Без НДС</option>
-                            </select>
-                          </div>
-
-                          <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
-                            <label className="admin-label">Комментарий к заказу</label>
-                            <textarea
-                              value={orderComment}
-                              onChange={(e) => setOrderComment(e.target.value)}
-                              className="admin-input"
-                              rows={2}
-                            />
-                          </div>
-                        </div>
-
-                        <div style={{ marginTop: 14, background: "rgba(224, 155, 18, 0.05)", padding: 10, borderRadius: 4, fontSize: 12, color: "var(--adm-ink-soft)" }}>
-                          Сумма заказа составит: <b>{fmt(orderPrice * orderQty)} ₽</b>. <br />
-                          После создания заказ появится как <b>«Черновик»</b> в разделе «Поставки». Остатки не изменятся до тех пор, пока вы не проведёте поставку.
-                        </div>
-
-                        <div className="admin-modal__actions" style={{gap: 10,  marginTop: 16 }}>
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--ghost"
-                            onClick={() => setOrderingProduct(null)}
-                            disabled={orderSaving}
-                          >
-                            Отмена
-                          </button>
-                          <button
-                            type="submit"
-                            className="admin-btn admin-btn--primary"
-                            disabled={orderSaving}
-                          >
-                            {orderSaving ? <Loader2 size={13} className="animate-spin" style={{ marginRight: 6 }} /> : null}
-                            Создать черновик заказа
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                </ModalPortal>
-              )}
             </div>
           )}
         </>
@@ -2381,77 +2061,15 @@ export function WarehouseManager({
 
           {suppliesSub === "suppliers" && (
             <div style={{ display: "grid", gap: 16 }}>
-              <div className="admin-card">
-                <div className="admin-card__head">
-                  <h3 className="admin-card__title">Корзина заказа поставщикам</h3>
-                  <button type="button" className="admin-btn admin-btn--primary" disabled={procurementSaving || procurementCart.length === 0} onClick={sendProcurementToReceipts}>
-                    {procurementSaving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    Отправить в поставки
-                  </button>
+              <div className="admin-card supply-planning-link-card">
+                <div>
+                  <span><Lightbulb size={16} /> Планирование закупок</span>
+                  <strong>Закупки теперь собираются в отдельных планах поставок</strong>
+                  <p>Можно создать несколько поставок, назначить поставщика каждой позиции, оценить бюджет и переносить товары между планами.</p>
                 </div>
-                <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
-                  <div style={{ position: "relative" }}>
-                    <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
-                    <input className="admin-input" value={procurementQuery} onChange={(e) => setProcurementQuery(e.target.value)} placeholder="Поиск товара для заказа у поставщика..." style={{ paddingLeft: 36 }} />
-                  </div>
-                  {procurementQuery && (
-                    <div className="admin-table-wrap" style={{ maxHeight: 280, overflow: "auto" }}>
-                      <table className="admin-table">
-                        <thead><tr><th>Товар</th><th>Остаток</th><th>Поставщики</th><th></th></tr></thead>
-                        <tbody>
-                          {procurementProducts.map((product) => {
-                            const rows = suppliersByProduct.get(product.id) || [];
-                            return (
-                              <tr key={product.id}>
-                                <td><strong>{product.name}</strong>{product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}</td>
-                                <td>{product.stockQty} шт.</td>
-                                <td>{rows.map((row) => `${row.supplier.name} — ${fmt(row.price)} ₽`).join(" · ")}</td>
-                                <td style={{ textAlign: "right" }}>
-                                  <button type="button" className="admin-btn admin-btn--sm admin-btn--primary" onClick={() => addProcurementProduct(product.id)}><Plus size={13} /> Добавить</button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {procurementGroups.length > 0 ? (
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {procurementGroups.map((group) => (
-                        <div key={group.supplier.id} style={{ border: "1px solid var(--adm-border)", borderRadius: 12, overflow: "hidden" }}>
-                          <div style={{ padding: "10px 14px", background: "var(--adm-paper)", display: "flex", justifyContent: "space-between", gap: 8 }}>
-                            <strong>{group.supplier.name}</strong>
-                            <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>Итого: {fmt(group.items.reduce((sum, item) => sum + item.quantity * item.price, 0))} ₽</span>
-                          </div>
-                          <div className="admin-table-wrap">
-                            <table className="admin-table">
-                              <thead><tr><th>Товар</th><th>Кол-во</th><th>Цена</th><th>НДС %</th><th>Сумма</th><th></th></tr></thead>
-                              <tbody>
-                                {group.items.map((item) => {
-                                  const index = procurementCart.findIndex((c) => c.productId === item.productId && c.supplierId === item.supplierId);
-                                  const product = productById.get(item.productId);
-                                  return (
-                                    <tr key={`${item.supplierId}-${item.productId}`}>
-                                      <td>{product?.name || "Товар"}</td>
-                                      <td><input className="admin-input" type="number" min={1} value={item.quantity} onChange={(e) => patchProcurementItem(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} style={{ width: 90 }} /></td>
-                                      <td><input className="admin-input" type="number" min={0} step="0.01" value={item.price} onChange={(e) => patchProcurementItem(index, { price: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 120 }} /></td>
-                                      <td><input className="admin-input" type="number" min={0} step="1" value={item.vatRate} onChange={(e) => patchProcurementItem(index, { vatRate: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 80 }} /></td>
-                                      <td><strong>{fmt(item.quantity * item.price)} ₽</strong></td>
-                                      <td><button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setProcurementCart((prev) => prev.filter((_, idx) => idx !== index))}>Убрать</button></td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="admin-empty" style={{ padding: 20 }}><p>Добавьте товары через поиск — они автоматически разложатся по поставщикам.</p></div>
-                  )}
-                </div>
+                <Link href={`/${adminPath}/warehouse?tab=plans`} className="admin-btn admin-btn--primary" prefetch={false}>
+                  <Lightbulb size={14} /> Открыть планирование
+                </Link>
               </div>
 
               <div className="admin-card">
@@ -2491,7 +2109,7 @@ export function WarehouseManager({
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                         <div>
                           <strong style={{ color: "var(--adm-navy)" }}>Товары и прайс-лист</strong>
-                          <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>Один список: товар, остаток, цена поставщика и добавление в корзину заказа.</div>
+                          <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>Товары, остатки и закупочные цены. Для будущих закупок добавляйте позиции в планы поставок.</div>
                         </div>
                         <button type="button" className="admin-btn admin-btn--primary" disabled={supplierPriceSaving} onClick={saveSupplierPrices}>
                           {supplierPriceSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -2500,7 +2118,7 @@ export function WarehouseManager({
                       </div>
                       <div style={{ position: "relative" }}>
                         <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
-                        <input className="admin-input" value={supplierPriceQuery} onChange={(e) => setSupplierPriceQuery(e.target.value)} placeholder="Найти товар, добавить в прайс или в корзину..." style={{ paddingLeft: 36 }} />
+                        <input className="admin-input" value={supplierPriceQuery} onChange={(e) => setSupplierPriceQuery(e.target.value)} placeholder="Найти товар или добавить в прайс..." style={{ paddingLeft: 36 }} />
                       </div>
                       <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
                         <table className="admin-table">
@@ -2525,15 +2143,13 @@ export function WarehouseManager({
                                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                       {!inPrice && <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: "0" }))}>В прайс</button>}
                                       {inPrice && <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => { const next = { ...prev }; delete next[product.id]; return next; })}>Убрать</button>}
-                                      <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => {
-                                        const price = Math.max(0, Number(String(supplierPriceDrafts[product.id] ?? "0").replace(",", ".")) || 0);
-                                        setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: String(price) }));
-                                        setProcurementCart((prev) => {
-                                          const found = prev.find((item) => item.productId === product.id && item.supplierId === selectedSupplier!.supplier.id);
-                                          if (found) return prev.map((item) => item.productId === product.id && item.supplierId === selectedSupplier!.supplier.id ? { ...item, quantity: item.quantity + 1, price } : item);
-                                          return [...prev, { productId: product.id, supplierId: selectedSupplier!.supplier.id, quantity: 1, price, vatRate: VAT_RATE }];
-                                        });
-                                      }}>В корзину</button>
+                                      <Link
+                                        href={`/${adminPath}/warehouse?tab=plans&planProduct=${encodeURIComponent(product.id)}&planSupplier=${encodeURIComponent(selectedSupplier!.supplier.id)}`}
+                                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                                        prefetch={false}
+                                      >
+                                        <Lightbulb size={12} /> В план
+                                      </Link>
                                     </div>
                                   </td>
                                 </tr>
@@ -2564,7 +2180,21 @@ export function WarehouseManager({
         />
       )}
 
-      {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}      {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}
+      {/* ============ ВКЛАДКА: ПЛАНЫ ПОСТАВОК ============ */}
+      {activeTab === "plans" && (
+        <SupplyPlanning
+          initialPlans={supplyPlans}
+          products={pickerProducts}
+          initialProductId={initialPlanProductId}
+        />
+      )}
+
+      {/* ============ ВКЛАДКА: НАКОПИТЕЛЬНЫЕ ЗАКУПКИ ============ */}
+      {activeTab === "purchases" && (
+        <PurchasePlanning initialPlans={purchasePlans} products={pickerProducts} />
+      )}
+
+      {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}
       {activeTab === "deals" && (
         <>
           <div className="admin-filters admin-filters--sub">
@@ -2636,6 +2266,9 @@ export function WarehouseManager({
                         .filter((r) => r.missing > 0)
                     : [];
                 const hasShortage = shortage.length > 0;
+                const linkedActiveSupplies = activeSuppliesByDealId.get(String(d.id)) || [];
+                const isInSupply = d.status === "new" && linkedActiveSupplies.length > 0;
+                const supplyNumbers = linkedActiveSupplies.map((receipt) => `ПО-${receipt.number}`).join(", ");
                 const expanded = expandedDealId === d.id;
                 return (
                   <div key={d.id} id={`deal-${d.id}`} className="admin-order">
@@ -2665,7 +2298,14 @@ export function WarehouseManager({
                           <Lock size={10} /> в резерве
                         </span>
                       ) : null}
-                      {hasShortage && (
+                      {isInSupply ? (
+                        <span
+                          className="admin-badge admin-badge--blue"
+                          title={`Товар ожидается по привязанной поставке ${supplyNumbers}`}
+                        >
+                          <Truck size={10} /> в поставке
+                        </span>
+                      ) : hasShortage ? (
                         <span
                           className="admin-badge admin-badge--red"
                           title={shortage
@@ -2682,7 +2322,7 @@ export function WarehouseManager({
                         >
                           <AlertTriangle size={10} /> не хватает товара
                         </span>
-                      )}
+                      ) : null}
                       {(() => {
                         const shippedArr = Array.isArray(d.shippedItems) ? d.shippedItems : [];
                         const totalOrdered = d.items.reduce((s: number, it: any) => s + it.quantity, 0);
@@ -2938,8 +2578,7 @@ export function WarehouseManager({
                               deliveryNote: d.deliveryNote ?? null,
                               deliveryContact: d.deliveryContact ?? d.contactName ?? null,
                               deliveryPhone: d.deliveryPhone ?? d.customerPhone ?? null,
-                              // Способ оплаты берём из привязанных платежей,
-                              // чтобы наличный заказ не «переезжал» в безнал.
+                              // Способ оплаты берём из ПЛ: наличные, ЮМ или расчётный счёт.
                               paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
                               isReserved: Boolean(d.isReserved),
                               items: d.items.map((item) => {
@@ -3028,234 +2667,6 @@ export function WarehouseManager({
       {/* ============ ВКЛАДКА: КЛИЕНТЫ ============ */}
       {activeTab === "clients" && <ClientsManager clients={clients} />}
 
-      {/* ============ ВКЛАДКА: ПОСТАВЩИКИ ============ */}
-      {activeTab === "suppliers" && (
-        <div style={{ display: "grid", gap: 16 }}>
-          <div className="admin-card">
-            <div className="admin-card__head">
-              <h3 className="admin-card__title">Корзина заказа поставщикам</h3>
-              <button
-                type="button"
-                className="admin-btn admin-btn--primary"
-                disabled={procurementSaving || procurementCart.length === 0}
-                onClick={sendProcurementToReceipts}
-              >
-                {procurementSaving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                Отправить в поставки
-              </button>
-            </div>
-            <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
-              <div style={{ position: "relative" }}>
-                <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
-                <input
-                  className="admin-input"
-                  value={procurementQuery}
-                  onChange={(e) => setProcurementQuery(e.target.value)}
-                  placeholder="Поиск товара для заказа у поставщика..."
-                  style={{ paddingLeft: 36 }}
-                />
-              </div>
-
-              {procurementQuery && (
-                <div className="admin-table-wrap" style={{ maxHeight: 280, overflow: "auto" }}>
-                  <table className="admin-table">
-                    <thead><tr><th>Товар</th><th>Остаток</th><th>Поставщики</th><th></th></tr></thead>
-                    <tbody>
-                      {procurementProducts.map((product) => {
-                        const rows = suppliersByProduct.get(product.id) || [];
-                        return (
-                          <tr key={product.id}>
-                            <td><strong>{product.name}</strong>{product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}</td>
-                            <td>{product.stockQty} шт.</td>
-                            <td>{rows.map((row) => `${row.supplier.name} — ${fmt(row.price)} ₽`).join(" · ")}</td>
-                            <td style={{ textAlign: "right" }}>
-                              <button type="button" className="admin-btn admin-btn--sm admin-btn--primary" onClick={() => addProcurementProduct(product.id)}>
-                                <Plus size={13} /> Добавить
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {procurementGroups.length > 0 ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  {procurementGroups.map((group) => (
-                    <div key={group.supplier.id} style={{ border: "1px solid var(--adm-border)", borderRadius: 12, overflow: "hidden" }}>
-                      <div style={{ padding: "10px 14px", background: "var(--adm-paper)", display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <strong>{group.supplier.name}</strong>
-                        <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>Итого: {fmt(group.items.reduce((sum, item) => sum + item.quantity * item.price, 0))} ₽</span>
-                      </div>
-                      <div className="admin-table-wrap">
-                        <table className="admin-table">
-                          <thead><tr><th>Товар</th><th>Кол-во</th><th>Цена</th><th>НДС %</th><th>Сумма</th><th></th></tr></thead>
-                          <tbody>
-                            {group.items.map((item) => {
-                              const index = procurementCart.findIndex((cartItem) => cartItem.productId === item.productId && cartItem.supplierId === item.supplierId);
-                              const product = productById.get(item.productId);
-                              return (
-                                <tr key={`${item.supplierId}-${item.productId}`}>
-                                  <td>{product?.name || "Товар"}</td>
-                                  <td><input className="admin-input" type="number" min={1} value={item.quantity} onChange={(e) => patchProcurementItem(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} style={{ width: 90 }} /></td>
-                                  <td><input className="admin-input" type="number" min={0} step="0.01" value={item.price} onChange={(e) => patchProcurementItem(index, { price: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 120 }} /></td>
-                                  <td><input className="admin-input" type="number" min={0} step="1" value={item.vatRate} onChange={(e) => patchProcurementItem(index, { vatRate: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 80 }} /></td>
-                                  <td><strong>{fmt(item.quantity * item.price)} ₽</strong></td>
-                                  <td><button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setProcurementCart((prev) => prev.filter((_, idx) => idx !== index))}>Убрать</button></td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="admin-empty" style={{ padding: 20 }}><p>Добавьте товары через поиск — они автоматически разложатся по поставщикам.</p></div>
-              )}
-            </div>
-          </div>
-
-          <div className="admin-card">
-            {!selectedSupplier ? (
-              supplierCards.length > 0 ? (
-                <div className="admin-card__pad" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-                  {supplierCards.map(({ supplier, products, needCount }) => (
-                    <button key={supplier.id} type="button" onClick={() => setSelectedSupplierId(supplier.id)} className="admin-card" style={{ padding: 16, textAlign: "left", cursor: "pointer", border: "1px solid var(--adm-border)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                        <strong style={{ color: "var(--adm-navy)", fontSize: 15 }}>{supplier.name}</strong>
-                        {needCount > 0 && <span className="admin-badge admin-badge--amber">заказать {needCount}</span>}
-                      </div>
-                      <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 6 }}>{products.length} товаров в закупочном прайсе</div>
-                      <div style={{ display: "grid", gap: 2, marginTop: 10, fontSize: 12 }}>
-                        {supplier.inn && <span>ИНН {supplier.inn}</span>}
-                        {supplier.phone && <span>{supplier.phone}</span>}
-                        {supplier.email && <span>{supplier.email}</span>}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : <div className="admin-empty"><p>Поставщики пока не заведены в контрагентах</p></div>
-            ) : (
-              <div>
-                <div className="admin-card__head" style={{ alignItems: "flex-start", gap: 12 }}>
-                  <div>
-                    <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSelectedSupplierId(null)} style={{ marginBottom: 10 }}>← Все поставщики</button>
-                    <h3 className="admin-card__title" style={{ margin: 0 }}>{selectedSupplier.supplier.name}</h3>
-                    <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 6 }}>
-                      {[selectedSupplier.supplier.contactName, selectedSupplier.supplier.phone, selectedSupplier.supplier.email, selectedSupplier.supplier.inn ? `ИНН ${selectedSupplier.supplier.inn}` : ""].filter(Boolean).join(" · ")}
-                    </div>
-                    {selectedSupplier.supplier.address && <div style={{ color: "var(--adm-muted)", fontSize: 12, marginTop: 4 }}>{selectedSupplier.supplier.address}</div>}
-                  </div>
-                  <Link href={`/${adminPath}/warehouse?tab=counterparties`} className="admin-btn admin-btn--ghost" prefetch={false}>Открыть контрагентов</Link>
-                </div>
-
-                <div className="admin-card__pad" style={{ display: "grid", gap: 12, borderTop: "1px solid var(--adm-border)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                    <div>
-                      <strong style={{ color: "var(--adm-navy)" }}>Товары и прайс-лист</strong>
-                      <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>
-                        Один список: товар, остаток, цена поставщика и добавление в корзину заказа. Если цены нет — поставьте 0 или свою цену и сохраните.
-                      </div>
-                    </div>
-                    <button type="button" className="admin-btn admin-btn--primary" disabled={supplierPriceSaving} onClick={saveSupplierPrices}>
-                      {supplierPriceSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                      Сохранить прайс
-                    </button>
-                  </div>
-                  <div style={{ position: "relative" }}>
-                    <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
-                    <input
-                      className="admin-input"
-                      value={supplierPriceQuery}
-                      onChange={(e) => setSupplierPriceQuery(e.target.value)}
-                      placeholder="Найти товар, добавить в прайс или в корзину..."
-                      style={{ paddingLeft: 36 }}
-                    />
-                  </div>
-                  <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
-                    <table className="admin-table">
-                      <thead>
-                        <tr>
-                          <th>Товар</th>
-                          <th>Остаток</th>
-                          <th>Порог</th>
-                          <th style={{ width: 170 }}>Цена поставщика</th>
-                          <th>Статус</th>
-                          <th style={{ width: 190 }}>Действия</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {supplierPriceProducts.map((product) => {
-                          const inPrice = supplierPriceDrafts[product.id] !== undefined;
-                          const stockProduct = productById.get(product.id);
-                          const warn = stockProduct?.stockWarnQty ?? 10;
-                          const need = (product.stockQty || 0) <= warn;
-                          return (
-                            <tr key={product.id}>
-                              <td>
-                                <Link href={`/${adminPath}/products/${product.id}`} prefetch={false} style={{ fontWeight: 700 }}>
-                                  {product.name}
-                                </Link>
-                                {product.sku && <div style={{ color: "var(--adm-muted)", fontSize: 12 }}>арт. {product.sku}</div>}
-                              </td>
-                              <td>{product.stockQty ?? 0} шт.</td>
-                              <td>{warn} шт.</td>
-                              <td>
-                                <input
-                                  className="admin-input"
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={supplierPriceDrafts[product.id] ?? ""}
-                                  onChange={(e) => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: e.target.value }))}
-                                  placeholder="0"
-                                />
-                              </td>
-                              <td>{need ? <span className="admin-badge admin-badge--amber">заказать</span> : <span className="admin-badge admin-badge--green">достаточно</span>}</td>
-                              <td>
-                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                  {!inPrice && (
-                                    <button type="button" className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: "0" }))}>В прайс</button>
-                                  )}
-                                  {inPrice && (
-                                    <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSupplierPriceDrafts((prev) => { const next = { ...prev }; delete next[product.id]; return next; })}>Убрать</button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className="admin-btn admin-btn--ghost admin-btn--sm"
-                                    onClick={() => {
-                                      const price = Math.max(0, Number(String(supplierPriceDrafts[product.id] ?? "0").replace(",", ".")) || 0);
-                                      setSupplierPriceDrafts((prev) => ({ ...prev, [product.id]: String(price) }));
-                                      setProcurementCart((prev) => {
-                                        const found = prev.find((item) => item.productId === product.id && item.supplierId === selectedSupplier.supplier.id);
-                                        if (found) {
-                                          return prev.map((item) => item.productId === product.id && item.supplierId === selectedSupplier.supplier.id ? { ...item, quantity: item.quantity + 1, price } : item);
-                                        }
-                                        return [...prev, { productId: product.id, supplierId: selectedSupplier.supplier.id, quantity: 1, price, vatRate: VAT_RATE }];
-                                      });
-                                    }}
-                                  >
-                                    В корзину
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ============ ВКЛАДКА: БАНК ============ */}
       {activeTab === "bank" && bankSummary && (
         <div className="bank">
@@ -3318,9 +2729,9 @@ export function WarehouseManager({
                       >
                         <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
                         <span>
-                          Касса в минусе. Обычно это значит, что приход, покрытый
-                          прошлой сдачей, стал безналичным. Проверьте типы платежей
-                          и суммы сдач — цифры разошлись.
+                          Касса в минусе: наличные расходы превысили доступный приход
+                          и перенос прошлых дней. Сводку всё равно можно сохранить,
+                          чтобы зафиксировать фактическое расхождение.
                         </span>
                       </div>
                     )}
@@ -3329,11 +2740,11 @@ export function WarehouseManager({
                     <button
                       type="button"
                       className="admin-btn admin-btn--primary admin-btn--sm"
-                      disabled={collecting || bankSummary.cashBalance < -0.009}
+                      disabled={collecting}
                       onClick={handleCollectCash}
                     >
                       {collecting ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
-                      Сдать кассу
+                      Сводка кассы
                     </button>
                   </div>
                 </div>
@@ -3888,413 +3299,230 @@ export function WarehouseManager({
 
             <div className="admin-card wh-cashcollect" style={{ marginTop: 12 }}>
               <div className="admin-card__head">
-                <h3 className="admin-card__title">
-                  <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                  Отчёт по закрытым сменам кассы
-                </h3>
+                <div>
+                  <h3 className="admin-card__title">
+                    <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
+                    Фактические сводки кассы и ЮМ
+                  </h3>
+                  <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
+                    Сводка не является платёжной операцией и не влияет на прибыль
+                  </div>
+                </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <span className="admin-badge admin-badge--muted">
-                    В кассе: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
+                    Наличная касса: {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
                   </span>
                   <span className="admin-badge admin-badge--blue">
-                    <CreditCard size={10} /> На карту: {fmt(collectedBreakdown.transfer)} ₽
+                    Карта ЮМ: {fmt(Math.round(bankSummary.ymCardBalance * 100) / 100)} ₽
                   </span>
                   <span className="admin-badge admin-badge--green">
-                    <Banknote size={10} /> Перенесено в кассе: {fmt(collectedBreakdown.cash)} ₽
+                    <ArrowDownLeft size={10} /> Всего поступило: {fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
                   </span>
-                  <span className="admin-badge admin-badge--green">
-                    Размечено по сменам: {fmt(Math.round(collectionsTotal * 100) / 100)} ₽
+                  <span className="admin-badge admin-badge--blue">
+                    <CreditCard size={10} /> На ЮМ: {fmt(Math.round(collectionsCardTotal * 100) / 100)} ₽
+                  </span>
+                  <span className="admin-badge admin-badge--red">
+                    <ArrowUpRight size={10} /> Расходы всего: {fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
+                  </span>
+                  <span className="admin-badge admin-badge--blue">
+                    <CreditCard size={10} /> Расходы с ЮМ: {fmt(Math.round(collectionsCardExpenseTotal * 100) / 100)} ₽
                   </span>
                 </div>
               </div>
-              <div className="admin-card__pad" style={{ display: "grid", gap: 14 }}>
-                <div className="admin-muted" style={{ fontSize: 13 }}>
-                  Кнопка «Сдать кассу» находится в верхнем блоке банка рядом с остатком наличных.
-                  В смену попадают <b>только наличные платежи</b> — безналичный счёт не
-                  затрагивается. Часть <b>на карту ЮМ</b> вычитается
-                  из кассы, а часть <b>наличными</b> остаётся в кассе и автоматически
-                  переносится на следующий день.
+              <div className="admin-card__pad" style={{ display: "grid", gap: 12 }}>
+                <div className="admin-muted" style={{ fontSize: 12 }}>
+                  Наличная касса и карта ЮМ учитываются отдельно: по каждой видны поступления и расходы.
+                  Перенос наличных не является прибылью, а сохранение ничего не переводит и не списывает.
                 </div>
                 {collectionsSorted.length === 0 ? (
-                  <div className="admin-empty" style={{ padding: 16 }}>
-                    <p>Касса ещё ни разу не сдавалась</p>
+                  <div className="admin-empty" style={{ padding: 18 }}>
+                    <p>Сводок кассы пока нет</p>
                   </div>
                 ) : (
-                  <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
+                  <div className="admin-table-wrap" style={{ maxHeight: 560, overflow: "auto" }}>
                     <table className="admin-table">
                       <thead>
                         <tr>
                           <th>Дата</th>
-                          <th style={{ textAlign: "right" }}>На карту</th>
-                          <th style={{ textAlign: "right" }}>В кассе после смены</th>
-                          <th style={{ textAlign: "right" }}>Размечено</th>
+                          <th style={{ textAlign: "right" }}>Перенос</th>
+                          <th style={{ textAlign: "right" }}>Поступления за день</th>
+                          <th style={{ textAlign: "right" }}>Расходы</th>
+                          <th style={{ textAlign: "right" }}>Остаток</th>
                           <th>Комментарий</th>
-                          <th></th>
+                          <th />
                         </tr>
                       </thead>
                       <tbody>
-                        {collectionsSorted.map((c) => {
-                          const legacyCollection = c.cashAmount == null;
-                          const transfer =
-                            Math.round(
-                              (legacyCollection
-                                ? c.amount || 0
-                                : c.transferAmount || 0) * 100
-                            ) / 100;
-                          // У старых записей разбивки не было и вся сумма
-                          // уменьшала кассу — не считаем её переносом.
-                          const cashPart =
-                            Math.round(
-                              (legacyCollection ? 0 : c.cashAmount || 0) * 100
-                            ) / 100;
-                          const carriedFromPreviousDays = Math.max(
-                            0,
-                            Math.round((cashOpeningByCollectionId.get(c.id) || 0) * 100) / 100
-                          );
-                          // В кассовом приходе отделяем реальные платежи смены
-                          // от технической строки старого остатка (manual:*).
-                          const cashFromShiftPayments = Math.round(
-                            (c.items || [])
-                              .filter((item) => !String(item.paymentId || "").startsWith("manual:"))
-                              .reduce(
-                                (sum, item) =>
-                                  sum +
-                                  (item.cashAmount != null
-                                    ? Number(item.cashAmount) || 0
-                                    : item.kind === "cash"
-                                      ? Number(item.amount) || 0
-                                      : 0),
-                                0
-                              ) * 100
+                        {collectionsSorted.map((collection) => {
+                          const opening = Math.round(
+                            (cashOpeningByCollectionId.get(collection.id) || 0) * 100
                           ) / 100;
-                          const marked = (c.items || []).length;
-                          const noAccounting = (c.items || []).some(
-                            (item) => item.noAccounting
-                          );
-                          const exp = c.expenses || [];
-                          const expSum =
-                            Math.round((c.expensesAmount || 0) * 100) / 100;
-                          const income =
-                            Math.round(
-                              (c.incomeAmount != null ? c.incomeAmount : c.amount) * 100
-                            ) / 100;
-                          const isOpen = openCollections.has(c.id);
-                          const canOpen = marked > 0 || exp.length > 0;
+                          const incomeBreakdown =
+                            getCashCollectionIncomeBreakdown(collection);
+                          const income = incomeBreakdown.total;
+                          const cashIncome = incomeBreakdown.cash;
+                          const cardIncome = incomeBreakdown.card;
+                          const expenseBreakdown =
+                            getCashCollectionExpenseBreakdown(collection);
+                          const expense = expenseBreakdown.total;
+                          const cashExpense = expenseBreakdown.cash;
+                          const cardExpense = expenseBreakdown.card;
+                          const closing = collection.cashAmount != null
+                            ? Math.round(collection.cashAmount * 100) / 100
+                            : Math.round((opening + cashIncome - cashExpense) * 100) / 100;
+                          const items = collection.items || [];
+                          const expenseRows = collection.expenses || [];
+                          const noAccounting = items.some((item) => item.noAccounting);
+                          const canOpen = items.length > 0 || expenseRows.length > 0;
+                          const isOpen = openCollections.has(collection.id);
                           return (
-                            <React.Fragment key={c.id}>
-                            <tr
-                              className={canOpen ? "wh-cc-row" : undefined}
-                              onClick={
-                                canOpen
-                                  ? () =>
-                                      setOpenCollections((prev) => {
-                                        const next = new Set(prev);
-                                        if (next.has(c.id)) next.delete(c.id);
-                                        else next.add(c.id);
-                                        return next;
-                                      })
-                                  : undefined
-                              }
-                              style={canOpen ? { cursor: "pointer" } : undefined}
-                            >
-                              <td>
-                                {canOpen && (
-                                  <ChevronRight
-                                    size={13}
-                                    style={{
-                                      verticalAlign: "middle",
-                                      marginRight: 4,
-                                      transform: isOpen ? "rotate(90deg)" : "none",
-                                      transition: "transform 0.15s",
-                                    }}
-                                  />
-                                )}
-                                {fmtDate(c.date)}
-                                {noAccounting && (
-                                  <span
-                                    className="admin-badge admin-badge--amber"
-                                    style={{ marginLeft: 6 }}
-                                    title="Платежи только скрыты из списка сдачи; баланс не менялся"
-                                  >
-                                    без учёта и движения денег
-                                  </span>
-                                )}
-                                {legacyCollection && (
-                                  <span
-                                    className="admin-badge admin-badge--muted"
-                                    style={{ marginLeft: 6 }}
-                                    title="Старая запись без разбивки: вся сумма была вычтена из кассы"
-                                  >
-                                    старый учёт
-                                  </span>
-                                )}
-                                {marked > 0 && (
-                                  <span
-                                    className="admin-badge admin-badge--muted"
-                                    style={{ marginLeft: 6 }}
-                                    title="Платежей размечено в этой сдаче"
-                                  >
-                                    {marked} плат.
-                                  </span>
-                                )}
-                                {expSum > 0 && (
-                                  <span
-                                    className="admin-badge admin-badge--red"
-                                    style={{ marginLeft: 6 }}
-                                    title="Потрачено налом в этот день"
-                                  >
-                                    −{fmt(expSum)} ₽
-                                  </span>
-                                )}
-                              </td>
-                              <td style={{ textAlign: "right", fontWeight: 600, color: "var(--adm-steel)" }}>
-                                {transfer > 0 ? `${fmt(transfer)} ₽` : "—"}
-                              </td>
-                              <td style={{ textAlign: "right", fontWeight: 600 }}>
-                                {(() => {
-                                  // Пустая смена (платежей не было): показываем
-                                  // фактическую наличность на конец дня — перенос
-                                  // с прошлого дня минус траты (ЗП) и перевод на карту.
-                                  const endOfDayCash =
-                                    Math.round(
-                                      (carriedFromPreviousDays + cashPart - expSum - transfer) * 100
-                                    ) / 100;
-                                  if (cashPart > 0) return `${fmt(cashPart)} ₽`;
-                                  if (endOfDayCash > 0.009) {
-                                    return (
-                                      <>
-                                        {fmt(endOfDayCash)} ₽
-                                        <small
-                                          style={{ display: "block", marginTop: 2, color: "var(--adm-muted)", fontWeight: 500 }}
-                                        >
-                                          наличность на конец дня
-                                        </small>
-                                      </>
-                                    );
-                                  }
-                                  return "—";
-                                })()}
-                                {carriedFromPreviousDays > 0.009 && (
-                                  <small
-                                    style={{ display: "block", marginTop: 3, color: "var(--adm-muted)", fontWeight: 500 }}
-                                    title="Наличность, которая была в кассе на начало дня"
-                                  >
-                                    +{fmt(carriedFromPreviousDays)} ₽ с прошлого дня
+                            <React.Fragment key={collection.id}>
+                              <tr
+                                className={canOpen ? "wh-cc-row" : undefined}
+                                style={canOpen ? { cursor: "pointer" } : undefined}
+                                onClick={canOpen ? () => setOpenCollections((previous) => {
+                                  const next = new Set(previous);
+                                  if (next.has(collection.id)) next.delete(collection.id);
+                                  else next.add(collection.id);
+                                  return next;
+                                }) : undefined}
+                              >
+                                <td>
+                                  {canOpen && (
+                                    <ChevronRight
+                                      size={13}
+                                      style={{
+                                        verticalAlign: "middle",
+                                        marginRight: 4,
+                                        transform: isOpen ? "rotate(90deg)" : "none",
+                                      }}
+                                    />
+                                  )}
+                                  {fmtDate(collection.date)}
+                                  {noAccounting && (
+                                    <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>
+                                      старое закрытие
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ textAlign: "right", color: "var(--adm-steel)" }}>
+                                  +{fmt(opening)} ₽
+                                  <small style={{ display: "block", color: "var(--adm-muted)" }}>не прибыль</small>
+                                </td>
+                                <td style={{ textAlign: "right", color: "var(--adm-pine)", fontWeight: 700 }}>
+                                  +{fmt(income)} ₽
+                                  <small style={{ display: "block", color: "var(--adm-muted)", fontWeight: 500 }}>
+                                    нал {fmt(cashIncome)} · ЮМ {fmt(cardIncome)}
                                   </small>
-                                )}
-                                {cashFromShiftPayments > 0.009 && (
-                                  <small
-                                    style={{ display: "block", marginTop: 2, color: "var(--adm-pine)", fontWeight: 500 }}
-                                    title="Наличная часть платежей, размеченных в этой смене"
-                                  >
-                                    +{fmt(cashFromShiftPayments)} ₽ по платежам смены
+                                </td>
+                                <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 700 }}>
+                                  −{fmt(expense)} ₽
+                                  <small style={{ display: "block", color: "var(--adm-muted)", fontWeight: 500 }}>
+                                    нал {fmt(cashExpense)} · ЮМ {fmt(cardExpense)}
                                   </small>
-                                )}
-                              </td>
-                              <td style={{ textAlign: "right", fontWeight: 700, color: "var(--adm-pine)" }}>
-                                +{fmt(Math.round(c.amount * 100) / 100)} ₽
-                              </td>
-                              <td>{c.note || "—"}</td>
-                              <td style={{ textAlign: "right" }}>
-                                <button
-                                  type="button"
-                                  className="admin-btn admin-btn--ghost admin-btn--sm"
-                                  disabled={collecting}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteCollection(c.id, noAccounting);
-                                  }}
-                                >
-                                  <Trash2 size={13} /> {noAccounting ? "Вернуть в список" : "Отменить закрытие"}
-                                </button>
-                              </td>
-                            </tr>
-
-                            {/* ── Детализация смены: платежи, траты, куда ушло ── */}
-                            {isOpen && (
-                              <tr className="wh-cc-details">
-                                <td colSpan={6}>
-                                  <div className="wh-cc-grid">
-                                    {/* Платежи, вошедшие в сдачу */}
-                                    <div className="wh-cc-box">
-                                      <div className="wh-cc-box__head">
-                                        <Banknote size={13} /> Платежи за наличку
-                                        <b>+{fmt(cashFromShiftPayments)} ₽</b>
-                                      </div>
-                                      {carriedFromPreviousDays > 0.009 && (
-                                        <div className="wh-cc-line">
-                                          <span>
-                                            <History size={11} /> Наличка с прошлого дня
-                                          </span>
-                                          <span className="wh-cc-line__val">
-                                            +{fmt(carriedFromPreviousDays)} ₽
-                                          </span>
-                                        </div>
-                                      )}
-                                      {marked === 0 ? (
-                                        <div className="wh-cc-empty">
-                                          {legacyCollection
-                                            ? "Платежи не размечены (старая сдача)"
-                                            : "Наличных платежей в смене не было"}
-                                        </div>
-                                      ) : (
-                                        (c.items || []).map((it, i) => (
-                                          <div key={`${c.id}-i${i}`} className="wh-cc-line">
-                                            {/* Технические строки manual:* не являются платежом —
-                                                у них нет карточки, кнопка вела в ошибку. */}
-                                            {String(it.paymentId || "").startsWith("manual:") ? (
-                                              <span className="wh-cc-payment-link" style={{ cursor: "default" }}>
-                                                {it.number ? `ПЛ-${it.number} · ` : ""}
-                                                {it.counterparty || "Без контрагента"}
-                                              </span>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                className="wh-cc-payment-link"
-                                                onClick={() => setDetailPaymentId(it.paymentId)}
-                                              >
-                                                {it.number ? `ПЛ-${it.number} · ` : ""}
-                                                {it.counterparty || "Без контрагента"}
-                                              </button>
-                                            )}
-                                            <span className="wh-cc-line__val">
-                                              {fmt(it.amount)} ₽
-                                              {/* Разбитый платёж: показываем все части */}
-                                              {(it.cashAmount != null ||
-                                                it.cardAmount != null ||
-                                                it.expenseAmount != null) &&
-                                              (it.expenseAmount || 0) > 0 ? (
-                                                <>
-                                                  {(it.cashAmount || 0) > 0 && (
-                                                    <span className="wh-cc-dest wh-cc-dest--cash">
-                                                      <Banknote size={10} />{" "}
-                                                      {fmt(it.cashAmount || 0)} нал
-                                                    </span>
-                                                  )}
-                                                  {(it.cardAmount || 0) > 0 && (
-                                                    <span className="wh-cc-dest wh-cc-dest--card">
-                                                      <CreditCard size={10} />{" "}
-                                                      {fmt(it.cardAmount || 0)} карта
-                                                    </span>
-                                                  )}
-                                                  <span className="wh-cc-dest wh-cc-dest--exp">
-                                                    <Wallet size={10} />{" "}
-                                                    {fmt(it.expenseAmount || 0)} расход
-                                                  </span>
-                                                </>
-                                              ) : (
-                                                <span
-                                                  className={`wh-cc-dest wh-cc-dest--${
-                                                    it.kind === "cash" ? "cash" : "card"
-                                                  }`}
-                                                >
-                                                  {it.kind === "cash" ? (
-                                                    <>
-                                                      <Banknote size={10} /> наличка
-                                                    </>
-                                                  ) : (
-                                                    <>
-                                                      <CreditCard size={10} /> на карту
-                                                    </>
-                                                  )}
-                                                </span>
-                                              )}
-                                            </span>
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
-
-                                    {/* Траты налом */}
-                                    <div className="wh-cc-box">
-                                      <div className="wh-cc-box__head">
-                                        <Wallet size={13} /> Потрачено налом
-                                        <b style={{ color: "var(--adm-rust)" }}>
-                                          −{fmt(expSum)} ₽
-                                        </b>
-                                      </div>
-                                      {exp.length === 0 ? (
-                                        <div className="wh-cc-empty">Трат не было</div>
-                                      ) : (
-                                        exp.map((e, i) => (
-                                          <div key={`${c.id}-e${i}`} className="wh-cc-line">
-                                            <span>
-                                              {e.title}
-                                              {e.comment && (
-                                                <span className="wh-cc-note"> · {e.comment}</span>
-                                              )}
-                                            </span>
-                                            <span
-                                              className="wh-cc-line__val"
-                                              style={{ color: "var(--adm-rust)" }}
-                                            >
-                                              −{fmt(e.amount)} ₽
-                                            </span>
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
-
-                                    {/* Куда поступили деньги */}
-                                    <div className="wh-cc-box">
-                                      <div className="wh-cc-box__head">
-                                        Куда поступили деньги
-                                      </div>
-                                      <div className="wh-cc-line">
-                                        <span>
-                                          <CreditCard size={11} /> Перевод на карту
-                                        </span>
-                                        <span
-                                          className="wh-cc-line__val"
-                                          style={{ color: "var(--adm-steel)" }}
-                                        >
-                                          {fmt(transfer)} ₽
-                                        </span>
-                                      </div>
-                                      {carriedFromPreviousDays > 0.009 && (
-                                        <div className="wh-cc-line">
-                                          <span>
-                                            <History size={11} /> Перенесено с прошлого дня
-                                          </span>
-                                          <span className="wh-cc-line__val">
-                                            {fmt(carriedFromPreviousDays)} ₽
-                                          </span>
-                                        </div>
-                                      )}
-                                      <div className="wh-cc-line">
-                                        <span>
-                                          <Banknote size={11} /> Осталось после смены
-                                        </span>
-                                        <span className="wh-cc-line__val">
-                                          {fmt(cashPart)} ₽
-                                        </span>
-                                      </div>
-                                      <div className="wh-cc-total">
-                                        В наличных: {carriedFromPreviousDays > 0.009 && (
-                                          <>+{fmt(carriedFromPreviousDays)} ₽ с прошлого дня, </>
-                                        )}
-                                        +{fmt(cashFromShiftPayments)} ₽ по платежам смены.
-                                        {expSum > 0 && <> Траты наличными: −{fmt(expSum)} ₽.</>}
-                                        {" "}<b>После смены: {fmt(cashPart)} ₽</b>
-                                      </div>
-                                    </div>
-                                  </div>
+                                </td>
+                                <td style={{ textAlign: "right", fontWeight: 800 }}>{fmt(closing)} ₽</td>
+                                <td>{collection.note || "—"}</td>
+                                <td onClick={(event) => event.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                                    disabled={collecting}
+                                    onClick={() => handleDeleteCollection(collection.id, noAccounting)}
+                                  >
+                                    <RotateCcw size={12} /> Отменить
+                                  </button>
                                 </td>
                               </tr>
-                            )}
+                              {isOpen && (
+                                <tr className="wh-cc-detail-row">
+                                  <td colSpan={7}>
+                                    <div className="wh-cc-detail-grid">
+                                      <div className="wh-cc-box">
+                                        <div className="wh-cc-box__head">
+                                          <ArrowDownLeft size={13} /> Поступления за день
+                                          <b style={{ color: "var(--adm-pine)" }}>+{fmt(income)} ₽</b>
+                                        </div>
+                                        {items.length === 0 ? (
+                                          <div className="wh-cc-empty">Поступлений не было</div>
+                                        ) : items.map((item) => {
+                                          const itemAmount = Number(item.amount) || 0;
+                                          const itemCard = Math.max(
+                                            0,
+                                            Number(
+                                              item.cardAmount != null
+                                                ? item.cardAmount
+                                                : item.kind === "card"
+                                                  ? itemAmount
+                                                  : 0
+                                            ) || 0
+                                          );
+                                          const hasCard = itemCard > 0.009;
+                                          const hasCash = itemAmount - itemCard > 0.009;
+                                          return (
+                                            <div key={`${collection.id}-${item.paymentId}`} className="wh-cc-line">
+                                              <span>
+                                                ПЛ-{item.number || "—"} · {item.counterparty || ""}
+                                                <em className={`cashc-kind cashc-kind--${hasCard && !hasCash ? "card" : "cash"}`} style={{ marginLeft: 6 }}>
+                                                  {hasCard && hasCash ? "Нал + ЮМ" : hasCard ? "Карта ЮМ" : "Наличные"}
+                                                </em>
+                                              </span>
+                                              <span className="wh-cc-line__val">+{fmt(itemAmount)} ₽</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      <div className="wh-cc-box">
+                                        <div className="wh-cc-box__head">
+                                          <ArrowUpRight size={13} /> Расходы за день
+                                          <b style={{ color: "var(--adm-rust)" }}>−{fmt(expense)} ₽</b>
+                                        </div>
+                                        {expenseRows.length === 0 ? (
+                                          <div className="wh-cc-empty">Расходов не было</div>
+                                        ) : expenseRows.map((row, index) => {
+                                          const isCardExpense = row.sourceKind === "card";
+                                          return (
+                                            <div key={`${collection.id}-expense-${index}`} className="wh-cc-line">
+                                              <span>
+                                                {row.title}{row.comment ? ` · ${row.comment}` : ""}
+                                                <em className={`cashc-kind cashc-kind--${isCardExpense ? "card" : "cash"}`} style={{ marginLeft: 6 }}>
+                                                  {isCardExpense ? "Карта ЮМ" : "Наличные"}
+                                                </em>
+                                              </span>
+                                              <span className="wh-cc-line__val" style={{ color: isCardExpense ? "var(--adm-steel)" : "var(--adm-rust)" }}>
+                                                −{fmt(row.amount)} ₽
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      <div className="wh-cc-box">
+                                        <div className="wh-cc-box__head">Разбивка двух касс</div>
+                                        <div className="wh-cc-line"><span><History size={11} /> Перенос наличных</span><b>+{fmt(opening)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><Banknote size={11} /> Поступило наличными</span><b>+{fmt(cashIncome)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><ArrowUpRight size={11} /> Расходы наличными</span><b>−{fmt(cashExpense)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><CreditCard size={11} /> Поступило на ЮМ</span><b style={{ color: "var(--adm-steel)" }}>+{fmt(cardIncome)} ₽</b></div>
+                                        <div className="wh-cc-line"><span><CreditCard size={11} /> Расходы с ЮМ</span><b style={{ color: "var(--adm-steel)" }}>−{fmt(cardExpense)} ₽</b></div>
+                                        <div className="wh-cc-total">Остаток наличных: <b>{fmt(closing)} ₽</b></div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
                             </React.Fragment>
                           );
                         })}
                         <tr className="wh-cashcollect__total">
-                          <td style={{ fontWeight: 800 }}>Итого по сменам</td>
-                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-steel)" }}>
-                            {fmt(collectedBreakdown.transfer)} ₽
+                          <td style={{ fontWeight: 800 }}>Итого за период</td>
+                          <td />
+                          <td style={{ textAlign: "right", color: "var(--adm-pine)", fontWeight: 800 }}>
+                            +{fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
+                          </td>
+                          <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 800 }}>
+                            −{fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
                           </td>
                           <td style={{ textAlign: "right", fontWeight: 800 }}>
-                            {fmt(collectedBreakdown.cash)} ₽
-                          </td>
-                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--adm-pine)" }}>
-                            +{fmt(Math.round(collectionsTotal * 100) / 100)} ₽
+                            {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
                           </td>
                           <td colSpan={2} />
                         </tr>
@@ -4307,109 +3535,57 @@ export function WarehouseManager({
             </>
           ) : (
             <>
-          {bankSub === "history" &&
-            (collectionsSorted.length > 0 || legacyCashClosures.length > 0) && (
-              <div className="admin-card bank-cash-postings">
-                <div className="admin-card__head">
-                  <div>
-                    <h3 className="admin-card__title">
-                      <Banknote size={15} style={{ verticalAlign: "middle", marginRight: 7 }} />
-                      Проведённые сдачи кассы
-                    </h3>
-                    <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
-                      Отдельные документы кассы — не банковские платежи
-                    </div>
+          {bankSub === "history" && legacyCashClosures.length > 0 && (
+            <div className="admin-card bank-cash-postings">
+              <div className="admin-card__head">
+                <div>
+                  <h3 className="admin-card__title">
+                    <Archive size={15} style={{ verticalAlign: "middle", marginRight: 7 }} />
+                    Старые проведения кассы
+                  </h3>
+                  <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
+                    Только платежи, закрытые до появления фактических сводок
                   </div>
-                  <span className="admin-badge admin-badge--muted">
-                    {collectionsSorted.length + legacyCashClosures.length} док.
-                  </span>
                 </div>
-                <div className="bank-cash-postings__list">
-                  {legacyCashClosures.map((closure) => (
-                    <div key={closure.id} className="bank-cash-posting bank-cash-posting--legacy">
-                      <span className="bank-cash-posting__icon"><Archive size={15} /></span>
-                      <div className="bank-cash-posting__main">
-                        <div className="bank-cash-posting__top">
-                          <strong>Сдача кассы без перевода · старое проведение</strong>
-                          <span className="admin-badge admin-badge--green">проведено</span>
-                          <span className="admin-badge admin-badge--amber">вне баланса</span>
-                        </div>
-                        <div className="bank-cash-posting__meta">
-                          <span>{fmtDateTime(closure.date)}</span>
-                          <span>{closure.paymentIds.length} платежей</span>
-                          <span>ПЛ-{closure.numbers.join(", ПЛ-")}</span>
-                        </div>
-                      </div>
-                      <strong className="bank-cash-posting__amount">{fmt(closure.amount)} ₽</strong>
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--ghost admin-btn--sm"
-                        disabled={collecting}
-                        onClick={() =>
-                          handleRestoreLegacyClosure(
-                            closure.paymentIds,
-                            closure.amount
-                          )
-                        }
-                      >
-                        <RotateCcw size={12} /> Отменить проведение
-                      </button>
-                    </div>
-                  ))}
-                  {collectionsSorted.map((collection) => {
-                    const noAccounting = (collection.items || []).some(
-                      (item) => item.noAccounting
-                    );
-                    const documentAmount = noAccounting
-                      ? (collection.items || []).reduce(
-                          (sum, item) => sum + (item.amount || 0),
-                          0
-                        )
-                      : collection.amount;
-                    return (
-                      <div key={collection.id} className="bank-cash-posting">
-                        <span className="bank-cash-posting__icon"><Banknote size={15} /></span>
-                        <div className="bank-cash-posting__main">
-                          <div className="bank-cash-posting__top">
-                            <strong>
-                              {noAccounting
-                                ? "Закрытие старых платежей без движения денег"
-                                : "Сдача кассы"}
-                            </strong>
-                            <span className="admin-badge admin-badge--green">проведено</span>
-                            {noAccounting && (
-                              <span className="admin-badge admin-badge--blue">без учёта</span>
-                            )}
-                          </div>
-                          <div className="bank-cash-posting__meta">
-                            <span>{fmtDate(collection.date)}</span>
-                            <span>{(collection.items || []).length} платежей</span>
-                            {!noAccounting && (
-                              <>
-                                <span>на карту {fmt(collection.transferAmount || 0)} ₽</span>
-                                <span>в кассе {fmt(collection.cashAmount || 0)} ₽</span>
-                              </>
-                            )}
-                            {collection.note && <span>{collection.note}</span>}
-                          </div>
-                        </div>
-                        <strong className="bank-cash-posting__amount">{fmt(documentAmount)} ₽</strong>
-                        <button
-                          type="button"
-                          className="admin-btn admin-btn--ghost admin-btn--sm"
-                          disabled={collecting}
-                          onClick={() =>
-                            handleDeleteCollection(collection.id, noAccounting)
-                          }
-                        >
-                          <RotateCcw size={12} /> Отменить проведение
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <span className="admin-badge admin-badge--muted">
+                  {legacyCashClosures.length} док.
+                </span>
               </div>
-            )}
+              <div className="bank-cash-postings__list">
+                {legacyCashClosures.map((closure) => (
+                  <div key={closure.id} className="bank-cash-posting bank-cash-posting--legacy">
+                    <span className="bank-cash-posting__icon"><Archive size={15} /></span>
+                    <div className="bank-cash-posting__main">
+                      <div className="bank-cash-posting__top">
+                        <strong>Сдача кассы без перевода · старое проведение</strong>
+                        <span className="admin-badge admin-badge--green">проведено</span>
+                        <span className="admin-badge admin-badge--amber">вне баланса</span>
+                      </div>
+                      <div className="bank-cash-posting__meta">
+                        <span>{fmtDateTime(closure.date)}</span>
+                        <span>{closure.paymentIds.length} платежей</span>
+                        <span>ПЛ-{closure.numbers.join(", ПЛ-")}</span>
+                      </div>
+                    </div>
+                    <strong className="bank-cash-posting__amount">{fmt(closure.amount)} ₽</strong>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      disabled={collecting}
+                      onClick={() =>
+                        handleRestoreLegacyClosure(
+                          closure.paymentIds,
+                          closure.amount
+                        )
+                      }
+                    >
+                      <RotateCcw size={12} /> Отменить проведение
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="bank-toolbar">
             <div className="bank-toolbar__search" style={{ position: "relative" }}>
               <Search

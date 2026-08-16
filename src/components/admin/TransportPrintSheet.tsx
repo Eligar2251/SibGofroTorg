@@ -82,7 +82,13 @@ export function TransportPrintSheet({
   const companyName = SITE_NAME;
   const officePhone = data.companyPhone || SITE_PHONE;
   const officeAddress = data.companyAddress || SITE_ADDRESS;
-  const lastIdx = data.items.length - 1;
+  const printableItems = data.items
+    .map((deal) => ({
+      ...deal,
+      items: deal.items.filter((item) => Number(item.transportQty) > 0),
+    }))
+    .filter((deal) => deal.items.length > 0);
+  const lastIdx = printableItems.length - 1;
 
   return (
     <div className="deliv-print-root">
@@ -112,7 +118,7 @@ export function TransportPrintSheet({
       )}
 
       <div className="transport-sheet">
-        {data.items.map((deal, idx) => {
+        {printableItems.map((deal, idx) => {
           const totalQty = deal.items.reduce(
             (s, i) => s + (Number(i.transportQty) || 0),
             0

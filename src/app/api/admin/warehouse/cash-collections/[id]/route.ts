@@ -24,7 +24,7 @@ export async function DELETE(
       "delete",
       "cash-collection",
       id,
-      `Отменена сдача кассы #${id.slice(0, 8)}`
+      `Удалена сводка кассы #${id.slice(0, 8)}`
     );
 
     return NextResponse.json({ success: true });

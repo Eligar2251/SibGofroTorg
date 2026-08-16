@@ -37,24 +37,40 @@ export function CollapsibleSection({
   sideContent,
 }: CollapsibleSectionProps) {
   const storageKey = `dash_section_${id}`;
-  const [open, setOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return defaultOpen;
-    try {
-      const v = localStorage.getItem(storageKey);
-      if (v === "0") return false;
-      if (v === "1") return true;
-    } catch {}
-    return defaultOpen;
-  });
+  // Первый клиентский рендер обязан совпадать с SSR. localStorage читаем
+  // только после гидрации — иначе сохранённое «скрыто» даёт на клиенте
+  // другую разметку, чем defaultOpen на сервере.
+  const [open, setOpen] = useState(defaultOpen);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, open ? "1" : "0");
-    } catch {}
-  }, [open, storageKey]);
+    const readStoredState = () => {
+      let next = defaultOpen;
+      try {
+        const value = localStorage.getItem(storageKey);
+        if (value === "0") next = false;
+        if (value === "1") next = true;
+      } catch {}
+      setOpen(next);
+    };
+
+    readStoredState();
+    window.addEventListener("storage", readStoredState);
+    window.addEventListener("dash-visibility-changed", readStoredState);
+    return () => {
+      window.removeEventListener("storage", readStoredState);
+      window.removeEventListener("dash-visibility-changed", readStoredState);
+    };
+  }, [defaultOpen, storageKey]);
 
   function toggleOpen() {
-    setOpen((v) => !v);
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem(storageKey, next ? "1" : "0");
+    } catch {}
+    // Обновляем счётчик и checkbox панели в этой же вкладке. Нативный
+    // storage-event браузер отправляет только другим вкладкам.
+    window.dispatchEvent(new CustomEvent("dash-visibility-changed"));
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -125,16 +141,11 @@ const VISIBILITY_SECTIONS = [
 
 export function DashboardVisibilityToggle() {
   const sections = VISIBILITY_SECTIONS;
+  // Как и сами секции, начинаем с детерминированного SSR-состояния.
+  // Сохранённые настройки применятся эффектом сразу после гидрации.
   const [visible, setVisible] = useState<Record<string, boolean>>(() => {
     const out: Record<string, boolean> = {};
-    for (const s of sections) out[s.id] = true;
-    if (typeof window === "undefined") return out;
-    try {
-      for (const s of sections) {
-        const v = localStorage.getItem(`dash_section_${s.id}`);
-        out[s.id] = v === "0" ? false : true;
-      }
-    } catch {}
+    for (const section of sections) out[section.id] = true;
     return out;
   });
 
@@ -145,16 +156,14 @@ export function DashboardVisibilityToggle() {
     for (const s of sections) {
       try { localStorage.setItem(`dash_section_${s.id}`, v ? "1" : "0"); } catch {}
     }
-    // Сообщить всем раскрывашкам, что надо перечитать localStorage
-    window.dispatchEvent(new Event("storage"));
-    // не все слушают storage — вышлем кастомное событие
+    // Нативный storage-event приходит только в другие вкладки, поэтому
+    // текущую вкладку синхронизируем отдельным событием.
     window.dispatchEvent(new CustomEvent("dash-visibility-changed"));
   }
   function toggle(id: string) {
     const v = !visible[id];
     setVisible((p) => ({ ...p, [id]: v }));
     try { localStorage.setItem(`dash_section_${id}`, v ? "1" : "0"); } catch {}
-    window.dispatchEvent(new Event("storage"));
     window.dispatchEvent(new CustomEvent("dash-visibility-changed"));
   }
   // синхронизация с изменениями из других компонентов
@@ -168,6 +177,7 @@ export function DashboardVisibilityToggle() {
       }
       setVisible(out);
     };
+    refresh();
     window.addEventListener("storage", refresh);
     window.addEventListener("dash-visibility-changed", refresh as EventListener);
     return () => {

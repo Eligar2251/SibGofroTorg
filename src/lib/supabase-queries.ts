@@ -38,6 +38,10 @@ import {
   aggregateVariants as aggregateVariantsPure,
   getCachedVariantsMap,
 } from "./variants";
+import {
+  calculateBoxVolumeLiters,
+  normalizeProductLabelColor,
+} from "./product-fields";
 
 export const FEATURED_PRODUCTS_ORDER_SETTING_KEY = "featured_products_order";
 
@@ -170,6 +174,20 @@ function isMissingPurchasePriceColumnError(err: any): boolean {
   );
 }
 
+function isMissingProductLabelColorColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("promo_label_color") && !msg.includes("promo_label_text_color")) {
+    return false;
+  }
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 function mapProductRow(row: any): FirestoreProduct {
   const images = normalizeProductImages(row.images);
   return {
@@ -191,7 +209,12 @@ function mapProductRow(row: any): FirestoreProduct {
     weight: row.weight != null ? Number(row.weight) : null,
     material: row.material || null,
     packQty: row.pack_qty != null ? Number(row.pack_qty) : null,
-    volume: row.volume != null ? Number(row.volume) : null,
+    volume: calculateBoxVolumeLiters(
+      row.dimension_length,
+      row.dimension_width,
+      row.dimension_height,
+      row.dimension_unit,
+    ),
     note: row.note || null,
     inStock: row.in_stock ?? true,
     stockQty: row.stock_qty != null ? Number(row.stock_qty) : null,
@@ -202,6 +225,8 @@ function mapProductRow(row: any): FirestoreProduct {
     barcode: row.barcode || null,
     isPromo: row.is_promo ?? false,
     promoLabel: row.promo_label || null,
+    promoLabelColor: normalizeProductLabelColor(row.promo_label_color),
+    promoLabelTextColor: normalizeProductLabelColor(row.promo_label_text_color),
     madeToOrder: row.made_to_order ?? false,
     madeToOrderMinQty: row.made_to_order_min_qty != null ? Number(row.made_to_order_min_qty) : null,
     isCuttable: row.is_cuttable ?? false,
@@ -566,6 +591,39 @@ export async function getProducts(opts: {
   return products;
 }
 
+/**
+ * Облегчённая выборка для массового редактора: без описаний, штрихкодов,
+ * фотографий и агрегации вариантов. Фото выбранных товаров загружаются
+ * отдельно только на соответствующем шаге.
+ */
+export async function getProductsForBulkEditor(): Promise<FirestoreProduct[]> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("products")
+    .select([
+      "id",
+      "name",
+      "slug",
+      "sku",
+      "category_id",
+      "price",
+      "price_wholesale",
+      "min_wholesale_qty",
+      "material",
+      "pack_qty",
+      "note",
+      "stock_qty",
+      "in_stock",
+      "is_visible",
+      "is_promo",
+      "is_featured",
+      "promo_label",
+    ].join(","))
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapProductRow);
+}
+
 export async function getProductById(id: string): Promise<FirestoreProduct | null> {
   const products = await getCachedProducts();
   return products.find((p) => p.id === id) || null;
@@ -640,6 +698,12 @@ export async function getRelatedProducts(
 export async function createProduct(data: Record<string, any>): Promise<{ id: string }> {
   const db = getAdminDb();
   const slug = data.slug || slugify(data.name || "product");
+  const calculatedVolume = calculateBoxVolumeLiters(
+    data.dimensionLength,
+    data.dimensionWidth,
+    data.dimensionHeight,
+    data.dimensionUnit,
+  );
   const payload: Record<string, any> = {
     name: data.name || "",
     slug,
@@ -657,13 +721,15 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     weight: data.weight ?? null,
     material: data.material || null,
     pack_qty: data.packQty ?? null,
-    volume: data.volume ?? null,
+    volume: calculatedVolume,
     note: data.note || null,
     in_stock: data.inStock ?? true,
     stock_qty: data.stockQty ?? null,
     stock_warn_qty: data.stockWarnQty ?? null,
     is_promo: data.isPromo ?? false,
     promo_label: data.promoLabel || null,
+    promo_label_color: normalizeProductLabelColor(data.promoLabelColor),
+    promo_label_text_color: normalizeProductLabelColor(data.promoLabelTextColor),
     made_to_order: data.madeToOrder ?? false,
     made_to_order_min_qty: data.madeToOrderMinQty ?? null,
     is_cuttable: data.isCuttable ?? false,
@@ -720,6 +786,17 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
       if (retry4.error) throw retry4.error;
       result = retry4.data;
       insertErr = null;
+    } else if (isMissingProductLabelColorColumnError(first.error)) {
+      console.warn("[products] Колонок цветов метки ещё нет — запись без цветов");
+      const {
+        promo_label_color: _labelColor,
+        promo_label_text_color: _labelTextColor,
+        ...payloadNoLabelColors
+      } = payload;
+      const retry5 = await db.from("products").insert(payloadNoLabelColors).select("id").single();
+      if (retry5.error) throw retry5.error;
+      result = retry5.data;
+      insertErr = null;
     }
   } else {
     result = first.data;
@@ -756,7 +833,9 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     dimensionUnit: "dimension_unit", weight: "weight", material: "material",
     packQty: "pack_qty", volume: "volume", note: "note", inStock: "in_stock",
     stockQty: "stock_qty", stockWarnQty: "stock_warn_qty", isPromo: "is_promo",
-    promoLabel: "promo_label", madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
+    promoLabel: "promo_label", promoLabelColor: "promo_label_color",
+    promoLabelTextColor: "promo_label_text_color",
+    madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
     isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
     discountType: "discount_type", discountValue: "discount_value",
     discountBadge: "discount_badge", isVisible: "is_visible",
@@ -769,6 +848,25 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   };
   for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
     if (data[jsKey] !== undefined) payload[dbKey] = data[jsKey];
+  }
+
+  if (
+    "dimensionLength" in data &&
+    "dimensionWidth" in data &&
+    "dimensionHeight" in data
+  ) {
+    payload.volume = calculateBoxVolumeLiters(
+      data.dimensionLength,
+      data.dimensionWidth,
+      data.dimensionHeight,
+      data.dimensionUnit,
+    );
+  }
+  if (data.promoLabelColor !== undefined) {
+    payload.promo_label_color = normalizeProductLabelColor(data.promoLabelColor);
+  }
+  if (data.promoLabelTextColor !== undefined) {
+    payload.promo_label_text_color = normalizeProductLabelColor(data.promoLabelTextColor);
   }
 
   // ── Фото: нормализация + неубиваемое главное фото ──
@@ -840,6 +938,15 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     console.warn("[products] Колонки cuttable нет — сохранение без неё");
     const { is_cuttable: _cut, cut_meters_per_roll: _cmpr, cut_price_per_meter: _cppm, cut_unit_name: _cun, ...payloadNoCut } = payload;
     ({ error } = await db.from("products").update(payloadNoCut).eq("id", id));
+  }
+  if (error && isMissingProductLabelColorColumnError(error)) {
+    console.warn("[products] Колонок цветов метки ещё нет — сохранение без цветов");
+    const {
+      promo_label_color: _labelColor,
+      promo_label_text_color: _labelTextColor,
+      ...payloadNoLabelColors
+    } = payload;
+    ({ error } = await db.from("products").update(payloadNoLabelColors).eq("id", id));
   }
   if (error) throw error;
   invalidateProductsCache();

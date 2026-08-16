@@ -65,7 +65,8 @@ const entityLabels: Record<string, string> = {
   counterparty: "Контрагент",
   salary: "Зарплата",
   "admin-user": "Пользователь админки",
-  "cash-collection": "Сдача кассы",
+  "cash-collection": "Сводка кассы",
+  "purchase-plan": "План закупки",
   "client-request": "Заявка клиента",
 };
 

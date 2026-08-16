@@ -20,8 +20,11 @@ export function StockQtyEditor({
 
   async function save() {
     if (value === "") return;
-    // Для резаных товаров (плёнка) разрешаем дробные рулоны: 5.9 = 5 рул + 90м
-    const quantity = Math.max(0, Math.round((Number(value) || 0) * 1000) / 1000);
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    // Для резаных товаров разрешаем дробные рулоны, а минус сохраняем как
+    // учётный долг — количество, которое нужно перекрыть поставкой.
+    const quantity = Math.round(parsed * 1000) / 1000;
     setSaving(true);
     setSaved(false);
     try {
@@ -46,7 +49,6 @@ export function StockQtyEditor({
     <div className="stock-inline-editor">
       <input
         type="number"
-        min={0}
         step={0.001}
         value={value}
         onChange={(event) => setValue(event.target.value)}

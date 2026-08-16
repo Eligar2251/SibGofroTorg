@@ -22,6 +22,8 @@ import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
 import { getAdminDb } from "@/lib/supabase";
 import { getSettings } from "@/lib/supabase-queries";
+import { getSupplyPlans } from "@/lib/supply-plans";
+import { getPurchasePlans } from "@/lib/purchase-plans";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import type {
   CounterpartyDocument,
@@ -96,21 +98,26 @@ export default async function AdminWarehousePage({
     deal?: string;
     payment?: string;
     transport?: string;
+    planProduct?: string;
+    planSupplier?: string;
   }>;
 }) {
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
   const sp = await searchParams;
-  const initialTab: any = sp.tab || "stock";
+  // Старые ссылки `tab=suppliers` теперь ведут в отдельное планирование.
+  const initialTab: any = sp.tab === "suppliers" ? "plans" : sp.tab || "stock";
   const initialSub: any = sp.sub || "stock";
 
   // Экономия квоты Firestore: вкладки учёта грузятся лениво по URL.
   // Раньше при открытии «Склад» читались сразу поставки, заказы, банк,
   // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
   // только необходимые ей коллекции.
-  const needStock = ["stock", "deals", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
-  const needReceipts = ["supplies", "receipts", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
+  const needStock = ["stock", "deals", "plans", "purchases", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
+  // На вкладке заказов поступления нужны для пометки «в поставке»: связь
+  // хранится на приходном ордере в linked_deal_ids.
+  const needReceipts = ["supplies", "receipts", "deals", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
   // Ручные продажи реестра «Товар на реализации» (лёгкий запрос).
   const needConsignmentManual = needReceipts;
   // "receipts" обязателен: на вкладке «Поставки» работает реестр
@@ -126,6 +133,7 @@ export default async function AdminWarehousePage({
     !!sp.receipt;
   const needEmployees = initialTab === "salaries" || initialTab === "deliveries";
   const needSalaries = initialTab === "salaries" || initialTab === "bank" || initialTab === "reports";
+  // Простые планы поставок больше не тянут тяжёлые прайсы/контрагентов.
   const needCounterparties = ["counterparties", "supplies", "deals", "receipts", "bank"].includes(initialTab);
   const needClients = initialTab === "counterparties";
   const needTransports =
@@ -145,6 +153,8 @@ export default async function AdminWarehousePage({
     transportsData,
     cashCollections,
     consignmentManual,
+    supplyPlans,
+    purchasePlans,
   ] = await Promise.all([
     needStock ? getWarehouseStock() : Promise.resolve([]),
     needReceipts ? getReceipts() : Promise.resolve([]),
@@ -152,7 +162,7 @@ export default async function AdminWarehousePage({
     needPayments ? getPayments() : Promise.resolve([]),
     needEmployees ? getEmployees() : Promise.resolve([]),
     needSalaries ? getSalaries() : Promise.resolve([]),
-    needCounterparties ? getCounterparties({ includeSupplierPrices: initialTab === "suppliers" || initialTab === "receipts" || initialTab === "deals" || initialTab === "bank" }) : Promise.resolve([]),
+    needCounterparties ? getCounterparties({ includeSupplierPrices: initialTab === "receipts" || initialTab === "deals" || initialTab === "bank" }) : Promise.resolve([]),
     sp.receipt ? getReceiptById(sp.receipt) : Promise.resolve(null),
     needClients ? getClientsForWarehouse() : Promise.resolve([]),
     needTransports
@@ -160,6 +170,8 @@ export default async function AdminWarehousePage({
       : Promise.resolve([]),
     needCashCollections ? getCashCollections() : Promise.resolve([]),
     needConsignmentManual ? getConsignmentManualSales() : Promise.resolve([]),
+    initialTab === "plans" ? getSupplyPlans() : Promise.resolve([]),
+    initialTab === "purchases" ? getPurchasePlans() : Promise.resolve([]),
   ]);
 
   const receipts =
@@ -285,7 +297,10 @@ export default async function AdminWarehousePage({
 
   const drivers = employees.map((e) => ({ id: e.id, name: e.name, phone: e.phone ?? null }));
 
-  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  const needSettings = ["deals", "deliveries", "bank", "reports", "counterparties"].includes(initialTab);
+  const settings = needSettings
+    ? await getSettings().catch(() => ({} as Record<string, string>))
+    : ({} as Record<string, string>);
   const deliveryPriceRaw = Number(settings.delivery_price);
   const freeThresholdRaw = Number(settings.free_delivery_threshold);
   const deliveryPrice =
@@ -328,6 +343,9 @@ export default async function AdminWarehousePage({
       drivers={drivers}
       cashCollections={cashCollections}
       consignmentManual={consignmentManual}
+      supplyPlans={supplyPlans}
+      purchasePlans={purchasePlans}
+      initialPlanProductId={sp.planProduct || null}
       companyPhone={settings.phone || undefined}
       companyAddress={settings.address || undefined}
       tierDiscounts={tierDiscounts}
