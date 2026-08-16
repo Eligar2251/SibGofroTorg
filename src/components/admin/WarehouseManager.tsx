@@ -2692,7 +2692,7 @@ export function WarehouseManager({
               </div>
 
               {/* Касса и Карта ЮМ — на одной линии, по соседству, это по факту касса — кнопки на одном уровне */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, alignItems: "stretch" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, alignItems: "stretch" }} className="bank-hero__accounts-grid">
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   <div>
                     <div className="bank-hero__label">
@@ -2749,7 +2749,7 @@ export function WarehouseManager({
                   </div>
                 </div>
 
-                <div style={{ borderLeft: "1px dashed rgba(255,255,255,0.12)", paddingLeft: 16, display: "flex", flexDirection: "column" }}>
+                <div style={{ borderLeft: "1px dashed rgba(255,255,255,0.12)", paddingLeft: 16, display: "flex", flexDirection: "column" }} className="bank-hero__ym-card">
                   <div>
                     <div className="bank-hero__label">
                       <CreditCard size={14} /> Карта ЮМ
@@ -2830,7 +2830,7 @@ export function WarehouseManager({
               </div>
 
               <div className="bank-hero__stat" style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', paddingTop: 12, marginTop: 8, color: '#fff', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
-                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', width: '100%' }}>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', width: '100%' }} className="bank-hero__forecast-grid">
                   <div style={{ flex: '1 1 120px' }}>
                     <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: 0.3 }}>НАЛИЧКА</div>
                     <div style={{ fontSize: 14, marginTop: 2 }}>Касса: <b>{fmt(bankSummary.cashBalance)} ₽</b></div>

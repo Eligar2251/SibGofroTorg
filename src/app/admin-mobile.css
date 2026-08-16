@@ -1151,3 +1151,2161 @@
     transition: none;
   }
 }
+
+/* =========================================================
+   МОБИЛЬНЫЙ АДАПТИВ — ДОПОЛНИТЕЛЬНЫЙ СЛОЙ (v2)
+   Полный пересмотр карточек, таблиц, банка и модалок.
+   Всё внутри @media (max-width: 768px) и @media (max-width: 480px).
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+  /* ── Глобальные ограничения — ничего не вылезает за экран ── */
+  [data-admin="true"] * {
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] {
+    overflow-x: hidden;
+  }
+
+  [data-admin="true"] .admin-shell,
+  [data-admin="true"] .admin-content,
+  [data-admin="true"] .admin-main {
+    overflow-x: hidden !important;
+    overflow-x: clip !important;
+  }
+
+  /* ── Банк: полный пересмотр мобильной сетки ── */
+
+  /* bank-hero: все колонки в одну, без border-right */
+  [data-admin="true"] .bank-hero {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  [data-admin="true"] .bank-hero > .bank-hero__main {
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+    padding-right: 0 !important;
+    padding-bottom: 14px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* Баланс */
+  [data-admin="true"] .bank-hero__value {
+    font-size: clamp(22px, 8vw, 36px) !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.1 !important;
+  }
+
+  /* Статистика справа: в одну колонку */
+  [data-admin="true"] .bank-hero__stats {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  [data-admin="true"] .bank-hero__stat {
+    flex-wrap: wrap !important;
+    white-space: normal !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .bank-hero__stat strong {
+    font-size: 16px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.2 !important;
+  }
+
+  [data-admin="true"] .bank-hero__stat span {
+    white-space: normal !important;
+  }
+
+  [data-admin="true"] .bank-hero__note {
+    font-size: 10px !important;
+    line-height: 1.4 !important;
+    word-break: break-word !important;
+  }
+
+  /* bank-hero inline grid: override repeat(auto-fit, minmax(200px, 1fr)) */
+  [data-admin="true"] .bank-hero > .bank-hero__main > div[style],
+  [data-admin="true"] .bank-hero [style*="gridTemplateColumns"],
+  [data-admin="true"] .bank-hero [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .bank-hero [style*="display: grid"],
+  [data-admin="true"] .bank-hero [style*="display:grid"] {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* bank-hero YM card: on mobile, remove left border and add top border */
+  [data-admin="true"] .bank-hero__ym-card {
+    border-left: none !important;
+    padding-left: 0 !important;
+    border-top: 1px dashed rgba(255,255,255,0.12) !important;
+    padding-top: 12px !important;
+  }
+
+  /* bank-hero forecast grid: compact on mobile */
+  [data-admin="true"] .bank-hero__forecast-grid {
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+  }
+
+  [data-admin="true"] .bank-hero__forecast-grid > div {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+    border-left: none !important;
+    border-top: 1px dashed rgba(255,255,255,0.12) !important;
+    padding-left: 0 !important;
+    padding-top: 8px !important;
+  }
+
+  [data-admin="true"] .bank-hero__forecast-grid > div[style*="fontSize: 10"],
+  [data-admin="true"] .bank-hero__forecast-grid > div[style*="fontSize: 10px"] {
+    font-size: 9px !important;
+  }
+
+  /* bank-hero accounts grid (cash + ym) */
+  [data-admin="true"] .bank-hero__accounts-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* bank-hero cash/ym card sections */
+  [data-admin="true"] .bank-hero > .bank-hero__main > div[style*="gridTemplateColumns"],
+  [data-admin="true"] .bank-hero > .bank-hero__main > div[style*="display: grid"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Убираем border-left у карточки ЮМ */
+  [data-admin="true"] .bank-hero > .bank-hero__main > div[style*="borderLeft"],
+  [data-admin="true"] .bank-hero > .bank-hero__main > div[style*="border-left"] {
+    border-left: none !important;
+    padding-left: 0 !important;
+    border-top: 1px dashed rgba(255,255,255,0.12);
+    padding-top: 12px;
+  }
+
+  /* Cash carryover hero: wrap на мобильном */
+  [data-admin="true"] .cash-carryover-hero {
+    flex-wrap: wrap !important;
+    overflow-x: visible !important;
+    white-space: normal !important;
+    gap: 4px 8px !important;
+  }
+
+  [data-admin="true"] .cash-carryover-hero span {
+    flex: 0 1 auto !important;
+  }
+
+  /* bank-hero summary/forecast sections */
+  [data-admin="true"] .bank-hero > .bank-hero__main > div[style*="flexWrap"] {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  [data-admin="true"] .bank-hero > .bank-hero__main > div[style*="display: flex"][style*="flexWrap: wrap"][style*="width: '100%'"] {
+    gap: 4px !important;
+    font-size: 10px !important;
+  }
+
+  /* ── Bank Pay cards: full-width on mobile ── */
+  [data-admin="true"] .bank-pay {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: 12px !important;
+    border-radius: 10px !important;
+  }
+
+  [data-admin="true"] .bank-pay__icon {
+    width: 30px !important;
+    height: 30px !important;
+    flex-shrink: 0 !important;
+  }
+
+  [data-admin="true"] .bank-pay__main {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  [data-admin="true"] .bank-pay__row1 {
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+    white-space: normal !important;
+  }
+
+  [data-admin="true"] .bank-pay__counterparty {
+    font-size: 13px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    width: 100% !important;
+  }
+
+  [data-admin="true"] .bank-pay__num,
+  [data-admin="true"] .bank-pay__wait,
+  [data-admin="true"] .bank-pay__doc {
+    font-size: 9px !important;
+    padding: 2px 5px !important;
+  }
+
+  [data-admin="true"] .bank-pay__row2 {
+    flex-wrap: wrap !important;
+    gap: 4px 8px !important;
+  }
+
+  [data-admin="true"] .bank-pay__links {
+    gap: 4px !important;
+    flex-wrap: wrap !important;
+  }
+
+  [data-admin="true"] .bank-pay__date {
+    font-size: 10px !important;
+  }
+
+  [data-admin="true"] .bank-pay__comment {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    font-size: 11px !important;
+    width: 100% !important;
+  }
+
+  [data-admin="true"] .bank-pay__side {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 10px !important;
+    padding-top: 10px !important;
+    border-top: 1px dashed var(--adm-border) !important;
+  }
+
+  [data-admin="true"] .bank-pay__amount {
+    font-size: 18px !important;
+    white-space: nowrap !important;
+  }
+
+  [data-admin="true"] .bank-pay__side .wh-pay-controls {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  [data-admin="true"] .bank-pay__side .wh-pay-controls .admin-status__btn {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    height: 34px !important;
+    padding: 0 8px !important;
+    font-size: 10px !important;
+    justify-content: center !important;
+  }
+
+  /* Pending supplier payment cards */
+  [data-admin="true"] .bank-pay .bank-pay__side {
+    min-width: 0 !important;
+  }
+
+  [data-admin="true"] .bank-pay .bank-pay__side .wh-pay-controls {
+    min-width: 0 !important;
+  }
+
+  /* ── Bank toolbar: stack on mobile ── */
+  [data-admin="true"] .bank-toolbar {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .bank-toolbar__search {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+
+  [data-admin="true"] .bank-toolbar__select {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+
+  [data-admin="true"] .bank-toolbar__date {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+
+  [data-admin="true"] .bank-toolbar__sort,
+  [data-admin="true"] .bank-toolbar .admin-btn--navy {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* ── Bank period presets ── */
+  [data-admin="true"] .bank-period-presets {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  [data-admin="true"] .bank-period-presets button {
+    padding: 3px 7px !important;
+    font-size: 8px !important;
+  }
+
+  /* ── Bank due (Должны нам / Мы должны) ── */
+  [data-admin="true"] .bank-due {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  [data-admin="true"] .bank-due__group {
+    padding: 12px !important;
+    border-radius: 10px !important;
+  }
+
+  [data-admin="true"] .bank-due__row {
+    gap: 6px !important;
+    padding: 6px 0 !important;
+    flex-wrap: wrap !important;
+  }
+
+  [data-admin="true"] .bank-due__name {
+    font-size: 12px !important;
+    flex: 1 1 100% !important;
+  }
+
+  [data-admin="true"] .bank-due__meta {
+    font-size: 10px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    width: 100% !important;
+  }
+
+  [data-admin="true"] .bank-due__sum {
+    font-size: 14px !important;
+    margin-left: 0 !important;
+    width: 100% !important;
+    text-align: left !important;
+  }
+
+  [data-admin="true"] .bank-due__pays {
+    padding-left: 20px !important;
+  }
+
+  [data-admin="true"] .bank-due__pay {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .bank-due__pay-comment {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    flex-basis: 100% !important;
+  }
+
+  /* ── Bank totalbar ── */
+  [data-admin="true"] .bank-totalbar {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .bank-totalbar__sep {
+    display: none !important;
+  }
+
+  /* ── Bank month label ── */
+  [data-admin="true"] .bank-month__label {
+    font-size: 10px !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .bank-month__list {
+    gap: 6px !important;
+  }
+
+  /* ── Bank cash postings ── */
+  [data-admin="true"] .bank-cash-posting {
+    flex-wrap: wrap !important;
+    padding: 8px 10px !important;
+    gap: 6px !important;
+  }
+
+  [data-admin="true"] .bank-cash-posting__main {
+    flex-basis: calc(100% - 40px) !important;
+  }
+
+  [data-admin="true"] .bank-cash-posting__amount {
+    margin-left: 40px !important;
+    font-size: 13px !important;
+  }
+
+  /* ── ТАБЛИЦЫ: полная переработка мобильного ── */
+  [data-admin="true"] .admin-table-wrap {
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-x: contain !important;
+    border-radius: 8px !important;
+    max-width: 100% !important;
+  }
+
+  [data-admin="true"] .admin-table {
+    font-size: 11px !important;
+    min-width: 500px !important;
+    border-collapse: collapse !important;
+  }
+
+  [data-admin="true"] .admin-table th,
+  [data-admin="true"] .admin-table td {
+    padding: 7px 8px !important;
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+    vertical-align: middle !important;
+  }
+
+  [data-admin="true"] .admin-table th {
+    font-size: 9px !important;
+    white-space: nowrap !important;
+    letter-spacing: 0.06em !important;
+  }
+
+  [data-admin="true"] .admin-table td {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  [data-admin="true"] .admin-table td[style*="text-align: right"],
+  [data-admin="true"] .admin-table td[style*="text-align:right"] {
+    white-space: nowrap !important;
+  }
+
+  /* ── МОДАЛКИ: полноэкранный лист на мобильном ── */
+  [data-admin="true"] .admin-modal-overlay {
+    z-index: 1200 !important;
+    padding: 0 !important;
+    background: rgba(0, 0, 0, 0.55) !important;
+    backdrop-filter: none !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    align-items: flex-start !important;
+  }
+
+  [data-admin="true"] .admin-modal,
+  [data-admin="true"] .wh-modal,
+  [data-admin="true"] .transport-modal,
+  [data-admin="true"] .cp-modal,
+  [data-admin="true"] .admin-user-modal,
+  [data-admin="true"] .payment-details-modal,
+  [data-admin="true"] .boxlabel-settings,
+  body:has(.admin-shell) > .admin-modal-overlay > .admin-modal {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding:
+      max(14px, var(--adm-mobile-safe-top, 0px))
+      calc(var(--adm-mobile-safe-right, 0px) + 12px)
+      calc(var(--adm-mobile-safe-bottom, 0px) + 14px)
+      calc(var(--adm-mobile-safe-left, 0px) + 12px) !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow-x: clip !important;
+    overscroll-behavior: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  [data-admin="true"] .admin-modal__head {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 5 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    min-height: 48px !important;
+    margin: 0 -12px 12px !important;
+    padding: 10px 12px !important;
+    background: var(--adm-card) !important;
+    border-bottom: 1px solid var(--adm-border) !important;
+  }
+
+  [data-admin="true"] .admin-modal__title {
+    font-size: clamp(13px, 4vw, 16px) !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  [data-admin="true"] .admin-modal__close {
+    flex-shrink: 0 !important;
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  [data-admin="true"] .admin-modal__actions,
+  [data-admin="true"] .admin-modal .admin-modal__actions,
+  body:has(.admin-shell) > .admin-modal-overlay .admin-modal__actions {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 5 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin: 14px -12px 0 !important;
+    padding: 10px 12px calc(10px + var(--adm-mobile-safe-bottom, 0px)) !important;
+    background: var(--adm-card) !important;
+    border-top: 1px solid var(--adm-border) !important;
+  }
+
+  [data-admin="true"] .admin-modal__actions .admin-btn,
+  [data-admin="true"] .admin-modal .admin-modal__actions .admin-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    white-space: normal !important;
+  }
+
+  /* Модальные поля: на полную ширину */
+  [data-admin="true"] .admin-modal .admin-input,
+  [data-admin="true"] .admin-modal .admin-select,
+  [data-admin="true"] .admin-modal .admin-textarea,
+  body:has(.admin-shell) > .admin-modal-overlay .admin-modal .admin-input,
+  body:has(.admin-shell) > .admin-modal-overlay .admin-modal .admin-select {
+    width: 100% !important;
+    min-width: 0 !important;
+    font-size: 16px !important;
+    padding: 10px 11px !important;
+  }
+
+  /* ── КАРТОЧКИ: компактная типографика ── */
+  [data-admin="true"] .admin-card {
+    border-radius: 10px !important;
+    overflow: hidden !important;
+  }
+
+  [data-admin="true"] .admin-card__head {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+  }
+
+  [data-admin="true"] .admin-card__title {
+    font-size: clamp(12px, 3.5vw, 15px) !important;
+    line-height: 1.2 !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  [data-admin="true"] .admin-card__pad {
+    padding: 12px !important;
+  }
+
+  [data-admin="true"] .admin-stat {
+    padding: 12px !important;
+  }
+
+  [data-admin="true"] .admin-stat__value {
+    font-size: clamp(1.1rem, 5vw, 1.4rem) !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.1 !important;
+  }
+
+  [data-admin="true"] .admin-stat__label {
+    font-size: 9px !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.3 !important;
+  }
+
+  /* ── КНОПКИ: стабильный размер, без сжатия ── */
+  [data-admin="true"] .admin-btn,
+  [data-admin="true"] .admin-status__btn {
+    min-height: 40px !important;
+    padding: 8px 12px !important;
+    font-size: clamp(10px, 3vw, 12px) !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    border-radius: 8px !important;
+  }
+
+  [data-admin="true"] .admin-btn > svg,
+  [data-admin="true"] .admin-status__btn > svg {
+    flex-shrink: 0 !important;
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  [data-admin="true"] .admin-btn--sm {
+    min-height: 36px !important;
+    padding: 6px 10px !important;
+    font-size: 10px !important;
+  }
+
+  /* ── ФИЛЬТРЫ / ТАБЫ: горизонтальный скролл ── */
+  [data-admin="true"] .admin-filters {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding-bottom: 4px !important;
+  }
+
+  [data-admin="true"] .admin-filters::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  [data-admin="true"] .admin-filter {
+    flex: 0 0 auto !important;
+    min-height: 38px !important;
+    padding: 7px 12px !important;
+    font-size: clamp(9px, 2.8vw, 11px) !important;
+    white-space: nowrap !important;
+    border-radius: 8px !important;
+  }
+
+  /* ── ФОРМЫ: одна колонка, контакты не сжимаются ── */
+  [data-admin="true"] .wh-form-grid,
+  [data-admin="true"] .admin-grid-2,
+  [data-admin="true"] .admin-grid-3,
+  [data-admin="true"] .admin-grid-4,
+  [data-admin="true"] .wh-item-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .admin-field {
+    min-width: 0 !important;
+    gap: 4px !important;
+  }
+
+  [data-admin="true"] .admin-label {
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+  }
+
+  [data-admin="true"] .admin-input,
+  [data-admin="true"] .admin-select,
+  [data-admin="true"] .admin-textarea {
+    min-height: 40px !important;
+    padding: 9px 10px !important;
+    font-size: 16px !important;
+    line-height: 1.2 !important;
+    border-radius: 8px !important;
+  }
+
+  [data-admin="true"] .admin-check {
+    min-height: 40px !important;
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .admin-form-actions,
+  [data-admin="true"] .admin-form-actions__left {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .admin-form-actions .admin-btn,
+  [data-admin="true"] .admin-form-actions__left .admin-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* ── ПОРЯДОК ДЕЙСТВИЙ: один на строку на узком экране ── */
+  [data-admin="true"] .admin-page-head__actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .admin-page-head__actions .admin-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* ── КАССОВЫЕ БЕЙДЖИ: не растягивать ── */
+  [data-admin="true"] .admin-badge {
+    max-width: 100% !important;
+    padding: 2px 6px !important;
+    font-size: clamp(8px, 2.5vw, 10px) !important;
+    line-height: 1.2 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    text-align: center !important;
+  }
+
+  /* ── ПОЗИЦИИ ДОКУМЕНТОВ (wh-item-row) ── */
+  [data-admin="true"] .wh-item-row {
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "sum del" !important;
+    gap: 6px !important;
+    padding: 8px !important;
+    background: var(--adm-card) !important;
+    border: 1px solid var(--adm-border) !important;
+    border-radius: 8px !important;
+  }
+
+  [data-admin="true"] .wh-item-row--head {
+    display: none !important;
+  }
+
+  [data-admin="true"] .wh-item-row__name {
+    grid-area: name !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  [data-admin="true"] .wh-item-row__sum {
+    grid-area: sum !important;
+    text-align: left !important;
+  }
+
+  [data-admin="true"] .wh-item-row__del {
+    grid-area: del !important;
+    justify-self: end !important;
+  }
+
+  [data-admin="true"] .wh-item-row :is(.admin-input, .admin-select) {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* ── УВЕДОМЛЕНИЯ и попапы ── */
+  [data-admin="true"] .admin-notify__panel {
+    position: fixed !important;
+    top: calc(var(--adm-mobile-safe-top, 0px) + 60px) !important;
+    right: 8px !important;
+    left: 8px !important;
+    width: auto !important;
+    max-width: 100% !important;
+    border-radius: 14px !important;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.22) !important;
+  }
+
+  /* ── Страница заказа (deals) ── */
+  [data-admin="true"] .admin-order__grid {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+
+  [data-admin="true"] .admin-order__meta {
+    white-space: normal !important;
+    flex-wrap: wrap !important;
+  }
+
+  [data-admin="true"] .admin-order__meta-label {
+    width: auto !important;
+    flex-shrink: 0 !important;
+  }
+
+  [data-admin="true"] .admin-order__meta-val {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  [data-admin="true"] .admin-order__item {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  [data-admin="true"] .admin-order__total {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    font-size: 12px !important;
+  }
+
+  [data-admin="true"] .admin-order__comment {
+    font-size: 11px !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* ── Раскрытие заказов: стороны стекаются ── */
+  [data-admin="true"] .admin-order__row {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  [data-admin="true"] .admin-order__side {
+    width: 100% !important;
+  }
+
+  /* ── Статус-кнопки заказов ── */
+  [data-admin="true"] .admin-status__btns {
+    gap: 6px !important;
+  }
+
+  /* ── Страницы настроек / дашборд ── */
+  [data-admin="true"] .settings-main-grid,
+  [data-admin="true"] .settings-messenger-grid,
+  [data-admin="true"] .cashc-form-head,
+  [data-admin="true"] .cashc-ledgers,
+  [data-admin="true"] .dash-report-grid,
+  [data-admin="true"] .dash-main-grid,
+  [data-admin="true"] .admin-dash-grid,
+  [data-admin="true"] .dash-finance-totals,
+  [data-admin="true"] .dash-finance-filter,
+  [data-admin="true"] .wh-report-summary,
+  [data-admin="true"] .cashc-facts,
+  [data-admin="true"] .supply-planning__stats,
+  [data-admin="true"] .payment-details__facts,
+  [data-admin="true"] .payment-details__meta {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .dash-report-grid,
+  [data-admin="true"] .dash-main-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  [data-admin="true"] .dash-finance-filter {
+    grid-template-columns: 1fr !important;
+    margin-inline: 0 !important;
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .dash-finance-filter__search {
+    grid-column: auto !important;
+  }
+
+  [data-admin="true"] .dash-finance-filter__actions {
+    justify-content: stretch !important;
+  }
+
+  [data-admin="true"] .dash-finance-filter__actions .admin-btn {
+    flex: 1 !important;
+    justify-content: center !important;
+  }
+
+  /* ── Дашборд-секции ── */
+  [data-admin="true"] .dash-section__head {
+    min-height: 48px !important;
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .dash-section__side {
+    max-width: none !important;
+    gap: 4px !important;
+  }
+
+  [data-admin="true"] .dash-section__side .admin-btn {
+    min-height: 34px !important;
+    padding: 6px 8px !important;
+    font-size: 10px !important;
+  }
+
+  [data-admin="true"] .dash-finance-row {
+    grid-template-columns: 32px minmax(0, 1fr) !important;
+    padding: 9px !important;
+  }
+
+  [data-admin="true"] .dash-delivery-row {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    padding: 9px !important;
+  }
+
+  [data-admin="true"] .dash-delivery-row__items {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    font-size: 9px !important;
+  }
+
+  /* ── Отчёты ── */
+  [data-admin="true"] .wh-report-head {
+    flex-direction: column !important;
+    padding: 14px !important;
+  }
+
+  [data-admin="true"] .wh-report-constructor {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .wh-report-types {
+    grid-template-columns: 1fr 1fr !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--adm-border) !important;
+  }
+
+  [data-admin="true"] .wh-report-fields {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  [data-admin="true"] .wh-report-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [data-admin="true"] .wh-report-summary {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  [data-admin="true"] .wh-report-result__head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  [data-admin="true"] .wh-report-table {
+    min-width: 600px !important;
+  }
+
+  [data-admin="true"] .wh-report-table th,
+  [data-admin="true"] .wh-report-table td {
+    padding: 5px 6px !important;
+    font-size: 9px !important;
+  }
+
+  [data-admin="true"] .wh-report-table td {
+    max-width: 180px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* Стиль «прилипания» первой колонки таблицы */
+  [data-admin="true"] .wh-report-table thead th:first-child,
+  [data-admin="true"] .wh-report-table tbody td:first-child {
+    position: sticky !important;
+    left: 0 !important;
+    z-index: 1 !important;
+    background: var(--adm-card) !important;
+    box-shadow: 1px 0 0 var(--adm-border) !important;
+  }
+
+  [data-admin="true"] .wh-report-table thead th:first-child {
+    z-index: 3 !important;
+    background: var(--adm-paper) !important;
+  }
+
+  /* ── Страница (вкладки, фильтры, табы) ── */
+  [data-admin="true"] .admin-page-head {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    margin-bottom: 12px !important;
+    padding-bottom: 10px !important;
+  }
+
+  [data-admin="true"] .admin-h1 {
+    font-size: clamp(20px, 6vw, 28px) !important;
+    margin-bottom: 0 !important;
+    line-height: 1.1 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  [data-admin="true"] .admin-h2 {
+    font-size: clamp(13px, 4vw, 16px) !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  [data-admin="true"] .admin-sub {
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* ── Сетка табов и кнопок действий ── */
+  [data-admin="true"] .admin-tabs-with-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  [data-admin="true"] .admin-tabs-with-actions .admin-filters {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 6px !important;
+  }
+
+  [data-admin="true"] .admin-tabs-with-actions .admin-filters::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  [data-admin="true"] .admin-tabs-with-actions .admin-page-head__actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
+
+  [data-admin="true"] .admin-tabs-with-actions .admin-page-head__actions .admin-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* ── Навигация склада ── */
+  [data-admin="true"] .admin-filters--sub {
+    margin-top: 0 !important;
+    margin-bottom: 10px !important;
+  }
+
+  [data-admin="true"] .admin-filters--sub .admin-filter {
+    font-size: 10px !important;
+    padding: 5px 10px !important;
+  }
+
+  /* ── Работа с товарами на складе ── */
+  [data-admin="true"] .wh-stock-table {
+    min-width: 0 !important;
+  }
+
+  [data-admin="true"] .wh-stock-table > thead > tr > th,
+  [data-admin="true"] .wh-stock-table > tbody > tr:not(.stock-summary-row) > td {
+    padding: 6px 5px !important;
+    font-size: 9px !important;
+  }
+
+  [data-admin="true"] .wh-stock-table > thead > tr > th:first-child,
+  [data-admin="true"] .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:first-child {
+    max-width: 140px !important;
+    position: sticky !important;
+    left: 0 !important;
+    background: var(--adm-card) !important;
+    box-shadow: 1px 0 0 var(--adm-border) !important;
+    z-index: 1 !important;
+  }
+
+  [data-admin="true"] .wh-stock-table > thead > tr > th:first-child {
+    z-index: 3 !important;
+    background: var(--adm-paper) !important;
+  }
+
+  /* Скрываем артикул и цену продажи на телефоне */
+  [data-admin="true"] .wh-stock-table > thead > tr > th:nth-child(2),
+  [data-admin="true"] .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(2),
+  [data-admin="true"] .wh-stock-table > thead > tr > th:nth-child(5),
+  [data-admin="true"] .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(5) {
+    display: none !important;
+  }
+
+  /* ── Контрагенты ── */
+  [data-admin="true"] .cp-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .cp-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  [data-admin="true"] .cp-toolbar > .admin-select {
+    width: 100% !important;
+  }
+
+  [data-admin="true"] .cp-card__info {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Массовый редактор ── */
+  [data-admin="true"] .bulk-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [data-admin="true"] .bulk-step {
+    min-width: 0 !important;
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .bulk-step small {
+    display: none !important;
+  }
+
+  [data-admin="true"] .bulk-toolbar {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .bulk-search {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  [data-admin="true"] .bulk-footer {
+    position: static !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .bulk-footer > * {
+    width: 100% !important;
+  }
+
+  /* ── Поставки и закупки ── */
+  [data-admin="true"] .supply-planning__workspace {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .supply-planning__sidebar {
+    position: static !important;
+  }
+
+  [data-admin="true"] .supply-planning__hero {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    padding: 14px !important;
+  }
+
+  [data-admin="true"] .supply-planning__actions {
+    justify-content: stretch !important;
+  }
+
+  [data-admin="true"] .supply-planning__actions .admin-btn {
+    flex: 1 !important;
+    justify-content: center !important;
+  }
+
+  [data-admin="true"] .supply-plan-editor__head {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  [data-admin="true"] .supply-plan-editor__meta {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .supply-plan-add__draft {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .purchase-create {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .purchase-plan__actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .purchase-plan__ozon {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .purchase-plan__ozon-media {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  [data-admin="true"] .purchase-planning__hero {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  /* ── Кассовая сдача ── */
+  [data-admin="true"] .cashc-facts {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .cashc-ledgers {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .cashc-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .cashc-actions .admin-btn {
+    justify-content: center !important;
+  }
+
+  /* ── Попапы ── */
+  [data-admin="true"] .popup-admin-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .popup-admin-preview {
+    position: static !important;
+  }
+
+  [data-admin="true"] .popup-admin-intro {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    padding: 14px !important;
+  }
+
+  [data-admin="true"] .popup-admin-item {
+    align-items: flex-start !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* ── Перевозки ── */
+  [data-admin="true"] .transport-modal {
+    width: calc(100vw - 16px) !important;
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  [data-admin="true"] .transport-modal .admin-modal__title {
+    font-size: 14px !important;
+  }
+
+  [data-admin="true"] .transport-modal__orders {
+    max-height: 36dvh !important;
+  }
+
+  [data-admin="true"] .transport-modal__order {
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .transport-modal__order-label {
+    align-items: flex-start !important;
+    flex-wrap: wrap !important;
+  }
+
+  [data-admin="true"] .transport-modal__address {
+    flex-basis: 100% !important;
+    margin-left: 24px !important;
+    margin-top: 2px !important;
+  }
+
+  [data-admin="true"] .transport-modal__deal-item {
+    grid-template-columns: minmax(0, 1fr) 76px !important;
+  }
+
+  [data-admin="true"] .transport-modal__add-trip {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  [data-admin="true"] .transport-modal__trip-types {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  [data-admin="true"] .transport-modal__trip-types .admin-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  [data-admin="true"] .transport-modal__cargo-row {
+    grid-template-columns: minmax(0, 1fr) 68px 30px !important;
+    gap: 6px !important;
+  }
+
+  [data-admin="true"] .transport-modal .admin-modal__actions {
+    position: sticky !important;
+    bottom: -14px !important;
+    z-index: 2 !important;
+    margin: 14px -14px -14px !important;
+    padding: 10px 14px !important;
+    background: var(--adm-card) !important;
+    border-top: 1px solid var(--adm-border) !important;
+    justify-content: stretch !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [data-admin="true"] .transport-modal .admin-modal__actions .admin-btn {
+    flex: 1 !important;
+    min-height: 42px !important;
+    justify-content: center !important;
+    white-space: normal !important;
+  }
+
+  /* ── Арендный банк ── */
+  [data-admin="true"] .rent-row__side {
+    width: 100% !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* ── Доставки ── */
+  [data-admin="true"] .deliv-item {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  [data-admin="true"] .deliv-item__top {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  [data-admin="true"] .deliv-item__items {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* ── Сводка (reports page) ── */
+  [data-admin="true"] .wh-report-summary {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .wh-report-summary > div {
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .wh-report-summary strong {
+    font-size: 13px !important;
+    white-space: normal !important;
+  }
+
+  /* ── Подробная карточка платежа ── */
+  [data-admin="true"] .payment-details__hero {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+  }
+
+  [data-admin="true"] .payment-details__hero > b {
+    grid-column: 2 !important;
+    font-size: 18px !important;
+  }
+
+  [data-admin="true"] .payment-details__facts {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  [data-admin="true"] .payment-details__meta {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .payment-details__meta-wide {
+    grid-column: auto !important;
+  }
+
+  [data-admin="true"] .payment-details__document-head {
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+  }
+
+  [data-admin="true"] .payment-details__items > div {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  /* ── Навигация склада: вкладки с нормальным размером шрифта ── */
+  [data-admin="true"] .admin-filters .admin-filter {
+    white-space: nowrap !important;
+  }
+
+  /* ── Сводные карточки (wh-stat-grid, admin-stat-grid) ── */
+  [data-admin="true"] .wh-stat-grid .admin-stat__value,
+  [data-admin="true"] .admin-stat__value {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* ── Корзина заказов (wh-items) ── */
+  [data-admin="true"] .wh-items {
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .deal-delivery-block {
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .deal-delivery-block__head {
+    flex-wrap: wrap !important;
+  }
+
+  [data-admin="true"] .deal-delivery-block__toggle {
+    flex: 1 1 auto !important;
+    margin-left: 0 !important;
+    justify-content: flex-start !important;
+    white-space: normal !important;
+  }
+
+  [data-admin="true"] .deal-delivery-tariff {
+    align-items: flex-start !important;
+  }
+
+  [data-admin="true"] .deal-delivery-tariff__hint {
+    flex: 1 1 100% !important;
+  }
+
+  /* ── Скидки/промо (promotions, popups) ── */
+  [data-admin="true"] .admin-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Пустые состояния ── */
+  [data-admin="true"] .admin-empty {
+    padding: 30px 16px !important;
+  }
+
+  [data-admin="true"] .admin-empty__icon {
+    font-size: 32px !important;
+  }
+
+  [data-admin="true"] .admin-empty p {
+    font-size: 12px !important;
+  }
+
+  /* ── Анимации: убираем на мобильном ── */
+  [data-admin="true"] .admin-card,
+  [data-admin="true"] .admin-stat,
+  [data-admin="true"] .dash-section {
+    animation: none !important;
+  }
+
+  [data-admin="true"] .admin-modal {
+    animation: none !important;
+  }
+
+  [data-admin="true"] .admin-btn:active:not(:disabled) {
+    transform: scale(0.97) !important;
+  }
+
+  /* ── Типографика кнопок (committee) ── */
+  [data-admin="true"] .wh-direction__btn,
+  [data-admin="true"] .wh-linkmode__btn {
+    white-space: nowrap !important;
+    min-width: 0 !important;
+    font-size: clamp(10px, 3vw, 13px) !important;
+    padding: 8px 10px !important;
+  }
+
+  [data-admin="true"] .wh-direction__btn > svg,
+  [data-admin="true"] .wh-linkmode__btn > svg {
+    flex-shrink: 0 !important;
+  }
+
+  /* ── Выезд видимости (dash-visibility) ── */
+  [data-admin="true"] .dash-visibility__panel {
+    min-width: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: auto !important;
+  }
+
+  /* ── Отчёты: сводка и таблицы ── */
+  [data-admin="true"] .wh-report-table-wrap {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* ── Сетка 2-колоночная → 1-колоночная ── */
+  [data-admin="true"] .admin-grid-4 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── receipt-head: на мобильном всё в одну строку ── */
+  [data-admin="true"] .receipt-head {
+    display: grid !important;
+    grid-template-columns: auto auto 1fr auto !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
+  }
+
+  [data-admin="true"] .receipt-head__supplier {
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    font-size: 12px !important;
+  }
+
+  [data-admin="true"] .receipt-head__total {
+    grid-column: 3 !important;
+    justify-self: start !important;
+    font-size: 13px !important;
+  }
+
+  [data-admin="true"] .receipt-head__chevron {
+    grid-column: 4 !important;
+    grid-row: 1 / span 2 !important;
+  }
+
+  /* ── receipt-post-row: table-like на мобильном ── */
+  [data-admin="true"] .receipt-post-row {
+    grid-template-columns: minmax(120px, 1fr) repeat(4, minmax(60px, .42fr)) !important;
+    font-size: 10px !important;
+    padding: 7px 8px !important;
+    min-width: 500px !important;
+  }
+
+  /* ── Подсказка «↔ таблица прокручивается» ── */
+  [data-admin="true"] .admin-table-wrap::after {
+    display: block !important;
+  }
+
+  /* ── receipts: area настроек ── */
+  [data-admin="true"] .wh-report-settings {
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+
+  [data-admin="true"] .wh-report-period-presets {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  [data-admin="true"] .wh-report-period-presets button {
+    padding: 3px 7px !important;
+    font-size: 8px !important;
+  }
+
+  /* ── Пускай позиции склада налезают на экран ── */
+  [data-admin="true"] .wh-item-row__hint {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  /* ── receipt-form (new receipt) ── */
+  [data-admin="true"] .receipt-post-row .admin-input {
+    min-width: 60px !important;
+    padding: 6px 7px !important;
+    font-size: 10px !important;
+  }
+
+  /* ── Печать этикеток ── */
+  [data-admin="true"] .qrprint__row {
+    grid-template-columns: 22px 1fr auto !important;
+    grid-template-areas:
+      "check name price"
+      "check sku barcode" !important;
+    row-gap: 2px !important;
+    align-items: center !important;
+  }
+
+  /* ── BoxLabel настройки ── */
+  [data-admin="true"] .boxlabel-settings {
+    padding: 14px !important;
+  }
+
+  [data-admin="true"] .boxlabel-settings__controls,
+  [data-admin="true"] .boxlabel-settings__controls--bulk {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Сетка кассовой строки ── */
+  [data-admin="true"] .cash-carryover__stats {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Охрана / автозарплата ── */
+  [data-admin="true"] .ds-root,
+  [data-admin="true"] .saz-root {
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .ds-month-nav,
+  [data-admin="true"] .ds-toolbar-group,
+  [data-admin="true"] .saz-card__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [data-admin="true"] .ds-emp-table {
+    min-width: 500px !important;
+  }
+
+  [data-admin="true"] .saz-days {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [data-admin="true"] .ds-modal {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    min-height: 100dvh !important;
+    padding: max(14px, var(--adm-mobile-safe-top, 0px)) 12px calc(14px + var(--adm-mobile-safe-bottom, 0px)) !important;
+    overflow: auto !important;
+    border-radius: 0 !important;
+  }
+
+  [data-admin="true"] .ds-modal-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* ── Утилиты ── */
+  [data-admin="true"] .admin-row {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  [data-admin="true"] .admin-muted {
+    font-size: 10px !important;
+  }
+
+  [data-admin="true"] .admin-mono {
+    font-size: 10px !important;
+  }
+
+  /* ── Типографика текста ── */
+  [data-admin="true"] .admin-desc,
+  [data-admin="true"] .admin-hint,
+  [data-admin="true"] .wh-form-hint,
+  [data-admin="true"] .wh-form-error {
+    font-size: 11px !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  /* ── Иконки не сжимаются ── */
+  [data-admin="true"] svg {
+    flex-shrink: 0 !important;
+  }
+
+  /* ── Футер модалки (wh-form-footer) ── */
+  [data-admin="true"] .wh-form-footer {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .wh-form-footer .admin-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* ── Следующая выдача (deals + receipts) ── */
+  [data-admin="true"] .deal-stock {
+    padding: 8px !important;
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .deal-stock__row {
+    flex-direction: column !important;
+    gap: 2px !important;
+  }
+
+  [data-admin="true"] .deal-stock__nums {
+    white-space: normal !important;
+  }
+
+  /* ── QR-print ── */
+  [data-admin="true"] .qrprint__toolbar,
+  [data-admin="true"] .qrprint__filters {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  /* ── Отчёты склада ── */
+  [data-admin="true"] .wh-report-head {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  [data-admin="true"] .wh-report-head__stamp {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* ── Расчётные операции ── */
+  [data-admin="true"] .wh-linkmode {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+  }
+
+  [data-admin="true"] .wh-linkmode__btn {
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+  }
+
+  [data-admin="true"] .wh-linkmode__btn > svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  /* ── Выбор заказа в платеже ── */
+  [data-admin="true"] .wh-deal-chip {
+    width: 100% !important;
+    padding: 7px 10px !important;
+  }
+
+  [data-admin="true"] .wh-deal-chip__title {
+    max-width: 100% !important;
+  }
+
+  /* ── Маржинальный блок ── */
+  [data-admin="true"] .admin-order__margin-box {
+    padding: 10px !important;
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .admin-order__margin-box > div[style*="grid"] {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+
+  /* ── Многострочные скроллы таблиц ── */
+  [data-admin="true"] .admin-table-wrap,
+  [data-admin="true"] .wh-report-table-wrap,
+  [data-admin="true"] .wh-cc-detail-grid {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-x: contain !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   @media (max-width: 480px) — Extra small phones
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+
+  [data-admin="true"] .admin-main {
+    padding-inline: 8px !important;
+  }
+
+  [data-admin="true"] .admin-card__pad,
+  [data-admin="true"] .admin-modal {
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .admin-btn,
+  [data-admin="true"] .admin-status__btn {
+    padding-inline: 8px !important;
+    font-size: 10px !important;
+  }
+
+  [data-admin="true"] .admin-stat-grid,
+  [data-admin="true"] .wh-stat-grid {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  [data-admin="true"] .admin-stat {
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .admin-stat__value {
+    font-size: 1.1rem !important;
+  }
+
+  [data-admin="true"] .bank-hero {
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+
+  [data-admin="true"] .bank-hero__value {
+    font-size: clamp(20px, 7vw, 28px) !important;
+  }
+
+  [data-admin="true"] .bank-hero__stat strong {
+    font-size: 14px !important;
+  }
+
+  [data-admin="true"] .bank-due__sum {
+    font-size: 13px !important;
+  }
+
+  [data-admin="true"] .bank-pay__amount {
+    font-size: 15px !important;
+  }
+
+  [data-admin="true"] .admin-page-head__actions .admin-btn,
+  [data-admin="true"] .admin-form-actions .admin-btn,
+  [data-admin="true"] .admin-modal__actions .admin-btn {
+    flex-basis: 100% !important;
+    width: 100% !important;
+  }
+
+  [data-admin="true"] .admin-modal__actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .admin-modal__actions .admin-btn {
+    flex-basis: 100% !important;
+  }
+
+  [data-admin="true"] .wh-direction {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .wh-direction__btn {
+    justify-content: flex-start !important;
+  }
+
+  [data-admin="true"] .bank-toolbar {
+    gap: 6px !important;
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .bank-toolbar__date,
+  [data-admin="true"] .bank-toolbar__select {
+    flex: 1 1 100% !important;
+  }
+
+  [data-admin="true"] .bank-toolbar__sort,
+  [data-admin="true"] .bank-toolbar .admin-btn--navy {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  [data-admin="true"] .admin-table th,
+  [data-admin="true"] .admin-table td {
+    padding: 5px 4px !important;
+    font-size: 9px !important;
+  }
+
+  [data-admin="true"] .bank-pay {
+    padding: 10px !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .bank-pay__counterparty {
+    font-size: 12px !important;
+  }
+
+  [data-admin="true"] .receipt-head {
+    grid-template-columns: auto 1fr auto !important;
+    gap: 4px !important;
+    padding: 6px 8px !important;
+  }
+
+  [data-admin="true"] .receipt-head__date {
+    display: none !important;
+  }
+
+  [data-admin="true"] .receipt-head__total {
+    grid-column: 3 !important;
+  }
+
+  [data-admin="true"] .receipt-head__chevron {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+  }
+
+  [data-admin="true"] .dash-report-grid,
+  [data-admin="true"] .dash-main-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .dash-finance-totals {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .dash-finance-filter {
+    grid-template-columns: 1fr !important;
+    margin-inline: 0 !important;
+  }
+
+  [data-admin="true"] .supply-planning__workspace {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .supply-plan-add__draft {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .purchase-create {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .purchase-plan__actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .purchase-plan__ozon {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .purchase-plan__ozon-media {
+    width: 60px !important;
+    height: 60px !important;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__nav {
+    gap: 6px !important;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__link {
+    min-height: 56px !important;
+    padding-inline: 3px !important;
+    font-size: 9px !important;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__link span {
+    max-width: 70px !important;
+    font-size: 8px !important;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__title {
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .wh-report-table {
+    min-width: 600px !important;
+  }
+
+  [data-admin="true"] .wh-report-table th,
+  [data-admin="true"] .wh-report-table td {
+    padding: 4px 5px !important;
+    font-size: 8px !important;
+  }
+
+  [data-admin="true"] .wh-report-table td {
+    max-width: 150px !important;
+  }
+
+  [data-admin="true"] .cashc-facts {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .cashc-form-head {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .cp-card__info {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .cp-doc {
+    grid-template-columns: 55px 1fr !important;
+  }
+
+  [data-admin="true"] .cp-doc > strong {
+    grid-column: 2 !important;
+  }
+
+  [data-admin="true"] .boxlabel-settings {
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .boxlabel-settings__preview {
+    height: 28mm !important;
+  }
+
+  [data-admin="true"] .boxlabel-settings__preview-code img {
+    height: 10mm !important;
+  }
+
+  [data-admin="true"] .boxlabel-settings__field {
+    grid-template-columns: minmax(70px, 1fr) 60px auto !important;
+  }
+
+  [data-admin="true"] .boxlabel-settings__field input {
+    width: 60px !important;
+  }
+
+  [data-admin="true"] .boxlabel-settings__actions {
+    bottom: -10px !important;
+    margin: 10px -10px -10px !important;
+    padding: 8px 10px 10px !important;
+  }
+
+  [data-admin="true"] .admin-order__grid {
+    grid-template-columns: 1fr !important;
+    gap: 3px !important;
+  }
+
+  [data-admin="true"] .admin-order__meta-label {
+    width: auto !important;
+    font-size: 9px !important;
+  }
+
+  [data-admin="true"] .admin-order__item {
+    font-size: 11px !important;
+    flex-wrap: wrap !important;
+  }
+
+  [data-admin="true"] .admin-order__total {
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .deal-reserve-row {
+    flex-direction: column !important;
+    gap: 6px !important;
+    align-items: flex-start !important;
+  }
+
+  [data-admin="true"] .admin-empty {
+    padding: 24px 12px !important;
+  }
+
+  [data-admin="true"] .admin-empty p {
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .delivery-plan-modal__list {
+    max-height: 48dvh !important;
+  }
+
+  [data-admin="true"] .delivery-plan-modal__order {
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .delivery-plan-modal__item {
+    grid-template-columns: minmax(0, 1fr) 72px !important;
+  }
+
+  [data-admin="true"] .delivery-plan-modal__item > span {
+    overflow-wrap: anywhere !important;
+  }
+
+  [data-admin="true"] .wh-item-row {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "sum del" !important;
+  }
+
+  [data-admin="true"] .wh-items--deal .wh-item-row {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "sum del" !important;
+  }
+
+  [data-admin="true"] .wh-items--receipt .wh-item-row {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "name name"
+      "qty price"
+      "del del" !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   @media (max-width: 340px) — Tiny phones
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 340px) {
+
+  [data-admin="true"] .admin-mobile-bar__nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [data-admin="true"] .admin-mobile-bar__title {
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .bank-hero__value {
+    font-size: 20px !important;
+  }
+
+  [data-admin="true"] .bank-hero__stat strong {
+    font-size: 12px !important;
+  }
+
+  [data-admin="true"] .bank-pay__amount {
+    font-size: 14px !important;
+  }
+
+  [data-admin="true"] .admin-stat__value {
+    font-size: 1rem !important;
+  }
+
+  [data-admin="true"] .admin-btn,
+  [data-admin="true"] .admin-status__btn {
+    min-height: 36px !important;
+    padding: 6px 8px !important;
+    font-size: 9px !important;
+  }
+
+  [data-admin="true"] .admin-filter {
+    min-height: 34px !important;
+    padding: 5px 8px !important;
+    font-size: 9px !important;
+  }
+
+  [data-admin="true"] .admin-modal {
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .admin-modal__head {
+    padding: 8px !important;
+    min-height: 42px !important;
+  }
+
+  [data-admin="true"] .admin-modal__actions {
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .wh-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-admin="true"] .bank-toolbar {
+    gap: 5px !important;
+    padding: 6px !important;
+  }
+
+  [data-admin="true"] .admin-table th,
+  [data-admin="true"] .admin-table td {
+    padding: 4px 3px !important;
+    font-size: 8px !important;
+  }
+
+  [data-admin="true"] .admin-h1 {
+    font-size: 18px !important;
+  }
+
+  [data-admin="true"] .bank-due__group {
+    padding: 10px !important;
+  }
+
+  [data-admin="true"] .bank-due__row {
+    padding: 4px 0 !important;
+  }
+
+  [data-admin="true"] .bank-due__name {
+    font-size: 11px !important;
+  }
+
+  [data-admin="true"] .bank-due__sum {
+    font-size: 12px !important;
+  }
+
+  [data-admin="true"] .admin-order {
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .admin-order__items {
+    padding: 8px !important;
+  }
+
+  [data-admin="true"] .admin-order__item {
+    font-size: 10px !important;
+  }
+
+  [data-admin="true"] .admin-order__total {
+    font-size: 10px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 768px) {
+  [data-admin="true"] .admin-mobile-menu {
+    transition: none;
+  }
+}
