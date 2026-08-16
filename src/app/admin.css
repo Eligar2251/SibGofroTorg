@@ -3465,8 +3465,8 @@ body:has(.admin-modal-overlay) {
   font-size: clamp(1.1rem, 4.2vw, 1.6rem);
 }
 
-/* Таблица остатков: без жёсткой min-width — на мобильном влезает
-   без горизонтального скролла за счёт переноса названия */
+/* Таблица остатков: на мобильном прокручивается по горизонтали внутри
+   .admin-table-wrap; название товара переносится по словам */
 .wh-stock-table {
   min-width: 0;
 }
@@ -3485,18 +3485,8 @@ body:has(.admin-modal-overlay) {
 
   .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:first-child,
   .wh-stock-table > thead > tr > th:first-child {
-    max-width: 170px;
-  }
-
-  /* На телефоне все 6 колонок не влезают и уходят за экран —
-     оставляем главное: товар, поставщика, остаток и сумму. «Артикул» и
-     «Цена продажи» скрываем только у основной таблицы; внутри раскрытой
-     сводки даты и количества должны остаться видимыми. */
-  .wh-stock-table > thead > tr > th:nth-child(2),
-  .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(2),
-  .wh-stock-table > thead > tr > th:nth-child(5),
-  .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(5) {
-    display: none;
+    max-width: 180px;
+    overflow-wrap: break-word;
   }
 }
 
