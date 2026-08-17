@@ -11,7 +11,7 @@ import {
 
 export const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-  "https://gofrotara.online";
+  "https://sibgofrotorg.ru";
 
 export const SITE_NAME = "СибГофроТорг";
 export const SITE_LEGAL_NAME = 'ООО «СибГофроТорг»';

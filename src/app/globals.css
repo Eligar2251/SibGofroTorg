@@ -7658,84 +7658,12 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-.privacy__lead {
-  font-size: 15px;
-  line-height: 1.75;
-  color: var(--ink-light, #444);
-  margin: 0 0 28px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--border, #e4e9e6);
-}
-
-.privacy__section {
-  margin-bottom: 30px;
-}
-.privacy__section:last-child {
-  margin-bottom: 0;
-}
 .privacy__h2 {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
   font-size: 19px;
   font-weight: 700;
   color: var(--ink, #1b2b4b);
   margin: 0 0 12px;
   line-height: 1.3;
-}
-.privacy__num {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--green-light, #e8f5ee);
-  color: var(--green, #2d6a4f);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 800;
-  margin-top: 1px;
-}
-
-.privacy__section p {
-  font-size: 14px;
-  line-height: 1.75;
-  color: var(--ink-light, #444);
-  margin: 0 0 12px;
-}
-.privacy__section p:last-child {
-  margin-bottom: 0;
-}
-
-.privacy__list {
-  list-style: none;
-  margin: 0 0 12px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.privacy__list li {
-  position: relative;
-  padding-left: 22px;
-  font-size: 14px;
-  line-height: 1.65;
-  color: var(--ink-light, #444);
-}
-.privacy__list li::before {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 0.55em;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--green, #2d6a4f);
-}
-.privacy__list strong {
-  color: var(--ink, #1b2b4b);
-  font-weight: 700;
 }
 
 /* Таблица реквизитов оператора */
@@ -7770,12 +7698,40 @@ body {
   color: var(--ink, #1b2b4b);
   word-break: break-word;
 }
+.privacy-table__link {
+  color: var(--green, #2d6a4f);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.privacy-table__link:hover {
+  color: var(--green-dark, #1e4d38);
+}
 
-.privacy__date {
-  margin-top: 14px;
-  color: var(--ink-muted, #888);
-  font-size: 13px;
-  font-style: italic;
+/* Текст политики (markdown) */
+.privacy-card .markdown-body {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink-light, #444);
+}
+.privacy-card .markdown-body h2 {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink, #1b2b4b);
+  margin: 26px 0 10px;
+}
+.privacy-card .markdown-body h2:first-child {
+  margin-top: 0;
+}
+.privacy-card .markdown-body p {
+  margin: 0 0 12px;
+}
+.privacy-card .markdown-body ul,
+.privacy-card .markdown-body ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+.privacy-card .markdown-body li {
+  margin: 4px 0;
 }
 
 .privacy__footer {
@@ -7784,6 +7740,11 @@ body {
   font-size: 12.5px;
   color: var(--ink-muted, #888);
   line-height: 1.6;
+}
+.privacy__footer a {
+  color: var(--green, #2d6a4f);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 @media (max-width: 640px) {
