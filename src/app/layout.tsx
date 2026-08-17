@@ -11,6 +11,7 @@ import "./mobile.css";
 import { CartProvider } from "@/context/CartContext";
 import { ConditionalChrome } from "@/components/layout/ConditionalChrome";
 import { CookieConsent } from "@/components/analytics/CookieConsent";
+import { PhoneClickTracking } from "@/components/analytics/PhoneClickTracking";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { getAllPopupCampaigns } from "@/lib/supabase-queries";
 import {
@@ -141,6 +142,7 @@ export default async function RootLayout({
           </ConditionalChrome>
         </CartProvider>
         <CookieConsent />
+        <PhoneClickTracking />
       </body>
     </html>
   );

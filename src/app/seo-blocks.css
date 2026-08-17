@@ -1,0 +1,210 @@
+/* =========================================================
+   FILE: src/app/seo-blocks.css
+   Стили для SEO-текстовых блоков (главная, каталог, лендинги).
+   Подключается только на нужных страницах, чтобы не грузить
+   лишний CSS на всём сайте (как admin.css / pdp.css).
+   ========================================================= */
+
+.seo-block {
+  background: var(--bg-main, #f7f9f8);
+  border-top: 1px solid var(--border, #e4e9e6);
+  padding-top: 48px;
+  padding-bottom: 56px;
+}
+
+.seo-block__inner {
+  max-width: var(--max-w, 1440px);
+  margin-inline: auto;
+  padding-inline: var(--gutter, 20px);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.seo-block__inner--narrow {
+  max-width: 980px;
+}
+
+.seo-block__title {
+  font-family: var(--font-head, "Oswald", sans-serif);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink, #0a0a0a);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 0 0 14px;
+}
+
+.seo-block__title span {
+  color: var(--green, #2d6a4f);
+}
+
+.seo-block__intro {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-4, #555555);
+  margin: 0 0 24px;
+  max-width: 860px;
+}
+
+.seo-block h3 {
+  font-family: var(--font-head, "Oswald", sans-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink, #0a0a0a);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 26px 0 10px;
+}
+
+.seo-block p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-4, #555555);
+  margin: 0 0 12px;
+  max-width: 860px;
+}
+
+.seo-block a {
+  color: var(--green, #2d6a4f);
+  text-decoration: none;
+}
+
+.seo-block a:hover {
+  text-decoration: underline;
+}
+
+/* Ссылки-«чипы» на категории каталога */
+.seo-block__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0 6px;
+}
+
+.seo-block__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--paper, #ffffff);
+  border: 1px solid var(--border, #e4e9e6);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3, #333333) !important;
+  text-decoration: none !important;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.seo-block__link:hover {
+  border-color: var(--green, #2d6a4f);
+  color: var(--green, #2d6a4f) !important;
+  background: var(--green-light, #e8f5ee);
+  text-decoration: none !important;
+}
+
+/* FAQ (аккордеон) */
+.seo-faq {
+  margin-top: 22px;
+}
+
+.seo-faq__item {
+  background: var(--paper, #ffffff);
+  border: 1px solid var(--border, #e4e9e6);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.seo-faq__item summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 18px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink, #0a0a0a);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.seo-faq__item summary::-webkit-details-marker {
+  display: none;
+}
+
+.seo-faq__item summary::after {
+  content: "+";
+  font-size: 20px;
+  line-height: 1;
+  color: var(--green, #2d6a4f);
+  transition: transform 0.2s;
+}
+
+.seo-faq__item[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.seo-faq__item p {
+  padding: 0 18px 16px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink-4, #555555);
+}
+
+/* CTA-строка внизу блока */
+.seo-block__cta {
+  margin-top: 26px;
+  padding: 18px 22px;
+  background: var(--green-bg, #f3faf6);
+  border: 1px solid var(--green-border, #b7e4c7);
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+.seo-block__cta-text {
+  flex: 1 1 240px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-2, #1a1a1a);
+}
+
+.seo-block__cta-text span {
+  display: block;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--ink-4, #555555);
+  margin-top: 2px;
+}
+
+.seo-block__cta-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--green, #2d6a4f) !important;
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+
+.seo-block__cta-phone:hover {
+  text-decoration: underline !important;
+}
+
+@media (max-width: 600px) {
+  .seo-block {
+    padding-top: 36px;
+    padding-bottom: 44px;
+  }
+  .seo-block__title {
+    font-size: 21px;
+  }
+  .seo-block__cta-phone {
+    font-size: 15px;
+  }
+}
