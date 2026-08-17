@@ -24,6 +24,7 @@ import {
   Recycle,
   Building2,
   Printer,
+  Ruler,
   Menu,
   X,
 } from "lucide-react";
@@ -222,6 +223,12 @@ export function AdminShell({
       href: `/${adminPath}/print-sheet`,
       label: "Печать А4",
       icon: <Printer size={18} />,
+    },
+    {
+      // Подбор ближайшей коробки по габаритам Д×Ш×В (мм).
+      href: `/${adminPath}/box-finder`,
+      label: "Подбор коробки",
+      icon: <Ruler size={18} />,
     },
     {
       href: `/${adminPath}/settings`,

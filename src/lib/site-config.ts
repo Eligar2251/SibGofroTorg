@@ -57,6 +57,7 @@ export const COMPANY_LEGAL_NAME = "ООО «СибГофроТорг»";
 export const COMPANY_FULL_NAME =
   "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ «СИБГОФРОТОРГ»";
 export const COMPANY_INN = "5403059052";
+export const COMPANY_KPP = "540301001";
 export const COMPANY_OGRN = "1205400033992";
 export const COMPANY_LEGAL_ADDRESS =
   "630024, Новосибирская обл., г. Новосибирск, ул. Ватутина, зд. 42/2";

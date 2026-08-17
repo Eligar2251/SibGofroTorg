@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Script from "next/script";
+import { Cookie } from "lucide-react";
 
 const CONSENT_KEY = "sibgofrotorg_cookie_consent";
 const METRIKA_ID = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID;
@@ -69,17 +70,29 @@ export function CookieConsent() {
       )}
 
       {mounted && consent === null && (
-        <div className="cookie-banner" role="dialog" aria-live="polite" aria-label="Согласие на использование cookie">
+        <div
+          className="cookie-banner"
+          role="dialog"
+          aria-live="polite"
+          aria-label="Согласие на использование cookie"
+        >
           <div className="cookie-banner__inner">
-            <div className="cookie-banner__text">
-              Мы используем файлы cookie и сервис веб-аналитики Яндекс.Метрика,
-              чтобы делать сайт удобнее. Продолжая пользоваться сайтом или
-              нажимая «Принять», вы соглашаетесь с{" "}
-              <Link href="/privacy" target="_blank">
-                политикой конфиденциальности
-              </Link>
-              .
+            <div className="cookie-banner__icon" aria-hidden="true">
+              <Cookie size={22} />
             </div>
+
+            <div className="cookie-banner__body">
+              <div className="cookie-banner__title">Мы используем cookies</div>
+              <p className="cookie-banner__text">
+                Файлы cookie и сервис веб-аналитики Яндекс.Метрика помогают
+                делать сайт удобнее. Нажимая «Принять», вы соглашаетесь с{" "}
+                <Link href="/privacy" target="_blank" className="cookie-banner__link">
+                  политикой конфиденциальности
+                </Link>
+                .
+              </p>
+            </div>
+
             <div className="cookie-banner__actions">
               <button
                 type="button"

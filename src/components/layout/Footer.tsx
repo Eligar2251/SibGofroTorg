@@ -14,8 +14,10 @@ import {
   SITE_EMAIL,
   COMPANY_FULL_NAME,
   COMPANY_INN,
+  COMPANY_KPP,
   COMPANY_OGRN,
   COMPANY_LEGAL_ADDRESS,
+  COMPANY_DIRECTOR,
 } from "@/lib/site-config";
 import { useSiteSettings } from "@/hooks/use-site-settings";
 
@@ -149,13 +151,32 @@ export function Footer() {
         </div>
 
         <div className="footer-requisites">
-          <div className="footer-requisites__title">Реквизиты</div>
-          <div className="footer-requisites__row">{COMPANY_FULL_NAME}</div>
-          <div className="footer-requisites__row">
-            ИНН {COMPANY_INN} · ОГРН {COMPANY_OGRN}
-          </div>
-          <div className="footer-requisites__row">
-            Юридический адрес: {COMPANY_LEGAL_ADDRESS}
+          <div className="footer-requisites__title">Реквизиты организации</div>
+          <div className="footer-requisites__grid">
+            <div className="footer-requisites__item footer-requisites__item--full">
+              <span className="footer-requisites__label">Наименование</span>
+              <span className="footer-requisites__value">{COMPANY_FULL_NAME}</span>
+            </div>
+            <div className="footer-requisites__item">
+              <span className="footer-requisites__label">ИНН</span>
+              <span className="footer-requisites__value">{COMPANY_INN}</span>
+            </div>
+            <div className="footer-requisites__item">
+              <span className="footer-requisites__label">КПП</span>
+              <span className="footer-requisites__value">{COMPANY_KPP}</span>
+            </div>
+            <div className="footer-requisites__item">
+              <span className="footer-requisites__label">ОГРН</span>
+              <span className="footer-requisites__value">{COMPANY_OGRN}</span>
+            </div>
+            <div className="footer-requisites__item footer-requisites__item--full">
+              <span className="footer-requisites__label">Юридический адрес</span>
+              <span className="footer-requisites__value">{COMPANY_LEGAL_ADDRESS}</span>
+            </div>
+            <div className="footer-requisites__item footer-requisites__item--full">
+              <span className="footer-requisites__label">Руководитель</span>
+              <span className="footer-requisites__value">{COMPANY_DIRECTOR}</span>
+            </div>
           </div>
         </div>
       </div>
