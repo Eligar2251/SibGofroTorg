@@ -46,6 +46,7 @@ export interface AppUser {
   passwordHash: string;
   name?: string | null;
   email?: string | null;
+  username?: string | null;
   customerType?: "individual" | "legal" | null;
   companyName?: string | null;
   inn?: string | null;
@@ -92,6 +93,22 @@ function userIdForPhone(phoneDigits: string): string {
 function userIdForEmail(email: string): string {
   const norm = normalizeEmail(email);
   return `email_${createHash("sha256").update(norm).digest("hex").slice(0, 40)}`;
+}
+
+function userIdForUsername(username: string): string {
+  const norm = normalizeUsername(username);
+  return `user_${createHash("sha256").update(norm).digest("hex").slice(0, 40)}`;
+}
+
+/** Нормализует логин: нижний регистр, без пробелов по краям. */
+export function normalizeUsername(raw: string): string {
+  return String(raw || "").trim().toLowerCase();
+}
+
+/** Логин: 3–40 символов, латиница/кириллица, цифры, точка, дефис, подчёркивание. */
+export function isValidUsername(raw: string): boolean {
+  const u = normalizeUsername(raw);
+  return /^[a-zа-яё0-9._-]{3,40}$/i.test(u) && !u.includes(" ");
 }
 
 function phoneDigitsForEmail(email: string): string {
@@ -180,6 +197,7 @@ function mapUserRow(row: any): AppUser {
     passwordHash: row.password_hash,
     name: row.name || null,
     email: row.email || null,
+    username: row.username || null,
     customerType: row.customer_type || null,
     companyName: row.company_name || null,
     inn: row.inn || null,
@@ -220,13 +238,38 @@ export async function findUserByEmail(email: string): Promise<AppUser | null> {
   return mapUserRow(data);
 }
 
+export async function findUserByUsername(username: string): Promise<AppUser | null> {
+  const db = getAdminDb();
+  const norm = normalizeUsername(username);
+  if (!norm) return null;
+  const { data, error } = await db
+    .from("users")
+    .select("*")
+    .ilike("username", norm)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapUserRow(data);
+}
+
 export async function findUserByPhoneOrEmail(identifier: string): Promise<AppUser | null> {
   const raw = String(identifier || "").trim();
   if (!raw) return null;
+  // Приоритет — логин (username), затем email, затем телефон.
+  if (!raw.includes("@") && !/^7?\d{10,11}$/.test(raw.replace(/\D/g, ""))) {
+    const byUsername = await findUserByUsername(raw).catch(() => null);
+    if (byUsername) return byUsername;
+  }
   if (raw.includes("@")) {
     return findUserByEmail(raw);
   }
-  return findUserByPhone(raw);
+  const byPhone = await findUserByPhone(raw).catch(() => null);
+  if (byPhone) return byPhone;
+  // Если по телефону не нашли, а это не похоже на email — пробуем логин.
+  if (!raw.includes("@")) {
+    return findUserByUsername(raw).catch(() => null);
+  }
+  return null;
 }
 
 export async function getUserById(id: string): Promise<AppUser | null> {
@@ -334,6 +377,66 @@ export async function createUserByEmail(data: {
     return { id, name };
   } catch (e: unknown) {
     console.error("createUserByEmail Supabase error:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    return { error: `Не удалось создать пользователя: ${msg}` };
+  }
+}
+
+export async function createUserByUsername(data: {
+  username: string;
+  password: string;
+  name?: string;
+  email?: string | null;
+}): Promise<{ id: string; name: string | null; username: string } | { error: string }> {
+  const username = normalizeUsername(data.username);
+  if (!isValidUsername(username)) {
+    return {
+      error:
+        "Логин: 3–40 символов (латиница/кириллица, цифры, точка, дефис, подчёркивание)",
+    };
+  }
+  if (!data.password || data.password.length < 8) {
+    return { error: "Пароль минимум 8 символов" };
+  }
+
+  try {
+    const existing = await findUserByUsername(username);
+    if (existing) {
+      return { error: "Этот логин уже занят. Выберите другой." };
+    }
+  } catch (e) {
+    console.error("findUserByUsername error:", e);
+    return { error: "Не удалось проверить логин. Попробуйте ещё раз." };
+  }
+
+  const passwordHash = hashPassword(data.password);
+  const name = data.name?.trim().slice(0, 120) || null;
+  const email = data.email ? normalizeEmail(data.email) : null;
+  const id = userIdForUsername(username);
+  // phone/phone_digits в БД NOT NULL — для логин-аккаунтов храним в них
+  // сам логин и служебный сентинел (уникальность обеспечивает idx_users_username).
+  const db = getAdminDb();
+
+  try {
+    const { error } = await db.from("users").insert({
+      id,
+      phone: username,
+      phone_digits: `user_${createHash("sha256").update(username).digest("hex").slice(0, 32)}`,
+      password_hash: passwordHash,
+      name,
+      email,
+      username,
+    });
+
+    if (error) {
+      if (error.code === "23505") {
+        return { error: "Этот логин уже занят. Выберите другой." };
+      }
+      throw error;
+    }
+    return { id, name, username };
+  } catch (e: unknown) {
+    console.error("createUserByUsername Supabase error:", e);
     const msg = e instanceof Error ? e.message : String(e);
     return { error: `Не удалось создать пользователя: ${msg}` };
   }

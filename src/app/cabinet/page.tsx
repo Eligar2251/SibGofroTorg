@@ -63,12 +63,16 @@ interface Order {
   comment?: string;
   /** Итог/причина закрытия заявки (если закрыта). */
   closeReason?: string | null;
+  /** Код выдачи заказа. */
+  pickupCode?: string | null;
+  issuedAt?: string | null;
   createdAt?: any;
 }
 
 interface UserInfo {
   id: string;
-  phone: string;
+  phone: string | null;
+  username?: string | null;
   name?: string | null;
 }
 
@@ -76,6 +80,7 @@ const statusLabels: Record<string, string> = {
   new: "В обработке",
   in_progress: "Сборка заказа",
   ready: "Готов к выдаче",
+  issued: "Выдан",
   completed: "Выполнен",
   rejected: "Отменён",
 };
@@ -84,6 +89,7 @@ const statusStyles: Record<string, { bg: string; color: string; dot: string }> =
   new: { bg: "#fff7ed", color: "#c2410c", dot: "#f97316" },
   in_progress: { bg: "#eff6ff", color: "#1d4ed8", dot: "#3b82f6" },
   ready: { bg: "#f5f3ff", color: "#6d28d9", dot: "#8b5cf6" },
+  issued: { bg: "#ecfeff", color: "#0e7490", dot: "#06b6d4" },
   completed: { bg: "#f0fdf4", color: "#15803d", dot: "#22c55e" },
   rejected: { bg: "#fef2f2", color: "#dc2626", dot: "#ef4444" },
 };
@@ -151,7 +157,10 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
   const isOrder = order.type === "order";
   // Заявка закрыта (проведена или отменена): статус синхронизирован с сайтом,
   // менять/отменять её нельзя ни у нас, ни у клиента.
-  const isClosed = order.status === "completed" || order.status === "rejected";
+  const isClosed =
+    order.status === "issued" ||
+    order.status === "completed" ||
+    order.status === "rejected";
 
   async function loadProducts(q = "") {
     setLoadingProducts(true);
@@ -346,6 +355,28 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
             <div className="cab-order__comment">
               <span className="cab-order__comment-label">Комментарий:</span>
               <span className="cab-order__comment-val">«{order.comment}»</span>
+            </div>
+          )}
+
+          {isOrder && order.pickupCode && order.status !== "rejected" && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: "12px 14px",
+                borderRadius: 10,
+                background: "var(--kraft-light, #fef3c7)",
+                border: "1px dashed var(--kraft, #d97706)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                Код выдачи заказа
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "0.12em", color: "var(--ink)" }}>
+                {order.pickupCode}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 2 }}>
+                Назовите код при получении товара на складе
+              </div>
             </div>
           )}
 
@@ -572,7 +603,7 @@ export default function CabinetPage() {
             <div style={{ marginBottom: 12, color: "var(--ink-muted)" }}><GlyphIcon value="lock" size={40} /></div>
             <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>Нужен вход</h1>
             <p style={{ fontSize: 14, color: "var(--ink-light)", marginBottom: 24, lineHeight: 1.6 }}>
-              Заказы видит только владелец аккаунта. Войдите по телефону и паролю —
+              Заказы видит только владелец аккаунта. Войдите по логину и паролю —
               чужие заявки недоступны.
             </p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
@@ -628,7 +659,7 @@ export default function CabinetPage() {
                       {user.name}
                     </div>
                   )}
-                  <div>{user.phone}</div>
+                  <div>{user.username || user.phone || ""}</div>
                 </div>
               )}
               <p className="cab-sidebar__desc">

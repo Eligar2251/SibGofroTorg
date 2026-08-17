@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Send, CheckCircle, Loader2 } from "lucide-react";
 import { ymGoal } from "@/lib/ym";
 import { formatPhoneMask } from "@/lib/phone-mask";
+import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 
 interface QuickOrderFormProps {
   productName?: string;
@@ -20,11 +21,18 @@ export function QuickOrderForm({
   >("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [phone, setPhone] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
 
   const isLight = variant === "light";
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!consent) {
+      setConsentError(true);
+      return;
+    }
+    setConsentError(false);
     setFormState("loading");
     setErrorMsg("");
 
@@ -139,6 +147,13 @@ export function QuickOrderForm({
           {errorMsg}
         </div>
       )}
+
+      <ConsentCheckbox
+        checked={consent}
+        onChange={(v) => setConsent(v)}
+        error={consentError}
+        variant={variant === "dark" ? "dark" : "default"}
+      />
 
       <button
         type="submit"

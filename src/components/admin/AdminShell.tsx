@@ -17,11 +17,13 @@ import {
   Truck,
   QrCode,
   ShieldCheck,
+  PackageCheck,
   PanelLeftClose,
   ChevronRight,
   Headset,
   Recycle,
   Building2,
+  Printer,
   Menu,
   X,
 } from "lucide-react";
@@ -174,6 +176,11 @@ export function AdminShell({
       icon: <ClipboardList size={18} />,
     },
     {
+      href: `/${adminPath}/issue`,
+      label: "Выдача товара",
+      icon: <PackageCheck size={18} />,
+    },
+    {
       href: `/${adminPath}/client-requests`,
       label: "Заявки клиентов",
       icon: <Headset size={18} />,
@@ -209,6 +216,12 @@ export function AdminShell({
       href: `/${adminPath}/scan`,
       label: "Сканер",
       icon: <QrCode size={18} />,
+    },
+    {
+      // Редактор таблицы для печати на А4 (шрифт, размеры, поля).
+      href: `/${adminPath}/print-sheet`,
+      label: "Печать А4",
+      icon: <Printer size={18} />,
     },
     {
       href: `/${adminPath}/settings`,

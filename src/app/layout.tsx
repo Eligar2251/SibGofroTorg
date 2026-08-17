@@ -10,7 +10,7 @@ import "./mobile.css";
 
 import { CartProvider } from "@/context/CartContext";
 import { ConditionalChrome } from "@/components/layout/ConditionalChrome";
-import { YandexMetrika } from "@/components/analytics/YandexMetrika";
+import { CookieConsent } from "@/components/analytics/CookieConsent";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { getAllPopupCampaigns } from "@/lib/supabase-queries";
 import {
@@ -140,7 +140,7 @@ export default async function RootLayout({
             {children}
           </ConditionalChrome>
         </CartProvider>
-        <YandexMetrika />
+        <CookieConsent />
       </body>
     </html>
   );

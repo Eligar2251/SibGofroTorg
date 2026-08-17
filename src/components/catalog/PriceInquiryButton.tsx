@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { formatPhoneMask } from "@/lib/phone-mask";
 import { ymGoal } from "@/lib/ym";
+import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 
 interface MeUser {
   id: string;
@@ -81,6 +82,8 @@ export function PriceInquiryButton({
   const [channel, setChannel] = useState<Channel>("call");
   const [comment, setComment] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
 
   // Портал в document.body: см. пояснение в шапке файла — иначе
   // position:fixed оверлея «запирается» трансформом карточки.
@@ -195,6 +198,11 @@ export function PriceInquiryButton({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!consent) {
+      setConsentError(true);
+      return;
+    }
+    setConsentError(false);
     await sendInquiry({
       user: me,
       customerName: me?.name || name,
@@ -350,6 +358,12 @@ export function PriceInquiryButton({
                 {errorMsg}
               </div>
             )}
+
+            <ConsentCheckbox
+              checked={consent}
+              onChange={(v) => setConsent(v)}
+              error={consentError}
+            />
 
             <button type="submit" className="pi-btn pi-btn--primary pi-submit">
               <Send size={15} /> Отправить заявку

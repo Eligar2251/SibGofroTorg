@@ -41,7 +41,11 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { normalizeProductLabelColor } from "@/lib/product-fields";
+import {
+  normalizeProductLabelColor,
+  DEFAULT_PRODUCT_LABEL_COLOR,
+  DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
+} from "@/lib/product-fields";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
 import {
@@ -352,8 +356,12 @@ export default async function ProductPage({
                   <span
                     className="badge-promo"
                     style={{
-                      backgroundColor: normalizeProductLabelColor(product.promoLabelColor) || undefined,
-                      color: normalizeProductLabelColor(product.promoLabelTextColor) || undefined,
+                      backgroundColor:
+                        normalizeProductLabelColor(product.promoLabelColor) ||
+                        DEFAULT_PRODUCT_LABEL_COLOR,
+                      color:
+                        normalizeProductLabelColor(product.promoLabelTextColor) ||
+                        DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
                     }}
                   >
                     {product.promoLabel}

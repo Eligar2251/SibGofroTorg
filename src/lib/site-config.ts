@@ -50,3 +50,14 @@ export const SITE_MAP_LINK =
   `&z=16` +
   `&pt=${LNG}%2C${LAT}%2Cpm2rdm` +
   `&text=${ADDRESS_ENCODED}`;
+
+// ── Реквизиты владельца сайта ────────────────────────────────
+// Источник: ЕГРЮЛ / rusprofile (ООО «СИБГОФРОТОРГ»).
+export const COMPANY_LEGAL_NAME = "ООО «СибГофроТорг»";
+export const COMPANY_FULL_NAME =
+  "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ «СИБГОФРОТОРГ»";
+export const COMPANY_INN = "5403059052";
+export const COMPANY_OGRN = "1205400033992";
+export const COMPANY_LEGAL_ADDRESS =
+  "630024, Новосибирская обл., г. Новосибирск, ул. Ватутина, зд. 42/2";
+export const COMPANY_DIRECTOR = "Директор: Пакин Вадим Маркович";

@@ -12,7 +12,11 @@ import {
 } from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { Plus, Minus, ShoppingCart, Check, Package, Clock3 } from "lucide-react";
-import { normalizeProductLabelColor } from "@/lib/product-fields";
+import {
+  normalizeProductLabelColor,
+  DEFAULT_PRODUCT_LABEL_COLOR,
+  DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
+} from "@/lib/product-fields";
 
 /** Склонение для «N вариантов» на карточке. */
 function pluralVariants(n: number): string {
@@ -162,8 +166,14 @@ export function ProductCardCompact({
           <span
             className="pcc__badge pcc__badge--promo"
             style={{
-              backgroundColor: normalizeProductLabelColor(product.promoLabelColor) || undefined,
-              color: normalizeProductLabelColor(product.promoLabelTextColor) || undefined,
+              // Цвет метки всегда задаётся инлайном: так смена цвета в админке
+              // сразу отражается на сайте и не «перебивается» CSS-фоллбеком.
+              backgroundColor:
+                normalizeProductLabelColor(product.promoLabelColor) ||
+                DEFAULT_PRODUCT_LABEL_COLOR,
+              color:
+                normalizeProductLabelColor(product.promoLabelTextColor) ||
+                DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
             }}
           >
             {product.promoLabel}

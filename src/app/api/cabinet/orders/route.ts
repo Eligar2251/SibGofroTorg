@@ -38,6 +38,9 @@ function serializeOrder(row: any) {
     productInfo: row.product_info ?? null,
     quantity: row.quantity ?? null,
     comment: row.comment ?? null,
+    // Код выдачи — показываем клиенту, чтобы он назвал его при получении.
+    pickupCode: row.pickup_code ?? null,
+    issuedAt: toIso(row.issued_at),
     // Итог/причина закрытия — клиент видит, чем закончилась заявка.
     closeReason: row.close_reason ?? null,
     dealNumber: row.deal_number ?? null,

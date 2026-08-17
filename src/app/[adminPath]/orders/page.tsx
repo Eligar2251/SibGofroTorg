@@ -16,6 +16,7 @@ const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
   ready: "Готов к выдаче",
+  issued: "Выдан",
   completed: "Проведена",
   rejected: "Отменена",
   // Фильтр-агрегат: заявки, с которыми менеджеры сейчас работают.
@@ -26,6 +27,7 @@ const statusBadge: Record<string, string> = {
   new: "admin-badge admin-badge--amber",
   in_progress: "admin-badge admin-badge--blue",
   ready: "admin-badge admin-badge--indigo",
+  issued: "admin-badge admin-badge--teal",
   completed: "admin-badge admin-badge--green",
   rejected: "admin-badge admin-badge--red",
 };
@@ -51,6 +53,7 @@ const filterOptions = [
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
   { value: "ready", label: "Готов к выдаче" },
+  { value: "issued", label: "Выданные" },
   { value: "completed", label: "Проведённые (архив)" },
   { value: "rejected", label: "Отменённые" },
   { value: "all", label: "Все" },
@@ -107,7 +110,7 @@ export default async function AdminOrdersPage({
   const requestedStatus = firstParam(params.status);
   // По умолчанию — «active»: показываем новые, в работе и готовые к выдаче,
   // чтобы заявка не исчезала из списка сразу после кнопки «В работу».
-  const activeFilter = ["active", "new", "in_progress", "ready", "completed", "rejected", "all"].includes(requestedStatus)
+  const activeFilter = ["active", "new", "in_progress", "ready", "issued", "completed", "rejected", "all"].includes(requestedStatus)
     ? requestedStatus
     : "active";
   const searchQuery = firstParam(params.q);

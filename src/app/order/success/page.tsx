@@ -1,6 +1,5 @@
-// src/app/order/success/page.tsx
 import Link from "next/link";
-import { CheckCircle2, ArrowRight, PhoneCall, Package } from "lucide-react";
+import { CheckCircle2, ArrowRight, PhoneCall, Package, Ticket } from "lucide-react";
 import { OrderSuccessGoal } from "@/components/analytics/OrderSuccessGoal";
 import { SuccessContactPhone } from "@/components/order/SuccessContactPhone";
 import type { Metadata } from "next";
@@ -9,7 +8,18 @@ export const metadata: Metadata = {
   title: "Заказ оформлен — СибГофроТорг",
 };
 
-export default function OrderSuccessPage() {
+function firstParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] || "" : value || "";
+}
+
+export default async function OrderSuccessPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const code = firstParam(params.code).trim().toUpperCase();
+
   return (
     <div className="success-page">
       <OrderSuccessGoal />
@@ -25,6 +35,19 @@ export default function OrderSuccessPage() {
             Менеджер проверяет складские остатки и свяжется с вами в течение{" "}
             <strong>10–15 минут</strong> для подтверждения времени получения.
           </p>
+
+          {code && (
+            <div className="success-code">
+              <div className="success-code__icon"><Ticket size={20} /></div>
+              <div className="success-code__body">
+                <div className="success-code__label">Код выдачи заказа</div>
+                <div className="success-code__value">{code}</div>
+                <div className="success-code__hint">
+                  Сохраните код — назовите его при получении товара на складе.
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="success-steps">
             <div className="success-step">
@@ -47,7 +70,7 @@ export default function OrderSuccessPage() {
               <div className="success-step__num">3</div>
               <div className="success-step__text">
                 <strong>Получение</strong>
-                <span>Самовывоз или доставка курьером</span>
+                <span>Самовывоз по коду или доставка курьером</span>
               </div>
             </div>
           </div>

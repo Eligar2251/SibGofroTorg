@@ -12,6 +12,10 @@ import {
   SITE_PHONE_HREF,
   SITE_HOURS_LABEL,
   SITE_EMAIL,
+  COMPANY_FULL_NAME,
+  COMPANY_INN,
+  COMPANY_OGRN,
+  COMPANY_LEGAL_ADDRESS,
 } from "@/lib/site-config";
 import { useSiteSettings } from "@/hooks/use-site-settings";
 
@@ -20,6 +24,7 @@ const INFO_LINKS = [
   { href: "/delivery", label: "Доставка и оплата" },
   { href: "/wastepaper", label: "Приём макулатуры" },
   { href: "/contacts", label: "Контакты" },
+  { href: "/privacy", label: "Политика конфиденциальности" },
 ];
 
 const CLIENT_LINKS = [
@@ -135,7 +140,23 @@ export function Footer() {
           <span>
             © {new Date().getFullYear()} ООО «СибГофроТорг» · Все права защищены
           </span>
+          <span>
+            <Link href="/privacy" className="footer-link footer-link--inline">
+              Политика конфиденциальности
+            </Link>
+          </span>
           <span>{footerEmail}</span>
+        </div>
+
+        <div className="footer-requisites">
+          <div className="footer-requisites__title">Реквизиты</div>
+          <div className="footer-requisites__row">{COMPANY_FULL_NAME}</div>
+          <div className="footer-requisites__row">
+            ИНН {COMPANY_INN} · ОГРН {COMPANY_OGRN}
+          </div>
+          <div className="footer-requisites__row">
+            Юридический адрес: {COMPANY_LEGAL_ADDRESS}
+          </div>
         </div>
       </div>
     </footer>

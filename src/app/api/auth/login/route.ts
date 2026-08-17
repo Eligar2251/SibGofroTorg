@@ -7,8 +7,6 @@ import {
   createUserSession,
   findUserByPhoneOrEmail,
   formatPhoneDisplay,
-  normalizeEmail,
-  normalizePhone,
   verifyPassword,
 } from "@/lib/user-auth";
 
@@ -51,16 +49,18 @@ export async function POST(request: NextRequest) {
     if (!user || !verifyPassword(password, user.passwordHash)) {
       const isEmail = identifier.includes("@");
       return NextResponse.json(
-        { error: isEmail ? "Неверный email или пароль" : "Неверный телефон или пароль" },
+        { error: isEmail ? "Неверный email или пароль" : "Неверный логин или пароль" },
         { status: 401 }
       );
     }
 
-    const sessionIdentifier = user.email && identifier.includes("@")
-      ? normalizeEmail(user.email)
-      : user.phoneDigits && !user.phoneDigits.startsWith("email_")
+    // Идентификатор сессии: логин → email → телефон (в порядке приоритета).
+    const sessionIdentifier =
+      user.username ||
+      user.email ||
+      (user.phoneDigits && !user.phoneDigits.startsWith("email_") && !user.phoneDigits.startsWith("user_")
         ? user.phoneDigits
-        : normalizeEmail(user.email || identifier);
+        : identifier);
 
     await createUserSession({
       uid: user.id,
@@ -68,14 +68,20 @@ export async function POST(request: NextRequest) {
       name: user.name || undefined,
     });
 
-    const isEmailUser = !!user.email && (!user.phoneDigits || user.phoneDigits.startsWith("email_") || identifier.includes("@"));
+    const isEmailUser =
+      !!user.email && !user.username && identifier.includes("@");
 
     return NextResponse.json(
       {
         success: true,
         user: {
           id: user.id,
-          phone: isEmailUser ? user.email : formatPhoneDisplay(user.phoneDigits),
+          username: user.username || null,
+          phone: user.username
+            ? null
+            : isEmailUser
+              ? user.email
+              : formatPhoneDisplay(user.phoneDigits),
           email: user.email || null,
           name: user.name || null,
         },

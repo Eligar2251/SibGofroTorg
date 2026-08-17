@@ -296,7 +296,11 @@ export async function POST(request: NextRequest) {
       console.error("notify bots for order:", err);
     }
 
-    return NextResponse.json({ success: true, orderId: createdOrder.id });
+    return NextResponse.json({
+      success: true,
+      orderId: createdOrder.id,
+      pickupCode: createdOrder.pickupCode ?? null,
+    });
   } catch (error: unknown) {
     console.error("Ошибка в API создания заказа:", error);
     return NextResponse.json({ error: publicError(error) }, { status: 500 });

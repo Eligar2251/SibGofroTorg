@@ -2505,8 +2505,10 @@ select {
 
 .pcc__badge--promo {
   left: 6px;
-  background: var(--red);
-  color: #fff;
+  /* Цвет задаётся инлайном из данных товара (promoLabelColor).
+     Эти значения — лишь фоллбек на случай, если цвет ещё не сохранён. */
+  background: #ea580c;
+  color: #ffffff;
 }
 
 .pcc__badge--out {
@@ -7471,3 +7473,221 @@ body {
   text-align: center;
 }
 .map-load-fallback a { color: var(--green); text-decoration: underline; }
+
+/* =========================================================
+   Согласие на обработку ПД (чекбокс) + Cookie-баннер
+   ========================================================= */
+.consent {
+  width: 100%;
+  text-align: left;
+}
+.consent__label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted, #666);
+}
+.consent__label--dark { color: rgba(255,255,255,0.72); }
+.consent__label--light { color: var(--ink-muted, #666); }
+.consent__input {
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green, #16a34a);
+  cursor: pointer;
+}
+.consent__text { flex: 1; }
+.consent__link {
+  color: var(--green, #16a34a);
+  text-decoration: underline;
+}
+.consent__label--dark .consent__link { color: #8ee29a; }
+.consent__req { color: #ef4444; margin-left: 2px; }
+.consent__error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #dc2626;
+}
+
+/* Cookie-баннер */
+.cookie-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2147483000;
+  background: #1b2b4b;
+  color: #fff;
+  box-shadow: 0 -8px 30px rgba(0,0,0,0.25);
+}
+.cookie-banner__inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 14px 20px;
+}
+.cookie-banner__text {
+  flex: 1;
+  min-width: 260px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.9);
+}
+.cookie-banner__text a {
+  color: #8ee29a;
+  text-decoration: underline;
+}
+.cookie-banner__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.cookie-banner__accept {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cookie-banner__accept:hover { background: #15803d; }
+.cookie-banner__decline {
+  background: transparent;
+  color: rgba(255,255,255,0.8);
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cookie-banner__decline:hover { border-color: #fff; color: #fff; }
+@media (max-width: 640px) {
+  .cookie-banner__inner { padding: 12px 16px; }
+  .cookie-banner__actions { width: 100%; }
+  .cookie-banner__accept, .cookie-banner__decline { flex: 1; }
+}
+
+/* =========================================================
+   Страница «Политика конфиденциальности»
+   ========================================================= */
+.privacy-page {
+  background: var(--bg-main, #f7f5f0);
+  padding: 48px 16px 80px;
+}
+.privacy-page__inner {
+  max-width: 860px;
+  margin: 0 auto;
+}
+.privacy__h1 {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--ink, #1b2b4b);
+  margin: 0 0 16px;
+}
+.privacy__lead {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-light, #444);
+  margin: 0 0 24px;
+}
+.privacy__section {
+  margin-bottom: 28px;
+}
+.privacy__h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink, #1b2b4b);
+  margin: 0 0 10px;
+}
+.privacy__section p,
+.privacy__section li {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink-light, #444);
+  margin: 0 0 10px;
+}
+.privacy__section ul {
+  padding-left: 20px;
+  margin: 0 0 10px;
+}
+.privacy__date {
+  color: var(--ink-muted, #888);
+  font-size: 13px;
+}
+.privacy__contacts {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #e5e5e5);
+  font-size: 13px;
+  color: var(--ink-muted, #888);
+}
+
+/* =========================================================
+   Футер: реквизиты владельца
+   ========================================================= */
+.footer-link--inline {
+  text-decoration: underline;
+}
+.footer-requisites {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--footer-muted, rgba(255,255,255,0.55));
+}
+.footer-requisites__title {
+  font-weight: 700;
+  color: rgba(255,255,255,0.8);
+  margin-bottom: 4px;
+}
+.footer-requisites__row { color: rgba(255,255,255,0.6); }
+
+/* =========================================================
+   Код выдачи заказа (success page)
+   ========================================================= */
+.success-code {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 20px auto 8px;
+  max-width: 420px;
+  padding: 16px 18px;
+  border: 2px dashed var(--kraft, #d97706);
+  border-radius: 14px;
+  background: var(--kraft-light, #fef3c7);
+  text-align: left;
+}
+.success-code__icon {
+  color: var(--kraft, #d97706);
+  flex-shrink: 0;
+}
+.success-code__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.success-code__value {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--ink, #1b2b4b);
+  line-height: 1.2;
+}
+.success-code__hint {
+  font-size: 12px;
+  color: var(--ink-muted, #888);
+  margin-top: 4px;
+}

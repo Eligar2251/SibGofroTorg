@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createUser,
   createUserByEmail,
+  createUserByUsername,
   createUserSession,
   formatPhoneDisplay,
   isValidRussianPhone,
@@ -14,7 +15,6 @@ import {
   normalizePhone,
 } from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
-import { getSettings } from "@/lib/supabase-queries";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const usernameRaw = body.username ? String(body.username).trim() : "";
     const phoneRaw = body.phone ? String(body.phone).trim() : "";
     const emailRaw = body.email ? String(body.email).trim() : "";
     const password = String(body.password || "");
@@ -46,6 +47,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Пароль минимум 8 символов" }, { status: 400 });
     }
 
+    // Основной способ — регистрация по логину и паролю (без телефона/почты).
+    // Для обратной совместимости поддерживаем и прежние способы (phone/email).
+    if (usernameRaw) {
+      const result = await createUserByUsername({ username: usernameRaw, password, name });
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      await createUserSession({
+        uid: result.id,
+        phone: result.username, // идентификатор сессии — логин
+        name: result.name || undefined,
+      });
+      return NextResponse.json(
+        {
+          success: true,
+          user: {
+            id: result.id,
+            username: result.username,
+            phone: null,
+            email: null,
+            name: result.name,
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     // Определяем метод регистрации: если передан email и он валиден — по email, иначе по телефону
     // Для совместимости поддерживаем оба, приоритет — email если есть, иначе phone
     let method: "email" | "phone" = "phone";
@@ -54,15 +82,7 @@ export async function POST(request: NextRequest) {
     } else if (phoneRaw) {
       method = "phone";
     } else {
-      // Пытаемся прочитать настройку из админки, чтобы дать подсказку
-      try {
-        const settings = await getSettings();
-        const configured = String(settings.registration_contact_field || "phone").toLowerCase();
-        if (configured === "email") {
-          return NextResponse.json({ error: "Email и пароль обязательны" }, { status: 400 });
-        }
-      } catch {}
-      return NextResponse.json({ error: "Телефон и пароль обязательны" }, { status: 400 });
+      return NextResponse.json({ error: "Логин и пароль обязательны" }, { status: 400 });
     }
 
     if (method === "email") {

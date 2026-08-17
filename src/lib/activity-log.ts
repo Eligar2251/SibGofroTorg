@@ -10,6 +10,7 @@ export type ActionType =
   | "update"
   | "delete"
   | "status_change"
+  | "issue"
   | "post"
   | "cancel"
   | "login"
