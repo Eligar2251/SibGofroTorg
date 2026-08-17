@@ -71,6 +71,7 @@ export default async function AdminProductsPage({
     isVisible: p.isVisible,
     isFeatured: p.isFeatured,
     featuredOrder: featuredOrderMap.get(p.id) ?? null,
+    isSale: p.isSale ?? false,
     imageUrl: p.imageUrl ?? null,
     viewCount: p.viewCount ?? 0,
   }));

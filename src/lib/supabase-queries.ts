@@ -189,6 +189,18 @@ function isMissingProductLabelColorColumnError(err: any): boolean {
   );
 }
 
+function isMissingSaleColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("is_sale")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 function mapProductRow(row: any): FirestoreProduct {
   const images = normalizeProductImages(row.images);
   return {
@@ -239,6 +251,7 @@ function mapProductRow(row: any): FirestoreProduct {
     discountBadge: row.discount_badge || null,
     isVisible: row.is_visible ?? true,
     isFeatured: row.is_featured ?? false,
+    isSale: row.is_sale ?? false,
     // Главное фото: явный image_url, иначе первое из массива images —
     // самолечение для товаров, у которых фото задано лишь в одном из
     // двух мест (Excel задаёт image_url, форма — images).
@@ -618,6 +631,7 @@ export async function getProductsForBulkEditor(): Promise<FirestoreProduct[]> {
       "is_visible",
       "is_promo",
       "is_featured",
+      "is_sale",
       "promo_label",
     ].join(","))
     .order("name", { ascending: true });
@@ -742,6 +756,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     discount_badge: data.discountBadge || null,
     is_visible: data.isVisible ?? true,
     is_featured: data.isFeatured ?? false,
+    is_sale: data.isSale ?? false,
     // Главное фото: если явное пусто — берём первое из массива.
     image_url: data.imageUrl || firstImageUrl(normalizeProductImages(data.images)) || null,
     images: normalizeProductImages(data.images),
@@ -798,6 +813,13 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
       if (retry5.error) throw retry5.error;
       result = retry5.data;
       insertErr = null;
+    } else if (isMissingSaleColumnError(first.error)) {
+      console.warn("[products] Колонки is_sale нет — запись без флага распродажи");
+      const { is_sale: _sale, ...payloadNoSale } = payload;
+      const retry6 = await db.from("products").insert(payloadNoSale).select("id").single();
+      if (retry6.error) throw retry6.error;
+      result = retry6.data;
+      insertErr = null;
     }
   } else {
     result = first.data;
@@ -840,7 +862,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
     discountType: "discount_type", discountValue: "discount_value",
     discountBadge: "discount_badge", isVisible: "is_visible",
-    isFeatured: "is_featured", imageUrl: "image_url", images: "images",
+    isFeatured: "is_featured", isSale: "is_sale", imageUrl: "image_url", images: "images",
     // Штрихкод можно поменять только явно (форма товара). Значение
     // валидируется на API-слое; пустая строка = очистить (потом
     // дозапишется генерацией). Никакая другая правка товара колонку
@@ -948,6 +970,11 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       ...payloadNoLabelColors
     } = payload;
     ({ error } = await db.from("products").update(payloadNoLabelColors).eq("id", id));
+  }
+  if (error && isMissingSaleColumnError(error) && "is_sale" in payload) {
+    console.warn("[products] Колонки is_sale нет — сохранение без флага распродажи");
+    const { is_sale: _sale, ...payloadNoSale } = payload;
+    ({ error } = await db.from("products").update(payloadNoSale).eq("id", id));
   }
   if (error) throw error;
   invalidateProductsCache();

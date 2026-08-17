@@ -7846,3 +7846,167 @@ body {
   color: var(--ink-muted, #888);
   margin-top: 4px;
 }
+
+/* =========================================================
+   Секция «Распродажа остатков» (главная)
+   ========================================================= */
+.sale-section {
+  padding: 40px 0 48px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+}
+.sale-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 20px;
+}
+.sale-head__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  color: #b42318;
+  background: #fee2e2;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.sale-head__main {
+  flex: 1 1 380px;
+  min-width: 0;
+}
+.sale-head__eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: #b42318;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.sale-head__main p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.sale-head__all {
+  flex: 0 0 auto;
+}
+
+.sale-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.sale-card {
+  background: #fff;
+  border: 1px solid #ebebeb;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.sale-card:hover {
+  border-color: #fecaca;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+.sale-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  background: #f8f8f8;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.sale-card__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ddd;
+}
+.sale-card__body {
+  padding: 10px 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.sale-card__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+  text-decoration: none;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 34px;
+  transition: color 0.16s ease;
+}
+.sale-card__name:hover { color: var(--green); }
+.sale-card__price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+.sale-card__price {
+  font-size: 17px;
+  font-weight: 800;
+  color: #b42318;
+  line-height: 1;
+}
+.sale-card__old-price {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+.sale-card__price-muted {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.sale-card__stock {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ok);
+}
+.sale-card__stock--out {
+  color: var(--red);
+}
+.sale-card__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  margin-top: 2px;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+.sale-card__btn:hover { background: var(--green-dark); }
+.sale-card__btn--added { background: var(--ok); }
+
+@media (max-width: 768px) {
+  .sale-section { padding: 28px 0 34px; }
+  .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .sale-card__name { font-size: 11.5px; min-height: 0; }
+  .sale-card__price { font-size: 14px; }
+}

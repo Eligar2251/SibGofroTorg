@@ -51,6 +51,8 @@ export interface FirestoreProduct {
   isFeatured: boolean;
   /** Ручной порядок в блоке «Популярные товары» на главной. */
   featuredOrder?: number | null | undefined;
+  /** Товар участвует в секции «Распродажа остатков» на главной. */
+  isSale?: boolean | null | undefined;
   imageUrl?: string | null | undefined;
   images?: { url: string; publicId: string }[];
   viewCount?: number;

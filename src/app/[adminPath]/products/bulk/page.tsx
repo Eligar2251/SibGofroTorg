@@ -35,6 +35,7 @@ export default async function BulkProductsPage({
     isVisible: p.isVisible,
     isPromo: p.isPromo,
     isFeatured: p.isFeatured,
+    isSale: p.isSale ?? false,
     promoLabel: p.promoLabel ?? "",
   }));
 

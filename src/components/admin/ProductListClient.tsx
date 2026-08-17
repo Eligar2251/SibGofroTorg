@@ -40,6 +40,7 @@ interface ProductItem {
   isVisible: boolean;
   isFeatured?: boolean;
   featuredOrder?: number | null;
+  isSale?: boolean;
   imageUrl?: string | null;
   viewCount?: number;
 }
@@ -455,6 +456,11 @@ export function ProductListClient({
                         {product.isFeatured && (
                           <span className="admin-badge admin-badge--blue">
                             Популярный{product.featuredOrder ? ` · #${product.featuredOrder}` : ""}
+                          </span>
+                        )}
+                        {product.isSale && (
+                          <span className="admin-badge admin-badge--red">
+                            Распродажа
                           </span>
                         )}
                       </div>
