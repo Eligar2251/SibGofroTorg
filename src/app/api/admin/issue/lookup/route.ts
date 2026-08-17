@@ -10,6 +10,9 @@ import { getAdminDb } from "@/lib/supabase";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHORT_ID_RE = /^[0-9a-f]{4,16}$/i;
+
 export async function GET(request: NextRequest) {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
@@ -21,36 +24,77 @@ export async function GET(request: NextRequest) {
 
   const db = getAdminDb();
   const codeQuery = q.toUpperCase();
+  const results = new Map<string, any>();
 
-  // 1) Точное совпадение по коду выдачи.
-  const byCode = await db
-    .from("orders")
-    .select("*")
-    .ilike("pickup_code", `%${codeQuery}%`)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  // 2) По ID (префикс), имени или телефону.
-  const byText = await db
-    .from("orders")
-    .select("*")
-    .or(
-      `id.ilike.%${q}%,customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,company_name.ilike.%${q}%`
-    )
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  if (byCode.error || byText.error) {
-    console.error("issue lookup error:", byCode.error || byText.error);
-    return NextResponse.json({ error: "Ошибка поиска" }, { status: 500 });
+  // 1) По коду выдачи (pickup_code — TEXT).
+  try {
+    const { data, error } = await db
+      .from("orders")
+      .select("*")
+      .ilike("pickup_code", `%${codeQuery}%`)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error) {
+      console.error("issue lookup by code:", error);
+    } else {
+      for (const row of data || []) results.set(row.id, row);
+    }
+  } catch (err) {
+    console.error("issue lookup by code:", err);
   }
 
-  const map = new Map<string, any>();
-  for (const row of [...(byCode.data || []), ...(byText.data || [])]) {
-    map.set(row.id, row);
+  // 2) По имени / телефону / почте / организации (все TEXT).
+  //    ВАЖНО: id здесь не участвует — orders.id имеет тип UUID,
+  //    и `ilike` по UUID вызывает ошибку Postgres (operator does not exist).
+  try {
+    const { data, error } = await db
+      .from("orders")
+      .select("*")
+      .or(
+        `customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,customer_email.ilike.%${q}%,company_name.ilike.%${q}%`
+      )
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error) {
+      console.error("issue lookup by text:", error);
+    } else {
+      for (const row of data || []) results.set(row.id, row);
+    }
+  } catch (err) {
+    console.error("issue lookup by text:", err);
   }
 
-  const orders = Array.from(map.values()).map(serializeOrder);
+  // 3) По номеру заказа (id): точное совпадение полного UUID
+  //    либо короткий префикс (то, что показывается как «#ab12cd34»).
+  if (UUID_RE.test(q)) {
+    try {
+      const { data } = await db
+        .from("orders")
+        .select("*")
+        .eq("id", q.toLowerCase())
+        .maybeSingle();
+      if (data) results.set(data.id, data);
+    } catch (err) {
+      console.error("issue lookup by id:", err);
+    }
+  } else if (SHORT_ID_RE.test(q)) {
+    try {
+      const { data } = await db
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      for (const row of data || []) {
+        if (String(row.id).toLowerCase().startsWith(q.toLowerCase())) {
+          results.set(row.id, row);
+        }
+      }
+    } catch (err) {
+      console.error("issue lookup by short id:", err);
+    }
+  }
+
+  const orders = Array.from(results.values()).map(serializeOrder);
   return NextResponse.json({ orders });
 }
 
