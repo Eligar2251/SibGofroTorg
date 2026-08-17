@@ -3,10 +3,7 @@
 // =========================================================
 
 import type { MetadataRoute } from "next";
-
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-  "https://gofrotara.online";
+import { SITE_URL } from "@/lib/seo";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
