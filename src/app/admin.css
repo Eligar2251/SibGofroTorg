@@ -6238,6 +6238,27 @@ body:has(.admin-modal-overlay) {
   font-weight: 600;
 }
 
+/* Ячейка-приёмник при перетаскивании выплаты */
+.whsal-day--dragover {
+  box-shadow: inset 0 0 0 3px var(--adm-kraft);
+  background: var(--adm-kraft-pale);
+}
+
+/* Запись выплаты можно перетащить на другой день */
+.whsal-day-line--draggable {
+  cursor: grab;
+  border-radius: 3px;
+  padding: 0 1px;
+  transition: background-color 0.1s ease, box-shadow 0.1s ease;
+}
+.whsal-day-line--draggable:hover {
+  background: color-mix(in srgb, var(--adm-kraft-pale) 70%, transparent);
+  box-shadow: inset 0 0 0 1px var(--adm-kraft-line);
+}
+.whsal-day-line--draggable:active {
+  cursor: grabbing;
+}
+
 .whsal-day--flash {
   animation: whsalFlash 0.9s ease;
 }

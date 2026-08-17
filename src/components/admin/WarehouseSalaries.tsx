@@ -1249,6 +1249,17 @@ export function WarehouseSalaries({
   const [exportingImage, setExportingImage] = useState(false);
   const [scheduleStartValue, setScheduleStartValue] = useState("1");
   const [scheduleBusy, setScheduleBusy] = useState(false);
+  // Перетаскивание выплаты между ячейками дней (drag & drop).
+  const [dragSalary, setDragSalary] = useState<{
+    id: string;
+    employeeId: string;
+    fromDay: number;
+  } | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<{
+    employeeId: string;
+    day: number;
+  } | null>(null);
+  const dragSuppressClickRef = useRef(false);
   const popRef = useRef<HTMLDivElement | null>(null);
   const salaryTableExportRef = useRef<HTMLDivElement | null>(null);
 
@@ -1692,6 +1703,46 @@ export function WarehouseSalaries({
       alert("Ошибка сети");
     }
     setQuickBusy(false);
+  }
+
+  // ── Перетаскивание выплаты на другой день месяца ──
+  // Для запланированной (невыплаченной) выплаты меняется `date`,
+  // для уже выплаченной — `paidAt` (дата фактической выплаты).
+  // Месяц сохраняется: перетаскивание идёт в пределах текущей таблицы.
+  async function moveSalaryToDay(salaryId: string, toDay: number) {
+    const salary = salaries.find((s) => s.id === salaryId);
+    if (!salary) return;
+    const newDate = `${activeMonth}-${String(toDay).padStart(2, "0")}`;
+    const isPaid = salary.isPaid;
+    const patchBody = isPaid ? { paidAt: newDate } : { date: newDate };
+    setBusyId(salaryId);
+    try {
+      const res = await fetch(`/api/admin/warehouse/salaries/${salaryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patchBody),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Не удалось перенести выплату");
+        return;
+      }
+      setSalaries((prev) =>
+        prev.map((x) =>
+          x.id === salaryId
+            ? isPaid
+              ? { ...x, paidAt: newDate }
+              : { ...x, date: newDate }
+            : x
+        )
+      );
+      flashCell(`${salary.employeeId || salary.employeeName}:${toDay}`);
+      reload();
+    } catch {
+      alert("Ошибка сети");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   // ── Планы на месяц (настройки) ──
@@ -2441,15 +2492,58 @@ export function WarehouseSalaries({
                     return (
                       <td
                         key={d}
-                        className={cls}
+                        className={`${cls}${
+                          dragOverDay &&
+                          dragOverDay.employeeId === row.employee.id &&
+                          dragOverDay.day === d
+                            ? " whsal-day--dragover"
+                            : ""
+                        }`}
                         title={title}
-                        onClick={(e) => openDayPopover(row.employee, d, e.currentTarget)}
+                        onClick={(e) => {
+                          if (dragSuppressClickRef.current) {
+                            dragSuppressClickRef.current = false;
+                            return;
+                          }
+                          openDayPopover(row.employee, d, e.currentTarget);
+                        }}
+                        onDragOver={(e) => {
+                          if (!dragSalary || dragSalary.employeeId !== row.employee.id)
+                            return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          setDragOverDay({ employeeId: row.employee.id, day: d });
+                        }}
+                        onDragLeave={(e) => {
+                          // Сбрасываем подсветку только если курсор реально ушёл из ячейки
+                          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                          setDragOverDay((cur) =>
+                            cur && cur.employeeId === row.employee.id && cur.day === d
+                              ? null
+                              : cur
+                          );
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setDragOverDay(null);
+                          if (!dragSalary || dragSalary.employeeId !== row.employee.id)
+                            return;
+                          if (dragSalary.fromDay === d) {
+                            setDragSalary(null);
+                            return;
+                          }
+                          const id = dragSalary.id;
+                          setDragSalary(null);
+                          dragSuppressClickRef.current = true;
+                          moveSalaryToDay(id, d);
+                        }}
                       >
                         <span className="whsal-day-stack">
                           {visibleItems.map((entry) => (
                             <span
                               key={entry.id}
-                              className={`whsal-day-line${
+                              draggable
+                              className={`whsal-day-line whsal-day-line--draggable${
                                 !entry.isPaid
                                   ? " whsal-day-line--planned"
                                   : isRentSalary(entry)
@@ -2458,7 +2552,21 @@ export function WarehouseSalaries({
                                       ? " whsal-day-line--debt"
                                       : ""
                               }`}
-                              title={`${entry.isPaid ? "Выплачено" : "Запланировано"} ${fmtDate(salaryOperationDate(entry))} за ${monthLabel(salaryPeriodKey(entry))}`}
+                              title={`${entry.isPaid ? "Выплачено" : "Запланировано"} ${fmtDate(salaryOperationDate(entry))} за ${monthLabel(salaryPeriodKey(entry))}. Перетащите на другой день, чтобы перенести.`}
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                e.dataTransfer.setData("text/plain", entry.id);
+                                e.dataTransfer.effectAllowed = "move";
+                                setDragSalary({
+                                  id: entry.id,
+                                  employeeId: row.employee.id,
+                                  fromDay: d,
+                                });
+                              }}
+                              onDragEnd={() => {
+                                setDragSalary(null);
+                                setDragOverDay(null);
+                              }}
                             >
                               {Math.round(entry.amount) === entry.amount
                                 ? String(entry.amount)
@@ -2627,6 +2735,9 @@ export function WarehouseSalaries({
           <span className="whsal-legend__item whsal-hint">
             «Долг»: + должны сотруднику (остаток с прошлого месяца), − сотрудник
             должен (аванс)
+          </span>
+          <span className="whsal-legend__item whsal-hint">
+            Перетащите сумму выплаты на другой день — день изменится в базе
           </span>
         </div>
         </div>
