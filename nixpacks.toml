@@ -2,10 +2,16 @@
 # Это убирает двусмысленность из-за наличия package-lock.json в репозитории
 # и ускоряет деплой в Timeweb Cloud.
 
+[phases.setup]
+nixPkgs = ["nodejs_24"]
+
 [phases.install]
 cmds = [
   "corepack enable",
   "corepack prepare pnpm@11.17.0 --activate",
+  "pnpm config set fetch-retries 5",
+  "pnpm config set fetch-retry-mintimeout 20000",
+  "pnpm config set fetch-retry-maxtimeout 120000",
   "pnpm install --frozen-lockfile --prefer-offline"
 ]
 
