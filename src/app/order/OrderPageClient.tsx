@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ModalPortal } from "@/components/admin/ModalPortal";
-import { formatPhoneMask } from "@/lib/phone-mask";
 import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 
 type DeliveryMethod = "courier" | "pickup" | "transport";
@@ -70,7 +69,6 @@ export function OrderPageClient({
   const [consentError, setConsentError] = useState(false);
 
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [comment, setComment] = useState("");
@@ -110,7 +108,6 @@ export function OrderPageClient({
         setSessionUser(u);
         // автозаполнение из профиля — только пустые поля не затираем уже введённое
         if (u.name) setName(u.name);
-        if (u.phone) setPhone(u.phone);
         if (u.email) setEmail(u.email);
         if (u.customerType === "legal" || u.customerType === "individual") {
           setCustomerType(u.customerType);
@@ -229,10 +226,6 @@ export function OrderPageClient({
         );
         return;
       }
-      if (!phone.trim()) {
-        setError("Укажите телефон");
-        return;
-      }
       if (customerType === "legal") {
         if (!companyName.trim()) {
           setError("Укажите полное наименование организации");
@@ -289,7 +282,7 @@ export function OrderPageClient({
         type: "order",
         customerType,
         customerName: name.trim(),
-        customerPhone: phone.trim(),
+        customerPhone: "",
         customerEmail: email.trim() || null,
         communicationChannel: commChannel,
         paymentMethod: finalPayment,
@@ -611,7 +604,7 @@ export function OrderPageClient({
                     <div className="checkout-tip" style={{ marginTop: 16 }}>
                       Заказ будет привязан к вашему кабинету (
                       <strong>
-                        {sessionUser.username || sessionUser.phone || "—"}
+                        {sessionUser.username || "—"}
                       </strong>
                       ) — статус можно отслеживать в ЛК.
                     </div>
@@ -905,32 +898,30 @@ export function OrderPageClient({
                       />
                     </div>
                     <div>
-                      <label className="checkout-label">Телефон *</label>
-                      <input
-                        className="form-input"
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
-                        readOnly={!!sessionUser?.phone}
-                        style={
-                          sessionUser?.phone
-                            ? { background: "var(--bg-main)" }
-                            : undefined
-                        }
-                      />
-                    </div>
-                    <div>
                       <label className="checkout-label">
                         {customerType === "legal"
-                          ? "Рабочая почта для счёта *"
-                          : "Email"}
+                          ? "Корпоративная почта для счёта *"
+                          : "Корпоративная почта для счёта (по желанию)"}
                       </label>
                       <input
                         className="form-input"
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        placeholder="info@company.ru"
                       />
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 11,
+                          color: "var(--ink-muted)",
+                          marginTop: 4,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Нужна только для отправки счёта. Данные обрабатываются
+                        согласно политике конфиденциальности.
+                      </span>
                     </div>
                   </div>
 
@@ -1120,7 +1111,7 @@ export function OrderPageClient({
                     <div className="checkout-tip" style={{ marginTop: 16 }}>
                       Заказ будет в кабинете:{" "}
                       <strong>
-                        {sessionUser.username || sessionUser.phone || "—"}
+                        {sessionUser.username || "—"}
                       </strong>
                     </div>
                   ) : (
@@ -1371,8 +1362,8 @@ export function OrderPageClient({
                   </button>
                 </div>
                 <p style={{ fontSize: 12, color: "var(--ink-muted)", margin: 0, width: "100%" }}>
-                  Можно оформить заказ и без регистрации — нам просто придёт
-                  заявка с вашим номером.
+                  Можно оформить заказ и без регистрации — номер заявки будет
+                  сформирован автоматически и показан на странице подтверждения.
                 </p>
               </form>
             </div>

@@ -7132,6 +7132,35 @@ body {
   background: var(--green-light);
 }
 
+/* Кнопки связи напрямую (MAX / позвонить) в заявке «Узнать цену» */
+.pi-contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pi-contact-actions .pi-btn {
+  flex: 1;
+  min-width: 150px;
+}
+.pi-contact-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pi-contact-divider::before,
+.pi-contact-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 .pi-success {
   display: flex;
   flex-direction: column;
