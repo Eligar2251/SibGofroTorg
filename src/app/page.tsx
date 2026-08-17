@@ -45,6 +45,8 @@ import {
 import { YandexMapEmbed } from "@/components/layout/YandexMapEmbed";
 import type { Metadata } from "next";
 import { SITE_URL, SITE_NAME, DEFAULT_DESCRIPTION } from "@/lib/seo";
+import { HomeSeoSection } from "@/components/seo/HomeSeoSection";
+import "./seo-blocks.css";
 
 /** Превращает значение working_hours из БД в SITE_HOURS_LABEL-формат */
 function buildHoursLabel(workingHours: string, weekdayFallback: string): string {
@@ -60,12 +62,14 @@ function buildHoursLabel(workingHours: string, weekdayFallback: string): string 
 }
 
 export const metadata: Metadata = {
-  title: `Гофрокоробки в Новосибирске от 1 шт. — ${SITE_NAME}`,
-  description: DEFAULT_DESCRIPTION,
+  title: `Гофротара и картонные коробки в Новосибирске — купить от 1 шт. | ${SITE_NAME}`,
+  description:
+    "Купить гофротару и картонные коробки в Новосибирске оптом и в розницу: коробки Т-22, Т-23, Т-24, 3- и 5-слойные. От 1 шт., доставка по городу и области, склад на ул. Ватутина.",
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: `Гофрокоробки в Новосибирске — ${SITE_NAME}`,
-    description: DEFAULT_DESCRIPTION,
+    title: `Гофротара и картонные коробки в Новосибирске — ${SITE_NAME}`,
+    description:
+      "Купить гофротару, картонные коробки и упаковку в Новосибирске. Опт и розница от 1 шт., доставка по городу и области.",
     url: SITE_URL,
   },
 };
@@ -464,6 +468,9 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* SEO-текстовый блок с ключевыми запросами и FAQ */}
+      <HomeSeoSection categories={serializedCategories} />
     </div>
   );
 }

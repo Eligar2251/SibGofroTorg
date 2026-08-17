@@ -22,7 +22,7 @@ export default async function OrderSuccessPage({
 
   return (
     <div className="success-page">
-      <OrderSuccessGoal />
+      <OrderSuccessGoal code={code || undefined} />
 
       <div className="container-wide">
         <div className="success-card">
