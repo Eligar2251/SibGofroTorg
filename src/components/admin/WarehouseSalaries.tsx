@@ -2303,9 +2303,9 @@ export function WarehouseSalaries({
           </span>
         </div>
 
-        <div style={{ background: "#fff" }}>
+        <div style={{ background: "var(--adm-card)" }}>
         <div className="whsal-grid-scroll">
-          <div ref={salaryTableExportRef} style={{ width: "max-content", minWidth: "100%", background: "#fff" }}>
+          <div ref={salaryTableExportRef} style={{ width: "max-content", minWidth: "100%", background: "var(--adm-card)" }}>
           <table className="whsal-table">
             <thead>
               <tr>

@@ -5920,6 +5920,11 @@ body:has(.admin-modal-overlay) {
   border-top: 2px solid var(--adm-border-mid);
 }
 
+/* Экспорт в PNG: белый фон для корректного захвата canvas. */
+.whsal-export-mode {
+  background: #ffffff !important;
+}
+
 /* Экспорт в PNG: sticky-колонки и тени мешают рендеру canvas,
    поэтому на время захвата отключаем fixed/sticky-поведение. */
 .whsal-export-mode .whsal-th--name,
@@ -12648,7 +12653,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   align-items: flex-start;
   gap: 14px;
   padding: 14px 16px;
-  background: #fff;
+  background: var(--adm-card);
   border: 1px solid var(--adm-border);
   border-radius: 12px;
 }
@@ -12657,7 +12662,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   width: 48px;
   height: 48px;
   border-radius: 8px;
-  background: var(--adm-pale);
+  background: var(--adm-paper-warm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -12702,7 +12707,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   padding: 4px 9px;
   border-radius: 8px;
   border: 1px solid var(--adm-border);
-  background: #fafafa;
+  background: var(--adm-paper-warm);
   color: var(--adm-navy);
 }
 .bf-dim b { color: var(--adm-muted); }
