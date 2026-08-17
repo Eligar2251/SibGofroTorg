@@ -22,6 +22,14 @@ export default function NotFound() {
             Каталог <ArrowRight size={14} />
           </Link>
         </div>
+        {/* Популярные разделы — быстрый выход на живые страницы */}
+        <div className="mt-10 text-sm text-slate flex flex-wrap gap-x-5 gap-y-2 justify-center">
+          <Link href="/gofrotara" className="underline underline-offset-4 hover:text-ink">Гофротара оптом</Link>
+          <Link href="/korobki-dlya-pereezda" className="underline underline-offset-4 hover:text-ink">Коробки для переезда</Link>
+          <Link href="/korobki-dlya-marketplejsov" className="underline underline-offset-4 hover:text-ink">Коробки для WB и Ozon</Link>
+          <Link href="/korobki-na-zakaz" className="underline underline-offset-4 hover:text-ink">Коробки на заказ</Link>
+          <Link href="/search" className="underline underline-offset-4 hover:text-ink">Подбор по размеру</Link>
+        </div>
       </div>
     </section>
   );
