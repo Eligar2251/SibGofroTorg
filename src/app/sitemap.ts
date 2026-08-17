@@ -4,10 +4,7 @@
 
 import type { MetadataRoute } from "next";
 import { getCategories, getProducts } from "@/lib/supabase-queries";
-
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-  "https://gofrotara.online";
+import { SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 3600; // раз в час
