@@ -90,6 +90,18 @@ export function HomeSeoSection({
                 {c.name}
               </Link>
             ))}
+            <Link href="/gofrotara" className="seo-block__link">
+              Гофротара оптом <ArrowRight size={14} />
+            </Link>
+            <Link href="/korobki-dlya-pereezda" className="seo-block__link">
+              Коробки для переезда <ArrowRight size={14} />
+            </Link>
+            <Link href="/korobki-dlya-marketplejsov" className="seo-block__link">
+              Коробки для WB и Ozon <ArrowRight size={14} />
+            </Link>
+            <Link href="/korobki-na-zakaz" className="seo-block__link">
+              Коробки на заказ <ArrowRight size={14} />
+            </Link>
             <Link href="/catalog" className="seo-block__link">
               Весь каталог <ArrowRight size={14} />
             </Link>
@@ -97,11 +109,15 @@ export function HomeSeoSection({
 
           <h3>Купить картонные коробки — оптом и в розницу</h3>
           <p>
-            Если вам нужны картонные коробки для переезда, хранения или упаковки товара —
-            выберите подходящий размер в{" "}
+            Если вам нужны{" "}
+            <Link href="/korobki-dlya-pereezda">картонные коробки для переезда</Link>,
+            хранения или упаковки товара — выберите подходящий размер в{" "}
             <Link href="/catalog">каталоге гофротары</Link>. Для типовых коробок
             минимальный заказ — 1 шт., оптовая цена действует от 50 шт. Нестандартные
-            размеры и 3- или 5-слойные коробки изготовим под заказ.
+            размеры и 3- или 5-слойные коробки{" "}
+            <Link href="/korobki-na-zakaz">изготовим под заказ</Link>. Для поставщиков
+            маркетплейсов есть отдельный подбор{" "}
+            <Link href="/korobki-dlya-marketplejsov">коробок для WB и Ozon</Link>.
           </p>
 
           <h3>Доставка гофротары по Новосибирску и области</h3>

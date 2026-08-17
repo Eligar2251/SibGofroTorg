@@ -29,6 +29,15 @@ const INFO_LINKS = [
   { href: "/privacy", label: "Политика конфиденциальности" },
 ];
 
+// SEO-посадочные под кластеры запросов: продающие страницы
+// «гофротара», «переезд», «маркетплейсы», «на заказ».
+const SEO_LINKS = [
+  { href: "/gofrotara", label: "Гофротара оптом" },
+  { href: "/korobki-dlya-pereezda", label: "Коробки для переезда" },
+  { href: "/korobki-dlya-marketplejsov", label: "Коробки для WB и Ozon" },
+  { href: "/korobki-na-zakaz", label: "Коробки на заказ" },
+];
+
 const CLIENT_LINKS = [
   { href: "/order", label: "Оформить заказ" },
   { href: "/cabinet", label: "Мои заказы" },
@@ -117,6 +126,15 @@ export function Footer() {
           <div>
             <div className="footer-col-title">Информация</div>
             {INFO_LINKS.map((l) => (
+              <Link key={l.href} href={l.href} className="footer-link">
+                {l.label}
+              </Link>
+            ))}
+          </div>
+
+          <div>
+            <div className="footer-col-title">Популярные товары</div>
+            {SEO_LINKS.map((l) => (
               <Link key={l.href} href={l.href} className="footer-link">
                 {l.label}
               </Link>

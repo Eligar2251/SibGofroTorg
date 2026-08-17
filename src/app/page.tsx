@@ -62,7 +62,11 @@ function buildHoursLabel(workingHours: string, weekdayFallback: string): string 
 }
 
 export const metadata: Metadata = {
-  title: `Гофротара и картонные коробки в Новосибирске — купить от 1 шт. | ${SITE_NAME}`,
+  // absolute — фиксирует title главной как есть, без суффикса-шаблона
+  // из корневого layout (иначе возможно задвоение «… · СибГофроТорг»).
+  title: {
+    absolute: `Гофротара и картонные коробки в Новосибирске — купить от 1 шт. | ${SITE_NAME}`,
+  },
   description:
     "Купить гофротару и картонные коробки в Новосибирске оптом и в розницу: коробки Т-22, Т-23, Т-24, 3- и 5-слойные. От 1 шт., доставка по городу и области, склад на ул. Ватутина.",
   alternates: { canonical: SITE_URL },
