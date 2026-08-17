@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ModalPortal } from "@/components/admin/ModalPortal";
-import { formatPhoneMask } from "@/lib/phone-mask";
+import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 
 type DeliveryMethod = "courier" | "pickup" | "transport";
 type PaymentMethod = "card" | "cash" | "invoice";
@@ -60,12 +60,15 @@ export function OrderPageClient({
   const [sessionUser, setSessionUser] = useState<{
     id?: string;
     name?: string | null;
-    phone?: string;
+    phone?: string | null;
+    username?: string | null;
     email?: string | null;
   } | null>(null);
 
+  const [consent, setConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
+
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [comment, setComment] = useState("");
@@ -87,7 +90,7 @@ export function OrderPageClient({
   // Модалка создания личного кабинета (регистрация без потери корзины)
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [accName, setAccName] = useState("");
-  const [accPhone, setAccPhone] = useState("");
+  const [accUsername, setAccUsername] = useState("");
   const [accPassword, setAccPassword] = useState("");
   const [accPassword2, setAccPassword2] = useState("");
   const [accSaving, setAccSaving] = useState(false);
@@ -105,7 +108,6 @@ export function OrderPageClient({
         setSessionUser(u);
         // автозаполнение из профиля — только пустые поля не затираем уже введённое
         if (u.name) setName(u.name);
-        if (u.phone) setPhone(u.phone);
         if (u.email) setEmail(u.email);
         if (u.customerType === "legal" || u.customerType === "individual") {
           setCustomerType(u.customerType);
@@ -132,7 +134,7 @@ export function OrderPageClient({
 
   function openAccountModal() {
     setAccName(name);
-    setAccPhone(phone);
+    setAccUsername("");
     setAccPassword("");
     setAccPassword2("");
     setAccError("");
@@ -143,6 +145,10 @@ export function OrderPageClient({
   async function handleAccountSubmit(e: React.FormEvent) {
     e.preventDefault();
     setAccError("");
+    if (!accUsername.trim()) {
+      setAccError("Укажите логин");
+      return;
+    }
     if (accPassword.length < 8) {
       setAccError("Пароль минимум 8 символов");
       return;
@@ -157,7 +163,7 @@ export function OrderPageClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: accPhone.trim(),
+          username: accUsername.trim(),
           password: accPassword,
           name: accName.trim() || undefined,
         }),
@@ -167,13 +173,13 @@ export function OrderPageClient({
         // уже есть аккаунт — пробуем войти тем же паролем
         if (
           typeof data.error === "string" &&
-          data.error.toLowerCase().includes("уже")
+          data.error.toLowerCase().includes("занят")
         ) {
           const loginRes = await fetch("/api/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              phone: accPhone.trim(),
+              identifier: accUsername.trim(),
               password: accPassword,
             }),
           });
@@ -181,13 +187,12 @@ export function OrderPageClient({
           if (!loginRes.ok) {
             setAccError(
               loginData.error ||
-                "Аккаунт с этим телефоном уже есть. Введите верный пароль."
+                "Логин уже занят. Введите верный пароль."
             );
             setAccSaving(false);
             return;
           }
-          setSessionUser(loginData.user || { phone: accPhone.trim(), name: accName });
-          if (!phone) setPhone(accPhone.trim());
+          setSessionUser(loginData.user || { username: accUsername.trim(), name: accName });
           if (!name && accName) setName(accName.trim());
           setAccountModalOpen(false);
           setAccSaving(false);
@@ -197,8 +202,7 @@ export function OrderPageClient({
         setAccSaving(false);
         return;
       }
-      setSessionUser(data.user || { phone: accPhone.trim(), name: accName });
-      if (!phone) setPhone(accPhone.trim());
+      setSessionUser(data.user || { username: accUsername.trim(), name: accName });
       if (!name && accName) setName(accName.trim());
       setAccountModalOpen(false);
     } catch {
@@ -220,10 +224,6 @@ export function OrderPageClient({
             ? "Укажите контактное лицо"
             : "Укажите имя"
         );
-        return;
-      }
-      if (!phone.trim()) {
-        setError("Укажите телефон");
         return;
       }
       if (customerType === "legal") {
@@ -259,6 +259,12 @@ export function OrderPageClient({
 
   async function handleSubmit() {
     if (cart.length === 0) return;
+    if (!consent) {
+      setConsentError(true);
+      setError("Необходимо согласиться на обработку персональных данных");
+      return;
+    }
+    setConsentError(false);
     const finalPayment = customerType === "legal" ? "invoice" : payment;
     // Для оплаты по счёту (в т.ч. ИП/физлицо) нужна почта, куда придёт счёт
     if (finalPayment === "invoice" && !email.trim()) {
@@ -276,7 +282,7 @@ export function OrderPageClient({
         type: "order",
         customerType,
         customerName: name.trim(),
-        customerPhone: phone.trim(),
+        customerPhone: "",
         customerEmail: email.trim() || null,
         communicationChannel: commChannel,
         paymentMethod: finalPayment,
@@ -353,7 +359,10 @@ export function OrderPageClient({
         );
         localStorage.setItem(
           "sib_my_orders",
-          JSON.stringify([...existing, result.orderId])
+          JSON.stringify([
+            ...existing,
+            { orderId: result.orderId, pickupCode: result.pickupCode },
+          ])
         );
       } catch {
         /* ignore */
@@ -361,7 +370,10 @@ export function OrderPageClient({
 
       // очищаем корзину ТОЛЬКО после успешного заказа
       clearCart();
-      router.push("/order/success");
+      const codeQuery = result.pickupCode
+        ? `?code=${encodeURIComponent(result.pickupCode)}`
+        : "";
+      router.push(`/order/success${codeQuery}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка сервера");
       setSubmitting(false);
@@ -591,8 +603,10 @@ export function OrderPageClient({
                   ) : (
                     <div className="checkout-tip" style={{ marginTop: 16 }}>
                       Заказ будет привязан к вашему кабинету (
-                      <strong>{sessionUser.phone}</strong>) — статус можно
-                      отслеживать в ЛК.
+                      <strong>
+                        {sessionUser.username || "—"}
+                      </strong>
+                      ) — статус можно отслеживать в ЛК.
                     </div>
                   )}
 
@@ -884,32 +898,30 @@ export function OrderPageClient({
                       />
                     </div>
                     <div>
-                      <label className="checkout-label">Телефон *</label>
-                      <input
-                        className="form-input"
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
-                        readOnly={!!sessionUser}
-                        style={
-                          sessionUser
-                            ? { background: "var(--bg-main)" }
-                            : undefined
-                        }
-                      />
-                    </div>
-                    <div>
                       <label className="checkout-label">
                         {customerType === "legal"
-                          ? "Рабочая почта для счёта *"
-                          : "Email"}
+                          ? "Корпоративная почта для счёта *"
+                          : "Корпоративная почта для счёта (по желанию)"}
                       </label>
                       <input
                         className="form-input"
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        placeholder="info@company.ru"
                       />
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 11,
+                          color: "var(--ink-muted)",
+                          marginTop: 4,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Нужна только для отправки счёта. Данные обрабатываются
+                        согласно политике конфиденциальности.
+                      </span>
                     </div>
                   </div>
 
@@ -1097,7 +1109,10 @@ export function OrderPageClient({
 
                   {sessionUser ? (
                     <div className="checkout-tip" style={{ marginTop: 16 }}>
-                      Заказ будет в кабинете: <strong>{sessionUser.phone}</strong>
+                      Заказ будет в кабинете:{" "}
+                      <strong>
+                        {sessionUser.username || "—"}
+                      </strong>
                     </div>
                   ) : (
                     <div style={{ marginTop: 12, fontSize: 13, color: "var(--ink-muted)" }}>
@@ -1120,6 +1135,12 @@ export function OrderPageClient({
                       </button>
                     </div>
                   )}
+
+                  <ConsentCheckbox
+                    checked={consent}
+                    onChange={(v) => setConsent(v)}
+                    error={consentError}
+                  />
 
                   {error && (
                     <div className="checkout-error" style={{ marginTop: 12 }}>
@@ -1276,13 +1297,17 @@ export function OrderPageClient({
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
                   <div>
-                    <label className="checkout-label">Телефон (логин) *</label>
+                    <label className="checkout-label">Логин *</label>
                     <input
-                      type="tel"
+                      type="text"
                       className="form-input"
-                      value={accPhone}
-                      onChange={(e) => setAccPhone(formatPhoneMask(e.target.value))}
-                      placeholder="+7 ..."
+                      value={accUsername}
+                      onChange={(e) => setAccUsername(e.target.value)}
+                      placeholder="Придумайте логин"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                     />
                   </div>
                   <div>
@@ -1337,8 +1362,8 @@ export function OrderPageClient({
                   </button>
                 </div>
                 <p style={{ fontSize: 12, color: "var(--ink-muted)", margin: 0, width: "100%" }}>
-                  Можно оформить заказ и без регистрации — нам просто придёт
-                  заявка с вашим номером.
+                  Можно оформить заказ и без регистрации — номер заявки будет
+                  сформирован автоматически и показан на странице подтверждения.
                 </p>
               </form>
             </div>

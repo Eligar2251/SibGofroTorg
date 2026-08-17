@@ -38,6 +38,7 @@ interface BulkProduct {
   isVisible: boolean;
   isPromo: boolean;
   isFeatured: boolean;
+  isSale: boolean;
   promoLabel: string;
   images?: ImageEntry[];
   imageUrl?: string | null;
@@ -454,7 +455,7 @@ export function BulkProductEditor({
           {/* ── Шаг 4: Публикация ── */}
           {step === 4 && (
             <table className="admin-table bulk-table bulk-table--publish">
-              <thead><tr><th>Товар</th><th>Примечание</th><th>Метка акции</th><th>В наличии</th><th>Виден</th><th>Акция</th><th>На главной</th></tr></thead>
+              <thead><tr><th>Товар</th><th>Примечание</th><th>Метка акции</th><th>В наличии</th><th>Виден</th><th>Акция</th><th>На главной</th><th>Распродажа</th></tr></thead>
               <tbody>{displayedProducts.map((product) => (
                 <tr key={product.id} className={dirtyIds.has(product.id) ? "bulk-row--dirty" : ""}>
                   <td><strong>{product.name}</strong><small className="bulk-sku">остаток: {product.stockQty ?? 0}</small></td>
@@ -464,6 +465,7 @@ export function BulkProductEditor({
                   <td><input type="checkbox" checked={product.isVisible} onChange={(e) => update(product.id, "isVisible", e.target.checked)} /></td>
                   <td><input type="checkbox" checked={product.isPromo} onChange={(e) => update(product.id, "isPromo", e.target.checked)} /></td>
                   <td><input type="checkbox" checked={product.isFeatured} onChange={(e) => update(product.id, "isFeatured", e.target.checked)} /></td>
+                  <td><input type="checkbox" checked={product.isSale} onChange={(e) => update(product.id, "isSale", e.target.checked)} /></td>
                 </tr>
               ))}</tbody>
             </table>

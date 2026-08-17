@@ -1,5 +1,6 @@
 // =========================================================
 // FILE: src/components/auth/RegisterClient.tsx
+// Регистрация по логину и паролю (без телефона и почты).
 // =========================================================
 
 "use client";
@@ -9,29 +10,30 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, UserPlus } from "lucide-react";
 import { safeNextPath } from "@/lib/safe-next";
-import { formatPhoneMask } from "@/lib/phone-mask";
-import { useSiteSettings } from "@/hooks/use-site-settings";
+import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 
 export function RegisterClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeNextPath(searchParams.get("next"), "/cabinet");
-  const { registrationField, ready } = useSiteSettings();
 
+  const [username, setUsername] = useState("");
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const isEmailMode = ready ? registrationField === "email" : false;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
+    if (!username.trim()) {
+      setError("Укажите логин");
+      return;
+    }
     if (password.length < 8) {
       setError("Пароль минимум 8 символов");
       return;
@@ -40,17 +42,22 @@ export function RegisterClient() {
       setError("Пароли не совпадают");
       return;
     }
+    if (!consent) {
+      setConsentError(true);
+      return;
+    }
+    setConsentError(false);
 
     setLoading(true);
     try {
-      const payload: any = { name, password };
-      if (isEmailMode) payload.email = email;
-      else payload.phone = phone;
-
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          name: name.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ошибка регистрации");
@@ -100,7 +107,7 @@ export function RegisterClient() {
             <p
               style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 6 }}
             >
-              {isEmailMode ? "Корпоративная почта + пароль — без телефона" : "Только телефон и пароль — без SMS"}
+              Только логин и пароль — без номера телефона и почты
             </p>
           </div>
 
@@ -109,7 +116,23 @@ export function RegisterClient() {
             style={{ display: "flex", flexDirection: "column", gap: 14 }}
           >
             <div>
-              <label className="checkout-label">Имя</label>
+              <label className="checkout-label">Логин *</label>
+              <input
+                id="reg-username"
+                name="username"
+                type="text"
+                className="form-input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Например: ivanov"
+                autoComplete="username"
+              />
+              <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 4 }}>
+                3–40 символов: латиница/кириллица, цифры, точка, дефис
+              </div>
+            </div>
+            <div>
+              <label className="checkout-label">Имя (необязательно)</label>
               <input
                 id="reg-name"
                 name="name"
@@ -117,44 +140,10 @@ export function RegisterClient() {
                 className="form-input"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Иван Петров"
+                placeholder="Как к вам обращаться"
                 autoComplete="name"
               />
             </div>
-            {isEmailMode ? (
-              <div>
-                <label className="checkout-label">Email (корпоративный) *</label>
-                <input
-                  id="reg-email"
-                  name="email"
-                  type="email"
-                  className="form-input"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="info@company.ru"
-                  autoComplete="email"
-                />
-                <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 4 }}>
-                  Рекомендуем обезличенную корпоративную почту: info@, zakaz@ — не считается ПД
-                </div>
-              </div>
-            ) : (
-              <div>
-                <label className="checkout-label">Телефон *</label>
-                <input
-                  id="reg-phone"
-                  name="phone"
-                  type="tel"
-                  className="form-input"
-                  value={phone}
-                  onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
-                  placeholder="+7 (913) 000-00-00"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  maxLength={18}
-                />
-              </div>
-            )}
             <div>
               <label className="checkout-label">Пароль *</label>
               <input
@@ -185,6 +174,12 @@ export function RegisterClient() {
                 autoComplete="new-password"
               />
             </div>
+
+            <ConsentCheckbox
+              checked={consent}
+              onChange={(v) => setConsent(v)}
+              error={consentError}
+            />
 
             {error && <div className="checkout-error">{error}</div>}
 

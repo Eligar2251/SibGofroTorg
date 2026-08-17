@@ -2,6 +2,7 @@
 import { getOrders, getWastepaperRequests } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
+import { OrderIssueButton } from "@/components/admin/OrderIssueButton";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
 import { OrdersSortControl } from "@/components/admin/OrdersSortControl";
 import { isOrderSortId, type OrderSortId } from "@/lib/orders-sort";
@@ -16,6 +17,7 @@ const statusLabels: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
   ready: "Готов к выдаче",
+  issued: "Выдан",
   completed: "Проведена",
   rejected: "Отменена",
   // Фильтр-агрегат: заявки, с которыми менеджеры сейчас работают.
@@ -26,6 +28,7 @@ const statusBadge: Record<string, string> = {
   new: "admin-badge admin-badge--amber",
   in_progress: "admin-badge admin-badge--blue",
   ready: "admin-badge admin-badge--indigo",
+  issued: "admin-badge admin-badge--teal",
   completed: "admin-badge admin-badge--green",
   rejected: "admin-badge admin-badge--red",
 };
@@ -51,6 +54,7 @@ const filterOptions = [
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
   { value: "ready", label: "Готов к выдаче" },
+  { value: "issued", label: "Выданные" },
   { value: "completed", label: "Проведённые (архив)" },
   { value: "rejected", label: "Отменённые" },
   { value: "all", label: "Все" },
@@ -107,7 +111,7 @@ export default async function AdminOrdersPage({
   const requestedStatus = firstParam(params.status);
   // По умолчанию — «active»: показываем новые, в работе и готовые к выдаче,
   // чтобы заявка не исчезала из списка сразу после кнопки «В работу».
-  const activeFilter = ["active", "new", "in_progress", "ready", "completed", "rejected", "all"].includes(requestedStatus)
+  const activeFilter = ["active", "new", "in_progress", "ready", "issued", "completed", "rejected", "all"].includes(requestedStatus)
     ? requestedStatus
     : "active";
   const searchQuery = firstParam(params.q);
@@ -135,6 +139,7 @@ export default async function AdminOrdersPage({
         (order.customerName && order.customerName.toLowerCase().includes(query)) ||
         (order.customerPhone && order.customerPhone.includes(query)) ||
         (order.customerEmail && order.customerEmail.toLowerCase().includes(query)) ||
+        (order.pickupCode && order.pickupCode.toLowerCase().includes(query)) ||
         (order.id && order.id.toLowerCase().includes(query)) ||
         (order.productInfo && order.productInfo.toLowerCase().includes(query)) ||
         (order.wastepaperType && order.wastepaperType.toLowerCase().includes(query)) ||
@@ -184,7 +189,7 @@ export default async function AdminOrdersPage({
               type="text"
               name="q"
               defaultValue={searchQuery}
-              placeholder="Поиск по имени, телефону, почте, ID, товару..."
+              placeholder="Поиск по коду выдачи, имени, телефону, ID, товару..."
               className="admin-input"
             />
             <button type="submit" className="admin-btn admin-btn--navy">Найти</button>
@@ -231,6 +236,15 @@ export default async function AdminOrdersPage({
                             {meta.label}
                           </span>
                           <span className={statusBadge[order.status ?? "new"]}>{statusLabels[order.status ?? "new"]}</span>
+                          {order.pickupCode && (
+                            <span
+                              className="admin-badge admin-badge--teal"
+                              style={{ fontFamily: "var(--f-mono, monospace)", letterSpacing: "0.06em", fontWeight: 800 }}
+                              title="Код выдачи заказа"
+                            >
+                              🎫 {order.pickupCode}
+                            </span>
+                          )}
                           <span className="admin-order__date">{formatDate(order.createdAt)}</span>
                           <span className="admin-muted" style={{ marginLeft: "auto", fontSize: 12 }}>Нажмите, чтобы раскрыть</span>
                         </div>
@@ -362,6 +376,12 @@ export default async function AdminOrdersPage({
                         adminPath={ADMIN_PATH}
                         endpoint={endpoint}
                       />
+                      {!isWastepaper && (
+                        <OrderIssueButton
+                          orderId={order.id}
+                          status={order.status ?? "new"}
+                        />
+                      )}
                       <OrderDeleteButton orderId={order.id} endpoint={endpoint} />
                     </div>
                   </div>

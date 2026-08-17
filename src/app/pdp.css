@@ -236,8 +236,9 @@
 }
 
 .badge-promo {
+  /* Цвет задаётся инлайном из данных товара (promoLabelColor). */
   background: #ea580c;
-  color: #fff;
+  color: #ffffff;
   font-size: 12px;
   font-weight: 700;
   padding: 4px 10px;

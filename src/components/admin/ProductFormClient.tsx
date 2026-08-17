@@ -77,6 +77,7 @@ interface ProductData {
   discountBadge?: string | null;
   isVisible?: boolean | null;
   isFeatured?: boolean | null;
+  isSale?: boolean | null;
   featuredOrder?: number | null;
   images?: ProductImage[];
   imageUrl?: string | null;
@@ -309,6 +310,7 @@ export function ProductFormClient({
       discountBadge: data.get("discountBadge") || null,
       isVisible: data.get("isVisible") === "on",
       isFeatured,
+      isSale: data.get("isSale") === "on",
       images,
       // Главное фото — первое в массиве. Затирания больше нет
       // благодаря инициализации images из product.imageUrl выше
@@ -868,6 +870,11 @@ export function ProductFormClient({
                 name: "isFeatured",
                 label: "Популярный товар",
                 defaultChecked: product?.isFeatured ?? false,
+              },
+              {
+                name: "isSale",
+                label: "Распродажа остатков (показывать в секции на главной)",
+                defaultChecked: product?.isSale ?? false,
               },
             ].map((flag) => (
               <label key={flag.name} className="admin-check">

@@ -2505,8 +2505,10 @@ select {
 
 .pcc__badge--promo {
   left: 6px;
-  background: var(--red);
-  color: #fff;
+  /* Цвет задаётся инлайном из данных товара (promoLabelColor).
+     Эти значения — лишь фоллбек на случай, если цвет ещё не сохранён. */
+  background: #ea580c;
+  color: #ffffff;
 }
 
 .pcc__badge--out {
@@ -7130,6 +7132,35 @@ body {
   background: var(--green-light);
 }
 
+/* Кнопки связи напрямую (MAX / позвонить) в заявке «Узнать цену» */
+.pi-contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pi-contact-actions .pi-btn {
+  flex: 1;
+  min-width: 150px;
+}
+.pi-contact-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pi-contact-divider::before,
+.pi-contact-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 .pi-success {
   display: flex;
   flex-direction: column;
@@ -7471,3 +7502,540 @@ body {
   text-align: center;
 }
 .map-load-fallback a { color: var(--green); text-decoration: underline; }
+
+/* =========================================================
+   Согласие на обработку ПД (чекбокс) + Cookie-баннер
+   ========================================================= */
+.consent {
+  width: 100%;
+  text-align: left;
+}
+.consent__label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted, #666);
+}
+.consent__label--dark { color: rgba(255,255,255,0.72); }
+.consent__label--light { color: var(--ink-muted, #666); }
+.consent__input {
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green, #16a34a);
+  cursor: pointer;
+}
+.consent__text { flex: 1; }
+.consent__link {
+  color: var(--green, #16a34a);
+  text-decoration: underline;
+}
+.consent__label--dark .consent__link { color: #8ee29a; }
+.consent__req { color: #ef4444; margin-left: 2px; }
+.consent__error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #dc2626;
+}
+
+/* Cookie-баннер */
+.cookie-banner {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483000;
+  max-width: 760px;
+  margin: 0 auto;
+  background: #ffffff;
+  color: var(--ink, #1b2b4b);
+  border: 1px solid var(--border, #e4e9e6);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(10, 20, 14, 0.18);
+  overflow: hidden;
+}
+.cookie-banner__inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+}
+.cookie-banner__icon {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
+.cookie-banner__body {
+  flex: 1;
+  min-width: 0;
+}
+.cookie-banner__title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink, #1b2b4b);
+  margin-bottom: 4px;
+}
+.cookie-banner__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-light, #444444);
+}
+.cookie-banner__link {
+  color: var(--green, #2d6a4f);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 600;
+}
+.cookie-banner__link:hover {
+  color: var(--green-dark, #1e4d38);
+}
+.cookie-banner__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.cookie-banner__accept {
+  background: var(--green, #2d6a4f);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color var(--transition);
+  white-space: nowrap;
+}
+.cookie-banner__accept:hover { background: var(--green-dark, #1e4d38); }
+.cookie-banner__decline {
+  background: #fff;
+  color: var(--ink-light, #444);
+  border: 1px solid var(--border-2, #cdd5d0);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+  white-space: nowrap;
+}
+.cookie-banner__decline:hover { border-color: var(--ink-3, #333); color: var(--ink, #1b2b4b); }
+@media (max-width: 640px) {
+  .cookie-banner {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+  }
+  .cookie-banner__inner {
+    flex-wrap: wrap;
+    padding: 14px;
+  }
+  .cookie-banner__icon { display: none; }
+  .cookie-banner__actions {
+    width: 100%;
+    margin-top: 4px;
+  }
+  .cookie-banner__accept, .cookie-banner__decline { flex: 1; justify-content: center; }
+}
+
+/* =========================================================
+   Страница «Политика конфиденциальности»
+   ========================================================= */
+.privacy-page {
+  background: var(--bg-main, #f7f5f0);
+  padding: 40px 16px 80px;
+}
+.privacy-page__inner {
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.privacy-hero {
+  margin-bottom: 24px;
+}
+.privacy-hero__title {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--ink, #1b2b4b);
+  margin: 0 0 6px;
+  line-height: 1.2;
+}
+.privacy-hero__sub {
+  font-size: 14px;
+  color: var(--ink-muted, #777);
+  margin: 0;
+}
+
+.privacy-card {
+  background: #fff;
+  border: 1px solid var(--border, #e4e9e6);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+.privacy__h2 {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink, #1b2b4b);
+  margin: 0 0 12px;
+  line-height: 1.3;
+}
+
+/* Таблица реквизитов оператора */
+.privacy-table {
+  margin-top: 14px;
+  border: 1px solid var(--border, #e4e9e6);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.privacy-table__row {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 16px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border, #e4e9e6);
+  background: #fff;
+}
+.privacy-table__row:last-child {
+  border-bottom: none;
+}
+.privacy-table__row:nth-child(odd) {
+  background: var(--bg-main, #f7f9f8);
+}
+.privacy-table__key {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-muted, #777);
+}
+.privacy-table__val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #1b2b4b);
+  word-break: break-word;
+}
+.privacy-table__link {
+  color: var(--green, #2d6a4f);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.privacy-table__link:hover {
+  color: var(--green-dark, #1e4d38);
+}
+
+/* Текст политики (markdown) */
+.privacy-card .markdown-body {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink-light, #444);
+}
+.privacy-card .markdown-body h2 {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink, #1b2b4b);
+  margin: 26px 0 10px;
+}
+.privacy-card .markdown-body h2:first-child {
+  margin-top: 0;
+}
+.privacy-card .markdown-body p {
+  margin: 0 0 12px;
+}
+.privacy-card .markdown-body ul,
+.privacy-card .markdown-body ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+.privacy-card .markdown-body li {
+  margin: 4px 0;
+}
+
+.privacy__footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-muted, #888);
+  line-height: 1.6;
+}
+.privacy__footer a {
+  color: var(--green, #2d6a4f);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .privacy-hero__title { font-size: 24px; }
+  .privacy-card { padding: 20px 16px; border-radius: 12px; }
+  .privacy-table__row { grid-template-columns: 1fr; gap: 2px; padding: 10px 14px; }
+  .privacy__h2 { font-size: 17px; }
+}
+
+/* =========================================================
+   Футер: реквизиты владельца
+   ========================================================= */
+.footer-link--inline {
+  text-decoration: underline;
+}
+.footer-requisites {
+  margin-top: 22px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.footer-requisites__title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+  margin-bottom: 12px;
+}
+.footer-requisites__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 20px;
+}
+.footer-requisites__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.footer-requisites__item--full {
+  grid-column: 1 / -1;
+}
+.footer-requisites__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+.footer-requisites__value {
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.78);
+  word-break: break-word;
+}
+@media (max-width: 768px) {
+  .footer-requisites { padding: 14px; }
+  .footer-requisites__grid { grid-template-columns: 1fr; }
+  .footer-requisites__item--full { grid-column: auto; }
+}
+
+/* =========================================================
+   Код выдачи заказа (success page)
+   ========================================================= */
+.success-code {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 20px auto 8px;
+  max-width: 420px;
+  padding: 16px 18px;
+  border: 2px dashed var(--kraft, #d97706);
+  border-radius: 14px;
+  background: var(--kraft-light, #fef3c7);
+  text-align: left;
+}
+.success-code__icon {
+  color: var(--kraft, #d97706);
+  flex-shrink: 0;
+}
+.success-code__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.success-code__value {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--ink, #1b2b4b);
+  line-height: 1.2;
+}
+.success-code__hint {
+  font-size: 12px;
+  color: var(--ink-muted, #888);
+  margin-top: 4px;
+}
+
+/* =========================================================
+   Секция «Распродажа остатков» (главная)
+   ========================================================= */
+.sale-section {
+  padding: 40px 0 48px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+}
+.sale-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 20px;
+}
+.sale-head__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  color: #b42318;
+  background: #fee2e2;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.sale-head__main {
+  flex: 1 1 380px;
+  min-width: 0;
+}
+.sale-head__eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: #b42318;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.sale-head__main p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.sale-head__all {
+  flex: 0 0 auto;
+}
+
+.sale-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.sale-card {
+  background: #fff;
+  border: 1px solid #ebebeb;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.sale-card:hover {
+  border-color: #fecaca;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+.sale-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  background: #f8f8f8;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.sale-card__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ddd;
+}
+.sale-card__body {
+  padding: 10px 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.sale-card__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+  text-decoration: none;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 34px;
+  transition: color 0.16s ease;
+}
+.sale-card__name:hover { color: var(--green); }
+.sale-card__price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+.sale-card__price {
+  font-size: 17px;
+  font-weight: 800;
+  color: #b42318;
+  line-height: 1;
+}
+.sale-card__old-price {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+.sale-card__price-muted {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.sale-card__stock {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ok);
+}
+.sale-card__stock--out {
+  color: var(--red);
+}
+.sale-card__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  margin-top: 2px;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+.sale-card__btn:hover { background: var(--green-dark); }
+.sale-card__btn--added { background: var(--ok); }
+
+@media (max-width: 768px) {
+  .sale-section { padding: 28px 0 34px; }
+  .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .sale-card__name { font-size: 11.5px; min-height: 0; }
+  .sale-card__price { font-size: 14px; }
+}

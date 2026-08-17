@@ -12,6 +12,12 @@ import {
   SITE_PHONE_HREF,
   SITE_HOURS_LABEL,
   SITE_EMAIL,
+  COMPANY_FULL_NAME,
+  COMPANY_INN,
+  COMPANY_KPP,
+  COMPANY_OGRN,
+  COMPANY_LEGAL_ADDRESS,
+  COMPANY_DIRECTOR,
 } from "@/lib/site-config";
 import { useSiteSettings } from "@/hooks/use-site-settings";
 
@@ -20,6 +26,7 @@ const INFO_LINKS = [
   { href: "/delivery", label: "Доставка и оплата" },
   { href: "/wastepaper", label: "Приём макулатуры" },
   { href: "/contacts", label: "Контакты" },
+  { href: "/privacy", label: "Политика конфиденциальности" },
 ];
 
 const CLIENT_LINKS = [
@@ -135,7 +142,42 @@ export function Footer() {
           <span>
             © {new Date().getFullYear()} ООО «СибГофроТорг» · Все права защищены
           </span>
+          <span>
+            <Link href="/privacy" className="footer-link footer-link--inline">
+              Политика конфиденциальности
+            </Link>
+          </span>
           <span>{footerEmail}</span>
+        </div>
+
+        <div className="footer-requisites">
+          <div className="footer-requisites__title">Реквизиты организации</div>
+          <div className="footer-requisites__grid">
+            <div className="footer-requisites__item footer-requisites__item--full">
+              <span className="footer-requisites__label">Наименование</span>
+              <span className="footer-requisites__value">{COMPANY_FULL_NAME}</span>
+            </div>
+            <div className="footer-requisites__item">
+              <span className="footer-requisites__label">ИНН</span>
+              <span className="footer-requisites__value">{COMPANY_INN}</span>
+            </div>
+            <div className="footer-requisites__item">
+              <span className="footer-requisites__label">КПП</span>
+              <span className="footer-requisites__value">{COMPANY_KPP}</span>
+            </div>
+            <div className="footer-requisites__item">
+              <span className="footer-requisites__label">ОГРН</span>
+              <span className="footer-requisites__value">{COMPANY_OGRN}</span>
+            </div>
+            <div className="footer-requisites__item footer-requisites__item--full">
+              <span className="footer-requisites__label">Юридический адрес</span>
+              <span className="footer-requisites__value">{COMPANY_LEGAL_ADDRESS}</span>
+            </div>
+            <div className="footer-requisites__item footer-requisites__item--full">
+              <span className="footer-requisites__label">Руководитель</span>
+              <span className="footer-requisites__value">{COMPANY_DIRECTOR}</span>
+            </div>
+          </div>
         </div>
       </div>
     </footer>

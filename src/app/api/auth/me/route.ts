@@ -30,11 +30,14 @@ export async function GET() {
       );
     }
 
+    const isPhoneUser = /^7\d{10}$/.test(user.phoneDigits || "");
+
     return NextResponse.json(
       {
         user: {
           id: user.id,
-          phone: formatPhoneDisplay(user.phoneDigits),
+          username: user.username || null,
+          phone: isPhoneUser ? formatPhoneDisplay(user.phoneDigits) : null,
           name: user.name || null,
           email: user.email || null,
           customerType: user.customerType || "individual",

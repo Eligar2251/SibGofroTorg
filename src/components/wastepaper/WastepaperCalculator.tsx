@@ -6,6 +6,7 @@ import { Recycle, Loader2, CheckCircle } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ymGoal } from "@/lib/ym";
 import { formatPhoneMask } from "@/lib/phone-mask";
+import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 import {
   withDefaultRates,
   formatRate,
@@ -36,6 +37,8 @@ export function WastepaperCalculator({
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [err, setErr] = useState("");
   const [phone, setPhone] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
 
   const currentRateObj = RATE_META.find(r => r.id === type) || RATE_META[0];
   const baseRate = effectiveRates[currentRateObj.id];
@@ -67,6 +70,11 @@ export function WastepaperCalculator({
       setState("error");
       return;
     }
+    if (!consent) {
+      setConsentError(true);
+      return;
+    }
+    setConsentError(false);
     setState("loading");
     setErr("");
     const fd = new FormData(e.currentTarget);
@@ -218,6 +226,12 @@ export function WastepaperCalculator({
         {state === "error" && (
           <div className="wpcalc__error">{err}</div>
         )}
+
+        <ConsentCheckbox
+          checked={consent}
+          onChange={(v) => setConsent(v)}
+          error={consentError}
+        />
 
         <button
           type="submit"

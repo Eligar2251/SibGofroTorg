@@ -651,7 +651,11 @@ html {
     pointer-events: none;
   }
 
-  .home-catalog-unified__cats,
+  /* На мобильном категории показывает выпадающий список (mcs-select),
+     обычный список скрываем, чтобы категории не дублировались. */
+  .home-catalog-unified__cats {
+    display: none;
+  }
   .filter-block__body--cats {
     display: flex;
     overflow-x: auto;

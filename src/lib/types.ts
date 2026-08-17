@@ -51,6 +51,8 @@ export interface FirestoreProduct {
   isFeatured: boolean;
   /** Ручной порядок в блоке «Популярные товары» на главной. */
   featuredOrder?: number | null | undefined;
+  /** Товар участвует в секции «Распродажа остатков» на главной. */
+  isSale?: boolean | null | undefined;
   imageUrl?: string | null | undefined;
   images?: { url: string; publicId: string }[];
   viewCount?: number;
@@ -331,8 +333,12 @@ export interface FirestoreOrder {
    * → completed (проведена/архив) либо rejected (отменена).
    * Статусы синхронизированы между сайтом и личным кабинетом клиента.
    */
-  status: "new" | "in_progress" | "ready" | "completed" | "rejected";
+  status: "new" | "in_progress" | "ready" | "issued" | "completed" | "rejected";
   closeReason?: string | null;
+  /** Короткий код выдачи заказа (для поиска на вкладке «Выдача товара») */
+  pickupCode?: string | null;
+  /** Когда товар выдан клиенту */
+  issuedAt?: string | null;
   /** Связь с учётом: создаётся при «Передать в работу» */
   dealId?: string | null;
   dealNumber?: number | null;

@@ -1,5 +1,6 @@
 // =========================================================
-// FILE: src/components/auth/LoginClient.tsx — вход по телефону или email (настраивается)
+// FILE: src/components/auth/LoginClient.tsx — вход по логину и паролю
+// (совместимость с прежними аккаунтами по телефону/email сохранена)
 // =========================================================
 
 "use client";
@@ -9,21 +10,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, LogIn } from "lucide-react";
 import { safeNextPath } from "@/lib/safe-next";
-import { formatPhoneMask } from "@/lib/phone-mask";
-import { useSiteSettings } from "@/hooks/use-site-settings";
 
 export function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeNextPath(searchParams.get("next"), "/cabinet");
-  const { registrationField, ready } = useSiteSettings();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const isEmailMode = ready ? registrationField === "email" : false;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,16 +27,10 @@ export function LoginClient() {
     setError("");
 
     try {
-      const body: any = { password };
-      if (isEmailMode || identifier.includes("@")) {
-        body.email = identifier;
-      } else {
-        body.phone = identifier;
-      }
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ошибка входа");
@@ -50,14 +40,6 @@ export function LoginClient() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
       setLoading(false);
-    }
-  }
-
-  function onIdentifierChange(v: string) {
-    if (isEmailMode || v.includes("@")) {
-      setIdentifier(v);
-    } else {
-      setIdentifier(formatPhoneMask(v));
     }
   }
 
@@ -98,7 +80,7 @@ export function LoginClient() {
             <p
               style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 6 }}
             >
-              {isEmailMode ? "Email и пароль — для юр.лиц и 152-ФЗ" : "Телефон и пароль — без SMS-подтверждения"}
+              Логин и пароль
             </p>
           </div>
 
@@ -107,23 +89,23 @@ export function LoginClient() {
             style={{ display: "flex", flexDirection: "column", gap: 14 }}
           >
             <div>
-              <label className="checkout-label">{isEmailMode ? "Email *" : "Телефон / Email *"}</label>
+              <label className="checkout-label">Логин *</label>
               <input
                 id="login-identifier"
                 name="identifier"
-                type={isEmailMode ? "email" : "text"}
+                type="text"
                 className="form-input"
                 value={identifier}
-                onChange={(e) => onIdentifierChange(e.target.value)}
-                placeholder={isEmailMode ? "info@company.ru" : "+7 (913) 000-00-00 или email"}
-                autoComplete={isEmailMode ? "email" : "tel"}
-                inputMode={isEmailMode ? "email" : "tel"}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="Ваш логин"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
-              {isEmailMode && (
-                <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 4 }}>
-                  Можно войти и по старому телефону — система поддерживает оба варианта
-                </div>
-              )}
+              <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 4 }}>
+                Можно войти и по старому телефону или email — поддерживаются оба варианта
+              </div>
             </div>
             <div>
               <label className="checkout-label">Пароль *</label>

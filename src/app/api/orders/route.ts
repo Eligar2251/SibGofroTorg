@@ -53,14 +53,14 @@ export async function POST(request: NextRequest) {
     const customerType = body.customerType === "legal" ? "legal" : "individual";
     const isLegal = customerType === "legal";
 
-    // У заявки «Узнать цену» контакты авторизованного клиента берутся только
-    // из его аккаунта. Так номер/имя другого человека из формы не смогут
-    // перезаписать профиль текущей сессии на общем компьютере.
+    // Новая система: телефон больше не собираем — номер заявки формируется
+    // автоматически. У заявки «Узнать цену» имя авторизованного клиента
+    // берётся из аккаунта; телефон остаётся только для обратной совместимости
+    // со старыми формами и не является обязательным.
     let customerName = clip(body.customerName, MAX_NAME);
-    let customerPhoneRaw = clip(body.customerPhone, 40);
-    if (typeRaw === "inquiry" && account) {
-      customerName = clip(account.name, MAX_NAME) || "Клиент";
-      customerPhoneRaw = account.phoneDigits;
+    const customerPhoneRaw = clip(body.customerPhone, 40);
+    if (typeRaw === "inquiry" && account?.name) {
+      customerName = clip(account.name, MAX_NAME);
     } else if (typeRaw === "inquiry" && !customerName) {
       customerName = "Клиент";
     }
@@ -70,14 +70,9 @@ export async function POST(request: NextRequest) {
       : account?.email || null;
     const comment = body.comment ? clip(body.comment, MAX_COMMENT) : "";
 
-    if (!customerPhoneRaw || (typeRaw === "order" && !customerName)) {
+    if (typeRaw === "order" && !customerName) {
       return NextResponse.json(
-        {
-          error:
-            typeRaw === "order"
-              ? "Имя и телефон обязательны"
-              : "Телефон обязателен",
-        },
+        { error: "Укажите имя" },
         { status: 400 }
       );
     }
@@ -140,31 +135,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Некорректный email" }, { status: 400 });
     }
 
-    const phoneDigits = normalizePhone(customerPhoneRaw);
-    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-      return NextResponse.json(
-        { error: "Некорректный номер телефона" },
-        { status: 400 }
-      );
+    let phoneDigits: string | null = null;
+    if (customerPhoneRaw) {
+      const normalized = normalizePhone(customerPhoneRaw);
+      if (normalized.length < 10 || normalized.length > 15) {
+        return NextResponse.json(
+          { error: "Некорректный номер телефона" },
+          { status: 400 }
+        );
+      }
+      phoneDigits = normalized;
     }
-
-    // Сессия — единственный источник userId и номера аккаунта (не из body!).
-    const sessionPhoneDigits = session ? normalizePhone(session.phone) : null;
-    if (
-      typeRaw === "order" &&
-      sessionPhoneDigits &&
-      phoneDigits !== sessionPhoneDigits
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Номер заказа не совпадает с номером текущего аккаунта. Выйдите из кабинета, чтобы использовать другой номер.",
-        },
-        { status: 409 }
-      );
-    }
-    const finalPhoneDigits = sessionPhoneDigits || phoneDigits;
-    const finalPhoneDisplay = formatPhoneDisplay(finalPhoneDigits);
+    const finalPhoneDigits = phoneDigits;
+    const finalPhoneDisplay = phoneDigits ? formatPhoneDisplay(phoneDigits) : "";
 
     const commWhitelist = ["call", "whatsapp", "telegram", "max", "email"] as const;
     const communicationChannel = commWhitelist.includes(body.communicationChannel)
@@ -296,7 +279,11 @@ export async function POST(request: NextRequest) {
       console.error("notify bots for order:", err);
     }
 
-    return NextResponse.json({ success: true, orderId: createdOrder.id });
+    return NextResponse.json({
+      success: true,
+      orderId: createdOrder.id,
+      pickupCode: createdOrder.pickupCode ?? null,
+    });
   } catch (error: unknown) {
     console.error("Ошибка в API создания заказа:", error);
     return NextResponse.json({ error: publicError(error) }, { status: 500 });
@@ -343,7 +330,9 @@ async function sendNotifications(order: {
 
   let message = `<b>${isOrder ? "НОВЫЙ ЗАКАЗ" : "НОВАЯ ЗАЯВКА"} #${order.id.slice(0, 6)}</b>\n\n`;
   message += `<b>Клиент:</b> ${escapeHtml(order.customerName)} (${customerTypeLabel})\n`;
-  message += `<b>Телефон:</b> ${escapeHtml(order.customerPhone)}\n`;
+  if (order.customerPhone) {
+    message += `<b>Телефон:</b> ${escapeHtml(order.customerPhone)}\n`;
+  }
   if (order.customerEmail) {
     message += `<b>Email:</b> ${escapeHtml(order.customerEmail)}\n`;
   }

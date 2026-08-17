@@ -12,6 +12,7 @@ import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
 import { HomeOrderProductsSection } from "@/components/home/HomeOrderProductsSection";
+import { HomeSaleSection } from "@/components/home/HomeSaleSection";
 import { DealsRow } from "@/components/home/DealsRow";
 import {
   ORDER_PRODUCTS_ORDER_SETTING_KEY,
@@ -91,6 +92,10 @@ export default async function HomePage() {
   const featuredProducts = featuredProductsRaw
     .filter(isProductAvailable)
     .slice(0, 12);
+  // «Распродажа остатков»: товары с флагом isSale, которые в наличии.
+  const saleProducts = allVisibleProducts
+    .filter((p) => p.isSale && isProductAvailable(p))
+    .slice(0, 16);
   const orderProducts = sortByProductOrder(
     allVisibleProducts.filter((product) => !isProductAvailable(product)),
     parseProductOrder(settings[ORDER_PRODUCTS_ORDER_SETTING_KEY])
@@ -188,6 +193,20 @@ export default async function HomePage() {
   });
   const serializedProducts = featuredProducts.map(serializeHomeProduct);
   const serializedOrderProducts = orderProducts.map(serializeHomeProduct);
+
+  const serializeSaleProduct = (p: FirestoreProduct) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    sku: p.sku ?? null,
+    price: p.price,
+    imageUrl: p.imageUrl ?? null,
+    inStock: p.inStock,
+    stockQty: p.stockQty ?? null,
+    discountType: p.discountType ?? null,
+    discountValue: p.discountValue ?? null,
+  });
+  const serializedSaleProducts = saleProducts.map(serializeSaleProduct);
 
   return (
     <div className="page-home">
@@ -372,6 +391,9 @@ export default async function HomePage() {
           </DealsRow>
         </div>
       </section>
+
+      {/* РАСПРОДАЖА ОСТАТКОВ — перед популярными товарами */}
+      <HomeSaleSection products={serializedSaleProducts} />
 
       {/* ПОИСК + КАТЕГОРИИ + ТОВАРЫ — один блок */}
       <HomeCatalogSection

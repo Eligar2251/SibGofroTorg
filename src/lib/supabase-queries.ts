@@ -11,6 +11,7 @@ import {
   generateUniqueBarcode,
   isValidBarcode,
 } from "./qr";
+import { generatePickupCode } from "./pickup-code";
 import {
   extractQueryDims,
   dimensionScore,
@@ -188,6 +189,18 @@ function isMissingProductLabelColorColumnError(err: any): boolean {
   );
 }
 
+function isMissingSaleColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("is_sale")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 function mapProductRow(row: any): FirestoreProduct {
   const images = normalizeProductImages(row.images);
   return {
@@ -238,6 +251,7 @@ function mapProductRow(row: any): FirestoreProduct {
     discountBadge: row.discount_badge || null,
     isVisible: row.is_visible ?? true,
     isFeatured: row.is_featured ?? false,
+    isSale: row.is_sale ?? false,
     // Главное фото: явный image_url, иначе первое из массива images —
     // самолечение для товаров, у которых фото задано лишь в одном из
     // двух мест (Excel задаёт image_url, форма — images).
@@ -617,6 +631,7 @@ export async function getProductsForBulkEditor(): Promise<FirestoreProduct[]> {
       "is_visible",
       "is_promo",
       "is_featured",
+      "is_sale",
       "promo_label",
     ].join(","))
     .order("name", { ascending: true });
@@ -741,6 +756,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     discount_badge: data.discountBadge || null,
     is_visible: data.isVisible ?? true,
     is_featured: data.isFeatured ?? false,
+    is_sale: data.isSale ?? false,
     // Главное фото: если явное пусто — берём первое из массива.
     image_url: data.imageUrl || firstImageUrl(normalizeProductImages(data.images)) || null,
     images: normalizeProductImages(data.images),
@@ -797,6 +813,13 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
       if (retry5.error) throw retry5.error;
       result = retry5.data;
       insertErr = null;
+    } else if (isMissingSaleColumnError(first.error)) {
+      console.warn("[products] Колонки is_sale нет — запись без флага распродажи");
+      const { is_sale: _sale, ...payloadNoSale } = payload;
+      const retry6 = await db.from("products").insert(payloadNoSale).select("id").single();
+      if (retry6.error) throw retry6.error;
+      result = retry6.data;
+      insertErr = null;
     }
   } else {
     result = first.data;
@@ -839,7 +862,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
     discountType: "discount_type", discountValue: "discount_value",
     discountBadge: "discount_badge", isVisible: "is_visible",
-    isFeatured: "is_featured", imageUrl: "image_url", images: "images",
+    isFeatured: "is_featured", isSale: "is_sale", imageUrl: "image_url", images: "images",
     // Штрихкод можно поменять только явно (форма товара). Значение
     // валидируется на API-слое; пустая строка = очистить (потом
     // дозапишется генерацией). Никакая другая правка товара колонку
@@ -947,6 +970,11 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       ...payloadNoLabelColors
     } = payload;
     ({ error } = await db.from("products").update(payloadNoLabelColors).eq("id", id));
+  }
+  if (error && isMissingSaleColumnError(error) && "is_sale" in payload) {
+    console.warn("[products] Колонки is_sale нет — сохранение без флага распродажи");
+    const { is_sale: _sale, ...payloadNoSale } = payload;
+    ({ error } = await db.from("products").update(payloadNoSale).eq("id", id));
   }
   if (error) throw error;
   invalidateProductsCache();
@@ -1170,6 +1198,8 @@ function mapOrderRow(row: any): FirestoreOrder {
     channel: row.channel || null,
     status: row.status,
     closeReason: row.close_reason || null,
+    pickupCode: row.pickup_code || null,
+    issuedAt: toIso(row.issued_at),
     dealId: row.deal_id || null,
     dealNumber: row.deal_number != null ? Number(row.deal_number) : null,
     paymentId: row.payment_id || null,
@@ -1194,7 +1224,7 @@ function mapOrderRow(row: any): FirestoreOrder {
 function applyOrderStatusFilter(q: any, status?: string): any {
   if (!status || status === "all") return q;
   if (status === "active") return q.in("status", ["new", "in_progress", "ready"]);
-  if (status === "archived") return q.in("status", ["completed", "rejected"]);
+  if (status === "archived") return q.in("status", ["issued", "completed", "rejected"]);
   const parts = status.split(",").map((s) => s.trim()).filter(Boolean);
   if (parts.length === 0) return q;
   if (parts.length === 1) return q.eq("status", parts[0]);
@@ -1210,7 +1240,7 @@ export async function getOrders(opts: { limit?: number; status?: string } = {}):
   return (data || []).map(mapOrderRow);
 }
 
-export async function createOrder(data: Record<string, any>): Promise<{ id: string }> {
+export async function createOrder(data: Record<string, any>): Promise<{ id: string; pickupCode: string }> {
   const db = getAdminDb();
   const payload = {
     type: data.type || "order",
@@ -1247,10 +1277,33 @@ export async function createOrder(data: Record<string, any>): Promise<{ id: stri
     delivery_cost: data.deliveryCost ?? 0,
     delivery_note: data.deliveryNote || null,
   };
-  const { data: result, error } = await db.from("orders").insert(payload).select("id").single();
+
+  // Код выдачи генерируем только для заказов (не для заявок «узнать цену»).
+  // Уникальность гарантируем коротким циклом перегенерации при коллизии.
+  const needsPickupCode = payload.type === "order";
+  if (needsPickupCode) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generatePickupCode();
+      const { data: clash } = await db
+        .from("orders")
+        .select("id")
+        .eq("pickup_code", code)
+        .maybeSingle();
+      if (!clash) {
+        (payload as Record<string, any>).pickup_code = code;
+        break;
+      }
+    }
+    if (!(payload as Record<string, any>).pickup_code) {
+      // Крайне маловероятно — страховка от бесконечных коллизий.
+      (payload as Record<string, any>).pickup_code = generatePickupCode(10);
+    }
+  }
+
+  const { data: result, error } = await db.from("orders").insert(payload).select("id, pickup_code").single();
   if (error) throw error;
   revalidateTag("orders", { expire: 0 });
-  return { id: result.id };
+  return { id: result.id, pickupCode: result.pickup_code || null };
 }
 
 export async function updateOrderStatus(id: string, status: string, closeReason: string | null = null): Promise<void> {
