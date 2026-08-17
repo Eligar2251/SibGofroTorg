@@ -17,7 +17,6 @@ import {
   Truck,
   QrCode,
   ShieldCheck,
-  PackageCheck,
   PanelLeftClose,
   ChevronRight,
   Headset,
@@ -175,11 +174,6 @@ export function AdminShell({
       href: `/${adminPath}/orders`,
       label: "Заявки",
       icon: <ClipboardList size={18} />,
-    },
-    {
-      href: `/${adminPath}/issue`,
-      label: "Выдача товара",
-      icon: <PackageCheck size={18} />,
     },
     {
       href: `/${adminPath}/client-requests`,
