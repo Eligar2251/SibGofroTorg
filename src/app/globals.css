@@ -552,6 +552,94 @@ select {
   padding: 0 4px;
 }
 
+/* Плавающая корзина: появляется, когда что-то добавлено.
+   Показывает количество и сумму, ведёт на /order. */
+.floating-cart {
+  position: fixed;
+  z-index: 840;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 8px 8px;
+  background: var(--green-dark, #1e4d38);
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(17, 29, 52, 0.28);
+  text-decoration: none;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.floating-cart:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(17, 29, 52, 0.34);
+  color: #fff;
+}
+
+.floating-cart__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--green, #2d6a4f);
+}
+
+.floating-cart__count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--red, #dc2626);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 10px;
+  border: 2px solid var(--green-dark, #1e4d38);
+}
+
+.floating-cart__info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.floating-cart__label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+}
+
+.floating-cart__sum {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .floating-cart {
+    right: 12px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    padding: 6px 14px 6px 6px;
+  }
+  .floating-cart__icon {
+    width: 38px;
+    height: 38px;
+  }
+  .floating-cart__label {
+    display: none;
+  }
+}
+
 .mobile-burger {
   display: none;
   align-items: center;
@@ -2772,6 +2860,17 @@ select {
 
 .pcc__add-btn--added {
   background: var(--ok);
+}
+
+/* Широкая кнопка «В корзину» — на всю плитку (степпер количества
+   с плитки убран, чтобы карточка не растягивалась). */
+.pcc__add-btn--wide {
+  width: auto;
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .pcc__inquiry-btn {

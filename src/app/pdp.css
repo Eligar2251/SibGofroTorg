@@ -758,6 +758,21 @@
   font-size: 22px;
 }
 
+/* Метка «Нет в наличии» рядом с ценой (цена видна, купить нельзя) */
+.pdp-price-out-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--red, #dc2626);
+  background: var(--red-light, #fee2e2);
+  border: 1px solid #fecaca;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 .pdp-made-to-order {
   display: flex;
   flex-direction: column;

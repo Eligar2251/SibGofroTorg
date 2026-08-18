@@ -144,11 +144,11 @@ export function SearchBar({
                 {s.dimensions && <div className="search-suggestion-sku">Размер: {s.dimensions}</div>}
               </div>
               <div className="search-suggestion-price">
-                {isOutOfStock(s)
-                  ? OUT_OF_STOCK_LABEL
-                  : s.price != null
+                {s.price != null
                   ? `${s.price.toLocaleString("ru-RU")} ₽`
-                  : "—"}
+                  : isOutOfStock(s)
+                    ? OUT_OF_STOCK_LABEL
+                    : "—"}
               </div>
             </Link>
           ))}

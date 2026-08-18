@@ -15,6 +15,7 @@ import {
   FolderOpen,
   QrCode,
   GripVertical,
+  Wand2,
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ProductListClient } from "@/components/admin/ProductListClient";
@@ -121,6 +122,9 @@ export default async function AdminProductsPage({
             </Link>
             <Link href={`/${ADMIN_PATH}/products/bulk`} className="admin-btn admin-btn--ghost" prefetch={false}>
               <Pencil size={15} /> Массовое редактирование
+            </Link>
+            <Link href={`/${ADMIN_PATH}/products/photo-generator`} className="admin-btn admin-btn--ghost" prefetch={false}>
+              <Wand2 size={15} /> Фото-генератор
             </Link>
             <Link href={`/${ADMIN_PATH}/products/add-many`} className="admin-btn admin-btn--outline" prefetch={false}>
               <Plus size={15} /> Массовое добавление

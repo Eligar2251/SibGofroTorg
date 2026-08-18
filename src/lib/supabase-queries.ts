@@ -2114,6 +2114,28 @@ export async function createCategory(data: Record<string, any>): Promise<{ id: s
   return { id: result.id, slug: result.slug || slug };
 }
 
+/**
+ * Удаляет категорию. Товары, привязанные к ней, не удаляются — у них
+ * сбрасывается category_id в NULL (они становятся «Без категории»).
+ * В БД связи категория↔товар логическая (без FK), поэтому чистим
+ * ссылки руками перед удалением самой категории.
+ */
+export async function deleteCategory(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { error: unlinkError } = await db
+    .from("products")
+    .update({ category_id: null })
+    .eq("category_id", id);
+  if (unlinkError) throw unlinkError;
+
+  const { error } = await db.from("categories").delete().eq("id", id);
+  if (error) throw error;
+
+  invalidateProductsCache();
+  revalidateTag("categories", { expire: 0 });
+  revalidateTag("products", { expire: 0 });
+}
+
 // ─── Client Requests: ручные заявки клиентов (CRM) ─────────
 // Не связаны с заказами сайта: фиксируют обращение клиента
 // (звонок/мессенджер/визит), что нужно и ход работы.

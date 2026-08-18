@@ -1,0 +1,16 @@
+/* Предпросмотр SEO-блока: только служебная плашка сверху. */
+
+.seo-preview__note {
+  max-width: var(--max-w, 1440px);
+  margin: 18px auto 0;
+  padding: 10px 14px;
+  padding-inline: var(--gutter, 20px);
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--green-light, #e8f5ee);
+  border: 1px solid var(--green-border, #b7e4c7);
+  border-radius: 10px;
+  color: var(--green-dark, #1e4d38);
+  font-size: 13px;
+  font-weight: 600;
+}
