@@ -7418,10 +7418,17 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 10px;
+  width: 42px;
+  height: 42px;
+  line-height: 0;
   color: var(--kraft-dark);
   background: var(--kraft-light);
   border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.order-products-head__icon svg {
+  display: block;
 }
 
 .order-products-head__main {
