@@ -35,6 +35,8 @@ import {
   Scissors,
   Package,
   Lightbulb,
+  TrendingUp,
+  Upload,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -87,6 +89,7 @@ import {
 import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
 import { SalaryAutoDistribute } from "@/components/admin/SalaryAutoDistribute";
 import { WarehouseReports } from "@/components/admin/WarehouseReports";
+import { RevenueForecast } from "@/components/admin/RevenueForecast";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
@@ -192,7 +195,7 @@ const paymentTypeLabels: Record<string, string> = {
   ym_card: "Карта ЮМ",
 };
 
-type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
+type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "forecast" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
@@ -1071,11 +1074,18 @@ export function WarehouseManager({
 
       // В "Активные" попадают: все статуса 'new' + отпущенные ('completed'), но не полностью оплаченные.
       // В "Архив" попадают: полностью оплаченные или отмененные.
+      // Архивные заказы из массовой загрузки (is_archive) всегда в «Архиве»:
+      // они проведены, но без платежей в банке.
       let matchesTab = false;
       if (dealsSub === "new") {
-        matchesTab = d.status === "new" || (d.status === "completed" && !isFullyPaid);
+        matchesTab =
+          !d.isArchive &&
+          (d.status === "new" || (d.status === "completed" && !isFullyPaid));
       } else {
-        matchesTab = (d.status === "completed" && isFullyPaid) || d.status === "cancelled";
+        matchesTab =
+          d.isArchive ||
+          (d.status === "completed" && isFullyPaid) ||
+          d.status === "cancelled";
       }
 
       if (!matchesTab) return false;
@@ -1277,6 +1287,7 @@ export function WarehouseManager({
     { key: "plans", label: "Планы поставок", icon: <Lightbulb size={13} /> },
     { key: "purchases", label: "Закупки", icon: <Wallet size={13} /> },
     { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
+    { key: "forecast", label: "Прогноз", icon: <TrendingUp size={13} /> },
     { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
     { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
@@ -1358,6 +1369,61 @@ export function WarehouseManager({
   const productById = useMemo(() => new Map(stock.map((p) => [p.id, p])), [stock]);
 
   const dealById = useMemo(() => new Map(deals.map((d) => [String(d.id), d])), [deals]);
+  // Готовые данные для формы заказа (редактирование и копирование).
+  const editableDealById = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const d of deals) {
+      map.set(String(d.id), {
+        id: d.id,
+        date: d.date,
+        customerName: d.customerName,
+        customerPhone: d.customerPhone ?? null,
+        email: d.email ?? null,
+        inn: d.inn ?? null,
+        kpp: d.kpp ?? null,
+        address: d.address ?? null,
+        contactName: d.contactName ?? null,
+        comment: d.comment ?? null,
+        vatRate: d.vatRate,
+        hasDelivery: Boolean(d.hasDelivery),
+        deliveryType: d.deliveryType ?? null,
+        deliveryCost: d.deliveryCost ?? null,
+        deliveryAddress: d.deliveryAddress ?? d.address ?? null,
+        deliveryPlannedDate: d.deliveryPlannedDate ?? null,
+        deliveryNote: d.deliveryNote ?? null,
+        deliveryContact: d.deliveryContact ?? d.contactName ?? null,
+        deliveryPhone: d.deliveryPhone ?? d.customerPhone ?? null,
+        paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
+        isReserved: Boolean(d.isReserved),
+        items: d.items.map((item: any) => {
+          const prod = productById.get(item.productId) as any;
+          const isCut = Boolean(prod?.isCuttable || item.isCuttable);
+          const unit = isCut ? (item.unit || "roll") : "piece";
+          const metersPerRoll = item.metersPerRoll || prod?.cutMetersPerRoll || null;
+          const saleQty =
+            item.saleQuantity != null
+              ? item.saleQuantity
+              : unit === "meter" && metersPerRoll
+                ? Number(item.quantity) * Number(metersPerRoll)
+                : Number(item.quantity);
+          return {
+            productId: item.productId,
+            name: item.name,
+            sku: item.sku ?? null,
+            quantity: saleQty,
+            price: item.salePrice != null ? item.salePrice : item.price,
+            stockQty: stockById.get(item.productId) ?? 0,
+            isCuttable: Boolean(prod?.isCuttable),
+            metersPerRoll,
+            cutPricePerMeter: prod?.cutPricePerMeter || item.salePrice || null,
+            unit,
+            baseQty: Number(item.quantity) || 0,
+          };
+        }),
+      });
+    }
+    return map;
+  }, [deals, productById, stockById, dealPaymentMethod]);
   const receiptById = useMemo(() => new Map(receipts.map((r) => [String(r.id), r])), [receipts]);
   // Связь «поставка → заказ» хранится на приходном ордере. Учитываем только
   // активные (ещё не проведённые) поставки: проведённый товар уже находится
@@ -1588,15 +1654,35 @@ export function WarehouseManager({
             />
           )}
           {activeTab === "deals" && (
-            <DealForm
-              products={pickerProducts}
-              counterparties={counterpartyOptions}
-              payments={payments}
-              deliveryPrice={deliveryPrice}
-              freeDeliveryThreshold={freeDeliveryThreshold}
-              reservedStockById={reservedTotalById}
-              tierDiscounts={tierDiscounts}
-            />
+            <>
+              <Link
+                href={`/${adminPath}/warehouse/import`}
+                className="admin-btn admin-btn--ghost"
+                prefetch={false}
+                title="Массовая загрузка старых проведённых заказов контрагентов"
+              >
+                <Upload size={14} /> Массовая загрузка
+              </Link>
+              <DealForm
+                products={pickerProducts}
+                counterparties={counterpartyOptions}
+                payments={payments}
+                deliveryPrice={deliveryPrice}
+                freeDeliveryThreshold={freeDeliveryThreshold}
+                reservedStockById={reservedTotalById}
+                tierDiscounts={tierDiscounts}
+              />
+            </>
+          )}
+          {activeTab === "forecast" && (
+            <Link
+              href={`/${adminPath}/warehouse/import`}
+              className="admin-btn admin-btn--ghost"
+              prefetch={false}
+              title="Массовая загрузка старых проведённых заказов контрагентов"
+            >
+              <Upload size={14} /> Загрузить историю
+            </Link>
           )}
           {activeTab === "bank" && (
             <PaymentForm
@@ -2280,14 +2366,21 @@ export function WarehouseManager({
                     >
                       <span className="admin-order__id">ЗК-{d.number}</span>
                       <span className={dealStatusBadge[d.status]}>{dealStatusLabel[d.status]}</span>
-                      {isFullyPaid ? (
+                      {d.isArchive ? (
+                        <span
+                          className="admin-badge admin-badge--gray"
+                          title={d.archiveNote || "Архивный заказ из массовой загрузки — склад и банк не затрагиваются"}
+                        >
+                          <Archive size={10} /> архив (импорт)
+                        </span>
+                      ) : isFullyPaid ? (
                         <span className="admin-badge admin-badge--green">Оплачен</span>
                       ) : (
                         <span className="admin-badge admin-badge--red" style={{ fontWeight: 800 }}>
                           <AlertTriangle size={10} /> Клиент не оплатил
                         </span>
                       )}
-                      {!isFullyPaid && paid > 0 && (
+                      {!d.isArchive && !isFullyPaid && paid > 0 && (
                         <span className="admin-badge admin-badge--blue">Оплачено {fmt(paid)} из {fmt(d.total)} ₽</span>
                       )}
                       {d.isReserved ? (
@@ -2557,51 +2650,8 @@ export function WarehouseManager({
                             freeDeliveryThreshold={freeDeliveryThreshold}
                             reservedStockById={reservedTotalById}
                             tierDiscounts={tierDiscounts}
-                            initialDeal={{
-                              id: d.id,
-                              date: d.date,
-                              customerName: d.customerName,
-                              customerPhone: d.customerPhone ?? null,
-                              email: d.email ?? null,
-                              inn: d.inn ?? null,
-                              kpp: d.kpp ?? null,
-                              address: d.address ?? null,
-                              contactName: d.contactName ?? null,
-                              comment: d.comment ?? null,
-                              vatRate: d.vatRate,
-                              hasDelivery: Boolean(d.hasDelivery),
-                              deliveryType: d.deliveryType ?? null,
-                              deliveryCost: d.deliveryCost ?? null,
-                              deliveryAddress:
-                                d.deliveryAddress ?? d.address ?? null,
-                              deliveryPlannedDate: d.deliveryPlannedDate ?? null,
-                              deliveryNote: d.deliveryNote ?? null,
-                              deliveryContact: d.deliveryContact ?? d.contactName ?? null,
-                              deliveryPhone: d.deliveryPhone ?? d.customerPhone ?? null,
-                              // Способ оплаты берём из ПЛ: наличные, ЮМ или расчётный счёт.
-                              paymentMethod: dealPaymentMethod.get(d.id) ?? "regular",
-                              isReserved: Boolean(d.isReserved),
-                              items: d.items.map((item) => {
-                                const prod = productById.get(item.productId) as any;
-                                const isCut = Boolean(prod?.isCuttable || (item as any).isCuttable);
-                                const unit = isCut ? ((item as any).unit || 'roll') : 'piece';
-                                const metersPerRoll = (item as any).metersPerRoll || prod?.cutMetersPerRoll || null;
-                                const saleQty = (item as any).saleQuantity != null ? (item as any).saleQuantity : (unit === 'meter' && metersPerRoll ? Number(item.quantity) * Number(metersPerRoll) : Number(item.quantity));
-                                return {
-                                  productId: item.productId,
-                                  name: item.name,
-                                  sku: item.sku ?? null,
-                                  quantity: saleQty,
-                                  price: (item as any).salePrice != null ? (item as any).salePrice : item.price,
-                                  stockQty: stockById.get(item.productId) ?? 0,
-                                  isCuttable: Boolean(prod?.isCuttable),
-                                  metersPerRoll: metersPerRoll,
-                                  cutPricePerMeter: prod?.cutPricePerMeter || (item as any).salePrice || null,
-                                  unit: unit as any,
-                                  baseQty: Number(item.quantity) || 0,
-                                };
-                              }),
-                            }}
+                            initialDeal={editableDealById.get(String(d.id))}
+                            duplicateOf={editableDealById.get(String(d.id))}
                           />
                           <DealActions
                             dealId={d.id}
@@ -2614,6 +2664,7 @@ export function WarehouseManager({
                               quantity: item.quantity,
                             }))}
                             shippedItems={Array.isArray(d.shippedItems) ? d.shippedItems : []}
+                            isArchive={Boolean(d.isArchive)}
                           />
                         </div>
                       </div>
@@ -2626,6 +2677,11 @@ export function WarehouseManager({
             )}
           </div>
         </>
+      )}
+
+      {/* ============ ВКЛАДКА: ПРОГНОЗ ВЫРУЧКИ ============ */}
+      {activeTab === "forecast" && (
+        <RevenueForecast deals={deals} adminPath={adminPath} />
       )}
 
       {/* ============ ВКЛАДКА: ЗАРПЛАТЫ ============ */}

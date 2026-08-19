@@ -123,7 +123,7 @@ export default async function AdminWarehousePage({
   // "receipts" обязателен: на вкладке «Поставки» работает реестр
   // «Товар на реализации», который считает продажи по заказам учёта.
   // Без заказов реестр всегда показывал нули.
-  const needDeals = ["deals", "bank", "counterparties", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
+  const needDeals = ["deals", "forecast", "bank", "counterparties", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
   // Платежи нужны и на актуальной вкладке `receipts`: по ним карточки
   // активных и архивных поступлений получают пометки «Оплачен/Оплачено».
   // Старый ключ `supplies` оставляем для совместимости со ссылками.

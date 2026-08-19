@@ -68,6 +68,8 @@ import {
   type DashboardFinanceRow,
 } from "@/components/admin/DashboardFinanceHistory";
 import { CollapsibleSection, DashboardVisibilityToggle } from "@/components/admin/DashboardCollapsible";
+import { RevenueForecastSummary } from "@/components/admin/RevenueForecast";
+import { computeRevenueForecast } from "@/lib/revenue-forecast";
 
 export const dynamic = "force-dynamic";
 
@@ -276,6 +278,8 @@ export default async function AdminDashboard() {
     : 0;
   const dealPaidMap = getDealPaidMap(payments);
   const receiptPaidMap = getReceiptPaidMap(payments);
+  // Автоматический прогноз выручки на текущий месяц (по контрагентам)
+  const revenueForecast = computeRevenueForecast(deals, 0, 6);
   const stockValue = allProducts.reduce(
     (sum, product) => sum + (Number(product.stockQty) || 0) * (Number(product.price) || 0),
     0
@@ -869,6 +873,29 @@ export default async function AdminDashboard() {
 
         {!isLawyer && (
           <>
+            <div className="dash-section--full">
+              <CollapsibleSection
+                id="revenue-forecast"
+                title="Прогноз выручки"
+                subtitle={`Автоматический план на ${revenueForecast.monthLabel.toLowerCase()} по контрагентам`}
+                icon={<TrendingUp size={16} />}
+                accent="green"
+                badge={money(revenueForecast.totalForecast)}
+                defaultOpen={false}
+                sideContent={
+                  <Link
+                    href={`/${ADMIN_PATH}/warehouse?tab=forecast`}
+                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                    prefetch={false}
+                  >
+                    <TrendingUp size={12} /> Все контрагенты
+                  </Link>
+                }
+              >
+                <RevenueForecastSummary deals={deals} adminPath={ADMIN_PATH} />
+              </CollapsibleSection>
+            </div>
+
             <div className="dash-section--full">
               <CollapsibleSection id="statuses" title="Статусы заявок" subtitle={`Всего ${totalOrdersCount}`} icon={<Clock size={16} />} accent="amber" badge={totalOrdersCount} defaultOpen={false}>
               <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>

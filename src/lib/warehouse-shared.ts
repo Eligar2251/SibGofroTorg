@@ -183,6 +183,10 @@ export interface CustomerDeal extends CounterpartyDetails {
   shippedItems?: { productId: string; name?: string; shippedQty: number }[];
   /** Количество товара, запланированное к доставке: [{productId, name, quantity}] */
   deliveryItems?: { productId: string; name: string; quantity: number }[];
+  /** Архивный заказ из массовой загрузки (старые проведённые заказы вне складского учёта). */
+  isArchive?: boolean;
+  /** Комментарий к партии импорта архивных заказов. */
+  archiveNote?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
