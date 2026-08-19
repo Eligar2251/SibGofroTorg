@@ -69,14 +69,14 @@ export function AddToCartButton({
   const maxStock = effectiveStock != null ? Number(effectiveStock) : null;
 
   const [inputMode, setInputMode] = useState<InputMode>("pieces");
-  const [inputValue, setInputValue] = useState<string>(String(packSize > 1 ? packSize : 1));
+  // По умолчанию добавляем 1 штуку (не целую заводскую пачку).
+  const [inputValue, setInputValue] = useState<string>("1");
   const [added, setAdded] = useState(false);
 
-  // При смене варианта — сбрасываем qty-input к разумному
-  // значению (1 шт или 1 пачка). Иначе клиент может увидеть
-  // «9999 шт» от предыдущего выбора и не заметить.
+  // При смене варианта — сбрасываем qty-input к 1 шт.
+  // Иначе клиент может увидеть «9999 шт» от предыдущего выбора и не заметить.
   useEffect(() => {
-    setInputValue(String(packSize > 1 ? packSize : 1));
+    setInputValue("1");
     setAdded(false);
   }, [selectedVariant?.id, packSize]);
 

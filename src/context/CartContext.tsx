@@ -24,12 +24,26 @@ export interface CartItem {
   maxStock?: number | null;
 }
 
+/**
+ * Событие «только что добавлено в корзину» — используется попапом
+ * при добавлении товара, чтобы показать товар и кнопку «Перейти в корзину».
+ */
+export interface LastAddedItem {
+  productId: string;
+  name: string;
+  imageUrl?: string | null;
+  price: number;
+  qty: number;
+}
+
 interface CartContextType {
   cart: CartItem[];
   addToCart: (item: Omit<CartItem, "quantity">, qty?: number) => void;
   removeFromCart: (productId: string, variantId?: string | null) => void;
   updateQty: (productId: string, qty: number, variantId?: string | null) => void;
   clearCart: () => void;
+  lastAdded: LastAddedItem | null;
+  clearLastAdded: () => void;
   rawSubtotal: number;
   discountPercent: number;
   discountAmount: number;
@@ -50,6 +64,7 @@ function cartItemKey(item: Pick<CartItem, "productId" | "variantId">): string {
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [lastAdded, setLastAdded] = useState<LastAddedItem | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("sib_cart");
@@ -91,6 +106,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       return [...prev, { ...product, quantity: qty }];
     });
+
+    // Фиксируем событие добавления — попап «Товар добавлен в корзину»
+    // покажет его и предложит перейти к оформлению.
+    setLastAdded({
+      productId: product.productId,
+      name: product.name,
+      imageUrl: product.imageUrl ?? null,
+      price: product.price,
+      qty: Math.max(1, Math.round(qty)),
+    });
   };
 
   const removeFromCart = (productId: string, variantId?: string | null) => {
@@ -120,6 +145,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clearCart = () => setCart([]);
 
+  const clearLastAdded = () => setLastAdded(null);
+
   const rawSubtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -144,6 +171,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         removeFromCart,
         updateQty,
         clearCart,
+        lastAdded,
+        clearLastAdded,
         rawSubtotal,
         discountPercent,
         discountAmount,
