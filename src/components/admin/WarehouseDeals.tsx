@@ -8,6 +8,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
+  Copy,
   Edit2,
   Plus,
   Trash2,
@@ -178,6 +180,7 @@ export function DealForm({
   counterparties = [],
   payments = [],
   initialDeal,
+  duplicateOf,
   deliveryPrice = 800,
   freeDeliveryThreshold = 30000,
   reservedStockById,
@@ -187,6 +190,9 @@ export function DealForm({
   counterparties?: CounterpartyOption[];
   payments?: BankPayment[];
   initialDeal?: EditableDeal & { linkedPaymentIds?: string[] };
+  /** Заказ-образец для копирования: рядом с «Изменить» появляется кнопка «Копировать»,
+      открывающая форму нового заказа, предзаполненную данными образца. */
+  duplicateOf?: EditableDeal | null;
   /** Тариф курьера из настроек (₽) */
   deliveryPrice?: number;
   /** Порог бесплатной доставки из настроек (₽) */
@@ -198,6 +204,8 @@ export function DealForm({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Копирование заказа: форма нового заказа, предзаполненная из образца.
+  const [copyOpen, setCopyOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [date, setDate] = useState(initialDeal?.date || todayIso());
@@ -332,39 +340,51 @@ export function DealForm({
     return parts.length > 0 ? parts : splitEvenly(total, paymentCount).map(Number);
   }
 
-  function resetForm() {
-    setDate(initialDeal?.date || todayIso());
-    setCustomerName(initialDeal?.customerName || "");
-    setCustomerPhone(initialDeal?.customerPhone || "");
-    setEmail(initialDeal?.email || "");
-    setInn(initialDeal?.inn || "");
-    setKpp(initialDeal?.kpp || "");
-    setAddress(initialDeal?.address || "");
-    setContactName(initialDeal?.contactName || "");
-    setComment(initialDeal?.comment || "");
-    setItems(initialDeal?.items || []);
-    setSelectedPayments(initialDeal?.linkedPaymentIds || []);
-    setVatRate(initialDeal?.vatRate ?? VAT_RATE);
-    setHasDelivery(Boolean(initialDeal?.hasDelivery));
+  function applyDeal(
+    deal: (EditableDeal & { linkedPaymentIds?: string[] }) | null | undefined,
+    copy = false
+  ) {
+    // Копия всегда «сегодня», без резерва и без привязки к платежам:
+    // это новый заказ, просто с теми же позициями и реквизитами.
+    setDate(copy ? todayIso() : (deal?.date || todayIso()));
+    setCustomerName(deal?.customerName || "");
+    setCustomerPhone(deal?.customerPhone || "");
+    setEmail(deal?.email || "");
+    setInn(deal?.inn || "");
+    setKpp(deal?.kpp || "");
+    setAddress(deal?.address || "");
+    setContactName(deal?.contactName || "");
+    setComment(deal?.comment || "");
+    setItems(deal?.items || []);
+    setSelectedPayments(copy ? [] : (deal?.linkedPaymentIds || []));
+    setVatRate(deal?.vatRate ?? VAT_RATE);
+    setHasDelivery(Boolean(deal?.hasDelivery));
     setDeliveryCostOverride(
-      initialDeal?.hasDelivery &&
-        initialDeal?.deliveryType === "paid" &&
-        initialDeal?.deliveryCost != null
-        ? String(initialDeal.deliveryCost)
+      deal?.hasDelivery &&
+        deal?.deliveryType === "paid" &&
+        deal?.deliveryCost != null
+        ? String(deal.deliveryCost)
         : null
     );
-    setDeliveryAddress(
-      initialDeal?.deliveryAddress || initialDeal?.address || ""
-    );
-    setDeliveryNote(initialDeal?.deliveryNote || "");
-    setDeliveryContact(initialDeal?.contactName || initialDeal?.deliveryContact || "");
-    setDeliveryPhone(initialDeal?.customerPhone || initialDeal?.deliveryPhone || "");
+    setDeliveryAddress(deal?.deliveryAddress || deal?.address || "");
+    setDeliveryNote(deal?.deliveryNote || "");
+    setDeliveryContact(deal?.contactName || deal?.deliveryContact || "");
+    setDeliveryPhone(deal?.customerPhone || deal?.deliveryPhone || "");
     setError("");
     setPaymentCount(1);
     setSplitAmounts([""]);
     setSplitTouched(false);
-    setPaymentMethod(normalizeDealPaymentMethod(initialDeal?.paymentMethod));
-    setIsReserved(Boolean(initialDeal?.isReserved));
+    setPaymentMethod(copy ? "regular" : normalizeDealPaymentMethod(deal?.paymentMethod));
+    setIsReserved(copy ? false : Boolean(deal?.isReserved));
+  }
+
+  function resetForm() {
+    applyDeal(initialDeal, false);
+  }
+
+  function openCopy() {
+    applyDeal(duplicateOf || null, true);
+    setCopyOpen(true);
   }
 
   function pickCustomerAddress(found: CounterpartyOption): string {
@@ -543,12 +563,13 @@ export function DealForm({
     }
     setSaving(true);
     try {
+      const isEditMode = Boolean(initialDeal) && !copyOpen;
       const res = await fetch(
-        initialDeal
+        isEditMode && initialDeal
           ? `/api/admin/warehouse/deals/${initialDeal.id}`
           : "/api/admin/warehouse/deals",
         {
-        method: initialDeal ? "PUT" : "POST",
+        method: isEditMode ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date,
@@ -603,6 +624,7 @@ export function DealForm({
         return;
       }
       setOpen(false);
+      setCopyOpen(false);
       resetForm();
       router.refresh();
     } catch {
@@ -613,20 +635,32 @@ export function DealForm({
 
   return (
     <>
-      <button
-        type="button"
-        className={
-          initialDeal
-            ? "admin-btn admin-btn--ghost admin-btn--sm"
-            : "admin-btn admin-btn--primary"
-        }
-        onClick={() => setOpen(true)}
-      >
-        {initialDeal ? <Edit2 size={14} /> : <Plus size={15} />}
-        {initialDeal ? "Изменить" : "Новый заказ"}
-      </button>
+      <div className="deal-form-triggers">
+        <button
+          type="button"
+          className={
+            initialDeal
+              ? "admin-btn admin-btn--ghost admin-btn--sm"
+              : "admin-btn admin-btn--primary"
+          }
+          onClick={() => setOpen(true)}
+        >
+          {initialDeal ? <Edit2 size={14} /> : <Plus size={15} />}
+          {initialDeal ? "Изменить" : "Новый заказ"}
+        </button>
+        {duplicateOf && (
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost admin-btn--sm"
+            onClick={openCopy}
+            title="Скопировать заказ: новый заказ с теми же позициями и реквизитами"
+          >
+            <Copy size={14} /> Копировать
+          </button>
+        )}
+      </div>
 
-      {open && (
+      {(open || copyOpen) && (
         <ModalPortal>
         {/* data-admin="true" — портал рендерится в document.body вне обёртки
             AdminShell, поэтому без этого атрибута скоуп-стили админки
@@ -634,7 +668,11 @@ export function DealForm({
         <div
           className="admin-modal-overlay"
           data-admin="true"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            setOpen(false);
+            setCopyOpen(false);
+            resetForm();
+          }}
         >
           <div
             className="admin-modal wh-modal"
@@ -642,11 +680,19 @@ export function DealForm({
           >
             <div className="admin-modal__head">
               <h3 className="admin-modal__title">
-                {initialDeal ? "Редактирование заказа" : "Заказ покупателя"}
+                {copyOpen
+                  ? "Копирование заказа"
+                  : initialDeal
+                    ? "Редактирование заказа"
+                    : "Заказ покупателя"}
               </h3>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false);
+                  setCopyOpen(false);
+                  resetForm();
+                }}
                 className="admin-modal__close"
                 aria-label="Закрыть"
               >
@@ -1174,7 +1220,11 @@ export function DealForm({
                   <button
                     type="button"
                     className="admin-btn admin-btn--ghost"
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                      setOpen(false);
+                      setCopyOpen(false);
+                      resetForm();
+                    }}
                     disabled={saving}
                   >
                     Отмена
@@ -1185,14 +1235,20 @@ export function DealForm({
                     disabled={saving || items.length === 0}
                   >
                     {saving && <Loader2 size={14} className="animate-spin" />}
-                    {initialDeal ? "Сохранить изменения" : "Сохранить заказ"}
+                    {copyOpen
+                      ? "Создать копию заказа"
+                      : initialDeal
+                        ? "Сохранить изменения"
+                        : "Сохранить заказ"}
                   </button>
                 </div>
               </div>
               <p className="wh-form-hint">
-                {initialDeal
-                  ? "При изменении отпущенного заказа остатки склада будут автоматически скорректированы."
-                  : "Заказ создаётся без списания, а в банке автоматически появится входящий счёт. После оплаты кнопка «Отпустить товар» спишет позиции со склада."}
+                {copyOpen
+                  ? "Копия — новый заказ (без списания со склада), в банке автоматически появится входящий счёт. После оплаты кнопка «Отпустить товар» спишет позиции."
+                  : initialDeal
+                    ? "При изменении отпущенного заказа остатки склада будут автоматически скорректированы."
+                    : "Заказ создаётся без списания, а в банке автоматически появится входящий счёт. После оплаты кнопка «Отпустить товар» спишет позиции со склада."}
               </p>
             </form>
           </div>
@@ -1225,6 +1281,7 @@ export function DealActions({
   paidEnough = false,
   dealItems = [],
   shippedItems = [],
+  isArchive = false,
 }: {
   dealId: string;
   status: "new" | "completed" | "cancelled";
@@ -1232,6 +1289,8 @@ export function DealActions({
   paidEnough?: boolean;
   dealItems?: { productId: string; name: string; quantity: number }[];
   shippedItems?: ShippedItem[];
+  /** Архивный заказ из массовой загрузки: склад не трогаем (только удаление). */
+  isArchive?: boolean;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -1359,29 +1418,40 @@ export function DealActions({
 
       {status === "completed" && (
         <div className="admin-status__btns">
-          <button
-            type="button"
-            onClick={handleUnship}
-            disabled={saving}
-            className="admin-status__btn admin-status__btn--outline"
-            title="Отменить отгрузку, вернуть товары на склад"
-          >
-            <RotateCcw size={14} /> Отменить отгрузку
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowCancelModal(true)}
-            disabled={saving}
-            className="admin-status__btn admin-status__btn--outline-red"
-          >
-            <XCircle size={14} /> Отменить
-          </button>
+          {isArchive ? (
+            <span
+              className="admin-status__note"
+              title="Архивный заказ из массовой загрузки — склад и банк не затрагиваются"
+            >
+              <Archive size={13} /> Архив (импорт) — склад не затрагивается
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleUnship}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--outline"
+              title="Отменить отгрузку, вернуть товары на склад"
+            >
+              <RotateCcw size={14} /> Отменить отгрузку
+            </button>
+          )}
+          {!isArchive && (
+            <button
+              type="button"
+              onClick={() => setShowCancelModal(true)}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--outline-red"
+            >
+              <XCircle size={14} /> Отменить
+            </button>
+          )}
           <button
             type="button"
             onClick={handleDelete}
             disabled={saving}
             className="admin-status__btn admin-status__btn--delete"
-            title="Удалить заказ"
+            title={isArchive ? "Удалить архивный заказ" : "Удалить заказ"}
           >
             <Trash2 size={14} /> Удалить
           </button>

@@ -291,6 +291,8 @@ function mapDealRow(row: any): CustomerDeal {
     shippedItems: Array.isArray(row.shipped_items) ? row.shipped_items : [],
     deliveryItems: Array.isArray(row.delivery_items) ? row.delivery_items : [],
     isReserved: Boolean(row.is_reserved),
+    isArchive: Boolean(row.is_archive),
+    archiveNote: row.archive_note ?? null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -1781,6 +1783,129 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("warehouse-counterparties", { expire: 0 });
   return { id: dealResult.id, number };
+}
+
+/**
+ * Массовая загрузка старых проведённых заказов контрагентов (архив).
+ *
+ * Отличия от обычного createDeal:
+ *  - заказы создаются сразу со статусом «completed» и пометкой is_archive;
+ *  - склад НЕ затрагивается (нет отгрузки, нет движения остатков);
+ *  - банк НЕ затрагивается (не создаются платежи/счета);
+ *  - контрагент создаётся автоматически, если его ещё нет;
+ *  - суммы попадают в отчёты и в автоматический прогноз выручки.
+ *
+ * Строки группируются по дате: одна дата → один заказ с позициями.
+ */
+export async function importHistoricalDeals(data: {
+  customerName: string;
+  rows: {
+    date?: string | null;
+    productId?: string | null;
+    name?: string;
+    sku?: string | null;
+    quantity: number;
+    price: number;
+  }[];
+  comment?: string | null;
+}): Promise<{
+  created: number;
+  totalSum: number;
+  deals: { id: string; number: number; date: string; total: number }[];
+}> {
+  const customerName = sanitizeCounterpartyName(String(data.customerName || ""));
+  if (!customerName) throw new Error("Укажите контрагента");
+  const rawRows = Array.isArray(data.rows) ? data.rows : [];
+  if (rawRows.length === 0) throw new Error("Добавьте хотя бы одну позицию");
+
+  const today = new Date().toISOString().slice(0, 10);
+  const comment = data.comment ? String(data.comment).slice(0, 500) : null;
+
+  // Собираем строки: чистим, считаем сумму строки, фильтруем непустые
+  const rows = rawRows
+    .map((row) => {
+      const quantity = Math.max(0, Number(row.quantity) || 0);
+      const price = Math.max(0, Number(row.price) || 0);
+      const name = String(row.name || "").trim();
+      return {
+        date: /^\d{4}-\d{2}-\d{2}$/.test(String(row.date || ""))
+          ? String(row.date)
+          : today,
+        productId: row.productId ? String(row.productId) : null,
+        name,
+        sku: row.sku ? String(row.sku).slice(0, 80) : null,
+        quantity,
+        price,
+        lineTotal: round2(quantity * price),
+      };
+    })
+    .filter((r) => r.name && r.quantity > 0);
+
+  if (rows.length === 0) {
+    throw new Error("Нет заполненных строк: укажите товар, количество и цену");
+  }
+  const totalSum = round2(rows.reduce((s, r) => s + r.lineTotal, 0));
+  if (totalSum <= 0) throw new Error("Сумма загрузки должна быть больше нуля");
+
+  // Контрагент создаётся автоматически (роль — покупатель)
+  const counterpartyId = await ensureCounterparty(customerName, "customer", {
+    comment: comment ?? undefined,
+  });
+
+  // Группируем по дате: одна дата → один заказ с несколькими позициями
+  const byDate = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = byDate.get(row.date) || [];
+    list.push(row);
+    byDate.set(row.date, list);
+  }
+
+  const db = getAdminDb();
+  const createdDeals: { id: string; number: number; date: string; total: number }[] = [];
+
+  for (const [date, group] of byDate) {
+    const items = group.map((r) => ({
+      productId: r.productId || "",
+      name: r.name,
+      sku: r.sku ?? null,
+      quantity: r.quantity,
+      price: r.price,
+      lineTotal: r.lineTotal,
+      unit: "piece" as const,
+    }));
+    const total = itemsTotal(items);
+    const number = await nextNumber("deal");
+    const vatRate = VAT_RATE;
+    const vatAmount = includedVat(total, vatRate);
+
+    const { data: inserted, error } = await db
+      .from("customer_deals")
+      .insert({
+        number,
+        date,
+        customer_name: customerName,
+        counterparty_id: counterpartyId,
+        items,
+        total,
+        bank_adjustment: 0,
+        vat_rate: vatRate,
+        vat_amount: vatAmount,
+        status: "completed",
+        is_archive: true,
+        archive_note: comment,
+        comment: comment
+          ? `Архив (загрузка): ${comment}`.slice(0, 500)
+          : "Архивный заказ (массовая загрузка)",
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    createdDeals.push({ id: inserted.id, number, date, total });
+  }
+
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-counterparties", { expire: 0 });
+  return { created: createdDeals.length, totalSum, deals: createdDeals };
 }
 
 /**

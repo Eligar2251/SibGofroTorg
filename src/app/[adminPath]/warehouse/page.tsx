@@ -114,7 +114,7 @@ export default async function AdminWarehousePage({
   // Раньше при открытии «Склад» читались сразу поставки, заказы, банк,
   // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
   // только необходимые ей коллекции.
-  const needStock = ["stock", "deals", "plans", "purchases", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
+  const needStock = ["stock", "deals", "plan", "plans", "purchases", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
   // На вкладке заказов поступления нужны для пометки «в поставке»: связь
   // хранится на приходном ордере в linked_deal_ids.
   const needReceipts = ["supplies", "receipts", "deals", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
@@ -123,7 +123,7 @@ export default async function AdminWarehousePage({
   // "receipts" обязателен: на вкладке «Поставки» работает реестр
   // «Товар на реализации», который считает продажи по заказам учёта.
   // Без заказов реестр всегда показывал нули.
-  const needDeals = ["deals", "bank", "counterparties", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
+  const needDeals = ["deals", "forecast", "plan", "bank", "counterparties", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.deal;
   // Платежи нужны и на актуальной вкладке `receipts`: по ним карточки
   // активных и архивных поступлений получают пометки «Оплачен/Оплачено».
   // Старый ключ `supplies` оставляем для совместимости со ссылками.
