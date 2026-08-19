@@ -32,9 +32,7 @@ export async function generateMetadata({
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
   const queryStr = q?.trim() || "";
-  const results = queryStr
-    ? await getProducts({ search: queryStr }).catch(() => [])
-    : [];
+  const results = queryStr ? await getProducts({ search: queryStr }) : [];
 
   return (
     <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: 64 }}>

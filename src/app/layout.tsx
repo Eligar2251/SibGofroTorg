@@ -107,21 +107,13 @@ export default async function RootLayout({
      Попапы читаются через unstable_cache (ISR-safe) и передаются в
      ConditionalChrome — так клиенту не нужен отдельный fetch /api/popups
      на каждой странице (минус один сетевой запрос из критического пути
-     LCP на мобильных сетях).
-
-     ВАЖНО: этот layout оборачивает ВЕСЬ сайт. Если Supabase недоступен,
-     await здесь блокирует отрисовку любой страницы (пустой экран +
-     бесконечная загрузка). Поэтому попапы ждём не дольше 3 секунд —
-     дальше отдаём пустой список, а страница продолжает рендериться. */
-  const popupPromise = getAllPopupCampaigns()
-    .then(preparePublicCampaigns)
-    .catch(() => [] as PublicPopupCampaign[]);
-  const popupCampaigns = await Promise.race([
-    popupPromise,
-    new Promise<PublicPopupCampaign[]>((resolve) =>
-      setTimeout(() => resolve([]), 3_000)
-    ),
-  ]);
+     LCP на мобильных сетях). */
+  let popupCampaigns: PublicPopupCampaign[] = [];
+  try {
+    popupCampaigns = preparePublicCampaigns(await getAllPopupCampaigns());
+  } catch {
+    popupCampaigns = [];
+  }
 
   return (
     <html lang="ru" data-scroll-behavior="smooth" suppressHydrationWarning>

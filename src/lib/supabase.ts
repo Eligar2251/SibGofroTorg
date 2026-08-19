@@ -47,18 +47,20 @@ function isTransientFetchError(error: unknown): boolean {
 }
 
 /**
- * fetch для серверного Supabase-клиента.
+ * fetch для серверного Supabase-клиента с защитой от типовых проблем прода:
  *
- * 1) Next.js патчит глобальный fetch (кэш + дедупликация RSC) — явно
- *    ставим cache:'no-store', чтобы запросы шли напрямую и не
- *    дедуплицировались между параллельными вызовами.
+ * 1) Next.js патчит глобальный fetch (кэш + дедупликация RSC), из-за чего
+ *    параллельные Supabase-запросы могут падать с «TypeError: fetch failed».
+ *    Здесь явно ставим cache:'no-store' и работаем с обычным undici-fetch.
  *
- * 2) Соединение с Supabase (CDN Cloudflare) в РФ-сетях бывает нестабильно
- *    (ТСПУ / IPv6) и может висеть до таймаута undici (~10с). Ограничиваем
- *    КАЖДУЮ попытку коротким таймаутом, чтобы при недоступности БД страницы
- *    не «висели» по 30+ секунд, а быстро отдавали фоллбек. GET повторяем
- *    один раз при явно временном сбое; записи (POST/PATCH/DELETE) не
- *    повторяем, чтобы не задвоить операцию.
+ * 2) В РФ-сетях соединения к *.supabase.co бывают нестабильны (ТСПУ,
+ *    IPv6-сбои контейнера) — идемпотентные GET-запросы повторяем с
+ *    короткой паузой. Записи (POST/PATCH/DELETE) не повторяем, чтобы не
+ *    задвоить операцию, если сервер уже применил её до обрыва.
+ *
+ * 3) Ограничиваем время ожидания, чтобы зависший запрос не блокировал
+ *    страницу бесконечно (вместо этого вернётся ошибка, которую вызов
+ *    уже обработает или залогирует).
  */
 async function supabaseFetch(
   input: RequestInfo | URL,
@@ -66,28 +68,27 @@ async function supabaseFetch(
 ): Promise<Response> {
   const method = String(init?.method || "GET").toUpperCase();
   // Повторять безопасно только чтение — операции с данными не идемпотентны.
-  const attempts = method === "GET" || method === "HEAD" ? 2 : 1;
-  const timeoutMs = 4_000;
+  const attempts = method === "GET" || method === "HEAD" ? 3 : 1;
+  const timeoutMs = 30_000;
 
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    // Если вызывающий код передал свой signal — учитываем и его, и наш таймаут.
-    const signal = init?.signal
-      ? AbortSignal.any([init.signal, timeoutSignal])
-      : timeoutSignal;
-
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       return await fetch(input, {
         ...init,
         cache: "no-store",
-        signal,
+        signal: controller.signal,
       });
     } catch (error) {
       lastError = error;
       if (!isTransientFetchError(error) || attempt === attempts) break;
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Пауза перед повтором, растущая с каждой попыткой (150/300 мс).
+      await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
+    } finally {
+      clearTimeout(timer);
     }
   }
 

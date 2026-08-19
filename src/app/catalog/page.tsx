@@ -25,10 +25,8 @@ export const revalidate = 120;
 export const dynamic = "force-dynamic";
 
 export default async function CatalogPage() {
-  // При недоступности Supabase каталог не должен падать целиком:
-  // отдаём пустые списки, клиентский UI покажет «ничего не найдено».
-  const cats = await getCategories().catch(() => []);
-  const products = await getProducts({ limitCount: 48 }).catch(() => []);
+  const cats = await getCategories();
+  const products = await getProducts({ limitCount: 48 });
 
   const serializedCategories = cats.map((c) => ({
     id: c.id,

@@ -18,7 +18,7 @@ export async function generateMetadata({
   params: Promise<{ category: string }>;
 }): Promise<Metadata> {
   const { category } = await params;
-  const cat = await getCategoryBySlug(category).catch(() => null);
+  const cat = await getCategoryBySlug(category);
   if (!cat) return { title: "Категория не найдена" };
   const title = `${cat.name} купить в Новосибирске`;
   const description = `${cat.name} — цены, наличие, доставка по Новосибирску. ${SITE_NAME}: опт и розница, склад на ул. Ватутина.`;
@@ -44,17 +44,15 @@ export default async function CategoryPage({
   const { category: slug } = await params;
   const { sort, q, stock } = await searchParams;
 
-  // При недоступности Supabase не роняем страницу сырым 500 — отдаём
-  // корректную 404 (временное состояние, пока база недоступна).
-  const cat = await getCategoryBySlug(slug).catch(() => null);
+  const cat = await getCategoryBySlug(slug);
   if (!cat) notFound();
 
-  const allCats = await getCategories().catch(() => []);
+  const allCats = await getCategories();
   let products = await getProducts({
     categoryId: cat.id,
     sortBy: sort || "default",
     search: q || undefined,
-  }).catch(() => []);
+  });
   // Единое правило наличия: флаг in_stock + положительный остаток.
   if (stock === "yes") products = products.filter((p) => isProductAvailable(p));
 
