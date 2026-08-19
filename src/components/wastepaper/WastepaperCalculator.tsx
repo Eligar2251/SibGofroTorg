@@ -25,11 +25,19 @@ const RATE_META = [
 
 export function WastepaperCalculator({
   rates,
+  pickupMinKg = WASTEPAPER_PICKUP_MIN_KG,
+  selfBonus = WASTEPAPER_SELF_BONUS,
+  pickupPrice = 0,
 }: {
   /** Цены ₽/кг из настроек; пустые значения дополняются дефолтами */
   rates?: Partial<WastepaperRates>;
+  pickupMinKg?: number;
+  selfBonus?: number;
+  pickupPrice?: number;
 }) {
   const effectiveRates = withDefaultRates(rates);
+  const minKg = pickupMinKg > 0 ? pickupMinKg : WASTEPAPER_PICKUP_MIN_KG;
+  const bonus = selfBonus >= 0 ? selfBonus : WASTEPAPER_SELF_BONUS;
   const [type, setType] = useState("cardboard");
   const [weight, setWeight] = useState(100);
   const [weightInput, setWeightInput] = useState("100");
@@ -42,9 +50,9 @@ export function WastepaperCalculator({
 
   const currentRateObj = RATE_META.find(r => r.id === type) || RATE_META[0];
   const baseRate = effectiveRates[currentRateObj.id];
-  const rate = baseRate + (delivery === "self" ? WASTEPAPER_SELF_BONUS : 0);
+  const rate = baseRate + (delivery === "self" ? bonus : 0);
   const payout = weight * rate;
-  const isPickupValid = delivery === "pickup" ? weight >= WASTEPAPER_PICKUP_MIN_KG : true;
+  const isPickupValid = delivery === "pickup" ? weight >= minKg : true;
 
   function handleWeightChange(val: string) {
     setWeightInput(val);
@@ -66,7 +74,7 @@ export function WastepaperCalculator({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!isPickupValid) {
-      setErr(`Минимум ${WASTEPAPER_PICKUP_MIN_KG} кг для бесплатного вывоза`);
+      setErr(`Минимум ${minKg} кг для вывоза`);
       setState("error");
       return;
     }
@@ -162,7 +170,7 @@ export function WastepaperCalculator({
               <span><GlyphIcon value="factory" size={20} /></span>
               <div>
                 <div className="wpcalc__del-name">Привезу сам</div>
-                <div className="wpcalc__del-sub">+{WASTEPAPER_SELF_BONUS} ₽/кг бонус</div>
+                <div className="wpcalc__del-sub">+{bonus} ₽/кг бонус</div>
               </div>
             </button>
             <button
@@ -173,7 +181,9 @@ export function WastepaperCalculator({
               <span><GlyphIcon value="truck" size={20} /></span>
               <div>
                 <div className="wpcalc__del-name">Вывоз</div>
-                <div className="wpcalc__del-sub">от {WASTEPAPER_PICKUP_MIN_KG} кг</div>
+                <div className="wpcalc__del-sub">
+                  от {minKg} кг{pickupPrice > 0 ? ` · ${pickupPrice} ₽` : ""}
+                </div>
               </div>
             </button>
           </div>
@@ -181,10 +191,10 @@ export function WastepaperCalculator({
       </div>
 
       {/* Предупреждение вывоза */}
-      {delivery === "pickup" && weight < WASTEPAPER_PICKUP_MIN_KG && (
+      {delivery === "pickup" && weight < minKg && (
         <div className="wpcalc__warn">
-          <GlyphIcon value="warning" size={14} /> Бесплатный вывоз — от{" "}
-          {WASTEPAPER_PICKUP_MIN_KG} кг. Сейчас: {weight} кг
+          <GlyphIcon value="warning" size={14} /> Вывоз — от{" "}
+          {minKg} кг. Сейчас: {weight} кг
         </div>
       )}
 

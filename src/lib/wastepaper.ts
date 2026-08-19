@@ -35,6 +35,51 @@ export const WASTEPAPER_SELF_BONUS = 0.5;
 /** Минимальный вес для бесплатного вывоза, кг */
 export const WASTEPAPER_PICKUP_MIN_KG = 150;
 
+export const WP_PICKUP_MIN_SETTING_KEY = "wp_pickup_min_kg";
+export const WP_SELF_BONUS_SETTING_KEY = "wp_self_bonus";
+export const WP_PICKUP_PRICE_SETTING_KEY = "wp_pickup_price";
+export const WP_ACCEPT_LIST_SETTING_KEY = "wp_accept_list";
+export const WP_PHONE_SETTING_KEY = "wp_phone";
+
+export const WASTEPAPER_ACCEPT_DEFAULTS = [
+  "Гофрокартон — коробки, листы, обрезки",
+  "Белая офисная бумага А4 и А3",
+  "Архивные документы (без папок)",
+  "Книги, журналы, газеты",
+  "Рекламные листовки и каталоги",
+  "Смешанная макулатура в связках",
+];
+
+export function parseWastepaperNumber(raw: unknown, fallback: number): number {
+  return parseWastepaperRate(raw, fallback);
+}
+
+export function parseWastepaperAcceptList(raw: unknown): string[] {
+  const text = String(raw ?? "").trim();
+  if (!text) return [...WASTEPAPER_ACCEPT_DEFAULTS];
+  const items = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-•]\s*/, "").trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : [...WASTEPAPER_ACCEPT_DEFAULTS];
+}
+
+export function getWastepaperPageConfig(settings: Record<string, string> = {}) {
+  return {
+    pickupMinKg: parseWastepaperNumber(
+      settings[WP_PICKUP_MIN_SETTING_KEY],
+      WASTEPAPER_PICKUP_MIN_KG
+    ),
+    selfBonus: parseWastepaperNumber(
+      settings[WP_SELF_BONUS_SETTING_KEY],
+      WASTEPAPER_SELF_BONUS
+    ),
+    pickupPrice: parseWastepaperNumber(settings[WP_PICKUP_PRICE_SETTING_KEY], 0),
+    acceptList: parseWastepaperAcceptList(settings[WP_ACCEPT_LIST_SETTING_KEY]),
+    phone: String(settings[WP_PHONE_SETTING_KEY] || "").trim(),
+  };
+}
+
 /** Ключ настройки для цены конкретного вида сырья */
 export function wpRateSettingKey(id: WastepaperRateId): string {
   return `wp_rate_${id}`;

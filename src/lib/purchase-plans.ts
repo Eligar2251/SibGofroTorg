@@ -58,15 +58,40 @@ function normalizeContributions(raw: unknown): PurchaseContribution[] {
   });
 }
 
+function normalizeImages(raw: unknown, fallbackUrl?: string | null, fallbackId?: string | null) {
+  const out: { url: string; publicId: string }[] = [];
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const url = cleanText((item as { url?: unknown }).url, 1500);
+      if (!url) continue;
+      out.push({
+        url,
+        publicId: cleanText((item as { publicId?: unknown }).publicId, 300),
+      });
+    }
+  }
+  if (out.length === 0 && fallbackUrl) {
+    out.push({ url: fallbackUrl, publicId: fallbackId || "" });
+  }
+  return out.slice(0, 8);
+}
+
 function mapPlan(row: Record<string, any>): PurchasePlan {
   const contributions = normalizeContributions(row.contributions);
+  const images = normalizeImages(
+    row.images,
+    row.ozon_image_url ? String(row.ozon_image_url) : null,
+    row.ozon_image_public_id ? String(row.ozon_image_public_id) : null
+  );
   return {
     id: String(row.id),
     productId: String(row.product_id || ""),
     productName: String(row.product_name || "Товар"),
     sku: row.sku ? String(row.sku) : null,
+    images,
     ozonUrl: safeOzonUrl(row.ozon_url),
-    ozonImageUrl: row.ozon_image_url ? String(row.ozon_image_url) : null,
+    ozonImageUrl: images[0]?.url || (row.ozon_image_url ? String(row.ozon_image_url) : null),
     ozonImagePublicId: row.ozon_image_public_id
       ? String(row.ozon_image_public_id)
       : null,
@@ -124,6 +149,7 @@ export async function createPurchasePlan(input: {
   ozonTitle?: unknown;
   ozonPrice?: unknown;
   ozonImageUrl?: unknown;
+  images?: unknown;
   targetAmount?: unknown;
   contributionAmount?: unknown;
   account?: unknown;
@@ -170,13 +196,16 @@ export async function createPurchasePlan(input: {
   const now = new Date().toISOString();
   const currentOzonUrl = ozonSnapshot?.url || ozonUrl;
   const currentOzonPrice = ozonSnapshot?.price ?? null;
-  let storedImageUrl = ozonSnapshot?.imageUrl || null;
-  let storedImagePublicId: string | null = null;
-  if (ozonSnapshot?.imageUrl) {
+  const uploaded = normalizeImages(input.images, ozonSnapshot?.imageUrl || cleanText(input.ozonImageUrl, 1500) || null, null);
+  let storedImageUrl = uploaded[0]?.url || ozonSnapshot?.imageUrl || null;
+  let storedImagePublicId = uploaded[0]?.publicId || null;
+  let storedImages = uploaded;
+  if (storedImageUrl && !storedImagePublicId) {
     try {
-      const mirrored = await mirrorPurchaseImage(ozonSnapshot.imageUrl, planId);
+      const mirrored = await mirrorPurchaseImage(storedImageUrl, planId);
       storedImageUrl = mirrored.url;
       storedImagePublicId = mirrored.publicId;
+      storedImages = [{ url: mirrored.url, publicId: mirrored.publicId }, ...uploaded.slice(1)];
     } catch (error) {
       const imageWarning = cleanText(
         error instanceof Error ? error.message : "Не удалось сохранить фото в Cloudinary",
@@ -185,7 +214,7 @@ export async function createPurchasePlan(input: {
       ozonLastError = [ozonLastError, imageWarning].filter(Boolean).join(" · ");
     }
   }
-  const row = {
+  const row: Record<string, unknown> = {
     id: planId,
     product_id: productId,
     product_name: ozonSnapshot?.title || productName,
@@ -193,6 +222,7 @@ export async function createPurchasePlan(input: {
     ozon_url: currentOzonUrl,
     ozon_image_url: storedImageUrl,
     ozon_image_public_id: storedImagePublicId,
+    images: storedImages,
     ozon_price: currentOzonPrice,
     ozon_checked_at: ozonUrl ? now : null,
     ozon_price_updated_at: ozonSnapshot ? now : null,
@@ -208,11 +238,12 @@ export async function createPurchasePlan(input: {
     created_at: now,
     updated_at: now,
   };
-  const { data, error } = await db
-    .from("warehouse_purchase_plans")
-    .insert(row)
-    .select("*")
-    .single();
+  let insert = await db.from("warehouse_purchase_plans").insert(row).select("*").single();
+  if (insert.error && String(insert.error.message || "").includes("images")) {
+    const { images: _images, ...withoutImages } = row;
+    insert = await db.from("warehouse_purchase_plans").insert(withoutImages).select("*").single();
+  }
+  const { data, error } = insert;
   if (error) throw migrationError(error);
   revalidateTag("purchase-plans", { expire: 0 });
   return mapPlan(data);
@@ -425,20 +456,62 @@ export async function spendPurchasePlan(input: {
   return mapPlan(data);
 }
 
-export async function deletePurchasePlan(idValue: unknown): Promise<void> {
-  const id = cleanText(idValue, 100);
+export async function updatePurchasePlan(input: {
+  id: unknown;
+  productName?: unknown;
+  sku?: unknown;
+  targetAmount?: unknown;
+  contributionAmount?: unknown;
+  account?: unknown;
+  images?: unknown;
+  status?: unknown;
+}): Promise<PurchasePlan> {
+  const id = cleanText(input.id, 100);
   if (!id) throw new Error("План не найден");
   const db = getAdminDb();
   const { data: existing, error: readError } = await db
     .from("warehouse_purchase_plans")
-    .select("status")
+    .select("*")
     .eq("id", id)
     .maybeSingle();
   if (readError) throw migrationError(readError);
   if (!existing) throw new Error("План не найден");
-  if (existing.status === "completed") {
-    throw new Error("Завершённый план с проведённым списанием удалять нельзя");
+
+  const images = input.images !== undefined
+    ? normalizeImages(input.images, existing.ozon_image_url, existing.ozon_image_public_id)
+    : normalizeImages(existing.images, existing.ozon_image_url, existing.ozon_image_public_id);
+
+  const payload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    product_name: cleanText(input.productName, 300) || existing.product_name || "Товар",
+    sku: input.sku !== undefined ? cleanText(input.sku, 80) || null : existing.sku,
+    target_amount: input.targetAmount !== undefined ? Math.max(0, round2(input.targetAmount)) : existing.target_amount,
+    contribution_amount: input.contributionAmount !== undefined
+      ? Math.max(0.01, round2(input.contributionAmount) || 500)
+      : existing.contribution_amount,
+    account: input.account !== undefined ? normalizeAccount(input.account) : existing.account,
+    ozon_image_url: images[0]?.url || null,
+    ozon_image_public_id: images[0]?.publicId || null,
+    images,
+  };
+  if (input.status === "active" || input.status === "completed") {
+    payload.status = input.status;
   }
+
+  let update = await db.from("warehouse_purchase_plans").update(payload).eq("id", id).select("*").single();
+  if (update.error && String(update.error.message || "").includes("images")) {
+    const { images: _images, ...withoutImages } = payload;
+    update = await db.from("warehouse_purchase_plans").update(withoutImages).eq("id", id).select("*").single();
+  }
+  if (update.error) throw migrationError(update.error);
+  revalidateTag("purchase-plans", { expire: 0 });
+  return mapPlan(update.data);
+}
+
+export async function deletePurchasePlan(idValue: unknown): Promise<void> {
+  const id = cleanText(idValue, 100);
+  if (!id) throw new Error("План не найден");
+  const db = getAdminDb();
   const { error } = await db.from("warehouse_purchase_plans").delete().eq("id", id);
   if (error) throw error;
   revalidateTag("purchase-plans", { expire: 0 });

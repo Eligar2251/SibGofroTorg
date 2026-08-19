@@ -34,6 +34,14 @@ import {
 import {
   WASTEPAPER_RATE_IDS,
   WASTEPAPER_RATE_DEFAULTS,
+  WASTEPAPER_SELF_BONUS,
+  WASTEPAPER_PICKUP_MIN_KG,
+  WASTEPAPER_ACCEPT_DEFAULTS,
+  WP_PICKUP_MIN_SETTING_KEY,
+  WP_SELF_BONUS_SETTING_KEY,
+  WP_PICKUP_PRICE_SETTING_KEY,
+  WP_ACCEPT_LIST_SETTING_KEY,
+  WP_PHONE_SETTING_KEY,
   wpRateSettingKey,
   type WastepaperRateId,
 } from "@/lib/wastepaper";
@@ -124,6 +132,11 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
     for (const id of WASTEPAPER_RATE_IDS) {
       defaults[wpRateSettingKey(id)] = String(WASTEPAPER_RATE_DEFAULTS[id]);
     }
+    defaults[WP_PICKUP_MIN_SETTING_KEY] = String(WASTEPAPER_PICKUP_MIN_KG);
+    defaults[WP_SELF_BONUS_SETTING_KEY] = String(WASTEPAPER_SELF_BONUS);
+    defaults[WP_PICKUP_PRICE_SETTING_KEY] = "0";
+    defaults[WP_ACCEPT_LIST_SETTING_KEY] = WASTEPAPER_ACCEPT_DEFAULTS.join("\n");
+    defaults[WP_PHONE_SETTING_KEY] = "";
     return { ...defaults, ...settings };
   });
   const [activeTab, setActiveTab] = useState<TabId>("contacts");
