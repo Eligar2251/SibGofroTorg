@@ -358,7 +358,12 @@ async function fetchAllCategories(): Promise<FirestoreCategory[]> {
     .from("categories")
     .select("*")
     .order("sort_order", { ascending: true });
-  if (error) throw error;
+  // Сеть/БД могут быть недоступны — не роняем страницу целиком,
+  // отдаём пустой список (следующий запрос через revalidate перечитает).
+  if (error) {
+    console.error("fetchAllCategories error:", error?.message || error);
+    return [];
+  }
   return (data || []).map((row: any) => ({
     id: row.id,
     name: row.name || "",
@@ -1570,7 +1575,12 @@ export async function updateOrderDelivery(
 async function fetchSettings(): Promise<Record<string, string>> {
   const db = getAdminDb();
   const { data, error } = await db.from("settings").select("key, value");
-  if (error) throw error;
+  // При сбое сети отдаём пустые настройки — вызывающий код
+  // подставляет дефолты (телефоны/адрес/цены из site-config).
+  if (error) {
+    console.error("fetchSettings error:", error?.message || error);
+    return {};
+  }
   const result: Record<string, string> = {};
   for (const row of data || []) {
     if (row.value != null) result[row.key] = row.value;
@@ -1614,7 +1624,10 @@ export async function getWastepaperRates(): Promise<WastepaperRates> {
 export async function getPromotions(): Promise<Promotion[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("promotions").select("*").order("sort_order", { ascending: true });
-  if (error) throw error;
+  if (error) {
+    console.error("getPromotions error:", error?.message || error);
+    return [];
+  }
   return (data || []).map((row: any) => ({
     id: row.id,
     title: row.title,
@@ -1646,7 +1659,11 @@ export const getAllPromotions = getPromotions;
 async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("popup_campaigns").select("*").order("sort_order", { ascending: true });
-  if (error) throw error;
+  // Попапы — не критичны: при сбое просто не показываем их.
+  if (error) {
+    console.error("fetchAllPopupCampaigns error:", error?.message || error);
+    return [];
+  }
   return (data || []).map((row: any) => ({
     id: row.id,
     type: row.type,
