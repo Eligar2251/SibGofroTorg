@@ -88,6 +88,19 @@ export async function PATCH(request: NextRequest) {
       );
       return NextResponse.json({ plan });
     }
+    if (body.action === "update") {
+      const plan = await updatePurchasePlan(body);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "purchase-plan",
+        plan.id,
+        `Изменён план закупки «${plan.productName}»`,
+        { targetAmount: plan.targetAmount, images: plan.images.length }
+      );
+      return NextResponse.json({ plan });
+    }
     if (body.action === "spend") {
       const plan = await spendPurchasePlan(body);
       await logAdminAction(

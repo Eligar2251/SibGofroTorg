@@ -1,10 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { WastepaperCalculator } from "@/components/wastepaper/WastepaperCalculator";
-import { CheckCircle, Truck, Coins, ShieldCheck, ArrowRight } from "lucide-react";
+import { CheckCircle, Truck, Coins, ShieldCheck } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { getWastepaperRates } from "@/lib/supabase-queries";
-import { formatRate, WASTEPAPER_SELF_BONUS } from "@/lib/wastepaper";
+import { getWastepaperRates, getSettings } from "@/lib/supabase-queries";
+import { formatRate, getWastepaperPageConfig } from "@/lib/wastepaper";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
 
@@ -20,9 +20,11 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function WastepaperPage() {
-  const rates = await getWastepaperRates();
+  const [rates, settings] = await Promise.all([getWastepaperRates(), getSettings()]);
+  const wp = getWastepaperPageConfig(settings);
   const minRate = Math.min(...Object.values(rates));
-  const selfBonus = `+ ${WASTEPAPER_SELF_BONUS} ₽/кг самовывоз`;
+  const selfBonus = `+ ${wp.selfBonus} ₽/кг самовывоз`;
+  const pickupPriceLabel = wp.pickupPrice > 0 ? `${wp.pickupPrice} ₽` : "0 ₽";
 
   // Тарифы: названия фиксированные, цены — из настроек
   const rateRows = [
@@ -71,8 +73,10 @@ export default async function WastepaperPage() {
               </div>
               <div className="wp-hero__stat-div" />
               <div className="wp-hero__stat">
-                <div className="wp-hero__stat-val">от 150 кг</div>
-                <div className="wp-hero__stat-label">бесплатный вывоз</div>
+                <div className="wp-hero__stat-val">от {wp.pickupMinKg} кг</div>
+                <div className="wp-hero__stat-label">
+                  {wp.pickupPrice > 0 ? `вывоз ${pickupPriceLabel}` : "бесплатный вывоз"}
+                </div>
               </div>
               <div className="wp-hero__stat-div" />
               <div className="wp-hero__stat">
@@ -99,7 +103,7 @@ export default async function WastepaperPage() {
               icon: <Truck size={22} style={{ color: "var(--kraft)" }} />,
               color: "#fef3c7",
               title: "Бесплатный вывоз",
-              desc: "Приедем своим транспортом при партии от 150 кг в черте города"
+              desc: `Приедем своим транспортом при партии от ${wp.pickupMinKg} кг в черте города${wp.pickupPrice > 0 ? ` · ${pickupPriceLabel}` : ""}`
             },
             {
               icon: <ShieldCheck size={22} style={{ color: "#2563eb" }} />,
@@ -158,14 +162,7 @@ export default async function WastepaperPage() {
             <div className="wp-accept-card">
               <h3 className="wp-accept-card__title"><GlyphIcon value="ok" size={18} /> Что мы принимаем</h3>
               <div className="wp-accept-grid">
-                {[
-                  "Гофрокартон — коробки, листы, обрезки",
-                  "Белая офисная бумага А4 и А3",
-                  "Архивные документы (без папок)",
-                  "Книги, журналы, газеты",
-                  "Рекламные листовки и каталоги",
-                  "Смешанная макулатура в связках",
-                ].map((item, i) => (
+                {wp.acceptList.map((item, i) => (
                   <div key={i} className="wp-accept-item">
                     <span className="wp-accept-check"><GlyphIcon value="check" size={14} fallback={null} /></span>
                     {item}
@@ -204,7 +201,12 @@ export default async function WastepaperPage() {
                   <div className="wp-calc-card__sub">Узнайте сколько получите за партию</div>
                 </div>
               </div>
-              <WastepaperCalculator rates={rates} />
+              <WastepaperCalculator
+                rates={rates}
+                pickupMinKg={wp.pickupMinKg}
+                selfBonus={wp.selfBonus}
+                pickupPrice={wp.pickupPrice}
+              />
             </div>
           </div>
         </div>

@@ -7,7 +7,7 @@ import {
   getWastepaperRates,
   getSettings,
 } from "@/lib/supabase-queries";
-import { formatRate } from "@/lib/wastepaper";
+import { formatRate, getWastepaperPageConfig } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
@@ -202,6 +202,8 @@ export default async function HomePage() {
   const serializedProducts = featuredProducts.map(serializeHomeProduct);
   const serializedOrderProducts = orderProducts.map(serializeHomeProduct);
 
+  const wpCfg = getWastepaperPageConfig(settings);
+
   const serializeSaleProduct = (p: FirestoreProduct) => ({
     id: p.id,
     name: p.name,
@@ -274,21 +276,10 @@ export default async function HomePage() {
           </div>
         </div>
 
-        {/* Правая панель hero — «Приём макулатуры».
-            ВАЖНО: нельзя класть <a> внутрь <a> (invalid HTML →
-            React hydration error). Поэтому панель — обычный div,
-            а «кликабельность всей карточки» делает растянутый на
-            всю панель Link-заглушка (.hero__right-stretch, inset:0,
-            z-index:1). Бейдж с телефоном — отдельная ссылка с
-            z-index:2 поверх неё: тап по бейджу звонит, тап по
-            остальной панели ведёт на /wastepaper. */}
+        {/* Правая панель — одна ссылка на /wastepaper.
+            Телефон вынесен соседним <a>, чтобы не было <a> внутри <a>. */}
         <div className="hero__right">
-          <Link
-            href="/wastepaper"
-            className="hero__right-stretch"
-            aria-label="Приём макулатуры"
-          />
-          <div className="hero__right-inner container-half-right">
+          <Link href="/wastepaper" className="hero__right-inner container-half-right">
             <div className="hero__wp-tag">
               <Recycle size={13} />
               <span>Экосервис</span>
@@ -318,30 +309,28 @@ export default async function HomePage() {
             </div>
 
             <div className="hero__wp-features">
-              <span>Вывоз от 150 кг — 0 ₽</span>
+              <span>
+                Вывоз от {wpCfg.pickupMinKg} кг — {wpCfg.pickupPrice > 0 ? `${wpCfg.pickupPrice} ₽` : "0 ₽"}
+              </span>
               <span>Оплата на месте</span>
               <span>Работаем с юрлицами</span>
             </div>
 
-            {/* Нижняя панель: «Рассчитать выплату» слева, бейдж с номером
-                отдела макулатуры справа — на одной горизонтальной линии.
-                margin-top:auto прижимает блок к низу flex-колонки
-                правой панели. На мобильном перестраивается в колонку
-                (см. media в globals.css). */}
             <div className="hero__wp-bottom">
               <span className="hero__wp-label">
                 Рассчитать выплату <ChevronRight size={15} />
               </span>
-              <a
-                href="tel:+73832910820"
-                className="hero__wp-phone-badge"
-                aria-label="Позвонить в отдел макулатуры 291-08-20"
-              >
-                <Phone size={13} />
-                <strong>291-08-20</strong>
-              </a>
+              <span className="hero__wp-phone-spacer" aria-hidden />
             </div>
-          </div>
+          </Link>
+          <a
+            href="tel:+73832910820"
+            className="hero__wp-phone-badge"
+            aria-label="Позвонить в отдел макулатуры 291-08-20"
+          >
+            <Phone size={13} />
+            <strong>291-08-20</strong>
+          </a>
         </div>
       </section>
 

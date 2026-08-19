@@ -196,6 +196,9 @@ export function Header() {
             <Link href="/contacts" className="hide-mobile">
               Контакты
             </Link>
+            <Link href="/wastepaper" className="hide-mobile">
+              Макулатура
+            </Link>
             <a href={headerPhoneHref} className="topbar-phone">
               {headerPhone}
             </a>

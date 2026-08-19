@@ -1132,21 +1132,16 @@ select {
   cursor: pointer; /* панель кликабельна через stretched-link ниже */
 }
 
-/* «Растянутая ссылка»: невидимый <a> на всю панель (вместо <a> в <a>,
-   из-за которого React падал с hydration error). z-index:1 — поверх
-   статичного текста, поэтому клик по любому месту панели ведёт на
-   /wastepaper; кликабельные элементы внутри (бейдж телефона) имеют
-   z-index:2 и перехватывают клик на себя. */
-.hero__right-stretch {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  border-radius: inherit;
+.hero__right-inner {
+  color: inherit;
+  text-decoration: none;
+  width: 100%;
+  height: 100%;
 }
 
-.hero__right-stretch:focus-visible {
+.hero__right-inner:focus-visible {
   outline: 2px solid var(--green-lime, #5dcb61);
-  outline-offset: -2px;
+  outline-offset: -4px;
 }
 
 .container-half-right {
@@ -1449,6 +1444,25 @@ select {
 .search-chip {
   display: inline-flex;
   align-items: center;
+  padding: 4px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--ink-2);
+  text-decoration: none;
+  background: #fff;
+  transition: border-color var(--transition), color var(--transition),
+    background-color var(--transition);
+  white-space: nowrap;
+}
+
+.search-chip:hover {
+  border-color: var(--green);
+  color: var(--green-dark);
+  background: var(--green-bg);
+}
+
+/* ════════════enter;
   padding: 4px 12px;
   border: 1px solid var(--border-2);
   border-radius: 20px;
@@ -2238,28 +2252,7 @@ select {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-light);
-  text-decoration: none;
-  border: 1px solid var(--border);
-  background: #fafafa;
-  transition: color var(--transition), border-color var(--transition),
-    background-color var(--transition);
-  white-space: nowrap;
-}
-
-.catalog-sort-link:hover {
-  color: var(--green);
-  border-color: var(--green);
-  background: var(--green-bg);
-}
-
-.catalog-sort-link--active {
-  background: var(--green);
-  color: #fff;
-  border-color: var(--green);
-}
-
-.catalog-sort-link--active:hover {
-  background: var(--green-dark);
+  text-decoratckground: var(--green-dark);
   color: #fff;
 }
 
@@ -5979,6 +5972,18 @@ select {
     padding-top: 16px;
   }
 
+  .hero__wp-phone-badge {
+    left: 50%;
+    right: auto;
+    bottom: 40px;
+    transform: translateX(-50%);
+  }
+
+  .hero__wp-phone-spacer {
+    width: 0;
+    height: 36px;
+  }
+
   .home-catalog-unified {
     grid-template-columns: 1fr;
   }
@@ -8137,6 +8142,21 @@ body {
   color: #fff;
   border: none;
   border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+.sale-card__btn:hover { background: var(--green-dark); }
+.sale-card__btn--added { background: var(--ok); }
+
+@media (max-width: 768px) {
+  .sale-section { padding: 28px 0 34px; }
+  .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .sale-card__name { font-size: 11.5px; min-height: 0; }
+  .sale-card__price { font-size: 14px; }
+}
+ 8px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;

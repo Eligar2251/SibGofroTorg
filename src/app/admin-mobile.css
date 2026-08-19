@@ -3354,3 +3354,126 @@
     transition: none;
   }
 }
+
+/* ══════════════════════════════════════
+   ЗАЯВКИ: мобильная сетка карточек
+   ══════════════════════════════════════ */
+@media (max-width: 768px) {
+  [data-admin="true"] .admin-order {
+    padding: 12px !important;
+    overflow: hidden;
+  }
+
+  [data-admin="true"] .admin-order__hint {
+    display: none !important;
+  }
+
+  [data-admin="true"] .admin-order__row,
+  [data-admin="true"] .admin-order__main,
+  [data-admin="true"] .admin-order__side {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    gap: 10px !important;
+  }
+
+  [data-admin="true"] .admin-order__top {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    align-items: center !important;
+  }
+
+  [data-admin="true"] .admin-order__date {
+    margin-left: 0 !important;
+    width: 100%;
+    white-space: normal !important;
+  }
+
+  [data-admin="true"] .admin-order__grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  [data-admin="true"] .admin-order__meta {
+    display: grid !important;
+    grid-template-columns: 78px minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 6px !important;
+    white-space: normal !important;
+  }
+
+  [data-admin="true"] .admin-order__meta-label {
+    width: auto !important;
+  }
+
+  [data-admin="true"] .admin-order__meta-val,
+  [data-admin="true"] .admin-order__meta a {
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  [data-admin="true"] .admin-order__items {
+    width: 100%;
+    min-width: 0;
+  }
+
+  [data-admin="true"] .admin-order__item,
+  [data-admin="true"] .admin-order__total {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    white-space: normal !important;
+  }
+
+  [data-admin="true"] .admin-status,
+  [data-admin="true"] .admin-status__btns {
+    width: 100% !important;
+  }
+
+  [data-admin="true"] .admin-status__btn {
+    width: 100% !important;
+    white-space: normal !important;
+  }
+}
+
+
+/* Учёт: заказы и поставки на телефоне */
+@media (max-width: 768px) {
+  [data-admin="true"] .receipt-head {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    grid-template-columns: none !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+  [data-admin="true"] .receipt-head__supplier,
+  [data-admin="true"] .receipt-head__date,
+  [data-admin="true"] .receipt-head__total {
+    width: 100%;
+    grid-column: auto !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  [data-admin="true"] .receipt-head__chevron {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    margin-left: auto;
+  }
+  [data-admin="true"] .admin-order__margin-box > div[style*="grid"] {
+    grid-template-columns: 1fr !important;
+  }
+  [data-admin="true"] .supply-planning__workspace {
+    grid-template-columns: 1fr !important;
+  }
+  [data-admin="true"] .supply-plan-add--simple .supply-plan-add__draft,
+  [data-admin="true"] .supply-plan-item--simple .supply-plan-item__head {
+    grid-template-columns: 1fr !important;
+  }
+}

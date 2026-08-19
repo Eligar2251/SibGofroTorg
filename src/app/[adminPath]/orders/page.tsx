@@ -246,7 +246,7 @@ export default async function AdminOrdersPage({
                             </span>
                           )}
                           <span className="admin-order__date">{formatDate(order.createdAt)}</span>
-                          <span className="admin-muted" style={{ marginLeft: "auto", fontSize: 12 }}>Нажмите, чтобы раскрыть</span>
+                          <span className="admin-muted admin-order__hint">Нажмите, чтобы раскрыть</span>
                         </div>
                         <div style={{ fontSize: 14, color: "var(--adm-navy)", fontWeight: 700 }}>
                           {order.customerName || "Без имени"} · {order.customerPhone || "—"}

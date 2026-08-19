@@ -9,11 +9,17 @@ export interface PurchaseContribution {
   createdAt: string;
 }
 
+export interface PurchaseImage {
+  url: string;
+  publicId: string;
+}
+
 export interface PurchasePlan {
   id: string;
   productId: string;
   productName: string;
   sku?: string | null;
+  images: PurchaseImage[];
   ozonUrl?: string | null;
   ozonImageUrl?: string | null;
   ozonImagePublicId?: string | null;

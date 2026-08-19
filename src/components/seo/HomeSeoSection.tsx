@@ -137,10 +137,10 @@ export function HomeSeoSection({
           <div className="seo-home__facts">
             {FACTS.map((f) => (
               <div key={f.title} className="seo-home__fact">
-                <span className="seo-home__fact-icon">
-                  <f.icon size={18} />
+                <span className="seo-home__fact-icon" aria-hidden>
+                  <f.icon size={18} strokeWidth={2} />
                 </span>
-                <div>
+                <div className="seo-home__fact-copy">
                   <strong>{f.title}</strong>
                   <span>{f.text}</span>
                 </div>

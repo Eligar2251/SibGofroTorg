@@ -12765,3 +12765,108 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   color: #fff;
 }
 .settings-tab svg { flex-shrink: 0; }
+
+/* Карточки закупок — плитки как у товаров */
+.purchase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+.purchase-tile {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+.purchase-tile.is-open {
+  grid-column: 1 / -1;
+}
+.purchase-tile__face {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 0 0 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.purchase-tile__media {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  background: var(--adm-paper-warm);
+  color: var(--adm-sand);
+  overflow: hidden;
+}
+.purchase-tile__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.purchase-tile__media em {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--adm-kraft);
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+.purchase-tile__face strong,
+.purchase-tile__face span {
+  display: block;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.purchase-tile__face strong {
+  color: var(--adm-ink);
+  font-size: 13px;
+}
+.purchase-tile__face span {
+  color: var(--adm-muted);
+  font-size: 12px;
+}
+.purchase-tile__face i {
+  display: block;
+  height: 4px;
+  margin: 0 10px;
+  background: var(--adm-pine);
+  border-radius: 99px;
+}
+.purchase-tile__editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--adm-border);
+}
+.purchase-tile__money,
+.purchase-tile__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.purchase-tile__money .admin-input {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+@media (max-width: 768px) {
+  .purchase-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .purchase-tile.is-open {
+    grid-column: 1 / -1;
+  }
+  .purchase-create {
+    grid-template-columns: 1fr !important;
+  }
+}
