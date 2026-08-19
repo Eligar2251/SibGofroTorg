@@ -8156,18 +8156,3 @@ body {
   .sale-card__name { font-size: 11.5px; min-height: 0; }
   .sale-card__price { font-size: 14px; }
 }
- 8px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.16s ease;
-}
-.sale-card__btn:hover { background: var(--green-dark); }
-.sale-card__btn--added { background: var(--ok); }
-
-@media (max-width: 768px) {
-  .sale-section { padding: 28px 0 34px; }
-  .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .sale-card__name { font-size: 11.5px; min-height: 0; }
-  .sale-card__price { font-size: 14px; }
-}

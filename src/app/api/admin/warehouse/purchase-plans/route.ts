@@ -8,6 +8,7 @@ import {
   getPurchasePlans,
   refreshPurchasePlanOzon,
   spendPurchasePlan,
+  updatePurchasePlan,
 } from "@/lib/purchase-plans";
 
 export async function GET() {
