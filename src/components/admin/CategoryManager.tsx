@@ -4,8 +4,17 @@
 
 "use client";
 
-import { useState } from "react";
-import { Plus, Loader2, Save, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Plus,
+  Loader2,
+  Save,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Trash2,
+} from "lucide-react";
 import { GlyphIcon, GLYPH_CHOICES } from "@/components/ui/Glyph";
 
 interface Category {
@@ -26,15 +35,54 @@ export function CategoryManager({
 }: {
   categories: Category[];
 }) {
+  const router = useRouter();
   const [categories, setCategories] = useState(initialCats);
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [newCat, setNewCat] = useState({
     name: "",
     icon: "box",
     description: "",
   });
+
+  // Синхронизация со свежими данными сервера (после router.refresh()
+  // после удаления счётчики «Без категории»/товаров обновляются).
+  useEffect(() => {
+    setCategories(initialCats);
+  }, [initialCats]);
+
+  async function deleteCategory(cat: Category) {
+    if (deletingId) return;
+    const message =
+      cat.productCount > 0
+        ? `Удалить категорию «${cat.name}»?\n\nВ ней ${cat.productCount} товар(ов). Сами товары не удаляются — они перейдут в раздел «Без категории».`
+        : `Удалить категорию «${cat.name}»? Это действие необратимо.`;
+    if (!confirm(message)) return;
+
+    setDeletingId(cat.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/categories/${cat.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "Не удалось удалить категорию");
+        setDeletingId(null);
+        return;
+      }
+      setCategories((prev) => prev.filter((c) => c.id !== cat.id));
+      // Перезапросить серверные данные — счётчики товаров у других
+      // категорий и список «Без категории» обновятся корректно.
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setError("Ошибка сети при удалении категории");
+    }
+    setDeletingId(null);
+  }
 
   async function addCategory() {
     if (!newCat.name.trim()) return;
@@ -164,6 +212,12 @@ export function CategoryManager({
         </div>
       )}
 
+      {error && (
+        <div className="admin-error">
+          <AlertCircle size={14} /> {error}
+        </div>
+      )}
+
       <div className="admin-card">
         <div className="admin-table-wrap">
           <table className="admin-table">
@@ -174,6 +228,7 @@ export function CategoryManager({
                 <th>Товаров</th>
                 <th>Видимость</th>
                 <th>Дата создания</th>
+                <th style={{ width: 60 }}>Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -213,6 +268,22 @@ export function CategoryManager({
                     {cat.createdAt
                       ? new Date(cat.createdAt).toLocaleDateString("ru-RU")
                       : "—"}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() => deleteCategory(cat)}
+                      disabled={deletingId === cat.id}
+                      className="admin-btn admin-btn--icon"
+                      title="Удалить категорию"
+                      aria-label={`Удалить категорию ${cat.name}`}
+                    >
+                      {deletingId === cat.id ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={15} />
+                      )}
+                    </button>
                   </td>
                 </tr>
               ))}

@@ -27,7 +27,7 @@ import {
   MapPin,
   Clock,
   Truck,
-  Zap,
+  Wallet,
   Package,
   PackageCheck,
   Recycle,
@@ -68,12 +68,12 @@ export const metadata: Metadata = {
     absolute: `Гофротара и картонные коробки в Новосибирске — купить от 1 шт. | ${SITE_NAME}`,
   },
   description:
-    "Купить гофротару и картонные коробки в Новосибирске оптом и в розницу: коробки Т-22, Т-23, Т-24, 3- и 5-слойные. От 1 шт., доставка по городу и области, склад на ул. Ватутина.",
+    "Купить гофротару и картонные коробки в Новосибирске: коробки Т-22, Т-23, Т-24, 3- и 5-слойные. От 1 шт., доставка по городу и области, склад на ул. Ватутина.",
   alternates: { canonical: SITE_URL },
   openGraph: {
     title: `Гофротара и картонные коробки в Новосибирске — ${SITE_NAME}`,
     description:
-      "Купить гофротару, картонные коробки и упаковку в Новосибирске. Опт и розница от 1 шт., доставка по городу и области.",
+      "Купить гофротару, картонные коробки и упаковку в Новосибирске. От 1 шт., доставка по городу и области.",
     url: SITE_URL,
   },
 };
@@ -235,7 +235,7 @@ export default async function HomePage() {
             <p className="hero__sub">
               Марки Т-22, Т-23, Т-24 · 3 и 5-слойный.
               <br />
-              Минимальный заказ — 1 шт. Оптовые цены от 50 шт.
+              Минимальный заказ — 1 шт. Оплата при получении.
             </p>
 
             <div className="hero__reserve-note">
@@ -254,8 +254,8 @@ export default async function HomePage() {
                 <span>Доставка 2-3 дня</span>
               </div>
               <div className="hero__perk">
-                <Zap size={16} />
-                <span>Ответим за 15 мин</span>
+                <Wallet size={16} />
+                <span>Оплата при получении</span>
               </div>
               <div className="hero__perk">
                 <Package size={16} />
@@ -417,11 +417,11 @@ export default async function HomePage() {
         <div className="container">
           <div className="consult-grid">
             <div className="consult-left">
-              <span className="consult-eyebrow">Нужна консультация?</span>
-              <h2 className="consult-title">Перезвоним за 15 минут</h2>
+              <span className="consult-eyebrow">Оформление заказа</span>
+              <h2 className="consult-title">Оформите заказ — заберите со склада</h2>
               <p className="consult-desc">
-                Подберём нужный размер короба, рассчитаем оптовую стоимость и
-                организуем доставку.
+                Добавьте товар в корзину и оформите заказ. Сразу получите номер
+                получения — приезжайте на склад и оплатите при получении.
               </p>
               <a href={homePhoneHref} className="consult-phone">
                 <Phone size={18} /> {homePhone}

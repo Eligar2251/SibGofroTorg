@@ -11,7 +11,7 @@ import {
   RESTOCK_INQUIRY_LABEL,
 } from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { Plus, Minus, ShoppingCart, Check, Package, Clock3 } from "lucide-react";
+import { ShoppingCart, Check, Package, Clock3 } from "lucide-react";
 import {
   normalizeProductLabelColor,
   DEFAULT_PRODUCT_LABEL_COLOR,
@@ -76,13 +76,11 @@ export function ProductCardCompact({
   const { addToCart, cart } = useCart();
   const packSize = product.packQty ? Math.max(1, Number(product.packQty)) : 1;
   const maxStock = product.stockQty ?? null;
-  // Нет на складе — цену не показываем совсем, вместо неё «Нет в наличии»
-  // и автозаявка «Уточнить поступление».
+  // Нет на складе — купить нельзя (кнопка «Уточнить поступление»), но
+  // если у товара задана цена, показываем её.
   const outOfStock = isOutOfStock(product);
   const orderOffer = orderMode && outOfStock;
 
-  const [qty, setQty] = useState(packSize);
-  const [inputVal, setInputVal] = useState(String(packSize));
   const [added, setAdded] = useState(false);
   const [showHover, setShowHover] = useState(false);
 
@@ -94,41 +92,6 @@ export function ProductCardCompact({
           product.dimensionHeight ? `×${product.dimensionHeight}` : ""
         } ${product.dimensionUnit || "мм"}`
       : null;
-
-  function clampQty(val: number) {
-    const clamped = Math.max(1, val);
-    return maxStock ? Math.min(maxStock, clamped) : clamped;
-  }
-
-  function dec(e: React.MouseEvent) {
-    e.preventDefault();
-    const next = clampQty(qty - packSize < 1 ? 1 : qty - packSize);
-    setQty(next);
-    setInputVal(String(next));
-  }
-
-  function inc(e: React.MouseEvent) {
-    e.preventDefault();
-    const next = clampQty(qty + packSize);
-    setQty(next);
-    setInputVal(String(next));
-  }
-
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setInputVal(e.target.value);
-  }
-
-  function handleInputBlur() {
-    const parsed = parseInt(inputVal, 10);
-    if (isNaN(parsed) || parsed < 1) {
-      setQty(1);
-      setInputVal("1");
-    } else {
-      const clamped = clampQty(parsed);
-      setQty(clamped);
-      setInputVal(String(clamped));
-    }
-  }
 
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
@@ -142,17 +105,11 @@ export function ProductCardCompact({
         imageUrl: product.imageUrl,
         maxStock,
       },
-      qty
+      packSize
     );
     setAdded(true);
     setTimeout(() => setAdded(false), 1800);
   }
-
-  const totalPrice = product.price ? product.price * qty : 0;
-  const isWholesale =
-    product.priceWholesale &&
-    product.minWholesaleQty &&
-    qty >= product.minWholesaleQty;
 
   return (
     <div
@@ -249,18 +206,12 @@ export function ProductCardCompact({
 
         {/* Цена — шт + партия. Если у товара есть варианты,
            показываем «от X ₽» (по минимальной цене).
-           Плитки «под заказ» выглядят так же, как обычные:
-           цена крупно, а пометка «Под заказ · 2–3 дня» — ниже. */}
+           У товаров «под заказ» и без цены цену не выводим;
+           у остальных цена видна всегда — в том числе когда
+           товара нет в наличии (тогда ниже метка «Нет в наличии»,
+           а вместо кнопки покупки — «Уточнить поступление»). */}
         <div className="pcc__prices">
-          {outOfStock && !orderOffer ? (
-            <span className="pcc__price-muted pcc__price-muted--out">
-              {OUT_OF_STOCK_LABEL}
-            </span>
-          ) : product.madeToOrder && product.price == null ? (
-            <span className="pcc__price-muted pcc__price-muted--mto">
-              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
-            </span>
-          ) : product.madeToOrder ? (
+          {product.madeToOrder ? (
             <span className="pcc__price-muted pcc__price-muted--mto">
               Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
             </span>
@@ -290,14 +241,18 @@ export function ProductCardCompact({
                   <strong>{product.priceWholesale.toLocaleString("ru-RU")} ₽</strong>
                 </div>
               )}
+              {outOfStock && (
+                <span className="pcc__price-muted pcc__price-muted--out">
+                  {OUT_OF_STOCK_LABEL}
+                </span>
+              )}
             </>
+          ) : outOfStock ? (
+            <span className="pcc__price-muted pcc__price-muted--out">
+              {OUT_OF_STOCK_LABEL}
+            </span>
           ) : (
             <span className="pcc__price-muted">Цена по запросу</span>
-          )}
-          {(product as any).isCuttable && (
-            <span className="pcc__mto-note" style={{ background: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.2)' }}>
-              Рулон {(product as any).cutMetersPerRoll || 100}м · можно метрами
-            </span>
           )}
           {orderOffer && (
             <span className="pcc__mto-note">
@@ -346,61 +301,23 @@ export function ProductCardCompact({
             label="Узнать цену"
           />
         ) : product.price != null ? (
-          <>
-            <div className="pcc__actions">
-              <div className="pcc__stepper">
-                <button
-                  className="pcc__stepper-btn"
-                  onClick={dec}
-                  aria-label="Уменьшить"
-                >
-                  <Minus size={11} />
-                </button>
-                <input
-                  className="pcc__stepper-input"
-                  type="number"
-                  min={1}
-                  max={maxStock ?? undefined}
-                  value={inputVal}
-                  onChange={handleInputChange}
-                  onBlur={handleInputBlur}
-                  onClick={(e) => e.preventDefault()}
-                  aria-label="Количество"
-                />
-                <button
-                  className="pcc__stepper-btn"
-                  onClick={inc}
-                  aria-label="Увеличить"
-                >
-                  <Plus size={11} />
-                </button>
-              </div>
-              <button
-                onClick={handleAdd}
-                className={`pcc__add-btn${added ? " pcc__add-btn--added" : ""}`}
-                aria-label="В корзину"
-              >
-                {added ? <Check size={14} /> : <ShoppingCart size={14} />}
-              </button>
-            </div>
-
-            {/* Сумма за выбранное количество */}
-            {qty > 1 && (
-              <div className="pcc__qty-total">
-                {qty} шт. ={" "}
-                <strong>
-                  {(isWholesale
-                    ? (product.priceWholesale ?? product.price) * qty
-                    : totalPrice
-                  ).toLocaleString("ru-RU")}{" "}
-                  ₽
-                </strong>
-                {isWholesale && (
-                  <span className="pcc__qty-discount"> опт</span>
-                )}
-              </div>
-            )}
-          </>
+          <div className="pcc__actions">
+            <button
+              onClick={handleAdd}
+              className={`pcc__add-btn pcc__add-btn--wide${added ? " pcc__add-btn--added" : ""}`}
+              aria-label="Добавить в корзину"
+            >
+              {added ? (
+                <>
+                  <Check size={14} /> Добавлено
+                </>
+              ) : (
+                <>
+                  <ShoppingCart size={14} /> В корзину
+                </>
+              )}
+            </button>
+          </div>
         ) : null}
       </div>
     </div>

@@ -162,8 +162,8 @@ export default async function ProductPage({
     (c: FirestoreCategory) => c.id === product.categoryId
   );
 
-  // Нет на складе — цену на витрине не показываем совсем: вместо неё
-  // «Нет в наличии» и автозаявка «Уточнить поступление».
+  // Нет на складе — купить нельзя (автозаявка «Уточнить поступление»),
+  // но если цена задана, она показывается рядом с меткой «Нет в наличии».
   // ★ Важно: effectivePrice/oldPrice/discountPercent считаем от
   // СВОДНОЙ цены товара (для крупных бейджей). В блоке покупки
   // (ProductPurchaseBlock) своя логика с вариантами.
@@ -461,23 +461,8 @@ export default async function ProductPage({
                       <div className="spec-value">уточняйте у менеджера</div>
                     </div>
                   )}
-                  {/* Вариативность рулон/м */}
-                  {(product as any).isCuttable && (
-                    <div className="spec-row">
-                      <div className="spec-name">Продажа</div>
-                      <div className="spec-value">
-                        Можно рулоном ({(product as any).cutMetersPerRoll || 100} {(product as any).cutUnitName || 'м'} в рулоне) и на отмотку по {(product as any).cutPricePerMeter ? `${(product as any).cutPricePerMeter} ₽/${(product as any).cutUnitName || 'м'}` : 'метрам'}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
-              {(product as any).isCuttable && (
-                <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', fontSize: 13, lineHeight: 1.4 }}>
-                  <strong>Вариативность:</strong> этот товар можно купить целым рулоном ({(product as any).cutMetersPerRoll || 100} {(product as any).cutUnitName || 'м'}) или отматываем нужное количество метров. Уточните у менеджера — в заказах учитывается остаток рулонов автоматически (напр. 5 рул. + 90 м).
-                </div>
-              )}
-
             </div>
           </div>
           {/* /product-col */}
@@ -498,14 +483,10 @@ export default async function ProductPage({
             <div className="purchase-card">
               {/* Цена. Если у товара есть варианты — показываем
                  «от X ₽» по минимальной цене. Иначе — обычная
-                 логика с effectivePrice. */}
-              {outOfStock ? (
-                <div className="pdp-price-row">
-                  <span className="pdp-price-current pdp-price-current--out">
-                    {OUT_OF_STOCK_LABEL}
-                  </span>
-                </div>
-              ) : product.madeToOrder ? (
+                 логика с effectivePrice. При отсутствии на складе
+                 цена остаётся видимой (если задана) рядом с меткой
+                 «Нет в наличии». */}
+              {product.madeToOrder ? (
                 <div className="pdp-price-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
                   <span className="pdp-price-current pdp-price-current--mto">
                     Под заказ{(product as any).madeToOrderMinQty ? ` от ${(product as any).madeToOrderMinQty} шт.` : ""}
@@ -516,42 +497,49 @@ export default async function ProductPage({
                     </span>
                   )}
                 </div>
-              ) : displayPrice == null ? (
+              ) : displayPrice != null ? (
+                <div className="pdp-price-row">
+                  <span className="pdp-price-current">
+                    {/* «от X ₽» если у товара есть варианты */}
+                    {variantPriceMin != null && (
+                      <span className="pdp-price-from">от{"\u00a0"}</span>
+                    )}
+                    {displayPrice.toLocaleString("ru-RU")}{"\u00a0₽"}
+                  </span>
+                  {displayOldPrice != null && (
+                    <span className="pdp-price-old">
+                      {displayOldPrice.toLocaleString("ru-RU")} ₽
+                    </span>
+                  )}
+                  {displayDiscountPercent > 0 && (
+                    <span className="pdp-price-save">−{displayDiscountPercent}%</span>
+                  )}
+                  {variants.length > 0 && (
+                    <span className="pdp-price-variants">
+                      {variants.length}{" "}
+                      {plural(variants.length, "вариант", "варианта", "вариантов")}
+                    </span>
+                  )}
+                  {outOfStock && (
+                    <span className="pdp-price-out-note">{OUT_OF_STOCK_LABEL}</span>
+                  )}
+                </div>
+              ) : outOfStock ? (
+                <div className="pdp-price-row">
+                  <span className="pdp-price-current pdp-price-current--out">
+                    {OUT_OF_STOCK_LABEL}
+                  </span>
+                </div>
+              ) : (
                 <div className="pdp-price-row">
                   <span className="pdp-price-current pdp-price-current--mto">
                     Цена по запросу
                   </span>
                 </div>
-              ) : (
-                displayPrice != null && (
-                  <div className="pdp-price-row">
-                    <span className="pdp-price-current">
-                      {/* «от X ₽» если у товара есть варианты */}
-                      {variantPriceMin != null && (
-                        <span className="pdp-price-from">от{"\u00a0"}</span>
-                      )}
-                      {displayPrice.toLocaleString("ru-RU")}{"\u00a0₽"}
-                    </span>
-                    {displayOldPrice != null && (
-                      <span className="pdp-price-old">
-                        {displayOldPrice.toLocaleString("ru-RU")} ₽
-                      </span>
-                    )}
-                    {displayDiscountPercent > 0 && (
-                      <span className="pdp-price-save">−{displayDiscountPercent}%</span>
-                    )}
-                    {variants.length > 0 && (
-                      <span className="pdp-price-variants">
-                        {variants.length}{" "}
-                        {plural(variants.length, "вариант", "варианта", "вариантов")}
-                      </span>
-                    )}
-                  </div>
-                )
               )}
 
               {/* Оптовая цена */}
-              {!outOfStock && !product.madeToOrder && product.priceWholesale != null && (
+              {!product.madeToOrder && product.priceWholesale != null && (
                 <div className="pdp-wholesale-row">
                   <span className="pdp-wholesale-label">Опт:</span>
                   <strong className="pdp-wholesale-price">
@@ -571,8 +559,9 @@ export default async function ProductPage({
                   <div className="pdp-made-to-order">
                     <div className="pdp-out-of-stock">
                       <ShoppingCart size={15} />
-                      Товара нет в наличии — оставьте заявку, уточним срок
-                      поступления и актуальную цену
+                      {displayPrice != null
+                        ? "Товара нет в наличии — оставьте заявку, уточним срок поступления"
+                        : "Товара нет в наличии — оставьте заявку, уточним срок поступления и актуальную цену"}
                     </div>
                     <PriceInquiryButton
                       productName={product.name}
