@@ -25,6 +25,8 @@ export interface PhotoTextElement {
   lineHeight: number;
   /** Трекинг, px */
   letterSpacing: number;
+  /** Поворот вокруг центра, градусы */
+  rotation?: number;
 }
 
 export interface PhotoRectElement {
@@ -36,6 +38,8 @@ export interface PhotoRectElement {
   height: number;
   color: string;
   radius: number;
+  /** Поворот вокруг центра, градусы */
+  rotation?: number;
 }
 
 export interface PhotoImageElement {
@@ -48,12 +52,30 @@ export interface PhotoImageElement {
   src: string;
   fit: "cover" | "contain";
   radius: number;
+  /** Поворот вокруг центра, градусы */
+  rotation?: number;
+}
+
+/** Стрелка: прямая линия от (x, y) до (x2, y2) с наконечником. */
+export interface PhotoArrowElement {
+  id: string;
+  type: "arrow";
+  x: number;
+  y: number;
+  x2: number;
+  y2: number;
+  color: string;
+  /** Толщина линии, px */
+  width: number;
+  /** Размер наконечника, px */
+  headSize: number;
 }
 
 export type PhotoTemplateElement =
   | PhotoTextElement
   | PhotoRectElement
-  | PhotoImageElement;
+  | PhotoImageElement
+  | PhotoArrowElement;
 
 export interface PhotoTemplate {
   width: number;

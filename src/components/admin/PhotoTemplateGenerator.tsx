@@ -18,14 +18,15 @@ import {
 import Link from "next/link";
 import {
   ArrowDown,
+  ArrowRight,
   ArrowUp,
   Check,
   ChevronLeft,
   ChevronRight,
   Copy,
+  GripVertical,
   ImagePlus,
   Loader2,
-  Move,
   Plus,
   RotateCcw,
   Search,
@@ -44,6 +45,7 @@ import {
   PHOTO_PLACEHOLDERS,
   photoFontFamilies,
   substituteTokens,
+  type PhotoArrowElement,
   type PhotoImageElement,
   type PhotoProduct,
   type PhotoRectElement,
@@ -159,6 +161,125 @@ function drawContain(
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
+/* ── Вращение ── */
+function degToRad(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+/** Поворот точки (x, y) вокруг (cx, cy) на deg градусов. */
+function rotatePoint(
+  cx: number,
+  cy: number,
+  x: number,
+  y: number,
+  deg: number
+): [number, number] {
+  const rad = degToRad(deg);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+}
+
+/** Нормализует угол в диапазон (-180, 180]. */
+function normDeg(deg: number): number {
+  let d = deg % 360;
+  if (d > 180) d -= 360;
+  if (d <= -180) d += 360;
+  return Math.round(d);
+}
+
+/** Габариты «коробочного» элемента в его локальной системе координат. */
+interface BoxGeom {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: number;
+}
+
+function boxGeom(
+  ctx: CanvasRenderingContext2D,
+  el: PhotoTextElement | PhotoRectElement | PhotoImageElement,
+  tokens: Record<string, string>
+): BoxGeom {
+  if (el.type === "rect" || el.type === "image") {
+    return {
+      x: el.x,
+      y: el.y,
+      w: el.width,
+      h: el.height,
+      rotation: el.rotation ?? 0,
+    };
+  }
+  applyFont(ctx, el);
+  const lines = wrapText(
+    ctx,
+    substituteTokens(el.text, tokens),
+    el.width,
+    el.letterSpacing
+  );
+  const h = Math.max(el.fontSize, lines.length * el.fontSize * el.lineHeight);
+  return { x: el.x, y: el.y, w: el.width, h, rotation: el.rotation ?? 0 };
+}
+
+/** Мировые координаты четырёх углов повёрнутого элемента. */
+function boxCorners(g: BoxGeom): [number, number][] {
+  const cx = g.x + g.w / 2;
+  const cy = g.y + g.h / 2;
+  return [
+    rotatePoint(cx, cy, g.x, g.y, g.rotation),
+    rotatePoint(cx, cy, g.x + g.w, g.y, g.rotation),
+    rotatePoint(cx, cy, g.x + g.w, g.y + g.h, g.rotation),
+    rotatePoint(cx, cy, g.x, g.y + g.h, g.rotation),
+  ];
+}
+
+/** Точка внутри (повёрнутого) прямоугольника элемента. */
+function pointInBox(px: number, py: number, g: BoxGeom): boolean {
+  const cx = g.x + g.w / 2;
+  const cy = g.y + g.h / 2;
+  const rad = degToRad(g.rotation);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = px - cx;
+  const dy = py - cy;
+  const lx = dx * cos + dy * sin;
+  const ly = -dx * sin + dy * cos;
+  return Math.abs(lx) <= g.w / 2 + 3 && Math.abs(ly) <= g.h / 2 + 3;
+}
+
+/** Расстояние от точки до отрезка (для хит-теста стрелки). */
+function segmentDistance(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+/** Сдвиг элемента (у стрелки двигаются оба конца). */
+function translateElement(
+  el: PhotoTemplateElement,
+  dx: number,
+  dy: number
+): PhotoTemplateElement {
+  if (el.type === "arrow") {
+    return { ...el, x: el.x + dx, y: el.y + dy, x2: el.x2 + dx, y2: el.y2 + dy };
+  }
+  return { ...el, x: el.x + dx, y: el.y + dy } as PhotoTemplateElement;
+}
+
 function drawText(
   ctx: CanvasRenderingContext2D,
   el: PhotoTextElement,
@@ -166,24 +287,34 @@ function drawText(
 ) {
   const text = substituteTokens(el.text, tokens);
   applyFont(ctx, el);
+  const lines = wrapText(ctx, text, el.width, el.letterSpacing);
+  const lh = el.fontSize * el.lineHeight;
+  const h = Math.max(el.fontSize, lines.length * lh);
+  const cx = el.x + el.width / 2;
+  const cy = el.y + h / 2;
+
+  ctx.save();
+  if (el.rotation) {
+    ctx.translate(cx, cy);
+    ctx.rotate(degToRad(el.rotation));
+    ctx.translate(-cx, -cy);
+  }
   ctx.textAlign = el.align;
   ctx.textBaseline = "top";
   ctx.fillStyle = el.color;
-  const lines = wrapText(ctx, text, el.width, el.letterSpacing);
-  const lh = el.fontSize * el.lineHeight;
   lines.forEach((line, i) => {
     const y = el.y + i * lh;
     if (el.letterSpacing > 0) {
       const total = measure(ctx, line, el.letterSpacing);
-      let cx =
+      let lineX =
         el.align === "left"
           ? el.x
           : el.align === "center"
             ? el.x + (el.width - total) / 2
             : el.x + el.width - total;
       for (const ch of line) {
-        ctx.fillText(ch, cx, y);
-        cx += ctx.measureText(ch).width + el.letterSpacing;
+        ctx.fillText(ch, lineX, y);
+        lineX += ctx.measureText(ch).width + el.letterSpacing;
       }
     } else {
       const ax =
@@ -195,9 +326,18 @@ function drawText(
       ctx.fillText(line, ax, y);
     }
   });
+  ctx.restore();
 }
 
 function drawRectEl(ctx: CanvasRenderingContext2D, el: PhotoRectElement) {
+  ctx.save();
+  if (el.rotation) {
+    const cx = el.x + el.width / 2;
+    const cy = el.y + el.height / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate(degToRad(el.rotation));
+    ctx.translate(-cx, -cy);
+  }
   ctx.fillStyle = el.color;
   if (el.radius > 0) {
     roundRectPath(ctx, el.x, el.y, el.width, el.height, el.radius);
@@ -205,6 +345,7 @@ function drawRectEl(ctx: CanvasRenderingContext2D, el: PhotoRectElement) {
   } else {
     ctx.fillRect(el.x, el.y, el.width, el.height);
   }
+  ctx.restore();
 }
 
 async function drawImageEl(
@@ -214,12 +355,47 @@ async function drawImageEl(
   if (!el.src) return;
   const img = await loadImage(el.src);
   ctx.save();
+  if (el.rotation) {
+    const cx = el.x + el.width / 2;
+    const cy = el.y + el.height / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate(degToRad(el.rotation));
+    ctx.translate(-cx, -cy);
+  }
   if (el.radius > 0) {
     roundRectPath(ctx, el.x, el.y, el.width, el.height, el.radius);
     ctx.clip();
   }
   if (el.fit === "cover") drawCover(ctx, img, el.x, el.y, el.width, el.height);
   else drawContain(ctx, img, el.x, el.y, el.width, el.height);
+  ctx.restore();
+}
+
+function drawArrowEl(ctx: CanvasRenderingContext2D, el: PhotoArrowElement) {
+  ctx.save();
+  ctx.strokeStyle = el.color;
+  ctx.lineWidth = Math.max(1, el.width);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(el.x, el.y);
+  ctx.lineTo(el.x2, el.y2);
+  ctx.stroke();
+
+  const ang = Math.atan2(el.y2 - el.y, el.x2 - el.x);
+  const hs = Math.max(6, el.headSize);
+  ctx.beginPath();
+  ctx.moveTo(el.x2, el.y2);
+  ctx.lineTo(
+    el.x2 - hs * Math.cos(ang - Math.PI / 6),
+    el.y2 - hs * Math.sin(ang - Math.PI / 6)
+  );
+  ctx.moveTo(el.x2, el.y2);
+  ctx.lineTo(
+    el.x2 - hs * Math.cos(ang + Math.PI / 6),
+    el.y2 - hs * Math.sin(ang + Math.PI / 6)
+  );
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -251,6 +427,7 @@ async function renderTemplate(
   for (const el of template.elements) {
     if (el.type === "rect") drawRectEl(ctx, el);
     else if (el.type === "text") drawText(ctx, el, tokens);
+    else if (el.type === "arrow") drawArrowEl(ctx, el);
     else if (el.type === "image") {
       try {
         await drawImageEl(ctx, el);
@@ -261,12 +438,22 @@ async function renderTemplate(
   }
 }
 
-/** Габариты элемента для рамки выделения и хит-теста. */
+/** Габариты элемента для рамки выделения и хит-теста (стрелки — AABB). */
 function elementBox(
   ctx: CanvasRenderingContext2D,
   el: PhotoTemplateElement,
   tokens: Record<string, string>
 ): { x: number; y: number; w: number; h: number } {
+  if (el.type === "arrow") {
+    const x = Math.min(el.x, el.x2);
+    const y = Math.min(el.y, el.y2);
+    return {
+      x,
+      y,
+      w: Math.abs(el.x2 - el.x),
+      h: Math.abs(el.y2 - el.y),
+    };
+  }
   if (el.type === "rect" || el.type === "image") {
     return { x: el.x, y: el.y, w: el.width, h: el.height };
   }
@@ -291,25 +478,57 @@ function drawSelection(
   if (!ctx || !selectedId) return;
   const el = template.elements.find((e) => e.id === selectedId);
   if (!el) return;
-  const box = elementBox(ctx, el, tokens);
+  const handle = Math.max(9, template.width / 60);
+
   ctx.save();
   ctx.strokeStyle = "#2563eb";
-  ctx.lineWidth = Math.max(1.5, template.width / 500);
-  ctx.strokeRect(box.x - 2, box.y - 2, box.w + 4, box.h + 4);
-
-  const handle = template.width / 70;
   ctx.fillStyle = "#ffffff";
-  ctx.strokeStyle = "#2563eb";
-  // Уголки рамки
-  const corners: [number, number][] = [
-    [box.x - 2, box.y - 2],
-    [box.x + box.w + 2, box.y - 2],
-    [box.x - 2, box.y + box.h + 2],
-    [box.x + box.w + 2, box.y + box.h + 2],
-  ];
-  for (const [cx, cy] of corners) {
-    ctx.fillRect(cx - handle / 2, cy - handle / 2, handle, handle);
-    ctx.strokeRect(cx - handle / 2, cy - handle / 2, handle, handle);
+  ctx.lineWidth = Math.max(1.5, template.width / 500);
+
+  if (el.type === "arrow") {
+    const box = elementBox(ctx, el, tokens);
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(box.x - 8, box.y - 8, box.w + 16, box.h + 16);
+    ctx.setLineDash([]);
+    for (const [hx, hy] of [
+      [el.x, el.y],
+      [el.x2, el.y2],
+    ] as [number, number][]) {
+      ctx.fillRect(hx - handle / 2, hy - handle / 2, handle, handle);
+      ctx.strokeRect(hx - handle / 2, hy - handle / 2, handle, handle);
+    }
+  } else {
+    const g = boxGeom(ctx, el, tokens);
+    const corners = boxCorners(g);
+
+    // Повёрнутая рамка
+    ctx.beginPath();
+    corners.forEach((c, i) => {
+      if (i === 0) ctx.moveTo(c[0], c[1]);
+      else ctx.lineTo(c[0], c[1]);
+    });
+    ctx.closePath();
+    ctx.stroke();
+
+    // Угловые ручки ресайза
+    for (const [hx, hy] of corners) {
+      ctx.fillRect(hx - handle / 2, hy - handle / 2, handle, handle);
+      ctx.strokeRect(hx - handle / 2, hy - handle / 2, handle, handle);
+    }
+
+    // Ручка вращения — над верхней гранью
+    const cx = g.x + g.w / 2;
+    const cy = g.y + g.h / 2;
+    const topCenter = rotatePoint(cx, cy, cx, g.y, g.rotation);
+    const rotHandle = rotatePoint(cx, cy, cx, g.y - 34, g.rotation);
+    ctx.beginPath();
+    ctx.moveTo(topCenter[0], topCenter[1]);
+    ctx.lineTo(rotHandle[0], rotHandle[1]);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(rotHandle[0], rotHandle[1], handle * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -361,6 +580,21 @@ function makeImage(partial: Partial<PhotoImageElement> = {}): PhotoImageElement 
     src: "",
     fit: "cover",
     radius: 0,
+    ...partial,
+  };
+}
+
+function makeArrow(partial: Partial<PhotoArrowElement> = {}): PhotoArrowElement {
+  return {
+    id: createElementId(),
+    type: "arrow",
+    x: 160,
+    y: 180,
+    x2: 460,
+    y2: 180,
+    color: "#dc2626",
+    width: 6,
+    headSize: 18,
     ...partial,
   };
 }
@@ -426,12 +660,19 @@ export function PhotoTemplateGenerator({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
-    mode: "move" | "resize-se" | "resize-w";
+    mode: "move" | "resize" | "rotate" | "arrow-end";
     elementId: string;
     startX: number;
     startY: number;
-    orig: { x: number; y: number; width: number; height: number };
+    origEl: PhotoTemplateElement;
+    cx: number;
+    cy: number;
+    startAngle: number;
+    which: "start" | "end";
   } | null>(null);
+  // Перетаскивание слоёв в панели «Слои» (индексы в отображаемом списке).
+  const [dragLayerIndex, setDragLayerIndex] = useState<number | null>(null);
+  const [overLayerIndex, setOverLayerIndex] = useState<number | null>(null);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
@@ -511,10 +752,17 @@ export function PhotoTemplateGenerator({
       // Перебираем сверху вниз (последний в массиве — самый верхний).
       for (let i = template.elements.length - 1; i >= 0; i--) {
         const el = template.elements[i];
-        const box = elementBox(ctx, el, tokens);
-        if (px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h) {
-          return el;
+        if (el.type === "arrow") {
+          if (
+            segmentDistance(px, py, el.x, el.y, el.x2, el.y2) <=
+            Math.max(el.width / 2 + 8, 12)
+          ) {
+            return el;
+          }
+          continue;
         }
+        const g = boxGeom(ctx, el, tokens);
+        if (pointInBox(px, py, g)) return el;
       }
       return null;
     },
@@ -527,32 +775,75 @@ export function PhotoTemplateGenerator({
     const { x, y } = clientToCanvas(e.clientX, e.clientY);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const handle = Math.max(9, template.width / 60);
 
-    // Ручки ресайза выбранного элемента
+    // Ручки выбранного элемента: вращение, углы ресайза, концы стрелки.
     if (selectedId) {
       const sel = template.elements.find((el) => el.id === selectedId);
       if (sel) {
-        const box = elementBox(ctx, sel, tokens);
-        const handle = Math.max(10, template.width / 40);
-        // правый нижний угол — размер (все типы)
-        if (
-          Math.abs(x - (box.x + box.w)) <= handle &&
-          Math.abs(y - (box.y + box.h)) <= handle
-        ) {
-          dragRef.current = {
-            mode: "resize-se",
-            elementId: selectedId,
-            startX: x,
-            startY: y,
-            orig: {
-              x: sel.x,
-              y: sel.y,
-              width: "width" in sel ? sel.width : box.w,
-              height: "height" in sel ? sel.height : box.h,
-            },
-          };
-          (e.target as HTMLElement).setPointerCapture(e.pointerId);
-          return;
+        if (sel.type === "arrow") {
+          const ends: ["start" | "end", number, number][] = [
+            ["start", sel.x, sel.y],
+            ["end", sel.x2, sel.y2],
+          ];
+          for (const [which, hx, hy] of ends) {
+            if (Math.abs(x - hx) <= handle && Math.abs(y - hy) <= handle) {
+              dragRef.current = {
+                mode: "arrow-end",
+                elementId: sel.id,
+                startX: x,
+                startY: y,
+                origEl: { ...sel },
+                cx: 0,
+                cy: 0,
+                startAngle: 0,
+                which,
+              };
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+              return;
+            }
+          }
+        } else {
+          const g = boxGeom(ctx, sel, tokens);
+          const cx = g.x + g.w / 2;
+          const cy = g.y + g.h / 2;
+
+          // Ручка вращения
+          const [rhx, rhy] = rotatePoint(cx, cy, cx, g.y - 34, g.rotation);
+          if (Math.hypot(x - rhx, y - rhy) <= handle * 1.2) {
+            dragRef.current = {
+              mode: "rotate",
+              elementId: sel.id,
+              startX: x,
+              startY: y,
+              origEl: { ...sel },
+              cx,
+              cy,
+              startAngle: (Math.atan2(y - cy, x - cx) * 180) / Math.PI,
+              which: "start",
+            };
+            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+            return;
+          }
+
+          // Угловые ручки ресайза
+          for (const [hx, hy] of boxCorners(g)) {
+            if (Math.abs(x - hx) <= handle && Math.abs(y - hy) <= handle) {
+              dragRef.current = {
+                mode: "resize",
+                elementId: sel.id,
+                startX: x,
+                startY: y,
+                origEl: { ...sel },
+                cx,
+                cy,
+                startAngle: 0,
+                which: "start",
+              };
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+              return;
+            }
+          }
         }
       }
     }
@@ -565,12 +856,11 @@ export function PhotoTemplateGenerator({
         elementId: hit.id,
         startX: x,
         startY: y,
-        orig: {
-          x: hit.x,
-          y: hit.y,
-          width: "width" in hit ? hit.width : 0,
-          height: "height" in hit ? hit.height : 0,
-        },
+        origEl: { ...hit },
+        cx: 0,
+        cy: 0,
+        startAngle: 0,
+        which: "start",
       };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     } else {
@@ -590,16 +880,51 @@ export function PhotoTemplateGenerator({
       elements: t.elements.map((el) => {
         if (el.id !== drag.elementId) return el;
         if (drag.mode === "move") {
-          return { ...el, x: drag.orig.x + dx, y: drag.orig.y + dy };
+          return translateElement(drag.origEl, dx, dy);
         }
-        const w = Math.max(20, drag.orig.width + dx);
-        const h = Math.max(20, drag.orig.height + dy);
-        // Текст масштабируется только по ширине (высота = шрифт/строки).
-        return (
-          el.type === "text"
-            ? { ...el, width: w }
-            : { ...el, width: w, height: h }
-        ) as PhotoTemplateElement;
+        if (drag.mode === "arrow-end") {
+          if (drag.which === "end") {
+            return { ...drag.origEl, x2: x, y2: y } as PhotoTemplateElement;
+          }
+          return { ...drag.origEl, x, y } as PhotoTemplateElement;
+        }
+        if (drag.mode === "rotate") {
+          const angle = (Math.atan2(y - drag.cy, x - drag.cx) * 180) / Math.PI;
+          const base = drag.origEl as
+            | PhotoTextElement
+            | PhotoRectElement
+            | PhotoImageElement;
+          const rotation = normDeg(
+            (base.rotation ?? 0) + (angle - drag.startAngle)
+          );
+          return { ...base, rotation } as PhotoTemplateElement;
+        }
+        // resize: симметрично вокруг центра (в локальных осях элемента)
+        const orig = drag.origEl as
+          | PhotoTextElement
+          | PhotoRectElement
+          | PhotoImageElement;
+        const rot = orig.rotation ?? 0;
+        const rad = degToRad(rot);
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const ddx = x - drag.cx;
+        const ddy = y - drag.cy;
+        const lx = ddx * cos + ddy * sin;
+        const ly = -ddx * sin + ddy * cos;
+        if (orig.type === "text") {
+          const w = Math.max(20, Math.round(2 * Math.abs(lx)));
+          return { ...orig, width: w, x: drag.cx - w / 2 } as PhotoTemplateElement;
+        }
+        const w = Math.max(10, Math.round(2 * Math.abs(lx)));
+        const h = Math.max(10, Math.round(2 * Math.abs(ly)));
+        return {
+          ...orig,
+          width: w,
+          height: h,
+          x: drag.cx - w / 2,
+          y: drag.cy - h / 2,
+        } as PhotoTemplateElement;
       }),
     }));
   }
@@ -628,7 +953,7 @@ export function PhotoTemplateGenerator({
       setTemplate((t) => ({
         ...t,
         elements: t.elements.map((el) =>
-          el.id === selectedId ? { ...el, x: el.x + dx, y: el.y + dy } : el
+          el.id === selectedId ? translateElement(el, dx, dy) : el
         ),
       }));
     } else if (e.key === "Delete" || e.key === "Backspace") {
@@ -660,14 +985,19 @@ export function PhotoTemplateGenerator({
       const idx = t.elements.findIndex((el) => el.id === id);
       if (idx < 0) return t;
       const src = t.elements[idx];
-      const copy = {
-        ...src,
-        id: createElementId(),
-        x: src.x + 24,
-        y: src.y + 24,
-      } as PhotoTemplateElement;
+      const copy =
+        src.type === "arrow"
+          ? {
+              ...src,
+              id: createElementId(),
+              x: src.x + 24,
+              y: src.y + 24,
+              x2: src.x2 + 24,
+              y2: src.y2 + 24,
+            }
+          : { ...src, id: createElementId(), x: src.x + 24, y: src.y + 24 };
       const next = [...t.elements];
-      next.splice(idx + 1, 0, copy);
+      next.splice(idx + 1, 0, copy as PhotoTemplateElement);
       setSelectedId(copy.id);
       return { ...t, elements: next };
     });
@@ -689,6 +1019,21 @@ export function PhotoTemplateGenerator({
   function addElement(el: PhotoTemplateElement) {
     setTemplate((t) => ({ ...t, elements: [...t.elements, el] }));
     setSelectedId(el.id);
+  }
+
+  /** Слои в порядке отображения (верхний — первым). */
+  const displayedLayers = useMemo(
+    () => [...template.elements].reverse(),
+    [template.elements]
+  );
+
+  /** Перетащили слой на позицию targetIndex (в отображаемом списке). */
+  function reorderLayer(targetIndex: number) {
+    if (dragLayerIndex == null || dragLayerIndex === targetIndex) return;
+    const next = [...displayedLayers];
+    const [moved] = next.splice(dragLayerIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    setTemplate((t) => ({ ...t, elements: [...next].reverse() }));
   }
 
   async function uploadFile(file: File): Promise<string | null> {
@@ -976,6 +1321,14 @@ export function PhotoTemplateGenerator({
               >
                 <ImagePlus size={14} /> Картинка
               </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={() => addElement(makeArrow())}
+                title="Стрелка — тяните за концы, чтобы растянуть/уменьшить"
+              >
+                <ArrowRight size={14} /> Стрелка
+              </button>
             </div>
             <button
               type="button"
@@ -1148,8 +1501,97 @@ export function PhotoTemplateGenerator({
                       ? "Текст"
                       : selectedEl.type === "rect"
                         ? "Прямоугольник"
-                        : "Картинка"}
+                        : selectedEl.type === "arrow"
+                          ? "Стрелка"
+                          : "Картинка"}
                   </div>
+
+                  {selectedEl.type === "arrow" && (
+                    <>
+                      <div className="ptg-grid2">
+                        <div className="ptg-field">
+                          <label>X1</label>
+                          <input
+                            type="number"
+                            value={Math.round(selectedEl.x)}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, { x: Number(e.target.value) || 0 })
+                            }
+                          />
+                        </div>
+                        <div className="ptg-field">
+                          <label>Y1</label>
+                          <input
+                            type="number"
+                            value={Math.round(selectedEl.y)}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, { y: Number(e.target.value) || 0 })
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="ptg-grid2">
+                        <div className="ptg-field">
+                          <label>X2</label>
+                          <input
+                            type="number"
+                            value={Math.round(selectedEl.x2)}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, { x2: Number(e.target.value) || 0 })
+                            }
+                          />
+                        </div>
+                        <div className="ptg-field">
+                          <label>Y2</label>
+                          <input
+                            type="number"
+                            value={Math.round(selectedEl.y2)}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, { y2: Number(e.target.value) || 0 })
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="ptg-grid2">
+                        <div className="ptg-field">
+                          <label>Цвет</label>
+                          <input
+                            type="color"
+                            value={selectedEl.color}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, { color: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="ptg-field">
+                          <label>Толщина</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={selectedEl.width}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, {
+                                width: Math.max(1, Number(e.target.value) || 1),
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="ptg-field">
+                        <label>Наконечник (px)</label>
+                        <input
+                          type="number"
+                          min={6}
+                          value={selectedEl.headSize}
+                          onChange={(e) =>
+                            updateElement(selectedEl.id, {
+                              headSize: Math.max(6, Number(e.target.value) || 6),
+                            })
+                          }
+                        />
+                      </div>
+                    </>
+                  )}
 
                   {selectedEl.type === "text" && (
                     <>
@@ -1186,30 +1628,32 @@ export function PhotoTemplateGenerator({
                     </>
                   )}
 
-                  <div className="ptg-grid2">
-                    <div className="ptg-field">
-                      <label>X</label>
-                      <input
-                        type="number"
-                        value={Math.round(selectedEl.x)}
-                        onChange={(e) =>
-                          updateElement(selectedEl.id, { x: Number(e.target.value) || 0 })
-                        }
-                      />
-                    </div>
-                    <div className="ptg-field">
-                      <label>Y</label>
-                      <input
-                        type="number"
-                        value={Math.round(selectedEl.y)}
-                        onChange={(e) =>
-                          updateElement(selectedEl.id, { y: Number(e.target.value) || 0 })
-                        }
-                      />
-                    </div>
-                  </div>
+                  {selectedEl.type !== "arrow" && (
+                    <>
+                      <div className="ptg-grid2">
+                        <div className="ptg-field">
+                          <label>X</label>
+                          <input
+                            type="number"
+                            value={Math.round(selectedEl.x)}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, { x: Number(e.target.value) || 0 })
+                            }
+                          />
+                        </div>
+                        <div className="ptg-field">
+                          <label>Y</label>
+                          <input
+                            type="number"
+                            value={Math.round(selectedEl.y)}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, { y: Number(e.target.value) || 0 })
+                            }
+                          />
+                        </div>
+                      </div>
 
-                  {selectedEl.type !== "text" && (
+                  {selectedEl.type === "rect" || selectedEl.type === "image" ? (
                     <div className="ptg-grid2">
                       <div className="ptg-field">
                         <label>Ширина</label>
@@ -1236,7 +1680,7 @@ export function PhotoTemplateGenerator({
                         />
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   {selectedEl.type === "text" && (
                     <>
@@ -1440,6 +1884,34 @@ export function PhotoTemplateGenerator({
                     </>
                   )}
 
+                  {/* Поворот (для текста/прямоугольника/картинки) */}
+                  <div className="ptg-row">
+                    <div className="ptg-field" style={{ minWidth: 120 }}>
+                      <label>Поворот (°)</label>
+                      <input
+                        type="number"
+                        value={Math.round((selectedEl as any).rotation ?? 0)}
+                        onChange={(e) =>
+                          updateElement(selectedEl.id, {
+                            rotation: Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
+                    {(selectedEl as any).rotation ? (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost"
+                        style={{ alignSelf: "flex-end" }}
+                        onClick={() => updateElement(selectedEl.id, { rotation: 0 })}
+                      >
+                        Сбросить
+                      </button>
+                    ) : null}
+                  </div>
+                  </>
+                  )}
+
                   <div className="ptg-actions">
                     <button
                       type="button"
@@ -1462,20 +1934,53 @@ export function PhotoTemplateGenerator({
               {/* Слои */}
               <div className="ptg-side__block">
                 <div className="ptg-side__title">Слои</div>
+                <div className="ptg-side__hint">
+                  Перетаскивайте слои, чтобы менять порядок наложения
+                </div>
                 <div className="ptg-layers">
-                  {[...template.elements].reverse().map((el) => (
+                  {displayedLayers.map((el, i) => (
                     <div
                       key={el.id}
-                      className={`ptg-layer${selectedId === el.id ? " ptg-layer--on" : ""}`}
+                      draggable
+                      onDragStart={(e) => {
+                        setDragLayerIndex(i);
+                        e.dataTransfer.effectAllowed = "move";
+                        try {
+                          e.dataTransfer.setData("text/plain", el.id);
+                        } catch {
+                          /* drag API без данных */
+                        }
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (overLayerIndex !== i) setOverLayerIndex(i);
+                      }}
+                      onDragLeave={() => {
+                        if (overLayerIndex === i) setOverLayerIndex(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        reorderLayer(i);
+                        setDragLayerIndex(null);
+                        setOverLayerIndex(null);
+                      }}
+                      onDragEnd={() => {
+                        setDragLayerIndex(null);
+                        setOverLayerIndex(null);
+                      }}
+                      className={`ptg-layer${selectedId === el.id ? " ptg-layer--on" : ""}${overLayerIndex === i && dragLayerIndex !== i ? " ptg-layer--over" : ""}${dragLayerIndex === i ? " ptg-layer--drag" : ""}`}
                       onClick={() => setSelectedId(el.id)}
                     >
-                      <Move size={13} />
+                      <GripVertical size={13} className="ptg-layer__grip" />
                       <span className="ptg-layer__name">
                         {el.type === "text"
                           ? (el.text || "пустой текст").slice(0, 30)
                           : el.type === "rect"
                             ? "Прямоугольник"
-                            : "Картинка"}
+                            : el.type === "arrow"
+                              ? "Стрелка"
+                              : "Картинка"}
                       </span>
                       <span className="ptg-layer__btns">
                         <button
