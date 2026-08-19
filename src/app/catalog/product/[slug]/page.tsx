@@ -100,7 +100,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const product = await getProductBySlug(slug);
+  const product = await getProductBySlug(slug).catch(() => null);
   if (!product) return { title: "Товар не найден" };
 
   const effectivePrice = getProductEffectivePrice(product);
@@ -139,7 +139,11 @@ export default async function ProductPage({
   // полный список видимых вариантов в одном вызове. Для
   // товаров БЕЗ вариантов variants будет пустым, и UI
   // работает в обычном режиме.
-  const { product, variants } = await getProductBySlugForPage(slug);
+  // При недоступности Supabase страница товара не падает сырым 500 —
+  // отдаём корректную 404 (временное состояние, пока база недоступна).
+  const { product, variants } = await getProductBySlugForPage(slug).catch(
+    () => ({ product: null, variants: [] })
+  );
   if (!product) notFound();
 
   /* Все выборки параллельно — один раундтрип к кэшу данных */

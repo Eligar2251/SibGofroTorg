@@ -7,7 +7,7 @@ import {
   getWastepaperRates,
   getSettings,
 } from "@/lib/supabase-queries";
-import { formatRate } from "@/lib/wastepaper";
+import { formatRate, WASTEPAPER_RATE_DEFAULTS } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
@@ -87,13 +87,15 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const [categories, featuredProductsRaw, allVisibleProducts, promotions, wpRates, settings] = await Promise.all([
-    getCategories(),
+    // При недоступности Supabase не роняем главную целиком —
+    // отдаём пустые списки / дефолтные цены, страница остаётся живой.
+    getCategories().catch(() => []),
     // Берём с запасом: закончившиеся популярные позиции уходят в отдельный
     // блок «Под заказ», а основная секция остаётся складской.
-    getProducts({ featuredOnly: true, limitCount: 500 }),
-    getProducts({}),
-    getPromotions(),
-    getWastepaperRates(),
+    getProducts({ featuredOnly: true, limitCount: 500 }).catch(() => []),
+    getProducts({}).catch(() => []),
+    getPromotions().catch(() => []),
+    getWastepaperRates().catch(() => WASTEPAPER_RATE_DEFAULTS),
     getSettings().catch(() => ({} as Record<string, string>)),
   ]);
 
