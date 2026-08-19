@@ -81,6 +81,18 @@ async function countByStatus(table: string, status: string): Promise<number> {
   return count || 0;
 }
 
+/**
+ * Безопасное выполнение запроса к Supabase: при сетевом сбое («fetch
+ * failed») дашборд не падает целиком, а получает fallback (пустой массив
+ * / ноль). Ошибка логируется один раз — страница остаётся рабочей.
+ */
+function safeDashboard<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return promise.catch((error: any) => {
+    console.error("dashboard: запрос не выполнен:", error?.message || error);
+    return fallback;
+  });
+}
+
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 const statusLabels: Record<string, string> = {
@@ -170,26 +182,26 @@ export default async function AdminDashboard() {
     transports,
     supplyPlans,
   ] = await Promise.all([
-    isLawyer ? Promise.resolve([]) : getProducts({ includeHidden: true }),
-    isLawyer ? Promise.resolve([]) : getOrders({ limit: 50 }),
-    isLawyer ? Promise.resolve([]) : getAllCategories(),
-    isLawyer ? Promise.resolve([]) : getPromotions(),
-    isLawyer ? Promise.resolve(0) : countByStatus("orders", "new"),
-    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "new"),
-    isLawyer ? Promise.resolve(0) : countByStatus("orders", "in_progress"),
-    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "in_progress"),
-    isLawyer ? Promise.resolve(0) : countByStatus("orders", "ready"),
-    isLawyer ? Promise.resolve(0) : countByStatus("orders", "completed"),
-    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "completed"),
-    isLawyer ? Promise.resolve(0) : countByStatus("orders", "rejected"),
-    isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "rejected"),
-    getPayments(),
-    getSalaries(),
-    getDeals(),
-    isLawyer ? Promise.resolve([]) : getReceipts(),
-    getCashCollections(),
-    getTransports(),
-    isLawyer ? Promise.resolve([]) : getSupplyPlans(),
+    safeDashboard(isLawyer ? Promise.resolve([]) : getProducts({ includeHidden: true }), []),
+    safeDashboard(isLawyer ? Promise.resolve([]) : getOrders({ limit: 50 }), []),
+    safeDashboard(isLawyer ? Promise.resolve([]) : getAllCategories(), []),
+    safeDashboard(isLawyer ? Promise.resolve([]) : getPromotions(), []),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("orders", "new"), 0),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "new"), 0),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("orders", "in_progress"), 0),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "in_progress"), 0),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("orders", "ready"), 0),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("orders", "completed"), 0),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "completed"), 0),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("orders", "rejected"), 0),
+    safeDashboard(isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "rejected"), 0),
+    safeDashboard(getPayments(), []),
+    safeDashboard(getSalaries(), []),
+    safeDashboard(getDeals(), []),
+    safeDashboard(isLawyer ? Promise.resolve([]) : getReceipts(), []),
+    safeDashboard(getCashCollections(), []),
+    safeDashboard(getTransports(), []),
+    safeDashboard(isLawyer ? Promise.resolve([]) : getSupplyPlans(), []),
   ]);
 
   const wpFinance = await getWpFinanceData().catch((error) => {
