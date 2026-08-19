@@ -27,6 +27,14 @@ export interface PhotoTextElement {
   letterSpacing: number;
   /** Поворот вокруг центра, градусы */
   rotation?: number;
+  /** Фоновая подложка под текстом (видимый блок) */
+  background?: { color: string; radius: number } | null;
+  /** Горизонтальный отступ текста до краёв блока, px */
+  paddingX?: number;
+  /** Вертикальный отступ текста до краёв блока, px */
+  paddingY?: number;
+  /** Выравнивание текста внутри блока по вертикали */
+  verticalAlign?: "top" | "middle" | "bottom";
 }
 
 export interface PhotoRectElement {
@@ -71,11 +79,27 @@ export interface PhotoArrowElement {
   headSize: number;
 }
 
+/**
+ * Группа элементов. Дети хранятся в ЛОКАЛЬНЫХ координатах (относительно
+ * левого верхнего угла общей обёртки детей). Трансформация группы:
+ * translate(x, y) → rotate(rotation) вокруг центра обёртки. Дети при
+ * этом сохраняют собственные координаты/поворот — как во Figma.
+ */
+export interface PhotoGroupElement {
+  id: string;
+  type: "group";
+  x: number;
+  y: number;
+  rotation?: number;
+  items: PhotoTemplateElement[];
+}
+
 export type PhotoTemplateElement =
   | PhotoTextElement
   | PhotoRectElement
   | PhotoImageElement
-  | PhotoArrowElement;
+  | PhotoArrowElement
+  | PhotoGroupElement;
 
 export interface PhotoTemplate {
   width: number;

@@ -256,6 +256,22 @@
   flex-wrap: wrap;
 }
 
+.ptg-align-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink-muted, #6b6b60);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ptg-align-label--hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.8;
+  margin-left: 6px;
+}
+
 .ptg-designer__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;

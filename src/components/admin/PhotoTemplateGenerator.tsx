@@ -4,6 +4,15 @@
 // редактор карточки на canvas (фон, элементы, перетаскивание),
 // плейсхолдеры {{size}} {{name}} … и генерация по одному фото
 // на товар с сохранением в Cloudinary.
+//
+// Возможности как в Figma:
+//  • перетаскивание, вращение, ресайз за углы, стрелки;
+//  • мультивыбор (Shift+клик), выравнивание по краям/центру
+//    (к холсту или выделению), группировка/разгруппировка (Ctrl+G);
+//  • отступы текста (padding) с фоном-подложкой — видно расстояние
+//    от текста до края блока;
+//  • направляющие при перетаскивании с привязкой к краям/центру
+//    холста и соседним элементам + подписи расстояний.
 // =========================================================
 
 "use client";
@@ -17,6 +26,12 @@ import {
 } from "react";
 import Link from "next/link";
 import {
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignStartVertical,
   ArrowDown,
   ArrowRight,
   ArrowUp,
@@ -24,6 +39,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Group,
   GripVertical,
   ImagePlus,
   Loader2,
@@ -34,6 +50,7 @@ import {
   Square,
   Trash2,
   Type,
+  Ungroup,
   Upload,
   Wand2,
   X,
@@ -46,6 +63,7 @@ import {
   photoFontFamilies,
   substituteTokens,
   type PhotoArrowElement,
+  type PhotoGroupElement,
   type PhotoImageElement,
   type PhotoProduct,
   type PhotoRectElement,
@@ -161,12 +179,12 @@ function drawContain(
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
-/* ── Вращение ── */
+/* ── Геометрия: поворот, габариты, AABB ── */
+
 function degToRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
-/** Поворот точки (x, y) вокруг (cx, cy) на deg градусов. */
 function rotatePoint(
   cx: number,
   cy: number,
@@ -182,7 +200,6 @@ function rotatePoint(
   return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
 }
 
-/** Нормализует угол в диапазон (-180, 180]. */
 function normDeg(deg: number): number {
   let d = deg % 360;
   if (d > 180) d -= 360;
@@ -190,7 +207,6 @@ function normDeg(deg: number): number {
   return Math.round(d);
 }
 
-/** Габариты «коробочного» элемента в его локальной системе координат. */
 interface BoxGeom {
   x: number;
   y: number;
@@ -199,20 +215,14 @@ interface BoxGeom {
   rotation: number;
 }
 
-function boxGeom(
+type LeafBoxEl = PhotoTextElement | PhotoRectElement | PhotoImageElement;
+
+/** Размер текстового блока (ширина + высота по переносам). */
+function textSize(
   ctx: CanvasRenderingContext2D,
-  el: PhotoTextElement | PhotoRectElement | PhotoImageElement,
+  el: PhotoTextElement,
   tokens: Record<string, string>
-): BoxGeom {
-  if (el.type === "rect" || el.type === "image") {
-    return {
-      x: el.x,
-      y: el.y,
-      w: el.width,
-      h: el.height,
-      rotation: el.rotation ?? 0,
-    };
-  }
+): { w: number; h: number } {
   applyFont(ctx, el);
   const lines = wrapText(
     ctx,
@@ -221,10 +231,40 @@ function boxGeom(
     el.letterSpacing
   );
   const h = Math.max(el.fontSize, lines.length * el.fontSize * el.lineHeight);
-  return { x: el.x, y: el.y, w: el.width, h, rotation: el.rotation ?? 0 };
+  return { w: el.width, h };
 }
 
-/** Мировые координаты четырёх углов повёрнутого элемента. */
+/** Габариты «коробочного» элемента (с учётом подложки текста). */
+function leafBoxGeom(
+  ctx: CanvasRenderingContext2D,
+  el: LeafBoxEl,
+  tokens: Record<string, string>
+): BoxGeom {
+  if (el.type === "text") {
+    const { w, h } = textSize(ctx, el, tokens);
+    if (el.background) {
+      const px = el.paddingX ?? 0;
+      const py = el.paddingY ?? 0;
+      return {
+        x: el.x - px,
+        y: el.y - py,
+        w: w + 2 * px,
+        h: h + 2 * py,
+        rotation: el.rotation ?? 0,
+      };
+    }
+    return { x: el.x, y: el.y, w, h, rotation: el.rotation ?? 0 };
+  }
+  return {
+    x: el.x,
+    y: el.y,
+    w: el.width,
+    h: el.height,
+    rotation: el.rotation ?? 0,
+  };
+}
+
+/** Мировые координаты четырёх углов повёрнутого бокса. */
 function boxCorners(g: BoxGeom): [number, number][] {
   const cx = g.x + g.w / 2;
   const cy = g.y + g.h / 2;
@@ -236,7 +276,7 @@ function boxCorners(g: BoxGeom): [number, number][] {
   ];
 }
 
-/** Точка внутри (повёрнутого) прямоугольника элемента. */
+/** Точка внутри (повёрнутого) прямоугольника. */
 function pointInBox(px: number, py: number, g: BoxGeom): boolean {
   const cx = g.x + g.w / 2;
   const cy = g.y + g.h / 2;
@@ -250,7 +290,115 @@ function pointInBox(px: number, py: number, g: BoxGeom): boolean {
   return Math.abs(lx) <= g.w / 2 + 3 && Math.abs(ly) <= g.h / 2 + 3;
 }
 
-/** Расстояние от точки до отрезка (для хит-теста стрелки). */
+/** Локальные габариты группы (обёртка всех детей в локальных координатах). */
+function groupLocalBounds(
+  ctx: CanvasRenderingContext2D,
+  tokens: Record<string, string>,
+  items: PhotoTemplateElement[]
+): { x: number; y: number; w: number; h: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const it of items) {
+    if (it.type === "group") {
+      const b = groupLocalBounds(ctx, tokens, it.items);
+      const g: BoxGeom = { x: it.x, y: it.y, w: b.w, h: b.h, rotation: it.rotation ?? 0 };
+      for (const [cx, cy] of boxCorners(g)) {
+        minX = Math.min(minX, cx);
+        minY = Math.min(minY, cy);
+        maxX = Math.max(maxX, cx);
+        maxY = Math.max(maxY, cy);
+      }
+    } else if (it.type === "arrow") {
+      minX = Math.min(minX, it.x, it.x2);
+      minY = Math.min(minY, it.y, it.y2);
+      maxX = Math.max(maxX, it.x, it.x2);
+      maxY = Math.max(maxY, it.y, it.y2);
+    } else {
+      const g = leafBoxGeom(ctx, it, tokens);
+      for (const [cx, cy] of boxCorners(g)) {
+        minX = Math.min(minX, cx);
+        minY = Math.min(minY, cy);
+        maxX = Math.max(maxX, cx);
+        maxY = Math.max(maxY, cy);
+      }
+    }
+  }
+  if (minX === Infinity) return { x: 0, y: 0, w: 0, h: 0 };
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/** Габариты любого элемента в его собственной (для группы — мировой) системе. */
+function elementGeom(
+  ctx: CanvasRenderingContext2D,
+  el: PhotoTemplateElement,
+  tokens: Record<string, string>
+): BoxGeom {
+  if (el.type === "group") {
+    const b = groupLocalBounds(ctx, tokens, el.items);
+    return { x: el.x, y: el.y, w: b.w, h: b.h, rotation: el.rotation ?? 0 };
+  }
+  if (el.type === "arrow") {
+    return {
+      x: Math.min(el.x, el.x2),
+      y: Math.min(el.y, el.y2),
+      w: Math.abs(el.x2 - el.x),
+      h: Math.abs(el.y2 - el.y),
+      rotation: 0,
+    };
+  }
+  return leafBoxGeom(ctx, el, tokens);
+}
+
+interface AABB {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** Выровненный по осям bounding box элемента (в мировых координатах). */
+function elementAABB(
+  ctx: CanvasRenderingContext2D,
+  el: PhotoTemplateElement,
+  tokens: Record<string, string>
+): AABB {
+  const g = elementGeom(ctx, el, tokens);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [cx, cy] of boxCorners(g)) {
+    minX = Math.min(minX, cx);
+    minY = Math.min(minY, cy);
+    maxX = Math.max(maxX, cx);
+    maxY = Math.max(maxY, cy);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function selectionAABB(
+  ctx: CanvasRenderingContext2D,
+  els: PhotoTemplateElement[],
+  tokens: Record<string, string>
+): AABB {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const el of els) {
+    const b = elementAABB(ctx, el, tokens);
+    minX = Math.min(minX, b.minX);
+    minY = Math.min(minY, b.minY);
+    maxX = Math.max(maxX, b.maxX);
+    maxY = Math.max(maxY, b.maxY);
+  }
+  if (minX === Infinity) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  return { minX, minY, maxX, maxY };
+}
+
+/** Расстояние от точки до отрезка (хит-тест стрелки). */
 function segmentDistance(
   px: number,
   py: number,
@@ -268,7 +416,7 @@ function segmentDistance(
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-/** Сдвиг элемента (у стрелки двигаются оба конца). */
+/** Сдвиг элемента (стрелка — оба конца, группа — только позиция). */
 function translateElement(
   el: PhotoTemplateElement,
   dx: number,
@@ -280,6 +428,8 @@ function translateElement(
   return { ...el, x: el.x + dx, y: el.y + dy } as PhotoTemplateElement;
 }
 
+/* ── Отрисовка ── */
+
 function drawText(
   ctx: CanvasRenderingContext2D,
   el: PhotoTextElement,
@@ -289,9 +439,17 @@ function drawText(
   applyFont(ctx, el);
   const lines = wrapText(ctx, text, el.width, el.letterSpacing);
   const lh = el.fontSize * el.lineHeight;
-  const h = Math.max(el.fontSize, lines.length * lh);
+  const textH = Math.max(el.fontSize, lines.length * lh);
+  const px = el.paddingX ?? 0;
+  const py = el.paddingY ?? 0;
+  const hasBg = !!el.background;
+  const blockX = el.x - px;
+  const blockY = el.y - py;
+  const blockW = el.width + 2 * px;
+  const blockH = textH + 2 * py;
+
   const cx = el.x + el.width / 2;
-  const cy = el.y + h / 2;
+  const cy = el.y + textH / 2;
 
   ctx.save();
   if (el.rotation) {
@@ -299,6 +457,17 @@ function drawText(
     ctx.rotate(degToRad(el.rotation));
     ctx.translate(-cx, -cy);
   }
+
+  if (hasBg && el.background) {
+    ctx.fillStyle = el.background.color;
+    if (el.background.radius > 0) {
+      roundRectPath(ctx, blockX, blockY, blockW, blockH, el.background.radius);
+      ctx.fill();
+    } else {
+      ctx.fillRect(blockX, blockY, blockW, blockH);
+    }
+  }
+
   ctx.textAlign = el.align;
   ctx.textBaseline = "top";
   ctx.fillStyle = el.color;
@@ -399,6 +568,43 @@ function drawArrowEl(ctx: CanvasRenderingContext2D, el: PhotoArrowElement) {
   ctx.restore();
 }
 
+async function drawGroup(
+  ctx: CanvasRenderingContext2D,
+  el: PhotoGroupElement,
+  tokens: Record<string, string>
+) {
+  const b = groupLocalBounds(ctx, tokens, el.items);
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  ctx.save();
+  ctx.translate(el.x - b.x, el.y - b.y);
+  ctx.translate(cx, cy);
+  ctx.rotate(degToRad(el.rotation ?? 0));
+  ctx.translate(-cx, -cy);
+  for (const it of el.items) {
+    await drawElement(ctx, it, tokens);
+  }
+  ctx.restore();
+}
+
+async function drawElement(
+  ctx: CanvasRenderingContext2D,
+  el: PhotoTemplateElement,
+  tokens: Record<string, string>
+) {
+  if (el.type === "rect") drawRectEl(ctx, el);
+  else if (el.type === "text") drawText(ctx, el, tokens);
+  else if (el.type === "arrow") drawArrowEl(ctx, el);
+  else if (el.type === "group") await drawGroup(ctx, el, tokens);
+  else if (el.type === "image") {
+    try {
+      await drawImageEl(ctx, el);
+    } catch {
+      /* битая картинка — просто пропускаем */
+    }
+  }
+}
+
 async function renderTemplate(
   canvas: HTMLCanvasElement,
   template: PhotoTemplate,
@@ -425,59 +631,54 @@ async function renderTemplate(
   }
 
   for (const el of template.elements) {
-    if (el.type === "rect") drawRectEl(ctx, el);
-    else if (el.type === "text") drawText(ctx, el, tokens);
-    else if (el.type === "arrow") drawArrowEl(ctx, el);
-    else if (el.type === "image") {
-      try {
-        await drawImageEl(ctx, el);
-      } catch {
-        /* битая картинка — просто пропускаем */
-      }
-    }
+    await drawElement(ctx, el, tokens);
   }
 }
 
-/** Габариты элемента для рамки выделения и хит-теста (стрелки — AABB). */
-function elementBox(
-  ctx: CanvasRenderingContext2D,
-  el: PhotoTemplateElement,
-  tokens: Record<string, string>
-): { x: number; y: number; w: number; h: number } {
-  if (el.type === "arrow") {
-    const x = Math.min(el.x, el.x2);
-    const y = Math.min(el.y, el.y2);
-    return {
-      x,
-      y,
-      w: Math.abs(el.x2 - el.x),
-      h: Math.abs(el.y2 - el.y),
-    };
+/* ── Выделение и направляющие ── */
+
+interface Guide {
+  v: { x: number; label: string }[];
+  h: { y: number; label: string }[];
+}
+
+function drawGuides(canvas: HTMLCanvasElement, guides: Guide) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.save();
+  ctx.strokeStyle = "#ff3b6b";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 4]);
+  ctx.fillStyle = "#ff3b6b";
+  ctx.font = "11px Inter, sans-serif";
+  ctx.textBaseline = "top";
+  for (const g of guides.v) {
+    ctx.beginPath();
+    ctx.moveTo(g.x, 0);
+    ctx.lineTo(g.x, canvas.height);
+    ctx.stroke();
+    if (g.label) ctx.fillText(g.label, g.x + 4, 4);
   }
-  if (el.type === "rect" || el.type === "image") {
-    return { x: el.x, y: el.y, w: el.width, h: el.height };
+  for (const g of guides.h) {
+    ctx.beginPath();
+    ctx.moveTo(0, g.y);
+    ctx.lineTo(canvas.width, g.y);
+    ctx.stroke();
+    if (g.label) ctx.fillText(g.label, 4, g.y + 4);
   }
-  applyFont(ctx, el);
-  const lines = wrapText(
-    ctx,
-    substituteTokens(el.text, tokens),
-    el.width,
-    el.letterSpacing
-  );
-  const h = Math.max(el.fontSize, lines.length * el.fontSize * el.lineHeight);
-  return { x: el.x, y: el.y, w: el.width, h };
+  ctx.restore();
 }
 
 function drawSelection(
   canvas: HTMLCanvasElement,
   template: PhotoTemplate,
-  selectedId: string | null,
-  tokens: Record<string, string>
+  selectedIds: string[],
+  tokens: Record<string, string>,
+  guides: Guide
 ) {
   const ctx = canvas.getContext("2d");
-  if (!ctx || !selectedId) return;
-  const el = template.elements.find((e) => e.id === selectedId);
-  if (!el) return;
+  if (!ctx) return;
+  const els = template.elements.filter((e) => selectedIds.includes(e.id));
   const handle = Math.max(9, template.width / 60);
 
   ctx.save();
@@ -485,23 +686,27 @@ function drawSelection(
   ctx.fillStyle = "#ffffff";
   ctx.lineWidth = Math.max(1.5, template.width / 500);
 
-  if (el.type === "arrow") {
-    const box = elementBox(ctx, el, tokens);
-    ctx.setLineDash([6, 4]);
-    ctx.strokeRect(box.x - 8, box.y - 8, box.w + 16, box.h + 16);
-    ctx.setLineDash([]);
-    for (const [hx, hy] of [
-      [el.x, el.y],
-      [el.x2, el.y2],
-    ] as [number, number][]) {
-      ctx.fillRect(hx - handle / 2, hy - handle / 2, handle, handle);
-      ctx.strokeRect(hx - handle / 2, hy - handle / 2, handle, handle);
+  for (const el of els) {
+    if (el.type === "arrow") {
+      const g = elementGeom(ctx, el, tokens);
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(g.x - 8, g.y - 8, g.w + 16, g.h + 16);
+      ctx.setLineDash([]);
+      if (els.length === 1) {
+        for (const [hx, hy] of [
+          [el.x, el.y],
+          [el.x2, el.y2],
+        ] as [number, number][]) {
+          ctx.fillRect(hx - handle / 2, hy - handle / 2, handle, handle);
+          ctx.strokeRect(hx - handle / 2, hy - handle / 2, handle, handle);
+        }
+      }
+      continue;
     }
-  } else {
-    const g = boxGeom(ctx, el, tokens);
+
+    const g = elementGeom(ctx, el, tokens);
     const corners = boxCorners(g);
 
-    // Повёрнутая рамка
     ctx.beginPath();
     corners.forEach((c, i) => {
       if (i === 0) ctx.moveTo(c[0], c[1]);
@@ -510,27 +715,33 @@ function drawSelection(
     ctx.closePath();
     ctx.stroke();
 
-    // Угловые ручки ресайза
-    for (const [hx, hy] of corners) {
-      ctx.fillRect(hx - handle / 2, hy - handle / 2, handle, handle);
-      ctx.strokeRect(hx - handle / 2, hy - handle / 2, handle, handle);
-    }
+    if (els.length === 1) {
+      // Угловые ручки ресайза (кроме групп)
+      if (el.type !== "group") {
+        for (const [hx, hy] of corners) {
+          ctx.fillRect(hx - handle / 2, hy - handle / 2, handle, handle);
+          ctx.strokeRect(hx - handle / 2, hy - handle / 2, handle, handle);
+        }
+      }
 
-    // Ручка вращения — над верхней гранью
-    const cx = g.x + g.w / 2;
-    const cy = g.y + g.h / 2;
-    const topCenter = rotatePoint(cx, cy, cx, g.y, g.rotation);
-    const rotHandle = rotatePoint(cx, cy, cx, g.y - 34, g.rotation);
-    ctx.beginPath();
-    ctx.moveTo(topCenter[0], topCenter[1]);
-    ctx.lineTo(rotHandle[0], rotHandle[1]);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(rotHandle[0], rotHandle[1], handle * 0.7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+      // Ручка вращения — над верхней гранью
+      const cx = g.x + g.w / 2;
+      const cy = g.y + g.h / 2;
+      const topCenter = rotatePoint(cx, cy, cx, g.y, g.rotation);
+      const rotHandle = rotatePoint(cx, cy, cx, g.y - 34, g.rotation);
+      ctx.beginPath();
+      ctx.moveTo(topCenter[0], topCenter[1]);
+      ctx.lineTo(rotHandle[0], rotHandle[1]);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(rotHandle[0], rotHandle[1], handle * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
   ctx.restore();
+
+  drawGuides(canvas, guides);
 }
 
 /* ─────────────────────────  Factories  ───────────────────────── */
@@ -551,6 +762,9 @@ function makeText(partial: Partial<PhotoTextElement> = {}): PhotoTextElement {
     width: 500,
     lineHeight: 1.1,
     letterSpacing: 0,
+    background: null,
+    paddingX: 24,
+    paddingY: 16,
     ...partial,
   };
 }
@@ -599,6 +813,30 @@ function makeArrow(partial: Partial<PhotoArrowElement> = {}): PhotoArrowElement 
   };
 }
 
+/** Глубокое клонирование элемента с новыми id (для групп — рекурсивно). */
+function cloneElementDeep(el: PhotoTemplateElement): PhotoTemplateElement {
+  if (el.type === "group") {
+    return {
+      ...el,
+      id: createElementId(),
+      items: el.items.map(cloneElementDeep),
+    };
+  }
+  return { ...el, id: createElementId() };
+}
+
+/** Перевод элемента в локальные координаты группы (вычитание ox, oy). */
+function localizeElement(
+  el: PhotoTemplateElement,
+  ox: number,
+  oy: number
+): PhotoTemplateElement {
+  if (el.type === "arrow") {
+    return { ...el, x: el.x - ox, y: el.y - oy, x2: el.x2 - ox, y2: el.y2 - oy };
+  }
+  return { ...el, x: el.x - ox, y: el.y - oy } as PhotoTemplateElement;
+}
+
 /* ─────────────────────────  Component  ───────────────────────── */
 
 const SAMPLE_PRODUCT: PhotoProduct = {
@@ -632,6 +870,76 @@ interface ResultItem {
   error?: string;
 }
 
+/** Привязка к краям/центру холста и соседним элементам. */
+const SNAP_TOLERANCE = 6;
+
+function computeSnap(
+  ctx: CanvasRenderingContext2D,
+  aabb: AABB,
+  others: PhotoTemplateElement[],
+  tokens: Record<string, string>,
+  W: number,
+  H: number
+): { dx: number; dy: number; v: Guide["v"][number] | null; h: Guide["h"][number] | null } {
+  const vCands: { x: number; label: string }[] = [
+    { x: 0, label: "0" },
+    { x: Math.round(W / 2), label: "центр" },
+    { x: Math.round(W), label: String(Math.round(W)) },
+  ];
+  const hCands: { y: number; label: string }[] = [
+    { y: 0, label: "0" },
+    { y: Math.round(H / 2), label: "центр" },
+    { y: Math.round(H), label: String(Math.round(H)) },
+  ];
+  for (const o of others) {
+    const b = elementAABB(ctx, o, tokens);
+    vCands.push(
+      { x: Math.round(b.minX), label: "" },
+      { x: Math.round(b.maxX), label: "" },
+      { x: Math.round((b.minX + b.maxX) / 2), label: "" }
+    );
+    hCands.push(
+      { y: Math.round(b.minY), label: "" },
+      { y: Math.round(b.maxY), label: "" },
+      { y: Math.round((b.minY + b.maxY) / 2), label: "" }
+    );
+  }
+
+  const srcV = [aabb.minX, (aabb.minX + aabb.maxX) / 2, aabb.maxX];
+  const srcH = [aabb.minY, (aabb.minY + aabb.maxY) / 2, aabb.maxY];
+
+  let bestVD = SNAP_TOLERANCE + 1;
+  let bestHD = SNAP_TOLERANCE + 1;
+  let bestV: { x: number; label: string } | null = null;
+  let bestH: { y: number; label: string } | null = null;
+
+  for (const s of srcV) {
+    for (const c of vCands) {
+      const d = c.x - s;
+      if (Math.abs(d) <= SNAP_TOLERANCE && Math.abs(d) < Math.abs(bestVD)) {
+        bestVD = d;
+        bestV = c;
+      }
+    }
+  }
+  for (const s of srcH) {
+    for (const c of hCands) {
+      const d = c.y - s;
+      if (Math.abs(d) <= SNAP_TOLERANCE && Math.abs(d) < Math.abs(bestHD)) {
+        bestHD = d;
+        bestH = c;
+      }
+    }
+  }
+
+  return {
+    dx: bestVD <= SNAP_TOLERANCE ? bestVD : 0,
+    dy: bestHD <= SNAP_TOLERANCE ? bestHD : 0,
+    v: bestV,
+    h: bestH,
+  };
+}
+
 export function PhotoTemplateGenerator({
   products,
   categories,
@@ -649,8 +957,9 @@ export function PhotoTemplateGenerator({
   const [template, setTemplate] = useState<PhotoTemplate>(() =>
     createDefaultTemplate()
   );
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewProductId, setPreviewProductId] = useState<string | null>(null);
+  const [guides, setGuides] = useState<Guide>({ v: [], h: [] });
 
   const [generating, setGenerating] = useState(false);
   const [replaceImages, setReplaceImages] = useState(false);
@@ -659,18 +968,27 @@ export function PhotoTemplateGenerator({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{
-    mode: "move" | "resize" | "rotate" | "arrow-end";
-    elementId: string;
-    startX: number;
-    startY: number;
-    origEl: PhotoTemplateElement;
-    cx: number;
-    cy: number;
-    startAngle: number;
-    which: "start" | "end";
-  } | null>(null);
-  // Перетаскивание слоёв в панели «Слои» (индексы в отображаемом списке).
+  const dragRef = useRef<
+    | {
+        mode: "move";
+        ids: string[];
+        origEls: PhotoTemplateElement[];
+        startX: number;
+        startY: number;
+      }
+    | {
+        mode: "resize" | "rotate" | "arrow-end";
+        elementId: string;
+        origEl: PhotoTemplateElement;
+        startX: number;
+        startY: number;
+        cx: number;
+        cy: number;
+        startAngle: number;
+        which: "start" | "end";
+      }
+    | null
+  >(null);
   const [dragLayerIndex, setDragLayerIndex] = useState<number | null>(null);
   const [overLayerIndex, setOverLayerIndex] = useState<number | null>(null);
 
@@ -722,7 +1040,8 @@ export function PhotoTemplateGenerator({
     (async () => {
       try {
         await renderTemplate(canvas, template, tokens);
-        if (!cancelled) drawSelection(canvas, template, selectedId, tokens);
+        if (!cancelled)
+          drawSelection(canvas, template, selectedIds, tokens, guides);
       } catch (err) {
         console.error(err);
       }
@@ -730,7 +1049,7 @@ export function PhotoTemplateGenerator({
     return () => {
       cancelled = true;
     };
-  }, [template, tokens, selectedId]);
+  }, [template, tokens, selectedIds, guides]);
 
   /* ── Выбор элементов на холсте ── */
   const clientToCanvas = useCallback((clientX: number, clientY: number) => {
@@ -749,7 +1068,6 @@ export function PhotoTemplateGenerator({
       if (!canvas) return null;
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
-      // Перебираем сверху вниз (последний в массиве — самый верхний).
       for (let i = template.elements.length - 1; i >= 0; i--) {
         const el = template.elements[i];
         if (el.type === "arrow") {
@@ -761,7 +1079,7 @@ export function PhotoTemplateGenerator({
           }
           continue;
         }
-        const g = boxGeom(ctx, el, tokens);
+        const g = elementGeom(ctx, el, tokens);
         if (pointInBox(px, py, g)) return el;
       }
       return null;
@@ -777,9 +1095,9 @@ export function PhotoTemplateGenerator({
     if (!ctx) return;
     const handle = Math.max(9, template.width / 60);
 
-    // Ручки выбранного элемента: вращение, углы ресайза, концы стрелки.
-    if (selectedId) {
-      const sel = template.elements.find((el) => el.id === selectedId);
+    // Ручки у единственного выбранного элемента
+    if (selectedIds.length === 1) {
+      const sel = template.elements.find((el) => el.id === selectedIds[0]);
       if (sel) {
         if (sel.type === "arrow") {
           const ends: ["start" | "end", number, number][] = [
@@ -791,9 +1109,9 @@ export function PhotoTemplateGenerator({
               dragRef.current = {
                 mode: "arrow-end",
                 elementId: sel.id,
+                origEl: { ...sel },
                 startX: x,
                 startY: y,
-                origEl: { ...sel },
                 cx: 0,
                 cy: 0,
                 startAngle: 0,
@@ -804,7 +1122,7 @@ export function PhotoTemplateGenerator({
             }
           }
         } else {
-          const g = boxGeom(ctx, sel, tokens);
+          const g = elementGeom(ctx, sel, tokens);
           const cx = g.x + g.w / 2;
           const cy = g.y + g.h / 2;
 
@@ -814,9 +1132,9 @@ export function PhotoTemplateGenerator({
             dragRef.current = {
               mode: "rotate",
               elementId: sel.id,
+              origEl: { ...sel },
               startX: x,
               startY: y,
-              origEl: { ...sel },
               cx,
               cy,
               startAngle: (Math.atan2(y - cy, x - cx) * 180) / Math.PI,
@@ -826,22 +1144,24 @@ export function PhotoTemplateGenerator({
             return;
           }
 
-          // Угловые ручки ресайза
-          for (const [hx, hy] of boxCorners(g)) {
-            if (Math.abs(x - hx) <= handle && Math.abs(y - hy) <= handle) {
-              dragRef.current = {
-                mode: "resize",
-                elementId: sel.id,
-                startX: x,
-                startY: y,
-                origEl: { ...sel },
-                cx,
-                cy,
-                startAngle: 0,
-                which: "start",
-              };
-              (e.target as HTMLElement).setPointerCapture(e.pointerId);
-              return;
+          // Угловые ручки ресайза (группы не ресайзятся)
+          if (sel.type !== "group") {
+            for (const [hx, hy] of boxCorners(g)) {
+              if (Math.abs(x - hx) <= handle && Math.abs(y - hy) <= handle) {
+                dragRef.current = {
+                  mode: "resize",
+                  elementId: sel.id,
+                  origEl: { ...sel },
+                  startX: x,
+                  startY: y,
+                  cx,
+                  cy,
+                  startAngle: 0,
+                  which: "start",
+                };
+                (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                return;
+              }
             }
           }
         }
@@ -850,21 +1170,31 @@ export function PhotoTemplateGenerator({
 
     const hit = hitTest(x, y);
     if (hit) {
-      setSelectedId(hit.id);
+      if (e.shiftKey) {
+        setSelectedIds((prev) =>
+          prev.includes(hit.id)
+            ? prev.filter((id) => id !== hit.id)
+            : [...prev, hit.id]
+        );
+        return;
+      }
+      const alreadySelected = selectedIds.includes(hit.id);
+      if (!alreadySelected) setSelectedIds([hit.id]);
+      const moveIds = alreadySelected ? selectedIds : [hit.id];
+      const origEls = moveIds
+        .map((id) => template.elements.find((el) => el.id === id))
+        .filter((el): el is PhotoTemplateElement => Boolean(el));
       dragRef.current = {
         mode: "move",
-        elementId: hit.id,
+        ids: moveIds,
+        origEls,
         startX: x,
         startY: y,
-        origEl: { ...hit },
-        cx: 0,
-        cy: 0,
-        startAngle: 0,
-        which: "start",
       };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     } else {
-      setSelectedId(null);
+      if (!e.shiftKey) setSelectedIds([]);
+      setGuides({ v: [], h: [] });
     }
   }
 
@@ -875,25 +1205,68 @@ export function PhotoTemplateGenerator({
     const dx = x - drag.startX;
     const dy = y - drag.startY;
 
+    if (drag.mode === "move") {
+      const ctx = canvasRef.current?.getContext("2d") || null;
+      let adjX = dx;
+      let adjY = dy;
+      let nextGuides: Guide = { v: [], h: [] };
+      if (ctx) {
+        const base = selectionAABB(ctx, drag.origEls, tokens);
+        const proposed: AABB = {
+          minX: base.minX + dx,
+          minY: base.minY + dy,
+          maxX: base.maxX + dx,
+          maxY: base.maxY + dy,
+        };
+        const others = template.elements.filter(
+          (el) => !drag.ids.includes(el.id)
+        );
+        const snap = computeSnap(
+          ctx,
+          proposed,
+          others,
+          tokens,
+          template.width,
+          template.height
+        );
+        adjX = dx + snap.dx;
+        adjY = dy + snap.dy;
+        nextGuides = {
+          v: snap.v ? [snap.v] : [],
+          h: snap.h ? [snap.h] : [],
+        };
+      }
+      setGuides(nextGuides);
+      setTemplate((t) => ({
+        ...t,
+        elements: t.elements.map((el) => {
+          const idx = drag.ids.indexOf(el.id);
+          if (idx < 0) return el;
+          return translateElement(drag.origEls[idx], adjX, adjY);
+        }),
+      }));
+      return;
+    }
+
+    setGuides({ v: [], h: [] });
     setTemplate((t) => ({
       ...t,
       elements: t.elements.map((el) => {
         if (el.id !== drag.elementId) return el;
-        if (drag.mode === "move") {
-          return translateElement(drag.origEl, dx, dy);
-        }
         if (drag.mode === "arrow-end") {
+          const orig = drag.origEl as PhotoArrowElement;
           if (drag.which === "end") {
-            return { ...drag.origEl, x2: x, y2: y } as PhotoTemplateElement;
+            return { ...orig, x2: x, y2: y };
           }
-          return { ...drag.origEl, x, y } as PhotoTemplateElement;
+          return { ...orig, x, y };
         }
         if (drag.mode === "rotate") {
           const angle = (Math.atan2(y - drag.cy, x - drag.cx) * 180) / Math.PI;
           const base = drag.origEl as
             | PhotoTextElement
             | PhotoRectElement
-            | PhotoImageElement;
+            | PhotoImageElement
+            | PhotoGroupElement;
           const rotation = normDeg(
             (base.rotation ?? 0) + (angle - drag.startAngle)
           );
@@ -932,6 +1305,7 @@ export function PhotoTemplateGenerator({
   function onPointerUp(e: React.PointerEvent<HTMLCanvasElement>) {
     if (dragRef.current) {
       dragRef.current = null;
+      setGuides({ v: [], h: [] });
       try {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       } catch {
@@ -940,9 +1314,16 @@ export function PhotoTemplateGenerator({
     }
   }
 
-  /* ── Клавиатура: стрелки двигают, Delete удаляет ── */
+  /* ── Клавиатура: стрелки, Delete, Ctrl+G / Ctrl+Shift+G ── */
   function onCanvasKeyDown(e: React.KeyboardEvent) {
-    if (!selectedId) return;
+    if (!selectedIds.length) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && (e.key === "g" || e.key === "G" || e.key === "п" || e.key === "П")) {
+      e.preventDefault();
+      if (e.shiftKey) ungroupSelected();
+      else groupSelected();
+      return;
+    }
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
       e.preventDefault();
       const stepPx = e.shiftKey ? 10 : 1;
@@ -953,12 +1334,12 @@ export function PhotoTemplateGenerator({
       setTemplate((t) => ({
         ...t,
         elements: t.elements.map((el) =>
-          el.id === selectedId ? translateElement(el, dx, dy) : el
+          selectedIds.includes(el.id) ? translateElement(el, dx, dy) : el
         ),
       }));
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
-      removeElement(selectedId);
+      removeSelected();
     }
   }
 
@@ -972,12 +1353,12 @@ export function PhotoTemplateGenerator({
     }));
   }
 
-  function removeElement(id: string) {
+  function removeSelected() {
     setTemplate((t) => ({
       ...t,
-      elements: t.elements.filter((el) => el.id !== id),
+      elements: t.elements.filter((el) => !selectedIds.includes(el.id)),
     }));
-    if (selectedId === id) setSelectedId(null);
+    setSelectedIds([]);
   }
 
   function duplicateElement(id: string) {
@@ -985,20 +1366,19 @@ export function PhotoTemplateGenerator({
       const idx = t.elements.findIndex((el) => el.id === id);
       if (idx < 0) return t;
       const src = t.elements[idx];
-      const copy =
-        src.type === "arrow"
-          ? {
-              ...src,
-              id: createElementId(),
-              x: src.x + 24,
-              y: src.y + 24,
-              x2: src.x2 + 24,
-              y2: src.y2 + 24,
-            }
-          : { ...src, id: createElementId(), x: src.x + 24, y: src.y + 24 };
+      const copy = cloneElementDeep(src);
+      if (copy.type === "arrow") {
+        copy.x += 24;
+        copy.y += 24;
+        copy.x2 += 24;
+        copy.y2 += 24;
+      } else {
+        copy.x += 24;
+        copy.y += 24;
+      }
       const next = [...t.elements];
-      next.splice(idx + 1, 0, copy as PhotoTemplateElement);
-      setSelectedId(copy.id);
+      next.splice(idx + 1, 0, copy);
+      setSelectedIds([copy.id]);
       return { ...t, elements: next };
     });
   }
@@ -1018,16 +1398,170 @@ export function PhotoTemplateGenerator({
 
   function addElement(el: PhotoTemplateElement) {
     setTemplate((t) => ({ ...t, elements: [...t.elements, el] }));
-    setSelectedId(el.id);
+    setSelectedIds([el.id]);
   }
 
-  /** Слои в порядке отображения (верхний — первым). */
+  /* ── Выравнивание ── */
+  type AlignMode =
+    | "left"
+    | "centerH"
+    | "right"
+    | "top"
+    | "middle"
+    | "bottom";
+
+  function alignSelected(mode: AlignMode) {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx || selectedIds.length === 0) return;
+    const els = template.elements.filter((el) => selectedIds.includes(el.id));
+    const single = els.length === 1;
+
+    let target: { minX: number; maxX: number; minY: number; maxY: number; cx: number; cy: number };
+    if (single) {
+      target = {
+        minX: 0,
+        maxX: template.width,
+        minY: 0,
+        maxY: template.height,
+        cx: template.width / 2,
+        cy: template.height / 2,
+      };
+    } else {
+      const b = selectionAABB(ctx, els, tokens);
+      target = {
+        minX: b.minX,
+        maxX: b.maxX,
+        minY: b.minY,
+        maxY: b.maxY,
+        cx: (b.minX + b.maxX) / 2,
+        cy: (b.minY + b.maxY) / 2,
+      };
+    }
+
+    setTemplate((t) => ({
+      ...t,
+      elements: t.elements.map((el) => {
+        if (!selectedIds.includes(el.id)) return el;
+        const b = elementAABB(ctx, el, tokens);
+        let dx = 0;
+        let dy = 0;
+        if (mode === "left") dx = target.minX - b.minX;
+        else if (mode === "centerH") dx = target.cx - (b.minX + b.maxX) / 2;
+        else if (mode === "right") dx = target.maxX - b.maxX;
+        else if (mode === "top") dy = target.minY - b.minY;
+        else if (mode === "middle") dy = target.cy - (b.minY + b.maxY) / 2;
+        else if (mode === "bottom") dy = target.maxY - b.maxY;
+        return translateElement(el, Math.round(dx), Math.round(dy));
+      }),
+    }));
+  }
+
+  /* ── Группы ── */
+  function groupLocalToWorld(
+    ctx: CanvasRenderingContext2D,
+    g: PhotoGroupElement,
+    lx: number,
+    ly: number
+  ): [number, number] {
+    const b = groupLocalBounds(ctx, tokens, g.items);
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const [rx, ry] = rotatePoint(0, 0, lx - cx, ly - cy, g.rotation ?? 0);
+    return [g.x - b.x + cx + rx, g.y - b.y + cy + ry];
+  }
+
+  function groupSelected() {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const idxs = selectedIds
+      .map((id) => template.elements.findIndex((el) => el.id === id))
+      .filter((i) => i >= 0)
+      .sort((a, b) => a - b);
+    if (idxs.length < 2) return;
+
+    const els = idxs.map((i) => template.elements[i]);
+    const b = selectionAABB(ctx, els, tokens);
+    const gx = Math.round(b.minX);
+    const gy = Math.round(b.minY);
+    const group: PhotoGroupElement = {
+      id: createElementId(),
+      type: "group",
+      x: gx,
+      y: gy,
+      rotation: 0,
+      items: els.map((el) => localizeElement(el, gx, gy)),
+    };
+
+    const next = [...template.elements];
+    for (const i of [...idxs].reverse()) next.splice(i, 1);
+    next.splice(idxs[0], 0, group);
+    setTemplate((t) => ({ ...t, elements: next }));
+    setSelectedIds([group.id]);
+  }
+
+  function ungroupItems(
+    ctx: CanvasRenderingContext2D,
+    g: PhotoGroupElement
+  ): PhotoTemplateElement[] {
+    const out: PhotoTemplateElement[] = [];
+    for (const it of g.items) {
+      if (it.type === "group") {
+        const [wx, wy] = groupLocalToWorld(ctx, g, it.x, it.y);
+        out.push({
+          ...it,
+          x: wx,
+          y: wy,
+          rotation: (it.rotation ?? 0) + (g.rotation ?? 0),
+        });
+      } else if (it.type === "arrow") {
+        const [wx, wy] = groupLocalToWorld(ctx, g, it.x, it.y);
+        const [wx2, wy2] = groupLocalToWorld(ctx, g, it.x2, it.y2);
+        out.push({ ...it, x: wx, y: wy, x2: wx2, y2: wy2 });
+      } else {
+        const [wx, wy] = groupLocalToWorld(ctx, g, it.x, it.y);
+        out.push({
+          ...it,
+          x: wx,
+          y: wy,
+          rotation: (it.rotation ?? 0) + (g.rotation ?? 0),
+        } as PhotoTemplateElement);
+      }
+    }
+    return out;
+  }
+
+  function ungroupSelected() {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const groups = template.elements.filter(
+      (el) => selectedIds.includes(el.id) && el.type === "group"
+    ) as PhotoGroupElement[];
+    if (groups.length === 0) return;
+
+    const groupIds = new Set(groups.map((g) => g.id));
+    const out: PhotoTemplateElement[] = [];
+    const newSel: string[] = [];
+    for (const el of template.elements) {
+      if (groupIds.has(el.id)) {
+        const items = ungroupItems(ctx, el as PhotoGroupElement);
+        for (const it of items) {
+          out.push(it);
+          newSel.push(it.id);
+        }
+      } else {
+        out.push(el);
+      }
+    }
+    setTemplate((t) => ({ ...t, elements: out }));
+    setSelectedIds(newSel);
+  }
+
+  /* ── Слои ── */
   const displayedLayers = useMemo(
     () => [...template.elements].reverse(),
     [template.elements]
   );
 
-  /** Перетащили слой на позицию targetIndex (в отображаемом списке). */
   function reorderLayer(targetIndex: number) {
     if (dragLayerIndex == null || dragLayerIndex === targetIndex) return;
     const next = [...displayedLayers];
@@ -1137,9 +1671,19 @@ export function PhotoTemplateGenerator({
     [products, selected]
   );
 
-  const selectedEl = selectedId
-    ? template.elements.find((el) => el.id === selectedId) || null
-    : null;
+  const selectedEl =
+    selectedIds.length === 1
+      ? template.elements.find((el) => el.id === selectedIds[0]) || null
+      : null;
+
+  const alignButtons: { mode: AlignMode; icon: typeof AlignStartHorizontal; title: string }[] = [
+    { mode: "left", icon: AlignStartHorizontal, title: "По левому краю" },
+    { mode: "centerH", icon: AlignCenterHorizontal, title: "По центру (горизонталь)" },
+    { mode: "right", icon: AlignEndHorizontal, title: "По правому краю" },
+    { mode: "top", icon: AlignStartVertical, title: "По верхнему краю" },
+    { mode: "middle", icon: AlignCenterVertical, title: "По центру (вертикаль)" },
+    { mode: "bottom", icon: AlignEndVertical, title: "По нижнему краю" },
+  ];
 
   return (
     <div className="ptg">
@@ -1336,13 +1880,58 @@ export function PhotoTemplateGenerator({
               onClick={() => {
                 if (confirm("Сбросить шаблон к исходному виду?")) {
                   setTemplate(createDefaultTemplate());
-                  setSelectedId(null);
+                  setSelectedIds([]);
                 }
               }}
             >
               <RotateCcw size={14} /> Сбросить шаблон
             </button>
           </div>
+
+          {/* Выравнивание + группы */}
+          {selectedIds.length > 0 && (
+            <div className="ptg-toolbar ptg-toolbar--design">
+              <div className="ptg-tools">
+                <span className="ptg-align-label">Выравнивание:</span>
+                {alignButtons.map((b) => (
+                  <button
+                    key={b.mode}
+                    type="button"
+                    className="admin-btn admin-btn--ghost"
+                    title={b.title}
+                    onClick={() => alignSelected(b.mode)}
+                  >
+                    <b.icon size={15} />
+                  </button>
+                ))}
+              </div>
+              <div className="ptg-tools">
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost"
+                  disabled={selectedIds.length < 2}
+                  onClick={groupSelected}
+                  title="Объединить в группу (Ctrl+G)"
+                >
+                  <Group size={14} /> Группа
+                </button>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost"
+                  disabled={!selectedIds.some((id) =>
+                    template.elements.some((el) => el.id === id && el.type === "group")
+                  )}
+                  onClick={ungroupSelected}
+                  title="Разгруппировать (Ctrl+Shift+G)"
+                >
+                  <Ungroup size={14} /> Разгруппировать
+                </button>
+                <span className="ptg-align-label ptg-align-label--hint">
+                  Shift+клик — несколько элементов
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className="ptg-designer__grid">
             {/* Левая колонка: холст + параметры фона */}
@@ -1359,6 +1948,7 @@ export function PhotoTemplateGenerator({
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
+                  onPointerCancel={onPointerUp}
                 />
               </div>
 
@@ -1493,6 +2083,31 @@ export function PhotoTemplateGenerator({
                 </select>
               </div>
 
+              {/* Мультивыбор */}
+              {selectedIds.length > 1 && (
+                <div className="ptg-side__block">
+                  <div className="ptg-side__title">
+                    Выбрано элементов: {selectedIds.length}
+                  </div>
+                  <div className="ptg-actions">
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost"
+                      onClick={groupSelected}
+                    >
+                      <Group size={14} /> Сгруппировать
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--danger"
+                      onClick={removeSelected}
+                    >
+                      <Trash2 size={14} /> Удалить
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Свойства выбранного элемента */}
               {selectedEl && (
                 <div className="ptg-side__block">
@@ -1503,8 +2118,49 @@ export function PhotoTemplateGenerator({
                         ? "Прямоугольник"
                         : selectedEl.type === "arrow"
                           ? "Стрелка"
-                          : "Картинка"}
+                          : selectedEl.type === "group"
+                            ? "Группа"
+                            : "Картинка"}
                   </div>
+
+                  {selectedEl.type === "group" && (
+                    <div className="ptg-grid2">
+                      <div className="ptg-field">
+                        <label>X</label>
+                        <input
+                          type="number"
+                          value={Math.round(selectedEl.x)}
+                          onChange={(e) =>
+                            updateElement(selectedEl.id, { x: Number(e.target.value) || 0 })
+                          }
+                        />
+                      </div>
+                      <div className="ptg-field">
+                        <label>Y</label>
+                        <input
+                          type="number"
+                          value={Math.round(selectedEl.y)}
+                          onChange={(e) =>
+                            updateElement(selectedEl.id, { y: Number(e.target.value) || 0 })
+                          }
+                        />
+                      </div>
+                      <div className="ptg-field">
+                        <label>Поворот (°)</label>
+                        <input
+                          type="number"
+                          value={Math.round(selectedEl.rotation ?? 0)}
+                          onChange={(e) =>
+                            updateElement(selectedEl.id, { rotation: Number(e.target.value) || 0 })
+                          }
+                        />
+                      </div>
+                      <div className="ptg-field">
+                        <label>Элементов</label>
+                        <input type="text" readOnly value={selectedEl.items.length} />
+                      </div>
+                    </div>
+                  )}
 
                   {selectedEl.type === "arrow" && (
                     <>
@@ -1614,21 +2270,97 @@ export function PhotoTemplateGenerator({
                             title={ph.label}
                             onClick={() => {
                               const el = selectedEl as PhotoTextElement;
-                              const before = el.text;
-                              const after =
-                                before.slice(0, before.length) +
-                                ph.token;
-                              updateElement(selectedEl.id, { text: after });
+                              updateElement(selectedEl.id, {
+                                text: el.text + ph.token,
+                              });
                             }}
                           >
                             {ph.token}
                           </button>
                         ))}
                       </div>
+
+                      {/* Отступы + подложка */}
+                      <div className="ptg-side__title" style={{ marginTop: 4 }}>
+                        Блок (отступы от текста)
+                      </div>
+                      <label className="ptg-check" style={{ padding: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!selectedEl.background}
+                          onChange={(e) =>
+                            updateElement(selectedEl.id, {
+                              background: e.target.checked
+                                ? { color: "#2d6a4f", radius: 12 }
+                                : null,
+                            })
+                          }
+                        />
+                        <span>Фон-подложка</span>
+                      </label>
+                      {selectedEl.background && (
+                        <div className="ptg-grid2">
+                          <div className="ptg-field">
+                            <label>Цвет фона</label>
+                            <input
+                              type="color"
+                              value={selectedEl.background.color}
+                              onChange={(e) =>
+                                updateElement(selectedEl.id, {
+                                  background: { ...selectedEl.background!, color: e.target.value },
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="ptg-field">
+                            <label>Скругление</label>
+                            <input
+                              type="number"
+                              value={selectedEl.background.radius}
+                              onChange={(e) =>
+                                updateElement(selectedEl.id, {
+                                  background: {
+                                    ...selectedEl.background!,
+                                    radius: Math.max(0, Number(e.target.value) || 0),
+                                  },
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div className="ptg-grid2">
+                        <div className="ptg-field">
+                          <label>Отступ по X (px)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={Math.round(selectedEl.paddingX ?? 0)}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, {
+                                paddingX: Math.max(0, Number(e.target.value) || 0),
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="ptg-field">
+                          <label>Отступ по Y (px)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={Math.round(selectedEl.paddingY ?? 0)}
+                            onChange={(e) =>
+                              updateElement(selectedEl.id, {
+                                paddingY: Math.max(0, Number(e.target.value) || 0),
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
                     </>
                   )}
 
-                  {selectedEl.type !== "arrow" && (
+                  {selectedEl.type !== "arrow" && selectedEl.type !== "group" && (
                     <>
                       <div className="ptg-grid2">
                         <div className="ptg-field">
@@ -1653,34 +2385,36 @@ export function PhotoTemplateGenerator({
                         </div>
                       </div>
 
-                  {selectedEl.type === "rect" || selectedEl.type === "image" ? (
-                    <div className="ptg-grid2">
-                      <div className="ptg-field">
-                        <label>Ширина</label>
-                        <input
-                          type="number"
-                          value={Math.round(selectedEl.width)}
-                          onChange={(e) =>
-                            updateElement(selectedEl.id, {
-                              width: Math.max(1, Number(e.target.value) || 0),
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="ptg-field">
-                        <label>Высота</label>
-                        <input
-                          type="number"
-                          value={Math.round(selectedEl.height)}
-                          onChange={(e) =>
-                            updateElement(selectedEl.id, {
-                              height: Math.max(1, Number(e.target.value) || 0),
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-                  ) : null}
+                      {selectedEl.type === "rect" || selectedEl.type === "image" ? (
+                        <div className="ptg-grid2">
+                          <div className="ptg-field">
+                            <label>Ширина</label>
+                            <input
+                              type="number"
+                              value={Math.round(selectedEl.width)}
+                              onChange={(e) =>
+                                updateElement(selectedEl.id, {
+                                  width: Math.max(1, Number(e.target.value) || 0),
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="ptg-field">
+                            <label>Высота</label>
+                            <input
+                              type="number"
+                              value={Math.round(selectedEl.height)}
+                              onChange={(e) =>
+                                updateElement(selectedEl.id, {
+                                  height: Math.max(1, Number(e.target.value) || 0),
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
 
                   {selectedEl.type === "text" && (
                     <>
@@ -1884,32 +2618,31 @@ export function PhotoTemplateGenerator({
                     </>
                   )}
 
-                  {/* Поворот (для текста/прямоугольника/картинки) */}
-                  <div className="ptg-row">
-                    <div className="ptg-field" style={{ minWidth: 120 }}>
-                      <label>Поворот (°)</label>
-                      <input
-                        type="number"
-                        value={Math.round((selectedEl as any).rotation ?? 0)}
-                        onChange={(e) =>
-                          updateElement(selectedEl.id, {
-                            rotation: Number(e.target.value) || 0,
-                          })
-                        }
-                      />
+                  {selectedEl.type !== "group" && (
+                    <div className="ptg-row">
+                      <div className="ptg-field" style={{ minWidth: 120 }}>
+                        <label>Поворот (°)</label>
+                        <input
+                          type="number"
+                          value={Math.round((selectedEl as any).rotation ?? 0)}
+                          onChange={(e) =>
+                            updateElement(selectedEl.id, {
+                              rotation: Number(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
+                      {(selectedEl as any).rotation ? (
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost"
+                          style={{ alignSelf: "flex-end" }}
+                          onClick={() => updateElement(selectedEl.id, { rotation: 0 })}
+                        >
+                          Сбросить
+                        </button>
+                      ) : null}
                     </div>
-                    {(selectedEl as any).rotation ? (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--ghost"
-                        style={{ alignSelf: "flex-end" }}
-                        onClick={() => updateElement(selectedEl.id, { rotation: 0 })}
-                      >
-                        Сбросить
-                      </button>
-                    ) : null}
-                  </div>
-                  </>
                   )}
 
                   <div className="ptg-actions">
@@ -1923,7 +2656,10 @@ export function PhotoTemplateGenerator({
                     <button
                       type="button"
                       className="admin-btn admin-btn--danger"
-                      onClick={() => removeElement(selectedEl.id)}
+                      onClick={() => {
+                        setSelectedIds([selectedEl.id]);
+                        removeSelected();
+                      }}
                     >
                       <Trash2 size={14} /> Удалить
                     </button>
@@ -1969,8 +2705,18 @@ export function PhotoTemplateGenerator({
                         setDragLayerIndex(null);
                         setOverLayerIndex(null);
                       }}
-                      className={`ptg-layer${selectedId === el.id ? " ptg-layer--on" : ""}${overLayerIndex === i && dragLayerIndex !== i ? " ptg-layer--over" : ""}${dragLayerIndex === i ? " ptg-layer--drag" : ""}`}
-                      onClick={() => setSelectedId(el.id)}
+                      className={`ptg-layer${selectedIds.includes(el.id) ? " ptg-layer--on" : ""}${overLayerIndex === i && dragLayerIndex !== i ? " ptg-layer--over" : ""}${dragLayerIndex === i ? " ptg-layer--drag" : ""}`}
+                      onClick={(e) => {
+                        if (e.shiftKey) {
+                          setSelectedIds((prev) =>
+                            prev.includes(el.id)
+                              ? prev.filter((id) => id !== el.id)
+                              : [...prev, el.id]
+                          );
+                        } else {
+                          setSelectedIds([el.id]);
+                        }
+                      }}
                     >
                       <GripVertical size={13} className="ptg-layer__grip" />
                       <span className="ptg-layer__name">
@@ -1980,7 +2726,9 @@ export function PhotoTemplateGenerator({
                             ? "Прямоугольник"
                             : el.type === "arrow"
                               ? "Стрелка"
-                              : "Картинка"}
+                              : el.type === "group"
+                                ? `Группа (${el.items.length})`
+                                : "Картинка"}
                       </span>
                       <span className="ptg-layer__btns">
                         <button
@@ -2092,9 +2840,7 @@ export function PhotoTemplateGenerator({
                     ? `Генерация: ${progress.done} из ${progress.total}`
                     : `Готово: ${results.filter((r) => r.ok).length} из ${results.length}`}
                 </span>
-                {generating && (
-                  <Loader2 size={15} className="animate-spin" />
-                )}
+                {generating && <Loader2 size={15} className="animate-spin" />}
               </div>
               <div className="ptg-progress__bar">
                 <div
