@@ -87,7 +87,7 @@ export function monthKeyOffset(offset: number, base = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function normalizeCounterparty(name: string): string {
+export function normalizeCounterparty(name: string): string {
   return String(name || "")
     .trim()
     .toLocaleLowerCase("ru-RU")

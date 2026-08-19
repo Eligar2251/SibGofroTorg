@@ -37,6 +37,7 @@ import {
   Lightbulb,
   TrendingUp,
   Upload,
+  Target,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -90,6 +91,7 @@ import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
 import { SalaryAutoDistribute } from "@/components/admin/SalaryAutoDistribute";
 import { WarehouseReports } from "@/components/admin/WarehouseReports";
 import { RevenueForecast } from "@/components/admin/RevenueForecast";
+import { SalesPlan } from "@/components/admin/SalesPlan";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
 import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
@@ -195,7 +197,7 @@ const paymentTypeLabels: Record<string, string> = {
   ym_card: "Карта ЮМ",
 };
 
-type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "forecast" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
+type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "forecast" | "plan" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
@@ -1288,6 +1290,7 @@ export function WarehouseManager({
     { key: "purchases", label: "Закупки", icon: <Wallet size={13} /> },
     { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
     { key: "forecast", label: "Прогноз", icon: <TrendingUp size={13} /> },
+    { key: "plan", label: "План", icon: <Target size={13} /> },
     { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
     { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
@@ -1674,7 +1677,7 @@ export function WarehouseManager({
               />
             </>
           )}
-          {activeTab === "forecast" && (
+          {(activeTab === "forecast" || activeTab === "plan") && (
             <Link
               href={`/${adminPath}/warehouse/import`}
               className="admin-btn admin-btn--ghost"
@@ -2682,6 +2685,11 @@ export function WarehouseManager({
       {/* ============ ВКЛАДКА: ПРОГНОЗ ВЫРУЧКИ ============ */}
       {activeTab === "forecast" && (
         <RevenueForecast deals={deals} adminPath={adminPath} />
+      )}
+
+      {/* ============ ВКЛАДКА: ПЛАН ПРОДАЖ ============ */}
+      {activeTab === "plan" && (
+        <SalesPlan deals={deals} stock={stock} adminPath={adminPath} />
       )}
 
       {/* ============ ВКЛАДКА: ЗАРПЛАТЫ ============ */}
