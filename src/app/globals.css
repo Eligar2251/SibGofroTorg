@@ -640,6 +640,200 @@ select {
   }
 }
 
+/* ══════════════════════════════════════
+   ПОПАП «ТОВАР ДОБАВЛЕН В КОРЗИНУ»
+   Всплывает при добавлении товара — над плавающей корзиной,
+   в правом нижнем углу. Кнопка «Перейти в корзину» ведёт на /order.
+   ══════════════════════════════════════ */
+.cart-popup {
+  position: fixed;
+  z-index: 860;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(92px, calc(env(safe-area-inset-bottom) + 76px));
+  width: min(360px, calc(100vw - 28px));
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(10, 20, 14, 0.24);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: cart-popup-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes cart-popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cart-popup__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.cart-popup__close:hover {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.cart-popup__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 28px;
+}
+
+.cart-popup__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ok-light);
+  color: var(--ok);
+  flex-shrink: 0;
+}
+
+.cart-popup__title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.cart-popup__product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cart-popup__img {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-main);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-faint);
+  flex-shrink: 0;
+}
+
+.cart-popup__info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cart-popup__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cart-popup__meta {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.cart-popup__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--bg-main);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--ink-light);
+}
+
+.cart-popup__total span:last-child {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.cart-popup__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cart-popup__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--ink-light);
+  white-space: nowrap;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+
+.cart-popup__btn--primary {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+  box-shadow: var(--shadow-green);
+}
+
+.cart-popup__btn--primary:hover {
+  background: var(--green-dark);
+  border-color: var(--green-dark);
+}
+
+.cart-popup__btn:not(.cart-popup__btn--primary):hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .cart-popup {
+    right: 12px;
+    bottom: max(76px, calc(env(safe-area-inset-bottom) + 60px));
+    padding: 14px;
+    border-radius: 14px;
+  }
+  .cart-popup__btn {
+    font-size: 12px;
+  }
+}
+
 .mobile-burger {
   display: none;
   align-items: center;
@@ -1287,10 +1481,15 @@ select {
    панели hero справа. Клик — tel:. Цвет фона в тон CTA, чтобы
    правый блок «Рассчитать выплату + телефон» выглядел сбалансированно. */
 .hero__wp-phone-badge {
-  /* z-index:2 — бейдж лежит ПОВЕРХ растянутой ссылки панели
-     (.hero__right-stretch), чтобы клик по номеру звонил (tel:),
-     а не вёл на /wastepaper. См. комментарий у .hero__right-stretch. */
-  position: relative;
+  /* Абсолютная позиция в правом нижнем углу панели — на одной
+     горизонтальной линии с кнопкой «Рассчитать выплату» (справа от
+     неё). right/bottom совпадают с паддингами .container-half-right
+     (32px справа, 48px снизу). z-index:2 поднимает бейдж над ссылкой
+     /wastepaper, чтобы клик по номеру звонил (tel:), а не вёл на
+     страницу макулатуры. */
+  position: absolute;
+  right: 32px;
+  bottom: 48px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
@@ -1307,7 +1506,6 @@ select {
   text-decoration: none;
   white-space: nowrap;
   transition: background-color var(--transition), border-color var(--transition);
-  flex-shrink: 0;
 }
 
 .hero__wp-phone-badge:hover {

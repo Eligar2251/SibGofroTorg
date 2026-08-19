@@ -105,7 +105,7 @@ export function ProductCardCompact({
         imageUrl: product.imageUrl,
         maxStock,
       },
-      packSize
+      1
     );
     setAdded(true);
     setTimeout(() => setAdded(false), 1800);

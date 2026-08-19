@@ -10,6 +10,7 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { MessengerFloatingBanner } from "@/components/layout/MessengerFloatingBanner";
 import { FloatingCart } from "@/components/layout/FloatingCart";
+import { CartPopup } from "@/components/layout/CartPopup";
 import { PromotionPopups } from "@/components/promotions/PromotionPopups";
 import type { PublicPopupCampaign } from "@/lib/popup-campaign";
 
@@ -36,6 +37,7 @@ export function ConditionalChrome({
       <main style={{ minHeight: "60vh" }}>{children}</main>
       <Footer />
       <FloatingCart />
+      <CartPopup />
       <MessengerFloatingBanner />
       <PromotionPopups initialCampaigns={popupCampaigns} />
     </>
