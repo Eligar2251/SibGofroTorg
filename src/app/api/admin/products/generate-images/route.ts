@@ -4,9 +4,14 @@
 // загружает PNG (data URL) в Cloudinary и проставляет товару
 // главное фото + массив images. Вызывается по одному товару —
 // клиент последовательно генерирует карточки и шлёт их сюда.
+//
+// Важно: каждый залив — новый public_id (со штампом времени),
+// старые файлы при replace удаляются и инвалидируется CDN.
+// Иначе Cloudinary/Next Image продолжают отдавать прошлое фото.
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { v2 as cloudinary } from "cloudinary";
 import { requireAdminApi } from "@/lib/auth";
 import {
@@ -23,6 +28,21 @@ cloudinary.config({
 
 /** Максимальный размер data URL в символах (~10 МБ PNG в base64). */
 const MAX_DATA_URL_LENGTH = 14 * 1024 * 1024;
+
+function safePublicIdPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40) || "item";
+}
+
+async function destroyCloudinaryIds(ids: string[]) {
+  const unique = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  await Promise.all(
+    unique.map((publicId) =>
+      cloudinary.uploader.destroy(publicId, { invalidate: true }).catch((err) => {
+        console.warn("Cloudinary destroy skipped:", publicId, err?.message || err);
+      })
+    )
+  );
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdminApi();
@@ -71,8 +91,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const stamp = Date.now();
     const upload = await cloudinary.uploader.upload(image, {
-      folder: "sibgofrotorg/products/generated",
+      public_id: `sibgofrotorg/products/generated/${safePublicIdPart(productId)}_${stamp}`,
+      overwrite: false,
+      unique_filename: true,
+      invalidate: true,
       transformation: [
         { width: 800, height: 800, crop: "limit" },
         { quality: "auto:good" },
@@ -80,23 +104,34 @@ export async function POST(request: NextRequest) {
       ],
     });
 
-    const url: string = upload.secure_url;
+    const url: string = String(upload.secure_url || "");
     const publicId: string = upload.public_id;
 
-    // Существующие фото товара. При replace=false новое фото становится
-    // первым (главным), остальные сохраняются в галерее.
     const existing = normalizeProductImages(product.images);
     const nextImages = replace
       ? [{ url, publicId }]
       : [
           { url, publicId },
-          ...existing.filter((img) => img.publicId !== publicId),
+          ...existing.filter((img) => img.publicId !== publicId && img.url !== url),
         ];
 
     await updateProduct(productId, {
       imageUrl: url,
       images: nextImages,
     });
+
+    if (replace) {
+      const staleIds = existing
+        .map((img) => img.publicId)
+        .filter((id) => id && id !== publicId);
+      await destroyCloudinaryIds(staleIds);
+    }
+
+    revalidatePath("/", "layout");
+    revalidatePath("/catalog");
+    if (product.slug) {
+      revalidatePath(`/catalog/product/${product.slug}`);
+    }
 
     return NextResponse.json({ ok: true, url, publicId });
   } catch (error) {

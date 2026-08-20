@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 /**
  * Позиция в корзине. Если у товара есть варианты (цвет/размер),
@@ -44,6 +50,10 @@ interface CartContextType {
   clearCart: () => void;
   lastAdded: LastAddedItem | null;
   clearLastAdded: () => void;
+  /** Плавающая корзина + попап над ней: только после добавления товара. */
+  cartDockOpen: boolean;
+  openCartDock: (item?: LastAddedItem) => void;
+  hideCartDock: () => void;
   rawSubtotal: number;
   discountPercent: number;
   discountAmount: number;
@@ -65,6 +75,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [lastAdded, setLastAdded] = useState<LastAddedItem | null>(null);
+  // Не пишем в localStorage: после перезагрузки док не должен висеть «просто так».
+  const [cartDockOpen, setCartDockOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("sib_cart");
@@ -93,28 +105,50 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [cart, isLoaded]);
 
+  const openCartDock = useCallback((item?: LastAddedItem) => {
+    if (item) setLastAdded(item);
+    setCartDockOpen(true);
+  }, []);
+
+  const hideCartDock = useCallback(() => {
+    setLastAdded(null);
+    setCartDockOpen(false);
+  }, []);
+
   const addToCart = (product: Omit<CartItem, "quantity">, qty = 1) => {
+    const addedQty = Math.max(1, Math.round(qty));
+    const incomingKey = cartItemKey(product);
+    const existing = cart.find((item) => cartItemKey(item) === incomingKey);
+    let lineQty = addedQty;
+    if (existing) {
+      const newQty = existing.quantity + addedQty;
+      lineQty = product.maxStock != null ? Math.min(newQty, product.maxStock) : newQty;
+    } else if (product.maxStock != null) {
+      lineQty = Math.min(addedQty, product.maxStock);
+    }
+
     setCart((prev) => {
-      const incomingKey = cartItemKey(product);
-      const existing = prev.find((item) => cartItemKey(item) === incomingKey);
-      if (existing) {
-        const newQty = existing.quantity + qty;
+      const current = prev.find((item) => cartItemKey(item) === incomingKey);
+      if (current) {
+        const newQty = current.quantity + addedQty;
         const finalQty = product.maxStock != null ? Math.min(newQty, product.maxStock) : newQty;
         return prev.map((item) =>
           cartItemKey(item) === incomingKey ? { ...item, quantity: finalQty } : item
         );
       }
-      return [...prev, { ...product, quantity: qty }];
+      const initialQty =
+        product.maxStock != null ? Math.min(addedQty, product.maxStock) : addedQty;
+      return [...prev, { ...product, quantity: initialQty }];
     });
 
-    // Фиксируем событие добавления — попап «Товар добавлен в корзину»
-    // покажет его и предложит перейти к оформлению.
-    setLastAdded({
+    // Попап над плавающей корзиной: количество этой позиции и сумма корзины.
+    // Не закрывается сам — только крестиком или переходом в корзину.
+    openCartDock({
       productId: product.productId,
       name: product.name,
       imageUrl: product.imageUrl ?? null,
       price: product.price,
-      qty: Math.max(1, Math.round(qty)),
+      qty: lineQty,
     });
   };
 
@@ -143,9 +177,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    setCart([]);
+    hideCartDock();
+  };
 
-  const clearLastAdded = () => setLastAdded(null);
+  const clearLastAdded = hideCartDock;
+
+  useEffect(() => {
+    if (isLoaded && cart.length === 0) {
+      hideCartDock();
+    }
+  }, [cart.length, isLoaded, hideCartDock]);
 
   const rawSubtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
@@ -173,6 +216,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         clearCart,
         lastAdded,
         clearLastAdded,
+        cartDockOpen,
+        openCartDock,
+        hideCartDock,
         rawSubtotal,
         discountPercent,
         discountAmount,

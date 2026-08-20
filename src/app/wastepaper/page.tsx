@@ -7,11 +7,12 @@ import { getWastepaperRates, getSettings } from "@/lib/supabase-queries";
 import { formatRate, getWastepaperPageConfig } from "@/lib/wastepaper";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
+import { SITE_PHONE, SITE_PHONE_HREF } from "@/lib/site-config";
 
 export const metadata: Metadata = {
   title: "Приём макулатуры в Новосибирске — цены за кг",
   description:
-    "Сдать картон, бумагу и архивы в Новосибирске. Вывоз от 150 кг, оплата на месте. Актуальные тарифы СибГофроТорг.",
+    "Сдать картон, бумагу и архивы в Новосибирске. Вывоз от 200 кг, оплата на месте. Актуальные тарифы СибГофроТорг.",
   alternates: { canonical: `${SITE_URL}/wastepaper` },
 };
 
@@ -25,6 +26,8 @@ export default async function WastepaperPage() {
   const minRate = Math.min(...Object.values(rates));
   const selfBonus = `+ ${wp.selfBonus} ₽/кг самовывоз`;
   const pickupPriceLabel = wp.pickupPrice > 0 ? `${wp.pickupPrice} ₽` : "0 ₽";
+  const contactPhone = (settings.phone || SITE_PHONE || "").trim() || SITE_PHONE;
+  const contactPhoneHref = `tel:${contactPhone.replace(/[^\d+]/g, "")}` || SITE_PHONE_HREF;
 
   // Тарифы: названия фиксированные, цены — из настроек
   const rateRows = [
@@ -65,6 +68,11 @@ export default async function WastepaperPage() {
             <h1 className="wp-hero__title">Приём макулатуры<br /><span>дорого в Новосибирске</span></h1>
             <p className="wp-hero__desc">
               Принимаем гофрокартон, белую архивную бумагу, книги и журналы. Работаем с физлицами и организациями. Оплата на месте наличными или картой.
+              {" "}Цены уточняйте по телефону{" "}
+              <a href={contactPhoneHref} style={{ color: "var(--green-lime)", fontWeight: 700 }}>
+                {contactPhone}
+              </a>
+              . Вывоз от {wp.pickupMinKg} кг.
             </p>
             <div className="wp-hero__stats">
               <div className="wp-hero__stat">
@@ -140,7 +148,7 @@ export default async function WastepaperPage() {
             <div className="wp-rates-card">
               <div className="wp-rates-card__header">
                 <h2 className="wp-rates-card__title">Актуальные тарифы</h2>
-                <span className="wp-rates-card__badge">обновлено сегодня</span>
+                <span className="wp-rates-card__badge">ориентир · уточняйте</span>
               </div>
               <div className="wp-rates-list">
                 {rateRows.map((row, i) => (
@@ -206,6 +214,8 @@ export default async function WastepaperPage() {
                 pickupMinKg={wp.pickupMinKg}
                 selfBonus={wp.selfBonus}
                 pickupPrice={wp.pickupPrice}
+                contactPhone={contactPhone}
+                contactPhoneHref={contactPhoneHref}
               />
             </div>
           </div>

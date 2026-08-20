@@ -11,7 +11,8 @@ import {
   RESTOCK_INQUIRY_LABEL,
 } from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { ShoppingCart, Check, Package, Clock3 } from "lucide-react";
+import { ShoppingCart, Package, Clock3, Plus, Minus } from "lucide-react";
+import { ymGoal } from "@/lib/ym";
 import {
   normalizeProductLabelColor,
   DEFAULT_PRODUCT_LABEL_COLOR,
@@ -73,7 +74,7 @@ export function ProductCardCompact({
   /** Карточка показана в специальном блоке «Товары под заказ». */
   orderMode?: boolean;
 }) {
-  const { addToCart, cart } = useCart();
+  const { addToCart, updateQty, removeFromCart, openCartDock, cart } = useCart();
   const packSize = product.packQty ? Math.max(1, Number(product.packQty)) : 1;
   const maxStock = product.stockQty ?? null;
   // Нет на складе — купить нельзя (кнопка «Уточнить поступление»), но
@@ -81,10 +82,11 @@ export function ProductCardCompact({
   const outOfStock = isOutOfStock(product);
   const orderOffer = orderMode && outOfStock;
 
-  const [added, setAdded] = useState(false);
   const [showHover, setShowHover] = useState(false);
 
   const inCart = cart.find((i) => i.productId === product.id);
+  const atMaxStock =
+    inCart != null && maxStock != null && inCart.quantity >= maxStock;
 
   const dims =
     product.dimensionLength && product.dimensionWidth
@@ -93,22 +95,65 @@ export function ProductCardCompact({
         } ${product.dimensionUnit || "мм"}`
       : null;
 
+  function cartPayload() {
+    return {
+      productId: product.id,
+      name: product.name,
+      sku: product.sku,
+      price: product.price as number,
+      imageUrl: product.imageUrl,
+      maxStock,
+    };
+  }
+
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
+    e.stopPropagation();
     if (!product.price || product.madeToOrder || outOfStock) return;
-    addToCart(
-      {
+    addToCart(cartPayload(), 1);
+    ymGoal("add_to_cart", { product_id: product.id });
+  }
+
+  function handleInc(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!product.price || product.madeToOrder || outOfStock) return;
+    if (!inCart) {
+      handleAdd(e);
+      return;
+    }
+    const next =
+      maxStock != null ? Math.min(inCart.quantity + 1, maxStock) : inCart.quantity + 1;
+    if (next === inCart.quantity) return;
+    updateQty(product.id, next);
+    openCartDock({
+      productId: product.id,
+      name: product.name,
+      imageUrl: product.imageUrl,
+      price: product.price,
+      qty: next,
+    });
+  }
+
+  function handleDec(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!inCart) return;
+    if (inCart.quantity <= 1) {
+      removeFromCart(product.id);
+      return;
+    }
+    const next = inCart.quantity - 1;
+    updateQty(product.id, next);
+    if (product.price != null) {
+      openCartDock({
         productId: product.id,
         name: product.name,
-        sku: product.sku,
-        price: product.price,
         imageUrl: product.imageUrl,
-        maxStock,
-      },
-      1
-    );
-    setAdded(true);
-    setTimeout(() => setAdded(false), 1800);
+        price: product.price,
+        qty: next,
+      });
+    }
   }
 
   return (
@@ -260,12 +305,10 @@ export function ProductCardCompact({
               Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : " · 2–3 дня"}
             </span>
           )}
-          {inCart && (
-            <span className="pcc__in-cart"><GlyphIcon value="check" size={12} /> в корзине: {inCart.quantity}</span>
-          )}
         </div>
 
-        {/* Управление количеством */}
+        {/* Управление количеством: степпер без суммы на карточке —
+           итог показывается в попапе над плавающей корзиной. */}
         {orderOffer ? (
           <PriceInquiryButton
             productName={product.name}
@@ -302,21 +345,39 @@ export function ProductCardCompact({
           />
         ) : product.price != null ? (
           <div className="pcc__actions">
-            <button
-              onClick={handleAdd}
-              className={`pcc__add-btn pcc__add-btn--wide${added ? " pcc__add-btn--added" : ""}`}
-              aria-label="Добавить в корзину"
-            >
-              {added ? (
-                <>
-                  <Check size={14} /> Добавлено
-                </>
-              ) : (
-                <>
-                  <ShoppingCart size={14} /> В корзину
-                </>
-              )}
-            </button>
+            {inCart ? (
+              <div className="pcc__stepper">
+                <button
+                  type="button"
+                  className="pcc__stepper-btn"
+                  onClick={handleDec}
+                  aria-label="Уменьшить количество"
+                >
+                  <Minus size={14} />
+                </button>
+                <span className="pcc__stepper-input" aria-live="polite">
+                  {inCart.quantity}
+                </span>
+                <button
+                  type="button"
+                  className="pcc__stepper-btn"
+                  onClick={handleInc}
+                  disabled={atMaxStock}
+                  aria-label="Увеличить количество"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleAdd}
+                className="pcc__add-btn pcc__add-btn--wide"
+                aria-label="Добавить в корзину"
+              >
+                <ShoppingCart size={14} /> В корзину
+              </button>
+            )}
           </div>
         ) : null}
       </div>

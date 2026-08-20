@@ -32,8 +32,8 @@ export const WASTEPAPER_RATE_DEFAULTS: WastepaperRates = {
 /** Надбавка за самовывоз (привёз сам), ₽/кг */
 export const WASTEPAPER_SELF_BONUS = 0.5;
 
-/** Минимальный вес для бесплатного вывоза, кг */
-export const WASTEPAPER_PICKUP_MIN_KG = 150;
+/** Минимальный вес для вывоза, кг */
+export const WASTEPAPER_PICKUP_MIN_KG = 200;
 
 export const WP_PICKUP_MIN_SETTING_KEY = "wp_pickup_min_kg";
 export const WP_SELF_BONUS_SETTING_KEY = "wp_self_bonus";
@@ -66,10 +66,13 @@ export function parseWastepaperAcceptList(raw: unknown): string[] {
 
 export function getWastepaperPageConfig(settings: Record<string, string> = {}) {
   return {
-    pickupMinKg: parseWastepaperNumber(
-      settings[WP_PICKUP_MIN_SETTING_KEY],
-      WASTEPAPER_PICKUP_MIN_KG
-    ),
+    pickupMinKg: (() => {
+      const raw = settings[WP_PICKUP_MIN_SETTING_KEY];
+      const parsed = parseWastepaperNumber(raw, WASTEPAPER_PICKUP_MIN_KG);
+      // Старый дефолт был 150 кг — поднимаем до актуальных 200.
+      if (!String(raw ?? "").trim() || parsed === 150) return WASTEPAPER_PICKUP_MIN_KG;
+      return parsed;
+    })(),
     selfBonus: parseWastepaperNumber(
       settings[WP_SELF_BONUS_SETTING_KEY],
       WASTEPAPER_SELF_BONUS

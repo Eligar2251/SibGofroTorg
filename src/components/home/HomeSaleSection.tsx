@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Tag, ShoppingCart, Check } from "lucide-react";
+import { ArrowRight, Tag, ShoppingCart, Plus, Minus } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { getProductEffectivePrice } from "@/lib/types";
@@ -30,8 +29,7 @@ function effectivePrice(p: SaleProduct): number | null {
  * Показывается на главной перед «Популярными товарами».
  */
 export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
-  const { addToCart, cart } = useCart();
-  const [addedId, setAddedId] = useState<string | null>(null);
+  const { addToCart, updateQty, removeFromCart, openCartDock, cart } = useCart();
 
   if (products.length === 0) return null;
 
@@ -49,8 +47,41 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
       },
       1
     );
-    setAddedId(p.id);
-    setTimeout(() => setAddedId(null), 1800);
+  }
+
+  function handleInc(p: SaleProduct, currentQty: number) {
+    const price = effectivePrice(p);
+    if (price == null) return;
+    const maxStock = p.stockQty ?? null;
+    const next = maxStock != null ? Math.min(currentQty + 1, maxStock) : currentQty + 1;
+    if (next === currentQty) return;
+    updateQty(p.id, next);
+    openCartDock({
+      productId: p.id,
+      name: p.name,
+      imageUrl: p.imageUrl,
+      price,
+      qty: next,
+    });
+  }
+
+  function handleDec(p: SaleProduct, currentQty: number) {
+    if (currentQty <= 1) {
+      removeFromCart(p.id);
+      return;
+    }
+    const price = effectivePrice(p);
+    const next = currentQty - 1;
+    updateQty(p.id, next);
+    if (price != null) {
+      openCartDock({
+        productId: p.id,
+        name: p.name,
+        imageUrl: p.imageUrl,
+        price,
+        qty: next,
+      });
+    }
   }
 
   return (
@@ -76,8 +107,9 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
               price != null &&
               price < p.price;
             const inCart = cart.find((i) => i.productId === p.id);
-            const added = addedId === p.id;
             const out = p.stockQty != null && p.stockQty <= 0;
+            const atMax =
+              inCart != null && p.stockQty != null && inCart.quantity >= p.stockQty;
 
             return (
               <div key={p.id} className="sale-card">
@@ -126,14 +158,39 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
                   </div>
 
                   {price != null && !out ? (
-                    <button
-                      type="button"
-                      className={`sale-card__btn${added ? " sale-card__btn--added" : ""}`}
-                      onClick={() => handleAdd(p)}
-                    >
-                      {added ? <Check size={14} /> : <ShoppingCart size={14} />}
-                      {added ? "В корзине" : inCart ? `Ещё (${inCart.quantity})` : "В корзину"}
-                    </button>
+                    inCart ? (
+                      <div className="pcc__stepper sale-card__stepper">
+                        <button
+                          type="button"
+                          className="pcc__stepper-btn"
+                          onClick={() => handleDec(p, inCart.quantity)}
+                          aria-label="Уменьшить количество"
+                        >
+                          <Minus size={14} />
+                        </button>
+                        <span className="pcc__stepper-input" aria-live="polite">
+                          {inCart.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          className="pcc__stepper-btn"
+                          onClick={() => handleInc(p, inCart.quantity)}
+                          disabled={atMax}
+                          aria-label="Увеличить количество"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="sale-card__btn"
+                        onClick={() => handleAdd(p)}
+                      >
+                        <ShoppingCart size={14} />
+                        В корзину
+                      </button>
+                    )
                   ) : null}
                 </div>
               </div>

@@ -1,42 +1,56 @@
 // =========================================================
 // FILE: src/components/layout/CartPopup.tsx
-// Всплывающее окно при добавлении товара в корзину: показывает
-// добавленный товар, итог корзины и кнопку «Перейти в корзину».
-// Показывается поверх страницы, в правом нижнем углу (над плавающей
-// корзиной), и сам закрывается через несколько секунд.
+// Попап над плавающей корзиной: количество и сумма.
+// Появляется только при добавлении товара и сам не закрывается —
+// прячется крестиком, «Скрыть» или переходом в корзину.
 // =========================================================
 
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { Check, ShoppingCart, X } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { GlyphIcon } from "@/components/ui/Glyph";
 
-const AUTO_HIDE_MS = 5000;
+function isCheckoutPath(pathname: string | null): boolean {
+  return pathname === "/order" || (pathname?.startsWith("/order/") ?? false);
+}
 
 export function CartPopup() {
-  const { lastAdded, clearLastAdded, totalItems, totalSum } = useCart();
+  const pathname = usePathname();
+  const {
+    lastAdded,
+    hideCartDock,
+    cartDockOpen,
+    cart,
+    totalItems,
+    totalSum,
+  } = useCart();
 
-  // Автоматически прячем попап через несколько секунд после добавления.
-  // Каждое новое добавление перезапускает таймер (эффект зависит от lastAdded).
-  useEffect(() => {
-    if (!lastAdded) return;
-    const timer = setTimeout(() => clearLastAdded(), AUTO_HIDE_MS);
-    return () => clearTimeout(timer);
-  }, [lastAdded, clearLastAdded]);
+  if (isCheckoutPath(pathname) || !cartDockOpen || totalItems === 0) return null;
 
-  if (!lastAdded) return null;
+  const liveItem = lastAdded
+    ? cart.find((item) => item.productId === lastAdded.productId)
+    : null;
+  const shown = liveItem
+    ? {
+        name: liveItem.name,
+        imageUrl: liveItem.imageUrl,
+        price: liveItem.price,
+        qty: liveItem.quantity,
+      }
+    : null;
+  const lineSum = shown ? shown.qty * shown.price : 0;
 
   return (
     <div className="cart-popup" role="status" aria-live="polite">
       <button
         type="button"
         className="cart-popup__close"
-        onClick={clearLastAdded}
-        aria-label="Закрыть уведомление"
+        onClick={hideCartDock}
+        aria-label="Скрыть корзину"
       >
         <X size={16} />
       </button>
@@ -45,30 +59,37 @@ export function CartPopup() {
         <span className="cart-popup__check">
           <Check size={16} />
         </span>
-        <span className="cart-popup__title">Товар добавлен в корзину</span>
+        <span className="cart-popup__title">
+          {shown ? "Товар в корзине" : "Корзина"}
+        </span>
       </div>
 
-      <div className="cart-popup__product">
-        <span className="cart-popup__img">
-          {lastAdded.imageUrl ? (
-            <Image
-              src={lastAdded.imageUrl}
-              alt={lastAdded.name}
-              fill
-              sizes="56px"
-              style={{ objectFit: "cover" }}
-            />
-          ) : (
-            <GlyphIcon value="box" size={24} />
-          )}
-        </span>
-        <span className="cart-popup__info">
-          <span className="cart-popup__name">{lastAdded.name}</span>
-          <span className="cart-popup__meta">
-            {lastAdded.qty} шт. × {lastAdded.price.toLocaleString("ru-RU")} ₽
+      {shown && (
+        <div className="cart-popup__product">
+          <span className="cart-popup__img">
+            {shown.imageUrl ? (
+              <Image
+                src={shown.imageUrl}
+                alt={shown.name}
+                fill
+                sizes="56px"
+                style={{ objectFit: "cover" }}
+              />
+            ) : (
+              <GlyphIcon value="box" size={24} />
+            )}
           </span>
-        </span>
-      </div>
+          <span className="cart-popup__info">
+            <span className="cart-popup__name">{shown.name}</span>
+            <span className="cart-popup__meta">
+              {shown.qty} шт. × {shown.price.toLocaleString("ru-RU")} ₽
+            </span>
+            <span className="cart-popup__line-sum">
+              {lineSum.toLocaleString("ru-RU")} ₽
+            </span>
+          </span>
+        </div>
+      )}
 
       <div className="cart-popup__total">
         <span>В корзине: {totalItems} шт.</span>
@@ -79,7 +100,7 @@ export function CartPopup() {
         <Link
           href="/order"
           className="cart-popup__btn cart-popup__btn--primary"
-          onClick={clearLastAdded}
+          onClick={hideCartDock}
         >
           <ShoppingCart size={16} />
           Перейти в корзину
@@ -87,9 +108,9 @@ export function CartPopup() {
         <button
           type="button"
           className="cart-popup__btn"
-          onClick={clearLastAdded}
+          onClick={hideCartDock}
         >
-          Продолжить покупки
+          Скрыть
         </button>
       </div>
     </div>

@@ -85,7 +85,13 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error("Не удалось загрузить изображение"));
-    img.src = src;
+    // Сбрасываем кэш браузера для повторно залитых Cloudinary-файлов.
+    if (src.startsWith("data:")) {
+      img.src = src;
+    } else {
+      const sep = src.includes("?") ? "&" : "?";
+      img.src = `${src}${sep}cb=${Date.now()}`;
+    }
   });
 }
 

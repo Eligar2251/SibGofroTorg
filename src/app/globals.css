@@ -553,13 +553,18 @@ select {
   padding: 0 4px;
 }
 
-/* Плавающая корзина: появляется, когда что-то добавлено.
-   Показывает количество и сумму, ведёт на /order. */
-.floating-cart {
+/* Плавающая корзина: появляется только при добавлении товара.
+   Показывает количество и сумму, ведёт на /order. Скрывается
+   крестиком или переходом в корзину — сама не закрывается. */
+.floating-cart-wrap {
   position: fixed;
   z-index: 840;
   right: max(14px, env(safe-area-inset-right));
   bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+.floating-cart {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -570,6 +575,30 @@ select {
   box-shadow: 0 10px 30px rgba(17, 29, 52, 0.28);
   text-decoration: none;
   transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.floating-cart__hide {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--ink-muted);
+  box-shadow: 0 2px 8px rgba(10, 20, 14, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.floating-cart__hide:hover {
+  background: var(--red-light);
+  color: var(--red);
 }
 
 .floating-cart:hover {
@@ -627,9 +656,11 @@ select {
 }
 
 @media (max-width: 640px) {
-  .floating-cart {
+  .floating-cart-wrap {
     right: 12px;
     bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .floating-cart {
     padding: 6px 14px 6px 6px;
   }
   .floating-cart__icon {
@@ -642,9 +673,10 @@ select {
 }
 
 /* ══════════════════════════════════════
-   ПОПАП «ТОВАР ДОБАВЛЕН В КОРЗИНУ»
-   Всплывает при добавлении товара — над плавающей корзиной,
-   в правом нижнем углу. Кнопка «Перейти в корзину» ведёт на /order.
+   ПОПАП НАД ПЛАВАЮЩЕЙ КОРЗИНОЙ
+   Появляется при добавлении товара — над плавающей корзиной,
+   в правом нижнем углу. Сам не закрывается: крестик, «Скрыть»
+   или переход в /order.
    ══════════════════════════════════════ */
 .cart-popup {
   position: fixed;
@@ -762,6 +794,12 @@ select {
 .cart-popup__meta {
   font-size: 12px;
   color: var(--ink-muted);
+}
+
+.cart-popup__line-sum {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
 }
 
 .cart-popup__total {
@@ -1787,14 +1825,14 @@ select {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .products-grid-4 {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .products-grid-4--loading {
@@ -1807,7 +1845,7 @@ select {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px;
-  align-items: start;
+  align-items: stretch;
 }
 
 /* ══════════════════════════════════════
@@ -2720,6 +2758,7 @@ select {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: 100%;
   will-change: transform, box-shadow;
   transition:
     box-shadow 0.16s ease,
@@ -2859,12 +2898,17 @@ select {
   flex-direction: column;
   gap: 3px;
   margin-top: auto;
+  /* Одна высота блока цены — с цифрой и без («по запросу»).
+     Карточка не прыгает от длины цены / опта / бейджа. */
+  min-height: 44px;
+  justify-content: flex-end;
 }
 
 .pcc__price-main {
   display: flex;
   align-items: baseline;
   gap: 4px;
+  min-height: 20px;
 }
 
 .pcc__price-val {
@@ -2872,6 +2916,8 @@ select {
   font-weight: 800;
   color: var(--ink);
   line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .pcc__price-rub {
@@ -2981,6 +3027,7 @@ select {
   align-items: center;
   gap: 5px;
   margin-top: 4px;
+  min-height: 32px;
 }
 
 .pcc__stepper {
@@ -2990,11 +3037,11 @@ select {
   border-radius: 6px;
   overflow: hidden;
   flex: 1;
-  height: 30px;
+  height: 32px;
 }
 
 .pcc__stepper-btn {
-  width: 26px;
+  width: 32px;
   height: 100%;
   background: #f9f9f9;
   border: none;
@@ -3004,12 +3051,18 @@ select {
   color: var(--ink-light);
   cursor: pointer;
   flex-shrink: 0;
+  touch-action: manipulation;
   transition: background-color var(--transition), color var(--transition);
 }
 
-.pcc__stepper-btn:hover {
+.pcc__stepper-btn:hover:not(:disabled) {
   background: var(--green-light);
   color: var(--green-dark);
+}
+
+.pcc__stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .pcc__stepper-input {
@@ -3027,6 +3080,10 @@ select {
   -moz-appearance: textfield;
   padding: 0;
   height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .pcc__stepper-input::-webkit-inner-spin-button,
@@ -3746,6 +3803,20 @@ select {
   font-size: 11px;
   color: #16a34a;
   margin-top: 4px;
+}
+
+.wpcalc__disclaimer {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #166534;
+}
+
+.wpcalc__disclaimer a {
+  color: #14532d;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .wpcalc__form {
@@ -5578,9 +5649,30 @@ select {
   color: var(--green);
 }
 
+.success-email {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--green);
+  text-decoration: none;
+}
+
+.success-email:hover {
+  text-decoration: underline;
+}
+
 .success-phone-hours {
   font-size: 12px;
   color: var(--ink-muted);
+}
+
+.success-card__desc a {
+  color: var(--green);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .success-actions {
@@ -6398,7 +6490,7 @@ select {
     justify-content: center;
   }
 
-  /* ── В правой панели hero: фичи «Вывоз от 150 кг — 0 ₽» и
+  /* ── В правой панели hero: фичи «Вывоз от 200 кг — 0 ₽» и
      «Работаем с юрлицами» переносятся на 2 строки (был nowrap,
      текст вылезал за края) ── */
   .hero__wp-features {
@@ -8348,11 +8440,16 @@ body {
 }
 .sale-card__btn:hover { background: var(--green-dark); }
 .sale-card__btn--added { background: var(--ok); }
+.sale-card__stepper {
+  width: 100%;
+  height: 34px;
+  margin-top: 2px;
+}
 
 @media (max-width: 768px) {
   .sale-section { padding: 28px 0 34px; }
   .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .sale-card__name { font-size: 11.5px; min-height: 0; }
+  .sale-card__name { font-size: 11.5px; min-height: 32px; }
   .sale-card__price { font-size: 14px; }
 }
 
