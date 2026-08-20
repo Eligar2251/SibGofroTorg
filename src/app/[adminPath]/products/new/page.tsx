@@ -5,8 +5,10 @@
 import {
   getAllCategories,
   getFeaturedProductOrderIds,
+  getProducts,
 } from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
+import { collectProductTags } from "@/lib/home-tiles";
 import { notFound } from "next/navigation";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
@@ -21,9 +23,10 @@ export default async function NewProductPage({
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
-  const [categories, featuredOrderIds] = await Promise.all([
+  const [categories, featuredOrderIds, allProducts] = await Promise.all([
     getAllCategories(),
     getFeaturedProductOrderIds(),
+    getProducts({ includeHidden: true }),
   ]);
   const serializedCategories = categories.map((cat) => ({
     id: cat.id,
@@ -43,6 +46,7 @@ export default async function NewProductPage({
       <ProductFormClient
         categories={serializedCategories}
         featuredOrderIds={featuredOrderIds}
+        knownTags={collectProductTags(allProducts)}
       />
     </div>
   );

@@ -150,6 +150,7 @@ select {
 }
 
 .page-home,
+.showcase-section > .container,
 .catalog-section > .container,
 .deals-section > .container,
 .consult-section > .container,
@@ -8353,4 +8354,213 @@ body {
   .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .sale-card__name { font-size: 11.5px; min-height: 0; }
   .sale-card__price { font-size: 14px; }
+}
+
+/* ══════════════════════════════════════
+   ВИТРИНА ГЛАВНОЙ — ПЛИТКИ РАЗДЕЛОВ
+   Плитки категорий/меток вместо блока «Популярные товары».
+   Клик по плитке мгновенно раскрывает окно каталога
+   (.showcase-panel) — переключение работает как вкладки.
+   ══════════════════════════════════════ */
+.showcase-section {
+  background: var(--bg);
+  padding: 48px 0 60px;
+}
+
+.showcase-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.showcase-head__eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--green);
+  margin-bottom: 6px;
+}
+
+.showcase-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.showcase-tile {
+  --tile-accent: var(--green);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 0;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.showcase-tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--green-border);
+  box-shadow: var(--shadow-md);
+}
+
+.showcase-tile:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.showcase-tile__media {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.showcase-tile__media img {
+  transition: transform 0.35s ease;
+}
+
+.showcase-tile:hover .showcase-tile__media img {
+  transform: scale(1.04);
+}
+
+.showcase-tile__glyph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tile-accent);
+  background: linear-gradient(135deg, var(--green-bg), var(--bg-soft));
+}
+
+.showcase-tile__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 14px;
+  border-top: 3px solid var(--tile-accent);
+}
+
+.showcase-tile__title {
+  font-family: var(--font-head);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.showcase-tile__sub {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.showcase-tile__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green-dark);
+}
+
+/* ── Окно каталога внутри плитки ── */
+.showcase-panel {
+  animation: showcase-fade 0.16s ease-out;
+}
+
+@keyframes showcase-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.showcase-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 6px 10px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.showcase-back:hover {
+  background: var(--green-bg);
+  color: var(--green-dark);
+}
+
+.fcat-item__count {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-faint);
+}
+
+.fcat-item--active .fcat-item__count {
+  color: var(--green);
+}
+
+.showcase-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+@media (max-width: 768px) {
+  .showcase-section {
+    padding: 28px 0 34px;
+  }
+  .showcase-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .showcase-tile__body {
+    padding: 10px 10px 12px;
+  }
+  .showcase-tile__title {
+    font-size: 13px;
+  }
+  .showcase-tile__sub {
+    display: none;
+  }
+  .showcase-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
 }

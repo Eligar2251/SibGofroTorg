@@ -119,6 +119,7 @@ html {
   .wrap,
   .page-home,
   .catalog-section > .container,
+  .showcase-section > .container,
   .deals-section > .container,
   .consult-section > .container,
   .map-section > .container {
@@ -512,6 +513,8 @@ html {
   .home-catalog-unified__main,
   .home-catalog-unified__side,
   .catalog-section,
+  .showcase-section,
+  .showcase-tiles,
   .shop-products,
   .home-products {
     min-width: 0;

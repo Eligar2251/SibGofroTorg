@@ -6,11 +6,17 @@ import {
   getProductById,
   getWastepaperRates,
   getSettings,
+  getHomeTiles,
 } from "@/lib/supabase-queries";
+import {
+  productMatchesTile,
+  parseTagList,
+  type HomeTile,
+} from "@/lib/home-tiles";
 import { formatRate, getWastepaperPageConfig } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
-import { HomeCatalogSection } from "@/components/home/HomeCatalogSection";
+import { HomeShowcase, type ShowcaseTile } from "@/components/home/HomeShowcase";
 import { HomeOrderProductsSection } from "@/components/home/HomeOrderProductsSection";
 import { HomeSaleSection } from "@/components/home/HomeSaleSection";
 import { DealsRow } from "@/components/home/DealsRow";
@@ -86,20 +92,15 @@ export const revalidate = 120;
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [categories, featuredProductsRaw, allVisibleProducts, promotions, wpRates, settings] = await Promise.all([
-    getCategories(),
-    // Берём с запасом: закончившиеся популярные позиции уходят в отдельный
-    // блок «Под заказ», а основная секция остаётся складской.
-    getProducts({ featuredOnly: true, limitCount: 500 }),
-    getProducts({}),
-    getPromotions(),
-    getWastepaperRates(),
-    getSettings().catch(() => ({} as Record<string, string>)),
-  ]);
-
-  const featuredProducts = featuredProductsRaw
-    .filter(isProductAvailable)
-    .slice(0, 12);
+  const [categories, allVisibleProducts, promotions, wpRates, settings, homeTiles] =
+    await Promise.all([
+      getCategories(),
+      getProducts({}),
+      getPromotions(),
+      getWastepaperRates(),
+      getSettings().catch(() => ({} as Record<string, string>)),
+      getHomeTiles().catch(() => [] as HomeTile[]),
+    ]);
   // «Распродажа остатков»: товары с флагом isSale, которые в наличии.
   const saleProducts = allVisibleProducts
     .filter((p) => p.isSale && isProductAvailable(p))
@@ -199,8 +200,86 @@ export default async function HomePage() {
     variantPriceMax: p.variantPriceMax ?? null,
     variantTotalStock: p.variantTotalStock ?? 0,
   });
-  const serializedProducts = featuredProducts.map(serializeHomeProduct);
   const serializedOrderProducts = orderProducts.map(serializeHomeProduct);
+
+  // ── Плитки разделов (витрина главной) ──
+  // Порядок и содержимое задаёт админка. Если плитки ещё не заведены
+  // (или миграция не применена) — собираем их автоматически из
+  // видимых категорий каталога, чтобы главная не осталась пустой.
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const tileSource: HomeTile[] = homeTiles.length
+    ? homeTiles
+    : [
+        {
+          id: "auto-featured",
+          title: "Популярные",
+          subtitle: "Чаще всего заказывают",
+          imageUrl: null,
+          icon: "star",
+          kind: "featured" as const,
+          categoryId: null,
+          tag: null,
+          accent: null,
+          sortOrder: -1,
+          isVisible: true,
+        },
+        ...categories.map((cat, index) => ({
+          id: `auto-${cat.id}`,
+          title: cat.name,
+          subtitle: cat.description ?? null,
+          imageUrl: cat.imageUrl ?? null,
+          icon: cat.icon ?? "box",
+          kind: "category" as const,
+          categoryId: cat.id,
+          tag: null,
+          accent: null,
+          sortOrder: index,
+          isVisible: true,
+        })),
+      ];
+
+  const showcaseTiles: ShowcaseTile[] = tileSource.flatMap((tile) => {
+      const cat = tile.categoryId ? categoryById.get(tile.categoryId) : null;
+      // Категорию могли удалить — такую плитку не показываем.
+      if (tile.kind === "category" && !cat) return [];
+
+      // В плитке «Популярные» показываем только то, что в наличии:
+      // закончившиеся позиции живут в отдельном блоке «Под заказ».
+      const matched = allVisibleProducts.filter(
+        (p) =>
+          productMatchesTile(p, tile) &&
+          (tile.kind !== "featured" || isProductAvailable(p))
+      );
+      if (matched.length === 0) return [];
+
+      const params = new URLSearchParams();
+      if (tile.kind === "category" && cat) params.set("category", cat.slug);
+      if (tile.kind === "tag") params.set("tag", parseTagList(tile.tag).join(","));
+      if (tile.kind === "featured") {
+        params.set("featured", "1");
+        params.set("stock", "yes");
+      }
+      if (tile.kind === "sale") params.set("sale", "1");
+
+      const showcaseTile: ShowcaseTile = {
+        id: tile.id,
+        title: tile.title || cat?.name || "Раздел",
+        subtitle: tile.subtitle ?? cat?.description ?? null,
+        // Фото плитки: своё → фото категории → фото первого товара.
+        imageUrl:
+          tile.imageUrl ||
+          cat?.imageUrl ||
+          matched.find((p) => p.imageUrl)?.imageUrl ||
+          null,
+        icon: tile.icon || cat?.icon || "box",
+        accent: tile.accent ?? null,
+        href: tile.kind === "category" && cat ? `/catalog/${cat.slug}` : "/catalog",
+        apiQuery: params.toString(),
+        count: matched.length,
+        products: matched.slice(0, 12).map(serializeHomeProduct),
+      };
+      return [showcaseTile];
+  });
 
   const wpCfg = getWastepaperPageConfig(settings);
 
@@ -392,11 +471,8 @@ export default async function HomePage() {
       {/* РАСПРОДАЖА ОСТАТКОВ — перед популярными товарами */}
       <HomeSaleSection products={serializedSaleProducts} />
 
-      {/* ПОИСК + КАТЕГОРИИ + ТОВАРЫ — один блок */}
-      <HomeCatalogSection
-        categories={serializedCategories}
-        initialProducts={serializedProducts}
-      />
+      {/* ПЛИТКИ РАЗДЕЛОВ → мгновенное окно каталога (поиск + фильтр) */}
+      <HomeShowcase tiles={showcaseTiles} />
 
       {/* Закончившиеся, но доступные к поставке позиции */}
       <HomeOrderProductsSection products={serializedOrderProducts} />
