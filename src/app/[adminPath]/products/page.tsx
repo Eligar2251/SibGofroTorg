@@ -16,6 +16,7 @@ import {
   QrCode,
   GripVertical,
   Wand2,
+  LayoutGrid,
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ProductListClient } from "@/components/admin/ProductListClient";
@@ -109,6 +110,13 @@ export default async function AdminProductsPage({
           <h1 className="admin-h1">Товары и категории</h1>
           <p className="admin-sub">Товары: {allProducts.length} · Категории: {cats.length}</p>
         </div>
+        {activeTab === "categories" && (
+          <div className="admin-page-head__actions">
+            <Link href={`/${ADMIN_PATH}/home-tiles`} className="admin-btn admin-btn--primary" prefetch={false}>
+              <LayoutGrid size={15} /> Плитки на главной
+            </Link>
+          </div>
+        )}
         {activeTab === "products" && (
           <div className="admin-page-head__actions">
             <Link href={`/${ADMIN_PATH}/products/featured-order`} className="admin-btn admin-btn--ghost" prefetch={false}>
@@ -148,6 +156,9 @@ export default async function AdminProductsPage({
         </Link>
         <Link href={`/${ADMIN_PATH}/products?tab=categories`} className={`admin-filter${activeTab === "categories" ? " admin-filter--active" : ""}`} prefetch={false}>
           <FolderOpen size={13} /> Категории
+        </Link>
+        <Link href={`/${ADMIN_PATH}/home-tiles`} className="admin-filter" prefetch={false}>
+          <LayoutGrid size={13} /> Плитки на главной
         </Link>
       </div>
 

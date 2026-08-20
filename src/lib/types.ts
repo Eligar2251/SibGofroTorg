@@ -35,6 +35,9 @@ export interface FirestoreProduct {
   stockWarnQty?: number | null | undefined;
   isPromo: boolean;
   promoLabel?: string | null | undefined;
+  /** Метки товара («озон», «вб», «сдэк», «гост»...). Товар может
+   *  входить сразу в несколько плиток главной. */
+  tags?: string[] | undefined;
   promoLabelColor?: string | null | undefined;
   promoLabelTextColor?: string | null | undefined;
   madeToOrder?: boolean | null | undefined;

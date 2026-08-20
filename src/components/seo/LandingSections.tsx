@@ -65,15 +65,20 @@ export function LandingProducts({
 }) {
   if (!products.length) return null;
   return (
-    <div className="seo-landing-products">
-      <h2 className="seo-block__title">{title}</h2>
-      {note ? <p className="seo-block__intro">{note}</p> : null}
-      <div className="product-grid product-grid-compact">
+    <section className="seo-landing-products" aria-label={title}>
+      <header className="seo-landing-products__head">
+        <h2 className="seo-landing-products__title">{title}</h2>
+        {note ? <p className="seo-landing-products__note">{note}</p> : null}
+      </header>
+      <div className="seo-landing-products__grid">
         {products.map((p) => (
           <ProductCardCompact key={p.id} product={p} />
         ))}
       </div>
-    </div>
+      <Link href="/catalog" className="seo-landing-products__all">
+        Смотреть весь каталог <ArrowRight size={14} />
+      </Link>
+    </section>
   );
 }
 

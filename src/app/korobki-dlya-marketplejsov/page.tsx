@@ -9,6 +9,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getProducts } from "@/lib/supabase-queries";
+import { productHasAnyTag } from "@/lib/home-tiles";
+import { isProductAvailable } from "@/lib/stock-availability";
 import { SITE_URL, SITE_NAME, buildBreadcrumbJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import {
@@ -22,6 +24,18 @@ import "@/app/seo-blocks.css";
 export const revalidate = 600;
 
 const PAGE_PATH = "/korobki-dlya-marketplejsov";
+
+/** Метки товаров, по которым собирается блок «коробки для WB и Ozon». */
+const MARKETPLACE_TAGS = [
+  "озон",
+  "ozon",
+  "вб",
+  "wb",
+  "wildberries",
+  "вайлдберриз",
+  "маркетплейс",
+  "маркетплейсы",
+];
 
 export const metadata: Metadata = {
   title: "Коробки для маркетплейсов WB и Ozon — купить в Новосибирске",
@@ -37,25 +51,32 @@ export const metadata: Metadata = {
 };
 
 export default async function MarketplaceBoxesPage() {
-  // Товары с маркировкой «WB/OZON» (задаётся в админке промо-лейблом
-  // или в названии). Фолбэк — крупные четырёхклапанные ящики,
-  // которые обычно и используют для поставок.
+  // Подбор товаров для блока: сначала помеченные метками/бейджами
+  // «озон/вб/маркетплейс» (метки товара задаются в админке),
+  // затем упомянутые в названии, затем «паллетные» типоразмеры.
+  // Списки объединяются без дублей — блок не остаётся с одной
+  // карточкой, даже если метка проставлена всего у одного товара.
   const all = await getProducts({ limitCount: 2000 }).catch(() => []);
-  const tagged = all
-    .filter((p) => p.isVisible !== false)
-    .filter((p) =>
-      /wb|ozon|озон|вайлдберриз|wildberries|маркетплейс/i.test(
-        `${p.name} ${p.promoLabel ?? ""} ${p.sku ?? ""}`,
-      ),
-    )
-    .slice(0, 8);
+  const visible = all.filter((p) => p.isVisible !== false);
 
-  const fallback = all
-    .filter((p) => p.isVisible !== false)
-    .filter((p) => p.dimensionLength === 600 || p.dimensionLength === 800)
-    .slice(0, 8);
+  const byTag = visible.filter((p) =>
+    productHasAnyTag(p, MARKETPLACE_TAGS),
+  );
+  const byText = visible.filter((p) =>
+    /wb|ozon|озон|вайлдберриз|wildberries|маркетплейс/i.test(
+      `${p.name} ${p.promoLabel ?? ""} ${p.sku ?? ""}`,
+    ),
+  );
+  const bySize = visible.filter(
+    (p) => p.dimensionLength === 600 || p.dimensionLength === 800,
+  );
 
-  const products = tagged.length > 0 ? tagged : fallback;
+  const seen = new Set<string>();
+  const products = [...byTag, ...byText, ...bySize]
+    .filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)))
+    // Сначала то, что реально можно купить сегодня.
+    .sort((a, b) => Number(isProductAvailable(b)) - Number(isProductAvailable(a)))
+    .slice(0, 8);
 
   return (
     <>

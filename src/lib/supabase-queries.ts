@@ -43,6 +43,21 @@ import {
   calculateBoxVolumeLiters,
   normalizeProductLabelColor,
 } from "./product-fields";
+import {
+  parseHomeTileKind,
+  productMatchesTile,
+  productHasAnyTag,
+  normalizeTag,
+  sanitizeTagsForSave,
+  sortHomeTiles,
+  type HomeTile,
+} from "./home-tiles";
+import {
+  parseSavedTemplates,
+  PHOTO_TEMPLATES_LIMIT,
+  PHOTO_TEMPLATES_SETTING_KEY,
+  type SavedPhotoTemplate,
+} from "./photo-template";
 
 export const FEATURED_PRODUCTS_ORDER_SETTING_KEY = "featured_products_order";
 
@@ -201,6 +216,18 @@ function isMissingSaleColumnError(err: any): boolean {
   );
 }
 
+function isMissingTagsColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("tags")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 function mapProductRow(row: any): FirestoreProduct {
   const images = normalizeProductImages(row.images);
   return {
@@ -238,6 +265,7 @@ function mapProductRow(row: any): FirestoreProduct {
     barcode: row.barcode || null,
     isPromo: row.is_promo ?? false,
     promoLabel: row.promo_label || null,
+    tags: sanitizeTagsForSave(row.tags),
     promoLabelColor: normalizeProductLabelColor(row.promo_label_color),
     promoLabelTextColor: normalizeProductLabelColor(row.promo_label_text_color),
     madeToOrder: row.made_to_order ?? false,
@@ -482,6 +510,136 @@ export async function getCategoryBySlug(slug: string): Promise<FirestoreCategory
   return cats.find((c) => c.slug === slug) || null;
 }
 
+// ─── Плитки главной (home_tiles) ───────────────────────────
+// Витрина главной страницы: набор, порядок, картинки и правила
+// отбора задаёт админ. Каталог этим не затрагивается.
+
+function mapHomeTileRow(row: any): HomeTile {
+  return {
+    id: row.id,
+    title: row.title || "",
+    subtitle: row.subtitle || null,
+    imageUrl: row.image_url || null,
+    icon: row.icon || null,
+    kind: parseHomeTileKind(row.kind),
+    categoryId: row.category_id || null,
+    tag: row.tag || null,
+    accent: row.accent || null,
+    sortOrder: Number(row.sort_order || 0),
+    isVisible: row.is_visible ?? true,
+  };
+}
+
+async function fetchAllHomeTiles(): Promise<HomeTile[]> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("home_tiles")
+    .select("*")
+    .order("sort_order", { ascending: true });
+  if (error) {
+    // Таблицы может ещё не быть (миграция не применена) — главная
+    // в этом случае показывает плитки, собранные из категорий.
+    console.error("fetchAllHomeTiles error:", error?.message || error);
+    return [];
+  }
+  return sortHomeTiles((data || []).map(mapHomeTileRow));
+}
+
+const getCachedHomeTiles = unstable_cache(fetchAllHomeTiles, ["home-tiles"], {
+  revalidate: DATA_REVALIDATE,
+  tags: ["home-tiles"],
+});
+
+/** Все плитки, включая скрытые — для админки. */
+export async function getAllHomeTiles(): Promise<HomeTile[]> {
+  return getCachedHomeTiles();
+}
+
+/** Видимые плитки для главной страницы. */
+export async function getHomeTiles(): Promise<HomeTile[]> {
+  const tiles = await getCachedHomeTiles();
+  return tiles.filter((t) => t.isVisible !== false);
+}
+
+/** Есть ли таблица home_tiles в базе (подсказка админу про миграцию). */
+export async function homeTilesTableExists(): Promise<boolean> {
+  try {
+    const db = getAdminDb();
+    const { error } = await db.from("home_tiles").select("id").limit(1);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/** Товары одной плитки (в порядке каталога по умолчанию). */
+export async function getProductsForTile(
+  tile: Pick<HomeTile, "kind" | "categoryId" | "tag">,
+  opts: { limitCount?: number } = {}
+): Promise<FirestoreProduct[]> {
+  const all = await getProducts({});
+  const matched = all.filter((p) => productMatchesTile(p, tile));
+  return opts.limitCount ? matched.slice(0, opts.limitCount) : matched;
+}
+
+function homeTilePayload(data: Record<string, any>): Record<string, any> {  const kind = parseHomeTileKind(data.kind);
+  return {
+    title: String(data.title || "").trim().slice(0, 120),
+    subtitle: data.subtitle ? String(data.subtitle).slice(0, 300) : null,
+    image_url: data.imageUrl ? String(data.imageUrl).slice(0, 1000) : null,
+    icon: data.icon ? String(data.icon).slice(0, 60) : null,
+    kind,
+    category_id: kind === "category" && data.categoryId ? String(data.categoryId) : null,
+    tag: kind === "tag" && data.tag ? String(data.tag).slice(0, 200) : null,
+    accent: data.accent ? String(data.accent).slice(0, 40) : null,
+    sort_order: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : 0,
+    is_visible: data.isVisible !== false,
+  };
+}
+
+export async function createHomeTile(data: Record<string, any>): Promise<{ id: string }> {
+  const db = getAdminDb();
+  const { data: row, error } = await db
+    .from("home_tiles")
+    .insert(homeTilePayload(data))
+    .select("id")
+    .single();
+  if (error) throw error;
+  revalidateTag("home-tiles", { expire: 0 });
+  return { id: row.id };
+}
+
+export async function updateHomeTile(id: string, data: Record<string, any>): Promise<void> {
+  const db = getAdminDb();
+  const { error } = await db
+    .from("home_tiles")
+    .update({ ...homeTilePayload(data), updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  revalidateTag("home-tiles", { expire: 0 });
+}
+
+export async function deleteHomeTile(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { error } = await db.from("home_tiles").delete().eq("id", id);
+  if (error) throw error;
+  revalidateTag("home-tiles", { expire: 0 });
+}
+
+/** Сохраняет порядок плиток: массив id в нужной последовательности. */
+export async function reorderHomeTiles(ids: string[]): Promise<void> {
+  const db = getAdminDb();
+  await Promise.all(
+    ids.map((id, index) =>
+      db
+        .from("home_tiles")
+        .update({ sort_order: index, updated_at: new Date().toISOString() })
+        .eq("id", id)
+    )
+  );
+  revalidateTag("home-tiles", { expire: 0 });
+}
+
 // ─── Products ──────────────────────────────────────────────
 
 function getProductDims(p: FirestoreProduct): number[] {
@@ -538,6 +696,10 @@ export async function getProducts(opts: {
   limitCount?: number;
   promoOnly?: boolean;
   featuredOnly?: boolean;
+  saleOnly?: boolean;
+  /** Метки товара: берём товары, у которых есть ХОТЯ БЫ ОДНА из них.
+   *  Учитываются и products.tags, и бейджи (promo_label / discount_badge). */
+  tags?: string[];
   includeHidden?: boolean;
 } = {}): Promise<FirestoreProduct[]> {
   let products = await getCachedProducts();
@@ -551,6 +713,11 @@ export async function getProducts(opts: {
   }
   if (opts.promoOnly) products = products.filter((p) => p.isPromo);
   if (opts.featuredOnly) products = products.filter((p) => p.isFeatured);
+  if (opts.saleOnly) products = products.filter((p) => p.isSale);
+  if (opts.tags && opts.tags.length > 0) {
+    const wanted = opts.tags.map((t) => normalizeTag(t)).filter(Boolean);
+    products = products.filter((p) => productHasAnyTag(p, wanted));
+  }
 
   const queryDims = opts.search ? extractQueryDims(opts.search) : null;
 
@@ -748,6 +915,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     stock_warn_qty: data.stockWarnQty ?? null,
     is_promo: data.isPromo ?? false,
     promo_label: data.promoLabel || null,
+    tags: sanitizeTagsForSave(data.tags),
     promo_label_color: normalizeProductLabelColor(data.promoLabelColor),
     promo_label_text_color: normalizeProductLabelColor(data.promoLabelTextColor),
     made_to_order: data.madeToOrder ?? false,
@@ -825,6 +993,16 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
       if (retry6.error) throw retry6.error;
       result = retry6.data;
       insertErr = null;
+    } else if (isMissingTagsColumnError(first.error)) {
+      console.warn(
+        "[products] Колонки tags нет — запись без меток. " +
+          "Выполните supabase/migration_home_tiles.sql в Supabase."
+      );
+      const { tags: _tags, ...payloadNoTags } = payload;
+      const retry7 = await db.from("products").insert(payloadNoTags).select("id").single();
+      if (retry7.error) throw retry7.error;
+      result = retry7.data;
+      insertErr = null;
     }
   } else {
     result = first.data;
@@ -862,6 +1040,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     packQty: "pack_qty", volume: "volume", note: "note", inStock: "in_stock",
     stockQty: "stock_qty", stockWarnQty: "stock_warn_qty", isPromo: "is_promo",
     promoLabel: "promo_label", promoLabelColor: "promo_label_color",
+    tags: "tags",
     promoLabelTextColor: "promo_label_text_color",
     madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
     isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
@@ -889,6 +1068,9 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       data.dimensionHeight,
       data.dimensionUnit,
     );
+  }
+  if (data.tags !== undefined) {
+    payload.tags = sanitizeTagsForSave(data.tags);
   }
   if (data.promoLabelColor !== undefined) {
     payload.promo_label_color = normalizeProductLabelColor(data.promoLabelColor);
@@ -980,6 +1162,14 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     console.warn("[products] Колонки is_sale нет — сохранение без флага распродажи");
     const { is_sale: _sale, ...payloadNoSale } = payload;
     ({ error } = await db.from("products").update(payloadNoSale).eq("id", id));
+  }
+  if (error && isMissingTagsColumnError(error) && "tags" in payload) {
+    console.warn(
+      "[products] Колонки tags нет — сохранение без меток. " +
+        "Выполните supabase/migration_home_tiles.sql в Supabase."
+    );
+    const { tags: _tags, ...payloadNoTags } = payload;
+    ({ error } = await db.from("products").update(payloadNoTags).eq("id", id));
   }
   if (error) throw error;
   invalidateProductsCache();
@@ -1596,6 +1786,26 @@ const getCachedSettings = unstable_cache(
 
 export async function getSettings(): Promise<Record<string, string>> {
   return getCachedSettings();
+}
+
+// ─── Библиотека шаблонов фото (конструктор карточек) ───────
+// Шаблоны лежат в settings под одним JSON-ключом: отдельная таблица
+// ради 3-5 записей избыточна, а так они переживают перезагрузку и
+// доступны с любого устройства.
+
+export async function getPhotoTemplates(): Promise<SavedPhotoTemplate[]> {
+  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  return parseSavedTemplates(settings[PHOTO_TEMPLATES_SETTING_KEY]);
+}
+
+export async function savePhotoTemplates(
+  templates: SavedPhotoTemplate[]
+): Promise<void> {
+  await updateSettings({
+    [PHOTO_TEMPLATES_SETTING_KEY]: JSON.stringify(
+      templates.slice(0, PHOTO_TEMPLATES_LIMIT)
+    ),
+  });
 }
 
 export async function updateSettings(data: Record<string, string>): Promise<void> {

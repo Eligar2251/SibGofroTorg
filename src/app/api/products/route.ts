@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isProductAvailable } from "@/lib/stock-availability";
 import { getCategoryBySlug, getProducts } from "@/lib/supabase-queries";
+import { parseTagList } from "@/lib/home-tiles";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,10 @@ export async function GET(request: NextRequest) {
     const limitParam = searchParams.get("limit");
     const promoOnly = searchParams.get("promo") === "1";
     const featuredOnly = searchParams.get("featured") === "1";
+    const saleOnly = searchParams.get("sale") === "1";
+    // Метки плиток главной: ?tag=озон,вб — товары с любой из меток
+    // (учитываются products.tags и бейджи товара).
+    const tags = parseTagList(searchParams.get("tag") || "");
 
     let categoryId: string | undefined;
     if (categorySlug) {
@@ -43,9 +48,11 @@ export async function GET(request: NextRequest) {
       sortBy: sort,
       // Если лимит не передан, ставим 48 для главной страницы, 
       // иначе undefined для категорий/поиска (чтобы забрать всё, но в пределах разумного)
-      limitCount: limitCount ?? (categorySlug || q ? undefined : 48),
+      limitCount: limitCount ?? (categorySlug || q || tags.length ? undefined : 48),
       promoOnly: promoOnly || undefined,
       featuredOnly: featuredOnly || undefined,
+      saleOnly: saleOnly || undefined,
+      tags: tags.length ? tags : undefined,
     });
 
     if (stock === "yes") {

@@ -1,5 +1,12 @@
 // =========================================================
 // FILE: src/components/admin/ImageUploader.tsx
+// Загрузка фото в Cloudinary с двумя режимами:
+//  • «заменять» (по умолчанию для карточки товара) — новое фото
+//    встаёт вместо старого, вторым экземпляром не добавляется;
+//  • «добавлять» — старые фото остаются в галерее.
+// Файлы грузятся последовательно и списываются одним onChange —
+// раньше параллельные загрузки затирали друг друга (каждая
+// считала images из своего замыкания).
 // =========================================================
 
 "use client";
@@ -11,15 +18,26 @@ import Image from "next/image";
 interface ImageUploaderProps {
   images: { url: string; publicId: string }[];
   onChange: (images: { url: string; publicId: string }[]) => void;
+  /** Включить режим «заменять фото» по умолчанию (карточка товара). */
+  defaultReplace?: boolean;
+  /** Скрыть переключатель режима (когда фото всегда одно). */
+  hideReplaceToggle?: boolean;
 }
 
-export function ImageUploader({ images, onChange }: ImageUploaderProps) {
+export function ImageUploader({
+  images,
+  onChange,
+  defaultReplace = false,
+  hideReplaceToggle = false,
+}: ImageUploaderProps) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [replace, setReplace] = useState(defaultReplace);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function uploadFile(file: File) {
-    setUploading(true);
+  async function uploadOne(
+    file: File
+  ): Promise<{ url: string; publicId: string } | null> {
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -32,12 +50,12 @@ export function ImageUploader({ images, onChange }: ImageUploaderProps) {
       if (!res.ok) throw new Error("Ошибка загрузки");
 
       const data = await res.json();
-      onChange([...images, { url: data.url, publicId: data.publicId }]);
+      return { url: data.url, publicId: data.publicId };
     } catch (err) {
       console.error(err);
       alert("Не удалось загрузить фото");
+      return null;
     }
-    setUploading(false);
   }
 
   async function removeImage(target: { url: string; publicId: string }) {
@@ -60,13 +78,23 @@ export function ImageUploader({ images, onChange }: ImageUploaderProps) {
     }
   }
 
-  function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | null) {
     if (!files) return;
-    Array.from(files).forEach((file) => {
-      if (file.type.startsWith("image/")) {
-        uploadFile(file);
-      }
-    });
+    const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (list.length === 0) return;
+
+    setUploading(true);
+    const uploaded: { url: string; publicId: string }[] = [];
+    for (const file of list) {
+      const result = await uploadOne(file);
+      if (result) uploaded.push(result);
+    }
+    setUploading(false);
+    if (uploaded.length === 0) return;
+
+    // «Заменить» — новые фото полностью вытесняют старые
+    // (главным становится первое из загруженных).
+    onChange(replace ? uploaded : [...images, ...uploaded]);
   }
 
   return (
@@ -106,10 +134,28 @@ export function ImageUploader({ images, onChange }: ImageUploaderProps) {
             <p className="admin-upload__title">
               Перетащите фото или нажмите для выбора
             </p>
-            <p className="admin-upload__sub">PNG, JPG, WEBP — до 10 МБ</p>
+            <p className="admin-upload__sub">
+              {images.length > 0 && replace
+                ? "Новое фото заменит текущее"
+                : "PNG, JPG, WEBP — до 10 МБ"}
+            </p>
           </div>
         )}
       </div>
+
+      {!hideReplaceToggle && (
+        <label className="admin-check" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={replace}
+            onChange={(e) => setReplace(e.target.checked)}
+          />
+          <span>
+            Заменять фото при загрузке (снимите галочку, чтобы добавить в
+            галерею вторым)
+          </span>
+        </label>
+      )}
 
       {images.some((img) => img?.url) && (
         <div className="admin-upload-grid">

@@ -13235,3 +13235,61 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 @media (max-width: 600px) {
   .sp-summary__stats { grid-template-columns: 1fr; }
 }
+
+/* ── Метки товара (плитки на главной) ── */
+.product-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.product-tags--suggest {
+  margin: 8px 0 0;
+}
+
+.product-tags__empty {
+  font-size: 12px;
+  color: var(--adm-muted, #888);
+}
+
+.product-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--adm-navy-soft, #eef2f7);
+  border: 1px solid var(--adm-border, #dde3ea);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--adm-navy, #21324a);
+}
+
+.product-tag button {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.product-tag button:hover {
+  opacity: 1;
+  color: var(--adm-red, #dc2626);
+}
+
+.product-tag--add {
+  cursor: pointer;
+  background: transparent;
+  font-family: inherit;
+}
+
+.product-tag--add:hover {
+  background: var(--adm-navy-soft, #eef2f7);
+  border-color: var(--adm-navy, #21324a);
+}

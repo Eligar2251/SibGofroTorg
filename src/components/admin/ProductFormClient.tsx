@@ -18,6 +18,7 @@ import {
   Link2,
   Quote,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
 import { MarkdownText } from "@/components/catalog/MarkdownText";
@@ -27,6 +28,7 @@ import {
   DEFAULT_PRODUCT_LABEL_COLOR,
   DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
 } from "@/lib/product-fields";
+import { normalizeTag, parseTagList } from "@/lib/home-tiles";
 
 interface Category {
   id: string;
@@ -64,6 +66,7 @@ interface ProductData {
   inStock?: boolean | null;
   isPromo?: boolean | null;
   promoLabel?: string | null;
+  tags?: string[] | null;
   promoLabelColor?: string | null;
   promoLabelTextColor?: string | null;
   madeToOrder?: boolean | null;
@@ -109,10 +112,13 @@ export function ProductFormClient({
   categories,
   product,
   featuredOrderIds = [],
+  knownTags = [],
 }: {
   categories: Category[];
   product?: ProductData;
   featuredOrderIds?: string[];
+  /** Метки, уже использованные на сайте — подсказки при вводе. */
+  knownTags?: string[];
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -156,6 +162,24 @@ export function ProductFormClient({
   );
   const [dimensionUnit, setDimensionUnit] = useState(product?.dimensionUnit || "мм");
   const [promoLabel, setPromoLabel] = useState(product?.promoLabel || "");
+  // Метки товара («озон», «вб», «сдэк», «гост»...). По ним строятся
+  // плитки на главной; у товара их может быть сколько угодно.
+  const [tags, setTags] = useState<string[]>(() =>
+    (product?.tags || []).map((t) => normalizeTag(t)).filter(Boolean)
+  );
+  const [tagInput, setTagInput] = useState("");
+
+  function addTags(raw: string) {
+    const next = parseTagList(raw);
+    if (next.length === 0) return;
+    setTags((prev) => [...new Set([...prev, ...next])].slice(0, 20));
+    setTagInput("");
+  }
+
+  function removeTag(tag: string) {
+    setTags((prev) => prev.filter((t) => t !== tag));
+  }
+
   const [promoLabelColor, setPromoLabelColor] = useState(
     product?.promoLabelColor || DEFAULT_PRODUCT_LABEL_COLOR
   );
@@ -295,6 +319,7 @@ export function ProductFormClient({
       inStock: data.get("inStock") === "on",
       isPromo: data.get("isPromo") === "on",
       promoLabel: cleanPromoLabel || null,
+      tags,
       promoLabelColor: cleanPromoLabel ? promoLabelColor : null,
       promoLabelTextColor: cleanPromoLabel ? promoLabelTextColor : null,
       madeToOrder: madeToOrderChecked,
@@ -401,7 +426,9 @@ export function ProductFormClient({
       <div className="admin-card">
         <div className="admin-card__pad">
           <h2 className="admin-h2">Фотографии товара</h2>
-          <ImageUploader images={images} onChange={setImages} />
+          {/* Фото товара: новое фото заменяет текущее (галочку можно
+              снять, если нужна галерея из нескольких снимков). */}
+          <ImageUploader images={images} onChange={setImages} defaultReplace />
         </div>
       </div>
 
@@ -1038,8 +1065,75 @@ export function ProductFormClient({
               </div>
             </div>
             <div className="admin-field">
-              <label className="admin-label">Порядок в популярных</label>
+              <label className="admin-label">Метки товара (плитки на главной)</label>
+              <div className="product-tags">
+                {tags.map((t) => (
+                  <span key={t} className="product-tag">
+                    {t}
+                    <button
+                      type="button"
+                      onClick={() => removeTag(t)}
+                      aria-label={`Убрать метку ${t}`}
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+                {tags.length === 0 && (
+                  <span className="product-tags__empty">Меток нет</span>
+                )}
+              </div>
               <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // Запятая = «добавить метку»
+                  if (v.includes(",")) addTags(v);
+                  else setTagInput(v);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTags(tagInput);
+                  }
+                }}
+                onBlur={() => addTags(tagInput)}
+                className="admin-input"
+                placeholder="озон, вб, сдэк, гост — Enter для добавления"
+                list="product-known-tags"
+              />
+              <datalist id="product-known-tags">
+                {knownTags.map((t) => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
+              {knownTags.length > 0 && (
+                <div className="product-tags product-tags--suggest">
+                  {knownTags
+                    .filter((t) => !tags.includes(t))
+                    .slice(0, 12)
+                    .map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className="product-tag product-tag--add"
+                        onClick={() => addTags(t)}
+                      >
+                        + {t}
+                      </button>
+                    ))}
+                </div>
+              )}
+              <span className="admin-hint">
+                По меткам собираются плитки разделов на главной. У товара может
+                быть несколько меток сразу (озон, вб, сдэк, гост). Бейдж товара
+                («Хит») тоже работает как метка.
+              </span>
+            </div>
+
+            <div className="admin-field">
+              <label className="admin-label">Порядок в популярных</label>              <input
                 name="featuredOrder"
                 type="number"
                 min={1}

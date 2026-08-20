@@ -677,3 +677,87 @@
     justify-content: center;
   }
 }
+
+/* =========================================================
+   Блок «реальные товары» на SEO-посадочных (маркетплейсы,
+   переезд, гофротара, на заказ).
+   Раньше блок не имел собственных стилей: заголовок шёл
+   размером H1, а сетка растягивала единственную карточку
+   на всю ширину. Теперь это аккуратная карточка-врезка
+   с фиксированной шириной плиток при любом их количестве.
+   ========================================================= */
+.seo-landing-products {
+  margin: 28px 0 32px;
+  padding: 20px;
+  background: var(--white, #fff);
+  border: 1px solid var(--border, #e4e9e6);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.06));
+}
+
+.seo-landing-products__head {
+  margin-bottom: 14px;
+}
+
+.seo-landing-products__title {
+  font-family: var(--font-head, "Oswald", sans-serif);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--ink, #0a0a0a);
+  margin: 0;
+}
+
+.seo-landing-products__note {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-muted, #777);
+  margin: 6px 0 0;
+  max-width: 720px;
+}
+
+/* Ключевое: колонки фиксированной ширины — одна карточка
+   больше не растягивается на всю ширину блока. */
+.seo-landing-products__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 200px));
+  justify-content: start;
+  align-items: start;
+  gap: 12px;
+}
+
+.seo-landing-products__grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.seo-landing-products__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--green, #2d6a4f);
+  text-decoration: none;
+}
+
+.seo-landing-products__all:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .seo-landing-products {
+    padding: 14px;
+    margin: 20px 0 24px;
+  }
+  .seo-landing-products__title {
+    font-size: 16px;
+  }
+  .seo-landing-products__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+}

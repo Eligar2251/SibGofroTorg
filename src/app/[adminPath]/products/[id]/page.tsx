@@ -7,8 +7,10 @@ import {
   getProductByIdForAdmin,
   getAllCategories,
   getFeaturedProductOrderIds,
+  getProducts,
 } from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
+import { collectProductTags } from "@/lib/home-tiles";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
@@ -25,9 +27,10 @@ export default async function EditProductPage({
   const product = await getProductByIdForAdmin(id);
   if (!product) notFound();
 
-  const [categories, featuredOrderIds] = await Promise.all([
+  const [categories, featuredOrderIds, allProducts] = await Promise.all([
     getAllCategories(),
     getFeaturedProductOrderIds(),
+    getProducts({ includeHidden: true }),
   ]);
 
   const serializedProduct = {
@@ -72,6 +75,7 @@ export default async function EditProductPage({
         categories={serializedCategories}
         product={serializedProduct}
         featuredOrderIds={featuredOrderIds}
+        knownTags={collectProductTags(allProducts)}
       />
     </div>
   );

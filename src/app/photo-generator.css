@@ -727,3 +727,23 @@
     display: none;
   }
 }
+
+/* ── Библиотека шаблонов: выбрать · сохранить · копировать ── */
+.ptg-templates {
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  border-color: var(--adm-navy, #21324a);
+}
+
+.ptg-templates .ptg-tools {
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ptg-templates__icon {
+  color: var(--adm-navy, #21324a);
+  flex-shrink: 0;
+}

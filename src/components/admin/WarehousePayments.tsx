@@ -25,6 +25,7 @@ import {
   CreditCard,
   UserRound,
   Download,
+  Copy,
 } from "lucide-react";
 import {
   SearchCombobox,
@@ -65,29 +66,56 @@ const fmt = (n: number) => n.toLocaleString("ru-RU");
 
 type LinkMode = "deals" | "receipts" | "none";
 
+/** Данные, которые переносятся при копировании платежа. */
+export interface PaymentCopySource {
+  counterparty: string;
+  amount: number;
+  direction: "incoming" | "outgoing";
+}
+
 export function PaymentForm({
   deals,
   receipts,
   counterparties = [],
+  copyFrom = null,
+  autoOpen = false,
+  hideTrigger = false,
+  onClose,
 }: {
   deals: DealLinkOption[];
   receipts: ReceiptLinkOption[];
   counterparties?: CounterpartyOption[];
+  /** Копия платежа: подставляем только контрагента и сумму. */
+  copyFrom?: PaymentCopySource | null;
+  /** Открыть модалку сразу при монтировании (режим копирования). */
+  autoOpen?: boolean;
+  /** Не рисовать кнопку «Новый платёж» (триггер снаружи). */
+  hideTrigger?: boolean;
+  onClose?: () => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [direction, setDirection] = useState<"incoming" | "outgoing">(
-    "incoming"
+    copyFrom?.direction || "incoming"
   );
   const [type, setType] = useState<BankPaymentType>("regular");
-  const [linkMode, setLinkMode] = useState<LinkMode>("deals");
+  // При копировании привязку к документам не переносим: платёж новый,
+  // заказ/поступление у него, как правило, другие.
+  const [linkMode, setLinkMode] = useState<LinkMode>(
+    copyFrom ? "none" : "deals"
+  );
+  // Дата всегда сегодняшняя — её админ меняет вручную.
   const [date, setDate] = useState(todayIso());
-  const [counterparty, setCounterparty] = useState("");
-  const [cpTouched, setCpTouched] = useState(false);
-  const [amount, setAmount] = useState<string>("");
-  const [amountTouched, setAmountTouched] = useState(false);
+  const [counterparty, setCounterparty] = useState(copyFrom?.counterparty || "");
+  const [cpTouched, setCpTouched] = useState(Boolean(copyFrom?.counterparty));
+  const [amount, setAmount] = useState<string>(
+    copyFrom && copyFrom.amount > 0 ? String(copyFrom.amount) : ""
+  );
+  const [amountTouched, setAmountTouched] = useState(
+    Boolean(copyFrom && copyFrom.amount > 0)
+  );
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [comment, setComment] = useState("");
   const [excludeFromBalance, setExcludeFromBalance] = useState(false);
@@ -290,6 +318,11 @@ export function PaymentForm({
     }
   }
 
+  function closeModal() {
+    setOpen(false);
+    onClose?.();
+  }
+
   function resetForm() {
     setDirection("incoming");
     setType("regular");
@@ -344,7 +377,7 @@ export function PaymentForm({
         setSaving(false);
         return;
       }
-      setOpen(false);
+      closeModal();
       resetForm();
       router.refresh();
     } catch {
@@ -376,32 +409,43 @@ export function PaymentForm({
 
   return (
     <>
-      <button
-        type="button"
-        className="admin-btn admin-btn--primary"
-        onClick={() => setOpen(true)}
-      >
-        <Plus size={15} /> Новый платёж
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          className="admin-btn admin-btn--primary"
+          onClick={() => setOpen(true)}
+        >
+          <Plus size={15} /> Новый платёж
+        </button>
+      )}
 
       {open && (
         <ModalPortal>
-        <div className="admin-modal-overlay" onClick={() => setOpen(false)}>
+        <div className="admin-modal-overlay" onClick={closeModal}>
           <div
             className="admin-modal wh-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="admin-modal__head">
-              <h3 className="admin-modal__title">Платёж</h3>
+              <h3 className="admin-modal__title">
+                {copyFrom ? "Копия платежа" : "Платёж"}
+              </h3>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={closeModal}
                 className="admin-modal__close"
                 aria-label="Закрыть"
               >
                 <X size={16} />
               </button>
             </div>
+
+            {copyFrom && (
+              <p className="wh-form-hint" style={{ marginTop: 0 }}>
+                Скопированы контрагент и сумма. Дату, комментарий, тип платежа
+                и привязку задайте заново.
+              </p>
+            )}
 
             <form onSubmit={handleSubmit}>
               <div className="wh-direction">
@@ -593,7 +637,7 @@ export function PaymentForm({
                   <button
                     type="button"
                     className="admin-btn admin-btn--ghost"
-                    onClick={() => setOpen(false)}
+                    onClick={closeModal}
                     disabled={saving}
                   >
                     Отмена
@@ -654,6 +698,9 @@ export function PaymentControls({
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  // Копия платежа: форма монтируется только по клику, чтобы не держать
+  // тяжёлые списки заказов/поступлений в каждой строке банка.
+  const [showCopy, setShowCopy] = useState(false);
   const [editDate, setEditDate] = useState(edit.date);
   const [editType, setEditType] = useState<BankPaymentType>(
     edit.type || "regular"
@@ -877,6 +924,16 @@ export function PaymentControls({
       </button>
       <button
         type="button"
+        onClick={() => setShowCopy(true)}
+        disabled={saving}
+        className="admin-status__btn admin-status__btn--outline"
+        title="Создать новый платёж с тем же контрагентом и суммой"
+      >
+        <Copy size={14} />
+        Копировать
+      </button>
+      <button
+        type="button"
         onClick={handleDelete}
         disabled={saving}
         className="admin-status__btn admin-status__btn--delete"
@@ -885,6 +942,22 @@ export function PaymentControls({
         <Trash2 size={14} />
         Удалить
       </button>
+
+      {showCopy && (
+        <PaymentForm
+          deals={deals}
+          receipts={receipts}
+          counterparties={counterparties}
+          copyFrom={{
+            counterparty: edit.counterparty,
+            amount: edit.amount,
+            direction: edit.direction,
+          }}
+          autoOpen
+          hideTrigger
+          onClose={() => setShowCopy(false)}
+        />
+      )}
 
       {showEdit && (
         <ModalPortal>

@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS products (
   stock_warn_qty INT,
   is_promo BOOLEAN DEFAULT FALSE,
   promo_label TEXT,
+  -- Метки товара («озон», «вб», «сдэк», «гост»...) — по ним собираются
+  -- плитки разделов на главной (см. таблицу home_tiles).
+  tags TEXT[] DEFAULT '{}'::text[],
   promo_label_color TEXT,
   promo_label_text_color TEXT,
   made_to_order BOOLEAN DEFAULT FALSE,
@@ -88,6 +91,7 @@ CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_visible ON products(is_visible) WHERE is_visible = TRUE;
 CREATE INDEX IF NOT EXISTS idx_products_featured ON products(is_featured) WHERE is_featured = TRUE;
 CREATE INDEX IF NOT EXISTS idx_products_promo ON products(is_promo) WHERE is_promo = TRUE;
+CREATE INDEX IF NOT EXISTS idx_products_tags ON products USING GIN (tags);
 CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock) WHERE in_stock = TRUE;
 DROP TRIGGER IF EXISTS trg_products_updated ON products;
 CREATE TRIGGER trg_products_updated BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -268,6 +272,33 @@ CREATE INDEX IF NOT EXISTS idx_promotions_sort ON promotions(sort_order ASC);
 CREATE INDEX IF NOT EXISTS idx_promotions_visible ON promotions(is_visible) WHERE is_visible = TRUE;
 DROP TRIGGER IF EXISTS trg_promotions_updated ON promotions;
 CREATE TRIGGER trg_promotions_updated BEFORE UPDATE ON promotions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =========================================================
+-- 7.1 ПЛИТКИ РАЗДЕЛОВ НА ГЛАВНОЙ
+-- Витрина главной страницы: набор, порядок, фото и правило отбора
+-- товаров задаются в админке. Каталог не затрагивается.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS home_tiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL DEFAULT '',
+  subtitle TEXT,
+  image_url TEXT,
+  icon TEXT,
+  kind TEXT NOT NULL DEFAULT 'category'
+    CHECK (kind IN ('category', 'tag', 'featured', 'sale', 'all')),
+  category_id UUID,   -- логическая связь с categories.id (без FK!)
+  tag TEXT,           -- метка или несколько через запятую
+  accent TEXT,
+  sort_order INT DEFAULT 0,
+  is_visible BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_home_tiles_sort ON home_tiles(sort_order ASC);
+CREATE INDEX IF NOT EXISTS idx_home_tiles_visible ON home_tiles(is_visible) WHERE is_visible = TRUE;
+DROP TRIGGER IF EXISTS trg_home_tiles_updated ON home_tiles;
+CREATE TRIGGER trg_home_tiles_updated BEFORE UPDATE ON home_tiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE home_tiles ENABLE ROW LEVEL SECURITY;
 
 -- =========================================================
 -- 8. POPUP-КАМПАНИИ
