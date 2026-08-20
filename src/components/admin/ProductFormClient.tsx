@@ -426,7 +426,9 @@ export function ProductFormClient({
       <div className="admin-card">
         <div className="admin-card__pad">
           <h2 className="admin-h2">Фотографии товара</h2>
-          <ImageUploader images={images} onChange={setImages} />
+          {/* Фото товара: новое фото заменяет текущее (галочку можно
+              снять, если нужна галерея из нескольких снимков). */}
+          <ImageUploader images={images} onChange={setImages} defaultReplace />
         </div>
       </div>
 

@@ -315,7 +315,9 @@ export function PopupCampaignsManager({
                   <label className="admin-label">Вертикальное изображение (9:16)</label>
                   <ImageUploader
                     images={editingItem.imageUrl ? [{ url: editingItem.imageUrl, publicId: "" }] : []}
-                    onChange={(imgs) => updateForm("imageUrl", imgs[0]?.url || "")}
+                    onChange={(imgs) => updateForm("imageUrl", imgs[imgs.length - 1]?.url || "")}
+                    defaultReplace
+                    hideReplaceToggle
                   />
                 </div>
                 <div className="admin-field">

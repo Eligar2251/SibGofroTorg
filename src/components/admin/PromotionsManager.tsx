@@ -394,7 +394,9 @@ export function PromotionsManager({
               <label className="admin-label">Изображение баннера</label>
               <ImageUploader
                 images={imageUrl ? [{ url: imageUrl, publicId: "" }] : []}
-                onChange={(imgs) => setImageUrl(imgs[0]?.url || "")}
+                onChange={(imgs) => setImageUrl(imgs[imgs.length - 1]?.url || "")}
+                defaultReplace
+                hideReplaceToggle
               />
             </div>
 

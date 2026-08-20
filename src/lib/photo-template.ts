@@ -299,3 +299,73 @@ export function createDefaultTemplate(): PhotoTemplate {
     ],
   };
 }
+
+/* ─────────────────  Сохранённые шаблоны  ───────────────── */
+
+/**
+ * Именованный шаблон карточки. Хранится в settings под ключом
+ * PHOTO_TEMPLATES_SETTING_KEY (JSON-массив). Нужен, чтобы не собирать
+ * дизайн заново: шаблон можно применить, скопировать и доработать.
+ */
+export interface SavedPhotoTemplate {
+  id: string;
+  name: string;
+  /** ISO-дата последнего сохранения */
+  updatedAt: string;
+  template: PhotoTemplate;
+}
+
+export const PHOTO_TEMPLATES_SETTING_KEY = "photo_templates";
+
+/** Максимум шаблонов в библиотеке (защита от разрастания настроек). */
+export const PHOTO_TEMPLATES_LIMIT = 50;
+
+export function createTemplateId(): string {
+  return `tpl_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+/** Глубокая копия шаблона с новыми id элементов (чтобы не пересекались). */
+export function cloneTemplate(template: PhotoTemplate): PhotoTemplate {
+  const cloneElements = (items: PhotoTemplateElement[]): PhotoTemplateElement[] =>
+    items.map((el) =>
+      el.type === "group"
+        ? { ...el, id: createElementId(), items: cloneElements(el.items) }
+        : { ...el, id: createElementId() }
+    );
+  return {
+    ...template,
+    background: { ...template.background },
+    elements: cloneElements(template.elements || []),
+  };
+}
+
+/** Разбор JSON из настроек в список шаблонов (без падений на мусоре). */
+export function parseSavedTemplates(raw: unknown): SavedPhotoTemplate[] {
+  if (!raw) return [];
+  let data: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(data)) return [];
+  return data
+    .filter(
+      (item): item is SavedPhotoTemplate =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        typeof (item as any).id === "string" &&
+        Boolean((item as any).template)
+    )
+    .map((item) => ({
+      id: item.id,
+      name: String(item.name || "Без названия").slice(0, 120),
+      updatedAt: String(item.updatedAt || ""),
+      template: item.template,
+    }))
+    .slice(0, PHOTO_TEMPLATES_LIMIT);
+}

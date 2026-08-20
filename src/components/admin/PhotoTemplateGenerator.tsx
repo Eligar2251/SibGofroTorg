@@ -39,6 +39,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  FilePlus2,
+  FolderOpen,
   Group,
   GripVertical,
   ImagePlus,
@@ -48,6 +50,7 @@ import {
   Search,
   Sparkles,
   Square,
+  Save,
   Trash2,
   Type,
   Ungroup,
@@ -57,6 +60,7 @@ import {
 } from "lucide-react";
 import {
   buildProductTokens,
+  cloneTemplate,
   createDefaultTemplate,
   createElementId,
   PHOTO_PLACEHOLDERS,
@@ -70,6 +74,7 @@ import {
   type PhotoTemplate,
   type PhotoTemplateElement,
   type PhotoTextElement,
+  type SavedPhotoTemplate,
 } from "@/lib/photo-template";
 
 /* ─────────────────────────  Canvas helpers  ───────────────────────── */
@@ -961,8 +966,16 @@ export function PhotoTemplateGenerator({
   const [previewProductId, setPreviewProductId] = useState<string | null>(null);
   const [guides, setGuides] = useState<Guide>({ v: [], h: [] });
 
+  // ── Библиотека шаблонов: применить / сохранить / копировать ──
+  const [savedTemplates, setSavedTemplates] = useState<SavedPhotoTemplate[]>([]);
+  const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
+  const [templateName, setTemplateName] = useState("Мой шаблон");
+  const [templatesBusy, setTemplatesBusy] = useState(false);
+
   const [generating, setGenerating] = useState(false);
-  const [replaceImages, setReplaceImages] = useState(false);
+  // По умолчанию заменяем фото товара: сгенерированная карточка —
+  // это и есть главное фото, вторым экземпляром оно не нужно.
+  const [replaceImages, setReplaceImages] = useState(true);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [results, setResults] = useState<ResultItem[]>([]);
 
@@ -1570,6 +1583,124 @@ export function PhotoTemplateGenerator({
     setTemplate((t) => ({ ...t, elements: [...next].reverse() }));
   }
 
+  /* ── Библиотека шаблонов ── */
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/photo-templates")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !Array.isArray(data?.templates)) return;
+        setSavedTemplates(data.templates);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Загружает сохранённый шаблон в редактор (копией, оригинал не трогаем). */
+  function applyTemplate(id: string) {
+    const saved = savedTemplates.find((t) => t.id === id);
+    if (!saved) return;
+    setTemplate(cloneTemplate(saved.template));
+    setSelectedIds([]);
+    setCurrentTemplateId(saved.id);
+    setTemplateName(saved.name);
+  }
+
+  /** Сохранение: обновляет выбранный шаблон или создаёт новый. */
+  async function saveTemplate(mode: "update" | "new") {
+    const name = templateName.trim() || "Без названия";
+    setTemplatesBusy(true);
+    try {
+      const isUpdate = mode === "update" && currentTemplateId;
+      const res = await fetch(
+        isUpdate
+          ? `/api/admin/photo-templates/${currentTemplateId}`
+          : "/api/admin/photo-templates",
+        {
+          method: isUpdate ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, template }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.template) {
+        alert(data?.error || "Не удалось сохранить шаблон");
+        setTemplatesBusy(false);
+        return;
+      }
+      const saved: SavedPhotoTemplate = data.template;
+      setSavedTemplates((prev) => {
+        const rest = prev.filter((t) => t.id !== saved.id);
+        return [saved, ...rest];
+      });
+      setCurrentTemplateId(saved.id);
+      setTemplateName(saved.name);
+    } catch {
+      alert("Ошибка сети при сохранении шаблона");
+    }
+    setTemplatesBusy(false);
+  }
+
+  /** Копия шаблона: тот же дизайн под новым именем — правим и сохраняем. */
+  async function duplicateTemplate(id?: string) {
+    const source = id
+      ? savedTemplates.find((t) => t.id === id)
+      : currentTemplateId
+        ? savedTemplates.find((t) => t.id === currentTemplateId)
+        : null;
+    const baseTemplate = source ? cloneTemplate(source.template) : cloneTemplate(template);
+    const baseName = source ? source.name : templateName.trim() || "Без названия";
+    const name = `${baseName} (копия)`.slice(0, 120);
+
+    setTemplatesBusy(true);
+    try {
+      const res = await fetch("/api/admin/photo-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, template: baseTemplate }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.template) {
+        alert(data?.error || "Не удалось скопировать шаблон");
+        setTemplatesBusy(false);
+        return;
+      }
+      const saved: SavedPhotoTemplate = data.template;
+      setSavedTemplates((prev) => [saved, ...prev]);
+      // Сразу открываем копию в редакторе — её и дорабатываем.
+      setTemplate(cloneTemplate(saved.template));
+      setSelectedIds([]);
+      setCurrentTemplateId(saved.id);
+      setTemplateName(saved.name);
+    } catch {
+      alert("Ошибка сети при копировании шаблона");
+    }
+    setTemplatesBusy(false);
+  }
+
+  async function deleteTemplate() {
+    if (!currentTemplateId) return;
+    const saved = savedTemplates.find((t) => t.id === currentTemplateId);
+    if (!confirm(`Удалить шаблон «${saved?.name || ""}»?`)) return;
+    setTemplatesBusy(true);
+    try {
+      const res = await fetch(`/api/admin/photo-templates/${currentTemplateId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setSavedTemplates((prev) => prev.filter((t) => t.id !== currentTemplateId));
+        setCurrentTemplateId(null);
+      } else {
+        alert("Не удалось удалить шаблон");
+      }
+    } catch {
+      alert("Ошибка сети при удалении шаблона");
+    }
+    setTemplatesBusy(false);
+  }
+
   async function uploadFile(file: File): Promise<string | null> {
     const fd = new FormData();
     fd.append("file", file);
@@ -1819,6 +1950,92 @@ export function PhotoTemplateGenerator({
       {/* ═════════ ШАГ 2 — конструктор ═════════ */}
       {step === 2 && (
         <div className="ptg-designer">
+          {/* Библиотека шаблонов: применить · сохранить · копировать */}
+          <div className="ptg-toolbar ptg-toolbar--design ptg-templates">
+            <div className="ptg-tools">
+              <FolderOpen size={15} className="ptg-templates__icon" />
+              <select
+                className="admin-select"
+                style={{ minWidth: 220 }}
+                value={currentTemplateId || ""}
+                onChange={(e) => {
+                  if (e.target.value) applyTemplate(e.target.value);
+                  else setCurrentTemplateId(null);
+                }}
+                disabled={templatesBusy}
+              >
+                <option value="">
+                  {savedTemplates.length
+                    ? "— выбрать сохранённый шаблон —"
+                    : "Сохранённых шаблонов пока нет"}
+                </option>
+                {savedTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                    {t.updatedAt
+                      ? ` · ${new Date(t.updatedAt).toLocaleDateString("ru-RU")}`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                className="admin-input"
+                style={{ maxWidth: 220 }}
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder="Название шаблона"
+              />
+            </div>
+            <div className="ptg-tools">
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={() => duplicateTemplate()}
+                disabled={templatesBusy}
+                title="Создать копию шаблона и сразу открыть её для доработки"
+              >
+                {templatesBusy ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Copy size={14} />
+                )}
+                Копировать шаблон
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={() => saveTemplate("new")}
+                disabled={templatesBusy}
+                title="Сохранить текущий дизайн как новый шаблон"
+              >
+                <FilePlus2 size={14} /> Сохранить как новый
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                onClick={() => saveTemplate("update")}
+                disabled={templatesBusy || !currentTemplateId}
+                title={
+                  currentTemplateId
+                    ? "Перезаписать выбранный шаблон"
+                    : "Сначала выберите шаблон или сохраните как новый"
+                }
+              >
+                <Save size={14} /> Сохранить
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={deleteTemplate}
+                disabled={templatesBusy || !currentTemplateId}
+                title="Удалить выбранный шаблон"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+
           {/* Панель инструментов */}
           <div className="ptg-toolbar ptg-toolbar--design">
             <div className="ptg-tools">
@@ -2808,7 +3025,10 @@ export function PhotoTemplateGenerator({
                 checked={replaceImages}
                 onChange={(e) => setReplaceImages(e.target.checked)}
               />
-              <span>Заменить текущие фото товара (иначе новое фото станет первым)</span>
+              <span>
+                Заменить фото товара (по умолчанию) — снимите галочку, если
+                нужно оставить старые фото в галерее
+              </span>
             </label>
           </div>
 

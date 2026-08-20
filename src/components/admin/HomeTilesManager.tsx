@@ -433,6 +433,8 @@ export function HomeTilesManager({
                   setImageUrl(last?.url || "");
                   setImagePublicId(last?.publicId || "");
                 }}
+                defaultReplace
+                hideReplaceToggle
               />
               <span className="admin-hint">
                 Если фото не загружено — плитка возьмёт фото категории, а затем

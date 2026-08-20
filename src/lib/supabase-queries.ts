@@ -52,6 +52,12 @@ import {
   sortHomeTiles,
   type HomeTile,
 } from "./home-tiles";
+import {
+  parseSavedTemplates,
+  PHOTO_TEMPLATES_LIMIT,
+  PHOTO_TEMPLATES_SETTING_KEY,
+  type SavedPhotoTemplate,
+} from "./photo-template";
 
 export const FEATURED_PRODUCTS_ORDER_SETTING_KEY = "featured_products_order";
 
@@ -1780,6 +1786,26 @@ const getCachedSettings = unstable_cache(
 
 export async function getSettings(): Promise<Record<string, string>> {
   return getCachedSettings();
+}
+
+// ─── Библиотека шаблонов фото (конструктор карточек) ───────
+// Шаблоны лежат в settings под одним JSON-ключом: отдельная таблица
+// ради 3-5 записей избыточна, а так они переживают перезагрузку и
+// доступны с любого устройства.
+
+export async function getPhotoTemplates(): Promise<SavedPhotoTemplate[]> {
+  const settings = await getSettings().catch(() => ({} as Record<string, string>));
+  return parseSavedTemplates(settings[PHOTO_TEMPLATES_SETTING_KEY]);
+}
+
+export async function savePhotoTemplates(
+  templates: SavedPhotoTemplate[]
+): Promise<void> {
+  await updateSettings({
+    [PHOTO_TEMPLATES_SETTING_KEY]: JSON.stringify(
+      templates.slice(0, PHOTO_TEMPLATES_LIMIT)
+    ),
+  });
 }
 
 export async function updateSettings(data: Record<string, string>): Promise<void> {
