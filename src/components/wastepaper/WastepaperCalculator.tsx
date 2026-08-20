@@ -28,12 +28,16 @@ export function WastepaperCalculator({
   pickupMinKg = WASTEPAPER_PICKUP_MIN_KG,
   selfBonus = WASTEPAPER_SELF_BONUS,
   pickupPrice = 0,
+  contactPhone,
+  contactPhoneHref,
 }: {
   /** Цены ₽/кг из настроек; пустые значения дополняются дефолтами */
   rates?: Partial<WastepaperRates>;
   pickupMinKg?: number;
   selfBonus?: number;
   pickupPrice?: number;
+  contactPhone?: string;
+  contactPhoneHref?: string;
 }) {
   const effectiveRates = withDefaultRates(rates);
   const minKg = pickupMinKg > 0 ? pickupMinKg : WASTEPAPER_PICKUP_MIN_KG;
@@ -203,6 +207,20 @@ export function WastepaperCalculator({
         <div className="wpcalc__result-label">Ориентировочная выплата</div>
         <div className="wpcalc__result-sum">{payout.toLocaleString("ru-RU")} ₽</div>
         <div className="wpcalc__result-rate">тариф: {formatRate(rate)} ₽/кг · {weight} кг</div>
+        <p className="wpcalc__disclaimer">
+          Расчёт неточный: цены меняются каждый день. Уточняйте по телефону
+          {contactPhone ? (
+            <>
+              :{" "}
+              <a href={contactPhoneHref || `tel:${contactPhone.replace(/[^\d+]/g, "")}`}>
+                {contactPhone}
+              </a>
+            </>
+          ) : (
+            "."
+          )}{" "}
+          Вывоз от {minKg} кг.
+        </p>
       </div>
 
       {/* Форма */}

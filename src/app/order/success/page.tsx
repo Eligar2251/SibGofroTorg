@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, ArrowRight, PhoneCall, Package, Ticket } from "lucide-react";
+import { CheckCircle2, ArrowRight, Package, Ticket } from "lucide-react";
 import { OrderSuccessGoal } from "@/components/analytics/OrderSuccessGoal";
 import { SuccessContactPhone } from "@/components/order/SuccessContactPhone";
 import type { Metadata } from "next";
@@ -32,8 +32,9 @@ export default async function OrderSuccessPage({
 
           <h1 className="success-card__title">Заявка принята!</h1>
           <p className="success-card__desc">
-            Менеджер проверяет складские остатки и свяжется с вами в течение{" "}
-            <strong>10–15 минут</strong> для подтверждения времени получения.
+            Статус заказа можно смотреть в{" "}
+            <Link href="/cabinet">личном кабинете</Link>
+            {" "}или уточнить по телефону и почте — контакты ниже.
           </p>
 
           {code && (
@@ -53,8 +54,8 @@ export default async function OrderSuccessPage({
             <div className="success-step">
               <div className="success-step__num">1</div>
               <div className="success-step__text">
-                <strong>Звонок менеджера</strong>
-                <span>Уточним детали и подтвердим бронь</span>
+                <strong>Личный кабинет</strong>
+                <span>Статус заказа — в кабинете или по телефону</span>
               </div>
             </div>
             <div className="success-step__arrow">→</div>
@@ -76,7 +77,9 @@ export default async function OrderSuccessPage({
           </div>
 
           <div className="success-phone-block">
-            <div className="success-phone-label">Срочный вопрос? Позвоните нам:</div>
+            <div className="success-phone-label">
+              Вопросы по заказу — звоните или пишите:
+            </div>
             <SuccessContactPhone />
           </div>
 

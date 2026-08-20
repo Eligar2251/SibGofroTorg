@@ -403,12 +403,12 @@ export default async function HomePage() {
             </div>
           </Link>
           <a
-            href="tel:+73832910820"
+            href={homePhoneHref}
             className="hero__wp-phone-badge"
-            aria-label="Позвонить в отдел макулатуры 291-08-20"
+            aria-label={`Позвонить ${homePhone}`}
           >
             <Phone size={13} />
-            <strong>291-08-20</strong>
+            <strong>{homePhone.replace(/^\+7\s*/, "")}</strong>
           </a>
         </div>
       </section>

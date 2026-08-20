@@ -17,7 +17,6 @@ import {
   CreditCard,
   Banknote,
   FileText,
-  Phone,
   Loader2,
   Check,
   Shield,
@@ -30,7 +29,6 @@ import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 type DeliveryMethod = "courier" | "pickup" | "transport";
 type PaymentMethod = "card" | "cash" | "invoice";
 type CustomerType = "individual" | "legal";
-type CommChannel = "call" | "whatsapp" | "telegram" | "max";
 
 const STEPS = [
   { n: 1, label: "Корзина" },
@@ -53,7 +51,6 @@ export function OrderPageClient({
   const [delivery, setDelivery] = useState<DeliveryMethod>("courier");
   const [payment, setPayment] = useState<PaymentMethod>("card");
   const [customerType, setCustomerType] = useState<CustomerType>("individual");
-  const [commChannel, setCommChannel] = useState<CommChannel>("call");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -284,7 +281,7 @@ export function OrderPageClient({
         customerName: name.trim(),
         customerPhone: "",
         customerEmail: email.trim() || null,
-        communicationChannel: commChannel,
+        communicationChannel: "email",
         paymentMethod: finalPayment,
         companyName: customerType === "legal" ? companyName.trim() : null,
         shortName: customerType === "legal" ? shortName.trim() || null : null,
@@ -922,45 +919,6 @@ export function OrderPageClient({
                         Нужна только для отправки счёта. Данные обрабатываются
                         согласно политике конфиденциальности.
                       </span>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 16 }}>
-                    <label className="checkout-label">Способ связи</label>
-                    <div className="comm-options">
-                      {(["call", "whatsapp", "telegram", "max"] as CommChannel[]).map(
-                        (ch) => (
-                          <button
-                            key={ch}
-                            type="button"
-                            onClick={() => setCommChannel(ch)}
-                            className={`comm-option${
-                              commChannel === ch ? " comm-option--active" : ""
-                            }`}
-                          >
-                            {ch === "call" && (
-                              <>
-                                <Phone size={13} /> Звонок
-                              </>
-                            )}
-                            {ch === "whatsapp" && (
-                              <>
-                                <GlyphIcon value="chat" size={13} /> WhatsApp
-                              </>
-                            )}
-                            {ch === "telegram" && (
-                              <>
-                                <GlyphIcon value="send" size={13} /> Telegram
-                              </>
-                            )}
-                            {ch === "max" && (
-                              <>
-                                <GlyphIcon value="chats" size={13} /> Макс
-                              </>
-                            )}
-                          </button>
-                        )
-                      )}
                     </div>
                   </div>
 
