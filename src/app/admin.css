@@ -12824,6 +12824,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   cursor: pointer;
   color: inherit;
   font: inherit;
+  position: relative;
 }
 .purchase-tile__media {
   position: relative;
@@ -12850,6 +12851,27 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   font-size: 10px;
   font-style: normal;
   font-weight: 800;
+}
+.purchase-tile__restore {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--adm-steel-line);
+  border-radius: 50%;
+  background: var(--adm-steel-pale);
+  color: var(--adm-steel);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  z-index: 2;
+}
+.purchase-tile__restore:hover {
+  background: var(--adm-steel);
+  color: #fff;
 }
 .purchase-tile__face strong,
 .purchase-tile__face span {

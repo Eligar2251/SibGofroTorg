@@ -197,7 +197,10 @@ export type BankPaymentType =
   | "cash"
   | "transfer"
   | "deposit"
-  | "ym_card";
+  | "ym_card"
+  | "advertising"   // Реклама
+  | "website"       // Сайт/хостинг
+  | "monthly";      // Ежемесячные платежи (коммунальные, подписки)
 
 export interface BankPayment {
   id: string;

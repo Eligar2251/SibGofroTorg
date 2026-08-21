@@ -43,6 +43,9 @@ const paymentTypeLabel: Record<string, string> = {
   cash: "Наличные",
   transfer: "Перевод",
   deposit: "Внесение",
+  advertising: "Реклама",
+  website: "Сайт/хостинг",
+  monthly: "Ежемесячные платежи",
 };
 
 const dealStatusLabel: Record<string, string> = {

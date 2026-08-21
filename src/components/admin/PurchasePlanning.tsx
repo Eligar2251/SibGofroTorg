@@ -12,6 +12,7 @@ import {
   PiggyBank,
   Plus,
   RefreshCw,
+  RotateCcw,
   Trash2,
   Wallet,
 } from "lucide-react";
@@ -408,6 +409,31 @@ export function PurchasePlanning({
                       <PiggyBank size={28} />
                     )}
                     {plan.status === "completed" && <em>архив</em>}
+                    {plan.status === "completed" && (
+                      <button type="button" className="purchase-tile__restore" title="Вернуть в активные"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          setBusyId(plan.id);
+                          setError("");
+                          try {
+                            const response = await fetch("/api/admin/warehouse/purchase-plans", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "update", id: plan.id, status: "active" }),
+                            });
+                            const body = await response.json().catch(() => ({}));
+                            if (!response.ok) throw new Error(body.error || "Не удалось вернуть из архива");
+                            replacePlan(body.plan);
+                            router.refresh();
+                          } catch (restoreError) {
+                            setError(restoreError instanceof Error ? restoreError.message : "Ошибка сети");
+                          } finally {
+                            setBusyId(null);
+                          }
+                        }}>
+                        <RotateCcw size={12} />
+                      </button>
+                    )}
                   </span>
                   <strong>{plan.productName}</strong>
                   <span>{fmt(plan.savedAmount)} ₽{plan.targetAmount > 0 ? ` / ${fmt(plan.targetAmount)} ₽` : ""}</span>
@@ -460,7 +486,46 @@ export function PurchasePlanning({
                       </div>
                     )}
                     {plan.status === "completed" && (
-                      <div className="purchase-plan__completed"><CheckCircle2 size={15} /> Списано {fmt(plan.spentAmount)} ₽</div>
+                      <>
+                        <div className="purchase-plan__completed">
+                          <CheckCircle2 size={15} /> Списано {fmt(plan.spentAmount)} ₽
+                          {plan.spentPaymentId && (
+                            <a
+                              href={`/${(typeof window !== "undefined" ? window.location.pathname.split("/")[1] : "admin")}/warehouse?tab=bank&payment=${plan.spentPaymentId}`}
+                              className="admin-btn admin-btn--ghost admin-btn--sm"
+                              style={{ marginLeft: 8 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                              }}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <ExternalLink size={12} /> Платёж
+                            </a>
+                          )}
+                        </div>
+                        <button type="button" className="admin-btn admin-btn--outline admin-btn--sm" disabled={busyId === plan.id} onClick={async () => {
+                          setBusyId(plan.id);
+                          setError("");
+                          try {
+                            const response = await fetch("/api/admin/warehouse/purchase-plans", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "update", id: plan.id, status: "active" }),
+                            });
+                            const body = await response.json().catch(() => ({}));
+                            if (!response.ok) throw new Error(body.error || "Не удалось вернуть из архива");
+                            replacePlan(body.plan);
+                            router.refresh();
+                          } catch (restoreError) {
+                            setError(restoreError instanceof Error ? restoreError.message : "Ошибка сети");
+                          } finally {
+                            setBusyId(null);
+                          }
+                        }}>
+                          <RotateCcw size={13} /> Вернуть в активные
+                        </button>
+                      </>
                     )}
                     <div className="purchase-tile__actions">
                       <button type="button" className="admin-btn admin-btn--primary" disabled={busyId === plan.id} onClick={() => saveEdit(plan)}>

@@ -405,6 +405,9 @@ export function PaymentForm({
     { value: "transfer", label: "Безнал на карту (в кассу)", icon: CreditCard },
     { value: "ym_card", label: "Карта ЮМ", icon: CreditCard },
     { value: "deposit", label: "Внесение", icon: Download },
+    { value: "advertising", label: "Реклама", icon: CreditCard },
+    { value: "website", label: "Сайт/хостинг", icon: CreditCard },
+    { value: "monthly", label: "Ежемесячные платежи", icon: Banknote },
   ];
 
   return (
@@ -989,6 +992,9 @@ export function PaymentControls({
                     { value: "transfer", label: "Безнал на карту (в кассу)", icon: CreditCard },
                     { value: "ym_card", label: "Карта ЮМ", icon: CreditCard },
                     { value: "deposit", label: "Внесение", icon: Download },
+                    { value: "advertising", label: "Реклама", icon: CreditCard },
+                    { value: "website", label: "Сайт/хостинг", icon: CreditCard },
+                    { value: "monthly", label: "Ежемесячные платежи", icon: Banknote },
                   ] as const).map((t) => (
                     <button
                       key={t.value}
