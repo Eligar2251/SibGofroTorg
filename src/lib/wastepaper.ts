@@ -41,6 +41,10 @@ export const WP_PICKUP_PRICE_SETTING_KEY = "wp_pickup_price";
 export const WP_ACCEPT_LIST_SETTING_KEY = "wp_accept_list";
 export const WP_PHONE_SETTING_KEY = "wp_phone";
 
+/** Телефон отдела макулатуры (герой главной + страница /wastepaper).
+ *  Отдельный от номера гофротары (settings.phone / SITE_PHONE). */
+export const WASTEPAPER_PHONE_DEFAULT = "+7 (383) 291-08-20";
+
 export const WASTEPAPER_ACCEPT_DEFAULTS = [
   "Гофрокартон — коробки, листы, обрезки",
   "Белая офисная бумага А4 и А3",
@@ -64,7 +68,18 @@ export function parseWastepaperAcceptList(raw: unknown): string[] {
   return items.length > 0 ? items : [...WASTEPAPER_ACCEPT_DEFAULTS];
 }
 
+/** Нормализует телефон к tel:+7… */
+export function wastepaperPhoneHref(phone: string): string {
+  const digits = String(phone || "").replace(/[^\d+]/g, "");
+  if (!digits) {
+    return `tel:${WASTEPAPER_PHONE_DEFAULT.replace(/[^\d+]/g, "")}`;
+  }
+  return `tel:${digits}`;
+}
+
 export function getWastepaperPageConfig(settings: Record<string, string> = {}) {
+  const phone =
+    String(settings[WP_PHONE_SETTING_KEY] || "").trim() || WASTEPAPER_PHONE_DEFAULT;
   return {
     pickupMinKg: (() => {
       const raw = settings[WP_PICKUP_MIN_SETTING_KEY];
@@ -79,7 +94,8 @@ export function getWastepaperPageConfig(settings: Record<string, string> = {}) {
     ),
     pickupPrice: parseWastepaperNumber(settings[WP_PICKUP_PRICE_SETTING_KEY], 0),
     acceptList: parseWastepaperAcceptList(settings[WP_ACCEPT_LIST_SETTING_KEY]),
-    phone: String(settings[WP_PHONE_SETTING_KEY] || "").trim(),
+    phone,
+    phoneHref: wastepaperPhoneHref(phone),
   };
 }
 

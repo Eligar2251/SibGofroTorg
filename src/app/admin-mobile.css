@@ -114,7 +114,8 @@
     width: 100%;
     max-width: none;
     min-width: 0;
-    padding-right: 150px;
+    /* Место под 3 кружка + бургер (~200px). */
+    padding-right: 200px;
     overflow: hidden;
     color: var(--adm-sidebar-text-active);
     font-size: 13px;
@@ -293,8 +294,10 @@
     border: 0;
   }
 
-  /* Планы и уведомления встроены визуально в верхнюю панель. */
+  /* Три кружка + меню в верхней панели:
+     notify · requests · plans · burger. */
   [data-admin="true"] .admin-notify,
+  [data-admin="true"] .admin-requests-shortcut,
   [data-admin="true"] .admin-plans-shortcut {
     top: calc(var(--adm-mobile-safe-top) + 6px);
     z-index: 930;
@@ -304,11 +307,20 @@
     right: calc(var(--adm-mobile-safe-right) + 56px);
   }
 
-  [data-admin="true"] .admin-plans-shortcut {
+  [data-admin="true"] .admin-requests-shortcut {
     right: calc(var(--adm-mobile-safe-right) + 106px);
   }
 
-  [data-admin="true"] :is(.admin-notify__btn, .admin-mobile-bar__menu-toggle) {
+  [data-admin="true"] .admin-plans-shortcut {
+    right: calc(var(--adm-mobile-safe-right) + 156px);
+  }
+
+  [data-admin="true"] :is(
+    .admin-notify__btn,
+    .admin-requests-shortcut__btn,
+    .admin-plans-shortcut__btn,
+    .admin-mobile-bar__menu-toggle
+  ) {
     width: var(--adm-mobile-touch);
     height: var(--adm-mobile-touch);
     min-height: var(--adm-mobile-touch);

@@ -49,9 +49,10 @@ export default async function BoxReportPage({
     <div className="admin-stack">
       <div className="admin-page-head">
         <div>
-          <h1 className="admin-h1">Отчёт по коробкам — печать размеров</h1>
+          <h1 className="admin-h1">Отчёт по коробкам — печать и прайс A4</h1>
           <p className="admin-sub">
-            Выберите коробки и поля, распечатайте таблицу. Например, только размеры без названия.
+            Крупная таблица цен (название · размер · цена) или компактный отчёт.
+            Шрифт подстраивается под число позиций. Выбор полей запоминается.
           </p>
         </div>
         <div className="admin-page-head__actions">

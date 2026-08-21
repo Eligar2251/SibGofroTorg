@@ -2283,7 +2283,11 @@ export function WarehouseManager({
 
       {/* ============ ВКЛАДКА: НАКОПИТЕЛЬНЫЕ ЗАКУПКИ ============ */}
       {activeTab === "purchases" && (
-        <PurchasePlanning initialPlans={purchasePlans} products={pickerProducts} />
+        <PurchasePlanning
+          initialPlans={purchasePlans}
+          products={pickerProducts}
+          employees={employees.map((e) => ({ id: e.id, name: e.name }))}
+        />
       )}
 
       {/* ============ ВКЛАДКА: ЗАКАЗЫ ============ */}

@@ -24,9 +24,11 @@ import {
   Wallet,
   FileText,
   ListChecks,
+  Contact,
 } from "lucide-react";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { ActivityLogs } from "@/components/admin/ActivityLogs";
+import { BusinessCardPrint } from "@/components/admin/BusinessCardPrint";
 import {
   CASH_CARD_HOLDER_SETTING_KEY,
   DEFAULT_CASH_CARD_HOLDER,
@@ -42,6 +44,7 @@ import {
   WP_PICKUP_PRICE_SETTING_KEY,
   WP_ACCEPT_LIST_SETTING_KEY,
   WP_PHONE_SETTING_KEY,
+  WASTEPAPER_PHONE_DEFAULT,
   wpRateSettingKey,
   type WastepaperRateId,
 } from "@/lib/wastepaper";
@@ -50,6 +53,15 @@ import {
   DEFAULT_PRIVACY_POLICY_TEXT,
 } from "@/lib/privacy";
 import { invalidateSiteSettingsCache } from "@/hooks/use-site-settings";
+import {
+  SITE_PHONE,
+  SITE_ADDRESS,
+  SITE_EMAIL,
+  SITE_HOURS_LABEL,
+  COMPANY_LEGAL_NAME,
+  COMPANY_INN,
+} from "@/lib/site-config";
+import { SITE_NAME, SITE_URL } from "@/lib/seo";
 
 interface SettingsFormProps {
   settings: Record<string, string>;
@@ -96,6 +108,7 @@ const wastepaperFields: { id: WastepaperRateId; label: string }[] = [
 type TabId =
   | "contacts"
   | "wastepaper"
+  | "card"
   | "registration"
   | "delivery"
   | "prices"
@@ -108,6 +121,7 @@ type TabId =
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "contacts", label: "Контакты", icon: <Phone size={14} /> },
   { id: "wastepaper", label: "Макулатура", icon: <Recycle size={14} /> },
+  { id: "card", label: "Визитка A4", icon: <Contact size={14} /> },
   { id: "registration", label: "Регистрация", icon: <UserPlus size={14} /> },
   { id: "delivery", label: "Доставка", icon: <Truck size={14} /> },
   { id: "prices", label: "Цены и касса", icon: <Tags size={14} /> },
@@ -136,7 +150,7 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
     defaults[WP_SELF_BONUS_SETTING_KEY] = String(WASTEPAPER_SELF_BONUS);
     defaults[WP_PICKUP_PRICE_SETTING_KEY] = "0";
     defaults[WP_ACCEPT_LIST_SETTING_KEY] = WASTEPAPER_ACCEPT_DEFAULTS.join("\n");
-    defaults[WP_PHONE_SETTING_KEY] = "";
+    defaults[WP_PHONE_SETTING_KEY] = WASTEPAPER_PHONE_DEFAULT;
     return { ...defaults, ...settings };
   });
   const [activeTab, setActiveTab] = useState<TabId>("contacts");
@@ -299,6 +313,31 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
   };
 
   const isLogsTab = activeTab === "logs";
+  const isCardTab = activeTab === "card";
+  /** Вкладки без сетки 2-колонок и без кнопки «Сохранить» внизу */
+  const isStandaloneTab = isLogsTab || isCardTab;
+
+  const hoursRaw = (values.working_hours || "").trim();
+  const hoursLabel = (() => {
+    if (!hoursRaw) return SITE_HOURS_LABEL;
+    if (/пн|сб|выходн/i.test(hoursRaw)) return hoursRaw;
+    return `Пн–Пт ${hoursRaw} · Сб, Вс — выходные`;
+  })();
+
+  const businessCardData = {
+    companyName: SITE_NAME,
+    tagline: "Гофротара · Упаковка · Макулатура",
+    siteUrl: SITE_URL,
+    phoneSales: (values.phone || SITE_PHONE || "").trim() || SITE_PHONE,
+    phoneWastepaper:
+      (values[WP_PHONE_SETTING_KEY] || WASTEPAPER_PHONE_DEFAULT || "").trim() ||
+      WASTEPAPER_PHONE_DEFAULT,
+    email: (values.email || SITE_EMAIL || "").trim() || SITE_EMAIL,
+    address: (values.address || SITE_ADDRESS || "").trim() || SITE_ADDRESS,
+    hours: hoursLabel,
+    legalName: COMPANY_LEGAL_NAME,
+    inn: COMPANY_INN,
+  };
 
   return (
     <form
@@ -324,7 +363,7 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
       </div>
 
       {/* ── Содержимое секций ── */}
-      {activeTab !== "logs" && (
+      {!isStandaloneTab && (
         <div
           style={{
             display: "grid",
@@ -358,35 +397,128 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
           )}
 
           {activeTab === "wastepaper" && (
-            <div className="admin-card" style={cardStyle}>
-              <div className="admin-card__pad" style={cardPadStyle}>
-                <h2 className="admin-h2" style={{ margin: 0 }}>Цены на макулатуру (₽/кг)</h2>
-                <div className="admin-grid-2" style={{ minWidth: 0 }}>
-                  {wastepaperFields.map((field) => {
-                    const key = wpRateSettingKey(field.id);
-                    return (
-                      <div key={field.id} className="admin-field">
-                        <label className="admin-label">{field.label}</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.1"
-                          value={values[key] ?? ""}
-                          onChange={(e) =>
-                            setValues({ ...values, [key]: e.target.value })
-                          }
-                          className="admin-input"
-                        />
-                      </div>
-                    );
-                  })}
+            <>
+              <div className="admin-card" style={cardStyle}>
+                <div className="admin-card__pad" style={cardPadStyle}>
+                  <h2 className="admin-h2" style={{ margin: 0 }}>Цены на макулатуру (₽/кг)</h2>
+                  <div className="admin-grid-2" style={{ minWidth: 0 }}>
+                    {wastepaperFields.map((field) => {
+                      const key = wpRateSettingKey(field.id);
+                      return (
+                        <div key={field.id} className="admin-field">
+                          <label className="admin-label">{field.label}</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.1"
+                            value={values[key] ?? ""}
+                            onChange={(e) =>
+                              setValues({ ...values, [key]: e.target.value })
+                            }
+                            className="admin-input"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="admin-hint" style={{ marginTop: "auto" }}>
+                    Эти цены показываются на главной странице и на странице «Приём
+                    макулатуры» (в тарифах и калькуляторе).
+                  </p>
                 </div>
-                <p className="admin-hint" style={{ marginTop: "auto" }}>
-                  Эти цены показываются на главной странице и на странице «Приём
-                  макулатуры» (в тарифах и калькуляторе).
-                </p>
               </div>
-            </div>
+
+              <div className="admin-card" style={cardStyle}>
+                <div className="admin-card__pad" style={cardPadStyle}>
+                  <h2 className="admin-h2" style={{ margin: 0 }}>Контакты отдела макулатуры</h2>
+                  <div className="admin-field">
+                    <label className="admin-label">Телефон макулатуры</label>
+                    <input
+                      type="text"
+                      value={values[WP_PHONE_SETTING_KEY] || ""}
+                      onChange={(e) =>
+                        setValues({
+                          ...values,
+                          [WP_PHONE_SETTING_KEY]: e.target.value,
+                        })
+                      }
+                      className="admin-input"
+                      placeholder={WASTEPAPER_PHONE_DEFAULT}
+                    />
+                    <span className="admin-hint">
+                      Этот номер показывается в блоке «Принимаем макулатуру» на
+                      главной и на странице «Приём макулатуры». Номер гофротары
+                      (шапка, левая часть героя, контакты) задаётся во вкладке
+                      «Контакты».
+                    </span>
+                  </div>
+                  <div className="admin-grid-2" style={{ minWidth: 0 }}>
+                    <div className="admin-field">
+                      <label className="admin-label">Мин. вес вывоза, кг</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={values[WP_PICKUP_MIN_SETTING_KEY] ?? ""}
+                        onChange={(e) =>
+                          setValues({
+                            ...values,
+                            [WP_PICKUP_MIN_SETTING_KEY]: e.target.value,
+                          })
+                        }
+                        className="admin-input"
+                      />
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">Цена вывоза, ₽</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={values[WP_PICKUP_PRICE_SETTING_KEY] ?? ""}
+                        onChange={(e) =>
+                          setValues({
+                            ...values,
+                            [WP_PICKUP_PRICE_SETTING_KEY]: e.target.value,
+                          })
+                        }
+                        className="admin-input"
+                      />
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">Надбавка самовывоз, ₽/кг</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.1"
+                        value={values[WP_SELF_BONUS_SETTING_KEY] ?? ""}
+                        onChange={(e) =>
+                          setValues({
+                            ...values,
+                            [WP_SELF_BONUS_SETTING_KEY]: e.target.value,
+                          })
+                        }
+                        className="admin-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="admin-field">
+                    <label className="admin-label">Что принимаем (по строке)</label>
+                    <textarea
+                      className="admin-textarea"
+                      rows={6}
+                      value={values[WP_ACCEPT_LIST_SETTING_KEY] ?? ""}
+                      onChange={(e) =>
+                        setValues({
+                          ...values,
+                          [WP_ACCEPT_LIST_SETTING_KEY]: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           {activeTab === "registration" && (
@@ -928,6 +1060,25 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
         </div>
       )}
 
+      {/* ── Визитка A4 (отдельная вкладка) ── */}
+      {isCardTab && (
+        <div className="admin-stack--lg">
+          <div className="admin-card">
+            <div className="admin-card__pad" style={{ display: "grid", gap: 10 }}>
+              <h2 className="admin-h2" style={{ margin: 0 }}>
+                Вертикальная визитка / плакат A4
+              </h2>
+              <p className="admin-hint" style={{ margin: 0 }}>
+                Чёрно-белая печать на лист A4 (книжная). Телефоны, адрес, сайт и
+                режим работы берутся из вкладок «Контакты» и «Макулатура».
+                Сохраните настройки там, если меняли номера — затем печатайте.
+              </p>
+            </div>
+          </div>
+          <BusinessCardPrint data={businessCardData} />
+        </div>
+      )}
+
       {/* ── Логи (отдельная вкладка) ── */}
       {isLogsTab && (
         <div className="admin-stack--lg">
@@ -1008,28 +1159,30 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
         </div>
       )}
 
-      <div className="admin-row">
-        <button
-          type="submit"
-          disabled={saving}
-          className="admin-btn admin-btn--primary"
-        >
-          {saving ? (
-            <>
-              <Loader2 size={16} className="animate-spin" /> Сохранение...
-            </>
-          ) : (
-            <>
-              <Save size={16} /> Сохранить
-            </>
+      {!isStandaloneTab && (
+        <div className="admin-row">
+          <button
+            type="submit"
+            disabled={saving}
+            className="admin-btn admin-btn--primary"
+          >
+            {saving ? (
+              <>
+                <Loader2 size={16} className="animate-spin" /> Сохранение...
+              </>
+            ) : (
+              <>
+                <Save size={16} /> Сохранить
+              </>
+            )}
+          </button>
+          {saved && (
+            <span className="admin-success">
+              <CheckCircle size={16} /> Сохранено!
+            </span>
           )}
-        </button>
-        {saved && (
-          <span className="admin-success">
-            <CheckCircle size={16} /> Сохранено!
-          </span>
-        )}
-      </div>
+        </div>
+      )}
 
       <style jsx>{`
         @media (max-width: 900px) {

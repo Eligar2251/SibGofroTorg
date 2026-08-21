@@ -30,6 +30,7 @@ import {
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
+import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
 import {
   canAccessAdminPage,
@@ -419,11 +420,12 @@ export function AdminShell({
       )}
 
       <div className="admin-content">
-        {/* Уведомления тянут API основной админки — макулатурщику,
-            как и юристу, эта панель не нужна (и недоступна). */}
+        {/* Три кружка справа сверху: планы поставок · новые заявки ·
+            срочные уведомления. Макулатурщику и юристу недоступны. */}
         {role && role !== "lawyer" && role !== "wastepaper" && (
           <>
             <AdminSupplyPlans adminPath={adminPath} />
+            <AdminRequestAlerts adminPath={adminPath} />
             <AdminNotifications adminPath={adminPath} />
           </>
         )}

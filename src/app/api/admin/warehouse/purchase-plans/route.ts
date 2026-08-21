@@ -104,14 +104,26 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.action === "spend") {
       const plan = await spendPurchasePlan(body);
+      const via =
+        plan.spendMode === "salary"
+          ? "через ЗП"
+          : plan.excludeFromBalance
+            ? "платёж вне баланса"
+            : "платёж в банке";
       await logAdminAction(
         auth.displayName,
         auth.role,
         "post",
         "purchase-plan",
         plan.id,
-        `Списано ${plan.spentAmount} ₽ на закупку «${plan.productName}»`,
-        { account: plan.account, paymentId: plan.spentPaymentId }
+        `Списано ${plan.spentAmount} ₽ на закупку «${plan.productName}» (${via})`,
+        {
+          account: plan.account,
+          spendMode: plan.spendMode,
+          paymentId: plan.spentPaymentId,
+          salaryId: plan.spentSalaryId,
+          excludeFromBalance: plan.excludeFromBalance,
+        }
       );
       return NextResponse.json({ plan });
     }
