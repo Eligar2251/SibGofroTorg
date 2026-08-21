@@ -323,7 +323,7 @@ export function PurchasePlanning({
     }
   }
 
-  async function spend(plan: PurchasePlan) {
+  async function runSpend(plan: PurchasePlan) {
     const draft = spendDraftFor(plan);
     const source = draft.account || plan.account;
     const modeLabel = PURCHASE_SPEND_MODE_LABEL[draft.spendMode];
@@ -952,7 +952,7 @@ export function PurchasePlanning({
                             type="button"
                             className="admin-btn admin-btn--primary"
                             disabled={busyId === plan.id || plan.savedAmount <= 0}
-                            onClick={() => spend(plan)}
+                            onClick={() => runSpend(plan)}
                           >
                             {accountIcon(spend.account)} Списать {fmt(plan.savedAmount)} ₽
                           </button>
