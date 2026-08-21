@@ -4,15 +4,14 @@ import { WastepaperCalculator } from "@/components/wastepaper/WastepaperCalculat
 import { CheckCircle, Truck, Coins, ShieldCheck } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { getWastepaperRates, getSettings } from "@/lib/supabase-queries";
-import { formatRate, getWastepaperPageConfig } from "@/lib/wastepaper";
+import { formatRate, getWastepaperPageConfig, WASTEPAPER_PHONE_DEFAULT } from "@/lib/wastepaper";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
-import { SITE_PHONE, SITE_PHONE_HREF } from "@/lib/site-config";
 
 export const metadata: Metadata = {
-  title: "Приём макулатуры в Новосибирске — цены за кг +7 (383) 291-08-20",
+  title: `Приём макулатуры в Новосибирске — цены за кг ${WASTEPAPER_PHONE_DEFAULT}`,
   description:
-    "Сдать картон, бумагу и архивы в Новосибирске. Тел. +7 (383) 291-08-20. Вывоз от 200 кг, оплата на месте. Актуальные тарифы СибГофроТорг.",
+    `Сдать картон, бумагу и архивы в Новосибирске. Тел. ${WASTEPAPER_PHONE_DEFAULT}. Вывоз от 200 кг, оплата на месте. Актуальные тарифы СибГофроТорг.`,
   alternates: { canonical: `${SITE_URL}/wastepaper` },
 };
 
@@ -26,10 +25,10 @@ export default async function WastepaperPage() {
   const minRate = Math.min(...Object.values(rates));
   const selfBonus = `+ ${wp.selfBonus} ₽/кг самовывоз`;
   const pickupPriceLabel = wp.pickupPrice > 0 ? `${wp.pickupPrice} ₽` : "0 ₽";
-  // Номер макулатуры 291-08-20 возвращаем на эту страницу
-  const WP_PHONE = "+7 (383) 291-08-20";
-  const contactPhone = WP_PHONE;
-  const contactPhoneHref = "tel:+73832910820";
+  // Номер отдела макулатуры — из настроек (админка → Макулатура),
+  // с дефолтом 291-08-20. Гофротара использует отдельный settings.phone.
+  const contactPhone = wp.phone;
+  const contactPhoneHref = wp.phoneHref;
 
   // Тарифы: названия фиксированные, цены — из настроек
   const rateRows = [

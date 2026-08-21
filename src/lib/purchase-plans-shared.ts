@@ -1,5 +1,7 @@
 export type PurchaseAccount = "cash" | "bank" | "ym_card";
 export type PurchasePlanStatus = "active" | "completed";
+/** Куда уходит списание: исходящий платёж в банке или выплата в ЗП. */
+export type PurchaseSpendMode = "bank" | "salary";
 
 export interface PurchaseContribution {
   id: string;
@@ -35,6 +37,12 @@ export interface PurchasePlan {
   savedAmount: number;
   spentAmount: number;
   spentPaymentId?: string | null;
+  /** ID записи зарплаты, если списание шло через ЗП. */
+  spentSalaryId?: string | null;
+  /** bank | salary — куда ушло списание. */
+  spendMode?: PurchaseSpendMode | null;
+  /** true = платёж/ЗП «вне баланса». */
+  excludeFromBalance?: boolean;
   spentAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -44,6 +52,11 @@ export const PURCHASE_ACCOUNT_LABEL: Record<PurchaseAccount, string> = {
   cash: "Наличная касса",
   bank: "Расчётный счёт",
   ym_card: "Карта ЮМ",
+};
+
+export const PURCHASE_SPEND_MODE_LABEL: Record<PurchaseSpendMode, string> = {
+  bank: "Платёж в банке",
+  salary: "Выплата в ЗП",
 };
 
 export function purchaseSavedAmount(

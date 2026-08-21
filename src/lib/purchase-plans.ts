@@ -16,7 +16,12 @@ import {
   type PurchaseAccount,
   type PurchaseContribution,
   type PurchasePlan,
+  type PurchaseSpendMode,
 } from "@/lib/purchase-plans-shared";
+import {
+  SALARY_EXCLUDE_BALANCE_TAG,
+  SALARY_YM_CARD_TAG,
+} from "@/lib/warehouse-shared";
 
 function cleanText(value: unknown, max: number): string {
   return String(value ?? "").trim().slice(0, max);
@@ -107,6 +112,16 @@ function mapPlan(row: Record<string, any>): PurchasePlan {
     savedAmount: purchaseSavedAmount(contributions),
     spentAmount: Math.max(0, round2(row.spent_amount)),
     spentPaymentId: row.spent_payment_id ? String(row.spent_payment_id) : null,
+    spentSalaryId: row.spent_salary_id ? String(row.spent_salary_id) : null,
+    spendMode:
+      row.spend_mode === "salary" || row.spend_mode === "bank"
+        ? (row.spend_mode as PurchaseSpendMode)
+        : row.spent_salary_id
+          ? "salary"
+          : row.spent_payment_id
+            ? "bank"
+            : null,
+    excludeFromBalance: row.exclude_from_balance === true,
     spentAt: row.spent_at ? String(row.spent_at) : null,
     createdAt: String(row.created_at || new Date().toISOString()),
     updatedAt: String(row.updated_at || row.created_at || new Date().toISOString()),
@@ -383,6 +398,13 @@ async function nextPaymentNumber(): Promise<number> {
 export async function spendPurchasePlan(input: {
   id: unknown;
   account?: unknown;
+  /** bank = исходящий платёж; salary = выплата в зарплатах. */
+  spendMode?: unknown;
+  /** true — не влияет на текущий банк/кассу («вне баланса»). */
+  excludeFromBalance?: unknown;
+  /** Для spendMode=salary — id сотрудника (необязательно). */
+  employeeId?: unknown;
+  employeeName?: unknown;
 }): Promise<PurchasePlan> {
   const id = cleanText(input.id, 100);
   if (!id) throw new Error("План не найден");
@@ -393,7 +415,11 @@ export async function spendPurchasePlan(input: {
     .eq("id", id)
     .single();
   if (readError || !existing) throw migrationError(readError || { message: "План не найден" });
-  if (existing.status === "completed" || existing.spent_payment_id) {
+  if (
+    existing.status === "completed" ||
+    existing.spent_payment_id ||
+    existing.spent_salary_id
+  ) {
     throw new Error("Накопленная сумма уже списана");
   }
 
@@ -401,59 +427,152 @@ export async function spendPurchasePlan(input: {
   const amount = purchaseSavedAmount(contributions);
   if (amount <= 0) throw new Error("Сначала добавьте накопления");
   const account = normalizeAccount(input.account ?? existing.account);
-  const number = await nextPaymentNumber();
+  const spendMode: PurchaseSpendMode =
+    input.spendMode === "salary" ? "salary" : "bank";
+  const excludeFromBalance = input.excludeFromBalance === true;
   const date = getWarehouseBusinessDate();
-  const paymentType = account === "cash" ? "cash" : account === "ym_card" ? "ym_card" : "regular";
-  const { data: payment, error: paymentError } = await db
-    .from("bank_payments")
-    .insert({
-      number,
-      date,
-      direction: "outgoing",
-      type: paymentType,
-      cash_destination: null,
-      counterparty: `Закупка — ${String(existing.product_name || "товар")}`.slice(0, 200),
-      counterparty_id: null,
-      deal_ids: [],
-      deal_numbers: [],
-      receipt_ids: [],
-      receipt_numbers: [],
-      amount,
-      invoice_number: null,
-      vat_rate: 0,
-      vat_amount: 0,
-      is_paid: true,
-      paid_at: date,
-      exclude_from_balance: false,
-      comment: `Списание накоплений по плану закупки «${String(existing.product_name || "товар")}»`,
-    })
-    .select("id")
-    .single();
-  if (paymentError || !payment) throw paymentError || new Error("Не удалось создать списание");
-
+  const productLabel = String(existing.product_name || "товар");
   const now = new Date().toISOString();
-  const { data, error } = await db
+
+  let spentPaymentId: string | null = null;
+  let spentSalaryId: string | null = null;
+
+  if (spendMode === "salary") {
+    // Выплата в ЗП: source = cash | bank (ym_card кодируется тегом).
+    const employeeName =
+      cleanText(input.employeeName, 200) ||
+      `Закупка — ${productLabel}`.slice(0, 200);
+    const employeeId = cleanText(input.employeeId, 100) || null;
+    const dbSource = account === "cash" ? "cash" : "bank";
+    const tags: string[] = [];
+    if (account === "ym_card") tags.push(SALARY_YM_CARD_TAG);
+    if (excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
+    const comment = [
+      ...tags,
+      `Списание закупки «${productLabel}»`,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 500);
+
+    const { data: salary, error: salaryError } = await db
+      .from("salaries")
+      .insert({
+        employee_id: employeeId,
+        employee_name: employeeName,
+        amount,
+        date,
+        source: dbSource,
+        is_paid: true,
+        paid_at: date,
+        comment,
+      })
+      .select("id")
+      .single();
+    if (salaryError || !salary) {
+      throw salaryError || new Error("Не удалось создать выплату в ЗП");
+    }
+    spentSalaryId = String(salary.id);
+  } else {
+    const number = await nextPaymentNumber();
+    const paymentType =
+      account === "cash" ? "cash" : account === "ym_card" ? "ym_card" : "regular";
+    const commentParts = [
+      `Списание накоплений по плану закупки «${productLabel}»`,
+      excludeFromBalance ? SALARY_EXCLUDE_BALANCE_TAG : null,
+    ].filter(Boolean);
+    const { data: payment, error: paymentError } = await db
+      .from("bank_payments")
+      .insert({
+        number,
+        date,
+        direction: "outgoing",
+        type: paymentType,
+        cash_destination: null,
+        counterparty: `Закупка — ${productLabel}`.slice(0, 200),
+        counterparty_id: null,
+        deal_ids: [],
+        deal_numbers: [],
+        receipt_ids: [],
+        receipt_numbers: [],
+        amount,
+        invoice_number: null,
+        vat_rate: 0,
+        vat_amount: 0,
+        is_paid: true,
+        paid_at: date,
+        exclude_from_balance: excludeFromBalance,
+        comment: commentParts.join(" ").slice(0, 500),
+      })
+      .select("id")
+      .single();
+    if (paymentError || !payment) {
+      throw paymentError || new Error("Не удалось создать списание");
+    }
+    spentPaymentId = String(payment.id);
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    account,
+    status: "completed",
+    spent_amount: amount,
+    spent_payment_id: spentPaymentId,
+    spent_at: now,
+    updated_at: now,
+  };
+  // Новые колонки (миграция может быть не применена) — пишем мягко.
+  updatePayload.spent_salary_id = spentSalaryId;
+  updatePayload.spend_mode = spendMode;
+  updatePayload.exclude_from_balance = excludeFromBalance;
+
+  let update = await db
     .from("warehouse_purchase_plans")
-    .update({
-      account,
-      status: "completed",
-      spent_amount: amount,
-      spent_payment_id: payment.id,
-      spent_at: now,
-      updated_at: now,
-    })
+    .update(updatePayload)
     .eq("id", id)
     .eq("status", "active")
     .select("*")
     .maybeSingle();
-  if (error || !data) {
-    await db.from("bank_payments").delete().eq("id", payment.id);
-    throw error || new Error("План уже был списан");
+
+  if (
+    update.error &&
+    (String(update.error.message || "").includes("spent_salary") ||
+      String(update.error.message || "").includes("spend_mode") ||
+      String(update.error.message || "").includes("exclude_from_balance") ||
+      update.error.code === "PGRST204" ||
+      update.error.code === "42703")
+  ) {
+    // Без новых колонок — сохраняем минимум (как раньше).
+    const minimal: Record<string, unknown> = {
+      account,
+      status: "completed",
+      spent_amount: amount,
+      spent_payment_id: spentPaymentId,
+      spent_at: now,
+      updated_at: now,
+    };
+    update = await db
+      .from("warehouse_purchase_plans")
+      .update(minimal)
+      .eq("id", id)
+      .eq("status", "active")
+      .select("*")
+      .maybeSingle();
+  }
+
+  if (update.error || !update.data) {
+    if (spentPaymentId) {
+      await db.from("bank_payments").delete().eq("id", spentPaymentId);
+    }
+    if (spentSalaryId) {
+      await db.from("salaries").delete().eq("id", spentSalaryId);
+    }
+    throw update.error || new Error("План уже был списан");
   }
 
   revalidateTag("purchase-plans", { expire: 0 });
   revalidateTag("warehouse-payments", { expire: 0 });
-  return mapPlan(data);
+  revalidateTag("warehouse-salaries", { expire: 0 });
+  return mapPlan(update.data);
 }
 
 export async function updatePurchasePlan(input: {
@@ -499,6 +618,9 @@ export async function updatePurchasePlan(input: {
     if (input.status === "active") {
       payload.spent_amount = 0;
       payload.spent_payment_id = null;
+      payload.spent_salary_id = null;
+      payload.spend_mode = null;
+      payload.exclude_from_balance = false;
       payload.spent_at = null;
     }
   }

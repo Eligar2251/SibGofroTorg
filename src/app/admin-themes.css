@@ -1271,6 +1271,17 @@
   [data-admin-theme="graphite"],
   [data-admin-theme="ruby"],
   [data-admin-theme="coffee"]
+) .admin-requests-shortcut__btn--active {
+  color: var(--adm-steel) !important;
+  background: var(--adm-steel-pale) !important;
+  border-color: var(--adm-steel-line) !important;
+}
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
 ) :is(.admin-notify__panel, .admin-notify__item, .admin-notify__iconbtn) {
   background: var(--adm-card) !important;
   border-color: var(--adm-border-mid) !important;

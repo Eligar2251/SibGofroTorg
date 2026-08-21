@@ -99,26 +99,33 @@ export function AdminNotifications({ adminPath }: { adminPath: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  // Заявки (type=order) вынесены в отдельный кружок AdminRequestAlerts —
+  // здесь только остатки, неоплаченные отгрузки и аренда.
+  const otherItems = useMemo(
+    () => data.items.filter((item) => item.type !== "order"),
+    [data.items]
+  );
+  const otherTotal = otherItems.length;
+
   const summary = useMemo(() => {
     const parts: string[] = [];
-    if (data.counts.orders) parts.push(`заявки ${data.counts.orders}`);
     if (data.counts.stock) parts.push(`остатки ${data.counts.stock}`);
     if (data.counts.unpaidReleased) parts.push(`без оплаты ${data.counts.unpaidReleased}`);
     if (data.counts.rent) parts.push(`аренда ${data.counts.rent}`);
     return parts.join(" · ") || "Срочных уведомлений нет";
-  }, [data.counts.orders, data.counts.stock, data.counts.unpaidReleased, data.counts.rent]);
+  }, [data.counts.stock, data.counts.unpaidReleased, data.counts.rent]);
 
   return (
     <div className="admin-notify">
       <button
         type="button"
-        className={`admin-notify__btn${data.total > 0 ? " admin-notify__btn--active" : ""}`}
+        className={`admin-notify__btn${otherTotal > 0 ? " admin-notify__btn--active" : ""}`}
         onClick={() => setOpen((v) => !v)}
         aria-label="Уведомления"
         title="Срочные уведомления"
       >
         {loading ? <Loader2 size={18} className="animate-spin" /> : <Bell size={18} />}
-        {data.total > 0 && <span className="admin-notify__badge">{data.total > 99 ? "99+" : data.total}</span>}
+        {otherTotal > 0 && <span className="admin-notify__badge">{otherTotal > 99 ? "99+" : otherTotal}</span>}
       </button>
 
       {open && (
@@ -140,14 +147,14 @@ export function AdminNotifications({ adminPath }: { adminPath: string }) {
 
           {error && <div className="admin-notify__error">{error}</div>}
 
-          {data.items.length === 0 && !loading ? (
+          {otherItems.length === 0 && !loading ? (
             <div className="admin-notify__empty">
               <Bell size={22} />
               <span>Сейчас срочных уведомлений нет</span>
             </div>
           ) : (
             <div className="admin-notify__list">
-              {data.items.map((item) => {
+              {otherItems.map((item) => {
                 const Icon = iconFor(item.type);
                 return (
                   <Link
