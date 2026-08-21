@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, type CSSProperties } from "react";
+import { useState, useMemo, useEffect, useRef, type CSSProperties } from "react";
 import {
   Printer,
   Download,
@@ -10,6 +10,10 @@ import {
   Box,
   Type,
   LayoutGrid,
+  Plus,
+  X,
+  RotateCcw,
+  Pencil,
 } from "lucide-react";
 
 interface BoxProduct {
@@ -66,10 +70,13 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   category: "Категория",
 };
 
+const BUILTIN_KEYS = Object.keys(FIELD_LABELS) as FieldKey[];
+
 /** Поля, которые обычно крупнее в прайс-таблице */
 const EMPHASIS_FIELDS = new Set<FieldKey>(["name", "dimensions", "price", "priceWholesale"]);
 
 const STORAGE_KEY = "box-report-prefs-v2";
+const EDITS_KEY = "box-report-edits-v1";
 
 const DEFAULT_FIELDS: Record<FieldKey, boolean> = {
   name: true,
@@ -105,6 +112,108 @@ function loadPrefs(): {
   } catch {
     return {};
   }
+}
+
+interface CustomRow {
+  key: string;
+}
+interface CustomCol {
+  key: string;
+  label: string;
+}
+interface PrintRow {
+  key: string;
+  product: BoxProduct | null;
+}
+interface PrintCol {
+  key: string;
+  builtin: FieldKey | null;
+  label: string;
+}
+
+function loadEditsRaw(): {
+  cellEdits?: Record<string, string>;
+  customRows?: CustomRow[];
+  customCols?: CustomCol[];
+  headerEdits?: Record<string, string>;
+  titleEdit?: string | null;
+  subtitleEdit?: string | null;
+} {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(EDITS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as {
+      cellEdits?: Record<string, string>;
+      customRows?: CustomRow[];
+      customCols?: CustomCol[];
+      headerEdits?: Record<string, string>;
+      titleEdit?: string | null;
+      subtitleEdit?: string | null;
+    };
+  } catch {
+    return {};
+  }
+}
+
+function uid(prefix: string) {
+  return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Редактируемый текст (contentEditable) для ячеек печатной таблицы.
+ * Неконтролируемый: DOM-текст обновляется только при внешнем изменении value
+ * (и только когда элемент не в фокусе) — за счёт этого курсор не прыгает при вводе.
+ */
+function EditableText({
+  value,
+  onChange,
+  ariaLabel,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  ariaLabel?: string;
+  className?: string;
+}) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [initial] = useState(value);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.textContent !== value && document.activeElement !== el) {
+      el.textContent = value;
+    }
+  }, [value]);
+
+  return (
+    <span
+      ref={ref}
+      className={`br-edit${className ? ` ${className}` : ""}`}
+      contentEditable
+      role="textbox"
+      aria-label={ariaLabel}
+      spellCheck={false}
+      suppressContentEditableWarning
+      onInput={(e) => onChange(e.currentTarget.textContent || "")}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+      onPaste={(e) => {
+        e.preventDefault();
+        const text = e.clipboardData
+          .getData("text/plain")
+          .replace(/\s*\n+\s*/g, " ");
+        document.execCommand("insertText", false, text);
+      }}
+    >
+      {initial}
+    </span>
+  );
 }
 
 /**
@@ -149,6 +258,7 @@ function largeTableScale(rowCount: number, colCount: number, orientation: PageOr
 
 export function BoxReportClient({ products }: { products: BoxProduct[] }) {
   const prefs = useMemo(() => loadPrefs(), []);
+  const editsRaw = useMemo(() => loadEditsRaw(), []);
 
   const [search, setSearch] = useState("");
   const categories = useMemo(() => {
@@ -174,6 +284,34 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
   /** 0 = авто, иначе 70–130 % к авто-масштабу */
   const [scaleBoost, setScaleBoost] = useState(100);
 
+  /* ── Ручные правки печатной таблицы (не меняют каталог) ── */
+  const [cellEdits, setCellEdits] = useState<Record<string, string>>(() => {
+    const raw = editsRaw.cellEdits || {};
+    const ids = new Set(products.map((p) => p.id));
+    const customRowKeys = new Set((editsRaw.customRows || []).map((r) => r.key));
+    const out: Record<string, string> = {};
+    Object.entries(raw).forEach(([k, v]) => {
+      const rowKey = k.split("::")[0];
+      if (ids.has(rowKey) || customRowKeys.has(rowKey)) out[k] = v;
+    });
+    return out;
+  });
+  const [customRows, setCustomRows] = useState<CustomRow[]>(
+    () => editsRaw.customRows || []
+  );
+  const [customCols, setCustomCols] = useState<CustomCol[]>(
+    () => editsRaw.customCols || []
+  );
+  const [headerEdits, setHeaderEdits] = useState<Record<string, string>>(
+    () => editsRaw.headerEdits || {}
+  );
+  const [titleEdit, setTitleEdit] = useState<string | null>(
+    () => editsRaw.titleEdit ?? null
+  );
+  const [subtitleEdit, setSubtitleEdit] = useState<string | null>(
+    () => editsRaw.subtitleEdit ?? null
+  );
+
   // Запоминаем выбор полей / макет
   useEffect(() => {
     try {
@@ -185,6 +323,25 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
       /* ignore */
     }
   }, [fields, layout, orientation]);
+
+  // Запоминаем ручные правки
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        EDITS_KEY,
+        JSON.stringify({
+          cellEdits,
+          customRows,
+          customCols,
+          headerEdits,
+          titleEdit,
+          subtitleEdit,
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [cellEdits, customRows, customCols, headerEdits, titleEdit, subtitleEdit]);
 
   const filtered = useMemo(() => {
     let list = products;
@@ -235,6 +392,32 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
     () => products.filter((p) => selectedIds.has(p.id)),
     [products, selectedIds]
   );
+
+  /** Все строки печати: выбранные коробки + добавленные вручную */
+  const allRows = useMemo<PrintRow[]>(
+    () => [
+      ...selectedProducts.map((p) => ({ key: p.id, product: p })),
+      ...customRows.map((r) => ({ key: r.key, product: null })),
+    ],
+    [selectedProducts, customRows]
+  );
+
+  /** Все столбцы печати: включённые поля + добавленные вручную */
+  const activeCols = useMemo<PrintCol[]>(() => {
+    const built = (Object.keys(fields) as FieldKey[]).filter((k) => fields[k]);
+    return [
+      ...built.map((f) => ({
+        key: f as string,
+        builtin: f,
+        label: headerEdits[f] ?? FIELD_LABELS[f],
+      })),
+      ...customCols.map((c) => ({
+        key: c.key,
+        builtin: null,
+        label: headerEdits[c.key] ?? c.label,
+      })),
+    ];
+  }, [fields, customCols, headerEdits]);
 
   function formatDimensions(p: BoxProduct): string {
     const l = p.dimensionLength != null ? Number(p.dimensionLength) : null;
@@ -288,12 +471,107 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
     }
   }
 
-  const activeFields = (Object.keys(fields) as FieldKey[]).filter((k) => fields[k]);
+  /** Значение ячейки с учётом ручных правок */
+  function cellText(row: PrintRow, col: PrintCol): string {
+    const edited = cellEdits[`${row.key}::${col.key}`];
+    if (edited != null) return edited;
+    if (row.product && col.builtin) return getFieldValue(row.product, col.builtin);
+    return "";
+  }
+
+  function setCell(rowKey: string, colKey: string, v: string) {
+    setCellEdits((prev) => ({ ...prev, [`${rowKey}::${colKey}`]: v }));
+  }
+
+  function setHeaderEdit(colKey: string, v: string) {
+    setHeaderEdits((prev) => ({ ...prev, [colKey]: v }));
+  }
+
+  function addCustomRow() {
+    setCustomRows((prev) => [...prev, { key: uid("row-") }]);
+  }
+
+  function addCustomCol() {
+    setCustomCols((prev) => [
+      ...prev,
+      { key: uid("col-"), label: `Столбец ${prev.length + 1}` },
+    ]);
+  }
+
+  /** Убрать столбец: встроенное поле выключается, свой — удаляется */
+  function removeCol(colKey: string) {
+    if (BUILTIN_KEYS.includes(colKey as FieldKey)) {
+      setFields((prev) => ({ ...prev, [colKey as FieldKey]: false }));
+    } else {
+      setCustomCols((prev) => prev.filter((c) => c.key !== colKey));
+    }
+    setHeaderEdits((prev) => {
+      const next = { ...prev };
+      delete next[colKey];
+      return next;
+    });
+    setCellEdits((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        if (k.endsWith(`::${colKey}`)) delete next[k];
+      });
+      return next;
+    });
+  }
+
+  /** Убрать строку: коробка снимается с печати, своя строка — удаляется */
+  function removeRow(rowKey: string) {
+    if (products.some((p) => p.id === rowKey)) {
+      toggleProduct(rowKey);
+      return;
+    }
+    setCustomRows((prev) => prev.filter((r) => r.key !== rowKey));
+    setCellEdits((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        if (k.startsWith(`${rowKey}::`)) delete next[k];
+      });
+      return next;
+    });
+  }
+
+  function resetEdits() {
+    if (!window.confirm("Сбросить все ручные правки и вернуть данные из каталога?")) return;
+    setCellEdits({});
+    setCustomRows([]);
+    setCustomCols([]);
+    setHeaderEdits({});
+    setTitleEdit(null);
+    setSubtitleEdit(null);
+    try {
+      window.localStorage.removeItem(EDITS_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const hasEdits =
+    Object.keys(cellEdits).length > 0 ||
+    customRows.length > 0 ||
+    customCols.length > 0 ||
+    Object.keys(headerEdits).length > 0 ||
+    titleEdit != null ||
+    subtitleEdit != null;
+
+  const dateStr = new Date().toLocaleDateString("ru-RU");
+  const currentTitle =
+    titleEdit ??
+    (layout === "large"
+      ? `Прайс · коробки — ${dateStr}`
+      : `Отчёт по коробкам — ${dateStr}`);
+  const currentSubtitle =
+    subtitleEdit ??
+    `Выбрано: ${allRows.length} · Поля: ${activeCols.map((c) => c.label).join(", ")}`;
 
   const scale = useMemo(() => {
     const auto = largeTableScale(
-      selectedProducts.length,
-      activeFields.length + 1,
+      allRows.length,
+      activeCols.length + 1,
       orientation
     );
     const boost = scaleBoost / 100;
@@ -307,7 +585,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
       numPx: Math.max(9, Math.round(auto.numPx * boost)),
       titlePx: Math.max(11, Math.round(auto.titlePx * boost)),
     };
-  }, [selectedProducts.length, activeFields.length, orientation, scaleBoost]);
+  }, [allRows.length, activeCols.length, orientation, scaleBoost]);
 
   function handlePrint() {
     window.print();
@@ -323,22 +601,22 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
   }
 
   function handleExportExcel() {
-    if (selectedProducts.length === 0 || activeFields.length === 0) {
-      alert("Выберите хотя бы один товар и одно поле");
+    if (allRows.length === 0 || activeCols.length === 0) {
+      alert("Выберите хотя бы одну строку и один столбец");
       return;
     }
-    const headCells = activeFields
+    const headCells = activeCols
       .map(
-        (k) =>
-          `<th style="border:1px solid #999;padding:6px 8px;background:#eee;font-weight:bold;text-align:left;">${escapeXml(FIELD_LABELS[k])}</th>`
+        (c) =>
+          `<th style="border:1px solid #999;padding:6px 8px;background:#eee;font-weight:bold;text-align:left;">${escapeXml(c.label)}</th>`
       )
       .join("");
-    const bodyRows = selectedProducts
-      .map((p, idx) => {
-        const cells = activeFields
+    const bodyRows = allRows
+      .map((row, idx) => {
+        const cells = activeCols
           .map(
-            (k) =>
-              `<td style="border:1px solid #999;padding:6px 8px;mso-number-format:'\\@';">${escapeXml(getFieldValue(p, k))}</td>`
+            (c) =>
+              `<td style="border:1px solid #999;padding:6px 8px;mso-number-format:'\\@';">${escapeXml(cellText(row, c))}</td>`
           )
           .join("");
         return `<tr><td style="border:1px solid #999;padding:6px 8px;">${idx + 1}</td>${cells}</tr>`;
@@ -354,7 +632,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
       `</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->` +
       `<style>table{border-collapse:collapse;font-family:Arial;font-size:11px;} th,td{border:1px solid #999;padding:6px 8px;}</style>` +
       `</head><body>` +
-      `<div style="font-family:Arial;font-size:14px;font-weight:bold;margin-bottom:8px;">Отчёт по коробкам (${new Date().toLocaleDateString("ru-RU")})</div>` +
+      `<div style="font-family:Arial;font-size:14px;font-weight:bold;margin-bottom:8px;">${escapeXml(currentTitle)}</div>` +
       `<table><thead><tr><th style="border:1px solid #999;padding:6px 8px;background:#eee;font-weight:bold;">№</th>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table>` +
       `</body></html>`;
 
@@ -372,15 +650,15 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
   }
 
   function handleExportCsv() {
-    if (selectedProducts.length === 0 || activeFields.length === 0) {
-      alert("Выберите хотя бы один товар и одно поле");
+    if (allRows.length === 0 || activeCols.length === 0) {
+      alert("Выберите хотя бы одну строку и один столбец");
       return;
     }
-    const header = activeFields.map((k) => FIELD_LABELS[k]).join(";");
-    const rows = selectedProducts.map((p) =>
-      activeFields
-        .map((k) => {
-          const v = getFieldValue(p, k);
+    const header = activeCols.map((c) => c.label).join(";");
+    const rows = allRows.map((row) =>
+      activeCols
+        .map((c) => {
+          const v = cellText(row, c);
           const cleaned = String(v).replace(/"/g, '""');
           return `"${cleaned}"`;
         })
@@ -550,6 +828,61 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
           font-weight: 700;
         }
 
+        /* ── Редактируемые ячейки ── */
+        .br-edit {
+          display: block;
+          min-height: 1em;
+          cursor: text;
+          border-radius: 3px;
+        }
+        .br-edit:hover {
+          background: rgba(59,130,246,0.08);
+        }
+        .br-edit:focus {
+          outline: none;
+          background: rgba(59,130,246,0.12);
+          box-shadow: 0 0 0 2px rgba(59,130,246,0.45);
+        }
+        .br-edit:empty::before {
+          content: "—";
+          color: #b9b9b9;
+        }
+        th .br-edit {
+          display: inline-block;
+          min-width: 0.8em;
+        }
+        .br-act {
+          width: 34px;
+          padding: 0 2px !important;
+          text-align: center;
+        }
+        .br-x {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          border: 0;
+          border-radius: 6px;
+          background: transparent;
+          color: #c05656;
+          cursor: pointer;
+          padding: 0;
+          line-height: 1;
+        }
+        .br-x:hover {
+          background: rgba(220,38,38,0.14);
+          color: #dc2626;
+        }
+        th .br-x {
+          width: 17px;
+          height: 17px;
+          margin-left: 4px;
+          vertical-align: middle;
+          opacity: 0.45;
+        }
+        th:hover .br-x { opacity: 1; }
+
         @media print {
           @page {
             size: A4 ${orientation};
@@ -590,6 +923,12 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
             padding: 0 !important;
             box-shadow: none !important;
           }
+          .br-edit {
+            background: none !important;
+            box-shadow: none !important;
+            cursor: default;
+          }
+          .br-edit:empty::before { content: ""; }
           .no-print { display: none !important; }
           .admin-sidebar,
           .admin-mobile-bar,
@@ -611,9 +950,10 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
             <Box size={18} /> Отчёт по коробкам — выбор полей и печать
           </h2>
           <p className="admin-hint" style={{ marginTop: -4 }}>
-            Выберите коробки и столбцы. Для прайса — режим «Крупная таблица
-            A4»: название, размеры и цена крупным шрифтом; чем больше позиций —
-            тем мельче шрифт (автоматически). Выбор полей запоминается.
+            Выберите коробки и столбцы. Любая ячейка, заголовок столбца и
+            название таблицы редактируются кликом — впишите что угодно перед
+            печатью (каталог не меняется). Можно добавлять свои строки и
+            столбцы. Правки и выбор полей запоминаются.
           </p>
 
           {/* Макет печати */}
@@ -684,7 +1024,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
                   </span>
                 </label>
                 <span className="box-report-scale-hint">
-                  Авто: {scale.label} · {selectedProducts.length} поз. · шрифт ≈
+                  Авто: {scale.label} · {allRows.length} поз. · шрифт ≈
                   {scale.namePx}px
                 </span>
               </>
@@ -784,7 +1124,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
                 type="button"
                 className="admin-btn admin-btn--ghost admin-btn--sm"
                 style={
-                  fields.name && fields.dimensions && fields.price && activeFields.length === 3
+                  fields.name && fields.dimensions && fields.price && activeCols.length === 3
                     ? {
                         background: "rgba(59,130,246,0.12)",
                         borderColor: "rgba(59,130,246,0.5)",
@@ -859,12 +1199,12 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <button
               type="button"
               className="admin-btn admin-btn--primary"
               onClick={handlePrint}
-              disabled={selectedProducts.length === 0 || activeFields.length === 0}
+              disabled={allRows.length === 0 || activeCols.length === 0}
             >
               <Printer size={15} /> Печать на A4
             </button>
@@ -872,7 +1212,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
               type="button"
               className="admin-btn admin-btn--ghost"
               onClick={handleExportExcel}
-              disabled={selectedProducts.length === 0 || activeFields.length === 0}
+              disabled={allRows.length === 0 || activeCols.length === 0}
             >
               <Download size={15} /> Excel (.xls)
             </button>
@@ -880,12 +1220,44 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
               type="button"
               className="admin-btn admin-btn--ghost"
               onClick={handleExportCsv}
-              disabled={selectedProducts.length === 0 || activeFields.length === 0}
+              disabled={allRows.length === 0 || activeCols.length === 0}
             >
               <Download size={15} /> CSV
             </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={addCustomRow}
+              title="Добавить пустую строку в конец таблицы"
+            >
+              <Plus size={15} /> Строка
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={addCustomCol}
+              title="Добавить свой столбец"
+            >
+              <Plus size={15} /> Столбец
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={resetEdits}
+              disabled={!hasEdits}
+            >
+              <RotateCcw size={15} /> Сбросить правки
+            </button>
+            {hasEdits && (
+              <span
+                className="box-report-scale-hint"
+                title="Есть ручные правки — они попадут в печать и экспорт"
+              >
+                <Pencil size={12} /> есть правки
+              </span>
+            )}
             <span className="admin-hint" style={{ alignSelf: "center" }}>
-              Выбрано: {selectedProducts.length} · полей: {activeFields.length}
+              Строк: {allRows.length} · столбцов: {activeCols.length}
               {isLarge ? ` · ${orientation === "landscape" ? "альбом" : "книга"}` : ""}
             </span>
           </div>
@@ -970,11 +1342,11 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
       {/* Предпросмотр / печать */}
       <div className="admin-card box-report-print-area">
         <div className="admin-card__pad" style={{ padding: isLarge ? 0 : undefined }}>
-          {activeFields.length === 0 ? (
+          {activeCols.length === 0 ? (
             <div className="admin-empty" style={{ padding: 24 }}>
               <p>Не выбрано ни одного поля для таблицы</p>
             </div>
-          ) : selectedProducts.length === 0 ? (
+          ) : allRows.length === 0 ? (
             <div className="admin-empty" style={{ padding: 24 }}>
               <p>Не выбрано ни одной коробки</p>
             </div>
@@ -995,12 +1367,16 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
                 }
               >
                 <h2 style={{ fontSize: "var(--br-title)" }}>
-                  Прайс · коробки — {new Date().toLocaleDateString("ru-RU")}
+                  <EditableText
+                    value={currentTitle}
+                    onChange={setTitleEdit}
+                    ariaLabel="Заголовок таблицы"
+                  />
                 </h2>
                 <div className="box-report-meta no-print">
-                  {selectedProducts.length} поз. ·{" "}
-                  {activeFields.map((k) => FIELD_LABELS[k]).join(" · ")} · масштаб{" "}
-                  {scale.label} ({scaleBoost}%)
+                  {allRows.length} поз. ·{" "}
+                  {activeCols.map((c) => c.label).join(" · ")} · масштаб{" "}
+                  {scale.label} ({scaleBoost}%) · ячейки редактируются кликом
                 </div>
                 <table className="box-report-table box-report-table--large">
                   <thead>
@@ -1014,31 +1390,47 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
                       >
                         №
                       </th>
-                      {activeFields.map((k) => (
-                        <th
-                          key={k}
-                          className={
-                            k === "price" || k === "priceWholesale"
-                              ? "col-price"
-                              : k === "name"
-                                ? "col-name"
-                                : k === "dimensions"
-                                  ? "col-dims"
-                                  : undefined
-                          }
-                          style={{
-                            fontSize: "var(--br-head)",
-                            padding: `var(--br-pad-y) var(--br-pad-x)`,
-                          }}
-                        >
-                          {FIELD_LABELS[k]}
-                        </th>
-                      ))}
+                      {activeCols.map((col) => {
+                        const k = col.builtin;
+                        const cls =
+                          k === "price" || k === "priceWholesale"
+                            ? "col-price"
+                            : k === "name"
+                              ? "col-name"
+                              : k === "dimensions"
+                                ? "col-dims"
+                                : undefined;
+                        return (
+                          <th
+                            key={col.key}
+                            className={cls}
+                            style={{
+                              fontSize: "var(--br-head)",
+                              padding: `var(--br-pad-y) var(--br-pad-x)`,
+                            }}
+                          >
+                            <EditableText
+                              value={col.label}
+                              onChange={(v) => setHeaderEdit(col.key, v)}
+                              ariaLabel="Название столбца"
+                            />
+                            <button
+                              type="button"
+                              className="br-x no-print"
+                              title="Убрать столбец"
+                              onClick={() => removeCol(col.key)}
+                            >
+                              <X size={11} />
+                            </button>
+                          </th>
+                        );
+                      })}
+                      <th className="no-print br-act" />
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedProducts.map((p, idx) => (
-                      <tr key={p.id}>
+                    {allRows.map((row, idx) => (
+                      <tr key={row.key}>
                         <td
                           className="col-num"
                           style={{
@@ -1048,8 +1440,9 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
                         >
                           {idx + 1}
                         </td>
-                        {activeFields.map((k) => {
-                          const emphasis = EMPHASIS_FIELDS.has(k);
+                        {activeCols.map((col) => {
+                          const k = col.builtin;
+                          const emphasis = k != null && EMPHASIS_FIELDS.has(k);
                           const cls =
                             k === "price" || k === "priceWholesale"
                               ? "col-price"
@@ -1060,7 +1453,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
                                   : undefined;
                           return (
                             <td
-                              key={k}
+                              key={col.key}
                               className={cls}
                               style={{
                                 fontSize: emphasis
@@ -1079,10 +1472,28 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
                                       : 500,
                               }}
                             >
-                              {getFieldValue(p, k)}
+                              <EditableText
+                                value={cellText(row, col)}
+                                onChange={(v) => setCell(row.key, col.key, v)}
+                                ariaLabel={`${col.label}, строка ${idx + 1}`}
+                              />
                             </td>
                           );
                         })}
+                        <td className="no-print br-act">
+                          <button
+                            type="button"
+                            className="br-x"
+                            title={
+                              row.product
+                                ? "Убрать коробку из печати"
+                                : "Удалить строку"
+                            }
+                            onClick={() => removeRow(row.key)}
+                          >
+                            <X size={13} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1092,29 +1503,71 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
           ) : (
             <div style={{ padding: 16 }}>
               <h2 style={{ margin: "0 0 6px", fontSize: 16 }}>
-                Отчёт по коробкам — {new Date().toLocaleDateString("ru-RU")}
+                <EditableText
+                  value={currentTitle}
+                  onChange={setTitleEdit}
+                  ariaLabel="Заголовок таблицы"
+                />
               </h2>
               <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
-                Выбрано: {selectedProducts.length} · Поля:{" "}
-                {activeFields.map((k) => FIELD_LABELS[k]).join(", ")}
+                <EditableText
+                  value={currentSubtitle}
+                  onChange={setSubtitleEdit}
+                  ariaLabel="Подзаголовок таблицы"
+                />
               </div>
               <div className="admin-table-wrap">
                 <table className="box-report-table box-report-table--compact">
                   <thead>
                     <tr>
                       <th style={{ width: 40 }}>№</th>
-                      {activeFields.map((k) => (
-                        <th key={k}>{FIELD_LABELS[k]}</th>
+                      {activeCols.map((col) => (
+                        <th key={col.key}>
+                          <EditableText
+                            value={col.label}
+                            onChange={(v) => setHeaderEdit(col.key, v)}
+                            ariaLabel="Название столбца"
+                          />
+                          <button
+                            type="button"
+                            className="br-x no-print"
+                            title="Убрать столбец"
+                            onClick={() => removeCol(col.key)}
+                          >
+                            <X size={11} />
+                          </button>
+                        </th>
                       ))}
+                      <th className="no-print br-act" />
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedProducts.map((p, idx) => (
-                      <tr key={p.id}>
+                    {allRows.map((row, idx) => (
+                      <tr key={row.key}>
                         <td>{idx + 1}</td>
-                        {activeFields.map((k) => (
-                          <td key={k}>{getFieldValue(p, k)}</td>
+                        {activeCols.map((col) => (
+                          <td key={col.key}>
+                            <EditableText
+                              value={cellText(row, col)}
+                              onChange={(v) => setCell(row.key, col.key, v)}
+                              ariaLabel={`${col.label}, строка ${idx + 1}`}
+                            />
+                          </td>
                         ))}
+                        <td className="no-print br-act">
+                          <button
+                            type="button"
+                            className="br-x"
+                            title={
+                              row.product
+                                ? "Убрать коробку из печати"
+                                : "Удалить строку"
+                            }
+                            onClick={() => removeRow(row.key)}
+                          >
+                            <X size={12} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
