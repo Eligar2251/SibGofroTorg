@@ -195,6 +195,9 @@ const paymentTypeLabels: Record<string, string> = {
   transfer: "Перевод",
   deposit: "Внесение",
   ym_card: "Карта ЮМ",
+  advertising: "Реклама",
+  website: "Сайт/хостинг",
+  monthly: "Ежемесячные платежи",
 };
 
 type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "forecast" | "plan" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";

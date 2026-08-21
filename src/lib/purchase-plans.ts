@@ -496,6 +496,11 @@ export async function updatePurchasePlan(input: {
   };
   if (input.status === "active" || input.status === "completed") {
     payload.status = input.status;
+    if (input.status === "active") {
+      payload.spent_amount = 0;
+      payload.spent_payment_id = null;
+      payload.spent_at = null;
+    }
   }
 
   let update = await db.from("warehouse_purchase_plans").update(payload).eq("id", id).select("*").single();

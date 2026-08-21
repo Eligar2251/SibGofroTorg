@@ -10,9 +10,9 @@ import { SITE_URL } from "@/lib/seo";
 import { SITE_PHONE, SITE_PHONE_HREF } from "@/lib/site-config";
 
 export const metadata: Metadata = {
-  title: "Приём макулатуры в Новосибирске — цены за кг",
+  title: "Приём макулатуры в Новосибирске — цены за кг +7 (383) 291-08-20",
   description:
-    "Сдать картон, бумагу и архивы в Новосибирске. Вывоз от 200 кг, оплата на месте. Актуальные тарифы СибГофроТорг.",
+    "Сдать картон, бумагу и архивы в Новосибирске. Тел. +7 (383) 291-08-20. Вывоз от 200 кг, оплата на месте. Актуальные тарифы СибГофроТорг.",
   alternates: { canonical: `${SITE_URL}/wastepaper` },
 };
 
@@ -26,8 +26,10 @@ export default async function WastepaperPage() {
   const minRate = Math.min(...Object.values(rates));
   const selfBonus = `+ ${wp.selfBonus} ₽/кг самовывоз`;
   const pickupPriceLabel = wp.pickupPrice > 0 ? `${wp.pickupPrice} ₽` : "0 ₽";
-  const contactPhone = (settings.phone || SITE_PHONE || "").trim() || SITE_PHONE;
-  const contactPhoneHref = `tel:${contactPhone.replace(/[^\d+]/g, "")}` || SITE_PHONE_HREF;
+  // Номер макулатуры 291-08-20 возвращаем на эту страницу
+  const WP_PHONE = "+7 (383) 291-08-20";
+  const contactPhone = WP_PHONE;
+  const contactPhoneHref = "tel:+73832910820";
 
   // Тарифы: названия фиксированные, цены — из настроек
   const rateRows = [
@@ -68,8 +70,8 @@ export default async function WastepaperPage() {
             <h1 className="wp-hero__title">Приём макулатуры<br /><span>дорого в Новосибирске</span></h1>
             <p className="wp-hero__desc">
               Принимаем гофрокартон, белую архивную бумагу, книги и журналы. Работаем с физлицами и организациями. Оплата на месте наличными или картой.
-              {" "}Цены уточняйте по телефону{" "}
-              <a href={contactPhoneHref} style={{ color: "var(--green-lime)", fontWeight: 700 }}>
+              {" "}Звоните:{" "}
+              <a href={contactPhoneHref} style={{ color: "var(--green-lime)", fontWeight: 700, fontSize: "1.2em", whiteSpace: "nowrap" }}>
                 {contactPhone}
               </a>
               . Вывоз от {wp.pickupMinKg} кг.
@@ -185,7 +187,7 @@ export default async function WastepaperPage() {
               <div className="wp-steps">
                 {[
                   { n: "1", text: "Рассчитайте примерную стоимость в калькуляторе справа" },
-                  { n: "2", text: "Оставьте заявку или позвоните нам по телефону" },
+                  { n: "2", text: `Оставьте заявку или позвоните нам: ${contactPhone}` },
                   { n: "3", text: "Мы согласуем время приёма или вывоза" },
                   { n: "4", text: "Взвешивание и мгновенная выплата на месте" },
                 ].map((step) => (
