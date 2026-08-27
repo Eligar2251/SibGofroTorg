@@ -14277,3 +14277,18 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   background: var(--adm-navy-soft, #eef2f7);
   border-color: var(--adm-navy, #21324a);
 }
+
+/* ── Сигнал о новой заявке ────────────────────────────────
+   Кружок заявок «звенит» вместе со звуковым уведомлением,
+   чтобы событие было заметно и при выключенном звуке.        */
+@keyframes sgtRingPulse {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.55); }
+  50%  { transform: scale(1.12); box-shadow: 0 0 0 10px rgba(22, 163, 74, 0); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes sgtRingPulse {
+    0%, 100% { transform: none; box-shadow: none; }
+  }
+}

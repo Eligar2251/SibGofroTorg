@@ -2828,6 +2828,17 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   const payload: Record<string, any> = {};
   if (data.amount !== undefined) payload.amount = data.amount;
   if (data.date) payload.date = data.date.slice(0, 10);
+  if (data.employeeId !== undefined) payload.employee_id = data.employeeId || null;
+  if (data.employeeName !== undefined) payload.employee_name = data.employeeName;
+  // Перенос УЖЕ ПРОВЕДЁННОЙ выплаты на другой день меняет только paid_at и
+  // приходит без isPaid. Раньше paid_at писался ИСКЛЮЧИТЕЛЬНО внутри ветки
+  // `if (data.isPaid !== undefined)`, поэтому такой PATCH формировал пустой
+  // payload: запрос отвечал success, строка в БД не менялась, а после
+  // router.refresh() ячейка возвращалась на старое место — то самое
+  // «перетаскиваю, а оно не работает и лагает».
+  if (data.paidAt !== undefined && data.isPaid === undefined) {
+    payload.paid_at = data.paidAt ? String(data.paidAt).slice(0, 10) : null;
+  }
   if (data.source) {
     const rawSource = String(data.source);
     payload.source = rawSource === "cash" ? "cash" : "bank";
@@ -2842,6 +2853,9 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   }
   if (data.isPaid !== undefined) { payload.is_paid = data.isPaid; payload.paid_at = data.isPaid ? (data.paidAt || data.date?.slice(0, 10) || null) : null; }
   if (data.comment !== undefined && !payload.comment) payload.comment = data.comment;
+  // Пустой payload раньше означал «запрос прошёл, но ничего не изменилось».
+  // Такой тихий no-op маскировал ошибки на клиенте — теперь просто выходим.
+  if (Object.keys(payload).length === 0) return;
   const { error } = await db.from("salaries").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-salaries", { expire: 0 });

@@ -14,8 +14,13 @@ export function WarehouseRealtime() {
       "warehouse_receipts",
       "bank_payments",
       "products",
+      // Зарплаты и инкассации меняются из этого же модуля, но раньше в
+      // подписке их не было — календарь зарплат не обновлялся у коллег.
+      "salaries",
+      "cash_collections",
+      "transports",
     ],
-    pollIntervalMs: 20_000,
+    pollIntervalMs: 30_000,
   });
 
   return null;

@@ -1,15 +1,30 @@
 // =========================================================
 // FILE: src/lib/use-admin-realtime.ts
-// Хук для подписки на изменения Supabase в реальном времени.
-// Использует Supabase Realtime (WebSocket) как основной канал
-// и polling как fallback, если WebSocket недоступен.
+// Хук автообновления админки.
+//
+// Транспорт — SSE с нашего же сервера (/api/admin/events), который держит
+// единственную подписку на Supabase Realtime под service_role.
+// Polling остался запасным путём: если сервер сообщил, что канал не поднялся,
+// или соединение упало — страница продолжит обновляться по таймеру.
+//
+// Что изменилось по сравнению с прошлой версией:
+//   • подписка реально работает (раньше в браузер не попадал URL Supabase,
+//     и хук всегда молча уходил в polling);
+//   • обновления коалесцируются: массовый импорт 200 строк даёт один
+//     router.refresh(), а не 200;
+//   • в фоновой вкладке ничего не перерисовывается, догоняем при возврате.
 // =========================================================
 
 "use client";
 
-import { useEffect, useRef, useCallback, useMemo } from "react";
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabaseUrl_pub, getSupabaseAnonKey_pub } from "./supabase";
+import {
+  subscribeAdminEvents,
+  subscribeAdminStatus,
+  type AdminChangeEvent,
+  type ConnectionStatus,
+} from "./admin-events-client";
 
 interface RealtimeOptions {
   /** Таблицы Supabase, за изменениями которых следить */
@@ -17,138 +32,85 @@ interface RealtimeOptions {
   /** Интервал polling fallback в мс (по умолчанию 30s) */
   pollIntervalMs?: number;
   /** Колбэк при обновлении (вызывается до router.refresh) */
-  onUpdate?: (table: string, event: string) => void;
+  onUpdate?: (table: string, event: string, payload?: AdminChangeEvent) => void;
+  /** Не вызывать router.refresh() — только onUpdate (для точечных обновлений) */
+  manual?: boolean;
 }
 
-/**
- * Подписывается на INSERT/UPDATE/DELETE в указанных таблицах Supabase.
- *
- * - Основной канал: Supabase Realtime (WebSocket через postgres_changes)
- * - Fallback: polling каждые pollIntervalMs мс (если WS не подключился за 5s)
- * - При получении события вызывает router.refresh() для обновления RSC
- *
- * Использование:
- * ```tsx
- * useAdminRealtime({ tables: ["orders", "wastepaper_requests"] });
- * ```
- */
-export function useAdminRealtime(options: RealtimeOptions) {
-  const { pollIntervalMs = 30_000, onUpdate } = options;
+/** Пауза, за которую несколько событий подряд схлопываются в один refresh. */
+const COALESCE_MS = 400;
+
+export function useAdminRealtime(options: RealtimeOptions): ConnectionStatus {
+  const { pollIntervalMs = 30_000, onUpdate, manual = false } = options;
   const router = useRouter();
   const onUpdateRef = useRef(onUpdate);
+  const [status, setStatus] = useState<ConnectionStatus>("connecting");
 
   useEffect(() => {
     onUpdateRef.current = onUpdate;
   }, [onUpdate]);
 
-  // Стабильная ссылка на tables — пересоздаётся только при изменении содержимого
   const tablesKey = JSON.stringify(options.tables);
   const tables: string[] = useMemo(() => options.tables, [tablesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Стабильная функция refresh — не пересоздаётся между рендерами
   const refresh = useCallback(() => {
     router.refresh();
   }, [router]);
 
+  // ── Статус соединения ──
+  useEffect(() => subscribeAdminStatus(setStatus), []);
+
+  // ── Поток изменений ──
   useEffect(() => {
     if (tables.length === 0) return;
+    const watched = new Set(tables);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pendingWhileHidden = false;
 
-    let mounted = true;
-    let channel: any = null;
-    let pollingId: ReturnType<typeof setInterval> | null = null;
-    let realtimeConnected = false;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // ── Polling fallback ──
-    function startPolling() {
-      if (pollingId || !mounted) return;
-      pollingId = setInterval(() => {
-        if (mounted) refresh();
-      }, pollIntervalMs);
-    }
-
-    function stopPolling() {
-      if (pollingId) {
-        clearInterval(pollingId);
-        pollingId = null;
+    const flush = () => {
+      timer = null;
+      if (document.hidden) {
+        // В фоновой вкладке не тратим сервер на перерисовку —
+        // догоним, когда на неё вернутся.
+        pendingWhileHidden = true;
+        return;
       }
-    }
+      if (!manual) refresh();
+    };
 
-    // ── Supabase Realtime ──
-    async function initRealtime() {
-      try {
-        const url = getSupabaseUrl_pub();
-        const key = getSupabaseAnonKey_pub();
-        if (!url || !key) {
-          startPolling();
-          return;
-        }
-
-        // Динамический импорт, чтобы не увеличивать initial bundle
-        const { createClient } = await import("@supabase/supabase-js");
-        const client = createClient(url, key, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        });
-
-        if (!mounted) return;
-
-        // Создаём канал с подписками на все указанные таблицы
-        const channelName = `admin-realtime-${tables.join("-")}`;
-        channel = client.channel(channelName);
-
-        for (const table of tables) {
-          channel.on(
-            "postgres_changes",
-            {
-              event: "*", // INSERT, UPDATE, DELETE
-              schema: "public",
-              table,
-            },
-            (payload: any) => {
-              if (!mounted) return;
-              onUpdateRef.current?.(table, payload.eventType);
-              refresh();
-            }
-          );
-        }
-
-        channel.subscribe((status: string) => {
-          if (status === "SUBSCRIBED") {
-            realtimeConnected = true;
-            // Realtime работает — polling не нужен
-            stopPolling();
-            if (fallbackTimer) {
-              clearTimeout(fallbackTimer);
-              fallbackTimer = null;
-            }
-          }
-        });
-
-        // Если за 5 секунд Realtime не подключился — запускаем polling
-        fallbackTimer = setTimeout(() => {
-          if (!realtimeConnected && mounted) {
-            startPolling();
-          }
-        }, 5_000);
-      } catch {
-        // Realtime недоступен — используем polling
-        startPolling();
-      }
-    }
-
-    initRealtime();
-
-    return () => {
-      mounted = false;
-      stopPolling();
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      if (channel) {
-        try {
-          channel.unsubscribe();
-        } catch {
-          // ignore
-        }
+    const onVisible = () => {
+      if (!document.hidden && pendingWhileHidden) {
+        pendingWhileHidden = false;
+        if (!manual) refresh();
       }
     };
-  }, [tables, pollIntervalMs, refresh]);
+    document.addEventListener("visibilitychange", onVisible);
+
+    const unsubscribe = subscribeAdminEvents((event) => {
+      if (!watched.has(event.table)) return;
+      onUpdateRef.current?.(event.table, event.type, event);
+      if (manual) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(flush, COALESCE_MS);
+    });
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [tables, refresh, manual]);
+
+  // ── Polling-фоллбэк: только когда потока нет ──
+  useEffect(() => {
+    if (manual || tables.length === 0) return;
+    if (status === "live") return;
+
+    const id = setInterval(() => {
+      if (!document.hidden) refresh();
+    }, pollIntervalMs);
+    return () => clearInterval(id);
+  }, [status, pollIntervalMs, refresh, manual, tables.length]);
+
+  return status;
 }

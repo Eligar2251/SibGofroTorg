@@ -9,8 +9,10 @@ import { useAdminRealtime } from "@/lib/use-admin-realtime";
 
 export function DeliveriesRealtime() {
   useAdminRealtime({
-    tables: ["customer_deals"],
-    pollIntervalMs: 20_000,
+    // transports здесь не хватало: модуль работает с рейсами, а подписка
+    // следила только за сделками.
+    tables: ["customer_deals", "transports"],
+    pollIntervalMs: 30_000,
   });
 
   return null;

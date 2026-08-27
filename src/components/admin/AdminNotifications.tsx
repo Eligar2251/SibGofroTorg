@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Bell, Building2, ClipboardList, Loader2, PackageSearch, RefreshCw, Wallet, X } from "lucide-react";
+import { useAdminRealtime } from "@/lib/use-admin-realtime";
 
 type NotificationType = "order" | "stock" | "unpaid_released" | "rent";
 type NotificationSeverity = "danger" | "warning" | "info";
@@ -84,9 +85,23 @@ export function AdminNotifications({ adminPath }: { adminPath: string }) {
     }
   }, []);
 
+  // Realtime вместо частого опроса: эндпоинт /api/admin/notifications
+  // тяжёлый (тысяча товаров, две тысячи платежей), и раньше его дёргали
+  // ДВА колокольчика каждые 30 секунд. Теперь перезапрашиваем по событию,
+  // а таймер оставлен редким страховочным.
+  useAdminRealtime({
+    tables: ["orders", "products", "bank_payments", "customer_deals", "rent_invoices"],
+    manual: true,
+    onUpdate: useCallback(() => {
+      load(true);
+    }, [load]),
+  });
+
   useEffect(() => {
     load();
-    const id = window.setInterval(() => load(true), 30_000);
+    const id = window.setInterval(() => {
+      if (!document.hidden) load(true);
+    }, 120_000);
     return () => window.clearInterval(id);
   }, [load]);
 

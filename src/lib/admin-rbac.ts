@@ -137,6 +137,11 @@ export function canAccessAdminApi(
 ): boolean {
   if (role === "admin") return true;
 
+  // Поток изменений (SSE) доступен всем ролям: он отдаёт только сигналы
+  // «в такой-то таблице изменилась запись», а набор таблиц и превью
+  // фильтруются по роли внутри самого маршрута.
+  if (pathname === "/api/admin/events") return method.toUpperCase() === "GET";
+
   // Макулатурщику доступны только API отдельного учёта макулатуры.
   if (role === "wastepaper") {
     return pathname === "/api/admin/wp" || pathname.startsWith("/api/admin/wp/");

@@ -151,6 +151,18 @@ interface Props {
 
 export function WastepaperAccountManager(props: Props) {
   const router = useRouter();
+  // Приёмщик на весовой и бухгалтер в кабинете работают с одними и теми же
+  // документами — модуль обновляется без перезагрузки страницы.
+  useAdminRealtime({
+    tables: [
+      "wp_intakes",
+      "wp_shipments",
+      "wp_payments",
+      "wp_transports",
+      "wp_counterparties",
+    ],
+    pollIntervalMs: 60_000,
+  });
   const [tab, setTab] = useState<TabKey>(
     (TABS.some((t) => t.key === props.initialTab)
       ? props.initialTab

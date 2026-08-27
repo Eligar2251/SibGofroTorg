@@ -15,6 +15,7 @@ import {
   Download,
   RefreshCw,
 } from "lucide-react";
+import { useAdminRealtime } from "@/lib/use-admin-realtime";
 
 interface LogEntry {
   id: string;
@@ -266,9 +267,22 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
 
   useEffect(() => {
     loadLogs();
-    const id = window.setInterval(() => loadLogs(true), 5000);
+    // Журнал append-only: события приходят потоком, а таймер оставлен
+    // редким страховочным. Раньше здесь был опрос каждые 5 секунд по
+    // 500 строк — 720 запросов в час на каждую открытую вкладку.
+    const id = window.setInterval(() => {
+      if (!document.hidden) loadLogs(true);
+    }, 60_000);
     return () => window.clearInterval(id);
   }, [loadLogs]);
+
+  useAdminRealtime({
+    tables: ["activity_logs"],
+    manual: true,
+    onUpdate: useCallback(() => {
+      loadLogs(true);
+    }, [loadLogs]),
+  });
 
   const admins = useMemo(
     () => [...new Set(logs.map((l) => l.adminName))].filter(Boolean),
