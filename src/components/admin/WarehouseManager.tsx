@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useDeferredValue } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -79,26 +80,82 @@ import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
 import { StockPriceEditor } from "@/components/admin/StockPriceEditor";
 import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
-import { StockRevision } from "@/components/admin/StockRevision";
-import { CashCollectModal } from "@/components/admin/CashCollectModal";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
   CounterpartiesManager,
   type CounterpartyDocument,
   type CounterpartyOption,
 } from "@/components/admin/WarehouseCounterparties";
-import { WarehouseSalaries } from "@/components/admin/WarehouseSalaries";
-import { SalaryAutoDistribute } from "@/components/admin/SalaryAutoDistribute";
-import { WarehouseReports } from "@/components/admin/WarehouseReports";
-import { RevenueForecast } from "@/components/admin/RevenueForecast";
-import { SalesPlan } from "@/components/admin/SalesPlan";
-import { ClientsManager } from "@/components/admin/ClientsManager";
-import { ConsignmentTracker } from "@/components/admin/ConsignmentTracker";
-import { TransportManager, type TransportDeal, type TransportRow, type DriverOption } from "@/components/admin/TransportManager";
-import { SupplyPlanning } from "@/components/admin/SupplyPlanning";
-import { PurchasePlanning } from "@/components/admin/PurchasePlanning";
+import type { TransportDeal, TransportRow, DriverOption } from "@/components/admin/TransportManager";
 import type { SupplyPlan } from "@/lib/supply-plans-shared";
 import type { PurchasePlan } from "@/lib/purchase-plans-shared";
+
+// ── Тяжёлые вкладки грузим по требованию ──────────────────
+// «Учёт» — самая большая страница админки: одним модулем сюда попадали
+// зарплаты, отчёты, перевозки, планы и закупки (суммарно сотни килобайт
+// исходников). Из-за этого dev-сервер падал при компиляции страницы
+// («JavaScript heap out of memory» в воркере Turbopack), а в браузере
+// пользователь скачивал и гидрировал все вкладки, даже открыв одну.
+//
+// Все эти компоненты и так рендерятся только при активной вкладке,
+// поэтому ленивая загрузка ничего не меняет в поведении — просто чанк
+// подтягивается в момент открытия вкладки.
+const tabLoading = () => (
+  <div className="admin-empty" style={{ padding: 32 }}>
+    <Loader2 size={22} className="animate-spin" />
+    <p>Загружаем раздел…</p>
+  </div>
+);
+
+const WarehouseSalaries = dynamic(
+  () => import("@/components/admin/WarehouseSalaries").then((m) => m.WarehouseSalaries),
+  { ssr: false, loading: tabLoading }
+);
+const SalaryAutoDistribute = dynamic(
+  () => import("@/components/admin/SalaryAutoDistribute").then((m) => m.SalaryAutoDistribute),
+  { ssr: false, loading: tabLoading }
+);
+const WarehouseReports = dynamic(
+  () => import("@/components/admin/WarehouseReports").then((m) => m.WarehouseReports),
+  { ssr: false, loading: tabLoading }
+);
+const TransportManager = dynamic(
+  () => import("@/components/admin/TransportManager").then((m) => m.TransportManager),
+  { ssr: false, loading: tabLoading }
+);
+const SupplyPlanning = dynamic(
+  () => import("@/components/admin/SupplyPlanning").then((m) => m.SupplyPlanning),
+  { ssr: false, loading: tabLoading }
+);
+const PurchasePlanning = dynamic(
+  () => import("@/components/admin/PurchasePlanning").then((m) => m.PurchasePlanning),
+  { ssr: false, loading: tabLoading }
+);
+const RevenueForecast = dynamic(
+  () => import("@/components/admin/RevenueForecast").then((m) => m.RevenueForecast),
+  { ssr: false, loading: tabLoading }
+);
+const SalesPlan = dynamic(
+  () => import("@/components/admin/SalesPlan").then((m) => m.SalesPlan),
+  { ssr: false, loading: tabLoading }
+);
+const ClientsManager = dynamic(
+  () => import("@/components/admin/ClientsManager").then((m) => m.ClientsManager),
+  { ssr: false, loading: tabLoading }
+);
+const ConsignmentTracker = dynamic(
+  () => import("@/components/admin/ConsignmentTracker").then((m) => m.ConsignmentTracker),
+  { ssr: false, loading: tabLoading }
+);
+const StockRevision = dynamic(
+  () => import("@/components/admin/StockRevision").then((m) => m.StockRevision),
+  { ssr: false }
+);
+const CashCollectModal = dynamic(
+  () => import("@/components/admin/CashCollectModal").then((m) => m.CashCollectModal),
+  { ssr: false }
+);
+
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 

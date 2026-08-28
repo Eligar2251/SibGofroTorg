@@ -3,12 +3,13 @@
   "private": true,
   "packageManager": "pnpm@11.17.0",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
     "build": "next build",
     "start": "node node_modules/next/dist/bin/next start -H 0.0.0.0 -p ${PORT:-3000}",
     "admin:sql": "node scripts/generate-admin-sql.mjs",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:plain": "next dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
