@@ -26,7 +26,6 @@ export interface MessengerBannerSettings {
   enabled: boolean;
   text: string;
   color: string;
-  telegram: MessengerChannelSettings;
   whatsapp: MessengerChannelSettings;
   max: MessengerChannelSettings;
 }
@@ -52,7 +51,6 @@ const EMPTY_MESSENGER_BANNER: MessengerBannerSettings = {
   enabled: false,
   text: "Мы есть в мессенджерах",
   color: "#1b2b4b",
-  telegram: { url: "", iconUrl: "" },
   whatsapp: { url: "", iconUrl: "" },
   max: { url: "", iconUrl: "" },
 };
@@ -100,10 +98,6 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         color: /^#[0-9a-f]{6}$/i.test(String(rawBanner.color || ""))
           ? String(rawBanner.color)
           : EMPTY_MESSENGER_BANNER.color,
-        telegram: {
-          url: String(rawBanner.telegram?.url || "").trim(),
-          iconUrl: String(rawBanner.telegram?.iconUrl || "").trim(),
-        },
         whatsapp: {
           url: String(rawBanner.whatsapp?.url || "").trim(),
           iconUrl: String(rawBanner.whatsapp?.iconUrl || "").trim(),

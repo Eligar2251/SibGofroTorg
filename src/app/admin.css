@@ -4640,7 +4640,7 @@ body:has(.admin-modal-overlay) {
 .bulk-row--selected { background: var(--adm-steel-pale) !important; }
 .bulk-row--dirty { background: var(--adm-kraft-pale) !important; }
 .bulk-sku { display: block; margin-top: 2px; color: var(--adm-sand); font-size: 9px; font-weight: 400; }
-.bulk-footer { position: sticky; bottom: 10px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; background: rgba(254,254,254,.96); border: 1px solid var(--adm-border-mid); border-radius: var(--adm-r); box-shadow: var(--adm-sh-md); backdrop-filter: blur(8px); }
+.bulk-footer { position: sticky; bottom: 10px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; background: rgba(254,254,254,.96); border: 1px solid var(--adm-border-mid); border-radius: var(--adm-r); box-shadow: var(--adm-sh-md); }
 .bulk-footer__summary { color: var(--adm-ink-muted); font-size: 12px; }
 .bulk-finished { display: flex; align-items: center; gap: 8px; padding: 11px 14px; color: var(--adm-pine); background: var(--adm-pine-pale); border: 1px solid var(--adm-pine-line); border-radius: var(--adm-r); font-size: 13px; font-weight: 700; }
 .bulk-load-more { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px; color: var(--adm-sand); font-size: 11px; }

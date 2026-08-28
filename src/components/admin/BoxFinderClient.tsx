@@ -168,7 +168,7 @@ export function BoxFinderClient({ products }: { products: BoxProduct[] }) {
                   <div className="bf-item__media">
                     {r.product.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.product.imageUrl} alt="" width={48} height={48} />
+                      <img src={r.product.imageUrl} alt="" width={48} height={48} loading="lazy" decoding="async" />
                     ) : (
                       <Package size={22} />
                     )}

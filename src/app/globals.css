@@ -2759,7 +2759,10 @@ select {
   display: flex;
   flex-direction: column;
   height: 100%;
-  will-change: transform, box-shadow;
+  /* will-change здесь намеренно НЕТ: он держал бы каждую карточку каталога
+     (а их в сетке десятки) на отдельном GPU-слое постоянно, что съедает
+     видеопамять и замедляет композитинг при скролле. Плюс box-shadow всё
+     равно не композитится, так что подсказка была бесполезной. */
   transition:
     box-shadow 0.16s ease,
     border-color 0.16s ease,
@@ -7607,8 +7610,10 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   box-shadow: 0 8px 28px rgba(17, 29, 52, 0.24);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* backdrop-filter убран: элемент зафиксирован на экране, и браузер
+     пересчитывал блюр области под ним КАЖДЫЙ кадр прокрутки — заметная
+     потеря плавности на 120 Гц. Фон и так почти непрозрачный (0.94),
+     визуально разницы нет. Тот же приём уже применён выше для попапов. */
 }
 
 .messenger-float__text {

@@ -92,7 +92,6 @@ const deliveryFields = [
 ];
 
 const messengerFields = [
-  { id: "telegram", label: "Telegram", placeholder: "https://t.me/username" },
   { id: "whatsapp", label: "WhatsApp", placeholder: "https://wa.me/79990000000" },
   { id: "max", label: "MAX", placeholder: "Ссылка на чат в MAX" },
 ] as const;
@@ -156,33 +155,27 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
   const [activeTab, setActiveTab] = useState<TabId>("contacts");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [testingTg, setTestingTg] = useState(false);
-  const [tgResult, setTgResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [testingMax, setTestingMax] = useState(false);
   const [maxResult, setMaxResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [notifyLog, setNotifyLog] = useState<
-    { at: string; channel: "telegram" | "max"; label: string; ok: boolean; error?: string }[] | null
+    { at: string; channel: "max"; label: string; ok: boolean; error?: string }[] | null
   >(null);
   const [notifyLogLoading, setNotifyLogLoading] = useState(false);
 
-  const [tgDiag, setTgDiag] = useState<null | {
+  const [maxDiag, setMaxDiag] = useState<null | {
     configured: boolean;
-    tokenSource: "env" | "settings" | "none";
-    chatIdSource: "env" | "settings" | "none";
+    tokenSource: string;
     tokenMasked: string | null;
     chatIdMasked: string | null;
-    chatIdNormalized: string | null;
-    apiBases?: string[];
-    getMe?: { ok: boolean; username?: string | null; error?: string; base?: string };
   }>(null);
   const [diagLoading, setDiagLoading] = useState(false);
 
-  async function loadTgDiag() {
+  async function loadMaxDiag() {
     setDiagLoading(true);
     try {
-      const res = await fetch("/api/admin/settings/test-telegram", { cache: "no-store" });
+      const res = await fetch("/api/admin/settings/test-max", { cache: "no-store" });
       if (res.ok) {
-        setTgDiag(await res.json());
+        setMaxDiag(await res.json());
       }
     } catch {
       /* диагностика — вспомогательная, молча оставляем прошлое состояние */
@@ -192,32 +185,9 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
   }
 
   useEffect(() => {
-    loadTgDiag();
+    loadMaxDiag();
     loadNotifyLog();
   }, []);
-
-  async function testTelegram() {
-    setTestingTg(true);
-    setTgResult(null);
-    try {
-      const res = await fetch("/api/admin/settings/test-telegram", {
-        method: "POST",
-      });
-      const body = await res.json().catch(() => ({}));
-      if (res.ok && body.ok) setTgResult({ ok: true });
-      else
-        setTgResult({
-          ok: false,
-          error: body.error || "Не удалось отправить тестовое сообщение",
-        });
-      loadTgDiag();
-      loadNotifyLog();
-    } catch {
-      setTgResult({ ok: false, error: "Сетевая ошибка" });
-    } finally {
-      setTestingTg(false);
-    }
-  }
 
   async function testMax() {
     setTestingMax(true);
@@ -233,6 +203,7 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
           ok: false,
           error: body.error || "Не удалось отправить тестовое сообщение MAX",
         });
+      loadMaxDiag();
       loadNotifyLog();
     } catch {
       setMaxResult({ ok: false, error: "Сетевая ошибка" });
@@ -761,12 +732,18 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
           {activeTab === "notifications" && (
             <div className="admin-card" style={cardStyle}>
               <div className="admin-card__pad" style={cardPadStyle}>
-                <h2 className="admin-h2" style={{ margin: 0 }}>Уведомления в Telegram</h2>
+                <h2 className="admin-h2" style={{ margin: 0 }}>Уведомления о заявках (MAX)</h2>
                 <div style={{ color: "var(--adm-muted)", fontSize: 13, overflowWrap: "anywhere" }}>
                   Сюда приходят новые заявки с сайта. Бот берёт токен и chat_id из
-                  переменных окружения <code>TELEGRAM_BOT_TOKEN</code> и{" "}
-                  <code>TELEGRAM_ADMIN_CHAT_ID</code>; если их нет — используются
-                  поля ниже (хранятся в настройках сайта). Переменные окружения имеют приоритет.
+                  переменных окружения <code>MAX_BOT_TOKEN</code> и{" "}
+                  <code>MAX_ADMIN_CHAT_ID</code>; если их нет — используются поля
+                  ниже (хранятся в настройках сайта). Переменные окружения имеют приоритет.
+                </div>
+                <div style={{ color: "var(--adm-muted)", fontSize: 12.5, overflowWrap: "anywhere" }}>
+                  Telegram отключён: с серверов в РФ <code>api.telegram.org</code> недоступен,
+                  а отправка через зарубежный релей означала бы передачу имён и телефонов
+                  клиентов за границу. MAX работает из РФ напрямую. Заявки в любом случае
+                  видны в панели — колокольчик со звуком срабатывает мгновенно.
                 </div>
 
                 <div
@@ -787,146 +764,53 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
-                      onClick={loadTgDiag}
+                      onClick={loadMaxDiag}
                       disabled={diagLoading}
                       title="Обновить диагностику"
                     >
                       {diagLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                     </button>
                   </div>
-                  {!tgDiag && !diagLoading && (
+                  {!maxDiag && !diagLoading && (
                     <span style={{ color: "var(--adm-muted)" }}>Нет данных — нажмите «Обновить».</span>
                   )}
-                  {diagLoading && !tgDiag && (
+                  {diagLoading && !maxDiag && (
                     <span style={{ color: "var(--adm-muted)" }}>Проверяем…</span>
                   )}
-                  {tgDiag && (
+                  {maxDiag && (
                     <>
                       <span>
                         Токен:{" "}
-                        {tgDiag.tokenSource === "none" ? (
-                          <b style={{ color: "var(--adm-rust)" }}>не задан</b>
-                        ) : (
+                        {maxDiag.tokenMasked ? (
                           <>
-                            <b>{tgDiag.tokenMasked}</b>{" "}
-                            <span style={{ color: "var(--adm-muted)" }}>
-                              ({tgDiag.tokenSource === "env" ? "переменные окружения" : "настройки сайта"})
-                            </span>
+                            <b>{maxDiag.tokenMasked}</b>{" "}
+                            <span style={{ color: "var(--adm-muted)" }}>(переменные окружения)</span>
                           </>
+                        ) : (
+                          <span style={{ color: "var(--adm-muted)" }}>
+                            не задан в переменных окружения — берётся из настроек ниже
+                          </span>
                         )}
                       </span>
                       <span>
                         Chat ID:{" "}
-                        {tgDiag.chatIdSource === "none" ? (
-                          <b style={{ color: "var(--adm-rust)" }}>не задан</b>
+                        {maxDiag.chatIdMasked ? (
+                          <b>{maxDiag.chatIdMasked}</b>
                         ) : (
-                          <>
-                            <b>{tgDiag.chatIdNormalized || tgDiag.chatIdMasked}</b>{" "}
-                            <span style={{ color: "var(--adm-muted)" }}>
-                              ({tgDiag.chatIdSource === "env" ? "переменные окружения" : "настройки сайта"})
-                            </span>
-                          </>
+                          <span style={{ color: "var(--adm-muted)" }}>
+                            не задан в переменных окружения — берётся из настроек ниже
+                          </span>
                         )}
                       </span>
-                      {tgDiag.getMe && (
-                        <span>
-                          Проверка токена:{" "}
-                          {tgDiag.getMe.ok ? (
-                            <b style={{ color: "var(--adm-pine)" }}>
-                              OK{tgDiag.getMe.username ? ` — @${tgDiag.getMe.username}` : ""}
-                              {tgDiag.getMe.base ? ` (через ${tgDiag.getMe.base})` : ""}
-                            </b>
-                          ) : (
-                            <b style={{ color: "var(--adm-rust)" }}>
-                              ошибка{tgDiag.getMe.error ? `: ${tgDiag.getMe.error}` : ""}
-                            </b>
-                          )}
-                          {tgDiag.apiBases && tgDiag.apiBases.length > 0 && (
-                            <span style={{ color: "var(--adm-muted)" }}>
-                              {" "}· пробовались адреса: {tgDiag.apiBases.join(", ")}
-                            </span>
-                          )}
-                          {!tgDiag.getMe.ok && (
-                            <span style={{ color: "var(--adm-muted)" }}>
-                              {" "}— если сервер в РФ, api.telegram.org заблокирован: укажите релей или MAX.
-                            </span>
-                          )}
-                        </span>
-                      )}
-                      {!tgDiag.configured && (
-                        <span style={{ color: "var(--adm-kraft)", display: "inline-flex", gap: 6 }}>
-                          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
-                          Подключение не готово — заполните поля ниже и сохраните (или задайте
-                          переменные окружения на хостинге) и нажмите «Проверить Telegram».
-                        </span>
-                      )}
+                      <span style={{ color: "var(--adm-kraft)", display: "inline-flex", gap: 6 }}>
+                        <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                        Точная проверка — кнопкой «Проверить MAX»: она реально отправляет сообщение.
+                      </span>
                     </>
                   )}
                 </div>
 
                 <div className="settings-messenger-grid" style={{ marginTop: 10 }}>
-                  <div className="settings-messenger-item">
-                    <strong>Telegram-бот</strong>
-                    <div className="admin-field">
-                      <label className="admin-label">Токен бота</label>
-                      <input
-                        type="text"
-                        className="admin-input"
-                        value={values["telegram_bot_token"] || ""}
-                        onChange={(e) =>
-                          setValues({ ...values, telegram_bot_token: e.target.value.trim() })
-                        }
-                        placeholder="123456789:ABC-… (от @BotFather)"
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div className="admin-field">
-                      <label className="admin-label">Chat ID получателя</label>
-                      <input
-                        type="text"
-                        className="admin-input"
-                        value={values["telegram_admin_chat_id"] || ""}
-                        onChange={(e) =>
-                          setValues({ ...values, telegram_admin_chat_id: e.target.value.trim() })
-                        }
-                        placeholder="числовой id или @username чата"
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div className="admin-field">
-                      <label className="admin-label">
-                        Адрес Telegram API (релей) — если сервер в РФ
-                      </label>
-                      <input
-                        type="text"
-                        className="admin-input"
-                        value={values["telegram_api_base"] || ""}
-                        onChange={(e) =>
-                          setValues({ ...values, telegram_api_base: e.target.value.trim() })
-                        }
-                        placeholder="пусто = api.telegram.org; можно несколько через запятую"
-                        autoComplete="off"
-                      />
-                    </div>
-                    <p className="admin-hint" style={{ margin: 0 }}>
-                      Chat ID — НЕ номер телефона: числовой id сообщит бот{" "}
-                      <code>@userinfobot</code> / <code>@getmyid_bot</code>, для канала или группы —{" "}
-                      <code>@username</code> (бот должен быть участником и иметь право писать).
-                    </p>
-                    <p className="admin-hint" style={{ margin: "6px 0 0" }}>
-                      ⚠️ С серверов в РФ <code>api.telegram.org</code> заблокирован (ТСПУ дропает
-                      пакеты) — напрямую уведомления не уходят. Укажите релей: зарубежный VPS или
-                      Cloudflare Worker, который проксирует <code>api.telegram.org</code>, например{" "}
-                      <code>https://tg-relay.ваш-домен.ru</code>. Альтернатива без VPN — настроить
-                      MAX-бота ниже, он работает из РФ без ограничений.
-                    </p>
-                    <p className="admin-hint" style={{ margin: "6px 0 0" }}>
-                      Если уведомления уходят (журнал ниже показывает «✓ отправлено»),
-                      но не приходят на телефон без VPN — Telegram заблокирован на
-                      стороне клиента в РФ; сервер тут ни при чём. Решение: читать
-                      дубли в MAX (без VPN) или открыть Telegram через VPN.
-                    </p>
-                  </div>
                   <div className="settings-messenger-item">
                     <strong>MAX-бот</strong>
                     <div className="admin-field">
@@ -938,7 +822,7 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                         onChange={(e) =>
                           setValues({ ...values, max_bot_token: e.target.value.trim() })
                         }
-                        placeholder="токен MAX-бота (если используется)"
+                        placeholder="токен MAX-бота"
                         autoComplete="off"
                       />
                     </div>
@@ -951,18 +835,14 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                         onChange={(e) =>
                           setValues({ ...values, max_admin_chat_id: e.target.value.trim() })
                         }
-                        placeholder="id чата в MAX (если используется)"
+                        placeholder="id чата в MAX"
                         autoComplete="off"
                       />
                     </div>
                     <p className="admin-hint" style={{ margin: 0 }}>
-                      Необязательно, но рекомендуется: если заполнено — уведомления
-                      дублируются в MAX. MAX работает из РФ без VPN — это запасной
-                      канал на случай блокировок Telegram. Как настроить: в MAX
-                      напишите боту <code>@MasterBot</code> → создайте бота →
-                      скопируйте токен сюда; затем напишите своему боту любое
-                      сообщение и возьмите chat_id (например, через журнал
-                      отправок ниже или webhook).
+                      Как настроить: в MAX напишите боту <code>@MasterBot</code> → создайте
+                      бота → скопируйте токен сюда; затем напишите своему боту любое
+                      сообщение и возьмите chat_id (например, через журнал отправок).
                     </p>
                   </div>
                 </div>
@@ -971,28 +851,9 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                   <button
                     type="button"
                     className="admin-btn admin-btn--primary"
-                    disabled={testingTg}
-                    onClick={testTelegram}
-                  >
-                    {testingTg ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                    Проверить Telegram
-                  </button>
-                  {tgResult?.ok && (
-                    <span className="admin-success">
-                      <CheckCircle size={16} /> Отправлено! Проверьте чат.
-                    </span>
-                  )}
-                  {tgResult && !tgResult.ok && (
-                    <span className="wh-form-error" style={{ marginTop: 0, maxWidth: "100%", overflowWrap: "anywhere" }}>
-                      {tgResult.error}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    className="admin-btn admin-btn--outline"
                     disabled={testingMax}
                     onClick={testMax}
-                    title="Отправить тестовое сообщение через MAX (работает из РФ без VPN)"
+                    title="Отправить тестовое сообщение через MAX"
                   >
                     {testingMax ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                     Проверить MAX
@@ -1111,7 +972,7 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
               ) : notifyLog.length === 0 ? (
                 <span style={{ color: "var(--adm-muted)", fontSize: 12 }}>
                   Пока пусто: отправок ещё не было (или сервер перезапускался).
-                  Нажмите «Проверить Telegram» / «Проверить MAX», чтобы добавить запись.
+                  Нажмите «Проверить MAX», чтобы добавить запись.
                 </span>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1134,7 +995,7 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                         {new Date(e.at).toLocaleString("ru-RU")}
                       </span>
                       <b style={{ textTransform: "uppercase", fontSize: 10, letterSpacing: "0.06em" }}>
-                        {e.channel === "telegram" ? "Telegram" : "MAX"}
+                        MAX
                       </b>
                       <span style={{ color: "var(--adm-ink-soft)" }}>{e.label}</span>
                       {e.ok ? (

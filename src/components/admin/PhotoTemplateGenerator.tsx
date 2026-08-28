@@ -1916,7 +1916,7 @@ export function PhotoTemplateGenerator({
                     <div className="ptg-item__thumb">
                       {p.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.imageUrl} alt="" />
+                        <img src={p.imageUrl} alt="" loading="lazy" decoding="async" />
                       ) : (
                         <span>📦</span>
                       )}

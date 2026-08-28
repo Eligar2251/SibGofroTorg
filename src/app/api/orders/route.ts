@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
     const finalPhoneDigits = phoneDigits;
     const finalPhoneDisplay = phoneDigits ? formatPhoneDisplay(phoneDigits) : "";
 
-    const commWhitelist = ["call", "whatsapp", "telegram", "max", "email"] as const;
+    const commWhitelist = ["call", "whatsapp", "max", "email"] as const;
     const communicationChannel = commWhitelist.includes(body.communicationChannel)
       ? body.communicationChannel
       : "call";
@@ -261,8 +261,8 @@ export async function POST(request: NextRequest) {
 
     // В serverless нельзя отправлять уведомление fire-and-forget: после
     // возврата HTTP-ответа рантайм может завершить процесс раньше fetch к
-    // Telegram. Тест работает, потому что его маршрут ожидает отправку.
-    // Заявку не отменяем при ошибке мессенджера, но дожидаемся попытки.
+    // мессенджеру. Заявку не отменяем при ошибке отправки, но дожидаемся
+    // попытки — иначе уведомление тихо потеряется.
     try {
       await sendNotifications({
       id: createdOrder.id,
@@ -328,7 +328,6 @@ async function sendNotifications(order: {
   const channels: Record<string, string> = {
     call: "Телефонный звонок",
     whatsapp: "WhatsApp",
-    telegram: "Telegram",
     max: "Макс",
     email: "Электронная почта",
   };

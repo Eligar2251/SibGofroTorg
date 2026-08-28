@@ -46,12 +46,19 @@ const statusBadge: Record<string, string> = {
 const contactLabels: Record<string, { token: string; text: string }> = {
   call: { token: "phone", text: "Звонок" },
   whatsapp: { token: "chat", text: "WhatsApp" },
+  // Telegram больше не предлагается для новых заявок (см. SELECTABLE_CONTACT_METHODS),
+  // но ярлык оставлен: в базе есть старые записи с этим способом связи.
   telegram: { token: "send", text: "Telegram" },
   max: { token: "chats", text: "MAX" },
   email: { token: "mail", text: "Почта" },
   visit: { token: "user", text: "Личный визит" },
   other: { token: "note", text: "Другое" },
 };
+
+/** Способы связи, доступные для выбора в новых заявках. */
+const SELECTABLE_CONTACT_METHODS = Object.keys(contactLabels).filter(
+  (key) => key !== "telegram"
+);
 
 const filterOptions = [
   { value: "active", label: "Активные" },
@@ -175,9 +182,9 @@ function RequestFormModal({
                 value={form.contactMethod}
                 onChange={set("contactMethod")}
               >
-                {Object.entries(contactLabels).map(([value, c]) => (
+                {SELECTABLE_CONTACT_METHODS.map((value) => (
                   <option key={value} value={value}>
-                    {c.text}
+                    {contactLabels[value].text}
                   </option>
                 ))}
               </select>
