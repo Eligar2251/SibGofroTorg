@@ -6,7 +6,7 @@
 
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { Header } from "@/components/layout/Header";
+import { Header, type HeaderCategory } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { MessengerFloatingBanner } from "@/components/layout/MessengerFloatingBanner";
 import { FloatingCart } from "@/components/layout/FloatingCart";
@@ -19,10 +19,13 @@ const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || "admin";
 export function ConditionalChrome({
   children,
   popupCampaigns = [],
+  categories = [],
 }: {
   children: ReactNode;
   /** Приходят из серверного layout — без клиентского fetch /api/popups */
   popupCampaigns?: PublicPopupCampaign[];
+  /** Категории меню — тоже из серверного layout, без fetch /api/categories */
+  categories?: HeaderCategory[];
 }) {
   const pathname = usePathname() || "";
   const isAdmin = pathname === `/${ADMIN_PATH}` || pathname.startsWith(`/${ADMIN_PATH}/`);
@@ -33,7 +36,7 @@ export function ConditionalChrome({
 
   return (
     <>
-      <Header />
+      <Header initialCategories={categories} />
       <main style={{ minHeight: "60vh" }}>{children}</main>
       <Footer />
       <FloatingCart />

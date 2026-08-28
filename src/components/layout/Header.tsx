@@ -31,17 +31,30 @@ import {
   SITE_EMAIL,
 } from "@/lib/site-config";
 import { useSiteSettings } from "@/hooks/use-site-settings";
+import { fetchJsonSafe } from "@/lib/safe-fetch";
 
-interface Category {
+/** Категория в меню шапки. Приходит из серверного layout. */
+export interface HeaderCategory {
   id: string;
   name: string;
   slug: string;
   icon?: string | null;
 }
 
-export function Header() {
+export function Header({
+  initialCategories = [],
+}: {
+  /**
+   * Категории меню приходят с сервера (см. src/app/layout.tsx).
+   * Раньше шапка запрашивала /api/categories из браузера на каждой
+   * странице: лишний запрос в критическом пути и источник ошибки
+   * «Failed to fetch», когда запрос перехватывал антивирус или
+   * расширение браузера.
+   */
+  initialCategories?: HeaderCategory[];
+} = {}) {
   const pathname = usePathname();
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<HeaderCategory[]>(initialCategories);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
@@ -74,14 +87,37 @@ export function Header() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Список с сервера приходит новым массивом на каждый рендер layout,
+  // поэтому сравниваем по содержимому — иначе state обновлялся бы вхолостую
+  // на каждой навигации.
+  const serverCategoriesKey = initialCategories.map((c) => c.id).join(",");
   useEffect(() => {
-    fetch("/api/categories")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setCategories(data);
-      })
-      .catch(console.error);
-  }, []);
+    if (!serverCategoriesKey) return;
+    setCategories((prev) =>
+      prev.map((c) => c.id).join(",") === serverCategoriesKey
+        ? prev
+        : initialCategories
+    );
+    // initialCategories намеренно не в зависимостях: ключ выше описывает
+    // его содержимое, а сама ссылка меняется каждый рендер.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverCategoriesKey]);
+
+  // Фоллбэк на случай, если серверный layout категории не отдал
+  // (например, БД была недоступна в момент рендера). Запрос
+  // необязательный: не сработал — меню просто останется без разделов,
+  // ошибку в консоль не пишем.
+  useEffect(() => {
+    if (serverCategoriesKey) return;
+    const controller = new AbortController();
+    void fetchJsonSafe<HeaderCategory[]>("/api/categories", {
+      signal: controller.signal,
+      label: "категории меню",
+    }).then((data) => {
+      if (Array.isArray(data) && data.length > 0) setCategories(data);
+    });
+    return () => controller.abort();
+  }, [serverCategoriesKey]);
 
   // Header живёт между клиентскими переходами. Перепроверяем cookie сессии
   // на каждом маршруте, чтобы после регистрации второго номера на том же ПК

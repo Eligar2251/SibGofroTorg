@@ -10,6 +10,8 @@ import "./mobile.css";
 
 import { CartProvider } from "@/context/CartContext";
 import { ConditionalChrome } from "@/components/layout/ConditionalChrome";
+import { getCategories } from "@/lib/supabase-queries";
+import type { HeaderCategory } from "@/components/layout/Header";
 import { CookieConsent } from "@/components/analytics/CookieConsent";
 import { PhoneClickTracking } from "@/components/analytics/PhoneClickTracking";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -115,6 +117,22 @@ export default async function RootLayout({
     popupCampaigns = [];
   }
 
+  // Категории для меню шапки — тоже с сервера. Раньше Header дёргал
+  // /api/categories из браузера на каждой странице: лишний запрос в
+  // критическом пути и источник ошибки «Failed to fetch», когда запрос
+  // перехватывал антивирус или расширение.
+  let headerCategories: HeaderCategory[] = [];
+  try {
+    headerCategories = (await getCategories()).map((category) => ({
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      icon: category.icon ?? "box",
+    }));
+  } catch {
+    headerCategories = [];
+  }
+
   return (
     <html lang="ru" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
@@ -137,7 +155,10 @@ export default async function RootLayout({
       </head>
       <body>
         <CartProvider>
-          <ConditionalChrome popupCampaigns={popupCampaigns}>
+          <ConditionalChrome
+            popupCampaigns={popupCampaigns}
+            categories={headerCategories}
+          >
             {children}
           </ConditionalChrome>
         </CartProvider>
