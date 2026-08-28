@@ -26,6 +26,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSiteSettings } from "@/hooks/use-site-settings";
 import { SITE_PHONE, SITE_PHONE_HREF, SITE_HOURS_LABEL } from "@/lib/site-config";
+import { CLIENT_STATUS_LABELS } from "@/lib/order-status";
 
 interface OrderItem {
   productId?: string;
@@ -76,14 +77,10 @@ interface UserInfo {
   name?: string | null;
 }
 
-const statusLabels: Record<string, string> = {
-  new: "В обработке",
-  in_progress: "Сборка заказа",
-  ready: "Готов к выдаче",
-  issued: "Выдан",
-  completed: "Выполнен",
-  rejected: "Отменён",
-};
+// Подписи берём из общего справочника: ровно эти же строки админка
+// показывает менеджеру в карточке клиента («клиент видит: …»),
+// поэтому они не должны расходиться.
+const statusLabels = CLIENT_STATUS_LABELS;
 
 const statusStyles: Record<string, { bg: string; color: string; dot: string }> = {
   new: { bg: "#fff7ed", color: "#c2410c", dot: "#f97316" },

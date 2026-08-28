@@ -2,10 +2,12 @@
 "use client";
 
 import { useDeferredValue, useState } from "react";
+import Link from "next/link";
 import {
   Search,
   ChevronDown,
   ChevronUp,
+  FolderOpen,
   Phone,
   Mail,
   Building2,
@@ -66,7 +68,7 @@ function formatDate(raw: string | null): string {
   });
 }
 
-function ClientRow({ client }: { client: Client }) {
+function ClientRow({ client, adminPath }: { client: Client; adminPath: string }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -237,8 +239,22 @@ function ClientRow({ client }: { client: Client }) {
           </div>
         </div>
 
-        <div style={{ color: "var(--adm-muted)", flexShrink: 0 }}>
-          {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}
+        >
+          {/* Полная карточка: все заявки клиента с управлением статусом */}
+          <Link
+            href={`/${adminPath}/clients/${client.id}`}
+            prefetch={false}
+            className="admin-btn admin-btn--outline admin-btn--sm"
+            onClick={(e) => e.stopPropagation()}
+            title="Открыть карточку клиента: все заявки, статусы, управление"
+          >
+            <FolderOpen size={13} /> Карточка
+          </Link>
+          <span style={{ color: "var(--adm-muted)" }}>
+            {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </span>
         </div>
       </div>
 
@@ -386,7 +402,13 @@ function ClientRow({ client }: { client: Client }) {
   );
 }
 
-export function ClientsManager({ clients }: { clients: Client[] }) {
+export function ClientsManager({
+  clients,
+  adminPath = "admin",
+}: {
+  clients: Client[];
+  adminPath?: string;
+}) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "legal" | "individual">("all");
   const [sort, setSort] = useState<"date" | "orders" | "spent">("date");
@@ -553,7 +575,7 @@ export function ClientsManager({ clients }: { clients: Client[] }) {
       <div>
         {filtered.length > 0 ? (
           filtered.map((client) => (
-            <ClientRow key={client.id} client={client} />
+            <ClientRow key={client.id} client={client} adminPath={adminPath} />
           ))
         ) : (
           <div

@@ -14449,3 +14449,108 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
     justify-content: flex-end;
   }
 }
+
+/* ══════════════════════════════════════
+   КАРТОЧКА КЛИЕНТА · ЕГО ЗАЯВКИ
+   /{admin}/clients/{id} — все заявки одного клиента
+   с управлением статусом и удалением.
+   ══════════════════════════════════════ */
+
+.client-card__contacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--adm-border, #e8e4dc);
+}
+
+.client-card__contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--adm-ink-soft, #55524c);
+  text-decoration: none;
+}
+
+a.client-card__contact:hover {
+  color: var(--adm-navy, #21324a);
+  text-decoration: underline;
+}
+
+/* Раскрывающаяся заявка внутри карточки клиента */
+.admin-order__spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.admin-order__sum {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--adm-ink, #1a1a18);
+  white-space: nowrap;
+}
+
+.admin-order__body {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--adm-border, #e8e4dc);
+}
+
+.admin-order__item-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-order__item-qty {
+  color: var(--adm-muted);
+  white-space: nowrap;
+}
+
+.admin-order__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--adm-ink-soft, #55524c);
+  overflow-wrap: anywhere;
+}
+
+.admin-order__note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--adm-muted);
+}
+
+.admin-order__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--adm-border, #e8e4dc);
+}
+
+.admin-order__controls-side {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .admin-order__controls-side {
+    margin-left: 0;
+    width: 100%;
+  }
+  .admin-order__date {
+    margin-left: 0;
+  }
+}
