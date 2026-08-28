@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
       deliveryContact: body.deliveryContact,
       deliveryPhone: body.deliveryPhone,
       isReserved: body.isReserved === true,
+      isInternal: body.isInternal === true,
     });
     return NextResponse.json(result);
   } catch (error: any) {

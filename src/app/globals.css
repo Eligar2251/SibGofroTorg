@@ -6896,7 +6896,7 @@ body {
   color: var(--ink-muted);
   cursor: pointer;
   z-index: 10;
-  transition: all 0.2s;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .banner-v2__close:hover {
@@ -6991,7 +6991,7 @@ body {
   font-weight: 800;
   text-decoration: none;
   box-shadow: 0 10px 25px color-mix(in srgb, var(--banner-acc) 30%, transparent);
-  transition: all 0.25s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
 }
 
 .banner-v2__cta:hover {
@@ -7047,7 +7047,7 @@ body {
   justify-content: center;
   cursor: pointer;
   z-index: 30;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 

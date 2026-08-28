@@ -3086,7 +3086,7 @@ export function PhotoTemplateGenerator({
                     <span className="ptg-result__name">{r.name}</span>
                     {r.ok && r.url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.url} alt="" />
+                      <img src={r.url} alt="" loading="lazy" decoding="async" />
                     ) : (
                       <span className="ptg-result__errtext">{r.error}</span>
                     )}

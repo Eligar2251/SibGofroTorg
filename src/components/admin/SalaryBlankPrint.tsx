@@ -275,13 +275,20 @@ export function GuardRosterPrint({
   const curMon = mondayOf(new Date());
   const start = addDays(curMon, -(weeks - 1) * 7);
   const end = addDays(curMon, 6 + (weeks - 1) * 7);
+  // Отдельные переменные для зависимостей: объект Date каждый рендер новый,
+  // а по времени сравнение стабильное (правило react-hooks требует
+  // простых выражений в списке зависимостей).
+  const startTime = start.getTime();
+  const endTime = end.getTime();
 
   // Все дни периода
   const periodDays = useMemo(() => {
     const arr: Date[] = [];
-    for (let d = new Date(start); d <= end; d = addDays(d, 1)) arr.push(new Date(d));
+    for (let d = new Date(startTime); d.getTime() <= endTime; d = addDays(d, 1)) {
+      arr.push(new Date(d));
+    }
     return arr;
-  }, [start.getTime(), end.getTime()]);
+  }, [startTime, endTime]);
 
   // Распределение: кто получает в какой день (для пометки «кто дежурит»).
   // По правилам из опроса: в каждый день работают те, у кого этот weekday

@@ -183,6 +183,12 @@ export interface CustomerDeal extends CounterpartyDetails {
   shippedItems?: { productId: string; name?: string; shippedQty: number }[];
   /** Количество товара, запланированное к доставке: [{productId, name, quantity}] */
   deliveryItems?: { productId: string; name: string; quantity: number }[];
+  /**
+   * Хознужды: списание товара на собственные нужды без оплаты.
+   * Итог может быть 0, входящий счёт в банке не создаётся,
+   * склад списывается как обычно.
+   */
+  isInternal?: boolean;
   /** Архивный заказ из массовой загрузки (старые проведённые заказы вне складского учёта). */
   isArchive?: boolean;
   /** Комментарий к партии импорта архивных заказов. */
@@ -223,6 +229,8 @@ export interface BankPayment {
   isPaid: boolean;
   /** Если true, платёж проведён, но не учитывается в текущем балансе (старый учёт) */
   excludeFromBalance?: boolean;
+  /** Закупка, к которой отнесён платёж (см. модуль «Закупки»). */
+  purchasePlanId?: string | null;
   paidAt?: string | null;
   comment?: string | null;
   createdAt?: string | null;

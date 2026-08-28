@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       isPaid: body.isPaid === true,
       excludeFromBalance: body.excludeFromBalance === true,
       comment: body.comment ?? null,
+      purchasePlanId: body.purchasePlanId ? String(body.purchasePlanId) : null,
     });
     return NextResponse.json(result);
   } catch (error: any) {

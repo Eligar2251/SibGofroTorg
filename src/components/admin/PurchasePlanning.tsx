@@ -8,9 +8,11 @@ import {
   CreditCard,
   ExternalLink,
   Loader2,
+  Check,
   Pencil,
   PiggyBank,
   Plus,
+  X,
   RefreshCw,
   RotateCcw,
   Trash2,
@@ -21,11 +23,10 @@ import { ProductPicker, type PickerProduct } from "@/components/admin/ProductPic
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import {
   PURCHASE_ACCOUNT_LABEL,
-  PURCHASE_SPEND_MODE_LABEL,
   type PurchaseAccount,
   type PurchaseImage,
+  type PurchasePayment,
   type PurchasePlan,
-  type PurchaseSpendMode,
 } from "@/lib/purchase-plans-shared";
 
 const fmt = (value: number) =>
@@ -67,10 +68,10 @@ function adminBasePath(): string {
 export function PurchasePlanning({
   initialPlans,
   products,
-  employees = [],
 }: {
   initialPlans: PurchasePlan[];
   products: PickerProduct[];
+  /** Оставлен для совместимости вызова: списание через ЗП больше не используется. */
   employees?: EmployeeOption[];
 }) {
   const router = useRouter();
@@ -85,7 +86,6 @@ export function PurchasePlanning({
   const [targetAmount, setTargetAmount] = useState(0);
   const [contributionAmount, setContributionAmount] = useState(500);
   const [account, setAccount] = useState<PurchaseAccount>("bank");
-  const [contributionDrafts, setContributionDrafts] = useState<Record<string, number>>({});
   const [editDrafts, setEditDrafts] = useState<
     Record<
       string,
@@ -98,16 +98,25 @@ export function PurchasePlanning({
       }
     >
   >({});
-  const [spendDrafts, setSpendDrafts] = useState<
+  /** Форма «добавить платёж» по каждой закупке. */
+  const [payDrafts, setPayDrafts] = useState<
     Record<
       string,
       {
-        spendMode: PurchaseSpendMode;
+        amount: number;
+        date: string;
         account: PurchaseAccount;
+        isPaid: boolean;
         excludeFromBalance: boolean;
-        employeeId: string;
-        employeeName: string;
+        comment: string;
       }
+    >
+  >({});
+  /** Редактирование конкретного платежа: id платежа → черновик. */
+  const [editPayment, setEditPayment] = useState<
+    Record<
+      string,
+      { amount: number; date: string; account: PurchaseAccount; isPaid: boolean }
     >
   >({});
   const [showCompleted, setShowCompleted] = useState(false);
@@ -125,7 +134,9 @@ export function PurchasePlanning({
     [plans]
   );
   const visiblePlans = showCompleted ? completedPlans : activePlans;
-  const totalSaved = activePlans.reduce((sum, plan) => sum + plan.savedAmount, 0);
+  const totalPaid = activePlans.reduce((sum, plan) => sum + plan.paidAmount, 0);
+  const totalPlanned = activePlans.reduce((sum, plan) => sum + plan.plannedAmount, 0);
+  const totalTarget = activePlans.reduce((sum, plan) => sum + plan.targetAmount, 0);
 
   function replacePlan(nextPlan: PurchasePlan) {
     setPlans((previous) => {
@@ -166,15 +177,132 @@ export function PurchasePlanning({
     );
   }
 
-  function spendDraftFor(plan: PurchasePlan) {
+  function payDraftFor(plan: PurchasePlan) {
     return (
-      spendDrafts[plan.id] || {
-        spendMode: "bank" as PurchaseSpendMode,
+      payDrafts[plan.id] || {
+        // По умолчанию предлагаем «сколько осталось до цели», но не больше
+        // привычного шага — так удобнее и разово закрыть, и платить частями.
+        amount: Math.max(
+          0,
+          Math.min(
+            plan.contributionAmount,
+            Math.max(0, plan.targetAmount - plan.paidAmount - plan.plannedAmount) ||
+              plan.contributionAmount
+          )
+        ),
+        date: todayIso(),
         account: plan.account,
+        isPaid: true,
         excludeFromBalance: false,
-        employeeId: "",
-        employeeName: "",
+        comment: "",
       }
+    );
+  }
+
+  /** Единый вызов API закупок: любое действие возвращает обновлённый план. */
+  async function planAction(
+    plan: PurchasePlan | null,
+    body: Record<string, unknown>,
+    fallbackError: string
+  ) {
+    setBusyId(plan?.id || "global");
+    setError("");
+    try {
+      const response = await fetch("/api/admin/warehouse/purchase-plans", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || fallbackError);
+      if (payload.plan) replacePlan(payload.plan);
+      if (Array.isArray(payload.plans)) setPlans(payload.plans);
+      // Банк и дашборд считают те же платежи — обновляем серверные данные.
+      router.refresh();
+      return true;
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Ошибка сети");
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function addPayment(plan: PurchasePlan) {
+    const draft = payDraftFor(plan);
+    const amount = Math.max(0, Number(draft.amount) || 0);
+    if (amount <= 0) {
+      setError("Укажите сумму платежа");
+      return;
+    }
+    const ok = await planAction(
+      plan,
+      {
+        action: "add-payment",
+        planId: plan.id,
+        amount,
+        date: draft.date || todayIso(),
+        account: draft.account,
+        isPaid: draft.isPaid,
+        excludeFromBalance: draft.excludeFromBalance,
+        comment: draft.comment.trim() || undefined,
+      },
+      "Не удалось добавить платёж"
+    );
+    if (ok) {
+      setPayDrafts((prev) => {
+        const next = { ...prev };
+        delete next[plan.id];
+        return next;
+      });
+    }
+  }
+
+  async function savePayment(plan: PurchasePlan, payment: PurchasePayment) {
+    const draft = editPayment[payment.id];
+    if (!draft) return;
+    const ok = await planAction(
+      plan,
+      {
+        action: "update-payment",
+        paymentId: payment.id,
+        amount: draft.amount,
+        date: draft.date,
+        account: draft.account,
+        isPaid: draft.isPaid,
+      },
+      "Не удалось изменить платёж"
+    );
+    if (ok) {
+      setEditPayment((prev) => {
+        const next = { ...prev };
+        delete next[payment.id];
+        return next;
+      });
+    }
+  }
+
+  async function removePayment(plan: PurchasePlan, payment: PurchasePayment) {
+    if (
+      !confirm(
+        `Удалить платёж на ${fmt(payment.amount)} ₽ от ${payment.date}?\n\n` +
+          "Платёж исчезнет и из банка, деньги вернутся в баланс."
+      )
+    ) {
+      return;
+    }
+    await planAction(
+      plan,
+      { action: "delete-payment", paymentId: payment.id },
+      "Не удалось удалить платёж"
+    );
+  }
+
+  async function setStatus(plan: PurchasePlan, status: "active" | "completed") {
+    await planAction(
+      plan,
+      { action: "status", id: plan.id, status },
+      "Не удалось изменить статус закупки"
     );
   }
 
@@ -289,86 +417,26 @@ export function PurchasePlanning({
     }
   }
 
-  async function contribute(plan: PurchasePlan) {
-    const amount = Math.max(
-      0,
-      Number(contributionDrafts[plan.id] ?? plan.contributionAmount) || 0
+  /**
+   * Старое «отложено» — виртуальные накопления без движения денег.
+   * Оставлены только для уже накопленных сумм: их можно провести
+   * настоящим платежом или просто удалить.
+   */
+  async function convertContribution(plan: PurchasePlan, contributionId: string) {
+    await planAction(
+      plan,
+      { action: "convert-contribution", planId: plan.id, contributionId },
+      "Не удалось провести отложенное"
     );
-    if (amount <= 0) {
-      setError("Укажите сумму, которую откладываем");
-      return;
-    }
-    setBusyId(plan.id);
-    setError("");
-    try {
-      const response = await fetch("/api/admin/warehouse/purchase-plans", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "contribute",
-          id: plan.id,
-          amount,
-          date: todayIso(),
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Не удалось добавить накопление");
-      replacePlan(body.plan);
-    } catch (contributionError) {
-      setError(
-        contributionError instanceof Error ? contributionError.message : "Ошибка сети"
-      );
-    } finally {
-      setBusyId(null);
-    }
   }
 
-  async function runSpend(plan: PurchasePlan) {
-    const draft = spendDraftFor(plan);
-    const source = draft.account || plan.account;
-    const modeLabel = PURCHASE_SPEND_MODE_LABEL[draft.spendMode];
-    const accountLabel = PURCHASE_ACCOUNT_LABEL[source];
-    const offBalance = draft.excludeFromBalance ? " · вне баланса" : "";
-    const who =
-      draft.spendMode === "salary"
-        ? `\nПолучатель: ${draft.employeeName.trim() || "Закупка — " + plan.productName}`
-        : "";
-    if (
-      !confirm(
-        `Списать ${fmt(plan.savedAmount)} ₽ на закупку «${plan.productName}»?\n\n` +
-          `${modeLabel} · ${accountLabel}${offBalance}${who}`
-      )
-    ) {
-      return;
-    }
-    setBusyId(plan.id);
-    setError("");
-    try {
-      const response = await fetch("/api/admin/warehouse/purchase-plans", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "spend",
-          id: plan.id,
-          account: source,
-          spendMode: draft.spendMode,
-          excludeFromBalance: draft.excludeFromBalance,
-          employeeId: draft.employeeId || null,
-          employeeName:
-            draft.spendMode === "salary"
-              ? draft.employeeName.trim() || `Закупка — ${plan.productName}`
-              : null,
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Не удалось списать накопления");
-      replacePlan(body.plan);
-      router.refresh();
-    } catch (spendError) {
-      setError(spendError instanceof Error ? spendError.message : "Ошибка сети");
-    } finally {
-      setBusyId(null);
-    }
+  async function removeContribution(plan: PurchasePlan, contributionId: string) {
+    if (!confirm("Удалить отложенное? Денег это не двигало.")) return;
+    await planAction(
+      plan,
+      { action: "delete-contribution", planId: plan.id, contributionId },
+      "Не удалось удалить отложенное"
+    );
   }
 
   async function restorePlan(plan: PurchasePlan) {
@@ -427,8 +495,9 @@ export function PurchasePlanning({
           </span>
           <h2>Закупки</h2>
           <p>
-            Компактные плитки с фото. Списание — в платёж банка или выплату ЗП, с
-            опцией «вне баланса».
+            Компактные плитки с фото. Закупка оплачивается по частям: каждый платёж —
+            отдельная строка в банке, её можно изменить или удалить. Готовый платёж
+            из банка тоже можно отнести к закупке.
           </p>
         </div>
         <div className="purchase-planning__summary">
@@ -436,8 +505,14 @@ export function PurchasePlanning({
             Активных <b>{activePlans.length}</b>
           </span>
           <span>
-            Накоплено <b>{fmt(totalSaved)} ₽</b>
+            Оплачено <b>{fmt(totalPaid)} ₽</b>
+            {totalTarget > 0 ? <> из {fmt(totalTarget)} ₽</> : null}
           </span>
+          {totalPlanned > 0 && (
+            <span>
+              В плане <b>{fmt(totalPlanned)} ₽</b>
+            </span>
+          )}
         </div>
       </header>
 
@@ -498,7 +573,7 @@ export function PurchasePlanning({
             <div className="purchase-create__ozon-preview">
               {ozonPreview.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={ozonPreview.imageUrl} alt="" />
+                <img src={ozonPreview.imageUrl} alt="" loading="lazy" decoding="async" />
               ) : (
                 <div className="purchase-create__ozon-placeholder">OZON</div>
               )}
@@ -623,11 +698,11 @@ export function PurchasePlanning({
             const cover = planCover(plan);
             const progress =
               plan.targetAmount > 0
-                ? Math.min(100, Math.round((plan.savedAmount / plan.targetAmount) * 100))
+                ? Math.min(100, Math.round((plan.paidAmount / plan.targetAmount) * 100))
                 : 0;
             const open = openId === plan.id;
             const draft = draftFor(plan);
-            const spend = spendDraftFor(plan);
+            const pay = payDraftFor(plan);
 
             return (
               <article
@@ -644,7 +719,7 @@ export function PurchasePlanning({
                   <span className="purchase-tile__media">
                     {cover ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={cover} alt="" />
+                      <img src={cover} alt="" loading="lazy" decoding="async" />
                     ) : (
                       <PiggyBank size={28} />
                     )}
@@ -673,7 +748,7 @@ export function PurchasePlanning({
                   </span>
                   <strong title={plan.productName}>{plan.productName}</strong>
                   <span>
-                    {fmt(plan.savedAmount)} ₽
+                    {fmt(plan.paidAmount)} ₽
                     {plan.targetAmount > 0 ? ` / ${fmt(plan.targetAmount)} ₽` : ""}
                   </span>
                   {plan.targetAmount > 0 && (
@@ -692,7 +767,7 @@ export function PurchasePlanning({
                       <div className="purchase-tile__thumb">
                         {cover ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={cover} alt="" />
+                          <img src={cover} alt="" loading="lazy" decoding="async" />
                         ) : (
                           <PiggyBank size={22} />
                         )}
@@ -781,193 +856,357 @@ export function PurchasePlanning({
                       </a>
                     )}
 
-                    {plan.status === "active" && (
-                      <>
-                        <div className="purchase-tile__money">
-                          <input
-                            className="admin-input"
-                            type="number"
-                            min={1}
-                            value={
-                              contributionDrafts[plan.id] ?? plan.contributionAmount
-                            }
-                            onChange={(e) =>
-                              setContributionDrafts((p) => ({
-                                ...p,
-                                [plan.id]: Math.max(1, Number(e.target.value) || 0),
-                              }))
-                            }
-                          />
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--outline"
-                            disabled={busyId === plan.id}
-                            onClick={() => contribute(plan)}
-                          >
-                            <Plus size={13} /> Отложить
-                          </button>
-                        </div>
+                    {/* ── Платежи по закупке ──
+                        Каждый платёж — обычная строка банка: её видно
+                        в разделе «Банк», можно править и удалять здесь же. */}
+                    <div className="purchase-pay">
+                      <div className="purchase-pay__head">
+                        <strong>Платежи по закупке</strong>
+                        <span className="purchase-pay__sum">
+                          оплачено {fmt(plan.paidAmount)} ₽
+                          {plan.targetAmount > 0 ? ` из ${fmt(plan.targetAmount)} ₽` : ""}
+                          {plan.plannedAmount > 0 && (
+                            <em> · запланировано {fmt(plan.plannedAmount)} ₽</em>
+                          )}
+                        </span>
+                      </div>
 
-                        <div className="purchase-spend">
-                          <div className="purchase-spend__title">
-                            Списание накоплений · {fmt(plan.savedAmount)} ₽
-                          </div>
-                          <div className="purchase-spend__modes">
-                            {(
-                              [
-                                ["bank", "Платёж в банке"],
-                                ["salary", "Выплата в ЗП"],
-                              ] as const
-                            ).map(([value, label]) => (
-                              <button
-                                key={value}
-                                type="button"
-                                className={`purchase-spend__mode${
-                                  spend.spendMode === value
-                                    ? " purchase-spend__mode--on"
-                                    : ""
-                                }`}
-                                onClick={() =>
-                                  setSpendDrafts((p) => ({
-                                    ...p,
-                                    [plan.id]: { ...spend, spendMode: value },
-                                  }))
-                                }
-                              >
-                                {value === "bank" ? (
-                                  <Wallet size={13} />
-                                ) : (
-                                  <Users size={13} />
-                                )}
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="admin-grid-2">
-                            <label className="admin-field">
-                              <span className="admin-label">Счёт / источник</span>
-                              <select
-                                className="admin-select"
-                                value={spend.account}
-                                onChange={(e) =>
-                                  setSpendDrafts((p) => ({
-                                    ...p,
-                                    [plan.id]: {
-                                      ...spend,
-                                      account: e.target.value as PurchaseAccount,
-                                    },
-                                  }))
-                                }
-                              >
-                                {Object.entries(PURCHASE_ACCOUNT_LABEL).map(
-                                  ([value, label]) => (
-                                    <option key={value} value={value}>
-                                      {label}
-                                    </option>
-                                  )
-                                )}
-                              </select>
-                            </label>
-                            <label className="admin-check purchase-spend__off">
-                              <input
-                                type="checkbox"
-                                checked={spend.excludeFromBalance}
-                                onChange={(e) =>
-                                  setSpendDrafts((p) => ({
-                                    ...p,
-                                    [plan.id]: {
-                                      ...spend,
-                                      excludeFromBalance: e.target.checked,
-                                    },
-                                  }))
-                                }
-                              />
-                              <span>Вне баланса</span>
-                            </label>
-                          </div>
-
-                          {spend.spendMode === "salary" && (
-                            <div className="admin-grid-2">
-                              {employees.length > 0 && (
-                                <label className="admin-field">
-                                  <span className="admin-label">Сотрудник</span>
+                      {plan.payments.length === 0 ? (
+                        <p className="purchase-pay__empty">
+                          Платежей пока нет. Добавьте первый — он появится и в банке.
+                        </p>
+                      ) : (
+                        <ul className="purchase-pay__list">
+                          {plan.payments.map((payment) => {
+                            const editing = editPayment[payment.id];
+                            if (editing) {
+                              return (
+                                <li key={payment.id} className="purchase-pay__row purchase-pay__row--edit">
+                                  <input
+                                    className="admin-input"
+                                    type="date"
+                                    value={editing.date}
+                                    onChange={(e) =>
+                                      setEditPayment((prev) => ({
+                                        ...prev,
+                                        [payment.id]: { ...editing, date: e.target.value },
+                                      }))
+                                    }
+                                  />
+                                  <input
+                                    className="admin-input"
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={editing.amount}
+                                    onChange={(e) =>
+                                      setEditPayment((prev) => ({
+                                        ...prev,
+                                        [payment.id]: {
+                                          ...editing,
+                                          amount: Number(e.target.value) || 0,
+                                        },
+                                      }))
+                                    }
+                                  />
                                   <select
                                     className="admin-select"
-                                    value={spend.employeeId}
-                                    onChange={(e) => {
-                                      const emp = employees.find(
-                                        (x) => x.id === e.target.value
-                                      );
-                                      setSpendDrafts((p) => ({
-                                        ...p,
-                                        [plan.id]: {
-                                          ...spend,
-                                          employeeId: e.target.value,
-                                          employeeName: emp?.name || spend.employeeName,
+                                    value={editing.account}
+                                    onChange={(e) =>
+                                      setEditPayment((prev) => ({
+                                        ...prev,
+                                        [payment.id]: {
+                                          ...editing,
+                                          account: e.target.value as PurchaseAccount,
                                         },
-                                      }));
-                                    }}
+                                      }))
+                                    }
                                   >
-                                    <option value="">— вручную —</option>
-                                    {employees.map((emp) => (
-                                      <option key={emp.id} value={emp.id}>
-                                        {emp.name}
+                                    {(
+                                      Object.entries(PURCHASE_ACCOUNT_LABEL) as [
+                                        PurchaseAccount,
+                                        string,
+                                      ][]
+                                    ).map(([value, label]) => (
+                                      <option key={value} value={value}>
+                                        {label}
                                       </option>
                                     ))}
                                   </select>
-                                </label>
-                              )}
-                              <label className="admin-field">
-                                <span className="admin-label">Кому в ЗП</span>
-                                <input
-                                  className="admin-input"
-                                  value={spend.employeeName}
-                                  placeholder={`Закупка — ${plan.productName}`}
-                                  onChange={(e) =>
-                                    setSpendDrafts((p) => ({
-                                      ...p,
-                                      [plan.id]: {
-                                        ...spend,
-                                        employeeName: e.target.value,
-                                        employeeId: "",
-                                      },
-                                    }))
-                                  }
-                                />
-                              </label>
-                            </div>
-                          )}
+                                  <label className="admin-check purchase-pay__paid">
+                                    <input
+                                      type="checkbox"
+                                      checked={editing.isPaid}
+                                      onChange={(e) =>
+                                        setEditPayment((prev) => ({
+                                          ...prev,
+                                          [payment.id]: {
+                                            ...editing,
+                                            isPaid: e.target.checked,
+                                          },
+                                        }))
+                                      }
+                                    />
+                                    <span>проведён</span>
+                                  </label>
+                                  <span className="purchase-pay__row-actions">
+                                    <button
+                                      type="button"
+                                      className="admin-btn admin-btn--primary admin-btn--sm"
+                                      disabled={busyId === plan.id}
+                                      onClick={() => savePayment(plan, payment)}
+                                      title="Сохранить"
+                                    >
+                                      <Check size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                                      onClick={() =>
+                                        setEditPayment((prev) => {
+                                          const next = { ...prev };
+                                          delete next[payment.id];
+                                          return next;
+                                        })
+                                      }
+                                      title="Отменить"
+                                    >
+                                      <X size={13} />
+                                    </button>
+                                  </span>
+                                </li>
+                              );
+                            }
+                            return (
+                              <li key={payment.id} className="purchase-pay__row">
+                                <span className="purchase-pay__date">{payment.date}</span>
+                                <span className="purchase-pay__amount">
+                                  {fmt(payment.amount)} ₽
+                                </span>
+                                <span className="purchase-pay__acc">
+                                  {accountIcon(payment.account)}
+                                  {PURCHASE_ACCOUNT_LABEL[payment.account]}
+                                </span>
+                                {payment.isPaid ? (
+                                  <span className="admin-badge admin-badge--green">проведён</span>
+                                ) : (
+                                  <span className="admin-badge admin-badge--amber">план</span>
+                                )}
+                                {payment.excludeFromBalance && (
+                                  <span className="admin-badge admin-badge--muted">
+                                    вне баланса
+                                  </span>
+                                )}
+                                <span className="purchase-pay__row-actions">
+                                  <a
+                                    href={`/${base}/warehouse?tab=bank&payment=${payment.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                                    title={`Платёж №${payment.number} в банке`}
+                                  >
+                                    <ExternalLink size={13} />
+                                  </a>
+                                  <button
+                                    type="button"
+                                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                                    onClick={() =>
+                                      setEditPayment((prev) => ({
+                                        ...prev,
+                                        [payment.id]: {
+                                          amount: payment.amount,
+                                          date: payment.date,
+                                          account: payment.account,
+                                          isPaid: payment.isPaid,
+                                        },
+                                      }))
+                                    }
+                                    title="Изменить платёж"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                                    disabled={busyId === plan.id}
+                                    onClick={() => removePayment(plan, payment)}
+                                    title="Удалить платёж"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
 
-                          <p className="purchase-spend__hint">
-                            {spend.spendMode === "bank"
-                              ? "Создаст исходящий проведённый платёж в разделе «Банк»."
-                              : "Создаст выплаченную запись в «Зарплаты» (можно привязать к сотруднику)."}
-                            {spend.excludeFromBalance
-                              ? " Пометка «вне баланса» — на текущий остаток кассы/банка не влияет."
-                              : ""}
-                          </p>
-
+                      {plan.status === "active" && (
+                        <div className="purchase-pay__form">
+                          <input
+                            className="admin-input"
+                            type="date"
+                            value={pay.date}
+                            onChange={(e) =>
+                              setPayDrafts((prev) => ({
+                                ...prev,
+                                [plan.id]: { ...pay, date: e.target.value },
+                              }))
+                            }
+                          />
+                          <input
+                            className="admin-input"
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            placeholder="Сумма"
+                            value={pay.amount || ""}
+                            onChange={(e) =>
+                              setPayDrafts((prev) => ({
+                                ...prev,
+                                [plan.id]: { ...pay, amount: Number(e.target.value) || 0 },
+                              }))
+                            }
+                          />
+                          <select
+                            className="admin-select"
+                            value={pay.account}
+                            onChange={(e) =>
+                              setPayDrafts((prev) => ({
+                                ...prev,
+                                [plan.id]: {
+                                  ...pay,
+                                  account: e.target.value as PurchaseAccount,
+                                },
+                              }))
+                            }
+                          >
+                            {(
+                              Object.entries(PURCHASE_ACCOUNT_LABEL) as [
+                                PurchaseAccount,
+                                string,
+                              ][]
+                            ).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            className="admin-input purchase-pay__note"
+                            type="text"
+                            placeholder="Комментарий (необязательно)"
+                            value={pay.comment}
+                            onChange={(e) =>
+                              setPayDrafts((prev) => ({
+                                ...prev,
+                                [plan.id]: { ...pay, comment: e.target.value },
+                              }))
+                            }
+                          />
+                          <label className="admin-check purchase-pay__paid">
+                            <input
+                              type="checkbox"
+                              checked={pay.isPaid}
+                              onChange={(e) =>
+                                setPayDrafts((prev) => ({
+                                  ...prev,
+                                  [plan.id]: { ...pay, isPaid: e.target.checked },
+                                }))
+                              }
+                            />
+                            <span>деньги уже ушли</span>
+                          </label>
+                          <label className="admin-check purchase-pay__paid">
+                            <input
+                              type="checkbox"
+                              checked={pay.excludeFromBalance}
+                              onChange={(e) =>
+                                setPayDrafts((prev) => ({
+                                  ...prev,
+                                  [plan.id]: {
+                                    ...pay,
+                                    excludeFromBalance: e.target.checked,
+                                  },
+                                }))
+                              }
+                            />
+                            <span>вне баланса</span>
+                          </label>
                           <button
                             type="button"
                             className="admin-btn admin-btn--primary"
-                            disabled={busyId === plan.id || plan.savedAmount <= 0}
-                            onClick={() => runSpend(plan)}
+                            disabled={busyId === plan.id}
+                            onClick={() => addPayment(plan)}
                           >
-                            {accountIcon(spend.account)} Списать {fmt(plan.savedAmount)} ₽
+                            <Plus size={13} /> Внести платёж
                           </button>
                         </div>
-                      </>
+                      )}
+
+                      <p className="purchase-pay__hint">
+                        Платёж сразу попадает в «Банк» как исходящий. Снятая галочка
+                        «деньги уже ушли» — это план: он виден в закупке, но баланс не
+                        трогает, пока вы его не проведёте. Отнести к закупке можно и
+                        готовый платёж — в банке у исходящих есть поле «Закупка».
+                      </p>
+                    </div>
+
+                    {/* ── Старые виртуальные накопления ── */}
+                    {plan.contributions.length > 0 && (
+                      <div className="purchase-pay purchase-pay--legacy">
+                        <div className="purchase-pay__head">
+                          <strong>Отложено (старый учёт)</strong>
+                          <span className="purchase-pay__sum">
+                            {fmt(plan.savedAmount)} ₽ — деньги не двигались
+                          </span>
+                        </div>
+                        <ul className="purchase-pay__list">
+                          {plan.contributions.map((contribution) => (
+                            <li key={contribution.id} className="purchase-pay__row">
+                              <span className="purchase-pay__date">{contribution.date}</span>
+                              <span className="purchase-pay__amount">
+                                {fmt(contribution.amount)} ₽
+                              </span>
+                              <span className="purchase-pay__row-actions">
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn--outline admin-btn--sm"
+                                  disabled={busyId === plan.id}
+                                  onClick={() => convertContribution(plan, contribution.id)}
+                                  title="Сделать настоящим платежом в банке"
+                                >
+                                  Провести платежом
+                                </button>
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                                  disabled={busyId === plan.id}
+                                  onClick={() => removeContribution(plan, contribution.id)}
+                                  title="Удалить"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     )}
 
-                    {plan.status === "completed" && (
+                    {plan.status === "active" ? (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--outline"
+                        disabled={busyId === plan.id}
+                        onClick={() => setStatus(plan, "completed")}
+                      >
+                        <CheckCircle2 size={13} /> Закупка завершена — в архив
+                      </button>
+                    ) : (
                       <div className="purchase-plan__completed">
-                        <CheckCircle2 size={15} /> Списано {fmt(plan.spentAmount)} ₽
-                        {plan.excludeFromBalance && (
-                          <span className="admin-badge admin-badge--muted">
-                            вне баланса
-                          </span>
-                        )}
+                        <CheckCircle2 size={15} /> Закупка закрыта · оплачено{" "}
+                        {fmt(plan.paidAmount || plan.spentAmount)} ₽
                         {plan.spentPaymentId && (
                           <a
                             href={`/${base}/warehouse?tab=bank&payment=${plan.spentPaymentId}`}
@@ -975,7 +1214,7 @@ export function PurchasePlanning({
                             target="_blank"
                             rel="noopener noreferrer"
                           >
-                            <ExternalLink size={12} /> Платёж
+                            <ExternalLink size={12} /> Старое списание
                           </a>
                         )}
                         {plan.spentSalaryId && (

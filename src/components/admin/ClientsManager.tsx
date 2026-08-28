@@ -1,7 +1,7 @@
 // src/components/admin/ClientsManager.tsx
 "use client";
 
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -390,6 +390,9 @@ export function ClientsManager({ clients }: { clients: Client[] }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "legal" | "individual">("all");
   const [sort, setSort] = useState<"date" | "orders" | "spent">("date");
+  // Список клиентов длинный — фильтруем по отложенному значению,
+  // чтобы ввод в поле не тормозил.
+  const deferredSearch = useDeferredValue(search);
 
   const filtered = clients
     .filter((c) => {
@@ -398,8 +401,8 @@ export function ClientsManager({ clients }: { clients: Client[] }) {
       return true;
     })
     .filter((c) => {
-      if (!search) return true;
-      const s = search.toLowerCase();
+      if (!deferredSearch) return true;
+      const s = deferredSearch.toLowerCase();
       return (
         (c.name || "").toLowerCase().includes(s) ||
         (c.phone || "").includes(s) ||

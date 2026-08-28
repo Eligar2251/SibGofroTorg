@@ -11,6 +11,27 @@ export interface PurchaseContribution {
   createdAt: string;
 }
 
+/**
+ * Платёж по закупке — обычная строка bank_payments с привязкой
+ * purchase_plan_id. Живёт в банке: его видно в общем списке платежей,
+ * можно отредактировать и удалить там же.
+ */
+export interface PurchasePayment {
+  id: string;
+  number: number;
+  date: string;
+  amount: number;
+  /** Проведён (деньги ушли) или ещё запланирован. */
+  isPaid: boolean;
+  paidAt?: string | null;
+  /** Наличные / расчётный счёт / карта ЮМ. */
+  account: PurchaseAccount;
+  /** true = не влияет на текущий баланс банка/кассы. */
+  excludeFromBalance: boolean;
+  counterparty?: string | null;
+  comment?: string | null;
+}
+
 export interface PurchaseImage {
   url: string;
   publicId: string;
@@ -34,7 +55,16 @@ export interface PurchasePlan {
   account: PurchaseAccount;
   status: PurchasePlanStatus;
   contributions: PurchaseContribution[];
+  /** Сумма старых виртуальных «отложено» (не движение денег). */
   savedAmount: number;
+  /** Реальные платежи, отнесённые к этой закупке. */
+  payments: PurchasePayment[];
+  /** Сумма проведённых платежей — сколько уже реально оплачено. */
+  paidAmount: number;
+  /** Сумма запланированных, но ещё не проведённых платежей. */
+  plannedAmount: number;
+  /** Плановая дата закупки. */
+  dueDate?: string | null;
   spentAmount: number;
   spentPaymentId?: string | null;
   /** ID записи зарплаты, если списание шло через ЗП. */
@@ -58,6 +88,32 @@ export const PURCHASE_SPEND_MODE_LABEL: Record<PurchaseSpendMode, string> = {
   bank: "Платёж в банке",
   salary: "Выплата в ЗП",
 };
+
+/** Сколько реально оплачено: только проведённые платежи. */
+export function purchasePaidAmount(
+  payments: PurchasePayment[] | null | undefined
+): number {
+  return (
+    Math.round(
+      (payments || [])
+        .filter((payment) => payment.isPaid)
+        .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0) * 100
+    ) / 100
+  );
+}
+
+/** Запланировано, но ещё не проведено. */
+export function purchasePlannedAmount(
+  payments: PurchasePayment[] | null | undefined
+): number {
+  return (
+    Math.round(
+      (payments || [])
+        .filter((payment) => !payment.isPaid)
+        .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0) * 100
+    ) / 100
+  );
+}
 
 export function purchaseSavedAmount(
   contributions: PurchaseContribution[] | null | undefined

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useDeferredValue } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -477,6 +477,9 @@ export function WarehouseManager({
 
   // Filters
   const [q, setQ] = useState(""); // Stock/Deals query
+  // Ввод в поиск не должен ждать перерисовку таблиц на сотни строк:
+  // поле обновляется мгновенно, списки фильтруются следом.
+  const deferredQ = useDeferredValue(q);
   const [bq, setBq] = useState(""); // Bank query
   const [rq, setRq] = useState(""); // Receipts query (поставщик/номер/товар)
   const [bdir, setBdir] = useState("all");
@@ -1061,21 +1064,24 @@ export function WarehouseManager({
 
   // Filtered Stock
   const filteredStock = useMemo(() => {
-    const query = q.toLowerCase().trim();
+    const query = deferredQ.toLowerCase().trim();
     if (!query) return stock;
     return stock.filter(
       (p) =>
         p.name.toLowerCase().includes(query) ||
         (p.sku && p.sku.toLowerCase().includes(query))
     );
-  }, [stock, q]);
+  }, [stock, deferredQ]);
 
   // Filtered Deals - показываем все заказы (новые и отпущенные)
   const filteredDeals = useMemo(() => {
-    const query = q.toLowerCase().trim();
+    const query = deferredQ.toLowerCase().trim();
     return deals.filter((d) => {
       const paid = dealPaidMap.get(d.id) || 0;
-      const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
+      // Хознужды денег не подразумевают — считаем расчёты закрытыми,
+      // иначе такой заказ навсегда завис бы во вкладке «Активные»
+      // с меткой «клиент не оплатил».
+      const isFullyPaid = d.isInternal || (d.total > 0 && paid + 0.009 >= d.total);
 
       // В "Активные" попадают: все статуса 'new' + отпущенные ('completed'), но не полностью оплаченные.
       // В "Архив" попадают: полностью оплаченные или отмененные.
@@ -1107,7 +1113,7 @@ export function WarehouseManager({
         )
       );
     });
-  }, [deals, dealsSub, q, dealPaidMap]);
+  }, [deals, dealsSub, deferredQ, dealPaidMap]);
 
   const bankList = useMemo<BankEntry[]>(() => {
     const query = bq.toLowerCase().trim();
@@ -1305,13 +1311,28 @@ export function WarehouseManager({
     },
   ];
 
+  /** id закупки → название, чтобы подписать платёж в банке. */
+  const purchasePlanNames = useMemo(
+    () => new Map(purchasePlans.map((plan) => [plan.id, plan.productName])),
+    [purchasePlans]
+  );
+
+  /** Активные закупки — для поля «Закупка» в платеже. */
+  const activePurchasePlans = useMemo(
+    () =>
+      purchasePlans
+        .filter((plan) => plan.status === "active")
+        .map((plan) => ({ id: plan.id, productName: plan.productName })),
+    [purchasePlans]
+  );
+
   const dealLinkOptions: DealLinkOption[] = useMemo(
     () =>
       deals
         .filter((d) => {
           // Показываем только неоплаченные заказы для привязки к платежу
           const paid = dealPaidMap.get(d.id) || 0;
-          const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
+          const isFullyPaid = d.isInternal || (d.total > 0 && paid + 0.009 >= d.total);
           return !isFullyPaid;
         })
         .map((d) => ({
@@ -1695,6 +1716,7 @@ export function WarehouseManager({
               deals={dealLinkOptions}
               receipts={receiptLinkOptions}
               counterparties={counterpartyOptions}
+              purchasePlans={activePurchasePlans}
             />
           )}
         </div>
@@ -2336,7 +2358,7 @@ export function WarehouseManager({
             {filteredDeals.length > 0 ? (
               filteredDeals.map((d) => {
                 const paid = dealPaidMap.get(d.id) || 0;
-                const isFullyPaid = d.total > 0 && paid + 0.009 >= d.total;
+                const isFullyPaid = d.isInternal || (d.total > 0 && paid + 0.009 >= d.total);
                 // Резерв по другим заказам (кроме текущего)
                 const reservedByOthers = (productId: string): number => {
                   let r = reservedTotalById.get(productId) || 0;
@@ -2383,6 +2405,13 @@ export function WarehouseManager({
                         >
                           <Archive size={10} /> архив (импорт)
                         </span>
+                      ) : d.isInternal ? (
+                        <span
+                          className="admin-badge admin-badge--amber"
+                          title="Хознужды: товар списан на собственные нужды, счёт не выставлялся"
+                        >
+                          🏠 хознужды
+                        </span>
                       ) : isFullyPaid ? (
                         <span className="admin-badge admin-badge--green">Оплачен</span>
                       ) : (
@@ -2390,7 +2419,7 @@ export function WarehouseManager({
                           <AlertTriangle size={10} /> Клиент не оплатил
                         </span>
                       )}
-                      {!d.isArchive && !isFullyPaid && paid > 0 && (
+                      {!d.isArchive && !d.isInternal && !isFullyPaid && paid > 0 && (
                         <span className="admin-badge admin-badge--blue">Оплачено {fmt(paid)} из {fmt(d.total)} ₽</span>
                       )}
                       {d.isReserved ? (
@@ -3902,6 +3931,22 @@ export function WarehouseManager({
                             }}
                           >
                             внутр. ПЛ-{p.number}
+                          </span>
+                        )}
+                        {p.entryKind === "payment" && p.purchasePlanId && (
+                          <span
+                            className="admin-badge admin-badge--indigo"
+                            style={{ marginLeft: 6 }}
+                            title={
+                              purchasePlanNames.get(p.purchasePlanId)
+                                ? `Платёж отнесён к закупке «${purchasePlanNames.get(p.purchasePlanId)}»`
+                                : "Платёж отнесён к закупке"
+                            }
+                          >
+                            закупка
+                            {purchasePlanNames.get(p.purchasePlanId)
+                              ? `: ${purchasePlanNames.get(p.purchasePlanId)}`
+                              : ""}
                           </span>
                         )}
                         {!p.isPaid && (

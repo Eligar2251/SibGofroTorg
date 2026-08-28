@@ -3,11 +3,17 @@ import { requireAdminApi, hasPermission } from "@/lib/auth";
 import { logAdminAction } from "@/lib/activity-log";
 import {
   addPurchaseContribution,
+  addPurchasePayment,
+  attachPaymentToPurchase,
+  convertContributionToPayment,
   createPurchasePlan,
+  deleteContribution,
+  deletePurchasePayment,
   deletePurchasePlan,
   getPurchasePlans,
   refreshPurchasePlanOzon,
-  spendPurchasePlan,
+  setPurchasePlanStatus,
+  updatePurchasePayment,
   updatePurchasePlan,
 } from "@/lib/purchase-plans";
 
@@ -102,28 +108,98 @@ export async function PATCH(request: NextRequest) {
       );
       return NextResponse.json({ plan });
     }
-    if (body.action === "spend") {
-      const plan = await spendPurchasePlan(body);
-      const via =
-        plan.spendMode === "salary"
-          ? "через ЗП"
-          : plan.excludeFromBalance
-            ? "платёж вне баланса"
-            : "платёж в банке";
+    if (body.action === "add-payment") {
+      const plan = await addPurchasePayment(body);
       await logAdminAction(
         auth.displayName,
         auth.role,
-        "post",
+        "create",
         "purchase-plan",
         plan.id,
-        `Списано ${plan.spentAmount} ₽ на закупку «${plan.productName}» (${via})`,
-        {
-          account: plan.account,
-          spendMode: plan.spendMode,
-          paymentId: plan.spentPaymentId,
-          salaryId: plan.spentSalaryId,
-          excludeFromBalance: plan.excludeFromBalance,
-        }
+        `Платёж ${Number(body.amount) || 0} ₽ по закупке «${plan.productName}»`,
+        { amount: Number(body.amount) || 0, paidAmount: plan.paidAmount }
+      );
+      return NextResponse.json({ plan });
+    }
+    if (body.action === "update-payment") {
+      const plan = await updatePurchasePayment(body);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "purchase-plan",
+        plan.id,
+        `Изменён платёж по закупке «${plan.productName}»`,
+        { paymentId: String(body.paymentId || ""), paidAmount: plan.paidAmount }
+      );
+      return NextResponse.json({ plan });
+    }
+    if (body.action === "delete-payment") {
+      if (!hasPermission(auth, "delete")) {
+        return NextResponse.json({ error: "Нет прав на удаление" }, { status: 403 });
+      }
+      const plan = await deletePurchasePayment(body.paymentId);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "delete",
+        "purchase-plan",
+        plan?.id || "",
+        `Удалён платёж по закупке${plan ? ` «${plan.productName}»` : ""}`,
+        { paymentId: String(body.paymentId || "") }
+      );
+      return NextResponse.json({ plan });
+    }
+    if (body.action === "attach-payment") {
+      await attachPaymentToPurchase(body);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "purchase-plan",
+        String(body.planId || ""),
+        body.planId
+          ? "Платёж отнесён к закупке"
+          : "Платёж отвязан от закупки",
+        { paymentId: String(body.paymentId || "") }
+      );
+      return NextResponse.json({ plans: await getPurchasePlans() });
+    }
+    if (body.action === "convert-contribution") {
+      const plan = await convertContributionToPayment(body);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "purchase-plan",
+        plan.id,
+        `Отложенное проведено платежом по закупке «${plan.productName}»`
+      );
+      return NextResponse.json({ plan });
+    }
+    if (body.action === "delete-contribution") {
+      const plan = await deleteContribution(body);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "purchase-plan",
+        plan.id,
+        `Удалено отложенное по закупке «${plan.productName}»`
+      );
+      return NextResponse.json({ plan });
+    }
+    if (body.action === "status") {
+      const plan = await setPurchasePlanStatus(body);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "purchase-plan",
+        plan.id,
+        plan.status === "completed"
+          ? `Закупка «${plan.productName}» закрыта`
+          : `Закупка «${plan.productName}» снова открыта`
       );
       return NextResponse.json({ plan });
     }
