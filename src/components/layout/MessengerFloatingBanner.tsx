@@ -154,7 +154,6 @@ export function MessengerFloatingBanner() {
   }, [corner, dragging]);
 
   const channels = [
-    { id: "telegram", label: "Telegram", short: "TG", ...messengerBanner.telegram },
     { id: "whatsapp", label: "WhatsApp", short: "WA", ...messengerBanner.whatsapp },
     { id: "max", label: "MAX", short: "MAX", ...messengerBanner.max },
   ].map((channel) => ({ ...channel, href: safeMessengerUrl(channel.url) }));

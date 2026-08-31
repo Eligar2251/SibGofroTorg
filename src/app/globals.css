@@ -2759,7 +2759,10 @@ select {
   display: flex;
   flex-direction: column;
   height: 100%;
-  will-change: transform, box-shadow;
+  /* will-change здесь намеренно НЕТ: он держал бы каждую карточку каталога
+     (а их в сетке десятки) на отдельном GPU-слое постоянно, что съедает
+     видеопамять и замедляет композитинг при скролле. Плюс box-shadow всё
+     равно не композитится, так что подсказка была бесполезной. */
   transition:
     box-shadow 0.16s ease,
     border-color 0.16s ease,
@@ -5731,6 +5734,9 @@ select {
   background: var(--ink);
   color: rgba(255, 255, 255, 0.55);
   margin-top: 0;
+  /* Запас под home indicator на iOS: тянем тёмный фон подвала вниз,
+     чтобы под ним не появлялась белая полоса (см. комментарий у body). */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .footer-top {
@@ -6683,24 +6689,11 @@ body {
   background: #ffffff;
 }
 
-body {
-  /* Универсальный нижний отступ под iOS home indicator и
-     браузерный toolbar Safari. max() гарантирует, что на старых
-     устройствах без safe-area останется хотя бы 16px. В
-     standalone-режиме (см. media ниже) оставляем только env() —
-     иначе был бы двойной отступ и лишняя пустая полоса внизу. */
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
-}
-
-/* Когда приложение открыто с домашнего экрана (PWA standalone),
-   убираем «защитный» 16px и опираемся только на env() — иначе
-   на iPhone c home indicator будет двойной отступ и лишняя
-   пустая полоса внизу. */
-@media (display-mode: standalone) {
-  body {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-}
+/* Нижний отступ под home indicator НЕ вешаем на body: body белый, и на
+   любом устройстве без safe-area (все десктопы, почти весь Android) под
+   тёмным подвалом оставалась белая полоса в 16px. Отступ перенесён на сам
+   подвал — там он того же тёмного цвета и в глаза не бросается,
+   см. .site-footer ниже. */
 
 /* ══════════════════════════════════════
    MARKDOWN-ОПИСАНИЕ (PDP + предпросмотр в админке)
@@ -6893,7 +6886,7 @@ body {
   color: var(--ink-muted);
   cursor: pointer;
   z-index: 10;
-  transition: all 0.2s;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .banner-v2__close:hover {
@@ -6988,7 +6981,7 @@ body {
   font-weight: 800;
   text-decoration: none;
   box-shadow: 0 10px 25px color-mix(in srgb, var(--banner-acc) 30%, transparent);
-  transition: all 0.25s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
 }
 
 .banner-v2__cta:hover {
@@ -7044,7 +7037,7 @@ body {
   justify-content: center;
   cursor: pointer;
   z-index: 30;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
@@ -7607,8 +7600,10 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   box-shadow: 0 8px 28px rgba(17, 29, 52, 0.24);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* backdrop-filter убран: элемент зафиксирован на экране, и браузер
+     пересчитывал блюр области под ним КАЖДЫЙ кадр прокрутки — заметная
+     потеря плавности на 120 Гц. Фон и так почти непрозрачный (0.94),
+     визуально разницы нет. Тот же приём уже применён выше для попапов. */
 }
 
 .messenger-float__text {

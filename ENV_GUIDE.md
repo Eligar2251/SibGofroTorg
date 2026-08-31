@@ -16,15 +16,9 @@ NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=...
 CLOUDINARY_API_KEY=...
 CLOUDINARY_API_SECRET=...
 
-# ─── Telegram/MAX боты для уведомлений ───
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_ADMIN_CHAT_ID=...
-# Адрес Telegram Bot API. Пусто = официальный api.telegram.org.
-# ⚠️ С серверов в РФ api.telegram.org заблокирован (ТСПУ дропает пакеты) —
-# сюда вписывают РЕЛЕЙ: зарубежный VPS / Cloudflare Worker, который
-# проксирует api.telegram.org. Можно несколько адресов через запятую —
-# пробоются по очереди. Либо настройте MAX — он работает из РФ без VPN.
-TELEGRAM_API_BASE=
+# ─── MAX-бот для уведомлений о заявках ───
+# Telegram убран: с серверов в РФ api.telegram.org недоступен, а отправка
+# через зарубежный релей = трансграничная передача персональных данных.
 MAX_BOT_TOKEN=...
 MAX_ADMIN_CHAT_ID=...
 
@@ -104,8 +98,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
 CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET
-TELEGRAM_BOT_TOKEN
-TELEGRAM_ADMIN_CHAT_ID
+MAX_BOT_TOKEN
+MAX_ADMIN_CHAT_ID
 FIREBASE_PROJECT_ID        ← только для миграции
 FIREBASE_CLIENT_EMAIL      ← только для миграции
 FIREBASE_PRIVATE_KEY       ← только для миграции
@@ -121,93 +115,24 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
 CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET
-TELEGRAM_BOT_TOKEN
-TELEGRAM_ADMIN_CHAT_ID
-TELEGRAM_API_BASE          ← только если сервер в РФ (релей)
-MAX_BOT_TOKEN              ← запасной канал, работает из РФ
+MAX_BOT_TOKEN              ← уведомления о заявках, работает из РФ
 MAX_ADMIN_CHAT_ID
 ```
 
 ---
 
-## 🔔 Уведомления в Telegram из РФ (блокировка api.telegram.org)
+## 🔔 Уведомления о заявках (MAX)
 
-С марта 2026 ТСПУ дропает пакеты с российских серверов к `api.telegram.org` —
-заявки «уходят», но в Telegram ничего не приходит. Два рабочих варианта:
+Telegram полностью удалён из проекта: с российских серверов `api.telegram.org`
+недоступен (ТСПУ дропает пакеты), а обход через зарубежный релей означал бы
+отправку имён и телефонов клиентов за границу — трансграничную передачу
+персональных данных, которую по ст. 12 152-ФЗ надо отдельно уведомлять в РКН.
 
-### Вариант 1 (рекомендуемый): MAX-бот
-MAX работает из РФ без ограничений. Создайте бота в MAX, заполните в админке
-(Настройки → Уведомления) `MAX_BOT_TOKEN` и `MAX_ADMIN_CHAT_ID` и нажмите
-«Проверить MAX». Уведомления будут дублироваться в MAX.
+Рабочий канал — **MAX** (российский, работает без VPN):
+создайте бота в MAX (напишите `@MasterBot`), заполните `MAX_BOT_TOKEN` и
+`MAX_ADMIN_CHAT_ID` в переменных окружения или в админке
+(Настройки → Уведомления) и нажмите «Проверить MAX».
 
-### Вариант 2: релей для Telegram
-Поднимите маленький зарубежный VPS (или бесплатный Cloudflare Worker), который
-проксирует `api.telegram.org`, и впишите его адрес в `TELEGRAM_API_BASE`
-(env) или в админке: Настройки → «Адрес Telegram API (релей)».
-
-Пример Caddy на зарубежном VPS (проксирует только ваш IP):
-
-```
-tg.example.com {
-    @allowed remote_ip 1.2.3.4   # IP вашего сервера в РФ
-    handle @allowed {
-        reverse_proxy https://api.telegram.org {
-            header_up Host api.telegram.org
-        }
-    }
-    respond 403
-}
-```
-
-Тогда в настройках сайта: `TELEGRAM_API_BASE=https://tg.example.com`.
-Код сам пройдёт по списку адресов и отправит через первый живой. Проверка —
-кнопка «Проверить Telegram» в настройках: диагностика покажет, какой адрес
-ответил, а какой заблокирован.
-
-Пример бесплатного Cloudflare Worker-релея (Workers → Create Worker):
-
-```js
-export default {
-  async fetch(request) {
-    const url = new URL(request.url);
-    const target = new URL("https://api.telegram.org" + url.pathname + url.search);
-    const init = {
-      method: request.method,
-      headers: request.headers,
-    };
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      init.body = await request.arrayBuffer();
-    }
-    return fetch(target, init);
-  },
-};
-```
-
-Опубликуйте и впишите адрес worker'а в `TELEGRAM_API_BASE`
-(например `https://tg-relay.ваш-аккаунт.workers.dev`).
-
-### Если в журнале «✓ отправлено», но на телефон приходит только с VPN
-
-Значит сервер свою работу сделал — сообщение доставлено в Telegram, но
-**клиент Telegram на телефоне в РФ заблокирован** (блокировка раскатывается
-по регионам постепенно, поэтому «неделю назад работало»). Код сайта это
-починить не может. Решения:
-
-1. **MAX-бот** (рекомендуется): уведомления дублируются в MAX — он в РФ
-   работает без VPN. Настройка: Настройки → Уведомления → блок «MAX-бот».
-2. Читать Telegram через VPN на телефоне.
-
-### Диагностика
-
-В админке (Настройки → Уведомления) есть «Журнал последних отправок»:
-для каждого заказа видно, что сервер пытался отправить в Telegram и MAX,
-и чем закончилась попытка. Если заказа в журнале нет — сервер вообще не
-дошёл до отправки (смотрите серверные логи); если есть «✗ не ушло» —
-причина написана рядом.
-
-Технические детали MAX (2026): хосты пробуются по очереди
-`botapi.max.ru` → `platform-api2.max.ru` → `platform-api.max.ru`
-(старый platform-api отключён 19.07.2026); авторизация пробывается и
-сырым токеном, и `Bearer`-вариантом. Если Node не доверяет TLS-цепочке
-*.max.ru (корневой сертификат Минцифры), задайте на сервере
-`NODE_EXTRA_CA_CERTS=/путь/к/russian_trusted_root_ca.pem`.
+Независимо от мессенджера заявки видны в самой панели: колокольчик
+показывает новые заявки со звуком мгновенно, а пропущенные (пришедшие,
+пока панель была закрыта) прозвенят при следующем входе.

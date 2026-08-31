@@ -555,7 +555,7 @@ export function PromotionsManager({
                     <div className="admin-product-thumb">
                       {p.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.imageUrl} alt="" />
+                        <img src={p.imageUrl} alt="" loading="lazy" decoding="async" />
                       ) : (
                         <Megaphone size={16} />
                       )}

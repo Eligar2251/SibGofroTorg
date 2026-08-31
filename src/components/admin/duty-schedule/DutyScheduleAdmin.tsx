@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { useDutySchedule } from "./useDutySchedule";
 import { ScheduleTable } from "./ScheduleTable";
-import { CellEditPopover } from "./CellEditPopover";
 import { EmployeeManagerModal } from "./EmployeeManagerModal";
 import { DutySchedulePrint } from "./DutySchedulePrint";
 import { MONTHS_RU, daysInMonth } from "./scheduleGenerator";
@@ -57,6 +56,11 @@ async function defaultTransferToPayroll(
 ): Promise<void> {
   const period = monthKey(payload.year, payload.month);
   const date = lastDayOfMonth(payload.year, payload.month);
+  // Сдвиг: часы взяты из календарного месяца, период — месяц зарплаты.
+  const calPart =
+    payload.calYear && payload.calMonth
+      ? ` (календарь: ${MONTHS_RU[payload.calMonth - 1].toLowerCase()} ${payload.calYear})`
+      : "";
   for (const item of payload.items) {
     if (item.totalHours <= 0 || item.amount <= 0) continue;
     const res = await fetch("/api/admin/warehouse/salaries", {
@@ -68,7 +72,7 @@ async function defaultTransferToPayroll(
         date,
         source: "bank",
         isPaid: false,
-        comment: `Табель охраны — дежурства [Период:${period}]`,
+        comment: `Табель охраны — дежурства [Период:${period}]${calPart}`,
       }),
     });
     if (!res.ok) {
@@ -90,6 +94,10 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   const {
     year,
     month,
+    calYear,
+    calMonth,
+    payOffset,
+    setPayOffset,
     goToPrevMonth,
     goToNextMonth,
     employees,
@@ -100,13 +108,13 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     generate,
     updateCell,
     clearCell,
+    amountOverrides,
+    setAmountOverride,
     payroll,
     message,
     setMessage,
   } = useDutySchedule(initialYear, initialMonth);
 
-  const [editingDate, setEditingDate] = useState<string | null>(null);
-  const [editingPreselect, setEditingPreselect] = useState<string | null>(null);
   const [showEmployees, setShowEmployees] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
@@ -117,14 +125,17 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   const rotatingEmployees = employees.filter(
     (e) => e.role === "rotating" && e.active
   );
-  const editingDay = editingDate
-    ? schedule.find((d) => d.date === editingDate)
-    : undefined;
 
   const period = monthKey(year, month);
   const alreadyTransferred = existingTransfers.some(
     (t) => t.periodMonth === period
   );
+
+  // Подпись о сдвиге: «з/п сентябрь — смены августа».
+  const offsetNote =
+    payOffset > 0
+      ? `смены: ${MONTHS_RU[calMonth - 1].toLowerCase()} ${calYear} (сдвиг ${payOffset} ${payOffset === 1 ? "месяц" : "мес."})`
+      : null;
 
   const handleGenerate = () => {
     const hasData = schedule.some((d) => d.employeeId);
@@ -137,7 +148,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   };
 
   const handleTransferConfirm = async () => {
-    if (payroll.items.every((i) => i.totalHours <= 0)) {
+    if (payroll.items.every((i) => i.totalHours <= 0 && i.amount <= 0)) {
       setMessage("Нет начислений за месяц — сначала сгенерируйте расписание");
       setShowTransfer(false);
       return;
@@ -166,12 +177,19 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   return (
     <div className="ds-root">
       <div className="ds-header">
-        <h2>Табель охраны — дежурства</h2>
+        <div className="ds-header-titles">
+          <h2>Табель охраны — дежурства</h2>
+          {offsetNote && (
+            <div className="ds-header-sub" title="Расчёт со сдвигом: календарь и часы — за предыдущий месяц, зарплата пишется под выбранный период">
+              {offsetNote} · зарплата — за {MONTHS_RU[month - 1].toLowerCase()} {year}
+            </div>
+          )}
+        </div>
         <div className="ds-month-nav">
           <button className="ds-btn" onClick={goToPrevMonth}>
             ←
           </button>
-          <span className="ds-month-label">
+          <span className="ds-month-label" title="Период начисления зарплаты (по нему записываются начисления)">
             {MONTHS_RU[month - 1]} {year}
           </span>
           <button className="ds-btn" onClick={goToNextMonth}>
@@ -181,6 +199,18 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
       </div>
 
       <div className="ds-toolbar">
+        <div className="ds-toolbar-group">
+          <label>Сдвиг з/п (календарь → зарплата):</label>
+          <select
+            value={payOffset}
+            onChange={(e) => setPayOffset(Number(e.target.value))}
+            title="На сколько месяцев зарплата «опережает» календарь смен: «з/п сентябрь» считается по сменам августа"
+          >
+            <option value={0}>нет (календарь = зарплата)</option>
+            <option value={1}>1 месяц</option>
+            <option value={2}>2 месяца</option>
+          </select>
+        </div>
         <div className="ds-toolbar-group">
           <label>Начать чередование с:</label>
           <select
@@ -235,10 +265,11 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
       <ScheduleTable
         employees={employees}
         schedule={schedule}
-        onCellClick={(date, rowEmployeeId) => {
-          setEditingPreselect(rowEmployeeId);
-          setEditingDate(date);
-        }}
+        onCellSave={updateCell}
+        onCellClear={clearCell}
+        onUpdateEmployee={updateEmployee}
+        amountOverrides={amountOverrides}
+        onAmountOverride={setAmountOverride}
       />
 
       <div className="ds-legend">
@@ -266,22 +297,15 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           </span>
         )}
         <span className="ds-legend-rate">
-          Ставка по умолчанию: 115 ₽/час
+          Ставка: {new Set(employees.filter((e) => e.active).map((e) => e.rate)).size === 1
+            ? `${employees.find((e) => e.active)?.rate.toLocaleString("ru-RU")} ₽/час`
+            : "у каждого своя (в «Сотрудниках»)"}
+        </span>
+        <span className="ds-legend-edit" title="Весь график редактируется прямо в ячейках — в том числе перед печатью">
+          Клик по ячейке — часы/сотрудник/статус · двойной клик по имени или
+          сумме — правка на месте · Enter — сохранить, Esc — отмена
         </span>
       </div>
-
-      {editingDate && (
-        <CellEditPopover
-          date={editingDate}
-          weekday={editingDay?.weekday ?? new Date(editingDate).getDay()}
-          employees={employees}
-          current={editingDay}
-          preselectId={editingPreselect}
-          onSave={(patch) => updateCell(editingDate, patch)}
-          onClear={() => clearCell(editingDate)}
-          onClose={() => setEditingDate(null)}
-        />
-      )}
 
       {showEmployees && (
         <EmployeeManagerModal
@@ -297,11 +321,21 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
         <DutySchedulePrint
           year={year}
           month={month}
+          calYear={calYear}
+          calMonth={calMonth}
+          offset={payOffset}
           employees={employees}
           schedule={schedule}
+          amountOverrides={amountOverrides}
           companyPhone={companyPhone}
           companyAddress={companyAddress}
           onDone={() => setShowPrint(false)}
+          onEdit={() => {
+            setShowPrint(false);
+            setMessage(
+              "Вернитесь в таблицу и поправьте график прямо в ячейках — потом снова нажмите «Печать»."
+            );
+          }}
         />
       )}
 
@@ -331,19 +365,29 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
               </thead>
               <tbody>
                 {payroll.items
-                  .filter((i) => i.totalHours > 0)
-                  .map((item) => (
-                    <tr key={item.employeeId}>
-                      <td>{item.employeeName}</td>
-                      <td className="ds-print-num">{item.totalHours}</td>
-                      <td className="ds-print-num">
-                        {Math.round(item.amount / item.totalHours)}
-                      </td>
-                      <td className="ds-print-num">
-                        {item.amount.toLocaleString("ru-RU")}
-                      </td>
-                    </tr>
-                  ))}
+                  .filter((i) => i.totalHours > 0 || i.amount > 0)
+                  .map((item) => {
+                    const overridden = amountOverrides[item.employeeId] != null;
+                    return (
+                      <tr key={item.employeeId}>
+                        <td>{item.employeeName}</td>
+                        <td className="ds-print-num">{item.totalHours}</td>
+                        <td className="ds-print-num">
+                          {item.totalHours > 0
+                            ? overridden
+                              ? "ручная"
+                              : Math.round(item.amount / item.totalHours)
+                            : "—"}
+                        </td>
+                        <td className="ds-print-num">
+                          {item.amount.toLocaleString("ru-RU")}
+                          {overridden && (
+                            <span className="ds-muted"> · ручная</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
               <tfoot>
                 <tr>
@@ -357,8 +401,18 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
 
             <p className="ds-transfer-hint">
               Будут созданы записи зарплаты (без оплаты) с пометкой «Табель
-              охраны» за {MONTHS_RU[month - 1].toLowerCase()} в разделе «Учёт →
-              Зарплаты». Отметить оплату можно там же.
+              охраны» за {MONTHS_RU[month - 1].toLowerCase()} {year} в разделе
+              «Учёт → Зарплаты». Отметить оплату можно там же.
+              {payOffset > 0 && (
+                <>
+                  {" "}Часы — по сменам{" "}
+                  <b>
+                    {MONTHS_RU[calMonth - 1].toLowerCase()} {calYear}
+                  </b>{" "}
+                  (расчёт со сдвигом на {payOffset}{" "}
+                  {payOffset === 1 ? "месяц" : "мес."}).
+                </>
+              )}
             </p>
 
             {transferError && <div className="ds-transfer-error">{transferError}</div>}

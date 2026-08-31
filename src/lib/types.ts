@@ -322,6 +322,8 @@ export interface FirestoreOrder {
   /** ID пользователя из коллекции users (если залогинен) */
   userId?: string | null;
   customerEmail?: string | null;
+  // "telegram" — только для старых записей в БД: новые заявки этот способ
+  // связи больше не предлагают (Telegram из проекта убран).
   communicationChannel: "telegram" | "whatsapp" | "max" | "call" | "email";
   paymentMethod?: "transfer" | "cash" | "invoice";
   items?: OrderItem[];

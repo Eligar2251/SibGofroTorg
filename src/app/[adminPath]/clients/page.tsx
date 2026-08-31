@@ -83,7 +83,7 @@ export default async function AdminClientsPage({
           </p>
         </div>
       </div>
-      <ClientsManager clients={clients} />
+      <ClientsManager clients={clients} adminPath={ADMIN_PATH} />
     </div>
   );
 }

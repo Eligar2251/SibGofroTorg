@@ -884,7 +884,7 @@ export default async function AdminDashboard() {
                 defaultOpen={false}
                 sideContent={
                   <Link
-                    href={`/${ADMIN_PATH}/warehouse?tab=forecast`}
+                    href={`/${ADMIN_PATH}/warehouse?tab=plan`}
                     className="admin-btn admin-btn--ghost admin-btn--sm"
                     prefetch={false}
                   >

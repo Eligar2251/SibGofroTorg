@@ -12,9 +12,12 @@ import {
 } from "@/lib/ozon-product";
 import { mirrorPurchaseImage } from "@/lib/cloudinary-purchases";
 import {
+  purchasePaidAmount,
+  purchasePlannedAmount,
   purchaseSavedAmount,
   type PurchaseAccount,
   type PurchaseContribution,
+  type PurchasePayment,
   type PurchasePlan,
   type PurchaseSpendMode,
 } from "@/lib/purchase-plans-shared";
@@ -82,7 +85,10 @@ function normalizeImages(raw: unknown, fallbackUrl?: string | null, fallbackId?:
   return out.slice(0, 8);
 }
 
-function mapPlan(row: Record<string, any>): PurchasePlan {
+function mapPlan(
+  row: Record<string, any>,
+  payments: PurchasePayment[] = []
+): PurchasePlan {
   const contributions = normalizeContributions(row.contributions);
   const images = normalizeImages(
     row.images,
@@ -110,6 +116,10 @@ function mapPlan(row: Record<string, any>): PurchasePlan {
     status: row.status === "completed" ? "completed" : "active",
     contributions,
     savedAmount: purchaseSavedAmount(contributions),
+    payments,
+    paidAmount: purchasePaidAmount(payments),
+    plannedAmount: purchasePlannedAmount(payments),
+    dueDate: row.due_date ? String(row.due_date).slice(0, 10) : null,
     spentAmount: Math.max(0, round2(row.spent_amount)),
     spentPaymentId: row.spent_payment_id ? String(row.spent_payment_id) : null,
     spentSalaryId: row.spent_salary_id ? String(row.spent_salary_id) : null,
@@ -142,6 +152,63 @@ function migrationError(error: { code?: string; message?: string }): Error {
   return new Error(message || "Ошибка планов закупок");
 }
 
+/** Тип платежа в банке → счёт, с которого платят. */
+function paymentAccount(type: unknown): PurchaseAccount {
+  if (type === "cash") return "cash";
+  if (type === "ym_card") return "ym_card";
+  return "bank";
+}
+
+/** Счёт → тип платежа в банке. */
+function accountPaymentType(account: PurchaseAccount): string {
+  if (account === "cash") return "cash";
+  if (account === "ym_card") return "ym_card";
+  return "regular";
+}
+
+function mapPurchasePayment(row: Record<string, any>): PurchasePayment {
+  return {
+    id: String(row.id),
+    number: Number(row.number) || 0,
+    date: String(row.date || "").slice(0, 10),
+    amount: Math.max(0, round2(row.amount)),
+    isPaid: row.is_paid === true,
+    paidAt: row.paid_at ? String(row.paid_at).slice(0, 10) : null,
+    account: paymentAccount(row.type),
+    excludeFromBalance: row.exclude_from_balance === true,
+    counterparty: row.counterparty ? String(row.counterparty) : null,
+    comment: row.comment ? String(row.comment) : null,
+  };
+}
+
+/**
+ * Платежи, отнесённые к закупкам.
+ * Возвращает Map planId → список платежей (свежие сверху).
+ * Если миграция migration_purchase_payments.sql ещё не применена,
+ * колонки нет — молча отдаём пустую карту, чтобы модуль не падал.
+ */
+async function fetchPaymentsByPlan(): Promise<Map<string, PurchasePayment[]>> {
+  const db = getAdminDb();
+  const byPlan = new Map<string, PurchasePayment[]>();
+  const { data, error } = await db
+    .from("bank_payments")
+    .select("*")
+    .not("purchase_plan_id", "is", null)
+    .order("date", { ascending: false });
+  if (error) {
+    console.error("purchase-plans: не удалось загрузить платежи закупок:", error.message);
+    return byPlan;
+  }
+  for (const row of data || []) {
+    const planId = String(row.purchase_plan_id || "");
+    if (!planId) continue;
+    const list = byPlan.get(planId) || [];
+    list.push(mapPurchasePayment(row));
+    byPlan.set(planId, list);
+  }
+  return byPlan;
+}
+
 export async function getPurchasePlans(): Promise<PurchasePlan[]> {
   const db = getAdminDb();
   const { data, error } = await db
@@ -153,7 +220,297 @@ export async function getPurchasePlans(): Promise<PurchasePlan[]> {
     if (error.code === "42P01" || error.message.includes("does not exist")) return [];
     throw error;
   }
-  return (data || []).map((row) => mapPlan(row));
+  const paymentsByPlan = await fetchPaymentsByPlan();
+  return (data || []).map((row) => mapPlan(row, paymentsByPlan.get(String(row.id)) || []));
+}
+
+/** Одна закупка вместе со своими платежами. */
+async function readPlan(id: string): Promise<PurchasePlan> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("warehouse_purchase_plans")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error || !data) throw migrationError(error || { message: "Закупка не найдена" });
+  const { data: rows } = await db
+    .from("bank_payments")
+    .select("*")
+    .eq("purchase_plan_id", id)
+    .order("date", { ascending: false });
+  return mapPlan(data, (rows || []).map(mapPurchasePayment));
+}
+
+function purchasePaymentsMigrationError(error: { code?: string; message?: string }): Error {
+  const message = String(error.message || "");
+  if (
+    message.includes("purchase_plan_id") ||
+    error.code === "PGRST204" ||
+    error.code === "42703"
+  ) {
+    return new Error("Примените миграцию migration_purchase_payments.sql");
+  }
+  return new Error(message || "Не удалось сохранить платёж закупки");
+}
+
+/**
+ * Создать платёж по закупке.
+ *
+ * Это обычный исходящий платёж в банке: он виден в общем списке платежей,
+ * влияет на баланс (если проведён и не помечен «вне баланса») и в любой
+ * момент правится или удаляется — как из карточки закупки, так и из банка.
+ */
+export async function addPurchasePayment(input: {
+  planId: unknown;
+  amount: unknown;
+  date?: unknown;
+  account?: unknown;
+  comment?: unknown;
+  counterparty?: unknown;
+  /** false = запланировать платёж, деньги ещё не ушли. */
+  isPaid?: unknown;
+  excludeFromBalance?: unknown;
+}): Promise<PurchasePlan> {
+  const planId = cleanText(input.planId, 100);
+  const amount = Math.max(0, round2(input.amount));
+  if (!planId) throw new Error("Закупка не найдена");
+  if (amount <= 0) throw new Error("Сумма платежа должна быть больше нуля");
+
+  const db = getAdminDb();
+  const { data: plan, error: readError } = await db
+    .from("warehouse_purchase_plans")
+    .select("id, product_name, account")
+    .eq("id", planId)
+    .single();
+  if (readError || !plan) throw migrationError(readError || { message: "Закупка не найдена" });
+
+  const account = normalizeAccount(input.account ?? plan.account);
+  const rawDate = cleanText(input.date, 10);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : getWarehouseBusinessDate();
+  const isPaid = input.isPaid !== false;
+  const productLabel = String(plan.product_name || "закупка");
+  const counterparty =
+    cleanText(input.counterparty, 200) || `Закупка — ${productLabel}`.slice(0, 200);
+  const number = await nextPaymentNumber();
+
+  const { error } = await db.from("bank_payments").insert({
+    number,
+    date,
+    direction: "outgoing",
+    type: accountPaymentType(account),
+    counterparty,
+    counterparty_id: null,
+    deal_ids: [],
+    deal_numbers: [],
+    receipt_ids: [],
+    receipt_numbers: [],
+    amount,
+    invoice_number: null,
+    vat_rate: 0,
+    vat_amount: 0,
+    is_paid: isPaid,
+    paid_at: isPaid ? date : null,
+    exclude_from_balance: input.excludeFromBalance === true,
+    comment: cleanText(input.comment, 500) || `Оплата закупки «${productLabel}»`,
+    purchase_plan_id: planId,
+  });
+  if (error) throw purchasePaymentsMigrationError(error);
+
+  revalidateTag("purchase-plans", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  return readPlan(planId);
+}
+
+/** Изменить платёж закупки (сумма, дата, счёт, проведён/нет, комментарий). */
+export async function updatePurchasePayment(input: {
+  paymentId: unknown;
+  amount?: unknown;
+  date?: unknown;
+  account?: unknown;
+  comment?: unknown;
+  isPaid?: unknown;
+  excludeFromBalance?: unknown;
+}): Promise<PurchasePlan> {
+  const paymentId = cleanText(input.paymentId, 100);
+  if (!paymentId) throw new Error("Платёж не найден");
+  const db = getAdminDb();
+  const { data: existing, error: readError } = await db
+    .from("bank_payments")
+    .select("*")
+    .eq("id", paymentId)
+    .single();
+  if (readError || !existing) throw new Error("Платёж не найден");
+  const planId = String(existing.purchase_plan_id || "");
+  if (!planId) throw new Error("Платёж не привязан к закупке");
+
+  const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (input.amount !== undefined) {
+    const amount = Math.max(0, round2(input.amount));
+    if (amount <= 0) throw new Error("Сумма платежа должна быть больше нуля");
+    payload.amount = amount;
+    payload.vat_amount = 0;
+  }
+  if (input.date !== undefined) {
+    const rawDate = cleanText(input.date, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) payload.date = rawDate;
+  }
+  if (input.account !== undefined) {
+    payload.type = accountPaymentType(normalizeAccount(input.account));
+  }
+  if (input.comment !== undefined) payload.comment = cleanText(input.comment, 500);
+  if (input.excludeFromBalance !== undefined) {
+    payload.exclude_from_balance = input.excludeFromBalance === true;
+  }
+  if (input.isPaid !== undefined) {
+    const isPaid = input.isPaid === true;
+    payload.is_paid = isPaid;
+    // Дата проведения идёт за датой документа, а не «сегодня»:
+    // платёж за прошлый месяц должен остаться в прошлом месяце.
+    payload.paid_at = isPaid
+      ? String(payload.date || existing.date || "").slice(0, 10) || null
+      : null;
+  }
+
+  const { error } = await db.from("bank_payments").update(payload).eq("id", paymentId);
+  if (error) throw purchasePaymentsMigrationError(error);
+
+  revalidateTag("purchase-plans", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  return readPlan(planId);
+}
+
+/** Удалить платёж закупки целиком (деньги возвращаются в баланс). */
+export async function deletePurchasePayment(paymentIdValue: unknown): Promise<PurchasePlan | null> {
+  const paymentId = cleanText(paymentIdValue, 100);
+  if (!paymentId) throw new Error("Платёж не найден");
+  const db = getAdminDb();
+  const { data: existing } = await db
+    .from("bank_payments")
+    .select("purchase_plan_id")
+    .eq("id", paymentId)
+    .maybeSingle();
+  const planId = existing?.purchase_plan_id ? String(existing.purchase_plan_id) : "";
+  const { error } = await db.from("bank_payments").delete().eq("id", paymentId);
+  if (error) throw error;
+  revalidateTag("purchase-plans", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  return planId ? readPlan(planId) : null;
+}
+
+/**
+ * Привязать существующий платёж банка к закупке (или отвязать, если
+ * planId пустой). Через это работает сценарий «внёс платёж в банке →
+ * отнёс его к закупке».
+ */
+export async function attachPaymentToPurchase(input: {
+  paymentId: unknown;
+  planId: unknown;
+}): Promise<void> {
+  const paymentId = cleanText(input.paymentId, 100);
+  const planId = cleanText(input.planId, 100);
+  if (!paymentId) throw new Error("Платёж не найден");
+  const db = getAdminDb();
+  const { error } = await db
+    .from("bank_payments")
+    .update({
+      purchase_plan_id: planId || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", paymentId);
+  if (error) throw purchasePaymentsMigrationError(error);
+  revalidateTag("purchase-plans", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+}
+
+/**
+ * Провести старое виртуальное «отложено» как настоящий платёж.
+ * Взнос из contributions удаляется, вместо него появляется строка в банке.
+ */
+export async function convertContributionToPayment(input: {
+  planId: unknown;
+  contributionId: unknown;
+}): Promise<PurchasePlan> {
+  const planId = cleanText(input.planId, 100);
+  const contributionId = cleanText(input.contributionId, 100);
+  if (!planId || !contributionId) throw new Error("Взнос не найден");
+  const db = getAdminDb();
+  const { data: existing, error: readError } = await db
+    .from("warehouse_purchase_plans")
+    .select("*")
+    .eq("id", planId)
+    .single();
+  if (readError || !existing) throw migrationError(readError || { message: "Закупка не найдена" });
+
+  const contributions = normalizeContributions(existing.contributions);
+  const target = contributions.find((item) => item.id === contributionId);
+  if (!target) throw new Error("Взнос не найден");
+
+  await addPurchasePayment({
+    planId,
+    amount: target.amount,
+    date: target.date,
+    account: existing.account,
+    comment: target.note || `Оплата закупки «${existing.product_name || ""}»`,
+    isPaid: true,
+  });
+
+  const rest = contributions.filter((item) => item.id !== contributionId);
+  const { error } = await db
+    .from("warehouse_purchase_plans")
+    .update({ contributions: rest, updated_at: new Date().toISOString() })
+    .eq("id", planId);
+  if (error) throw error;
+  revalidateTag("purchase-plans", { expire: 0 });
+  return readPlan(planId);
+}
+
+/** Удалить старое виртуальное «отложено» (денег оно не двигало). */
+export async function deleteContribution(input: {
+  planId: unknown;
+  contributionId: unknown;
+}): Promise<PurchasePlan> {
+  const planId = cleanText(input.planId, 100);
+  const contributionId = cleanText(input.contributionId, 100);
+  if (!planId || !contributionId) throw new Error("Взнос не найден");
+  const db = getAdminDb();
+  const { data: existing, error: readError } = await db
+    .from("warehouse_purchase_plans")
+    .select("contributions")
+    .eq("id", planId)
+    .single();
+  if (readError || !existing) throw migrationError(readError || { message: "Закупка не найдена" });
+  const rest = normalizeContributions(existing.contributions).filter(
+    (item) => item.id !== contributionId
+  );
+  const { error } = await db
+    .from("warehouse_purchase_plans")
+    .update({ contributions: rest, updated_at: new Date().toISOString() })
+    .eq("id", planId);
+  if (error) throw error;
+  revalidateTag("purchase-plans", { expire: 0 });
+  return readPlan(planId);
+}
+
+/** Открыть/закрыть закупку вручную. */
+export async function setPurchasePlanStatus(input: {
+  id: unknown;
+  status: unknown;
+}): Promise<PurchasePlan> {
+  const id = cleanText(input.id, 100);
+  if (!id) throw new Error("Закупка не найдена");
+  const status = input.status === "completed" ? "completed" : "active";
+  const db = getAdminDb();
+  const { error } = await db
+    .from("warehouse_purchase_plans")
+    .update({
+      status,
+      spent_at: status === "completed" ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw migrationError(error);
+  revalidateTag("purchase-plans", { expire: 0 });
+  return readPlan(id);
 }
 
 export async function createPurchasePlan(input: {
@@ -374,8 +731,9 @@ export async function addPurchaseContribution(input: {
     .select("*")
     .single();
   if (error) throw error;
+  void data;
   revalidateTag("purchase-plans", { expire: 0 });
-  return mapPlan(data);
+  return readPlan(id);
 }
 
 async function nextPaymentNumber(): Promise<number> {
@@ -393,186 +751,6 @@ async function nextPaymentNumber(): Promise<number> {
     .upsert({ key: "payment", value });
   if (upsertError) throw upsertError;
   return value;
-}
-
-export async function spendPurchasePlan(input: {
-  id: unknown;
-  account?: unknown;
-  /** bank = исходящий платёж; salary = выплата в зарплатах. */
-  spendMode?: unknown;
-  /** true — не влияет на текущий банк/кассу («вне баланса»). */
-  excludeFromBalance?: unknown;
-  /** Для spendMode=salary — id сотрудника (необязательно). */
-  employeeId?: unknown;
-  employeeName?: unknown;
-}): Promise<PurchasePlan> {
-  const id = cleanText(input.id, 100);
-  if (!id) throw new Error("План не найден");
-  const db = getAdminDb();
-  const { data: existing, error: readError } = await db
-    .from("warehouse_purchase_plans")
-    .select("*")
-    .eq("id", id)
-    .single();
-  if (readError || !existing) throw migrationError(readError || { message: "План не найден" });
-  if (
-    existing.status === "completed" ||
-    existing.spent_payment_id ||
-    existing.spent_salary_id
-  ) {
-    throw new Error("Накопленная сумма уже списана");
-  }
-
-  const contributions = normalizeContributions(existing.contributions);
-  const amount = purchaseSavedAmount(contributions);
-  if (amount <= 0) throw new Error("Сначала добавьте накопления");
-  const account = normalizeAccount(input.account ?? existing.account);
-  const spendMode: PurchaseSpendMode =
-    input.spendMode === "salary" ? "salary" : "bank";
-  const excludeFromBalance = input.excludeFromBalance === true;
-  const date = getWarehouseBusinessDate();
-  const productLabel = String(existing.product_name || "товар");
-  const now = new Date().toISOString();
-
-  let spentPaymentId: string | null = null;
-  let spentSalaryId: string | null = null;
-
-  if (spendMode === "salary") {
-    // Выплата в ЗП: source = cash | bank (ym_card кодируется тегом).
-    const employeeName =
-      cleanText(input.employeeName, 200) ||
-      `Закупка — ${productLabel}`.slice(0, 200);
-    const employeeId = cleanText(input.employeeId, 100) || null;
-    const dbSource = account === "cash" ? "cash" : "bank";
-    const tags: string[] = [];
-    if (account === "ym_card") tags.push(SALARY_YM_CARD_TAG);
-    if (excludeFromBalance) tags.push(SALARY_EXCLUDE_BALANCE_TAG);
-    const comment = [
-      ...tags,
-      `Списание закупки «${productLabel}»`,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .slice(0, 500);
-
-    const { data: salary, error: salaryError } = await db
-      .from("salaries")
-      .insert({
-        employee_id: employeeId,
-        employee_name: employeeName,
-        amount,
-        date,
-        source: dbSource,
-        is_paid: true,
-        paid_at: date,
-        comment,
-      })
-      .select("id")
-      .single();
-    if (salaryError || !salary) {
-      throw salaryError || new Error("Не удалось создать выплату в ЗП");
-    }
-    spentSalaryId = String(salary.id);
-  } else {
-    const number = await nextPaymentNumber();
-    const paymentType =
-      account === "cash" ? "cash" : account === "ym_card" ? "ym_card" : "regular";
-    const commentParts = [
-      `Списание накоплений по плану закупки «${productLabel}»`,
-      excludeFromBalance ? SALARY_EXCLUDE_BALANCE_TAG : null,
-    ].filter(Boolean);
-    const { data: payment, error: paymentError } = await db
-      .from("bank_payments")
-      .insert({
-        number,
-        date,
-        direction: "outgoing",
-        type: paymentType,
-        cash_destination: null,
-        counterparty: `Закупка — ${productLabel}`.slice(0, 200),
-        counterparty_id: null,
-        deal_ids: [],
-        deal_numbers: [],
-        receipt_ids: [],
-        receipt_numbers: [],
-        amount,
-        invoice_number: null,
-        vat_rate: 0,
-        vat_amount: 0,
-        is_paid: true,
-        paid_at: date,
-        exclude_from_balance: excludeFromBalance,
-        comment: commentParts.join(" ").slice(0, 500),
-      })
-      .select("id")
-      .single();
-    if (paymentError || !payment) {
-      throw paymentError || new Error("Не удалось создать списание");
-    }
-    spentPaymentId = String(payment.id);
-  }
-
-  const updatePayload: Record<string, unknown> = {
-    account,
-    status: "completed",
-    spent_amount: amount,
-    spent_payment_id: spentPaymentId,
-    spent_at: now,
-    updated_at: now,
-  };
-  // Новые колонки (миграция может быть не применена) — пишем мягко.
-  updatePayload.spent_salary_id = spentSalaryId;
-  updatePayload.spend_mode = spendMode;
-  updatePayload.exclude_from_balance = excludeFromBalance;
-
-  let update = await db
-    .from("warehouse_purchase_plans")
-    .update(updatePayload)
-    .eq("id", id)
-    .eq("status", "active")
-    .select("*")
-    .maybeSingle();
-
-  if (
-    update.error &&
-    (String(update.error.message || "").includes("spent_salary") ||
-      String(update.error.message || "").includes("spend_mode") ||
-      String(update.error.message || "").includes("exclude_from_balance") ||
-      update.error.code === "PGRST204" ||
-      update.error.code === "42703")
-  ) {
-    // Без новых колонок — сохраняем минимум (как раньше).
-    const minimal: Record<string, unknown> = {
-      account,
-      status: "completed",
-      spent_amount: amount,
-      spent_payment_id: spentPaymentId,
-      spent_at: now,
-      updated_at: now,
-    };
-    update = await db
-      .from("warehouse_purchase_plans")
-      .update(minimal)
-      .eq("id", id)
-      .eq("status", "active")
-      .select("*")
-      .maybeSingle();
-  }
-
-  if (update.error || !update.data) {
-    if (spentPaymentId) {
-      await db.from("bank_payments").delete().eq("id", spentPaymentId);
-    }
-    if (spentSalaryId) {
-      await db.from("salaries").delete().eq("id", spentSalaryId);
-    }
-    throw update.error || new Error("План уже был списан");
-  }
-
-  revalidateTag("purchase-plans", { expire: 0 });
-  revalidateTag("warehouse-payments", { expire: 0 });
-  revalidateTag("warehouse-salaries", { expire: 0 });
-  return mapPlan(update.data);
 }
 
 export async function updatePurchasePlan(input: {
@@ -632,7 +810,7 @@ export async function updatePurchasePlan(input: {
   }
   if (update.error) throw migrationError(update.error);
   revalidateTag("purchase-plans", { expire: 0 });
-  return mapPlan(update.data);
+  return readPlan(id);
 }
 
 export async function deletePurchasePlan(idValue: unknown): Promise<void> {

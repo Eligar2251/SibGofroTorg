@@ -1,8 +1,14 @@
 // =========================================================
 // FILE: src/components/admin/SalesPlan.tsx
-// План заказов на месяц: контрагенты, которые должны сделать заказ,
-// какие товары и в каком количестве, сколько потратим со склада и
-// сколько получим денег с вычетом закупки (поставок).
+// Единая вкладка «План» (бывшие «Прогноз» + «План»):
+// просчитывает, какую ПРИБЫЛЬ получим за выбранные месяцы
+// (один или несколько), по каждому контрагенту, исходя из
+// их заказов и среднего чека, и какую прибыль дадут товары.
+//
+// Методика — см. computeProfitPlan в @/lib/sales-plan:
+// скользящее среднее по 6 месяцам до начала периода;
+// средний чек = сумма заказов окна ÷ число заказов;
+// прибыль = выручка − закупка (закупочная цена из карточки).
 // =========================================================
 
 "use client";
@@ -12,7 +18,6 @@ import Link from "next/link";
 import {
   Target,
   Wallet,
-  TrendingUp,
   UsersRound,
   Package,
   ChevronLeft,
@@ -21,9 +26,14 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Search,
 } from "lucide-react";
 import type { CustomerDeal, WarehouseStockRow } from "@/lib/warehouse-shared";
-import { computeSalesPlan, type SalesPlanCounterparty } from "@/lib/sales-plan";
+import {
+  computeProfitPlan,
+  type ProfitPlanCounterparty,
+} from "@/lib/sales-plan";
+import { monthKeyOffset, monthLabelOf } from "@/lib/revenue-forecast";
 import { formatCuttableStock } from "@/lib/types";
 
 const fmt = (n: number) =>
@@ -35,23 +45,23 @@ const fmtQty = (n: number) =>
   n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 
 const STATUS_META: Record<
-  SalesPlanCounterparty["status"],
+  ProfitPlanCounterparty["status"],
   { label: string; className: string; title: string }
 > = {
   active: {
     label: "активен",
     className: "admin-badge admin-badge--green",
-    title: "Заказывал в прошлом или текущем месяце",
+    title: "Заказывал в месяц перед началом периода или уже оформил в периоде",
   },
   recent: {
     label: "недавно",
     className: "admin-badge admin-badge--blue",
-    title: "Заказывал в последние 3 месяца",
+    title: "Заказывал в последние 3 месяца окна анализа",
   },
   sleeping: {
     label: "спит",
     className: "admin-badge admin-badge--gray",
-    title: "Давно не заказывал, но уже оформил заказ в этом месяце",
+    title: "Давно не заказывал, но уже оформил заказ в периоде",
   },
 };
 
@@ -79,6 +89,14 @@ function fmtDate(raw: string | null): string {
   });
 }
 
+/** Быстрые пресеты длительности периода. */
+const PERIOD_PRESETS = [
+  { label: "1 мес", months: 1 },
+  { label: "3 мес", months: 3 },
+  { label: "6 мес", months: 6 },
+  { label: "12 мес", months: 12 },
+];
+
 export function SalesPlan({
   deals,
   stock,
@@ -88,13 +106,28 @@ export function SalesPlan({
   stock: WarehouseStockRow[];
   adminPath: string;
 }) {
-  const [monthOffset, setMonthOffset] = useState(0);
+  // Период задаётся сдвигом начала и конца от текущего месяца.
+  // По умолчанию — текущий месяц (как было в старой вкладке).
+  const [startOffset, setStartOffset] = useState(0);
+  const [endOffset, setEndOffset] = useState(0);
+  const [query, setQuery] = useState("");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
+  const startKey = monthKeyOffset(Math.min(startOffset, endOffset));
+  const endKey = monthKeyOffset(Math.max(startOffset, endOffset));
+
   const plan = useMemo(
-    () => computeSalesPlan(deals, stock, monthOffset, 6),
-    [deals, stock, monthOffset]
+    () => computeProfitPlan(deals, stock, startKey, endKey, 6),
+    [deals, stock, startKey, endKey]
   );
+
+  const rows = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase("ru-RU");
+    if (!q) return plan.counterparties;
+    return plan.counterparties.filter((cp) =>
+      cp.displayName.toLocaleLowerCase("ru-RU").includes(q)
+    );
+  }, [plan.counterparties, query]);
 
   if (deals.length === 0) {
     return (
@@ -112,28 +145,98 @@ export function SalesPlan({
   }
 
   const hasShortage = plan.shortageProductsCount > 0;
+  const moveStart = (delta: number) =>
+    setStartOffset((v) => Math.max(-23, Math.min(endOffset, v + delta)));
+  const moveEnd = (delta: number) =>
+    setEndOffset((v) => Math.max(startOffset, Math.min(23, v + delta)));
 
   return (
     <div className="sp">
+      {/* ── Период: «от» — «до» ── */}
       <div className="sp-toolbar">
-        <div className="rf-month-nav">
-          <button
-            type="button"
-            className="admin-btn admin-btn--ghost admin-btn--sm"
-            onClick={() => setMonthOffset((v) => Math.max(-11, v - 1))}
-            aria-label="Предыдущий месяц"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="rf-month-label">{plan.monthLabel}</span>
-          <button
-            type="button"
-            className="admin-btn admin-btn--ghost admin-btn--sm"
-            onClick={() => setMonthOffset((v) => Math.min(11, v + 1))}
-            aria-label="Следующий месяц"
-          >
-            <ChevronRight size={14} />
-          </button>
+        <div className="sp-period">
+          <span className="sp-period__label">План на период:</span>
+          <div className="rf-month-nav">
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={() => moveStart(-1)}
+              disabled={startOffset <= -23 || startOffset === endOffset}
+              aria-label="Начало периода — предыдущий месяц"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="rf-month-label">{monthLabelOf(startKey)}</span>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={() => moveStart(1)}
+              disabled={startOffset >= endOffset}
+              aria-label="Начало периода — следующий месяц"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+          <span className="sp-period__dash">—</span>
+          <div className="rf-month-nav">
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={() => moveEnd(-1)}
+              disabled={endOffset <= startOffset}
+              aria-label="Конец периода — предыдущий месяц"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="rf-month-label">{monthLabelOf(endKey)}</span>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={() => moveEnd(1)}
+              disabled={endOffset >= 23}
+              aria-label="Конец периода — следующий месяц"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+        <div className="sp-period__presets">
+          {PERIOD_PRESETS.map((preset) => (
+            <button
+              key={preset.months}
+              type="button"
+              className={`admin-btn admin-btn--ghost admin-btn--sm${
+                plan.monthCount === preset.months ? " sp-preset--on" : ""
+              }`}
+              onClick={() => {
+                setStartOffset(0);
+                setEndOffset(preset.months - 1);
+              }}
+              title={`Текущий месяц + ещё ${preset.months - 1}`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ position: "relative", flex: 1, maxWidth: 280, marginLeft: "auto" }}>
+          <Search
+            size={15}
+            style={{
+              position: "absolute",
+              left: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--adm-sand)",
+            }}
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Поиск по контрагенту..."
+            className="admin-input"
+            style={{ paddingLeft: 32 }}
+          />
         </div>
         <Link
           href={`/${adminPath}/warehouse/import`}
@@ -145,28 +248,34 @@ export function SalesPlan({
         </Link>
       </div>
 
-      {/* ── Сводка ── */}
+      {/* ── Сводка: прибыль за период — главная цифра ── */}
       <div className="sp-summary">
         <div className="sp-summary__main">
-          <span className="sp-summary__label">План продаж · {plan.monthLabel}</span>
-          <strong className="sp-summary__value">{fmtMoney(plan.totalRevenue)}</strong>
+          <span className="sp-summary__label">План на период · {plan.periodLabel}</span>
+          <strong className="sp-summary__value sp-profit">{fmtMoney(plan.totalProfit)}</strong>
           <span className="sp-summary__hint">
-            получим с вычетом закупки: <b className="sp-margin">{fmtMoney(plan.totalMargin)}</b> маржи
+            ожидаемая прибыль · выручка <b>{fmtMoney(plan.totalRevenue)}</b> −
+            закупка <b>{fmtMoney(plan.totalCost)}</b>
           </span>
         </div>
         <div className="sp-summary__stats">
           <div className="rf-stat">
-            <span className="rf-stat__icon" style={{ color: "var(--adm-rust)" }}><Wallet size={15} /></span>
+            <span className="rf-stat__icon" style={{ color: "var(--adm-pine)" }}><Wallet size={15} /></span>
+            <span className="rf-stat__val">{fmtMoney(plan.totalRevenue)}</span>
+            <span className="rf-stat__label">выручка за период</span>
+          </div>
+          <div className="rf-stat">
+            <span className="rf-stat__icon" style={{ color: "var(--adm-rust)" }}><Package size={15} /></span>
             <span className="rf-stat__val">{fmtMoney(plan.totalCost)}</span>
-            <span className="rf-stat__label">закупка (себестоимость)</span>
+            <span className="rf-stat__label">себестоимость</span>
           </div>
           <div className="rf-stat">
             <span className="rf-stat__icon" style={{ color: "var(--adm-steel)" }}><UsersRound size={15} /></span>
-            <span className="rf-stat__val">{plan.counterparties.length}</span>
-            <span className="rf-stat__label">контрагентов в плане</span>
+            <span className="rf-stat__val">{plan.activeCounterparties} / {plan.counterparties.length}</span>
+            <span className="rf-stat__label">контрагентов в работе</span>
           </div>
           <div className="rf-stat">
-            <span className="rf-stat__icon" style={{ color: "var(--adm-kraft)" }}><Package size={15} /></span>
+            <span className="rf-stat__icon" style={{ color: "var(--adm-kraft)" }}><Target size={15} /></span>
             <span className="rf-stat__val">{plan.products.length}</span>
             <span className="rf-stat__label">позиций (товаров)</span>
           </div>
@@ -178,18 +287,18 @@ export function SalesPlan({
           <AlertTriangle size={15} />
           <span>
             По плану не хватает <b>{plan.shortageProductsCount}</b>{" "}
-            {plan.shortageProductsCount === 1 ? "позиции" : "позиций"} на складе —
-            потребуется докупить примерно на{" "}
+            {plan.shortageProductsCount === 1 ? "позиции" : "позиций"} на складе
+            — потребуется докупить примерно на{" "}
             <b>{fmtMoney(plan.totalShortageCost)}</b>. Смотрите блок «Покрытие склада».
           </span>
         </div>
       )}
 
-      {/* ── Контрагенты в плане ── */}
+      {/* ── Контрагенты: средний чек и прибыль за период ── */}
       <div className="admin-card">
         <div className="admin-card__head">
           <h3 className="admin-card__title">
-            Контрагенты, которые должны сделать заказ · {plan.monthLabel.toLowerCase()}
+            Контрагенты: средний чек и прибыль · {plan.periodLabel.toLowerCase()}
           </h3>
           <span className="admin-badge admin-badge--muted">{plan.counterparties.length}</span>
         </div>
@@ -203,12 +312,12 @@ export function SalesPlan({
                 <th className="sp-num">План выручки</th>
                 <th className="sp-num">Уже оформил</th>
                 <th className="sp-num">Осталось</th>
-                <th className="sp-num">Товаров</th>
+                <th className="sp-num">Прибыль</th>
                 <th>Активность</th>
               </tr>
             </thead>
             <tbody>
-              {plan.counterparties.map((cp) => {
+              {rows.map((cp) => {
                 const status = STATUS_META[cp.status];
                 const expanded = expandedKey === cp.key;
                 return (
@@ -221,25 +330,39 @@ export function SalesPlan({
                   />
                 );
               })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={8}>
+                    <div className="admin-empty" style={{ padding: 20 }}>
+                      <p>Ничего не найдено по запросу «{query}»</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={3}>Итого по {plan.counterparties.length} {plan.counterparties.length === 1 ? "контрагенту" : "контрагентам"}</td>
-                <td className="sp-num sp-revenue">{fmtMoney(plan.totalRevenue)}</td>
-                <td className="sp-num">
-                  {fmtMoney(plan.counterparties.reduce((s, c) => s + c.knownRevenue, 0))}
-                </td>
-                <td className="sp-num sp-revenue">
-                  {fmtMoney(plan.counterparties.reduce((s, c) => s + c.remainingRevenue, 0))}
-                </td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colSpan={3}>Итого по {rows.length} {rows.length === 1 ? "контрагенту" : "контрагентам"}</td>
+                  <td className="sp-num sp-revenue">{fmtMoney(rows.reduce((s, c) => s + c.revenue, 0))}</td>
+                  <td className="sp-num">
+                    {fmtMoney(rows.reduce((s, c) => s + c.knownRevenue, 0))}
+                  </td>
+                  <td className="sp-num sp-revenue">
+                    {fmtMoney(rows.reduce((s, c) => s + c.remainingRevenue, 0))}
+                  </td>
+                  <td className={`sp-num ${rows.reduce((s, c) => s + c.profit, 0) >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
+                    {fmtMoney(rows.reduce((s, c) => s + c.profit, 0))}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
 
-      {/* ── Позиции плана ── */}
+      {/* ── Позиции плана: сколько потратим и сколько получим ── */}
       <div className="admin-card">
         <div className="admin-card__head">
           <h3 className="admin-card__title">Позиции плана: сколько потратим и сколько получим</h3>
@@ -250,12 +373,12 @@ export function SalesPlan({
             <thead>
               <tr>
                 <th>Товар</th>
-                <th className="sp-num">План на месяц</th>
-                <th className="sp-num">Уже в месяце</th>
+                <th className="sp-num">План на период</th>
+                <th className="sp-num">Уже в периоде</th>
                 <th className="sp-num">Осталось к плану</th>
                 <th className="sp-num">Выручка</th>
                 <th className="sp-num">Закупка</th>
-                <th className="sp-num">Маржа</th>
+                <th className="sp-num">Прибыль</th>
                 <th className="sp-num">Остаток</th>
                 <th>Покрытие склада</th>
               </tr>
@@ -291,8 +414,8 @@ export function SalesPlan({
                     <td className="sp-num">
                       {p.hasPurchasePrice ? fmtMoney(p.cost) : <span title="Не указана закупочная цена в карточке товара">—</span>}
                     </td>
-                    <td className={`sp-num ${p.margin >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
-                      {p.hasPurchasePrice ? fmtMoney(p.margin) : "—"}
+                    <td className={`sp-num ${p.profit >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
+                      {p.hasPurchasePrice ? fmtMoney(p.profit) : "—"}
                     </td>
                     <td className="sp-num">{stockLabel}</td>
                     <td>
@@ -316,7 +439,7 @@ export function SalesPlan({
                 <tr>
                   <td colSpan={9}>
                     <div className="admin-empty" style={{ padding: 20 }}>
-                      <p>В выбранном месяце пока нет позиций в плане</p>
+                      <p>В выбранном периоде пока нет позиций в плане</p>
                     </div>
                   </td>
                 </tr>
@@ -329,8 +452,8 @@ export function SalesPlan({
                   <td colSpan={3} />
                   <td className="sp-num sp-revenue">{fmtMoney(plan.totalRevenue)}</td>
                   <td className="sp-num">{fmtMoney(plan.totalCost)}</td>
-                  <td className={`sp-num ${plan.totalMargin >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
-                    {fmtMoney(plan.totalMargin)}
+                  <td className={`sp-num ${plan.totalProfit >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
+                    {fmtMoney(plan.totalProfit)}
                   </td>
                   <td colSpan={2} />
                 </tr>
@@ -343,12 +466,14 @@ export function SalesPlan({
       <div className="rf-note">
         <Info size={13} />
         <span>
-          <b>Методика плана:</b> среднемесячный объём каждого контрагента и товара — за
-          последние 6 месяцев (скользящее среднее по календарным месяцам, месяцы без заказов
-          считаются нулями). В план попадают контрагенты, заказывавшие в прошлом/этом месяце
-          или в последние 3 месяца, плюс оформившие заказ в плановом месяце. «Закупка» — план-количество ×
-          закупочная цена из карточки товара, «маржа» = выручка − закупка. Архивные заказы из
-          массовой загрузки участвуют в расчёте наравне с обычными.
+          <b>Методика плана:</b> для каждого контрагента берём его заказы за
+          последние {plan.windowMonths} месяцев до начала периода (скользящее
+          среднее, месяцы без заказов считаются нулями) и считаем <b>средний чек</b>.
+          План на период = средний чек × ожидаемое число заказов за выбранные
+          месяцы (+ уже оформленное в периоде). Прибыль = выручка − закупка
+          (закупочная цена из карточки товара). «Закупка» у товара без закупочной
+          цены не считается. Архивные заказы из массовой загрузки участвуют в
+          расчёте наравне с обычными.
         </span>
       </div>
     </div>
@@ -361,7 +486,7 @@ function PlanCounterpartyRow({
   expanded,
   onToggle,
 }: {
-  cp: SalesPlanCounterparty;
+  cp: ProfitPlanCounterparty;
   status: { label: string; className: string; title: string };
   expanded: boolean;
   onToggle: () => void;
@@ -400,7 +525,9 @@ function PlanCounterpartyRow({
         <td className="sp-num sp-revenue">
           {cp.remainingRevenue > 0 ? fmtMoney(cp.remainingRevenue) : "—"}
         </td>
-        <td className="sp-num">{cp.productLines.length}</td>
+        <td className={`sp-num ${cp.profit >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
+          {fmtMoney(cp.profit)}
+        </td>
         <td>
           <span className={status.className} title={status.title} style={{ whiteSpace: "nowrap" }}>
             {status.label}
@@ -416,6 +543,8 @@ function PlanCounterpartyRow({
                   <th>Товар</th>
                   <th className="sp-num">Ожидаем кол-во</th>
                   <th className="sp-num">Ожидаемая выручка</th>
+                  <th className="sp-num">Закупка</th>
+                  <th className="sp-num">Прибыль</th>
                 </tr>
               </thead>
               <tbody>
@@ -424,16 +553,20 @@ function PlanCounterpartyRow({
                     <td>{line.name}</td>
                     <td className="sp-num">{fmtQty(line.planQty)}</td>
                     <td className="sp-num sp-revenue">{fmtMoney(line.revenue)}</td>
+                    <td className="sp-num">{line.cost > 0 ? fmtMoney(line.cost) : "—"}</td>
+                    <td className={`sp-num ${line.profit >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
+                      {fmtMoney(line.profit)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="sp-detail__foot">
-              Маржа по контрагенту:{" "}
-              <b className={cp.margin >= 0 ? "sp-margin" : "sp-margin--neg"}>
-                {fmtMoney(cp.margin)}
-              </b>
-              {" "}· себестоимость {fmtMoney(cp.cost)}
+              Прибыль по контрагенту:{" "}
+              <b className={cp.profit >= 0 ? "sp-margin" : "sp-margin--neg"}>
+                {fmtMoney(cp.profit)}
+              </b>{" "}
+              · выручка {fmtMoney(cp.revenue)} · себестоимость {fmtMoney(cp.cost)}
             </div>
           </td>
         </tr>

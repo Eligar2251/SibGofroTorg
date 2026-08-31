@@ -24,6 +24,7 @@ import type {
   RentTenant,
 } from "@/lib/rent-shared";
 import { RentManager, type RentMode } from "@/components/admin/rent/RentManager";
+import { RentRealtime } from "@/components/admin/RentRealtime";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
@@ -73,7 +74,9 @@ export default async function RentPage({
   }
 
   return (
-    <RentManager
+    <>
+      <RentRealtime />
+      <RentManager
       adminPath={ADMIN_PATH}
       mode={mode}
       initialTab={sp.tab || ""}
@@ -81,6 +84,7 @@ export default async function RentPage({
       tenants={tenants}
       invoices={invoices}
       payments={payments}
-    />
+      />
+    </>
   );
 }

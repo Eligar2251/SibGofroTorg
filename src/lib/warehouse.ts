@@ -291,6 +291,7 @@ function mapDealRow(row: any): CustomerDeal {
     shippedItems: Array.isArray(row.shipped_items) ? row.shipped_items : [],
     deliveryItems: Array.isArray(row.delivery_items) ? row.delivery_items : [],
     isReserved: Boolean(row.is_reserved),
+    isInternal: Boolean(row.is_internal),
     isArchive: Boolean(row.is_archive),
     archiveNote: row.archive_note ?? null,
     createdAt: toIso(row.created_at),
@@ -371,6 +372,7 @@ function mapPaymentRow(row: any): BankPayment {
     isPaid: row.is_paid ?? false,
     paidAt: row.paid_at ?? null,
     excludeFromBalance: row.exclude_from_balance ?? false,
+    purchasePlanId: row.purchase_plan_id ? String(row.purchase_plan_id) : null,
     comment: row.comment ?? null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -1650,8 +1652,16 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   if (!data.customerName?.trim()) throw new Error("Укажите покупателя");
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
 
+  // Хознужды — списание товара на собственные нужды: цены могут быть
+  // нулевыми, счёт покупателю не выставляется. Для обычного заказа
+  // проверку оставляем: бесплатная продажа почти всегда опечатка.
+  const isInternal = data.isInternal === true;
   const linesTotal = itemsTotal(items);
-  if (linesTotal <= 0) throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
+  if (linesTotal <= 0 && !isInternal) {
+    throw new Error(
+      "Укажите цену товаров, итог заказа должен быть больше нуля. Чтобы списать товар бесплатно, включите «Хознужды»."
+    );
+  }
 
   const db = getAdminDb();
   const linkedPaymentIds = Array.isArray(data.linkedPaymentIds) ? data.linkedPaymentIds : [];
@@ -1701,6 +1711,7 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
     vat_rate: vatRate, vat_amount: vatAmount,
     status: "new",
     is_reserved: data.isReserved === true,
+    is_internal: isInternal,
     ...delivery,
   }).select("id").single();
   if (dealError) throw dealError;
@@ -1724,6 +1735,9 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   } else {
     targets.push(total);
   }
+
+  // По хознуждам денег не ждут — счёт не создаём вовсе.
+  if (isInternal) targets.length = 0;
 
   // Наличная касса и карта ЮМ работают одинаково: платёж сразу проведён.
   // Расчётный счёт остаётся ожидаемым до ручного проведения в банке.
@@ -2120,8 +2134,16 @@ export async function updateDeal(id: string, data: any): Promise<void> {
   const items = cleanItems(data.items);
   if (!data.customerName?.trim()) throw new Error("Укажите покупателя");
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
+  const isInternal =
+    data.isInternal !== undefined
+      ? data.isInternal === true
+      : Boolean(existing.is_internal);
   const linesTotal = itemsTotal(items);
-  if (linesTotal <= 0) throw new Error("Укажите цену товаров, итог заказа должен быть больше нуля");
+  if (linesTotal <= 0 && !isInternal) {
+    throw new Error(
+      "Укажите цену товаров, итог заказа должен быть больше нуля. Чтобы списать товар бесплатно, включите «Хознужды»."
+    );
+  }
 
   const vatRate =
     data.vatRate !== undefined && data.vatRate !== null
@@ -2207,6 +2229,7 @@ export async function updateDeal(id: string, data: any): Promise<void> {
     items, total, bank_adjustment: bankAdjustment,
     vat_rate: vatRate, vat_amount: vatAmount,
     is_reserved: data.isReserved === true,
+    is_internal: isInternal,
     ...delivery,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
@@ -2636,6 +2659,9 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     paid_at: data.isPaid ? new Date().toISOString().slice(0, 10) : null,
     exclude_from_balance: data.excludeFromBalance ?? false,
     comment: cleanText(data.comment, 500),
+    // Платёж можно сразу отнести к закупке — она покажет его у себя
+    // в списке «Платежи по закупке».
+    ...(data.purchasePlanId ? { purchase_plan_id: String(data.purchasePlanId) } : {}),
   }).select("id").single();
   if (error) throw error;
   revalidateTag("warehouse-payments", { expire: 0 });
@@ -2828,6 +2854,17 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   const payload: Record<string, any> = {};
   if (data.amount !== undefined) payload.amount = data.amount;
   if (data.date) payload.date = data.date.slice(0, 10);
+  if (data.employeeId !== undefined) payload.employee_id = data.employeeId || null;
+  if (data.employeeName !== undefined) payload.employee_name = data.employeeName;
+  // Перенос УЖЕ ПРОВЕДЁННОЙ выплаты на другой день меняет только paid_at и
+  // приходит без isPaid. Раньше paid_at писался ИСКЛЮЧИТЕЛЬНО внутри ветки
+  // `if (data.isPaid !== undefined)`, поэтому такой PATCH формировал пустой
+  // payload: запрос отвечал success, строка в БД не менялась, а после
+  // router.refresh() ячейка возвращалась на старое место — то самое
+  // «перетаскиваю, а оно не работает и лагает».
+  if (data.paidAt !== undefined && data.isPaid === undefined) {
+    payload.paid_at = data.paidAt ? String(data.paidAt).slice(0, 10) : null;
+  }
   if (data.source) {
     const rawSource = String(data.source);
     payload.source = rawSource === "cash" ? "cash" : "bank";
@@ -2842,6 +2879,9 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   }
   if (data.isPaid !== undefined) { payload.is_paid = data.isPaid; payload.paid_at = data.isPaid ? (data.paidAt || data.date?.slice(0, 10) || null) : null; }
   if (data.comment !== undefined && !payload.comment) payload.comment = data.comment;
+  // Пустой payload раньше означал «запрос прошёл, но ничего не изменилось».
+  // Такой тихий no-op маскировал ошибки на клиенте — теперь просто выходим.
+  if (Object.keys(payload).length === 0) return;
   const { error } = await db.from("salaries").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-salaries", { expire: 0 });

@@ -8,6 +8,7 @@ import { createOrder } from "@/lib/supabase-queries";
 import {
   formatPhoneDisplay,
   getUserById,
+  isValidRussianPhone,
   normalizePhone,
   updateUserProfile,
   verifyUserSession,
@@ -53,16 +54,13 @@ export async function POST(request: NextRequest) {
     const customerType = body.customerType === "legal" ? "legal" : "individual";
     const isLegal = customerType === "legal";
 
-    // Новая система: телефон больше не собираем — номер заявки формируется
-    // автоматически. У заявки «Узнать цену» имя авторизованного клиента
-    // берётся из аккаунта; телефон остаётся только для обратной совместимости
-    // со старыми формами и не является обязательным.
+    // Телефон — основной способ связи с клиентом: заявка без номера
+    // бесполезна, менеджеру некуда перезванивать. Для юрлиц дополнительно
+    // нужна почта (туда уходит счёт).
     let customerName = clip(body.customerName, MAX_NAME);
     const customerPhoneRaw = clip(body.customerPhone, 40);
-    if (typeRaw === "inquiry" && account?.name) {
-      customerName = clip(account.name, MAX_NAME);
-    } else if (typeRaw === "inquiry" && !customerName) {
-      customerName = "Клиент";
+    if (typeRaw === "inquiry" && !customerName) {
+      customerName = account?.name ? clip(account.name, MAX_NAME) : "Клиент";
     }
 
     const customerEmail = body.customerEmail
@@ -138,18 +136,30 @@ export async function POST(request: NextRequest) {
     let phoneDigits: string | null = null;
     if (customerPhoneRaw) {
       const normalized = normalizePhone(customerPhoneRaw);
-      if (normalized.length < 10 || normalized.length > 15) {
+      if (!isValidRussianPhone(normalized)) {
         return NextResponse.json(
           { error: "Некорректный номер телефона" },
           { status: 400 }
         );
       }
       phoneDigits = normalized;
+    } else if (account?.phoneDigits && /^7\d{10}$/.test(account.phoneDigits)) {
+      // Клиент вошёл в кабинет — берём номер из профиля.
+      phoneDigits = account.phoneDigits;
+    }
+
+    // Заявка без телефона — заявка, на которую невозможно ответить.
+    // Единственное исключение: юрлицо, у которого обязательна почта для счёта.
+    if (!phoneDigits && !(isLegal && customerEmail)) {
+      return NextResponse.json(
+        { error: "Укажите номер телефона — по нему менеджер свяжется с вами" },
+        { status: 400 }
+      );
     }
     const finalPhoneDigits = phoneDigits;
     const finalPhoneDisplay = phoneDigits ? formatPhoneDisplay(phoneDigits) : "";
 
-    const commWhitelist = ["call", "whatsapp", "telegram", "max", "email"] as const;
+    const commWhitelist = ["call", "whatsapp", "max", "email"] as const;
     const communicationChannel = commWhitelist.includes(body.communicationChannel)
       ? body.communicationChannel
       : "call";
@@ -251,8 +261,8 @@ export async function POST(request: NextRequest) {
 
     // В serverless нельзя отправлять уведомление fire-and-forget: после
     // возврата HTTP-ответа рантайм может завершить процесс раньше fetch к
-    // Telegram. Тест работает, потому что его маршрут ожидает отправку.
-    // Заявку не отменяем при ошибке мессенджера, но дожидаемся попытки.
+    // мессенджеру. Заявку не отменяем при ошибке отправки, но дожидаемся
+    // попытки — иначе уведомление тихо потеряется.
     try {
       await sendNotifications({
       id: createdOrder.id,
@@ -318,7 +328,6 @@ async function sendNotifications(order: {
   const channels: Record<string, string> = {
     call: "Телефонный звонок",
     whatsapp: "WhatsApp",
-    telegram: "Telegram",
     max: "Макс",
     email: "Электронная почта",
   };

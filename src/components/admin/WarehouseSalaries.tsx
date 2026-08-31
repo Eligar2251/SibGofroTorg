@@ -1714,7 +1714,21 @@ export function WarehouseSalaries({
     if (!salary) return;
     const newDate = `${activeMonth}-${String(toDay).padStart(2, "0")}`;
     const isPaid = salary.isPaid;
+    // Проведённая выплата живёт по paid_at, плановая — по date.
     const patchBody = isPaid ? { paidAt: newDate } : { date: newDate };
+    // Оптимистично двигаем ячейку сразу: перетаскивание должно ощущаться
+    // мгновенно, а не «через секунду и обратно».
+    const prevSalaries = salaries;
+    setSalaries((prev) =>
+      prev.map((x) =>
+        x.id === salaryId
+          ? isPaid
+            ? { ...x, paidAt: newDate }
+            : { ...x, date: newDate }
+          : x
+      )
+    );
+    flashCell(`${salary.employeeId || salary.employeeName}:${toDay}`);
     setBusyId(salaryId);
     try {
       const res = await fetch(`/api/admin/warehouse/salaries/${salaryId}`, {
@@ -1724,21 +1738,16 @@ export function WarehouseSalaries({
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
+        setSalaries(prevSalaries); // откат
         alert(d.error || "Не удалось перенести выплату");
         return;
       }
-      setSalaries((prev) =>
-        prev.map((x) =>
-          x.id === salaryId
-            ? isPaid
-              ? { ...x, paidAt: newDate }
-              : { ...x, date: newDate }
-            : x
-        )
-      );
-      flashCell(`${salary.employeeId || salary.employeeName}:${toDay}`);
-      reload();
+      // router.refresh() здесь намеренно НЕ вызываем: страница «Учёт»
+      // тяжёлая, и полная перерисовка после каждого перетаскивания давала
+      // видимый лаг. Локальное состояние уже верное, а другие вкладки
+      // получат изменение через realtime-подписку на таблицу salaries.
     } catch {
+      setSalaries(prevSalaries);
       alert("Ошибка сети");
     } finally {
       setBusyId(null);

@@ -47,10 +47,6 @@ export async function GET() {
           enabled: settings.messenger_banner_enabled !== "false",
           text: (settings.messenger_banner_text || "Мы есть в мессенджерах").trim(),
           color: messengerColor,
-          telegram: {
-            url: (settings.messenger_telegram_url || "").trim(),
-            iconUrl: (settings.messenger_telegram_icon_url || "").trim(),
-          },
           whatsapp: {
             url: (settings.messenger_whatsapp_url || "").trim(),
             iconUrl: (settings.messenger_whatsapp_icon_url || "").trim(),
@@ -82,7 +78,6 @@ export async function GET() {
           enabled: false,
           text: "Мы есть в мессенджерах",
           color: "#1b2b4b",
-          telegram: { url: "", iconUrl: "" },
           whatsapp: { url: "", iconUrl: "" },
           max: { url: "", iconUrl: "" },
         },

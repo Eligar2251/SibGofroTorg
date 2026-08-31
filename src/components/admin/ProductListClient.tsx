@@ -1,7 +1,7 @@
 // src/components/admin/ProductListClient.tsx
 "use client";
 
-import { useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -76,20 +76,28 @@ export function ProductListClient({
     return `${full} рул. (${total}м)`;
   }
 
-  const filtered = products.filter((p) => {
-    if (selectedCategory !== "all" && p.categoryId !== selectedCategory) return false;
-    if (selectedStock === "in" && p.stockQty <= 0) return false;
-    if (selectedStock === "out" && p.stockQty > 0) return false;
-    if (selectedVisibility === "visible" && !p.isVisible) return false;
-    if (selectedVisibility === "hidden" && p.isVisible) return false;
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      (p.name && p.name.toLowerCase().includes(s)) ||
-      (p.sku && p.sku.toLowerCase().includes(s)) ||
-      (p.barcode && p.barcode.includes(s.replace(/\s+/g, "")))
-    );
-  });
+  // Поиск через useDeferredValue: буквы в поле появляются сразу, а тяжёлая
+  // перерисовка таблицы (сотни строк) идёт следом с низким приоритетом.
+  // Раньше каждое нажатие клавиши перефильтровывало и перерисовывало весь
+  // список синхронно — на большом каталоге это давало заметный лаг ввода.
+  const deferredSearch = useDeferredValue(search);
+  const filtered = useMemo(() => {
+    const query = deferredSearch.toLowerCase();
+    const digits = query.replace(/\s+/g, "");
+    return products.filter((p) => {
+      if (selectedCategory !== "all" && p.categoryId !== selectedCategory) return false;
+      if (selectedStock === "in" && p.stockQty <= 0) return false;
+      if (selectedStock === "out" && p.stockQty > 0) return false;
+      if (selectedVisibility === "visible" && !p.isVisible) return false;
+      if (selectedVisibility === "hidden" && p.isVisible) return false;
+      if (!query) return true;
+      return (
+        (p.name && p.name.toLowerCase().includes(query)) ||
+        (p.sku && p.sku.toLowerCase().includes(query)) ||
+        (p.barcode && p.barcode.includes(digits))
+      );
+    });
+  }, [products, deferredSearch, selectedCategory, selectedStock, selectedVisibility]);
 
   // «Обновить штрихкоды»: дозаписывает коды только товарам без кода
   // или с битым/дублирующимся. У товаров с валидным кодом ничего не
@@ -344,7 +352,7 @@ export function ProductListClient({
                         <div className="admin-product-thumb">
                           {product.imageUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={product.imageUrl} alt="" />
+                            <img src={product.imageUrl} alt="" loading="lazy" decoding="async" />
                           ) : (
                             <GlyphIcon value="box" size={16} />
                           )}

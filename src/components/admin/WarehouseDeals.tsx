@@ -129,6 +129,7 @@ export interface EditableDeal {
   paymentMethod?: "regular" | "cash" | "ym_card" | null;
   /** Заказ зарезервирован (выставлен счёт) — товар не уходит другим клиентам. */
   isReserved?: boolean;
+  isInternal?: boolean;
 }
 
 function todayIso(): string {
@@ -264,6 +265,8 @@ export function DealForm({
 
   // Резерв товара (выставлен счёт — не продаём другим).
   const [isReserved, setIsReserved] = useState<boolean>(Boolean(initialDeal?.isReserved));
+  // Хознужды: списание товара без оплаты (образцы, своя упаковка, брак).
+  const [isInternal, setIsInternal] = useState<boolean>(Boolean(initialDeal?.isInternal));
 
   // ── Разбиение платежа на части ──
   // Непроведённые платежи ИМЕННО этого заказа (раньше фильтр не учитывал
@@ -376,6 +379,7 @@ export function DealForm({
     setSplitTouched(false);
     setPaymentMethod(copy ? "regular" : normalizeDealPaymentMethod(deal?.paymentMethod));
     setIsReserved(copy ? false : Boolean(deal?.isReserved));
+    setIsInternal(Boolean(deal?.isInternal));
   }
 
   function resetForm() {
@@ -615,6 +619,7 @@ export function DealForm({
           paymentSplits: buildPaymentSplits(),
           paymentMethod,
           isReserved,
+          isInternal,
         }),
       });
       if (!res.ok) {
@@ -1179,6 +1184,26 @@ export function DealForm({
                     emptyText="Платежи не найдены"
                   />
                 )}
+              </div>
+
+              <div className="admin-field" style={{ marginTop: 10 }}>
+                <label className="admin-checkbox" style={{ fontSize: 14, fontWeight: 700 }}>
+                  <input
+                    type="checkbox"
+                    checked={isInternal}
+                    onChange={(e) => setIsInternal(e.target.checked)}
+                  />
+                  <span>
+                    <b style={{ color: "var(--adm-kraft, #8a6d3b)" }}>
+                      {isInternal ? "🏠 Хознужды — без оплаты" : "🏠 Хознужды (списать без оплаты)"}
+                    </b>
+                    <span className="wh-form-hint" style={{ display: "block", fontWeight: 400, marginTop: 2 }}>
+                      Цены можно оставить нулевыми: счёт покупателю не выставляется и денег
+                      по заказу не ждут. Товар при этом списывается со склада как обычно —
+                      движение видно в отчётах. Для образцов, своей упаковки, брака и подарков.
+                    </span>
+                  </span>
+                </label>
               </div>
 
               <div className="admin-field" style={{ marginTop: 10 }}>

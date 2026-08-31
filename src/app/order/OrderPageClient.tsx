@@ -25,6 +25,7 @@ import {
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
+import { digitsPhone, formatPhoneMask } from "@/lib/phone-mask";
 
 type DeliveryMethod = "courier" | "pickup" | "transport";
 type PaymentMethod = "card" | "cash" | "invoice";
@@ -66,6 +67,7 @@ export function OrderPageClient({
   const [consentError, setConsentError] = useState(false);
 
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [comment, setComment] = useState("");
@@ -87,7 +89,9 @@ export function OrderPageClient({
   // Модалка создания личного кабинета (регистрация без потери корзины)
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [accName, setAccName] = useState("");
+  const [accPhone, setAccPhone] = useState("");
   const [accUsername, setAccUsername] = useState("");
+  const [accUseLogin, setAccUseLogin] = useState(false);
   const [accPassword, setAccPassword] = useState("");
   const [accPassword2, setAccPassword2] = useState("");
   const [accSaving, setAccSaving] = useState(false);
@@ -105,6 +109,7 @@ export function OrderPageClient({
         setSessionUser(u);
         // автозаполнение из профиля — только пустые поля не затираем уже введённое
         if (u.name) setName(u.name);
+        if (u.phone) setPhone(formatPhoneMask(String(u.phone)));
         if (u.email) setEmail(u.email);
         if (u.customerType === "legal" || u.customerType === "individual") {
           setCustomerType(u.customerType);
@@ -131,6 +136,8 @@ export function OrderPageClient({
 
   function openAccountModal() {
     setAccName(name);
+    setAccPhone(phone);
+    setAccUseLogin(false);
     setAccUsername("");
     setAccPassword("");
     setAccPassword2("");
@@ -142,8 +149,13 @@ export function OrderPageClient({
   async function handleAccountSubmit(e: React.FormEvent) {
     e.preventDefault();
     setAccError("");
-    if (!accUsername.trim()) {
-      setAccError("Укажите логин");
+    if (accUseLogin) {
+      if (!accUsername.trim()) {
+        setAccError("Укажите логин");
+        return;
+      }
+    } else if (digitsPhone(accPhone).length !== 11) {
+      setAccError("Укажите номер телефона в формате +7 (___) ___-__-__");
       return;
     }
     if (accPassword.length < 8) {
@@ -160,7 +172,9 @@ export function OrderPageClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: accUsername.trim(),
+          ...(accUseLogin
+            ? { username: accUsername.trim() }
+            : { phone: digitsPhone(accPhone) }),
           password: accPassword,
           name: accName.trim() || undefined,
         }),
@@ -176,7 +190,9 @@ export function OrderPageClient({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              identifier: accUsername.trim(),
+              identifier: accUseLogin
+                ? accUsername.trim()
+                : digitsPhone(accPhone),
               password: accPassword,
             }),
           });
@@ -189,7 +205,13 @@ export function OrderPageClient({
             setAccSaving(false);
             return;
           }
-          setSessionUser(loginData.user || { username: accUsername.trim(), name: accName });
+          setSessionUser(
+            loginData.user ||
+              (accUseLogin
+                ? { username: accUsername.trim(), name: accName }
+                : { phone: accPhone, name: accName })
+          );
+          if (!phone && accPhone) setPhone(accPhone);
           if (!name && accName) setName(accName.trim());
           setAccountModalOpen(false);
           setAccSaving(false);
@@ -199,8 +221,14 @@ export function OrderPageClient({
         setAccSaving(false);
         return;
       }
-      setSessionUser(data.user || { username: accUsername.trim(), name: accName });
+      setSessionUser(
+        data.user ||
+          (accUseLogin
+            ? { username: accUsername.trim(), name: accName }
+            : { phone: accPhone, name: accName })
+      );
       if (!name && accName) setName(accName.trim());
+      if (!phone && accPhone) setPhone(accPhone);
       setAccountModalOpen(false);
     } catch {
       setAccError("Ошибка сети");
@@ -221,6 +249,10 @@ export function OrderPageClient({
             ? "Укажите контактное лицо"
             : "Укажите имя"
         );
+        return;
+      }
+      if (digitsPhone(phone).length !== 11) {
+        setError("Укажите номер телефона — по нему менеджер подтвердит заказ");
         return;
       }
       if (customerType === "legal") {
@@ -279,9 +311,9 @@ export function OrderPageClient({
         type: "order",
         customerType,
         customerName: name.trim(),
-        customerPhone: "",
+        customerPhone: digitsPhone(phone),
         customerEmail: email.trim() || null,
-        communicationChannel: "email",
+        communicationChannel: "call",
         paymentMethod: finalPayment,
         companyName: customerType === "legal" ? companyName.trim() : null,
         shortName: customerType === "legal" ? shortName.trim() || null : null,
@@ -601,7 +633,7 @@ export function OrderPageClient({
                     <div className="checkout-tip" style={{ marginTop: 16 }}>
                       Заказ будет привязан к вашему кабинету (
                       <strong>
-                        {sessionUser.username || "—"}
+                        {sessionUser.username || sessionUser.phone || sessionUser.email || "—"}
                       </strong>
                       ) — статус можно отслеживать в ЛК.
                     </div>
@@ -895,6 +927,29 @@ export function OrderPageClient({
                       />
                     </div>
                     <div>
+                      <label className="checkout-label">Телефон *</label>
+                      <input
+                        className="form-input"
+                        type="tel"
+                        inputMode="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(formatPhoneMask(e.target.value))}
+                        placeholder="+7 (913) 000-00-00"
+                        autoComplete="tel"
+                      />
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 11,
+                          color: "var(--ink-muted)",
+                          marginTop: 4,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Менеджер позвонит, чтобы подтвердить заказ и сроки.
+                      </span>
+                    </div>
+                    <div>
                       <label className="checkout-label">
                         {customerType === "legal"
                           ? "Корпоративная почта для счёта *"
@@ -1069,7 +1124,7 @@ export function OrderPageClient({
                     <div className="checkout-tip" style={{ marginTop: 16 }}>
                       Заказ будет в кабинете:{" "}
                       <strong>
-                        {sessionUser.username || "—"}
+                        {sessionUser.username || sessionUser.phone || sessionUser.email || "—"}
                       </strong>
                     </div>
                   ) : (
@@ -1254,20 +1309,38 @@ export function OrderPageClient({
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
-                  <div>
-                    <label className="checkout-label">Логин *</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={accUsername}
-                      onChange={(e) => setAccUsername(e.target.value)}
-                      placeholder="Придумайте логин"
-                      autoComplete="username"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                    />
-                  </div>
+                  {accUseLogin ? (
+                    <div>
+                      <label className="checkout-label">Логин *</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={accUsername}
+                        onChange={(e) => setAccUsername(e.target.value)}
+                        placeholder="Придумайте логин"
+                        autoComplete="username"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="checkout-label">Телефон *</label>
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        className="form-input"
+                        value={accPhone}
+                        onChange={(e) => setAccPhone(formatPhoneMask(e.target.value))}
+                        placeholder="+7 (913) 000-00-00"
+                        autoComplete="tel"
+                      />
+                      <span style={{ display: "block", fontSize: 11, color: "var(--ink-muted)", marginTop: 4 }}>
+                        По этому номеру вы будете входить в кабинет
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <label className="checkout-label">Имя</label>
                     <input
@@ -1319,9 +1392,31 @@ export function OrderPageClient({
                     )}
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccUseLogin((v) => !v);
+                    setAccError("");
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    color: "var(--green)",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontSize: 12.5,
+                    textAlign: "left",
+                    width: "100%",
+                  }}
+                >
+                  {accUseLogin
+                    ? "Зарегистрироваться по номеру телефона"
+                    : "Не хочу оставлять номер — придумать логин"}
+                </button>
                 <p style={{ fontSize: 12, color: "var(--ink-muted)", margin: 0, width: "100%" }}>
-                  Можно оформить заказ и без регистрации — номер заявки будет
-                  сформирован автоматически и показан на странице подтверждения.
+                  Можно оформить заказ и без регистрации — заявку примем по
+                  номеру телефона, менеджер перезвонит.
                 </p>
               </form>
             </div>

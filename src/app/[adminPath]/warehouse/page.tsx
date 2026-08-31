@@ -106,8 +106,11 @@ export default async function AdminWarehousePage({
   if (adminPath !== ADMIN_PATH) notFound();
 
   const sp = await searchParams;
-  // Старые ссылки `tab=suppliers` теперь ведут в отдельное планирование.
-  const initialTab: any = sp.tab === "suppliers" ? "plans" : sp.tab || "stock";
+  // Старые ссылки `tab=suppliers` теперь ведут в отдельное планирование,
+  // а `tab=forecast` — в объединённую вкладку «План» (прогноз и план
+  // слились: план на период с прибылью по контрагентам).
+  const initialTab: any =
+    sp.tab === "suppliers" ? "plans" : sp.tab === "forecast" ? "plan" : sp.tab || "stock";
   const initialSub: any = sp.sub || "stock";
 
   // Экономия квоты Firestore: вкладки учёта грузятся лениво по URL.

@@ -44,6 +44,7 @@ export async function PUT(
       deliveryContact: body.deliveryContact,
       deliveryPhone: body.deliveryPhone,
       isReserved: body.isReserved === true,
+      isInternal: body.isInternal === true,
     });
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });

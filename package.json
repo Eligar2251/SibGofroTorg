@@ -3,12 +3,13 @@
   "private": true,
   "packageManager": "pnpm@11.17.0",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
     "build": "next build",
     "start": "node node_modules/next/dist/bin/next start -H 0.0.0.0 -p ${PORT:-3000}",
     "admin:sql": "node scripts/generate-admin-sql.mjs",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:plain": "next dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
@@ -20,7 +21,6 @@
     "dotenv": "17.3.1",
     "html2canvas": "^1.4.1",
     "jose": "^6.2.3",
-    "lenis": "^1.3.25",
     "lucide-react": "^1.24.0",
     "next": "16.2.6",
     "next-cloudinary": "^6.17.5",

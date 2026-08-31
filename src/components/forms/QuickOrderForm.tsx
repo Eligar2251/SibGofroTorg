@@ -5,6 +5,7 @@ import { Send, CheckCircle, Loader2, MessageSquareText, Phone } from "lucide-rea
 import { ymGoal } from "@/lib/ym";
 import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 import { useSiteSettings } from "@/hooks/use-site-settings";
+import { digitsPhone, formatPhoneMask } from "@/lib/phone-mask";
 
 interface QuickOrderFormProps {
   productName?: string;
@@ -32,6 +33,7 @@ export function QuickOrderForm({
   const [errorMsg, setErrorMsg] = useState("");
   const [consent, setConsent] = useState(false);
   const [consentError, setConsentError] = useState(false);
+  const [phoneValue, setPhoneValue] = useState("");
 
   const { phone, phoneHref, messengerBanner } = useSiteSettings();
   const maxUrl = safeUrl(messengerBanner.max?.url);
@@ -40,6 +42,11 @@ export function QuickOrderForm({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (digitsPhone(phoneValue).length !== 11) {
+      setErrorMsg("Укажите номер телефона — менеджер перезвонит по нему");
+      setFormState("error");
+      return;
+    }
     if (!consent) {
       setConsentError(true);
       return;
@@ -58,10 +65,11 @@ export function QuickOrderForm({
         body: JSON.stringify({
           type: "inquiry",
           customerName: data.get("name") || "Клиент",
+          customerPhone: digitsPhone(phoneValue),
           productInfo: data.get("product") || productName || "",
           comment: data.get("comment") || "",
           channel: "website",
-          communicationChannel: "max",
+          communicationChannel: "call",
         }),
       });
 
@@ -74,6 +82,7 @@ export function QuickOrderForm({
 
       setFormState("success");
       form.reset();
+      setPhoneValue("");
       ymGoal("inquiry_submit");
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Произошла ошибка");
@@ -117,6 +126,23 @@ export function QuickOrderForm({
             type="text"
             placeholder="Иван Иванов"
             autoComplete="name"
+            className={isLight ? "qof-input qof-input--light" : "qof-input"}
+          />
+        </div>
+        <div className="qof-field">
+          <label className={isLight ? "qof-label qof-label--light" : "qof-label"}>
+            Телефон *
+          </label>
+          <input
+            id="qof-phone"
+            name="phone"
+            type="tel"
+            inputMode="tel"
+            required
+            value={phoneValue}
+            onChange={(e) => setPhoneValue(formatPhoneMask(e.target.value))}
+            placeholder="+7 (913) 000-00-00"
+            autoComplete="tel"
             className={isLight ? "qof-input qof-input--light" : "qof-input"}
           />
         </div>

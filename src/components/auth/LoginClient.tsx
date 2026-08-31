@@ -1,6 +1,6 @@
 // =========================================================
-// FILE: src/components/auth/LoginClient.tsx — вход по логину и паролю
-// (совместимость с прежними аккаунтами по телефону/email сохранена)
+// FILE: src/components/auth/LoginClient.tsx — вход по номеру телефона,
+// email или логину: сервер сам определяет, что ввели.
 // =========================================================
 
 "use client";
@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, LogIn } from "lucide-react";
 import { safeNextPath } from "@/lib/safe-next";
+import { digitsPhone, formatPhoneMask } from "@/lib/phone-mask";
 
 export function LoginClient() {
   const router = useRouter();
@@ -30,7 +31,13 @@ export function LoginClient() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: identifier.trim(), password }),
+        body: JSON.stringify({
+          // Телефон отправляем цифрами: в БД он хранится нормализованным.
+          identifier: /^[\d\s()+-]+$/.test(identifier.trim())
+            ? digitsPhone(identifier)
+            : identifier.trim(),
+          password,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ошибка входа");
@@ -80,7 +87,7 @@ export function LoginClient() {
             <p
               style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 6 }}
             >
-              Логин и пароль
+              Телефон, email или логин
             </p>
           </div>
 
@@ -89,22 +96,28 @@ export function LoginClient() {
             style={{ display: "flex", flexDirection: "column", gap: 14 }}
           >
             <div>
-              <label className="checkout-label">Логин *</label>
+              <label className="checkout-label">Телефон, email или логин *</label>
               <input
                 id="login-identifier"
                 name="identifier"
                 type="text"
                 className="form-input"
                 value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="Ваш логин"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  // Ввели цифры → это телефон, показываем маску.
+                  // Есть буквы (email или логин) → оставляем как есть.
+                  const looksLikePhone = /^[\d\s()+-]*$/.test(raw) && /\d/.test(raw);
+                  setIdentifier(looksLikePhone ? formatPhoneMask(raw) : raw);
+                }}
+                placeholder="+7 (913) 000-00-00"
                 autoComplete="username"
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
               />
               <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 4 }}>
-                Можно войти и по старому телефону или email — поддерживаются оба варианта
+                Подойдёт номер телефона, email или логин — что указывали при регистрации
               </div>
             </div>
             <div>

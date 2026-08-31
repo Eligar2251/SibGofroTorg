@@ -4,6 +4,12 @@
 // расчёт зарплаты. Данные сохраняются в localStorage (для наглядной
 // работы без бэкенда) — интерфейс не зависит от хранилища, поэтому
 // хук можно заменить на версию с реальными API-запросами.
+//
+// СДВИГ: пользователь работает с ПЕРИОДОМ ЗАРПЛАТЫ (например,
+// «сентябрь»), а календарь показывает фактические смены за
+// (период − сдвиг) (август). Зарплата считается по сменам
+// календаря, но записывается под месяц периода. Сдвиг настраивается
+// (0/1/2 месяца), по умолчанию 1.
 // =========================================================
 
 "use client";
@@ -22,10 +28,14 @@ import {
 } from "./scheduleGenerator";
 
 const STORAGE_KEY = "duty_schedule_v1";
+const OFFSET_KEY = "duty_schedule_offset_v1";
 
 interface StoredState {
   employees: Employee[];
   schedules: Record<string, DayAssignment[]>;
+  /** Ручные суммы за месяц: [период YYYY-MM] -> [employeeId] -> сумма.
+   *  Перекрывают расчёт «часы × ставка» (для переноса и печати). */
+  amountOverrides: Record<string, Record<string, number>>;
 }
 
 // Данные по умолчанию — воспроизводят пример из табеля заказчика:
@@ -65,21 +75,56 @@ const defaultEmployees: Employee[] = [
 function loadState(): StoredState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as StoredState;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<StoredState>;
+      return {
+        employees: parsed.employees ?? defaultEmployees,
+        schedules: parsed.schedules ?? {},
+        amountOverrides: parsed.amountOverrides ?? {},
+      };
+    }
   } catch {
     /* ignore */
   }
-  return { employees: defaultEmployees, schedules: {} };
+  return { employees: defaultEmployees, schedules: {}, amountOverrides: {} };
+}
+
+function loadOffset(): number {
+  try {
+    const raw = localStorage.getItem(OFFSET_KEY);
+    if (raw !== null) {
+      const n = Number(raw);
+      if (n === 0 || n === 1 || n === 2) return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 1;
 }
 
 function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+/** Сдвиг месяца на delta (может быть отрицательным). */
+function shiftMonth(
+  year: number,
+  month: number,
+  delta: number
+): { year: number; month: number } {
+  const d = new Date(year, month - 1 + delta, 1);
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+}
+
 export function useDutySchedule(initialYear?: number, initialMonth?: number) {
+  // Навигация ведётся по ПЕРИОДУ ЗАРПЛАТЫ (как думает пользователь:
+  // «делаю график за сентябрь»).
   const now = new Date();
-  const [year, setYear] = useState(initialYear ?? now.getFullYear());
-  const [month, setMonth] = useState(initialMonth ?? now.getMonth() + 1);
+  const [payYear, setPayYear] = useState(initialYear ?? now.getFullYear());
+  const [payMonth, setPayMonth] = useState(
+    initialMonth ?? now.getMonth() + 1
+  );
+  const [payOffset, setPayOffsetState] = useState<number>(loadOffset);
   const [state, setState] = useState<StoredState>(loadState);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -91,10 +136,24 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
     }
   }, [state]);
 
-  const key = monthKey(year, month);
+  const setPayOffset = useCallback((n: number) => {
+    setPayOffsetState(n);
+    try {
+      localStorage.setItem(OFFSET_KEY, String(n));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Календарный месяц — реальные даты смен (период минус сдвиг).
+  const cal = shiftMonth(payYear, payMonth, -payOffset);
+  const calYear = cal.year;
+  const calMonth = cal.month;
+
+  const key = monthKey(calYear, calMonth);
   const schedule = useMemo(
-    () => fillMissingDays(state.schedules[key] ?? [], year, month),
-    [state.schedules, key, year, month]
+    () => fillMissingDays(state.schedules[key] ?? [], calYear, calMonth),
+    [state.schedules, key, calYear, calMonth]
   );
 
   const persistSchedule = useCallback(
@@ -114,20 +173,21 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
       );
       let startId = startEmployeeId;
       if (!startId) {
-        const prevKey =
-          month === 1 ? monthKey(year - 1, 12) : monthKey(year, month - 1);
+        // Непрерывность очереди — от предыдущего КАЛЕНДАРНОГО месяца.
+        const prev = shiftMonth(calYear, calMonth, -1);
+        const prevKey = monthKey(prev.year, prev.month);
         const prevSchedule = state.schedules[prevKey];
         if (prevSchedule) {
           startId = getNextRotationStartId(prevSchedule, rotating);
         }
       }
-      const generated = generateSchedule(year, month, state.employees, {
+      const generated = generateSchedule(calYear, calMonth, state.employees, {
         rotatingStartEmployeeId: startId,
       });
       persistSchedule(generated);
       setMessage("Расписание сгенерировано автоматически");
     },
-    [year, month, state.employees, state.schedules, persistSchedule]
+    [calYear, calMonth, state.employees, state.schedules, persistSchedule]
   );
 
   const updateCell = useCallback(
@@ -180,6 +240,33 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
     }));
   }, []);
 
+  // ── Ручные суммы (перекрывают «часы × ставка») ──
+  const payKey = monthKey(payYear, payMonth);
+  const amountOverrides = useMemo(
+    () => state.amountOverrides[payKey] ?? {},
+    [state.amountOverrides, payKey]
+  );
+
+  const setAmountOverride = useCallback(
+    (employeeId: string, value: number | null) => {
+      setState((prev) => {
+        const forPeriod = { ...(prev.amountOverrides[payKey] ?? {}) };
+        if (value == null || Number.isNaN(value) || value <= 0) {
+          delete forPeriod[employeeId];
+        } else {
+          forPeriod[employeeId] = Math.round(value);
+        }
+        return {
+          ...prev,
+          amountOverrides: { ...prev.amountOverrides, [payKey]: forPeriod },
+        };
+      });
+    },
+    [payKey]
+  );
+
+  // Зарплата: часы — из КАЛЕНДАРНОГО месяца, период — как написал
+  // пользователь (с учётом сдвига). Ручная сумма перекрывает расчёт.
   const payroll: PayrollPayload = useMemo(() => {
     const items = state.employees
       .filter((e) => e.active)
@@ -187,43 +274,63 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
         const totalHours = schedule
           .filter((d) => d.employeeId === emp.id && d.status !== "missed")
           .reduce((s, d) => s + (d.hours || 0), 0);
+        const overridden = amountOverrides[emp.id];
+        const amount =
+          overridden != null
+            ? overridden
+            : Math.round(totalHours * emp.rate);
         return {
           employeeId: emp.id,
           employeeName: emp.name,
           totalHours,
-          amount: Math.round(totalHours * emp.rate),
+          amount,
         };
       });
     const totalAmount = items.reduce((s, i) => s + i.amount, 0);
     return {
-      year,
-      month,
+      year: payYear,
+      month: payMonth,
+      calYear,
+      calMonth,
       items,
       totalAmount,
       generatedAt: new Date().toISOString(),
     };
-  }, [schedule, state.employees, year, month]);
+  }, [
+    schedule,
+    state.employees,
+    amountOverrides,
+    payYear,
+    payMonth,
+    calYear,
+    calMonth,
+  ]);
 
   const goToPrevMonth = () => {
-    if (month === 1) {
-      setMonth(12);
-      setYear((y) => y - 1);
-    } else setMonth((m) => m - 1);
+    const prev = shiftMonth(payYear, payMonth, -1);
+    setPayYear(prev.year);
+    setPayMonth(prev.month);
   };
   const goToNextMonth = () => {
-    if (month === 12) {
-      setMonth(1);
-      setYear((y) => y + 1);
-    } else setMonth((m) => m + 1);
+    const next = shiftMonth(payYear, payMonth, 1);
+    setPayYear(next.year);
+    setPayMonth(next.month);
   };
 
   return {
-    year,
-    month,
-    setYear,
-    setMonth,
+    // Период зарплаты (заголовок, перенос, печать)
+    year: payYear,
+    month: payMonth,
+    setYear: setPayYear,
+    setMonth: setPayMonth,
     goToPrevMonth,
     goToNextMonth,
+    // Календарный месяц фактических смен
+    calYear,
+    calMonth,
+    // Сдвиг «календарь → зарплата», месяцев
+    payOffset,
+    setPayOffset,
     employees: state.employees,
     addEmployee,
     updateEmployee,
@@ -232,6 +339,8 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
     generate,
     updateCell,
     clearCell,
+    amountOverrides,
+    setAmountOverride,
     payroll,
     message,
     setMessage,

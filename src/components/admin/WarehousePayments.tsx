@@ -77,6 +77,7 @@ export function PaymentForm({
   deals,
   receipts,
   counterparties = [],
+  purchasePlans = [],
   copyFrom = null,
   autoOpen = false,
   hideTrigger = false,
@@ -85,6 +86,8 @@ export function PaymentForm({
   deals: DealLinkOption[];
   receipts: ReceiptLinkOption[];
   counterparties?: CounterpartyOption[];
+  /** Активные закупки — исходящий платёж можно сразу отнести к одной из них. */
+  purchasePlans?: { id: string; productName: string }[];
   /** Копия платежа: подставляем только контрагента и сумму. */
   copyFrom?: PaymentCopySource | null;
   /** Открыть модалку сразу при монтировании (режим копирования). */
@@ -119,6 +122,7 @@ export function PaymentForm({
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [comment, setComment] = useState("");
   const [excludeFromBalance, setExcludeFromBalance] = useState(false);
+  const [purchasePlanId, setPurchasePlanId] = useState("");
   const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
 
@@ -336,6 +340,7 @@ export function PaymentForm({
     setComment("");
     setSelectedDeals([]);
     setSelectedReceipts([]);
+    setPurchasePlanId("");
     setError("");
   }
 
@@ -369,6 +374,9 @@ export function PaymentForm({
           isPaid: false,
           excludeFromBalance,
           comment: comment.trim() || null,
+          // Привязка к закупке имеет смысл только для исходящих платежей
+          purchasePlanId:
+            direction === "outgoing" && purchasePlanId ? purchasePlanId : null,
         }),
       });
       if (!res.ok) {
@@ -543,6 +551,27 @@ export function PaymentForm({
                     />
                   ))}
               </div>
+
+              {direction === "outgoing" && purchasePlans.length > 0 && (
+                <div className="admin-field">
+                  <label className="admin-label">Закупка (необязательно)</label>
+                  <select
+                    className="admin-select"
+                    value={purchasePlanId}
+                    onChange={(e) => setPurchasePlanId(e.target.value)}
+                  >
+                    <option value="">— не относится к закупке —</option>
+                    {purchasePlans.map((plan) => (
+                      <option key={plan.id} value={plan.id}>
+                        {plan.productName}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="admin-hint">
+                    Платёж появится в карточке закупки и попадёт в её «оплачено».
+                  </span>
+                </div>
+              )}
 
               <div className="wh-form-grid">
                 <div className="admin-field">
