@@ -24,26 +24,6 @@
   margin: 0;
   font-size: 20px;
 }
-.ds-header-titles {
-  display: grid;
-  gap: 2px;
-}
-/* Подпись о сдвиге: «смены: август (сдвиг 1 мес.) · зарплата — за сентябрь» */
-.ds-header-sub {
-  font-size: 12px;
-  font-weight: 600;
-  color: #b45309;
-}
-
-/* Подпись над сеткой: какой календарный месяц показан */
-.ds-table-caption {
-  font-size: 13px;
-  color: #374151;
-  margin-bottom: 8px;
-}
-.ds-table-caption-note {
-  color: #6b7280;
-}
 
 .ds-month-nav {
   display: flex;
@@ -345,6 +325,13 @@
   border-radius: 6px;
   font-size: 13px;
   background: #fff;
+}
+/* Подпись о базовом месяце расчёта: «зп за октябрь считается по
+   сменам за сентябрь» */
+.ds-payroll-basis-note {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b45309;
 }
 .ds-payroll-year {
   width: 70px;
@@ -719,6 +706,49 @@
   font-size: 13px;
   background: #fff;
   max-width: 300px;
+}
+
+/* ── Таблица начислений (кто и сколько) ── */
+.ds-accrual-name-cell {
+  white-space: nowrap;
+}
+.ds-accrual-name {
+  font-weight: 700;
+  color: #1e293b;
+}
+.ds-accrual-amount-wrap {
+  max-width: 150px;
+}
+.ds-accrual-amount-wrap .ds-payout-amount-input {
+  padding-right: 46px;
+}
+.ds-accrual-reset {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ds-accrual-diff {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 3px;
+}
+.ds-accrual-diff--rest {
+  color: #d97706;
+}
+.ds-accrual-diff--over {
+  color: #2563eb;
+}
+.ds-accrual-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
 }
 
 /* ── Модалки ── */

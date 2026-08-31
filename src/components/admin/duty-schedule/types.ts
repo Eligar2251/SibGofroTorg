@@ -40,25 +40,24 @@ export interface GenerationOptions {
   rotatingStartEmployeeId?: string;
 }
 
-export interface PayrollItem {
+/**
+ * Начисление зп за период: один человек и его итоговая сумма.
+ * Список начислений — «кто вообще получает зп за этот месяц»:
+ * человек может быть в табеле, но не в зп (и наоборот).
+ */
+export interface SalaryAccrual {
+  /** Уникальный ключ строки: id сотрудника табеля или «acc_…». */
+  id: string;
+  /** id сотрудника из табеля либо 'custom' (введён вручную). */
   employeeId: string;
   employeeName: string;
-  totalHours: number;
-  amount: number;
+  /** Ручная итоговая сумма зп, ₽. null — считать по табелю
+   *  (часы × ставка базового месяца, с учётом сдвига). */
+  amount: number | null;
 }
 
-export interface PayrollPayload {
-  /** Период зарплаты (как пишет пользователь). */
-  year: number;
-  /** 1-12 — месяц, за который переносится зарплата. */
-  month: number;
-  /** Календарный месяц фактических смен (период − сдвиг). */
-  calYear?: number;
-  calMonth?: number;
-  items: PayrollItem[];
-  totalAmount: number;
-  generatedAt: string;
-}
+/** [зарплатный период YYYY-MM] -> начисления. */
+export type SalaryAccrualsByPeriod = Record<string, SalaryAccrual[]>;
 
 /**
  * Отдельная выплата зарплаты (один день выплаты для сотрудника).
@@ -93,11 +92,3 @@ export interface PayPlanEntry {
 
 /** [зарплатный месяц YYYY-MM] -> [employeeId] -> план выплаты. */
 export type PayPlans = Record<string, Record<string, PayPlanEntry>>;
-
-/** Запись зарплаты, уже перенесённой из табеля (для защиты от дублей). */
-export interface ExistingSalaryTransfer {
-  periodMonth: string;
-  employeeName: string;
-  amount: number;
-  comment: string | null;
-}
