@@ -197,7 +197,9 @@ export function ProductCardCompact({
               sizes="(max-width: 640px) 44vw, (max-width: 1100px) 30vw, 260px"
               priority={!!highlight}
               loading={highlight ? "eager" : "lazy"}
-              style={{ objectFit: "cover" }}
+              /* Фото целиком в плитке: без обрезки кромок (contain).
+                 Отступ от краёв задаётся в CSS (.pcc__img img). */
+              style={{ objectFit: "contain" }}
             />
           ) : (
             <span className="pcc__img-placeholder"><GlyphIcon value="box" size={40} /></span>
@@ -246,8 +248,12 @@ export function ProductCardCompact({
 
         <Link href={`/catalog/product/${product.slug}`} className="pcc__name">
           {product.name}
-          {dims && <span className="pcc__name-dims">{dims}</span>}
         </Link>
+
+        {/* Размер — отдельной строкой под названием (не внутри ссылки):
+           раньше висел внутри .pcc__name и «съедался» 2-строчным
+           line-clamp, когда название длинное. Теперь всегда виден. */}
+        {dims && <div className="pcc__dims">{dims}</div>}
 
         {/* Цена — шт + партия. Если у товара есть варианты,
            показываем «от X ₽» (по минимальной цене).
