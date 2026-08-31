@@ -6,6 +6,13 @@
 // фамилии и рабочие часы крупные, без переносов, рабочие
 // смены выделены жёлтым. Сводка и прочая информация —
 // ниже и заметно мельче.
+//
+// Печатается ПЕРИОД ЗАРПЛАТЫ (year/month): при сдвиге в
+// шапке рядом мелким шрифтом указан календарный месяц
+// фактических смен (year/month − offset). Суммы учитывают
+// ручные правки (amountOverrides). Кнопка «Редактировать»
+// возвращает в таблицу — весь график правится прямо в
+// ячейках и можно сразу перепечатать.
 // =========================================================
 
 "use client";
@@ -16,23 +23,37 @@ import { MONTHS_RU, WEEKDAYS_SHORT_RU, isWeekend } from "./scheduleGenerator";
 import { SITE_NAME } from "@/lib/seo";
 
 interface Props {
+  /** Период зарплаты (пишется в заголовке). */
   year: number;
   month: number; // 1-12
+  /** Календарный месяц фактических смен (период − сдвиг). */
+  calYear: number;
+  calMonth: number;
+  /** Сдвиг, месяцев (0 — без сдвига). */
+  offset: number;
   employees: Employee[];
   schedule: DayAssignment[];
+  /** Ручные суммы: employeeId -> сумма (перекрывают «часы × ставка»). */
+  amountOverrides: Record<string, number>;
   companyPhone?: string;
   companyAddress?: string;
   onDone: () => void;
+  onEdit?: () => void;
 }
 
 export function DutySchedulePrint({
   year,
   month,
+  calYear,
+  calMonth,
+  offset,
   employees,
   schedule,
+  amountOverrides,
   companyPhone,
   companyAddress,
   onDone,
+  onEdit,
 }: Props) {
   const [printing, setPrinting] = useState(false);
   const triggered = useRef(false);
@@ -40,16 +61,23 @@ export function DutySchedulePrint({
   const activeEmployees = employees.filter((e) => e.active);
 
   // Дни месяца по порядку (1..31), с учётом фактической длины месяца.
-  const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+  const calPrefix = `${calYear}-${String(calMonth).padStart(2, "0")}`;
   const days = schedule
-    .filter((d) => d.date.startsWith(monthPrefix))
+    .filter((d) => d.date.startsWith(calPrefix))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const totals = activeEmployees.map((emp) => {
     const hours = schedule
       .filter((d) => d.employeeId === emp.id && d.status !== "missed")
       .reduce((s, d) => s + (d.hours || 0), 0);
-    return { emp, hours, amount: Math.round(hours * emp.rate) };
+    const computed = Math.round(hours * emp.rate);
+    const overridden = amountOverrides[emp.id];
+    return {
+      emp,
+      hours,
+      amount: overridden ?? computed,
+      overridden: overridden != null,
+    };
   });
   const grandHours = totals.reduce((s, t) => s + t.hours, 0);
   const grandTotal = totals.reduce((s, t) => s + t.amount, 0);
@@ -78,11 +106,21 @@ export function DutySchedulePrint({
   }
 
   const monthLabel = `${MONTHS_RU[month - 1]} ${year}`;
+  const calLabel = `${MONTHS_RU[calMonth - 1]} ${calYear}`;
 
   return (
     <div className="ds-print-root">
       {!printing && (
         <div className="ds-print-toolbar">
+          {onEdit && (
+            <button
+              className="ds-btn"
+              onClick={() => onEdit()}
+              title="Вернуться к таблице: весь график редактируется прямо в ячейках"
+            >
+              ✎ Редактировать
+            </button>
+          )}
           <button className="ds-btn ds-btn--primary" onClick={doPrint}>
             🖨 Печать
           </button>
@@ -96,6 +134,12 @@ export function DutySchedulePrint({
         <div className="ds-print-head">
           <div className="ds-print-title">Табель дежурств охраны</div>
           <div className="ds-print-month">{monthLabel}</div>
+          {offset > 0 && (
+            <div className="ds-print-cal">
+              фактические смены: {calLabel} · сдвиг: {offset}{" "}
+              {offset === 1 ? "месяц" : "мес."}
+            </div>
+          )}
           <div className="ds-print-company">
             {SITE_NAME}
             {companyPhone ? ` · ${companyPhone}` : ""}
@@ -162,6 +206,7 @@ export function DutySchedulePrint({
                   </td>
                   <td className="ds-print-num ds-grid-total-cell">
                     {totalsRow.amount.toLocaleString("ru-RU")}
+                    {totalsRow.overridden ? "†" : ""}
                   </td>
                 </tr>
               );
@@ -170,7 +215,7 @@ export function DutySchedulePrint({
           <tfoot>
             <tr>
               <td className="ds-grid-name ds-grid-grand-label">
-                Общее число зарплаты за месяц
+                Общее число зарплаты за {MONTHS_RU[month - 1].toLowerCase()}
               </td>
               <td colSpan={days.length} />
               <td className="ds-print-num">{grandHours}</td>
@@ -187,7 +232,7 @@ export function DutySchedulePrint({
             смена (жёлтая)
           </span>
           <span>✕ — пропустил смену</span>
-          <span>† — временный охранник</span>
+          <span>† — временный охранник{totals.some((t) => t.overridden) ? " / сумма задана вручную" : ""}</span>
           <span className="ds-print-legend-note">
             Суббота/воскресенье — смена 24ч, будни — 15ч (можно изменить
             вручную).
@@ -207,12 +252,12 @@ export function DutySchedulePrint({
             </tr>
           </thead>
           <tbody>
-            {totals.map(({ emp, hours, amount }) => (
+            {totals.map(({ emp, hours, amount, overridden }) => (
               <tr key={emp.id}>
                 <td>{emp.name}</td>
                 <td>{emp.phone || "—"}</td>
                 <td className="ds-print-num">{hours}</td>
-                <td className="ds-print-num">{emp.rate}</td>
+                <td className="ds-print-num">{overridden ? "ручная" : emp.rate}</td>
                 <td className="ds-print-num">
                   {amount.toLocaleString("ru-RU")}
                 </td>
@@ -221,7 +266,9 @@ export function DutySchedulePrint({
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={2}>Общее число зарплаты за месяц</td>
+              <td colSpan={2}>
+                Общее число зарплаты за {MONTHS_RU[month - 1].toLowerCase()}
+              </td>
               <td className="ds-print-num">{grandHours}</td>
               <td />
               <td className="ds-print-num ds-print-total">

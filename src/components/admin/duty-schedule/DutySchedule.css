@@ -722,3 +722,139 @@
     break-inside: avoid;
   }
 }
+
+/* =========================================================
+   INLINE-РЕДАКТИРОВАНИЕ (весь график — прямо в ячейках)
+   ========================================================= */
+
+/* Заголовок: период з/п + подпись о сдвиге */
+.ds-header-titles {
+  display: grid;
+  gap: 2px;
+}
+.ds-header-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b45309;
+}
+
+.ds-btn--sm {
+  padding: 3px 8px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+
+/* Мини-форма у ячейки дня */
+.ds-cell {
+  position: relative;
+}
+.ds-cell--editing {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  z-index: 30;
+}
+
+.ds-cell-editor {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  white-space: nowrap;
+}
+.ds-cell-editor--up {
+  top: auto;
+  bottom: calc(100% - 4px);
+}
+.ds-ce-field {
+  display: grid;
+  gap: 2px;
+}
+.ds-ce-field span {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ds-ce-field input,
+.ds-ce-field select {
+  border: 1px solid #cbd2d9;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 13px;
+  background: #fff;
+}
+.ds-ce-field input {
+  width: 64px;
+}
+.ds-ce-field select {
+  max-width: 160px;
+}
+.ds-ce-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* Инпут «как в Excel» прямо в ячейке (имя/телефон/сумма) */
+.ds-inline-edit {
+  width: 100%;
+  min-width: 130px;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Ручная сумма за месяц */
+.ds-amount-cell {
+  cursor: text;
+}
+.ds-amount-cell:hover .ds-amount-value {
+  outline: 1px dashed #2563eb;
+  outline-offset: 2px;
+}
+.ds-amount-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ds-amount-cell--override {
+  color: #1d4ed8;
+}
+.ds-amount-reset {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+.ds-amount-reset:hover {
+  background: #dbeafe;
+}
+
+.ds-legend-edit {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* Печать: строка о сдвиге под названием месяца */
+.ds-print-cal {
+  font-size: 11px;
+  color: #555;
+  margin-top: 1mm;
+}
