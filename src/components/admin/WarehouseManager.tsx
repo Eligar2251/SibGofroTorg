@@ -36,7 +36,6 @@ import {
   Scissors,
   Package,
   Lightbulb,
-  TrendingUp,
   Upload,
   Target,
 } from "lucide-react";
@@ -81,6 +80,7 @@ import { StockPriceEditor } from "@/components/admin/StockPriceEditor";
 import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { CashSessions } from "@/components/admin/CashSessions";
 import {
   CounterpartiesManager,
   type CounterpartyDocument,
@@ -129,10 +129,6 @@ const SupplyPlanning = dynamic(
 );
 const PurchasePlanning = dynamic(
   () => import("@/components/admin/PurchasePlanning").then((m) => m.PurchasePlanning),
-  { ssr: false, loading: tabLoading }
-);
-const RevenueForecast = dynamic(
-  () => import("@/components/admin/RevenueForecast").then((m) => m.RevenueForecast),
   { ssr: false, loading: tabLoading }
 );
 const SalesPlan = dynamic(
@@ -257,7 +253,7 @@ const paymentTypeLabels: Record<string, string> = {
   monthly: "Ежемесячные платежи",
 };
 
-type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "forecast" | "plan" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
+type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "plan" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
@@ -397,8 +393,6 @@ export function WarehouseManager({
   const router = useRouter();
   const [collecting, setCollecting] = useState(false);
   const [showCollect, setShowCollect] = useState(false);
-  /** Раскрытые закрытия смен кассы: id -> показать детализацию. */
-  const [openCollections, setOpenCollections] = useState<Set<string>>(new Set());
   const [collectError, setCollectError] = useState("");
 
   useEffect(() => {
@@ -1355,7 +1349,9 @@ export function WarehouseManager({
     { key: "plans", label: "Планы поставок", icon: <Lightbulb size={13} /> },
     { key: "purchases", label: "Закупки", icon: <Wallet size={13} /> },
     { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
-    { key: "forecast", label: "Прогноз", icon: <TrendingUp size={13} /> },
+    // Бывшие вкладки «Прогноз» и «План» объединены в одну: план на
+    // произвольный период (один и несколько месяцев) с прибылью
+    // по каждому контрагенту и товару (средний чек × заказы периода).
     { key: "plan", label: "План", icon: <Target size={13} /> },
     { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
     { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
@@ -1758,7 +1754,7 @@ export function WarehouseManager({
               />
             </>
           )}
-          {(activeTab === "forecast" || activeTab === "plan") && (
+          {activeTab === "plan" && (
             <Link
               href={`/${adminPath}/warehouse/import`}
               className="admin-btn admin-btn--ghost"
@@ -2775,12 +2771,7 @@ export function WarehouseManager({
         </>
       )}
 
-      {/* ============ ВКЛАДКА: ПРОГНОЗ ВЫРУЧКИ ============ */}
-      {activeTab === "forecast" && (
-        <RevenueForecast deals={deals} adminPath={adminPath} />
-      )}
-
-      {/* ============ ВКЛАДКА: ПЛАН ПРОДАЖ ============ */}
+      {/* ============ ВКЛАДКА: ПЛАН (прогноз + план + прибыль) ============ */}
       {activeTab === "plan" && (
         <SalesPlan deals={deals} stock={stock} adminPath={adminPath} />
       )}
@@ -3459,10 +3450,10 @@ export function WarehouseManager({
                 <div>
                   <h3 className="admin-card__title">
                     <Banknote size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                    Фактические сводки кассы и ЮМ
+                    Кассовые смены
                   </h3>
                   <div className="admin-muted" style={{ marginTop: 3, fontSize: 10 }}>
-                    Сводка не является платёжной операцией и не влияет на прибыль
+                    Клик по смене — полная сводка в модалке. Смена — снимок факта, она ничего не переводит
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -3475,218 +3466,19 @@ export function WarehouseManager({
                   <span className="admin-badge admin-badge--green">
                     <ArrowDownLeft size={10} /> Всего поступило: {fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
                   </span>
-                  <span className="admin-badge admin-badge--blue">
-                    <CreditCard size={10} /> На ЮМ: {fmt(Math.round(collectionsCardTotal * 100) / 100)} ₽
-                  </span>
                   <span className="admin-badge admin-badge--red">
                     <ArrowUpRight size={10} /> Расходы всего: {fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
                   </span>
-                  <span className="admin-badge admin-badge--blue">
-                    <CreditCard size={10} /> Расходы с ЮМ: {fmt(Math.round(collectionsCardExpenseTotal * 100) / 100)} ₽
-                  </span>
                 </div>
               </div>
-              <div className="admin-card__pad" style={{ display: "grid", gap: 12 }}>
-                <div className="admin-muted" style={{ fontSize: 12 }}>
-                  Наличная касса и карта ЮМ учитываются отдельно: по каждой видны поступления и расходы.
-                  Перенос наличных не является прибылью, а сохранение ничего не переводит и не списывает.
-                </div>
-                {collectionsSorted.length === 0 ? (
-                  <div className="admin-empty" style={{ padding: 18 }}>
-                    <p>Сводок кассы пока нет</p>
-                  </div>
-                ) : (
-                  <div className="admin-table-wrap" style={{ maxHeight: 560, overflow: "auto" }}>
-                    <table className="admin-table">
-                      <thead>
-                        <tr>
-                          <th>Дата</th>
-                          <th style={{ textAlign: "right" }}>Перенос</th>
-                          <th style={{ textAlign: "right" }}>Поступления за день</th>
-                          <th style={{ textAlign: "right" }}>Расходы</th>
-                          <th style={{ textAlign: "right" }}>Остаток</th>
-                          <th>Комментарий</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {collectionsSorted.map((collection) => {
-                          const opening = Math.round(
-                            (cashOpeningByCollectionId.get(collection.id) || 0) * 100
-                          ) / 100;
-                          const incomeBreakdown =
-                            getCashCollectionIncomeBreakdown(collection);
-                          const income = incomeBreakdown.total;
-                          const cashIncome = incomeBreakdown.cash;
-                          const cardIncome = incomeBreakdown.card;
-                          const expenseBreakdown =
-                            getCashCollectionExpenseBreakdown(collection);
-                          const expense = expenseBreakdown.total;
-                          const cashExpense = expenseBreakdown.cash;
-                          const cardExpense = expenseBreakdown.card;
-                          const closing = collection.cashAmount != null
-                            ? Math.round(collection.cashAmount * 100) / 100
-                            : Math.round((opening + cashIncome - cashExpense) * 100) / 100;
-                          const items = collection.items || [];
-                          const expenseRows = collection.expenses || [];
-                          const noAccounting = items.some((item) => item.noAccounting);
-                          const canOpen = items.length > 0 || expenseRows.length > 0;
-                          const isOpen = openCollections.has(collection.id);
-                          return (
-                            <React.Fragment key={collection.id}>
-                              <tr
-                                className={canOpen ? "wh-cc-row" : undefined}
-                                style={canOpen ? { cursor: "pointer" } : undefined}
-                                onClick={canOpen ? () => setOpenCollections((previous) => {
-                                  const next = new Set(previous);
-                                  if (next.has(collection.id)) next.delete(collection.id);
-                                  else next.add(collection.id);
-                                  return next;
-                                }) : undefined}
-                              >
-                                <td>
-                                  {canOpen && (
-                                    <ChevronRight
-                                      size={13}
-                                      style={{
-                                        verticalAlign: "middle",
-                                        marginRight: 4,
-                                        transform: isOpen ? "rotate(90deg)" : "none",
-                                      }}
-                                    />
-                                  )}
-                                  {fmtDate(collection.date)}
-                                  {noAccounting && (
-                                    <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>
-                                      старое закрытие
-                                    </span>
-                                  )}
-                                </td>
-                                <td style={{ textAlign: "right", color: "var(--adm-steel)" }}>
-                                  +{fmt(opening)} ₽
-                                  <small style={{ display: "block", color: "var(--adm-muted)" }}>не прибыль</small>
-                                </td>
-                                <td style={{ textAlign: "right", color: "var(--adm-pine)", fontWeight: 700 }}>
-                                  +{fmt(income)} ₽
-                                  <small style={{ display: "block", color: "var(--adm-muted)", fontWeight: 500 }}>
-                                    нал {fmt(cashIncome)} · ЮМ {fmt(cardIncome)}
-                                  </small>
-                                </td>
-                                <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 700 }}>
-                                  −{fmt(expense)} ₽
-                                  <small style={{ display: "block", color: "var(--adm-muted)", fontWeight: 500 }}>
-                                    нал {fmt(cashExpense)} · ЮМ {fmt(cardExpense)}
-                                  </small>
-                                </td>
-                                <td style={{ textAlign: "right", fontWeight: 800 }}>{fmt(closing)} ₽</td>
-                                <td>{collection.note || "—"}</td>
-                                <td onClick={(event) => event.stopPropagation()}>
-                                  <button
-                                    type="button"
-                                    className="admin-btn admin-btn--ghost admin-btn--sm"
-                                    disabled={collecting}
-                                    onClick={() => handleDeleteCollection(collection.id, noAccounting)}
-                                  >
-                                    <RotateCcw size={12} /> Отменить
-                                  </button>
-                                </td>
-                              </tr>
-                              {isOpen && (
-                                <tr className="wh-cc-detail-row">
-                                  <td colSpan={7}>
-                                    <div className="wh-cc-detail-grid">
-                                      <div className="wh-cc-box">
-                                        <div className="wh-cc-box__head">
-                                          <ArrowDownLeft size={13} /> Поступления за день
-                                          <b style={{ color: "var(--adm-pine)" }}>+{fmt(income)} ₽</b>
-                                        </div>
-                                        {items.length === 0 ? (
-                                          <div className="wh-cc-empty">Поступлений не было</div>
-                                        ) : items.map((item) => {
-                                          const itemAmount = Number(item.amount) || 0;
-                                          const itemCard = Math.max(
-                                            0,
-                                            Number(
-                                              item.cardAmount != null
-                                                ? item.cardAmount
-                                                : item.kind === "card"
-                                                  ? itemAmount
-                                                  : 0
-                                            ) || 0
-                                          );
-                                          const hasCard = itemCard > 0.009;
-                                          const hasCash = itemAmount - itemCard > 0.009;
-                                          return (
-                                            <div key={`${collection.id}-${item.paymentId}`} className="wh-cc-line">
-                                              <span>
-                                                ПЛ-{item.number || "—"} · {item.counterparty || ""}
-                                                <em className={`cashc-kind cashc-kind--${hasCard && !hasCash ? "card" : "cash"}`} style={{ marginLeft: 6 }}>
-                                                  {hasCard && hasCash ? "Нал + ЮМ" : hasCard ? "Карта ЮМ" : "Наличные"}
-                                                </em>
-                                              </span>
-                                              <span className="wh-cc-line__val">+{fmt(itemAmount)} ₽</span>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                      <div className="wh-cc-box">
-                                        <div className="wh-cc-box__head">
-                                          <ArrowUpRight size={13} /> Расходы за день
-                                          <b style={{ color: "var(--adm-rust)" }}>−{fmt(expense)} ₽</b>
-                                        </div>
-                                        {expenseRows.length === 0 ? (
-                                          <div className="wh-cc-empty">Расходов не было</div>
-                                        ) : expenseRows.map((row, index) => {
-                                          const isCardExpense = row.sourceKind === "card";
-                                          return (
-                                            <div key={`${collection.id}-expense-${index}`} className="wh-cc-line">
-                                              <span>
-                                                {row.title}{row.comment ? ` · ${row.comment}` : ""}
-                                                <em className={`cashc-kind cashc-kind--${isCardExpense ? "card" : "cash"}`} style={{ marginLeft: 6 }}>
-                                                  {isCardExpense ? "Карта ЮМ" : "Наличные"}
-                                                </em>
-                                              </span>
-                                              <span className="wh-cc-line__val" style={{ color: isCardExpense ? "var(--adm-steel)" : "var(--adm-rust)" }}>
-                                                −{fmt(row.amount)} ₽
-                                              </span>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                      <div className="wh-cc-box">
-                                        <div className="wh-cc-box__head">Разбивка двух касс</div>
-                                        <div className="wh-cc-line"><span><History size={11} /> Перенос наличных</span><b>+{fmt(opening)} ₽</b></div>
-                                        <div className="wh-cc-line"><span><Banknote size={11} /> Поступило наличными</span><b>+{fmt(cashIncome)} ₽</b></div>
-                                        <div className="wh-cc-line"><span><ArrowUpRight size={11} /> Расходы наличными</span><b>−{fmt(cashExpense)} ₽</b></div>
-                                        <div className="wh-cc-line"><span><CreditCard size={11} /> Поступило на ЮМ</span><b style={{ color: "var(--adm-steel)" }}>+{fmt(cardIncome)} ₽</b></div>
-                                        <div className="wh-cc-line"><span><CreditCard size={11} /> Расходы с ЮМ</span><b style={{ color: "var(--adm-steel)" }}>−{fmt(cardExpense)} ₽</b></div>
-                                        <div className="wh-cc-total">Остаток наличных: <b>{fmt(closing)} ₽</b></div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          );
-                        })}
-                        <tr className="wh-cashcollect__total">
-                          <td style={{ fontWeight: 800 }}>Итого за период</td>
-                          <td />
-                          <td style={{ textAlign: "right", color: "var(--adm-pine)", fontWeight: 800 }}>
-                            +{fmt(Math.round(collectionsIncomeTotal * 100) / 100)} ₽
-                          </td>
-                          <td style={{ textAlign: "right", color: "var(--adm-rust)", fontWeight: 800 }}>
-                            −{fmt(Math.round(collectionsExpenseTotal * 100) / 100)} ₽
-                          </td>
-                          <td style={{ textAlign: "right", fontWeight: 800 }}>
-                            {fmt(Math.round(bankSummary.cashBalance * 100) / 100)} ₽
-                          </td>
-                          <td colSpan={2} />
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+              <div className="admin-card__pad">
+                <CashSessions
+                  collections={collectionsSorted}
+                  openingById={cashOpeningByCollectionId}
+                  busy={collecting}
+                  onDelete={handleDeleteCollection}
+                  adminPath={adminPath}
+                />
               </div>
             </div>
             </>

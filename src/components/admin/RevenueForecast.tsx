@@ -1,29 +1,22 @@
 // =========================================================
 // FILE: src/components/admin/RevenueForecast.tsx
-// Автоматический прогноз выручки за месяц по контрагентам.
-// Виден в Учёт → «Прогноз» и свёрнуто на дашборде.
+// Компактная карточка прогноза выручки для дашборда.
+//
+// Полноценный расчёт живёт во вкладке «Учёт → План»
+// (SalesPlan + computeProfitPlan): план на произвольный
+// период с прибылью по контрагентам. Здесь — свёрнутая
+// сводка «на этот месяц», чтобы на главной видеть цифру
+// и топ-5 контрагентов, не открывая учёт.
 // =========================================================
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import {
-  TrendingUp,
-  Wallet,
-  UsersRound,
-  Receipt,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  Info,
-  ArrowRight,
-} from "lucide-react";
+import { TrendingUp, Wallet, UsersRound, Receipt, ArrowRight, Info } from "lucide-react";
 import type { CustomerDeal } from "@/lib/warehouse-shared";
 import {
   computeRevenueForecast,
-  monthKeyOffset,
-  monthLabelOf,
   type ForecastCounterpartyRow,
 } from "@/lib/revenue-forecast";
 
@@ -60,6 +53,10 @@ function fmtDate(raw: string | null): string {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
+/**
+ * Полная таблица прогноза по контрагентам (используется на дашборде
+ * в раскрывающейся секции «Прогноз выручки»).
+ */
 export function RevenueForecast({
   deals,
   adminPath,
@@ -70,25 +67,8 @@ export function RevenueForecast({
   /** Компактный режим для дашборда: без выбора месяца и поиска. */
   compact?: boolean;
 }) {
-  const [monthOffset, setMonthOffset] = useState(0);
-  const [query, setQuery] = useState("");
-
-  const forecast = useMemo(
-    () => computeRevenueForecast(deals, monthOffset, 6),
-    [deals, monthOffset]
-  );
-
-  const rows = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("ru-RU");
-    if (!q) return forecast.rows;
-    return forecast.rows.filter(
-      (r) =>
-        r.displayName.toLocaleLowerCase("ru-RU").includes(q) ||
-        r.counterparty.includes(q)
-    );
-  }, [forecast.rows, query]);
-
-  const visibleRows = compact ? rows.slice(0, 6) : rows;
+  const forecast = useMemo(() => computeRevenueForecast(deals, 0, 6), [deals]);
+  const visibleRows = compact ? forecast.rows.slice(0, 6) : forecast.rows;
 
   if (deals.length === 0) {
     return (
@@ -107,50 +87,6 @@ export function RevenueForecast({
 
   return (
     <div className="rf">
-      {!compact && (
-        <div className="rf-toolbar">
-          <div className="rf-month-nav">
-            <button
-              type="button"
-              className="admin-btn admin-btn--ghost admin-btn--sm"
-              onClick={() => setMonthOffset((v) => Math.max(-11, v - 1))}
-              aria-label="Предыдущий месяц"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <span className="rf-month-label">{forecast.monthLabel}</span>
-            <button
-              type="button"
-              className="admin-btn admin-btn--ghost admin-btn--sm"
-              onClick={() => setMonthOffset((v) => Math.min(11, v + 1))}
-              aria-label="Следующий месяц"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-          <div style={{ position: "relative", flex: 1, maxWidth: 320 }}>
-            <Search
-              size={15}
-              style={{
-                position: "absolute",
-                left: 10,
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "var(--adm-sand)",
-              }}
-            />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по контрагенту..."
-              className="admin-input"
-              style={{ paddingLeft: 32 }}
-            />
-          </div>
-        </div>
-      )}
-
       <div className="rf-summary">
         <div className="rf-summary__main">
           <span className="rf-summary__label">Прогноз выручки · {forecast.monthLabel}</span>
@@ -228,21 +164,12 @@ export function RevenueForecast({
                   </tr>
                 );
               })}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={8}>
-                    <div className="admin-empty" style={{ padding: 20 }}>
-                      <p>Ничего не найдено по запросу «{query}»</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
             </tbody>
-            {rows.length > 0 && (
+            {forecast.rows.length > 0 && (
               <tfoot>
                 <tr>
-                  <td colSpan={6}>Итого по {rows.length} {rows.length === 1 ? "контрагенту" : "контрагентам"}</td>
-                  <td className="rf-num rf-forecast">{fmtMoney(rows.reduce((s, r) => s + r.forecast, 0))}</td>
+                  <td colSpan={6}>Итого по {visibleRows.length} {visibleRows.length === 1 ? "контрагенту" : "контрагентам"}</td>
+                  <td className="rf-num rf-forecast">{fmtMoney(forecast.rows.reduce((s, r) => s + r.forecast, 0))}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -253,7 +180,7 @@ export function RevenueForecast({
 
       {compact && forecast.rows.length > 6 && (
         <Link
-          href={`/${adminPath}/warehouse?tab=forecast`}
+          href={`/${adminPath}/warehouse?tab=plan`}
           className="admin-btn admin-btn--ghost admin-btn--sm"
           prefetch={false}
           style={{ marginTop: 10 }}
@@ -266,8 +193,7 @@ export function RevenueForecast({
         <Info size={13} />
         <span>
           Прогноз приблизительный — автоматический план на основе заказов за последние 6 месяцев.
-          «Спящие» контрагенты (не заказывали более 3 месяцев) учитываются только фактически оформленным.
-          Архивные заказы из массовой загрузки участвуют в расчёте наравне с обычными.
+          Полноценный план на произвольный период с прибылью — во вкладке «План».
         </span>
       </div>
     </div>
@@ -310,18 +236,11 @@ export function RevenueForecastSummary({
       {forecast.rows.length > top.length && (
         <div className="rf-top__more">
           + ещё {forecast.rows.length - top.length} —{" "}
-          <Link href={`/${adminPath}/warehouse?tab=forecast`} prefetch={false}>
-            открыть прогноз →
+          <Link href={`/${adminPath}/warehouse?tab=plan`} prefetch={false}>
+            открыть план →
           </Link>
         </div>
       )}
     </div>
   );
-}
-
-export function monthNavOptions() {
-  return [-1, 0, 1].map((offset) => ({
-    value: offset,
-    label: monthLabelOf(monthKeyOffset(offset)),
-  }));
 }

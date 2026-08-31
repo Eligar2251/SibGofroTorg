@@ -80,7 +80,9 @@ interface Props {
 }
 
 /** Режим печати. */
-type PrintMode = "sheet" | "tape";
+type PrintMode = "sheet" | "tape" | "single";
+/** Высота «одиночной» этикетки-полоски, мм (5–7 см). */
+type SingleHeight = 50 | 60 | 70;
 /** Размер этикетки на листе A4 (квадратные). */
 type SheetSize = "4x4" | "5x5" | "6x6";
 /** Какой код печатать на этикетке. */
@@ -159,6 +161,8 @@ function pageCss(mode: PrintMode): string {
   return mode === "tape"
     ? "@media print { @page { size: 60mm 40mm; margin: 0; } }"
     : "@media print { @page { size: A4; margin: 8mm; } }";
+  // «single» печатается на обычном листе A4 (как sheet) — одна
+  // полоска на страницу, разрывы страниц по CSS (.qrprint__single).
 }
 
 export function PrintLabelsClient({
@@ -171,6 +175,12 @@ export function PrintLabelsClient({
   const [q, setQ] = useState<string>(initialQ);
   const [mode, setMode] = useState<PrintMode>("sheet");
   const [size, setSize] = useState<SheetSize>("4x4");
+  // ── Режим «одна на лист» (wide strip 194×N мм) ──
+  // Одна этикетка = одна страница A4. Внутри — только то, что
+  // включено тумблерами: название обязательно, цена/размеры/штрихкод —
+  // по выбору. Высота 5–7 см, чтобы «всё умещалось».
+  const [singleHeight, setSingleHeight] = useState<SingleHeight>(60);
+  const [showBarcode, setShowBarcode] = useState(true);
   // Какой код печатать. По умолчанию — обычный штрихкод EAN-13:
   // сканируется надёжнее и быстрее QR (в т.ч. USB-сканерами,
   // которые QR не читают), и именно его формат хранится в БД.
@@ -245,7 +255,7 @@ export function PrintLabelsClient({
       // Ждём шрифты и все изображения именно из печатной области.
       if (document.fonts?.ready) await document.fonts.ready;
       const root = document.querySelector<HTMLElement>(
-        mode === "tape" ? ".qrprint__tape" : ".qrprint__sheet"
+        mode === "tape" ? ".qrprint__tape" : mode === "single" ? ".qrprint__single" : ".qrprint__sheet"
       );
       const images = Array.from(root?.querySelectorAll("img") || []);
       await Promise.all(
@@ -356,6 +366,16 @@ export function PrintLabelsClient({
             >
               <ScanLine size={12} /> Этикетка 40×60
             </button>
+            <button
+              type="button"
+              onClick={() => setMode("single")}
+              className={`qrprint__seg-btn${
+                mode === "single" ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="Одна широкая этикетка на страницу A4 (19 см × 5–7 см): название и по выбору цена, размеры и штрихкод"
+            >
+              <Ruler size={12} /> Одна на лист
+            </button>
             <span className="qrprint__seg-divider" />
             {/* ── Какой код печатать: обычный штрихкод (EAN-13,
                  по умолчанию — сканируется надёжнее) или QR ── */}
@@ -398,6 +418,25 @@ export function PrintLabelsClient({
                 ))}
               </>
             )}
+            {mode === "single" && (
+              <>
+                <span className="qrprint__seg-divider" />
+                <span className="qrprint__seg-label">Высота:</span>
+                {([50, 60, 70] as SingleHeight[]).map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setSingleHeight(h)}
+                    className={`qrprint__seg-btn${
+                      singleHeight === h ? " qrprint__seg-btn--active" : ""
+                    }`}
+                    title={`Этикетка 194×${h} мм`}
+                  >
+                    {h / 10} см
+                  </button>
+                ))}
+              </>
+            )}
           </div>
           {/* ── Состав этикетки: что печатать ПОМИМО QR ──
               Три независимых тумблера. Работают для обоих режимов
@@ -434,6 +473,20 @@ export function PrintLabelsClient({
             >
               <Ruler size={12} /> Размеры
             </button>
+            {/* Штрихкод выключается только в режиме «одна на лист»:
+                на ленте/в сетке код — сама суть этикетки. */}
+            {mode === "single" && (
+              <button
+                type="button"
+                onClick={() => setShowBarcode((v) => !v)}
+                className={`qrprint__seg-btn${
+                  showBarcode ? " qrprint__seg-btn--active" : ""
+                }`}
+                title="Штрихкод EAN-13 на этикетке (в режиме «одна на лист»)"
+              >
+                <Barcode size={12} /> Штрихкод
+              </button>
+            )}
           </div>
           {/* ── Партия от N шт: строка «Партия от N шт» на каждой
               этикетке. Пресеты под типовые ценники + своё число.
@@ -518,6 +571,19 @@ export function PrintLabelsClient({
                 карточке товара: перепечатка этикетки не меняет сам код.
               </>
             )}
+          </div>
+        )}
+        {mode === "single" && (
+          <div className="qrprint__hint">
+            <strong>
+              Одна широкая этикетка на страницу A4: 19×
+              {singleHeight / 10} см.
+            </strong>{" "}
+            Слева название, по выбору — размеры, строка партии, цена и
+            штрихкод EAN-13 (включается тумблером «На этикетке»). Каждая
+            этикетка печатается отдельной страницей с полями листа —
+            режется по краям. В диалоге печати: бумага <strong>A4</strong>,
+            масштаб <strong>100%</strong>, колонтитулы выкл.
           </div>
         )}
       </div>
@@ -724,6 +790,74 @@ export function PrintLabelsClient({
                 </div>
               )}
             </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/*
+       * ── «Одна на лист» (wide strip) ──
+       * Одна широкая этикетка на страницу A4: 194 мм шириной
+       * (рабочая зона A4 с полями 8 мм) × 50/60/70 мм высотой.
+       * Горизонтальная раскладка в одну строку: слева название
+       * (и под ним размеры/партия), справа цена и штрихкод —
+       * всё, что включено тумблерами «На этикетке».
+       * Каждая этикетка — отдельная страница (break-after: page),
+       * поэтому резать можно прямо по краям листа/ножницами.
+       */}
+      {mode === "single" && (
+        <div
+          className="qrprint__single"
+          style={{
+            ["--single-h" as string]: `${singleHeight}mm`,
+          } as React.CSSProperties}
+        >
+          {selectedProducts.map((p) => {
+            const dims = showSizes ? formatDims(p) : null;
+            const barcodeHeight = Math.min(singleHeight - 16, 26);
+            return (
+              <div key={p.id} className="qrprint__single-label">
+                {/* Левая часть: название + (размеры / партия) */}
+                <div className="qrprint__single-main">
+                  {showName && (
+                    <div className="qrprint__single-name" title={p.name}>
+                      {p.name}
+                    </div>
+                  )}
+                  {(dims || batch != null) && (
+                    <div className="qrprint__single-meta">
+                      {dims && <span>{dims}</span>}
+                      {dims && batch != null && <span className="qrprint__single-dot">·</span>}
+                      {batch != null && (
+                        <span className="qrprint__single-batch">
+                          {`Партия от ${batch} шт`}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Цена */}
+                {showPrice && p.price != null && (
+                  <div className="qrprint__single-price">
+                    {`${fmt(p.price)} ₽`}
+                  </div>
+                )}
+
+                {/* Штрихкод EAN-13 (в этом режиме выключается) */}
+                {showBarcode && (
+                  <div className="qrprint__single-code">
+                    <img
+                      src={`/api/admin/qr/barcode/${p.id}?format=svg&height=${barcodeHeight}`}
+                      alt={`Штрихкод ${p.barcode}`}
+                      className="qrprint__single-bc"
+                    />
+                    <div className="qrprint__single-ean">
+                      {formatBarcode(p.barcode)}
+                    </div>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

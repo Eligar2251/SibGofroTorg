@@ -5416,6 +5416,320 @@ body:has(.admin-modal-overlay) {
 .cash-carryover-hero b { color: #fff; }
 @media (max-width: 700px) { .cash-carryover__stats { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 430px) { .cash-carryover__stats { grid-template-columns: 1fr; } }
+
+/* ══════════════════════════════════════
+   КАССОВЫЕ СМЕНЫ (Учёт → Банк → «Касса»)
+   Карточки в стиле мобильного приложения:
+   клик по карточке → модалка со всей информацией.
+   ══════════════════════════════════════ */
+.cs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.cs-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.cs-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--adm-pine-line);
+  box-shadow: 0 6px 18px rgba(23, 66, 54, 0.10);
+}
+.cs-card:active { transform: translateY(0); }
+.cs-card--neg { border-color: var(--adm-rust-line); }
+
+.cs-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cs-card__date {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--adm-ink);
+  line-height: 1.2;
+}
+.cs-card__lines {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--adm-sand);
+  white-space: nowrap;
+}
+
+.cs-card__closing {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--adm-pine-pale);
+  border: 1px solid var(--adm-pine-line);
+}
+.cs-card--neg .cs-card__closing { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
+.cs-card__closing span {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-pine);
+}
+.cs-card--neg .cs-card__closing span { color: var(--adm-rust); }
+.cs-card__closing strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--adm-pine);
+  font-variant-numeric: tabular-nums;
+}
+.cs-card--neg .cs-card__closing strong { color: var(--adm-rust); }
+
+/* Мелкие плитки-показатели внутри карточки. */
+.cs-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.cs-tile {
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  background: var(--adm-paper-warm);
+  border: 1px solid var(--adm-sand-pale);
+  border-radius: 9px;
+  min-width: 0;
+}
+.cs-tile span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--adm-sand);
+  white-space: nowrap;
+}
+.cs-tile b {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--adm-ink);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-in { color: var(--adm-pine) !important; }
+.cs-out { color: var(--adm-rust) !important; }
+.cs-ym { color: var(--adm-steel) !important; }
+
+.cs-card__note {
+  font-size: 11px;
+  color: var(--adm-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cs-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px dashed var(--adm-sand-pale);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--adm-pine);
+}
+
+/* ── Модалка смены ── */
+.cs-modal { max-height: 90vh; display: flex; flex-direction: column; }
+.cs-modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cs-modal__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--adm-pine);
+}
+.cs-modal__body {
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+/* Четыре большие плитки в шапке модалки. */
+.cs-tiles--big { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.cs-bigtile {
+  display: grid;
+  gap: 3px;
+  padding: 11px 12px;
+  background: var(--adm-paper-warm);
+  border: 1px solid var(--adm-sand-pale);
+  border-radius: 11px;
+  min-width: 0;
+}
+.cs-bigtile--neg { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
+.cs-bigtile__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--adm-sand);
+}
+.cs-bigtile b {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--adm-ink);
+  font-variant-numeric: tabular-nums;
+}
+.cs-bigtile small { font-size: 10px; color: var(--adm-muted); }
+
+/* Секции модалки (поступления / расходы / разбивка). */
+.cs-section {
+  border: 1px solid var(--adm-border);
+  border-radius: 11px;
+  overflow: hidden;
+  background: var(--adm-card);
+}
+.cs-section__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-steel);
+  background: var(--adm-paper);
+  border-bottom: 1px solid var(--adm-border);
+}
+.cs-section__title b { font-size: 13px; text-transform: none; letter-spacing: 0; }
+.cs-section__empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--adm-muted);
+}
+.cs-list { display: grid; }
+.cs-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--adm-sand-pale);
+  min-width: 0;
+}
+.cs-line:last-child { border-bottom: none; }
+.cs-line--total {
+  background: var(--adm-paper-warm);
+  font-weight: 800;
+}
+.cs-line__main {
+  display: grid;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cs-line__paynum {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--adm-indigo);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.cs-line__paynum:hover { text-decoration: underline; }
+.cs-line__name {
+  font-size: 12.5px;
+  color: var(--adm-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-line__name small { color: var(--adm-muted); font-weight: 400; }
+.cs-line__val {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Чипы способа (наличные / ЮМ). */
+.cs-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.cs-chip--cash { color: var(--adm-pine); background: var(--adm-pine-pale); border-color: var(--adm-pine-line); }
+.cs-chip--card { color: var(--adm-steel); background: var(--adm-steel-pale); border-color: color-mix(in srgb, var(--adm-steel) 35%, transparent); }
+.cs-chip--both { color: var(--adm-kraft); background: var(--adm-kraft-pale); border-color: color-mix(in srgb, var(--adm-kraft) 40%, transparent); }
+
+.cs-note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--adm-kraft-pale);
+  border: 1px solid var(--adm-kraft-line);
+}
+.cs-note span {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-kraft);
+  margin-bottom: 3px;
+}
+.cs-note p { margin: 0; font-size: 12.5px; color: var(--adm-ink); line-height: 1.45; }
+
+.cs-modal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  margin-top: 2px;
+  border-top: 1px solid var(--adm-border);
+}
+
+@media (max-width: 700px) {
+  .cs-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .cs-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cs-tiles--big { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 430px) {
+  .cs-tiles, .cs-tiles--big { grid-template-columns: 1fr; }
+}
 .wh-cashcollect__action {
   display: flex;
   align-items: center;
@@ -9208,12 +9522,15 @@ body:has(.admin-modal-overlay) {
   body.qrprint-mode .qrprint__sheet,
   body.qrprint-mode .qrprint__sheet *,
   body.qrprint-mode .qrprint__tape,
-  body.qrprint-mode .qrprint__tape * {
+  body.qrprint-mode .qrprint__tape *,
+  body.qrprint-mode .qrprint__single,
+  body.qrprint-mode .qrprint__single * {
     visibility: visible !important;
     opacity: 1 !important;
   }
   body.qrprint-mode .qrprint__sheet,
-  body.qrprint-mode .qrprint__tape {
+  body.qrprint-mode .qrprint__tape,
+  body.qrprint-mode .qrprint__single {
     position: absolute !important;
     inset: 0 auto auto 0 !important;
   }
@@ -9258,6 +9575,139 @@ body:has(.admin-modal-overlay) {
   body.qrprint-mode .qrprint__tape-price,
   body.qrprint-mode .qrprint__tape-batch,
   body.qrprint-mode .qrprint__tape-dims {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+/* ── Печать «одна на лист» (wide strip 194×50/60/70 мм) ──
+   Одна этикетка = одна страница A4. Горизонтальная полоса:
+     • @page = A4 с полями 8 мм (инъектируется из PrintLabelsClient,
+       как для сетки — 194 мм рабочей ширины);
+     • этикетка занимает всю ширину страницы, break-after: page
+       отправляет следующую на новую (последняя — без разрыва);
+     • высота задаётся переменной --single-h (50/60/70 мм),
+       поэтому все размеры внутри — от неё. */
+
+.qrprint__single {
+  display: block;
+  width: 194mm;
+  background: #fff;
+}
+
+.qrprint__single-label {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8mm;
+  width: 100%;
+  height: var(--single-h, 60mm);
+  padding: 4mm 6mm;
+  border: 1px dashed var(--adm-sand);
+  border-radius: 3px;
+  background: #fff;
+  overflow: hidden;
+}
+.qrprint__single-label:last-child {
+  border-bottom: 1px solid var(--adm-border);
+}
+
+/* Левый блок: название (до 2 строк) + meta (размеры / партия). */
+.qrprint__single-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2mm;
+  align-content: center;
+}
+.qrprint__single-name {
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 800;
+  font-size: 15pt;
+  line-height: 1.08;
+  color: #000;
+  letter-spacing: 0.01em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.qrprint__single-meta {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9.5pt;
+  font-weight: 700;
+  color: #000;
+  white-space: nowrap;
+}
+.qrprint__single-dot { color: #666; }
+.qrprint__single-batch {
+  font-weight: 800;
+  color: #000;
+  padding: 0.6mm 2mm;
+  border: 0.5mm solid #000;
+  border-radius: 1mm;
+}
+
+/* Цена — крупно, справа от названия. */
+.qrprint__single-price {
+  flex-shrink: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 800;
+  font-size: 21pt;
+  line-height: 1;
+  color: #000;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* Штрихкод EAN-13 справа: SVG + цифры. */
+.qrprint__single-code {
+  flex-shrink: 0;
+  display: grid;
+  justify-items: center;
+  gap: 1mm;
+}
+.qrprint__single-bc {
+  display: block;
+  height: calc(var(--single-h, 60mm) - 16mm);
+  max-height: 26mm;
+  width: auto;
+}
+.qrprint__single-ean {
+  font-family: "Courier New", ui-monospace, monospace;
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: #000;
+  letter-spacing: 0.22em;
+}
+
+@media print {
+  body.qrprint-mode .qrprint__single {
+    display: block !important;
+    width: 194mm !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+  body.qrprint-mode .qrprint__single-label {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: always;
+    break-after: page;
+    border: 1px solid #000 !important;
+    border-radius: 0 !important;
+  }
+  body.qrprint-mode .qrprint__single-label:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  body.qrprint-mode .qrprint__single-label,
+  body.qrprint-mode .qrprint__single-name,
+  body.qrprint-mode .qrprint__single-price,
+  body.qrprint-mode .qrprint__single-bc,
+  body.qrprint-mode .qrprint__single-ean {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
@@ -11788,6 +12238,55 @@ html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
 @media (max-width: 1023px) {
   .admin-plans-shortcut { top: 112px; right: 118px; }
 }
+/* ── Индикатор состояния realtime-канала (точка + подпись) ── */
+.admin-realtime-status {
+  position: fixed;
+  top: 26px;
+  right: 172px;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  box-shadow: var(--adm-sh-md);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--adm-muted);
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+@media (min-width: 1024px) {
+  .admin-realtime-status { right: 180px; }
+}
+@media (max-width: 1023px) {
+  /* На мобильных прячем подпись, оставляем только точку: колокольчики
+     и так смещены вниз, лишняя ширина мешает. */
+  .admin-realtime-status {
+    top: 120px;
+    right: 170px;
+    padding: 6px;
+  }
+  .admin-realtime-status__label { display: none; }
+}
+.admin-realtime-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+}
+.admin-realtime-status__dot--pulse {
+  animation: sgtRealtimePulse 1.1s ease-in-out infinite;
+}
+@keyframes sgtRealtimePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+
 .admin-plans-shortcut__btn--active {
   color: var(--adm-kraft);
   border-color: var(--adm-kraft-line);
@@ -14121,6 +14620,44 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   flex-wrap: wrap;
 }
 
+/* ── Выбор периода («от» — «до») ──
+   Два степпера месяцев + пресеты длительности. Старая вкладка
+   знала только один месяц, теперь период может быть любым. */
+.sp-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sp-period__label {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-steel);
+}
+.sp-period__dash {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--adm-sand);
+  padding: 0 2px;
+}
+.sp-period__presets {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.sp-preset--on {
+  background: var(--adm-navy) !important;
+  color: #fff !important;
+  border-color: var(--adm-navy) !important;
+}
+
+/* Главная цифра плана — прибыль за период (крупнее выручки). */
+.sp-profit {
+  font-size: 34px;
+}
+
 .sp-summary {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
@@ -14157,7 +14694,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 }
 .sp-summary__stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -14214,7 +14751,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 
 @media (max-width: 900px) {
   .sp-summary { grid-template-columns: 1fr; }
-  .sp-summary__stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sp-summary__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
   .sp-summary__stats { grid-template-columns: 1fr; }
