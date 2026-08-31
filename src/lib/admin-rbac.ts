@@ -141,6 +141,9 @@ export function canAccessAdminApi(
   // «в такой-то таблице изменилась запись», а набор таблиц и превью
   // фильтруются по роли внутри самого маршрута.
   if (pathname === "/api/admin/events") return method.toUpperCase() === "GET";
+  // Статус того же канала (диагностика: «почему реалтайм молчит») —
+  // только чтение, тоже доступен всем ролям.
+  if (pathname === "/api/admin/events/status") return method.toUpperCase() === "GET";
 
   // Макулатурщику доступны только API отдельного учёта макулатуры.
   if (role === "wastepaper") {

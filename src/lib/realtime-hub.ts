@@ -118,7 +118,18 @@ interface Hub {
   status: HubStatus;
   lastError: string | null;
   closeTimer: ReturnType<typeof setTimeout> | null;
+  connectWatchdog: ReturnType<typeof setTimeout> | null;
+  /** Когда канал перешёл в "connecting" — для watchdog. */
+  connectingSince: number | null;
 }
+
+/**
+ * Если канал висит в "connecting" дольше этого — рвём и переподключаемся.
+ * Защита от «зависшего» WebSocket-handshake (self-hosted Realtime, прокси
+ * без поддержки WS и т.п.): без watchdog статус навсегда застревал бы в
+ * "connecting", а клиент — в бесконечном polling-фоллбэке.
+ */
+const CONNECT_WATCHDOG_MS = 20_000;
 
 // Singleton переживает HMR в dev — иначе на каждый пересборке копился бы
 // новый WebSocket к Supabase.
@@ -135,6 +146,8 @@ function getHub(): Hub {
       status: "idle",
       lastError: null,
       closeTimer: null,
+      connectWatchdog: null,
+      connectingSince: null,
     };
     return globalRef.__sgtRealtimeHub;
   }
@@ -142,7 +155,18 @@ function getHub(): Hub {
   // быть создан прошлой версией модуля — дополняем недостающие поля.
   if (!existing.listeners) existing.listeners = new Set();
   if (!existing.statusListeners) existing.statusListeners = new Set();
+  if (existing.connectWatchdog === undefined) existing.connectWatchdog = null;
+  if (existing.connectingSince === undefined) existing.connectingSince = null;
   return existing;
+}
+
+function clearWatchdog() {
+  const hub = getHub();
+  if (hub.connectWatchdog) {
+    clearTimeout(hub.connectWatchdog);
+    hub.connectWatchdog = null;
+  }
+  hub.connectingSince = null;
 }
 
 function buildPreview(table: string, record: any): Record<string, unknown> | undefined {
@@ -158,7 +182,19 @@ function buildPreview(table: string, record: any): Record<string, unknown> | und
 function setStatus(next: HubStatus) {
   const hub = getHub();
   if (hub.status === next) return;
+  const prev = hub.status;
   hub.status = next;
+  if (next !== "connecting") clearWatchdog();
+  if (next !== prev) {
+    // Лёгкий лог в консоль сервера: на VPS это единственный способ быстро
+    // понять, поднялся ли канал, и почему нет, если «реалтайм не работает».
+    try {
+      if (next === "connected") console.log("[realtime-hub] канал к Supabase подключён");
+      else if (next === "error") console.warn("[realtime-hub] канал к Supabase недоступен:", hub.lastError);
+    } catch {
+      /* ignore */
+    }
+  }
   for (const listener of hub.statusListeners) {
     try {
       listener(next);
@@ -203,6 +239,18 @@ function connect() {
 
   hub.lastError = null;
   setStatus("connecting");
+  hub.connectingSince = Date.now();
+  clearWatchdog();
+  hub.connectWatchdog = setTimeout(() => {
+    const current = getHub();
+    current.connectWatchdog = null;
+    if (current.status !== "connecting") return;
+    console.warn(
+      "[realtime-hub] подключение зависло > " + CONNECT_WATCHDOG_MS / 1000 + "s — переподключаемся"
+    );
+    teardown();
+    if (current.listeners.size > 0) connect();
+  }, CONNECT_WATCHDOG_MS);
 
   try {
     hub.client = createClient(url, key, {
@@ -237,6 +285,7 @@ function connect() {
         setStatus("connected");
       } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
         hub.lastError = err?.message || status;
+        console.warn(`[realtime-hub] ${status}:`, hub.lastError);
         setStatus("error");
         // Переподключение: рвём канал и пробуем заново, если слушатели есть.
         setTimeout(() => {

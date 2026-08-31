@@ -32,6 +32,7 @@ import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
+import { RealtimeStatusIndicator } from "./RealtimeStatusIndicator";
 import {
   canAccessAdminPage,
   type AdminRole,
@@ -420,6 +421,10 @@ export function AdminShell({
       )}
 
       <div className="admin-content">
+        {/* Индикатор состояния realtime-канала: зелёный = данные живые,
+            красный = realtime недоступен, обновляем по таймеру. */}
+        {role && <RealtimeStatusIndicator />}
+
         {/* Три кружка справа сверху: планы поставок · новые заявки ·
             срочные уведомления. Макулатурщику и юристу недоступны. */}
         {role && role !== "lawyer" && role !== "wastepaper" && (
