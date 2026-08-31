@@ -1,7 +1,8 @@
 // =========================================================
 // FILE: src/components/admin/duty-schedule/DutyScheduleAdmin.tsx
 // Табель дежурств охраны: генерация на месяц, ручное редактирование,
-// печать и перенос начисленной зарплаты в раздел «Зарплаты».
+// печать и блок «Зарплата»: день выплаты + сумма по каждому охраннику
+// и перенос в раздел «Зарплаты» за выбранный зарплатный месяц.
 // =========================================================
 
 "use client";
@@ -21,7 +22,6 @@ import { ScheduleTable } from "./ScheduleTable";
 import { EmployeeManagerModal } from "./EmployeeManagerModal";
 import { DutySchedulePrint } from "./DutySchedulePrint";
 import { MONTHS_RU, daysInMonth } from "./scheduleGenerator";
-import { PayrollPayload, ExistingSalaryTransfer } from "./types";
 import "./DutySchedule.css";
 
 interface Props {
@@ -30,49 +30,55 @@ interface Props {
   companyPhone?: string;
   companyAddress?: string;
   /** Зарплаты, уже перенесённые из табеля (для защиты от дублей). */
-  existingTransfers?: ExistingSalaryTransfer[];
-  /**
-   * Вызывается при подтверждении «Перенести в зарплату». По умолчанию
-   * создаёт записи зарплаты через API админки (по одной на сотрудника).
-   */
-  onTransferToPayroll?: (payload: PayrollPayload) => Promise<void> | void;
+  existingTransfers?: { periodMonth: string }[];
 }
 
-/** Ключ месяца YYYY-MM (совпадает с тегом [Период:YYYY-MM] в ЗП). */
+/** Ключ месяца YYYY-MM. */
 function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
-/** Последний день месяца — дата начислений. */
+/** Последний день месяца. */
 function lastDayOfMonth(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(
     daysInMonth(year, month)
   ).padStart(2, "0")}`;
 }
 
-/** Стандартная реализация переноса: POST в API зарплат админки. */
+/** Строка «ДД.ММ.ГГГГ» для отображения даты выплаты. */
+function fmtDate(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
+}
+
+/** Одна запись переноса: фамилия + день выплаты + сумма. */
+interface TransferItem {
+  employeeId: string;
+  employeeName: string;
+  /** 'YYYY-MM-DD' — день выплаты (если пользователь не указал —
+   *  последний день зарплатного месяца). */
+  date: string;
+  amount: number;
+}
+
+/** Стандартная реализация переноса: POST в API зарплат админки
+ *  (по одной записи на охранника, без отметки оплаты). */
 async function defaultTransferToPayroll(
-  payload: PayrollPayload
+  payPeriodKey: string,
+  items: TransferItem[]
 ): Promise<void> {
-  const period = monthKey(payload.year, payload.month);
-  const date = lastDayOfMonth(payload.year, payload.month);
-  // Сдвиг: часы взяты из календарного месяца, период — месяц зарплаты.
-  const calPart =
-    payload.calYear && payload.calMonth
-      ? ` (календарь: ${MONTHS_RU[payload.calMonth - 1].toLowerCase()} ${payload.calYear})`
-      : "";
-  for (const item of payload.items) {
-    if (item.totalHours <= 0 || item.amount <= 0) continue;
+  for (const item of items) {
+    if (item.amount <= 0) continue;
     const res = await fetch("/api/admin/warehouse/salaries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         employeeName: item.employeeName,
         amount: item.amount,
-        date,
+        date: item.date,
         source: "bank",
         isPaid: false,
-        comment: `Табель охраны — дежурства [Период:${period}]${calPart}`,
+        comment: `Табель охраны — дежурства [Период:${payPeriodKey}]`,
       }),
     });
     if (!res.ok) {
@@ -88,16 +94,11 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   companyPhone,
   companyAddress,
   existingTransfers = [],
-  onTransferToPayroll,
 }) => {
   const router = useRouter();
   const {
     year,
     month,
-    calYear,
-    calMonth,
-    payOffset,
-    setPayOffset,
     goToPrevMonth,
     goToNextMonth,
     employees,
@@ -110,6 +111,8 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     clearCell,
     amountOverrides,
     setAmountOverride,
+    setPayPlan,
+    payPlansFor,
     payroll,
     message,
     setMessage,
@@ -122,20 +125,39 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   const [transferring, setTransferring] = useState(false);
   const [transferError, setTransferError] = useState("");
 
+  // ── Зарплатный месяц: выбирается отдельно, может НЕ совпадать
+  //    с месяцем табеля (например, табель за сентябрь — выплата
+  //    за октябрь). ──
+  const [payYear, setPayYear] = useState(initialYear ?? year);
+  const [payMonth, setPayMonth] = useState(initialMonth ?? month);
+  const payPeriodKey = monthKey(payYear, payMonth);
+  const payPlans = payPlansFor(payPeriodKey);
+  const payPeriodLabel = `${MONTHS_RU[payMonth - 1]} ${payYear}`;
+
   const rotatingEmployees = employees.filter(
     (e) => e.role === "rotating" && e.active
   );
 
-  const period = monthKey(year, month);
   const alreadyTransferred = existingTransfers.some(
-    (t) => t.periodMonth === period
+    (t) => t.periodMonth === payPeriodKey
   );
 
-  // Подпись о сдвиге: «з/п сентябрь — смены августа».
-  const offsetNote =
-    payOffset > 0
-      ? `смены: ${MONTHS_RU[calMonth - 1].toLowerCase()} ${calYear} (сдвиг ${payOffset} ${payOffset === 1 ? "месяц" : "мес."})`
-      : null;
+  // Итоговые строки блока «Зарплата»: сумма — ручная (для выбранного
+  // зарплатного месяца), если не задана, то расчёт по табелю
+  // (часы × ставка с учётом ручной суммы за месяц табеля).
+  const payRows = payroll.items.map((item) => {
+    const plan = payPlans[item.employeeId] ?? {};
+    const amount = plan.amount ?? item.amount;
+    const date = plan.date || lastDayOfMonth(payYear, payMonth);
+    return {
+      ...item,
+      finalAmount: amount,
+      finalDate: date,
+      manual: plan.amount != null,
+      dateSet: plan.date != null,
+    };
+  });
+  const payTotal = payRows.reduce((s, r) => s + r.finalAmount, 0);
 
   const handleGenerate = () => {
     const hasData = schedule.some((d) => d.employeeId);
@@ -148,27 +170,32 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   };
 
   const handleTransferConfirm = async () => {
-    if (payroll.items.every((i) => i.totalHours <= 0 && i.amount <= 0)) {
-      setMessage("Нет начислений за месяц — сначала сгенерируйте расписание");
+    const items: TransferItem[] = payRows
+      .filter((r) => r.finalAmount > 0)
+      .map((r) => ({
+        employeeId: r.employeeId,
+        employeeName: r.employeeName,
+        date: r.finalDate,
+        amount: r.finalAmount,
+      }));
+    if (items.length === 0) {
+      setMessage("Нет сумм для переноса — укажите суммы в блоке «Зарплата»");
       setShowTransfer(false);
       return;
     }
     setTransferring(true);
     setTransferError("");
     try {
-      const transfer = onTransferToPayroll ?? defaultTransferToPayroll;
-      await transfer(payroll);
+      await defaultTransferToPayroll(payPeriodKey, items);
       setMessage(
-        `Зарплата за ${MONTHS_RU[month - 1]} перенесена: ${payroll.totalAmount.toLocaleString(
+        `Зарплата за ${payPeriodLabel} перенесена: ${payTotal.toLocaleString(
           "ru-RU"
         )} ₽`
       );
       setShowTransfer(false);
       router.refresh();
     } catch (e) {
-      setTransferError(
-        e instanceof Error ? e.message : "Ошибка сети при переносе"
-      );
+      setTransferError(e instanceof Error ? e.message : "Ошибка сети при переносе");
     } finally {
       setTransferring(false);
     }
@@ -177,19 +204,12 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   return (
     <div className="ds-root">
       <div className="ds-header">
-        <div className="ds-header-titles">
-          <h2>Табель охраны — дежурства</h2>
-          {offsetNote && (
-            <div className="ds-header-sub" title="Расчёт со сдвигом: календарь и часы — за предыдущий месяц, зарплата пишется под выбранный период">
-              {offsetNote} · зарплата — за {MONTHS_RU[month - 1].toLowerCase()} {year}
-            </div>
-          )}
-        </div>
+        <h2>Табель охраны — дежурства</h2>
         <div className="ds-month-nav">
           <button className="ds-btn" onClick={goToPrevMonth}>
             ←
           </button>
-          <span className="ds-month-label" title="Период начисления зарплаты (по нему записываются начисления)">
+          <span className="ds-month-label" title="Месяц табеля (дни дежурств)">
             {MONTHS_RU[month - 1]} {year}
           </span>
           <button className="ds-btn" onClick={goToNextMonth}>
@@ -199,18 +219,6 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
       </div>
 
       <div className="ds-toolbar">
-        <div className="ds-toolbar-group">
-          <label>Сдвиг з/п (календарь → зарплата):</label>
-          <select
-            value={payOffset}
-            onChange={(e) => setPayOffset(Number(e.target.value))}
-            title="На сколько месяцев зарплата «опережает» календарь смен: «з/п сентябрь» считается по сменам августа"
-          >
-            <option value={0}>нет (календарь = зарплата)</option>
-            <option value={1}>1 месяц</option>
-            <option value={2}>2 месяца</option>
-          </select>
-        </div>
         <div className="ds-toolbar-group">
           <label>Начать чередование с:</label>
           <select
@@ -244,15 +252,6 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           >
             <Printer size={14} style={{ verticalAlign: "-2px" }} /> Печать
           </button>
-          <button
-            className={`ds-btn ${alreadyTransferred ? "" : "ds-btn--success"}`}
-            disabled={transferring}
-            onClick={() => setShowTransfer(true)}
-            title="Начислить зарплату за месяц в разделе «Зарплаты» (только по этой кнопке)"
-          >
-            <CalendarClock size={14} style={{ verticalAlign: "-2px" }} />{" "}
-            {transferring ? "Перенос…" : "Перенести в зарплату"}
-          </button>
         </div>
       </div>
 
@@ -285,17 +284,6 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
         <span className="ds-legend-item">
           <i className="ds-swatch ds-swatch--conflict" /> Конфликт (два дня подряд)
         </span>
-        {alreadyTransferred ? (
-          <span className="ds-legend-transfer ds-legend-transfer--done">
-            <CheckCircle2 size={13} style={{ verticalAlign: "-2px" }} />{" "}
-            {MONTHS_RU[month - 1]} уже перенесён в зарплату
-          </span>
-        ) : (
-          <span className="ds-legend-transfer">
-            <AlertTriangle size={13} style={{ verticalAlign: "-2px" }} />{" "}
-            {MONTHS_RU[month - 1]} ещё не перенесён в зарплату
-          </span>
-        )}
         <span className="ds-legend-rate">
           Ставка: {new Set(employees.filter((e) => e.active).map((e) => e.rate)).size === 1
             ? `${employees.find((e) => e.active)?.rate.toLocaleString("ru-RU")} ₽/час`
@@ -305,6 +293,147 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           Клик по ячейке — часы/сотрудник/статус · двойной клик по имени или
           сумме — правка на месте · Enter — сохранить, Esc — отмена
         </span>
+      </div>
+
+      {/* ══ ЗАРПЛАТА: день выплаты + сумма по каждому охраннику ══ */}
+      <div className="ds-payroll">
+        <div className="ds-payroll-head">
+          <div className="ds-payroll-title">
+            <CalendarClock size={15} style={{ verticalAlign: "-3px" }} /> Зарплата
+          </div>
+          <div className="ds-payroll-period">
+            <label>Зарплатный месяц:</label>
+            <select
+              value={payMonth}
+              onChange={(e) => setPayMonth(Number(e.target.value))}
+              title="За какой месяц зарплата переносится — может отличаться от месяца табеля"
+            >
+              {MONTHS_RU.map((m, i) => (
+                <option key={m} value={i + 1}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <input
+              className="ds-payroll-year"
+              type="number"
+              min={2020}
+              max={2100}
+              value={payYear}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isFinite(n) && n >= 2000 && n <= 2100) setPayYear(n);
+              }}
+            />
+          </div>
+          {alreadyTransferred && (
+            <span className="ds-payroll-status ds-payroll-status--done">
+              <CheckCircle2 size={13} style={{ verticalAlign: "-2px" }} />{" "}
+              {payPeriodLabel} уже перенесён в зарплату
+            </span>
+          )}
+        </div>
+
+        <table className="ds-payroll-table">
+          <thead>
+            <tr>
+              <th>Фамилия</th>
+              <th title="День, когда охранник получает деньги — укажите сами">
+                День выплаты
+              </th>
+              <th title="Сумма, ₽. По умолчанию — часы табеля × ставка; можно исправить">
+                Сумма, ₽
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {payRows.map((row) => (
+              <tr key={row.employeeId}>
+                <td className="ds-payroll-name">{row.employeeName}</td>
+                <td>
+                  <input
+                    type="date"
+                    className="ds-payroll-date"
+                    value={row.dateSet ? row.finalDate : ""}
+                    placeholder="ДД.ММ.ГГГГ"
+                    onChange={(e) =>
+                      setPayPlan(payPeriodKey, row.employeeId, {
+                        date: e.target.value || null,
+                      })
+                    }
+                  />
+                  {!row.dateSet && (
+                    <span className="ds-payroll-date-hint">
+                      по умолчанию {fmtDate(row.finalDate)}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    className={`ds-payroll-amount${row.manual ? " ds-payroll-amount--manual" : ""}`}
+                    min={0}
+                    step={1}
+                    value={row.manual ? row.finalAmount : row.amount}
+                    placeholder={row.amount.toLocaleString("ru-RU")}
+                    title="Пусто — считается по табелю (часы × ставка)"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "") {
+                        setPayPlan(payPeriodKey, row.employeeId, { amount: null });
+                        return;
+                      }
+                      const n = Number(v);
+                      if (!Number.isNaN(n) && n >= 0) {
+                        setPayPlan(payPeriodKey, row.employeeId, { amount: n });
+                      }
+                    }}
+                  />
+                  {row.manual && (
+                    <button
+                      type="button"
+                      className="ds-payroll-reset"
+                      title="Вернуть расчёт по табелю"
+                      onClick={() =>
+                        setPayPlan(payPeriodKey, row.employeeId, { amount: null })
+                      }
+                    >
+                      ↺
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={2}>Итого к выплате</td>
+              <td className="ds-payroll-total">
+                {payTotal.toLocaleString("ru-RU")} ₽
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <p className="ds-payroll-hint">
+          День выплаты и сумму укажите сами по каждому охраннику. Перенос идёт
+          за выбранный зарплатный месяц ({payPeriodLabel.toLowerCase()}) — он
+          может отличаться от месяца табеля.
+        </p>
+
+        <div className="ds-payroll-actions">
+          <button
+            className={`ds-btn ${alreadyTransferred ? "" : "ds-btn--success"}`}
+            disabled={transferring || payTotal <= 0}
+            onClick={() => setShowTransfer(true)}
+            title="Создать записи зарплаты по фамилиям в разделе «Зарплаты»"
+          >
+            <CalendarClock size={14} style={{ verticalAlign: "-2px" }} />{" "}
+            {transferring
+              ? "Перенос…"
+              : `Перенести в зарплату за ${MONTHS_RU[payMonth - 1].toLowerCase()}`}
+          </button>
+        </div>
       </div>
 
       {showEmployees && (
@@ -321,9 +450,6 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
         <DutySchedulePrint
           year={year}
           month={month}
-          calYear={calYear}
-          calMonth={calMonth}
-          offset={payOffset}
           employees={employees}
           schedule={schedule}
           amountOverrides={amountOverrides}
@@ -342,58 +468,45 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
       {showTransfer && (
         <div className="ds-modal-overlay" onClick={() => !transferring && setShowTransfer(false)}>
           <div className="ds-modal ds-modal--transfer" onClick={(e) => e.stopPropagation()}>
-            <h3>
-              Перенос в зарплату — {MONTHS_RU[month - 1]} {year}
-            </h3>
+            <h3>Перенос в зарплату — {payPeriodLabel}</h3>
 
             {alreadyTransferred && (
               <div className="ds-transfer-warning">
                 <AlertTriangle size={14} style={{ verticalAlign: "-2px" }} /> За
-                этот месяц зарплата уже переносилась. Повторный перенос создаст
-                дубли записей в разделе «Зарплаты».
+                этот зарплатный месяц зарплата уже переносилась. Повторный
+                перенос создаст дубли записей в разделе «Зарплаты».
               </div>
             )}
 
             <table className="ds-transfer-table">
               <thead>
                 <tr>
-                  <th>Сотрудник</th>
-                  <th>Часов</th>
-                  <th>Ставка, ₽/ч</th>
+                  <th>Фамилия</th>
+                  <th>День выплаты</th>
                   <th>Сумма, ₽</th>
                 </tr>
               </thead>
               <tbody>
-                {payroll.items
-                  .filter((i) => i.totalHours > 0 || i.amount > 0)
-                  .map((item) => {
-                    const overridden = amountOverrides[item.employeeId] != null;
-                    return (
-                      <tr key={item.employeeId}>
-                        <td>{item.employeeName}</td>
-                        <td className="ds-print-num">{item.totalHours}</td>
-                        <td className="ds-print-num">
-                          {item.totalHours > 0
-                            ? overridden
-                              ? "ручная"
-                              : Math.round(item.amount / item.totalHours)
-                            : "—"}
-                        </td>
-                        <td className="ds-print-num">
-                          {item.amount.toLocaleString("ru-RU")}
-                          {overridden && (
-                            <span className="ds-muted"> · ручная</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                {payRows
+                  .filter((r) => r.finalAmount > 0)
+                  .map((row) => (
+                    <tr key={row.employeeId}>
+                      <td>{row.employeeName}</td>
+                      <td className="ds-print-num">{fmtDate(row.finalDate)}</td>
+                      <td className="ds-print-num">
+                        {row.finalAmount.toLocaleString("ru-RU")}
+                        {row.manual && (
+                          <span className="ds-muted"> · ручная</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={3}>Общее число зарплаты за месяц</td>
+                  <td colSpan={2}>Итого</td>
                   <td className="ds-print-num ds-transfer-total">
-                    {payroll.totalAmount.toLocaleString("ru-RU")} ₽
+                    {payTotal.toLocaleString("ru-RU")} ₽
                   </td>
                 </tr>
               </tfoot>
@@ -401,18 +514,8 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
 
             <p className="ds-transfer-hint">
               Будут созданы записи зарплаты (без оплаты) с пометкой «Табель
-              охраны» за {MONTHS_RU[month - 1].toLowerCase()} {year} в разделе
-              «Учёт → Зарплаты». Отметить оплату можно там же.
-              {payOffset > 0 && (
-                <>
-                  {" "}Часы — по сменам{" "}
-                  <b>
-                    {MONTHS_RU[calMonth - 1].toLowerCase()} {calYear}
-                  </b>{" "}
-                  (расчёт со сдвигом на {payOffset}{" "}
-                  {payOffset === 1 ? "месяц" : "мес."}).
-                </>
-              )}
+              охраны» за {payPeriodLabel.toLowerCase()} в разделе «Учёт →
+              Зарплаты». Отметить оплату можно там же.
             </p>
 
             {transferError && <div className="ds-transfer-error">{transferError}</div>}
@@ -430,10 +533,8 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
                 onClick={handleTransferConfirm}
                 disabled={transferring}
               >
-                {transferring && (
-                  <Loader2 size={14} className="animate-spin" />
-                )}
-                Перенести {payroll.totalAmount.toLocaleString("ru-RU")} ₽
+                {transferring && <Loader2 size={14} className="animate-spin" />}
+                Перенести {payTotal.toLocaleString("ru-RU")} ₽
               </button>
             </div>
           </div>
