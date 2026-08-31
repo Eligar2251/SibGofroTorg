@@ -245,18 +245,155 @@
   background: #fff;
   outline: 2px solid #f59e0b;
 }
-.ds-legend-transfer {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: #b45309;
-}
-.ds-legend-transfer--done {
-  color: #15803d;
-}
 .ds-legend-rate {
   margin-left: auto;
   font-weight: 600;
+}
+
+/* ── Блок «Зарплата»: день выплаты + сумма по каждому охраннику ── */
+.ds-payroll {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f5f7fa;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+}
+.ds-payroll-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.ds-payroll-title {
+  font-size: 15px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-payroll-period {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #374151;
+}
+.ds-payroll-period select {
+  padding: 5px 8px;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+}
+.ds-payroll-year {
+  width: 70px;
+  padding: 5px 6px;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.ds-payroll-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b45309;
+}
+.ds-payroll-status--done {
+  color: #15803d;
+}
+.ds-payroll-table {
+  width: 100%;
+  max-width: 640px;
+  border-collapse: collapse;
+  background: #fff;
+}
+.ds-payroll-table th,
+.ds-payroll-table td {
+  border: 1px solid #d0d7de;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: left;
+}
+.ds-payroll-table th {
+  background: #fafbfc;
+  font-weight: 700;
+}
+.ds-payroll-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ds-payroll-table td:nth-child(2) {
+  width: 220px;
+}
+.ds-payroll-table td:nth-child(3) {
+  width: 150px;
+  position: relative;
+}
+.ds-payroll-date {
+  border: 1px solid #cbd2d9;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 13px;
+  background: #fff;
+}
+.ds-payroll-date-hint {
+  display: block;
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+.ds-payroll-amount {
+  width: 120px;
+  border: 1px solid #cbd2d9;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 13px;
+  text-align: right;
+  background: #fff;
+}
+.ds-payroll-amount--manual {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+.ds-payroll-reset {
+  margin-left: 4px;
+  width: 20px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.ds-payroll-reset:hover {
+  background: #dbeafe;
+}
+.ds-payroll-table tfoot td {
+  font-weight: 700;
+  text-align: right;
+  background: #fafbfc;
+}
+.ds-payroll-total {
+  color: #16a34a;
+  font-size: 14px;
+  font-weight: 800;
+}
+.ds-payroll-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 8px 0 10px;
+  max-width: 640px;
+}
+.ds-payroll-actions {
+  display: flex;
 }
 
 /* ── Модалки ── */
@@ -727,17 +864,6 @@
    INLINE-РЕДАКТИРОВАНИЕ (весь график — прямо в ячейках)
    ========================================================= */
 
-/* Заголовок: период з/п + подпись о сдвиге */
-.ds-header-titles {
-  display: grid;
-  gap: 2px;
-}
-.ds-header-sub {
-  font-size: 12px;
-  font-weight: 600;
-  color: #b45309;
-}
-
 .ds-btn--sm {
   padding: 3px 8px;
   font-size: 12px;
@@ -850,11 +976,4 @@
 .ds-legend-edit {
   color: #6b7280;
   font-size: 12px;
-}
-
-/* Печать: строка о сдвиге под названием месяца */
-.ds-print-cal {
-  font-size: 11px;
-  color: #555;
-  margin-top: 1mm;
 }

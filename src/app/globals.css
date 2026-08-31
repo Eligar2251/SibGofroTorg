@@ -2812,11 +2812,11 @@ select {
 }
 
 .pcc__img img {
-  transition: transform 0.22s ease;
-}
-
-.pcc:hover .pcc__img img {
-  transform: scale(1.04);
+  /* Фото показываем ЦЕЛИКОМ (object-fit: contain в компоненте):
+     края не обрезаются. Небольшой отступ, чтобы картинка
+     не прилипала к краям плитки. Зум при наведении снят
+     намеренно — он обрезал края фото, помещённого целиком. */
+  padding: 10px;
 }
 
 .pcc__badge {
@@ -2886,14 +2886,20 @@ select {
   color: var(--green);
 }
 
-.pcc__name-dims {
+/* Размер товара под названием: читается с первого взгляда,
+   но не конкурирует с ценой. Вынесен из ссылки .pcc__name,
+   поэтому не режется line-clamp длинных названий. */
+.pcc__dims {
   display: block;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
   font-family: var(--f-mono);
-  margin-top: 2px;
-  letter-spacing: 0.02em;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pcc__prices {

@@ -7,9 +7,7 @@
 // смены выделены жёлтым. Сводка и прочая информация —
 // ниже и заметно мельче.
 //
-// Печатается ПЕРИОД ЗАРПЛАТЫ (year/month): при сдвиге в
-// шапке рядом мелким шрифтом указан календарный месяц
-// фактических смен (year/month − offset). Суммы учитывают
+// Печатается выбранный месяц (year/month). Суммы учитывают
 // ручные правки (amountOverrides). Кнопка «Редактировать»
 // возвращает в таблицу — весь график правится прямо в
 // ячейках и можно сразу перепечатать.
@@ -23,14 +21,8 @@ import { MONTHS_RU, WEEKDAYS_SHORT_RU, isWeekend } from "./scheduleGenerator";
 import { SITE_NAME } from "@/lib/seo";
 
 interface Props {
-  /** Период зарплаты (пишется в заголовке). */
   year: number;
   month: number; // 1-12
-  /** Календарный месяц фактических смен (период − сдвиг). */
-  calYear: number;
-  calMonth: number;
-  /** Сдвиг, месяцев (0 — без сдвига). */
-  offset: number;
   employees: Employee[];
   schedule: DayAssignment[];
   /** Ручные суммы: employeeId -> сумма (перекрывают «часы × ставка»). */
@@ -44,9 +36,6 @@ interface Props {
 export function DutySchedulePrint({
   year,
   month,
-  calYear,
-  calMonth,
-  offset,
   employees,
   schedule,
   amountOverrides,
@@ -61,7 +50,7 @@ export function DutySchedulePrint({
   const activeEmployees = employees.filter((e) => e.active);
 
   // Дни месяца по порядку (1..31), с учётом фактической длины месяца.
-  const calPrefix = `${calYear}-${String(calMonth).padStart(2, "0")}`;
+  const calPrefix = `${year}-${String(month).padStart(2, "0")}`;
   const days = schedule
     .filter((d) => d.date.startsWith(calPrefix))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -106,7 +95,6 @@ export function DutySchedulePrint({
   }
 
   const monthLabel = `${MONTHS_RU[month - 1]} ${year}`;
-  const calLabel = `${MONTHS_RU[calMonth - 1]} ${calYear}`;
 
   return (
     <div className="ds-print-root">
@@ -134,12 +122,6 @@ export function DutySchedulePrint({
         <div className="ds-print-head">
           <div className="ds-print-title">Табель дежурств охраны</div>
           <div className="ds-print-month">{monthLabel}</div>
-          {offset > 0 && (
-            <div className="ds-print-cal">
-              фактические смены: {calLabel} · сдвиг: {offset}{" "}
-              {offset === 1 ? "месяц" : "мес."}
-            </div>
-          )}
           <div className="ds-print-company">
             {SITE_NAME}
             {companyPhone ? ` · ${companyPhone}` : ""}

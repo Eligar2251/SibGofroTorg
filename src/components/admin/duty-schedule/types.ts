@@ -49,17 +49,27 @@ export interface PayrollItem {
 
 export interface PayrollPayload {
   year: number;
-  /** 1-12 — период начисления (как пишется в зарплате). */
+  /** 1-12 — месяц, за который переносится зарплата. */
   month: number;
-  /** Календарный месяц, из которого взяты часы (может отличаться от
-   *  периода на величину сдвига, например з/п «сентябрь» считается
-   *  по сменам августа). */
-  calYear?: number;
-  calMonth?: number;
   items: PayrollItem[];
   totalAmount: number;
   generatedAt: string;
 }
+
+/**
+ * План выплаты по сотруднику: день, когда он получает деньги, и сумма.
+ * Хранится по зарплатному месяцу (YYYY-MM) — зарплатный месяц может
+ * отличаться от месяца табеля.
+ */
+export interface PayPlanEntry {
+  /** 'YYYY-MM-DD' — день выплаты (указывает пользователь). */
+  date?: string;
+  /** Сумма, ₽. null/отсутствует — считается по табелю (часы × ставка). */
+  amount?: number;
+}
+
+/** [зарплатный месяц YYYY-MM] -> [employeeId] -> план выплаты. */
+export type PayPlans = Record<string, Record<string, PayPlanEntry>>;
 
 /** Запись зарплаты, уже перенесённой из табеля (для защиты от дублей). */
 export interface ExistingSalaryTransfer {
