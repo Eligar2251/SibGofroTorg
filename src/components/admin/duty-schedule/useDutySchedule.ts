@@ -1,13 +1,20 @@
 // =========================================================
 // FILE: src/components/admin/duty-schedule/useDutySchedule.ts
-// Хук табеля дежурств охраны: состояние, генерация, редактирование,
-// расчёт зарплаты и гибкий план выплат по дням (несколько выплат/дней
-// на сотрудника, ручное редактирование сотрудников, сумм и дат).
-// Данные сохраняются в localStorage.
+// Хук табеля дежурств охраны: состояние, генерация, редактирование
+// и расчёт «часы × ставка» по календарю смен.
 //
-// Месяц навигации = месяц табеля (дни дежурств). Зарплатный месяц
-// выбирается отдельно в блоке «Зарплата» (может не совпадать с
-// месяцем табеля) — перенос идёт по нему.
+// СДВИГ «календарь → зарплата» (как раньше): навигация ведётся по
+// ПЕРИОДУ ЗАРПЛАТЫ (например, «сентябрь»), а календарь смен
+// показывается за (период − сдвиг) (август). Сдвиг настраивается
+// селектом в панели (0/1/2 месяца) и сохраняется. Сдвиг — только
+// РАБОЧАЯ логика, в печатную форму он не выводится.
+//
+// ЗАРПЛАТА — ОТДЕЛЬНАЯ СИСТЕМА: список выплат (день + сумма)
+// заполняется ТОЛЬКО вручную и не зависит от табеля. У любого
+// человека может быть любое число выплат за месяц (хоть каждый
+// день). Человек может быть в табеле и не участвовать в зп —
+// и наоборот (в зп можно добавить вообще любого человека).
+// Данные сохраняются в localStorage.
 // =========================================================
 
 "use client";
@@ -32,16 +39,17 @@ import {
 const STORAGE_KEY = "duty_schedule_v2";
 const LEGACY_STORAGE_KEY = "duty_schedule_v1";
 const LEGACY_OFFSET_KEY = "duty_schedule_offset_v1";
+const OFFSET_KEY = "duty_schedule_offset_v2";
 
 interface StoredState {
   employees: Employee[];
   schedules: Record<string, DayAssignment[]>;
-  /** Ручные суммы за месяц: [YYYY-MM] -> [employeeId] -> сумма.
-   *  Перекрывают расчёт «часы × ставка» (для переноса и печати). */
+  /** Ручные суммы за период: [YYYY-MM] -> [employeeId] -> сумма.
+   *  Перекрывают расчёт «часы × ставка» (колонка «Сумма» в табеле). */
   amountOverrides: Record<string, Record<string, number>>;
   /** Старое поле: [зарплатный месяц YYYY-MM] -> [employeeId] -> план. */
   payPlans?: PayPlans;
-  /** Новое поле: [зарплатный месяц YYYY-MM] -> список выплат по дням. */
+  /** [зарплатный месяц YYYY-MM] -> список выплат по дням. */
   salaryPayouts?: SalaryPayoutsByPeriod;
 }
 
@@ -108,6 +116,21 @@ function readStored(key: string): Partial<StoredState> | null {
   }
 }
 
+/** Сдвиг «календарь → зарплата»: 0/1/2 месяца. По умолчанию 0
+ *  (календарь совпадает с периодом), значение сохраняется. */
+function loadOffset(): number {
+  try {
+    const raw = localStorage.getItem(OFFSET_KEY);
+    if (raw !== null) {
+      const n = Number(raw);
+      if (n === 0 || n === 1 || n === 2) return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 0;
+}
+
 function loadState(): StoredState {
   const fallback: StoredState = {
     employees: defaultEmployees,
@@ -120,7 +143,9 @@ function loadState(): StoredState {
   const v2 = readStored(STORAGE_KEY);
   if (v2) {
     const emps = v2.employees ?? defaultEmployees;
-    const payouts: SalaryPayoutsByPeriod = v2.salaryPayouts ? { ...v2.salaryPayouts } : {};
+    const payouts: SalaryPayoutsByPeriod = v2.salaryPayouts
+      ? { ...v2.salaryPayouts }
+      : {};
 
     // Миграция старых payPlans в salaryPayouts, если ещё нет записей
     if (v2.payPlans && Object.keys(v2.payPlans).length > 0) {
@@ -161,40 +186,18 @@ function loadState(): StoredState {
   const legacy = readStored(LEGACY_STORAGE_KEY);
   if (!legacy) return fallback;
 
-  let offset = 0;
-  try {
-    const rawOffset = localStorage.getItem(LEGACY_OFFSET_KEY);
-    offset = rawOffset != null ? Number(rawOffset) : 1;
-    if (!Number.isFinite(offset)) offset = 0;
-  } catch {
-    offset = 0;
-  }
-
   const schedules = legacy.schedules ?? {};
-  let migrated = schedules;
-  if (offset > 0 && Object.keys(schedules).length > 0) {
-    const shifted: Record<string, DayAssignment[]> = {};
-    for (const [k, days] of Object.entries(schedules)) {
-      const [y, m] = k.split("-").map(Number);
-      if (!y || !m) {
-        shifted[k] = days;
-        continue;
-      }
-      const moved = shiftMonth(y, m, offset);
-      shifted[monthKey(moved.year, moved.month)] = days;
-    }
-    migrated = shifted;
-  }
 
   const state: StoredState = {
     employees: legacy.employees ?? defaultEmployees,
-    schedules: migrated,
+    schedules,
     amountOverrides: legacy.amountOverrides ?? {},
     salaryPayouts: {},
     payPlans: legacy.payPlans ?? {},
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     localStorage.removeItem(LEGACY_OFFSET_KEY);
   } catch {
     /* localStorage недоступен */
@@ -202,27 +205,25 @@ function loadState(): StoredState {
   return state;
 }
 
-/** Создаёт начальный список выплат по умолчанию для активных сотрудников на основе табеля */
-function makeDefaultPayouts(
+/** Выплаты «по табелю» — ТОЛЬКО по явной команде пользователя
+ *  (кнопка «Заполнить по табелю»): 1 строка на активного охранника,
+ *  сумма = ручная сумма периода или часы календаря × ставка. */
+function makePayoutsFromSchedule(
   employees: Employee[],
-  schedules: Record<string, DayAssignment[]>,
-  amountOverrides: Record<string, Record<string, number>>,
-  payPeriodKey: string,
-  scheduleMonthKey: string
+  schedule: DayAssignment[],
+  amountOverrides: Record<string, number>,
+  payPeriodKey: string
 ): SalaryPayout[] {
   const [y, m] = payPeriodKey.split("-").map(Number);
   const defDate = y && m ? lastDayOfMonth(y, m) : `${payPeriodKey}-25`;
-  const schedKey = schedules[payPeriodKey] ? payPeriodKey : scheduleMonthKey;
-  const sched = schedules[schedKey] || [];
-  const overrides = amountOverrides[schedKey] || {};
 
   return employees
     .filter((e) => e.active)
     .map((emp) => {
-      const hours = sched
+      const hours = schedule
         .filter((d) => d.employeeId === emp.id && d.status !== "missed")
         .reduce((s, d) => s + (d.hours || 0), 0);
-      const override = overrides[emp.id];
+      const override = amountOverrides[emp.id];
       const amount = override != null ? override : Math.round(hours * emp.rate);
       return {
         id: `pay_${payPeriodKey}_${emp.id}`,
@@ -236,10 +237,12 @@ function makeDefaultPayouts(
 }
 
 export function useDutySchedule(initialYear?: number, initialMonth?: number) {
-  // Навигация ведётся по месяцу табеля (месяц дежурств).
+  // Навигация ведётся по ПЕРИОДУ ЗАРПЛАТЫ (как думает пользователь:
+  // «делаю зарплату за сентябрь»). Календарь смен = период − сдвиг.
   const now = new Date();
   const [year, setYear] = useState(initialYear ?? now.getFullYear());
   const [month, setMonth] = useState(initialMonth ?? now.getMonth() + 1);
+  const [payOffset, setPayOffsetState] = useState<number>(loadOffset);
   const [state, setState] = useState<StoredState>(loadState);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -251,20 +254,35 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
     }
   }, [state]);
 
-  const key = monthKey(year, month);
+  const setPayOffset = useCallback((n: number) => {
+    setPayOffsetState(n);
+    try {
+      localStorage.setItem(OFFSET_KEY, String(n));
+    } catch {
+      /* localStorage недоступен */
+    }
+  }, []);
+
+  // Календарный месяц — реальные даты смен (период минус сдвиг).
+  const cal = shiftMonth(year, month, -payOffset);
+  const calYear = cal.year;
+  const calMonth = cal.month;
+  const payKey = monthKey(year, month);
+  const calKey = monthKey(calYear, calMonth);
+
   const schedule = useMemo(
-    () => fillMissingDays(state.schedules[key] ?? [], year, month),
-    [state.schedules, key, year, month]
+    () => fillMissingDays(state.schedules[calKey] ?? [], calYear, calMonth),
+    [state.schedules, calKey, calYear, calMonth]
   );
 
   const persistSchedule = useCallback(
     (newSchedule: DayAssignment[]) => {
       setState((prev) => ({
         ...prev,
-        schedules: { ...prev.schedules, [key]: newSchedule },
+        schedules: { ...prev.schedules, [calKey]: newSchedule },
       }));
     },
-    [key]
+    [calKey]
   );
 
   const generate = useCallback(
@@ -274,21 +292,21 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
       );
       let startId = startEmployeeId;
       if (!startId) {
-        // Непрерывность очереди — от предыдущего месяца.
-        const prev = shiftMonth(year, month, -1);
+        // Непрерывность очереди — от предыдущего КАЛЕНДАРНОГО месяца.
+        const prev = shiftMonth(calYear, calMonth, -1);
         const prevKey = monthKey(prev.year, prev.month);
         const prevSchedule = state.schedules[prevKey];
         if (prevSchedule) {
           startId = getNextRotationStartId(prevSchedule, rotating);
         }
       }
-      const generated = generateSchedule(year, month, state.employees, {
+      const generated = generateSchedule(calYear, calMonth, state.employees, {
         rotatingStartEmployeeId: startId,
       });
       persistSchedule(generated);
       setMessage("Расписание сгенерировано автоматически");
     },
-    [year, month, state.employees, state.schedules, persistSchedule]
+    [calYear, calMonth, state.employees, state.schedules, persistSchedule]
   );
 
   const updateCell = useCallback(
@@ -341,16 +359,16 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
     }));
   }, []);
 
-  // ── Ручные суммы за месяц табеля (перекрывают «часы × ставка») ──
+  // ── Ручные суммы за период (перекрывают «часы × ставка» в табеле) ──
   const amountOverrides = useMemo(
-    () => state.amountOverrides[key] ?? {},
-    [state.amountOverrides, key]
+    () => state.amountOverrides[payKey] ?? {},
+    [state.amountOverrides, payKey]
   );
 
   const setAmountOverride = useCallback(
     (employeeId: string, value: number | null) => {
       setState((prev) => {
-        const forPeriod = { ...(prev.amountOverrides[key] ?? {}) };
+        const forPeriod = { ...(prev.amountOverrides[payKey] ?? {}) };
         if (value == null || Number.isNaN(value) || value <= 0) {
           delete forPeriod[employeeId];
         } else {
@@ -358,31 +376,23 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
         }
         return {
           ...prev,
-          amountOverrides: { ...prev.amountOverrides, [key]: forPeriod },
+          amountOverrides: { ...prev.amountOverrides, [payKey]: forPeriod },
         };
       });
     },
-    [key]
+    [payKey]
   );
 
-  // ── Выплаты зарплаты по дням (несколько дней на сотрудника) ──
+  // ── Выплаты зарплаты по дням (отдельная система, только вручную) ──
 
-  /** Получить список выплат для указанного зарплатного месяца. */
+  /** Список выплат за зарплатный месяц. Пустой, если ещё ничего
+   *  не задано, — ничего не подставляется автоматически: дни и
+   *  суммы выплат указывает пользователь. */
   const getPayoutsFor = useCallback(
     (payPeriodKey: string): SalaryPayout[] => {
-      if (state.salaryPayouts?.[payPeriodKey] != null) {
-        return state.salaryPayouts[payPeriodKey];
-      }
-      // Если ещё нет сохранённых записей — генерируем дефолтные по текущему табелю
-      return makeDefaultPayouts(
-        state.employees,
-        state.schedules,
-        state.amountOverrides,
-        payPeriodKey,
-        key
-      );
+      return state.salaryPayouts?.[payPeriodKey] ?? [];
     },
-    [state.salaryPayouts, state.employees, state.schedules, state.amountOverrides, key]
+    [state.salaryPayouts]
   );
 
   /** Сохранить список выплат за зарплатный месяц */
@@ -403,15 +413,7 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
   const addPayout = useCallback(
     (payPeriodKey: string, partial?: Partial<SalaryPayout>) => {
       setState((prev) => {
-        const currentList =
-          prev.salaryPayouts?.[payPeriodKey] ??
-          makeDefaultPayouts(
-            prev.employees,
-            prev.schedules,
-            prev.amountOverrides,
-            payPeriodKey,
-            key
-          );
+        const currentList = prev.salaryPayouts?.[payPeriodKey] ?? [];
         const [y, m] = payPeriodKey.split("-").map(Number);
         const defDate = y && m ? lastDayOfMonth(y, m) : `${payPeriodKey}-25`;
         const defaultEmp = prev.employees.find((e) => e.active) || prev.employees[0];
@@ -419,7 +421,7 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
         const empName =
           partial?.employeeName ||
           prev.employees.find((e) => e.id === empId)?.name ||
-          "Сотрудник";
+          "";
 
         const newEntry: SalaryPayout = {
           id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -439,29 +441,23 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
         };
       });
     },
-    [key]
+    []
   );
 
-  /** Добавить выплату конкретному сотруднику */
+  /** Добавить выплату конкретному человеку (день и сумму задаёт пользователь) */
   const addPayoutForEmployee = useCallback(
     (
       payPeriodKey: string,
       employeeId: string,
+      employeeName?: string,
       initialAmount?: number,
       initialDate?: string
     ) => {
       setState((prev) => {
-        const currentList =
-          prev.salaryPayouts?.[payPeriodKey] ??
-          makeDefaultPayouts(
-            prev.employees,
-            prev.schedules,
-            prev.amountOverrides,
-            payPeriodKey,
-            key
-          );
+        const currentList = prev.salaryPayouts?.[payPeriodKey] ?? [];
         const emp = prev.employees.find((e) => e.id === employeeId);
-        const empName = emp ? emp.name : "Сотрудник";
+        const empName =
+          employeeName?.trim() || (emp ? emp.name : "") || "Сотрудник";
         const [y, m] = payPeriodKey.split("-").map(Number);
         const defDate = initialDate || (y && m ? lastDayOfMonth(y, m) : `${payPeriodKey}-25`);
 
@@ -483,27 +479,19 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
         };
       });
     },
-    [key]
+    []
   );
 
   /** Изменить строку выплаты (сотрудник, дата, сумма, комментарий) */
   const updatePayout = useCallback(
     (payPeriodKey: string, id: string, patch: Partial<SalaryPayout>) => {
       setState((prev) => {
-        const currentList =
-          prev.salaryPayouts?.[payPeriodKey] ??
-          makeDefaultPayouts(
-            prev.employees,
-            prev.schedules,
-            prev.amountOverrides,
-            payPeriodKey,
-            key
-          );
+        const currentList = prev.salaryPayouts?.[payPeriodKey] ?? [];
 
         const updated = currentList.map((item) => {
           if (item.id !== id) return item;
           const next = { ...item, ...patch };
-          // При смене employeeId обновляем имя, если это известный сотрудник и имя не передано явно
+          // При смене employeeId обновляем имя, если это известный сотрудник
           if (patch.employeeId && patch.employeeId !== "custom" && !patch.employeeName) {
             const foundEmp = prev.employees.find((e) => e.id === patch.employeeId);
             if (foundEmp) next.employeeName = foundEmp.name;
@@ -523,22 +511,14 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
         };
       });
     },
-    [key]
+    []
   );
 
   /** Удалить строку выплаты */
   const removePayout = useCallback(
     (payPeriodKey: string, id: string) => {
       setState((prev) => {
-        const currentList =
-          prev.salaryPayouts?.[payPeriodKey] ??
-          makeDefaultPayouts(
-            prev.employees,
-            prev.schedules,
-            prev.amountOverrides,
-            payPeriodKey,
-            key
-          );
+        const currentList = prev.salaryPayouts?.[payPeriodKey] ?? [];
         return {
           ...prev,
           salaryPayouts: {
@@ -548,22 +528,45 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
         };
       });
     },
-    [key]
+    []
   );
 
-  /** Разбить выплату на две части (например, аванс и остаток) */
+  /** Убрать человека из зп за месяц: удаляются ВСЕ его выплаты за
+   *  этот период. В табеле дежурств человек остаётся — это разные
+   *  системы. Сопоставление по employeeId либо по имени (для
+   *  вручную введённых людей). */
+  const removePayoutsForEmployee = useCallback(
+    (payPeriodKey: string, employeeId: string, employeeName: string) => {
+      setState((prev) => {
+        const currentList = prev.salaryPayouts?.[payPeriodKey] ?? [];
+        const nameLower = employeeName.trim().toLowerCase();
+        const kept = currentList.filter((item) => {
+          const byId =
+            employeeId &&
+            employeeId !== "custom" &&
+            item.employeeId === employeeId;
+          const byName =
+            nameLower.length > 0 &&
+            item.employeeName.trim().toLowerCase() === nameLower;
+          return !(byId || byName);
+        });
+        return {
+          ...prev,
+          salaryPayouts: {
+            ...prev.salaryPayouts,
+            [payPeriodKey]: kept,
+          },
+        };
+      });
+    },
+    []
+  );
+
+  /** Разбить выплату на две части (например, пополам на разные дни) */
   const splitPayout = useCallback(
     (payPeriodKey: string, id: string) => {
       setState((prev) => {
-        const currentList =
-          prev.salaryPayouts?.[payPeriodKey] ??
-          makeDefaultPayouts(
-            prev.employees,
-            prev.schedules,
-            prev.amountOverrides,
-            payPeriodKey,
-            key
-          );
+        const currentList = prev.salaryPayouts?.[payPeriodKey] ?? [];
         const target = currentList.find((item) => item.id === id);
         if (!target) return prev;
 
@@ -603,19 +606,27 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
         };
       });
     },
-    [key]
+    []
   );
 
-  /** Сбросить выплаты и заполнить заново по табелю (по 1 строке на активного охранника) */
+  /** Заполнить список выплат по табелю — ТОЛЬКО по явной команде
+   *  (кнопка «Заполнить по табелю»): по 1 строке на активного
+   *  охранника, сумма = ручная сумма периода или часы × ставка. */
   const resetPayoutsFromSchedule = useCallback(
-    (payPeriodKey: string, scheduleKey?: string) => {
+    (payPeriodKey: string, scheduleMonthKey?: string) => {
       setState((prev) => {
-        const fresh = makeDefaultPayouts(
+        const schedKey = scheduleMonthKey || payPeriodKey;
+        const [sy, sm] = schedKey.split("-").map(Number);
+        const sched = fillMissingDays(
+          prev.schedules[schedKey] ?? [],
+          sy || new Date().getFullYear(),
+          sm || 1
+        );
+        const fresh = makePayoutsFromSchedule(
           prev.employees,
-          prev.schedules,
-          prev.amountOverrides,
-          payPeriodKey,
-          scheduleKey || key
+          sched,
+          prev.amountOverrides[payPeriodKey] ?? {},
+          payPeriodKey
         );
         return {
           ...prev,
@@ -627,85 +638,11 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
       });
       setMessage("Список выплат заполнен по расчёту табеля");
     },
-    [key]
+    []
   );
 
-  // ── Совместимость со старым setPayPlan (для обратной совместимости) ──
-  const setPayPlan = useCallback(
-    (
-      payPeriodKey: string,
-      employeeId: string,
-      patch: Partial<{ date: string | null; amount: number | null }>
-    ) => {
-      setState((prev) => {
-        const currentList =
-          prev.salaryPayouts?.[payPeriodKey] ??
-          makeDefaultPayouts(
-            prev.employees,
-            prev.schedules,
-            prev.amountOverrides,
-            payPeriodKey,
-            key
-          );
-        const existingIdx = currentList.findIndex((item) => item.employeeId === employeeId);
-        let updated: SalaryPayout[];
-
-        if (existingIdx >= 0) {
-          updated = currentList.map((item, idx) => {
-            if (idx !== existingIdx) return item;
-            return {
-              ...item,
-              ...(patch.date !== undefined ? { date: patch.date || "" } : {}),
-              ...(patch.amount !== undefined
-                ? { amount: patch.amount != null ? Math.max(0, Math.round(patch.amount)) : 0 }
-                : {}),
-            };
-          });
-        } else {
-          const emp = prev.employees.find((e) => e.id === employeeId);
-          const [y, m] = payPeriodKey.split("-").map(Number);
-          const defDate = y && m ? lastDayOfMonth(y, m) : "";
-          updated = [
-            ...currentList,
-            {
-              id: `pay_${Date.now()}_${employeeId}`,
-              employeeId,
-              employeeName: emp?.name || "Сотрудник",
-              date: patch.date || defDate,
-              amount: patch.amount != null ? Math.max(0, Math.round(patch.amount)) : 0,
-            },
-          ];
-        }
-
-        return {
-          ...prev,
-          salaryPayouts: {
-            ...prev.salaryPayouts,
-            [payPeriodKey]: updated,
-          },
-        };
-      });
-    },
-    [key]
-  );
-
-  const payPlansFor = useCallback(
-    (payPeriodKey: string) => {
-      const payouts = getPayoutsFor(payPeriodKey);
-      const res: Record<string, { date?: string; amount?: number }> = {};
-      for (const p of payouts) {
-        if (!res[p.employeeId]) {
-          res[p.employeeId] = { date: p.date, amount: p.amount };
-        } else {
-          res[p.employeeId].amount = (res[p.employeeId].amount || 0) + p.amount;
-        }
-      }
-      return res;
-    },
-    [getPayoutsFor]
-  );
-
-  // Расчёт по табелю: часы × ставка (или ручная сумма за месяц табеля).
+  // Расчёт по табелю (для справки): часы календаря × ставка,
+  // ручная сумма периода перекрывает расчёт.
   const payroll: PayrollPayload = useMemo(() => {
     const items = state.employees
       .filter((e) => e.active)
@@ -727,11 +664,13 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
     return {
       year,
       month,
+      calYear,
+      calMonth,
       items,
       totalAmount,
       generatedAt: new Date().toISOString(),
     };
-  }, [schedule, state.employees, amountOverrides, year, month]);
+  }, [schedule, state.employees, amountOverrides, year, month, calYear, calMonth]);
 
   const goToPrevMonth = () => {
     const prev = shiftMonth(year, month, -1);
@@ -745,12 +684,19 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
   };
 
   return {
+    // Период зарплаты (навигация, переносы)
     year,
     month,
     setYear,
     setMonth,
     goToPrevMonth,
     goToNextMonth,
+    // Календарный месяц фактических смен (период − сдвиг)
+    calYear,
+    calMonth,
+    // Сдвиг «календарь → зарплата», месяцев
+    payOffset,
+    setPayOffset,
     employees: state.employees,
     addEmployee,
     updateEmployee,
@@ -767,10 +713,9 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
     addPayoutForEmployee,
     updatePayout,
     removePayout,
+    removePayoutsForEmployee,
     splitPayout,
     resetPayoutsFromSchedule,
-    setPayPlan,
-    payPlansFor,
     payroll,
     message,
     setMessage,

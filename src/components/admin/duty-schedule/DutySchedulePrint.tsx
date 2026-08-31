@@ -4,11 +4,12 @@
 // Главная и самая крупная таблица на листе — сам табель:
 // дни 1..31 идут по горизонтали на всю ширину листа,
 // фамилии и рабочие часы крупные, без переносов, рабочие
-// смены выделены жёлтым. Сводка и прочая информация —
-// ниже и заметно мельче.
+// смены выделены жёлтым.
 //
-// Печатается выбранный месяц (year/month). Суммы учитывают
-// ручные правки (amountOverrides). Кнопка «Редактировать»
+// Печатается КАЛЕНДАРНЫЙ МЕСЯЦ СМЕН (передаётся готовым —
+// период минус сдвиг). Сам сдвиг на печатный лист НЕ выво-
+// дится, как и любые деньги: зарплата — отдельная система,
+// в табеле только дежурства и часы. Кнопка «Редактировать»
 // возвращает в таблицу — весь график правится прямо в
 // ячейках и можно сразу перепечатать.
 // =========================================================
@@ -21,12 +22,11 @@ import { MONTHS_RU, WEEKDAYS_SHORT_RU, isWeekend } from "./scheduleGenerator";
 import { SITE_NAME } from "@/lib/seo";
 
 interface Props {
+  /** Календарный месяц фактических смен (то, что в сетке). */
   year: number;
   month: number; // 1-12
   employees: Employee[];
   schedule: DayAssignment[];
-  /** Ручные суммы: employeeId -> сумма (перекрывают «часы × ставка»). */
-  amountOverrides: Record<string, number>;
   companyPhone?: string;
   companyAddress?: string;
   onDone: () => void;
@@ -38,7 +38,6 @@ export function DutySchedulePrint({
   month,
   employees,
   schedule,
-  amountOverrides,
   companyPhone,
   companyAddress,
   onDone,
@@ -55,21 +54,14 @@ export function DutySchedulePrint({
     .filter((d) => d.date.startsWith(calPrefix))
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  // Только часы — никаких сумм и зарплаты на печатной форме.
   const totals = activeEmployees.map((emp) => {
     const hours = schedule
       .filter((d) => d.employeeId === emp.id && d.status !== "missed")
       .reduce((s, d) => s + (d.hours || 0), 0);
-    const computed = Math.round(hours * emp.rate);
-    const overridden = amountOverrides[emp.id];
-    return {
-      emp,
-      hours,
-      amount: overridden ?? computed,
-      overridden: overridden != null,
-    };
+    return { emp, hours };
   });
   const grandHours = totals.reduce((s, t) => s + t.hours, 0);
-  const grandTotal = totals.reduce((s, t) => s + t.amount, 0);
 
   useEffect(() => {
     if (triggered.current) return;
@@ -131,7 +123,8 @@ export function DutySchedulePrint({
 
         {/* ГЛАВНАЯ ТАБЛИЦА — сам табель: строки — охранники,
             столбцы — дни 1..31 по горизонтали на всю ширину
-            листа (альбомная ориентация). Рабочие смены жёлтые. */}
+            листа (альбомная ориентация). Рабочие смены жёлтые.
+            Только часы — зарплата сюда не выводится. */}
         <table className="ds-print-grid">
           <thead>
             <tr>
@@ -150,7 +143,6 @@ export function DutySchedulePrint({
                 </th>
               ))}
               <th className="ds-grid-col-hours">Часов</th>
-              <th className="ds-grid-col-sum">Сумма, ₽</th>
             </tr>
           </thead>
           <tbody>
@@ -186,10 +178,6 @@ export function DutySchedulePrint({
                   <td className="ds-print-num ds-grid-total-cell">
                     {totalsRow.hours}
                   </td>
-                  <td className="ds-print-num ds-grid-total-cell">
-                    {totalsRow.amount.toLocaleString("ru-RU")}
-                    {totalsRow.overridden ? "†" : ""}
-                  </td>
                 </tr>
               );
             })}
@@ -197,13 +185,10 @@ export function DutySchedulePrint({
           <tfoot>
             <tr>
               <td className="ds-grid-name ds-grid-grand-label">
-                Общее число зарплаты за {MONTHS_RU[month - 1].toLowerCase()}
+                Итого часов за {MONTHS_RU[month - 1].toLowerCase()}
               </td>
               <td colSpan={days.length} />
-              <td className="ds-print-num">{grandHours}</td>
-              <td className="ds-print-num ds-print-total">
-                {grandTotal.toLocaleString("ru-RU")} ₽
-              </td>
+              <td className="ds-print-num ds-print-total">{grandHours}</td>
             </tr>
           </tfoot>
         </table>
@@ -214,14 +199,15 @@ export function DutySchedulePrint({
             смена (жёлтая)
           </span>
           <span>✕ — пропустил смену</span>
-          <span>† — временный охранник{totals.some((t) => t.overridden) ? " / сумма задана вручную" : ""}</span>
+          <span>† — временный охранник</span>
           <span className="ds-print-legend-note">
             Суббота/воскресенье — смена 24ч, будни — 15ч (можно изменить
             вручную).
           </span>
         </div>
 
-        {/* Сводка по сотрудникам — ниже табеля и мельче */}
+        {/* Сводка по сотрудникам — ниже табеля и мельче.
+            Телефоны и часы, без ставок и сумм. */}
         <div className="ds-print-subhead">Сводка по сотрудникам</div>
         <table className="ds-print-summary">
           <thead>
@@ -229,33 +215,21 @@ export function DutySchedulePrint({
               <th>Сотрудник</th>
               <th>Телефон</th>
               <th>Часов</th>
-              <th>Ставка, ₽/ч</th>
-              <th>Сумма, ₽</th>
             </tr>
           </thead>
           <tbody>
-            {totals.map(({ emp, hours, amount, overridden }) => (
+            {totals.map(({ emp, hours }) => (
               <tr key={emp.id}>
                 <td>{emp.name}</td>
                 <td>{emp.phone || "—"}</td>
                 <td className="ds-print-num">{hours}</td>
-                <td className="ds-print-num">{overridden ? "ручная" : emp.rate}</td>
-                <td className="ds-print-num">
-                  {amount.toLocaleString("ru-RU")}
-                </td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={2}>
-                Общее число зарплаты за {MONTHS_RU[month - 1].toLowerCase()}
-              </td>
-              <td className="ds-print-num">{grandHours}</td>
-              <td />
-              <td className="ds-print-num ds-print-total">
-                {grandTotal.toLocaleString("ru-RU")} ₽
-              </td>
+              <td colSpan={2}>Итого часов за {MONTHS_RU[month - 1].toLowerCase()}</td>
+              <td className="ds-print-num ds-print-total">{grandHours}</td>
             </tr>
           </tfoot>
         </table>

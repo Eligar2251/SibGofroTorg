@@ -24,6 +24,26 @@
   margin: 0;
   font-size: 20px;
 }
+.ds-header-titles {
+  display: grid;
+  gap: 2px;
+}
+/* Подпись о сдвиге: «смены: август (сдвиг 1 мес.) · зарплата — за сентябрь» */
+.ds-header-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b45309;
+}
+
+/* Подпись над сеткой: какой календарный месяц показан */
+.ds-table-caption {
+  font-size: 13px;
+  color: #374151;
+  margin-bottom: 8px;
+}
+.ds-table-caption-note {
+  color: #6b7280;
+}
 
 .ds-month-nav {
   display: flex;
@@ -666,21 +686,6 @@
   text-align: right;
   white-space: nowrap;
 }
-.ds-payouts-total-compare {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 600;
-}
-.ds-payouts-diff {
-  margin-left: 6px;
-  font-weight: 700;
-}
-.ds-payouts-diff--warn {
-  color: #d97706;
-}
-.ds-payouts-diff--over {
-  color: #2563eb;
-}
 
 .ds-payroll-hint {
   font-size: 12px;
@@ -691,6 +696,29 @@
 }
 .ds-payroll-actions {
   display: flex;
+}
+
+/* ── Добавление человека в зарплату ── */
+.ds-add-person-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  color: #334155;
+}
+.ds-add-person-row label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+.ds-add-person-row select {
+  padding: 5px 8px;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  max-width: 300px;
 }
 
 /* ── Модалки ── */
@@ -1029,10 +1057,6 @@
 }
 .ds-grid-col-hours {
   width: 10mm;
-  font-size: 10px !important;
-}
-.ds-grid-col-sum {
-  width: 16mm;
   font-size: 10px !important;
 }
 .ds-grid-total-cell {

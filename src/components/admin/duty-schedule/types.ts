@@ -48,9 +48,13 @@ export interface PayrollItem {
 }
 
 export interface PayrollPayload {
+  /** Период зарплаты (как пишет пользователь). */
   year: number;
   /** 1-12 — месяц, за который переносится зарплата. */
   month: number;
+  /** Календарный месяц фактических смен (период − сдвиг). */
+  calYear?: number;
+  calMonth?: number;
   items: PayrollItem[];
   totalAmount: number;
   generatedAt: string;
