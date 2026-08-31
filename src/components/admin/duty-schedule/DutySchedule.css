@@ -99,6 +99,34 @@
 .ds-btn--danger:hover {
   background: #dc2626;
 }
+.ds-btn--sm {
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+.ds-btn--xs {
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+.ds-btn--lg {
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ds-link-btn {
+  background: none;
+  border: none;
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+.ds-link-btn:hover {
+  color: #1d4ed8;
+}
 
 .ds-message {
   background: #ecfdf5;
@@ -250,34 +278,46 @@
   font-weight: 600;
 }
 
-/* ── Блок «Зарплата»: день выплаты + сумма по каждому охраннику ── */
+/* ═════════════════════════════════════════════════════════════
+   БЛОК «ЗАРПЛАТА И ВЫПЛАТЫ ПО ДНЯМ»
+   ═════════════════════════════════════════════════════════════ */
+
 .ds-payroll {
-  margin-top: 16px;
-  padding: 12px;
-  background: #f5f7fa;
-  border: 1px solid #d0d7de;
-  border-radius: 8px;
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
 }
+
 .ds-payroll-head {
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
 }
+
 .ds-payroll-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
+  color: #0f172a;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
+
 .ds-payroll-period {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #374151;
+  font-weight: 500;
+  color: #334155;
+  flex-wrap: wrap;
 }
 .ds-payroll-period select {
   padding: 5px 8px;
@@ -293,44 +333,231 @@
   border-radius: 6px;
   font-size: 13px;
 }
+
+.ds-payroll-link-btn {
+  background: none;
+  border: 1px dashed #94a3b8;
+  color: #2563eb;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.ds-payroll-link-btn:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+}
+
 .ds-payroll-status {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 12px;
   font-weight: 600;
-  color: #b45309;
+  padding: 4px 10px;
+  border-radius: 6px;
 }
 .ds-payroll-status--done {
   color: #15803d;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
 }
-.ds-payroll-table {
+.ds-payroll-status--pending {
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+
+/* ── Сводка по сотрудникам ── */
+.ds-payroll-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  margin: 10px 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ds-payroll-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ds-summary-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ds-summary-card--ok {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+.ds-summary-card--warn {
+  border-color: #fde047;
+  background: #fefce8;
+}
+
+.ds-summary-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.ds-summary-card-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #1e293b;
+}
+.ds-summary-card-hours {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.ds-summary-card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #334155;
+}
+.ds-summary-card-payout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.ds-summary-card-count {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.ds-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.ds-summary-badge--ok {
+  color: #166534;
+  background: #dcfce7;
+}
+.ds-summary-badge--warn {
+  color: #854d0e;
+  background: #fef9c3;
+}
+.ds-summary-badge--info {
+  color: #1e40af;
+  background: #dbeafe;
+}
+.ds-summary-badge--custom {
+  color: #6b21a8;
+  background: #f3e8ff;
+}
+
+.ds-summary-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+/* ── Панель инструментов выплат ── */
+.ds-payroll-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.ds-payroll-toolbar-left,
+.ds-payroll-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ── Таблица выплат ── */
+.ds-payouts-table-wrap {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.ds-payouts-table {
   width: 100%;
-  max-width: 640px;
   border-collapse: collapse;
+  font-size: 13px;
+}
+.ds-payouts-table th,
+.ds-payouts-table td {
+  border: 1px solid #e2e8f0;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+.ds-payouts-table thead th {
+  background: #f8fafc;
+  font-weight: 700;
+  color: #475569;
+  font-size: 12px;
+}
+.ds-payouts-table tfoot td {
+  background: #f8fafc;
+  font-weight: 700;
+  border-top: 2px solid #cbd5e1;
+}
+
+.ds-payout-num {
+  text-align: center;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.ds-payout-select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-weight: 600;
   background: #fff;
 }
-.ds-payroll-table th,
-.ds-payroll-table td {
-  border: 1px solid #d0d7de;
-  padding: 6px 8px;
-  font-size: 13px;
-  text-align: left;
+.ds-payout-select:focus {
+  border-color: #2563eb;
+  outline: none;
 }
-.ds-payroll-table th {
-  background: #fafbfc;
-  font-weight: 700;
+
+.ds-payout-custom-input {
+  width: 100%;
+  margin-top: 4px;
+  border: 1px solid #93c5fd;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: #f0f9ff;
 }
-.ds-payroll-name {
-  font-weight: 600;
-  white-space: nowrap;
-}
-.ds-payroll-table td:nth-child(2) {
-  width: 220px;
-}
-.ds-payroll-table td:nth-child(3) {
-  width: 150px;
-  position: relative;
+
+.ds-payout-date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .ds-payroll-date {
   border: 1px solid #cbd2d9;
@@ -339,58 +566,128 @@
   font-size: 13px;
   background: #fff;
 }
-.ds-payroll-date-hint {
-  display: block;
+.ds-payout-weekday-chip {
   font-size: 11px;
-  color: #9ca3af;
-  margin-top: 2px;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
-.ds-payroll-amount {
-  width: 120px;
+
+.ds-payout-amount-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  max-width: 130px;
+}
+.ds-payout-amount-input {
+  width: 100%;
+  padding-right: 20px;
+  font-weight: 700;
+  font-size: 13px;
+  text-align: right;
   border: 1px solid #cbd2d9;
   border-radius: 5px;
   padding: 4px 6px;
-  font-size: 13px;
-  text-align: right;
   background: #fff;
 }
-.ds-payroll-amount--manual {
+.ds-payout-amount-input:focus {
   border-color: #2563eb;
-  color: #1d4ed8;
-  font-weight: 600;
+  outline: none;
 }
-.ds-payroll-reset {
-  margin-left: 4px;
-  width: 20px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
+.ds-payout-currency {
+  position: absolute;
+  right: 6px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.ds-payout-comment-input {
+  width: 100%;
+  border: 1px solid #cbd2d9;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: #fff;
+}
+.ds-payout-comment-input:focus {
+  border-color: #2563eb;
+  outline: none;
+}
+
+.ds-payout-actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.ds-payout-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  padding: 4px 6px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
-  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.ds-payroll-reset:hover {
-  background: #dbeafe;
+.ds-payout-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
 }
-.ds-payroll-table tfoot td {
-  font-weight: 700;
+.ds-payout-btn--danger:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.ds-payouts-empty {
+  text-align: center;
+  color: #64748b;
+  padding: 18px !important;
+}
+
+.ds-payouts-total-label {
   text-align: right;
-  background: #fafbfc;
+  font-weight: 700;
+  color: #334155;
 }
-.ds-payroll-total {
+.ds-payouts-total-sum {
   color: #16a34a;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
 }
+.ds-payouts-total-compare {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+.ds-payouts-diff {
+  margin-left: 6px;
+  font-weight: 700;
+}
+.ds-payouts-diff--warn {
+  color: #d97706;
+}
+.ds-payouts-diff--over {
+  color: #2563eb;
+}
+
 .ds-payroll-hint {
   font-size: 12px;
   color: #6b7280;
-  margin: 8px 0 10px;
-  max-width: 640px;
+  margin: 8px 0 12px;
+  max-width: 760px;
+  line-height: 1.4;
 }
 .ds-payroll-actions {
   display: flex;
@@ -421,7 +718,8 @@
   overflow-y: auto;
 }
 .ds-modal--transfer {
-  width: 480px;
+  width: 560px;
+  max-width: 95vw;
 }
 .ds-modal h3 {
   margin-top: 0;
@@ -524,11 +822,20 @@
   padding: 8px 10px;
   font-size: 13px;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-transfer-scroll {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 10px;
 }
 .ds-transfer-table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 10px;
 }
 .ds-transfer-table th,
 .ds-transfer-table td {
@@ -539,10 +846,24 @@
 }
 .ds-transfer-table th {
   background: #fafbfc;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 .ds-transfer-table tfoot td {
   font-weight: 700;
   text-align: right;
+  background: #f8fafc;
+  position: sticky;
+  bottom: 0;
+}
+.ds-transfer-emp-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+.ds-transfer-sum {
+  font-weight: 700;
+  color: #16a34a;
 }
 .ds-transfer-total {
   color: #16a34a;
@@ -587,8 +908,6 @@
   gap: 8px;
 }
 .ds-print-sheet {
-  /* Альбомная ориентация A4 — лист шире, чтобы график 1..31
-     помещался в одну строку и в предпросмотре на экране */
   max-width: 297mm;
   margin: 0 auto;
   background: #fff;
@@ -598,7 +917,6 @@
   font-family: Arial, Helvetica, sans-serif;
   color: #2b2b28;
 }
-/* Жёлтая заливка и прочие фоны обязаны попадать в печать */
 .ds-print-sheet,
 .ds-print-sheet * {
   -webkit-print-color-adjust: exact;
@@ -662,8 +980,6 @@
   margin: 4mm 0 1.5mm;
 }
 
-/* ── ГЛАВНАЯ ТАБЛИЦА: табель. Дни 1..31 по горизонтали ──
-   в одну строку на всю ширину альбомного листа, крупно. */
 .ds-print-grid {
   width: 100%;
   table-layout: fixed;
@@ -703,7 +1019,6 @@
   line-height: 1.1;
 }
 .ds-grid-name {
-  /* Фамилия крупно, в одну строку, без переноса */
   width: 46mm;
   text-align: left !important;
   padding: 1mm 2mm !important;
@@ -725,7 +1040,6 @@
   font-weight: 800;
   background: #f7f6f2;
 }
-/* Рабочая смена — яркая жёлтая заливка */
 .ds-print-work {
   background: #ffe135 !important;
   color: #111;
@@ -735,7 +1049,6 @@
   background: #fff3b0 !important;
   color: #7a5a12;
 }
-/* Рабочая смена в выходной тоже остаётся ярко-жёлтой «рабочей» */
 .ds-print-weekend.ds-print-work {
   background: #ffe135 !important;
   color: #111;
@@ -804,7 +1117,6 @@
 }
 
 @media print {
-  /* Альбомная ориентация: график 1..31 в одну строку на всю ширину */
   @page {
     size: A4 landscape;
     margin: 8mm 10mm;
@@ -848,7 +1160,6 @@
     box-shadow: none !important;
     border-radius: 0 !important;
   }
-  /* График не разрывается: все дни в одной строке на листе */
   .ds-print-grid {
     break-inside: avoid;
   }
@@ -864,13 +1175,6 @@
    INLINE-РЕДАКТИРОВАНИЕ (весь график — прямо в ячейках)
    ========================================================= */
 
-.ds-btn--sm {
-  padding: 3px 8px;
-  font-size: 12px;
-  border-radius: 5px;
-}
-
-/* Мини-форма у ячейки дня */
 .ds-cell {
   position: relative;
 }
@@ -930,7 +1234,6 @@
   gap: 4px;
 }
 
-/* Инпут «как в Excel» прямо в ячейке (имя/телефон/сумма) */
 .ds-inline-edit {
   width: 100%;
   min-width: 130px;
@@ -941,7 +1244,6 @@
   font-weight: 600;
 }
 
-/* Ручная сумма за месяц */
 .ds-amount-cell {
   cursor: text;
 }
