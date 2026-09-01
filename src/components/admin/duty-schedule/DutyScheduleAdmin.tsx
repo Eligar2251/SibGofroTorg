@@ -1,9 +1,20 @@
 // =========================================================
 // FILE: src/components/admin/duty-schedule/DutyScheduleAdmin.tsx
 // Табель дежурств охраны: генерация на месяц, ручное редактирование,
-// печать и блок «Зарплата»: разбивка зарплаты по дням (несколько
-// выплат на сотрудника, ручное редактирование сотрудников, сумм
-// и дат выплат) и перенос в раздел «Зарплаты» за выбранный месяц.
+// печать и блок «Зарплата».
+//
+// МЕСЯЦ ТАБЕЛЯ = месяц навигации: сетка всегда показывает выбранный
+// месяц (ставлю октябрь — числа и календарь октября). Печатная
+// форма — чистый табель: только смены и часы, без ставок и сумм.
+//
+// ЗАРПЛАТА — отдельная система с вариантами расчёта (сдвиг):
+//   • месяц в месяц — зп за M по табелю M;
+//   • прошлый месяц — зп за M по табелю M−1;
+//   • два месяца назад — зп за M по табелю M−2.
+// Начисления (кто и сколько) видны сразу, итоговую сумму каждого
+// человека можно менять руками. Дни выплат задаются вручную —
+// любое количество, хоть каждый день. «Убрать из зп» удаляет
+// человека из зарплаты, но не из табеля.
 // =========================================================
 
 "use client";
@@ -23,15 +34,14 @@ import {
   Split,
   UserPlus,
   ArrowUpDown,
-  DollarSign,
   CalendarDays,
-  Info,
+  Undo2,
 } from "lucide-react";
 import { useDutySchedule } from "./useDutySchedule";
 import { ScheduleTable } from "./ScheduleTable";
 import { EmployeeManagerModal } from "./EmployeeManagerModal";
 import { DutySchedulePrint } from "./DutySchedulePrint";
-import { SalaryPayout } from "./types";
+import { Employee, SalaryAccrual, SalaryPayout } from "./types";
 import { MONTHS_RU, WEEKDAYS_SHORT_RU, daysInMonth } from "./scheduleGenerator";
 import "./DutySchedule.css";
 
@@ -54,11 +64,53 @@ function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+/** Месяцы в предложном падеже: «выплаты в сентябре». */
+const MONTHS_RU_IN = [
+  "январе",
+  "феврале",
+  "марте",
+  "апреле",
+  "мае",
+  "июне",
+  "июле",
+  "августе",
+  "сентябре",
+  "октябре",
+  "ноябре",
+  "декабре",
+];
+
+/** Месяцы в родительном падеже: «за смены августа». */
+const MONTHS_RU_FOR = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
+
 /** Последний день месяца. */
 function lastDayOfMonth(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(
     daysInMonth(year, month)
   ).padStart(2, "0")}`;
+}
+
+/** Месяц со сдвигом (для подписей вариантов расчёта зп). */
+function monthBack(
+  year: number,
+  month: number,
+  delta: number
+): { year: number; month: number } {
+  const d = new Date(year, month - 1 + delta, 1);
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
 /** Строка «ДД.ММ.ГГГГ» для отображения даты выплаты. */
@@ -76,6 +128,19 @@ function fmtDateWithWeekday(iso: string): string {
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const wd = WEEKDAYS_SHORT_RU[d.getDay()] || "";
   return `${wd}, ${m[3]}.${m[2]}.${m[1]}`;
+}
+
+/** Один и тот же человек? Из табеля — по id, вручную введённый — по имени. */
+function isSamePerson(
+  row: { employeeId: string; employeeName: string },
+  employeeId: string,
+  employeeName: string
+): boolean {
+  if (employeeId && employeeId !== "custom" && row.employeeId === employeeId) {
+    return true;
+  }
+  const name = employeeName.trim().toLowerCase();
+  return name.length > 0 && row.employeeName.trim().toLowerCase() === name;
 }
 
 /** Стандартная реализация переноса: POST в API зарплат админки
@@ -124,6 +189,23 @@ async function defaultTransferToPayroll(
   }
 }
 
+/** Строка начисления с расчётом по табелю базового месяца. */
+interface AccrualRow extends SalaryAccrual {
+  /** Сотрудник табеля (null — человек вне табеля). */
+  known: Employee | null;
+  /** Часы по табелю базового месяца. */
+  hours: number;
+  /** Расчёт по табелю: часы × ставка (или ручная «Сумма» этого месяца). */
+  bySchedule: number | null;
+  /** Итоговая сумма зп: ручная, если задана, иначе расчёт. */
+  effective: number;
+  /** Задана ли ручная итоговая сумма. */
+  manual: boolean;
+  /** Сколько уже разложено по дням выплат. */
+  payoutTotal: number;
+  payoutCount: number;
+}
+
 export const DutyScheduleAdmin: React.FC<Props> = ({
   initialYear,
   initialMonth,
@@ -137,6 +219,13 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     month,
     goToPrevMonth,
     goToNextMonth,
+    basisYear,
+    basisMonth,
+    basisKey,
+    basisSchedule,
+    basisAmountOverrides,
+    payOffset,
+    setPayOffset,
     employees,
     addEmployee,
     updateEmployee,
@@ -147,6 +236,12 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     clearCell,
     amountOverrides,
     setAmountOverride,
+    getAccrualsFor,
+    setAccrualAmount,
+    setAccrualName,
+    addAccrualPerson,
+    removeAccrual,
+    resetAccrualsToTimesheet,
     getPayoutsFor,
     setSalaryPayouts,
     addPayout,
@@ -154,8 +249,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     updatePayout,
     removePayout,
     splitPayout,
-    resetPayoutsFromSchedule,
-    payroll,
+    fillPayoutsFromAccruals,
     message,
     setMessage,
   } = useDutySchedule(initialYear, initialMonth);
@@ -167,15 +261,19 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   const [transferring, setTransferring] = useState(false);
   const [transferError, setTransferError] = useState("");
 
-  // ── Зарплатный месяц: выбирается отдельно, может НЕ совпадать
-  //    с месяцем табеля (например, табель за сентябрь — выплата
-  //    за октябрь). ──
-  const [payYear, setPayYear] = useState(initialYear ?? year);
-  const [payMonth, setPayMonth] = useState(initialMonth ?? month);
-  const payPeriodKey = monthKey(payYear, payMonth);
-  const payPeriodLabel = `${MONTHS_RU[payMonth - 1]} ${payYear}`;
-  const timesheetMonthKey = monthKey(year, month);
-  const timesheetMonthLabel = `${MONTHS_RU[month - 1]} ${year}`;
+  // Месяц табеля = период зарплаты (навигация).
+  const payPeriodKey = monthKey(year, month);
+  const payPeriodLabel = `${MONTHS_RU[month - 1]} ${year}`;
+
+  // Базовый месяц расчёта зп: месяц − сдвиг (0/1/2).
+  const basisLabel = `${MONTHS_RU[basisMonth - 1]} ${basisYear}`;
+  const basisNote =
+    payOffset > 0
+      ? `выплаты в ${MONTHS_RU_IN[month - 1]} ${year} — за смены ${MONTHS_RU_FOR[basisMonth - 1]} ${basisYear}`
+      : null;
+  // Подписи вариантов расчёта с конкретными месяцами
+  const prev1 = monthBack(year, month, -1);
+  const prev2 = monthBack(year, month, -2);
 
   const rotatingEmployees = employees.filter(
     (e) => e.role === "rotating" && e.active
@@ -192,77 +290,50 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     0
   );
 
-  // Список выплат для выбранного зарплатного месяца
+  // ── Начисления: кто и сколько получает за период ──
+  const accruals = getAccrualsFor(payPeriodKey);
   const payouts = getPayoutsFor(payPeriodKey);
+
+  const accrualRows: AccrualRow[] = accruals.map((a) => {
+    const known =
+      a.employeeId && a.employeeId !== "custom"
+        ? employees.find((e) => e.id === a.employeeId) ?? null
+        : null;
+    let hours = 0;
+    let bySchedule: number | null = null;
+    if (known) {
+      hours = basisSchedule
+        .filter((d) => d.employeeId === known.id && d.status !== "missed")
+        .reduce((s, d) => s + (d.hours || 0), 0);
+      bySchedule =
+        basisAmountOverrides[known.id] ?? Math.round(hours * known.rate);
+    }
+    const effective = a.amount != null ? a.amount : (bySchedule ?? 0);
+    const empPayouts = payouts.filter(
+      (p) => isSamePerson(p, a.employeeId, a.employeeName)
+    );
+    return {
+      ...a,
+      known,
+      hours,
+      bySchedule,
+      effective,
+      manual: a.amount != null,
+      payoutTotal: empPayouts.reduce((s, p) => s + (p.amount || 0), 0),
+      payoutCount: empPayouts.length,
+    };
+  });
+  const accrualTotal = accrualRows.reduce((s, r) => s + r.effective, 0);
+
+  // ── Выплаты по дням ──
   const payTotal = payouts.reduce((s, r) => s + (r.amount || 0), 0);
   const validPayoutsCount = payouts.filter((p) => p.amount > 0).length;
-
-  // ── Сводка по сотрудникам (по табелю vs по выплатам) ──
-  const employeeSummaries = useMemo(() => {
-    // 1. Все активные сотрудники охраны
-    const result = employees
-      .filter((e) => e.active)
-      .map((emp) => {
-        // Часы и начисление по табелю дежурств
-        const schedItem = payroll.items.find((i) => i.employeeId === emp.id);
-        const schedHours = schedItem?.totalHours || 0;
-        const schedAmount = schedItem?.amount || 0;
-
-        // Выплаты, привязанные к этому сотруднику
-        const empPayouts = payouts.filter(
-          (p) => p.employeeId === emp.id || p.employeeName === emp.name
-        );
-        const payoutTotal = empPayouts.reduce((s, p) => s + (p.amount || 0), 0);
-        const diff = payoutTotal - schedAmount;
-
-        return {
-          employeeId: emp.id,
-          name: emp.name,
-          rate: emp.rate,
-          role: emp.role,
-          schedHours,
-          schedAmount,
-          payoutTotal,
-          payoutCount: empPayouts.length,
-          diff,
-          isCustom: false,
-        };
-      });
-
-    // 2. Добавляем вручную добавленных сотрудников, которых нет в справочнике
-    const knownIds = new Set(employees.map((e) => e.id));
-    const knownNames = new Set(employees.map((e) => e.name.toLowerCase().trim()));
-    const customPayouts = payouts.filter(
-      (p) =>
-        (!knownIds.has(p.employeeId) && !knownNames.has(p.employeeName.toLowerCase().trim())) ||
-        p.employeeId === "custom"
-    );
-
-    const customGroups = new Map<string, SalaryPayout[]>();
-    for (const cp of customPayouts) {
-      const key = cp.employeeName.trim() || "Сотрудник";
-      if (!customGroups.has(key)) customGroups.set(key, []);
-      customGroups.get(key)!.push(cp);
-    }
-
-    for (const [cName, cList] of customGroups.entries()) {
-      const payoutTotal = cList.reduce((s, p) => s + (p.amount || 0), 0);
-      result.push({
-        employeeId: cList[0].employeeId || "custom",
-        name: cName,
-        rate: 0,
-        role: "rotating" as const,
-        schedHours: 0,
-        schedAmount: 0,
-        payoutTotal,
-        payoutCount: cList.length,
-        diff: payoutTotal,
-        isCustom: true,
-      });
-    }
-
-    return result;
-  }, [employees, payroll.items, payouts]);
+  const payoutsWord =
+    validPayoutsCount === 1
+      ? "выплата"
+      : validPayoutsCount >= 2 && validPayoutsCount <= 4
+        ? "выплаты"
+        : "выплат";
 
   const handleGenerate = () => {
     const hasData = schedule.some((d) => d.employeeId);
@@ -274,20 +345,80 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     generate(rotatingStart || undefined);
   };
 
-  const handleResetPayouts = () => {
+  const handleAddAccrualPerson = (value: string) => {
+    if (!value) return;
+    if (value === "custom") {
+      addAccrualPerson(payPeriodKey, "custom", "");
+      setMessage("Человек добавлен — введите ФИО и итоговую сумму");
+    } else {
+      const emp = employees.find((e) => e.id === value);
+      addAccrualPerson(payPeriodKey, value, emp?.name || "");
+      setMessage(
+        "Человек добавлен в зарплату — сумма считается по табелю, можно поменять руками"
+      );
+    }
+  };
+
+  const handleRemoveFromSalary = (row: AccrualRow) => {
     if (
-      payouts.length > 0 &&
       !confirm(
-        `Заполнить список выплат заново по расчёту табеля за ${timesheetMonthLabel}?\n\nТекущие ручные выплаты за ${payPeriodLabel} будут заменены.`
+        `Убрать «${row.employeeName || "человека без имени"}» из зарплаты за ${payPeriodLabel}?\n\n` +
+          `Удалится начисление (${row.effective.toLocaleString("ru-RU")} ₽)` +
+          (row.payoutCount > 0
+            ? ` и все его выплаты за этот месяц (${row.payoutCount} шт. на ${row.payoutTotal.toLocaleString("ru-RU")} ₽)`
+            : "") +
+          `.\nВ табеле дежурств человек останется — зарплата и табель независимы.`
       )
     ) {
       return;
     }
-    resetPayoutsFromSchedule(payPeriodKey, timesheetMonthKey);
+    removeAccrual(payPeriodKey, row.id);
+    setMessage(`«${row.employeeName}» убран из зарплаты (в табеле остался)`);
+  };
+
+  const handleResetAccruals = () => {
+    if (
+      !confirm(
+        `Вернуть в зарплату за ${payPeriodLabel} всех активных охранников?\n\n` +
+          `Ручные итоговые суммы и добавленные вручную люди за этот месяц сбросятся, ` +
+          `суммы снова будут считаться по табелю за ${basisLabel.toLowerCase()}.`
+      )
+    ) {
+      return;
+    }
+    resetAccrualsToTimesheet(payPeriodKey);
+  };
+
+  const handleFillPayouts = () => {
+    if (
+      payouts.length > 0 &&
+      !confirm(
+        `Заполнить выплаты по начислению за ${payPeriodLabel}?\n\n` +
+          `Текущие выплаты (${payouts.length} шт.) будут заменены: по 1 строке ` +
+          `на человека с его итоговой суммой, день — последний день месяца. ` +
+          `Дальше дни и суммы можно менять как угодно.`
+      )
+    ) {
+      return;
+    }
+    fillPayoutsFromAccruals(payPeriodKey, basisKey);
+  };
+
+  const handleAddPayoutForPerson = (row: AccrualRow) => {
+    const remaining = row.effective - row.payoutTotal;
+    addPayoutForEmployee(
+      payPeriodKey,
+      row.employeeId,
+      row.employeeName,
+      remaining > 0 ? remaining : 0,
+      lastDayOfMonth(year, month)
+    );
   };
 
   const handleSortByDate = () => {
-    const sorted = [...payouts].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    const sorted = [...payouts].sort((a, b) =>
+      (a.date || "").localeCompare(b.date || "")
+    );
     setSalaryPayouts(payPeriodKey, sorted);
     setMessage("Выплаты отсортированы по дате");
   };
@@ -297,17 +428,13 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
       a.employeeName.localeCompare(b.employeeName, "ru")
     );
     setSalaryPayouts(payPeriodKey, sorted);
-    setMessage("Выплаты сгруппированы по сотрудникам");
-  };
-
-  const handleAddPayoutForEmp = (empId: string, remainingAmount: number) => {
-    const defaultDate = lastDayOfMonth(payYear, payMonth);
-    const amount = remainingAmount > 0 ? remainingAmount : 0;
-    addPayoutForEmployee(payPeriodKey, empId, amount, defaultDate);
+    setMessage("Выплаты сгруппированы по людям");
   };
 
   const handleTransferConfirm = async () => {
-    const validItems = payouts.filter((r) => r.amount > 0 && r.employeeName.trim());
+    const validItems = payouts.filter(
+      (r) => r.amount > 0 && r.employeeName.trim()
+    );
     if (validItems.length === 0) {
       setMessage("Нет сумм для переноса — укажите суммы выплат в таблице");
       setShowTransfer(false);
@@ -325,7 +452,9 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
       setShowTransfer(false);
       router.refresh();
     } catch (e) {
-      setTransferError(e instanceof Error ? e.message : "Ошибка сети при переносе");
+      setTransferError(
+        e instanceof Error ? e.message : "Ошибка сети при переносе"
+      );
     } finally {
       setTransferring(false);
     }
@@ -336,13 +465,24 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
       <div className="ds-header">
         <h2>Табель охраны — дежурства</h2>
         <div className="ds-month-nav">
-          <button className="ds-btn" onClick={goToPrevMonth} title="Предыдущий месяц табеля">
+          <button
+            className="ds-btn"
+            onClick={goToPrevMonth}
+            title="Предыдущий месяц"
+          >
             ←
           </button>
-          <span className="ds-month-label" title="Месяц табеля (дни дежурств)">
-            {MONTHS_RU[month - 1]} {year}
+          <span
+            className="ds-month-label"
+            title="Месяц табеля (числа и календарь в сетке) и период зарплаты"
+          >
+            {payPeriodLabel}
           </span>
-          <button className="ds-btn" onClick={goToNextMonth} title="Следующий месяц табеля">
+          <button
+            className="ds-btn"
+            onClick={goToNextMonth}
+            title="Следующий месяц"
+          >
             →
           </button>
         </div>
@@ -378,7 +518,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           <button
             className="ds-btn"
             onClick={() => setShowPrint(true)}
-            title="Печатная форма табеля"
+            title="Печатная форма табеля (только смены и часы, без денег)"
           >
             <Printer size={14} style={{ verticalAlign: "-2px" }} /> Печать
           </button>
@@ -415,65 +555,62 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           <i className="ds-swatch ds-swatch--conflict" /> Конфликт (два дня подряд)
         </span>
         <span className="ds-legend-rate">
-          Ставка: {new Set(employees.filter((e) => e.active).map((e) => e.rate)).size === 1
+          Ставка:{" "}
+          {new Set(employees.filter((e) => e.active).map((e) => e.rate))
+            .size === 1
             ? `${employees.find((e) => e.active)?.rate.toLocaleString("ru-RU")} ₽/час`
             : "у каждого своя (в «Сотрудниках»)"}
         </span>
-        <span className="ds-legend-edit" title="Весь график редактируется прямо в ячейках — в том числе перед печатью">
+        <span
+          className="ds-legend-edit"
+          title="Весь график редактируется прямо в ячейках — в том числе перед печатью"
+        >
           Клик по ячейке — часы/сотрудник/статус · двойной клик по имени или
           сумме — правка на месте · Enter — сохранить, Esc — отмена
         </span>
       </div>
 
-      {/* ══ ЗАРПЛАТА: гибкая разбивка выплат по дням и сотрудникам ══ */}
+      {/* ══ ЗАРПЛАТА: варианты расчёта, начисления и выплаты по дням ══ */}
       <div className="ds-payroll">
         <div className="ds-payroll-head">
           <div className="ds-payroll-title">
-            <CalendarClock size={16} /> Выплаты и зарплата охраны
+            <CalendarClock size={16} /> Зарплата — {payPeriodLabel}
           </div>
 
           <div className="ds-payroll-period">
-            <label>Зарплатный месяц:</label>
+            <label title="По какому табелю считается зарплата. Сетка табеля при этом не сдвигается — только расчёт зп">
+              Расчёт зп по табелю:
+            </label>
             <select
-              value={payMonth}
-              onChange={(e) => setPayMonth(Number(e.target.value))}
-              title="За какой месяц зарплата переносится — может отличаться от месяца табеля"
+              value={payOffset}
+              onChange={(e) => setPayOffset(Number(e.target.value))}
+              title="По какому табелю считаются суммы выплат. Сетка табеля при этом не сдвигается: выбрал сентябрь — числа и календарь сентября, а выплаты в сентябре — за табель прошлого месяца (или двухмесячной давности)."
             >
-              {MONTHS_RU.map((m, i) => (
-                <option key={m} value={i + 1}>
-                  {m}
-                </option>
-              ))}
+              <option value={0}>
+                месяц в месяц ({MONTHS_RU[month - 1].toLowerCase()} {year})
+              </option>
+              <option value={1}>
+                −1 месяц ({MONTHS_RU[prev1.month - 1].toLowerCase()} {prev1.year})
+              </option>
+              <option value={2}>
+                −2 месяца ({MONTHS_RU[prev2.month - 1].toLowerCase()} {prev2.year})
+              </option>
             </select>
-            <input
-              className="ds-payroll-year"
-              type="number"
-              min={2020}
-              max={2100}
-              value={payYear}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n) && n >= 2000 && n <= 2100) setPayYear(n);
-              }}
-            />
-            {payPeriodKey !== timesheetMonthKey && (
-              <button
-                type="button"
-                className="ds-payroll-link-btn"
-                onClick={() => {
-                  setPayYear(year);
-                  setPayMonth(month);
-                }}
-                title="Установить зарплатный месяц равным месяцу табеля"
-              >
-                Совпадает с табелем ({MONTHS_RU[month - 1]})
-              </button>
+            {basisNote && (
+              <span className="ds-payroll-basis-note" title="Базовый месяц расчёта зарплаты">
+                {basisNote}
+              </span>
             )}
           </div>
 
           {alreadyTransferred ? (
-            <span className="ds-payroll-status ds-payroll-status--done" title="Зарплата за этот месяц уже переносилась в раздел «Зарплаты»">
-              <CheckCircle2 size={13} /> {payPeriodLabel}: перенесено {transfersForPeriod.length} выплат ({transferredTotal.toLocaleString("ru-RU")} ₽)
+            <span
+              className="ds-payroll-status ds-payroll-status--done"
+              title="Зарплата за этот месяц уже переносилась в раздел «Зарплаты»"
+            >
+              <CheckCircle2 size={13} /> {payPeriodLabel}: перенесено{" "}
+              {transfersForPeriod.length} выплат (
+              {transferredTotal.toLocaleString("ru-RU")} ₽)
             </span>
           ) : (
             <span className="ds-payroll-status ds-payroll-status--pending">
@@ -482,84 +619,234 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           )}
         </div>
 
-        {/* ── Сводка по сотрудникам: сравнение табеля и плана выплат ── */}
+        {/* ── Начислено: кто и сколько ── */}
         <div className="ds-payroll-section-title">
-          <span>Сводка по сотрудникам (начислено по сменам → распределено по выплатам)</span>
+          <span>
+            {payOffset > 0
+              ? `Начислено — выплаты в ${MONTHS_RU_IN[month - 1]} ${year} за смены ${MONTHS_RU_FOR[basisMonth - 1]} ${basisYear}`
+              : `Начислено за ${payPeriodLabel.toLowerCase()} — кто и сколько`}
+          </span>
         </div>
 
-        <div className="ds-payroll-summary-grid">
-          {employeeSummaries.map((emp) => {
-            const isMatch = !emp.isCustom && emp.schedAmount > 0 && emp.payoutTotal === emp.schedAmount;
-            const isRemaining = !emp.isCustom && emp.schedAmount > 0 && emp.payoutTotal < emp.schedAmount;
-            const isOver = !emp.isCustom && emp.schedAmount > 0 && emp.payoutTotal > emp.schedAmount;
-            const remaining = emp.schedAmount - emp.payoutTotal;
-
-            return (
-              <div
-                key={emp.employeeId}
-                className={`ds-summary-card${
-                  isMatch ? " ds-summary-card--ok" : isRemaining ? " ds-summary-card--warn" : ""
-                }`}
-              >
-                <div className="ds-summary-card-head">
-                  <span className="ds-summary-card-name">{emp.name}</span>
-                  {!emp.isCustom && (
-                    <span className="ds-summary-card-hours">
-                      {emp.schedHours} ч ({emp.schedAmount.toLocaleString("ru-RU")} ₽)
-                    </span>
-                  )}
-                </div>
-
-                <div className="ds-summary-card-body">
-                  <div className="ds-summary-card-payout">
-                    Выплаты: <b>{emp.payoutTotal.toLocaleString("ru-RU")} ₽</b>
-                    <span className="ds-summary-card-count">({emp.payoutCount} дн.)</span>
-                  </div>
-
-                  {isMatch && (
-                    <span className="ds-summary-badge ds-summary-badge--ok">
-                      <CheckCircle2 size={11} /> Распределено полностью
-                    </span>
-                  )}
-                  {isRemaining && (
-                    <span className="ds-summary-badge ds-summary-badge--warn">
-                      Остаток: +{remaining.toLocaleString("ru-RU")} ₽
-                    </span>
-                  )}
-                  {isOver && (
-                    <span className="ds-summary-badge ds-summary-badge--info">
-                      Превышение: +{emp.diff.toLocaleString("ru-RU")} ₽
-                    </span>
-                  )}
-                  {emp.isCustom && (
-                    <span className="ds-summary-badge ds-summary-badge--custom">
-                      Ручная выплата
-                    </span>
-                  )}
-                </div>
-
-                <div className="ds-summary-card-actions">
-                  <button
-                    type="button"
-                    className="ds-btn ds-btn--xs"
-                    onClick={() => handleAddPayoutForEmp(emp.employeeId, remaining)}
-                    title="Добавить ещё один день выплаты для этого сотрудника"
-                  >
-                    <Plus size={11} /> Выплата{remaining > 0 ? ` (+${remaining.toLocaleString("ru-RU")} ₽)` : ""}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+        <div className="ds-add-person-row">
+          <UserPlus size={14} />
+          <label>Добавить человека в зп:</label>
+          <select value="" onChange={(e) => handleAddAccrualPerson(e.target.value)}>
+            <option value="">— выбрать —</option>
+            <optgroup label="Из табеля охраны">
+              {employees
+                .filter((e) => e.active)
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="Другой">
+              <option value="custom">— ввести имя вручную —</option>
+            </optgroup>
+          </select>
+          <span className="ds-muted">
+            можно любого человека, даже не из табеля
+          </span>
         </div>
 
-        {/* ── Панель действий таблицы выплат ── */}
+        <div className="ds-payouts-table-wrap">
+          <table className="ds-payouts-table">
+            <thead>
+              <tr>
+                <th style={{ minWidth: "220px" }}>Человек</th>
+                <th
+                  style={{ width: "90px" }}
+                  title={`Часы по табелю за ${basisLabel} (базовый месяц расчёта)`}
+                >
+                  Часы ({MONTHS_RU[basisMonth - 1].toLowerCase()})
+                </th>
+                <th
+                  style={{ width: "120px" }}
+                  title={`Расчёт по табелю за ${basisLabel}: часы × ставка (или ручная «Сумма» того месяца)`}
+                >
+                  По табелю, ₽
+                </th>
+                <th
+                  style={{ width: "150px" }}
+                  title="Итоговая сумма зарплаты. Можно поменять руками — поле сразу становится ручным, ↺ вернёт расчёт по табелю"
+                >
+                  Итоговая сумма, ₽
+                </th>
+                <th style={{ width: "220px" }}>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accrualRows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="ds-payouts-empty">
+                    В зарплате за {payPeriodLabel.toLowerCase()} никто не
+                    указан. Добавьте человека выше или{" "}
+                    <button
+                      type="button"
+                      className="ds-link-btn"
+                      onClick={handleResetAccruals}
+                    >
+                      верните всех по табелю
+                    </button>
+                    .
+                  </td>
+                </tr>
+              ) : (
+                accrualRows.map((row) => (
+                  <tr key={row.id}>
+                    {/* Человек */}
+                    <td className="ds-accrual-name-cell">
+                      {row.known ? (
+                        <>
+                          <span className="ds-accrual-name">{row.employeeName}</span>
+                          <span className="ds-muted"> · из табеля</span>
+                        </>
+                      ) : (
+                        <input
+                          type="text"
+                          className="ds-payout-custom-input"
+                          placeholder="ФИО человека"
+                          value={row.employeeName}
+                          onChange={(e) =>
+                            setAccrualName(payPeriodKey, row.id, e.target.value)
+                          }
+                        />
+                      )}
+                    </td>
+
+                    {/* Часы базового месяца */}
+                    <td className="ds-print-num">
+                      {row.known ? row.hours : "—"}
+                    </td>
+
+                    {/* Расчёт по табелю */}
+                    <td className="ds-print-num">
+                      {row.bySchedule != null
+                        ? row.bySchedule.toLocaleString("ru-RU")
+                        : "—"}
+                    </td>
+
+                    {/* Итоговая сумма (можно менять руками) */}
+                    <td>
+                      <div className="ds-payout-amount-wrap ds-accrual-amount-wrap">
+                        <input
+                          type="number"
+                          className="ds-payout-amount-input"
+                          min={0}
+                          step={100}
+                          value={row.effective === 0 ? "" : row.effective}
+                          placeholder="0"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const num = val === "" ? 0 : Number(val);
+                            setAccrualAmount(
+                              payPeriodKey,
+                              row.id,
+                              Number.isNaN(num) ? 0 : num
+                            );
+                          }}
+                        />
+                        <span className="ds-payout-currency">₽</span>
+                        {row.manual && (
+                          <button
+                            type="button"
+                            className="ds-amount-reset ds-accrual-reset"
+                            title="Вернуть расчёт по табелю"
+                            onClick={() =>
+                              setAccrualAmount(payPeriodKey, row.id, null)
+                            }
+                          >
+                            <Undo2 size={11} />
+                          </button>
+                        )}
+                      </div>
+                      {row.known &&
+                        row.payoutCount > 0 &&
+                        row.payoutTotal !== row.effective && (
+                          <span
+                            className={`ds-accrual-diff ${
+                              row.payoutTotal < row.effective
+                                ? "ds-accrual-diff--rest"
+                                : "ds-accrual-diff--over"
+                            }`}
+                            title="Разница между итоговой суммой и тем, что уже разложено по дням выплат"
+                          >
+                            {row.payoutTotal < row.effective
+                              ? `по дням: ${row.payoutTotal.toLocaleString("ru-RU")} ₽`
+                              : `по дням больше на ${(row.payoutTotal - row.effective).toLocaleString("ru-RU")} ₽`}
+                          </span>
+                        )}
+                    </td>
+
+                    {/* Действия */}
+                    <td className="ds-payout-actions-cell">
+                      <button
+                        type="button"
+                        className="ds-btn ds-btn--xs"
+                        onClick={() => handleAddPayoutForPerson(row)}
+                        title="Добавить этому человеку ещё один день выплаты (сумма — остаток итоговой)"
+                      >
+                        <Plus size={11} /> Выплата
+                      </button>
+                      <button
+                        type="button"
+                        className="ds-btn ds-btn--xs ds-btn--danger"
+                        onClick={() => handleRemoveFromSalary(row)}
+                        title="Убрать человека из зарплаты за этот месяц. В табеле дежурств он останется."
+                      >
+                        <Trash2 size={11} /> Убрать из зп
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {accrualRows.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colSpan={3} className="ds-payouts-total-label">
+                    Итого начислено за {payPeriodLabel.toLowerCase()}:
+                  </td>
+                  <td className="ds-payouts-total-sum">
+                    {accrualTotal.toLocaleString("ru-RU")} ₽
+                  </td>
+                  <td className="ds-muted">
+                    {payOffset > 0
+                      ? `расчёт по табелю за ${MONTHS_RU[basisMonth - 1].toLowerCase()}`
+                      : "расчёт по табелю этого месяца"}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        <div className="ds-accrual-actions">
+          <button
+            type="button"
+            className="ds-btn ds-btn--sm"
+            onClick={handleResetAccruals}
+            title="Вернуть в список всех активных охранников, суммы — снова расчёт по табелю"
+          >
+            <RotateCcw size={12} /> Вернуть всех по табелю
+          </button>
+        </div>
+
+        {/* ── Выплаты по дням ── */}
+        <div className="ds-payroll-section-title">
+          <span>Выплаты по дням — когда кто получает деньги</span>
+        </div>
+
         <div className="ds-payroll-toolbar">
           <div className="ds-payroll-toolbar-left">
             <button
               type="button"
               className="ds-btn ds-btn--primary"
-              onClick={() => addPayout(payPeriodKey, { date: lastDayOfMonth(payYear, payMonth) })}
+              onClick={() =>
+                addPayout(payPeriodKey, { date: lastDayOfMonth(year, month) })
+              }
               title="Добавить новую строку выплаты"
             >
               <Plus size={14} /> Добавить выплату
@@ -567,10 +854,10 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
             <button
               type="button"
               className="ds-btn"
-              onClick={handleResetPayouts}
-              title="Сбросить выплаты и заполнить заново по расчёту табеля дежурств (1 выплата на каждого сотрудника)"
+              onClick={handleFillPayouts}
+              title="По 1 строке на человека из начислений, сумма — итоговая, день — последний день месяца. Дальше меняйте как угодно."
             >
-              <RotateCcw size={13} /> Заполнить по табелю
+              <RotateCcw size={13} /> Заполнить по начислению
             </button>
           </div>
 
@@ -587,27 +874,35 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
               type="button"
               className="ds-btn ds-btn--sm"
               onClick={handleSortByEmployee}
-              title="Сгруппировать выплаты по фамилиям сотрудников"
+              title="Сгруппировать выплаты по фамилиям"
             >
-              <ArrowUpDown size={12} /> По сотрудникам
+              <ArrowUpDown size={12} /> По людям
             </button>
           </div>
         </div>
 
-        {/* ── Таблица выплат по дням ── */}
         <div className="ds-payouts-table-wrap">
           <table className="ds-payouts-table">
             <thead>
               <tr>
                 <th style={{ width: "36px" }}>№</th>
-                <th style={{ minWidth: "200px" }}>Сотрудник</th>
-                <th style={{ minWidth: "190px" }} title="День, когда охранник получает деньги">
+                <th style={{ minWidth: "200px" }}>Человек</th>
+                <th
+                  style={{ minWidth: "190px" }}
+                  title="День, когда человек получает деньги"
+                >
                   День выплаты
                 </th>
-                <th style={{ minWidth: "140px" }} title="Сумма конкретной выплаты в рублях">
+                <th
+                  style={{ minWidth: "140px" }}
+                  title="Сумма конкретной выплаты в рублях"
+                >
                   Сумма, ₽
                 </th>
-                <th style={{ minWidth: "160px" }} title="Например: Аванс, Выплата 1, Окончательный расчёт">
+                <th
+                  style={{ minWidth: "160px" }}
+                  title="Например: Аванс, Выплата 1, Окончательный расчёт"
+                >
                   Назначение / Примечание
                 </th>
                 <th style={{ width: "120px" }}>Действия</th>
@@ -617,35 +912,31 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
               {payouts.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="ds-payouts-empty">
-                    Нет выплат за этот период. Нажмите{" "}
+                    Выплат за {payPeriodLabel.toLowerCase()} нет. Нажмите{" "}
                     <button
                       type="button"
                       className="ds-link-btn"
-                      onClick={handleResetPayouts}
+                      onClick={handleFillPayouts}
                     >
-                      «Заполнить по табелю»
+                      «Заполнить по начислению»
                     </button>{" "}
-                    или{" "}
-                    <button
-                      type="button"
-                      className="ds-link-btn"
-                      onClick={() => addPayout(payPeriodKey)}
-                    >
-                      «+ Добавить выплату»
-                    </button>
-                    .
+                    или добавьте дни выплат сами — любое количество, хоть каждый
+                    день.
                   </td>
                 </tr>
               ) : (
                 payouts.map((row, idx) => {
-                  const isKnownEmployee = employees.some((e) => e.id === row.employeeId);
-                  const isCustom = row.employeeId === "custom" || !isKnownEmployee;
+                  const isKnownEmployee = employees.some(
+                    (e) => e.id === row.employeeId
+                  );
+                  const isCustom =
+                    row.employeeId === "custom" || !isKnownEmployee;
 
                   return (
                     <tr key={row.id}>
                       <td className="ds-payout-num">{idx + 1}</td>
 
-                      {/* Сотрудник */}
+                      {/* Человек */}
                       <td className="ds-payout-emp-cell">
                         <select
                           className="ds-payout-select"
@@ -658,7 +949,9 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
                                 employeeName: row.employeeName || "",
                               });
                             } else {
-                              const emp = employees.find((empItem) => empItem.id === val);
+                              const emp = employees.find(
+                                (empItem) => empItem.id === val
+                              );
                               updatePayout(payPeriodKey, row.id, {
                                 employeeId: val,
                                 employeeName: emp ? emp.name : row.employeeName,
@@ -695,7 +988,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
                           <input
                             type="text"
                             className="ds-payout-custom-input"
-                            placeholder="ФИО сотрудника"
+                            placeholder="ФИО человека"
                             value={row.employeeName}
                             onChange={(e) =>
                               updatePayout(payPeriodKey, row.id, {
@@ -732,7 +1025,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
                         <div className="ds-payout-amount-wrap">
                           <input
                             type="number"
-                            className="ds-payroll-amount ds-payout-amount-input"
+                            className="ds-payout-amount-input"
                             min={0}
                             step={100}
                             value={row.amount === 0 ? "" : row.amount}
@@ -781,11 +1074,12 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
                             addPayoutForEmployee(
                               payPeriodKey,
                               row.employeeId,
+                              row.employeeName,
                               0,
                               row.date
                             )
                           }
-                          title="Добавить ещё один день выплаты для этого сотрудника"
+                          title="Добавить ещё один день выплаты этому человеку"
                         >
                           <Plus size={13} />
                         </button>
@@ -806,23 +1100,14 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
             <tfoot>
               <tr>
                 <td colSpan={3} className="ds-payouts-total-label">
-                  Итого к выплате ({validPayoutsCount} {validPayoutsCount === 1 ? "выплата" : validPayoutsCount >= 2 && validPayoutsCount <= 4 ? "выплаты" : "выплат"}):
+                  Итого к выплате ({validPayoutsCount} {payoutsWord}):
                 </td>
                 <td className="ds-payouts-total-sum">
                   {payTotal.toLocaleString("ru-RU")} ₽
                 </td>
-                <td colSpan={2} className="ds-payouts-total-compare">
-                  По табелю: {payroll.totalAmount.toLocaleString("ru-RU")} ₽
-                  {payroll.totalAmount !== payTotal && (
-                    <span
-                      className={`ds-payouts-diff ${
-                        payTotal > payroll.totalAmount ? "ds-payouts-diff--over" : "ds-payouts-diff--warn"
-                      }`}
-                    >
-                      ({payTotal > payroll.totalAmount ? "+" : ""}
-                      {(payTotal - payroll.totalAmount).toLocaleString("ru-RU")} ₽)
-                    </span>
-                  )}
+                <td colSpan={2} className="ds-muted">
+                  {payouts.length > 0 &&
+                    `начислено: ${accrualTotal.toLocaleString("ru-RU")} ₽`}
                 </td>
               </tr>
             </tfoot>
@@ -830,17 +1115,22 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
         </div>
 
         <p className="ds-payroll-hint">
-          Вы можете разбить зарплату каждого охранника на произвольное количество
-          дней выплат, свободно менять суммы, даты и сотрудников. При переносе
-          каждый день из списка будет создан как отдельная запись в разделе
-          «Зарплаты» за {payPeriodLabel.toLowerCase()}.
+          Сотрудник получает зп за предыдущий месяц в текущий месяц: выбрал{" "}
+          {payPeriodLabel.toLowerCase()} — табель и часы за{" "}
+          {MONTHS_RU[month - 1].toLowerCase()}, а суммы выплат считаются по
+          табелю{" "}
+          {payOffset > 0
+            ? `${MONTHS_RU_FOR[basisMonth - 1]} ${basisYear} (−${payOffset} мес.)`
+            : "этого же месяца"}
+          . Итоговую сумму каждого человека можно поменять руками (↺ вернёт
+          расчёт по табелю), дни выплат задаются ниже — любое количество за
+          месяц, хоть каждый день. «Убрать из зп» действует только на зарплату,
+          в табеле человек остаётся.
         </p>
 
         <div className="ds-payroll-actions">
           <button
-            className={`ds-btn ds-btn--lg ${
-              alreadyTransferred ? "" : "ds-btn--success"
-            }`}
+            className={`ds-btn ds-btn--lg ${alreadyTransferred ? "" : "ds-btn--success"}`}
             disabled={transferring || payTotal <= 0 || validPayoutsCount === 0}
             onClick={() => setShowTransfer(true)}
             title="Создать отдельные записи зарплаты по каждому дню выплаты в разделе «Зарплаты»"
@@ -848,8 +1138,8 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
             <CalendarClock size={16} />{" "}
             {transferring
               ? "Перенос…"
-              : `Перенести ${validPayoutsCount} выплат в зарплату за ${MONTHS_RU[
-                  payMonth - 1
+              : `Перенести ${validPayoutsCount} ${payoutsWord} в зарплату за ${MONTHS_RU[
+                  month - 1
                 ].toLowerCase()} (${payTotal.toLocaleString("ru-RU")} ₽)`}
           </button>
         </div>
@@ -872,6 +1162,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           employees={employees}
           schedule={schedule}
           amountOverrides={amountOverrides}
+          payouts={payouts}
           companyPhone={companyPhone}
           companyAddress={companyAddress}
           onDone={() => setShowPrint(false)}
@@ -914,7 +1205,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
                 <thead>
                   <tr>
                     <th>№</th>
-                    <th>Сотрудник</th>
+                    <th>Человек</th>
                     <th>День выплаты</th>
                     <th>Сумма, ₽</th>
                     <th>Назначение</th>
@@ -926,8 +1217,12 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
                     .map((row, idx) => (
                       <tr key={row.id}>
                         <td>{idx + 1}</td>
-                        <td className="ds-transfer-emp-name">{row.employeeName}</td>
-                        <td className="ds-print-num">{fmtDateWithWeekday(row.date)}</td>
+                        <td className="ds-transfer-emp-name">
+                          {row.employeeName}
+                        </td>
+                        <td className="ds-print-num">
+                          {fmtDateWithWeekday(row.date)}
+                        </td>
                         <td className="ds-print-num ds-transfer-sum">
                           {row.amount.toLocaleString("ru-RU")} ₽
                         </td>
@@ -939,7 +1234,9 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={3}>Итого к переносу ({validPayoutsCount} выплат)</td>
+                    <td colSpan={3}>
+                      Итого к переносу ({validPayoutsCount} {payoutsWord})
+                    </td>
                     <td className="ds-print-num ds-transfer-total">
                       {payTotal.toLocaleString("ru-RU")} ₽
                     </td>
