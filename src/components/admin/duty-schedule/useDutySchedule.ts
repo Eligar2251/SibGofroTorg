@@ -145,7 +145,8 @@ function readStored(key: string): Partial<StoredState> | null {
 }
 
 /** Сдвиг расчёта зп: 0/1/2 месяца (сколько месяцев назад табель).
- *  По умолчанию 0 — «месяц в месяц». Значение сохраняется. */
+ *  По умолчанию 1 — работаем так, что сотрудник получает зп за
+ *  предыдущий месяц в текущий месяц. Значение сохраняется. */
 function loadOffset(): number {
   try {
     const raw = localStorage.getItem(OFFSET_KEY);
@@ -156,7 +157,7 @@ function loadOffset(): number {
   } catch {
     /* ignore */
   }
-  return 0;
+  return 1;
 }
 
 function loadState(): StoredState {

@@ -64,11 +64,53 @@ function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+/** Месяцы в предложном падеже: «выплаты в сентябре». */
+const MONTHS_RU_IN = [
+  "январе",
+  "феврале",
+  "марте",
+  "апреле",
+  "мае",
+  "июне",
+  "июле",
+  "августе",
+  "сентябре",
+  "октябре",
+  "ноябре",
+  "декабре",
+];
+
+/** Месяцы в родительном падеже: «за смены августа». */
+const MONTHS_RU_FOR = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
+
 /** Последний день месяца. */
 function lastDayOfMonth(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(
     daysInMonth(year, month)
   ).padStart(2, "0")}`;
+}
+
+/** Месяц со сдвигом (для подписей вариантов расчёта зп). */
+function monthBack(
+  year: number,
+  month: number,
+  delta: number
+): { year: number; month: number } {
+  const d = new Date(year, month - 1 + delta, 1);
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
 /** Строка «ДД.ММ.ГГГГ» для отображения даты выплаты. */
@@ -227,10 +269,11 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   const basisLabel = `${MONTHS_RU[basisMonth - 1]} ${basisYear}`;
   const basisNote =
     payOffset > 0
-      ? `зп за ${MONTHS_RU[month - 1].toLowerCase()} ${year} считается по сменам за ${MONTHS_RU[
-          basisMonth - 1
-        ].toLowerCase()} ${basisYear}`
+      ? `выплаты в ${MONTHS_RU_IN[month - 1]} ${year} — за смены ${MONTHS_RU_FOR[basisMonth - 1]} ${basisYear}`
       : null;
+  // Подписи вариантов расчёта с конкретными месяцами
+  const prev1 = monthBack(year, month, -1);
+  const prev2 = monthBack(year, month, -2);
 
   const rotatingEmployees = employees.filter(
     (e) => e.role === "rotating" && e.active
@@ -541,11 +584,17 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
             <select
               value={payOffset}
               onChange={(e) => setPayOffset(Number(e.target.value))}
-              title="Вариант расчёта: месяц в месяц — по этому же месяцу; прошлый месяц / два месяца назад — по табелю соответствующего месяца. Числа и календарь в сетке остаются выбранного месяца."
+              title="По какому табелю считаются суммы выплат. Сетка табеля при этом не сдвигается: выбрал сентябрь — числа и календарь сентября, а выплаты в сентябре — за табель прошлого месяца (или двухмесячной давности)."
             >
-              <option value={0}>месяц в месяц</option>
-              <option value={1}>по прошлому месяцу</option>
-              <option value={2}>по двум месяцам назад</option>
+              <option value={0}>
+                месяц в месяц ({MONTHS_RU[month - 1].toLowerCase()} {year})
+              </option>
+              <option value={1}>
+                −1 месяц ({MONTHS_RU[prev1.month - 1].toLowerCase()} {prev1.year})
+              </option>
+              <option value={2}>
+                −2 месяца ({MONTHS_RU[prev2.month - 1].toLowerCase()} {prev2.year})
+              </option>
             </select>
             {basisNote && (
               <span className="ds-payroll-basis-note" title="Базовый месяц расчёта зарплаты">
@@ -573,7 +622,9 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
         {/* ── Начислено: кто и сколько ── */}
         <div className="ds-payroll-section-title">
           <span>
-            Начислено за {payPeriodLabel.toLowerCase()} — кто и сколько
+            {payOffset > 0
+              ? `Начислено — выплаты в ${MONTHS_RU_IN[month - 1]} ${year} за смены ${MONTHS_RU_FOR[basisMonth - 1]} ${basisYear}`
+              : `Начислено за ${payPeriodLabel.toLowerCase()} — кто и сколько`}
           </span>
         </div>
 
@@ -1064,13 +1115,17 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
         </div>
 
         <p className="ds-payroll-hint">
-          Человек работает по графику одного месяца, а зп получает за другой —
-          поэтому расчёт привязан к табелю со сдвигом: «месяц в месяц», «по
-          прошлому месяцу» или «по двум месяцам назад». Итоговую сумму каждого
-          человека можно поменять руками (↺ вернёт расчёт по табелю), дни
-          выплат задаются ниже — любое количество за месяц, хоть каждый день.
-          «Убрать из зп» действует только на зарплату, в табеле человек
-          остаётся.
+          Сотрудник получает зп за предыдущий месяц в текущий месяц: выбрал{" "}
+          {payPeriodLabel.toLowerCase()} — табель и часы за{" "}
+          {MONTHS_RU[month - 1].toLowerCase()}, а суммы выплат считаются по
+          табелю{" "}
+          {payOffset > 0
+            ? `${MONTHS_RU_FOR[basisMonth - 1]} ${basisYear} (−${payOffset} мес.)`
+            : "этого же месяца"}
+          . Итоговую сумму каждого человека можно поменять руками (↺ вернёт
+          расчёт по табелю), дни выплат задаются ниже — любое количество за
+          месяц, хоть каждый день. «Убрать из зп» действует только на зарплату,
+          в табеле человек остаётся.
         </p>
 
         <div className="ds-payroll-actions">
