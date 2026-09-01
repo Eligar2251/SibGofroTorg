@@ -719,7 +719,31 @@ DROP TRIGGER IF EXISTS trg_salaries_updated ON salaries;
 CREATE TRIGGER trg_salaries_updated BEFORE UPDATE ON salaries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
--- 22.1. ФАКТИЧЕСКИЕ СВОДКИ КАССОВЫХ СМЕН
+-- 22.1. ТАБЕЛИ ОХРАНЫ — единый постоянный снимок
+-- =========================================================
+CREATE TABLE IF NOT EXISTS duty_schedule_state (
+  id TEXT PRIMARY KEY DEFAULT 'main' CHECK (id = 'main'),
+  snapshot JSONB NOT NULL DEFAULT '{
+    "employees": [],
+    "schedules": {},
+    "amountOverrides": {},
+    "salaryPayouts": {},
+    "payoutTitles": {},
+    "salaryAccruals": {},
+    "payPlans": {}
+  }'::jsonb,
+  pay_offset SMALLINT NOT NULL DEFAULT 1 CHECK (pay_offset IN (0, 1, 2)),
+  updated_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+DROP TRIGGER IF EXISTS trg_duty_schedule_state_updated ON duty_schedule_state;
+CREATE TRIGGER trg_duty_schedule_state_updated
+  BEFORE UPDATE ON duty_schedule_state
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =========================================================
+-- 22.2. ФАКТИЧЕСКИЕ СВОДКИ КАССОВЫХ СМЕН
 -- Справочный снимок дня: наличные, карта ЮМ, расходы и остаток кассы.
 -- Запись не является движением денег и не влияет на прибыль/баланс сама.
 -- =========================================================
@@ -772,6 +796,7 @@ ALTER TABLE customer_deals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE salaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE duty_schedule_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cash_collections ENABLE ROW LEVEL SECURITY;
 
 -- Публичное чтение

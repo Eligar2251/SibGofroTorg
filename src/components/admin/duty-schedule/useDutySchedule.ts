@@ -10,26 +10,36 @@
 //   • «прошлый месяц»    — зп за M по табелю M−1 (смена графика
 //     сентября → зп за октябрь считается по сентябрю);
 //   • «два месяца назад» — зп за M по табелю M−2.
-// Сдвиг влияет ТОЛЬКО на расчёт зп: сетка табеля не сдвигается,
-// печатная форма — чистый табель без денег.
+// Сдвиг влияет ТОЛЬКО на нижний блок начислений и выплат: сетка
+// табеля не сдвигается, а печать показывает зарплату именно за
+// календарный месяц табеля.
 //
 // Начисления (кто и сколько) и выплаты (дни/суммы) задаёт
 // пользователь: итоговые суммы можно менять руками, людей —
 // убирать из зп (в табеле они остаются) и добавлять любых, даже
 // не из табеля. Выплат у человека — любое число (хоть каждый
-// день). Данные сохраняются в localStorage.
+// день). Весь снимок автоматически сохраняется в Supabase;
+// localStorage остаётся резервом и источником одноразового переноса
+// старых данных в БД.
 // =========================================================
 
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Employee,
   DayAssignment,
   CellStatus,
-  PayPlans,
+  DutyScheduleSaveStatus,
+  DutyScheduleSnapshot,
+  DutyScheduleStoredState,
   SalaryAccrual,
-  SalaryAccrualsByPeriod,
   SalaryPayout,
   SalaryPayoutsByPeriod,
 } from "./types";
@@ -45,21 +55,7 @@ const LEGACY_STORAGE_KEY = "duty_schedule_v1";
 const LEGACY_OFFSET_KEY = "duty_schedule_offset_v1";
 const OFFSET_KEY = "duty_schedule_offset_v2";
 
-interface StoredState {
-  employees: Employee[];
-  schedules: Record<string, DayAssignment[]>;
-  /** Ручные суммы месяца табеля: [YYYY-MM] -> [employeeId] -> сумма.
-   *  Перекрывают расчёт «часы × ставка» (колонка «Сумма» в табеле). */
-  amountOverrides: Record<string, Record<string, number>>;
-  /** Старое поле: [зарплатный месяц YYYY-MM] -> [employeeId] -> план. */
-  payPlans?: PayPlans;
-  /** [зарплатный месяц YYYY-MM] -> список выплат по дням. */
-  salaryPayouts?: SalaryPayoutsByPeriod;
-  /** [зарплатный месяц YYYY-MM] -> начисления (кто и сколько).
-   *  undefined = ещё не задавалось (показывается расчёт по табелю);
-   *  [] = все убраны из зп (автоматически не возвращаются). */
-  salaryAccruals?: SalaryAccrualsByPeriod;
-}
+type StoredState = DutyScheduleStoredState;
 
 // Данные по умолчанию — воспроизводят пример из табеля заказчика:
 // Олейников закреплён за вторником (15ч) и субботой (24ч, смена пт→сб),
@@ -160,71 +156,93 @@ function loadOffset(): number {
   return 1;
 }
 
-function loadState(): StoredState {
-  const fallback: StoredState = {
-    employees: defaultEmployees,
+function createFallbackState(): StoredState {
+  return {
+    employees: defaultEmployees.map((employee) => ({ ...employee })),
     schedules: {},
     amountOverrides: {},
     salaryPayouts: {},
+    payoutTitles: {},
     salaryAccruals: {},
     payPlans: {},
   };
+}
 
-  const v2 = readStored(STORAGE_KEY);
-  if (v2) {
-    const emps = v2.employees ?? defaultEmployees;
-    const payouts: SalaryPayoutsByPeriod = v2.salaryPayouts
-      ? { ...v2.salaryPayouts }
+/** Приводит снимок из localStorage/БД к актуальному формату. */
+function normalizeStoredState(source?: Partial<StoredState> | null): StoredState {
+  if (!source) return createFallbackState();
+
+  const emps = Array.isArray(source.employees)
+    ? source.employees
+    : defaultEmployees.map((employee) => ({ ...employee }));
+  const payouts: SalaryPayoutsByPeriod =
+    source.salaryPayouts && typeof source.salaryPayouts === "object"
+      ? { ...source.salaryPayouts }
       : {};
 
-    // Миграция старых payPlans в salaryPayouts, если ещё нет записей
-    if (v2.payPlans && Object.keys(v2.payPlans).length > 0) {
-      for (const [periodKey, empMap] of Object.entries(v2.payPlans)) {
-        if (!payouts[periodKey] && empMap && Object.keys(empMap).length > 0) {
-          const list: SalaryPayout[] = [];
-          const [y, m] = periodKey.split("-").map(Number);
-          const defDate = y && m ? lastDayOfMonth(y, m) : `${periodKey}-25`;
-          for (const [empId, entry] of Object.entries(empMap)) {
-            if (!entry) continue;
-            const empName = emps.find((e) => e.id === empId)?.name || empId;
-            list.push({
-              id: `pay_${periodKey}_${empId}_${Math.random().toString(36).slice(2, 7)}`,
-              employeeId: empId,
-              employeeName: empName,
-              date: entry.date || defDate,
-              amount: entry.amount ?? 0,
-              comment: "",
-            });
-          }
-          if (list.length > 0) {
-            payouts[periodKey] = list;
-          }
+  // Миграция старых payPlans в salaryPayouts, если новых записей ещё нет.
+  if (source.payPlans && Object.keys(source.payPlans).length > 0) {
+    for (const [periodKey, empMap] of Object.entries(source.payPlans)) {
+      if (!payouts[periodKey] && empMap && Object.keys(empMap).length > 0) {
+        const list: SalaryPayout[] = [];
+        const [y, m] = periodKey.split("-").map(Number);
+        const defDate = y && m ? lastDayOfMonth(y, m) : `${periodKey}-25`;
+        for (const [empId, entry] of Object.entries(empMap)) {
+          if (!entry) continue;
+          const empName = emps.find((e) => e.id === empId)?.name || empId;
+          list.push({
+            id: `pay_${periodKey}_${empId}_legacy`,
+            employeeId: empId,
+            employeeName: empName,
+            date: entry.date || defDate,
+            amount: entry.amount ?? 0,
+            comment: "",
+          });
         }
+        if (list.length > 0) payouts[periodKey] = list;
       }
     }
-
-    return {
-      employees: emps,
-      schedules: v2.schedules ?? {},
-      amountOverrides: v2.amountOverrides ?? {},
-      salaryPayouts: payouts,
-      salaryAccruals: v2.salaryAccruals ?? {},
-      payPlans: v2.payPlans ?? {},
-    };
   }
 
-  // Миграция со старого хранилища v1
-  const legacy = readStored(LEGACY_STORAGE_KEY);
-  if (!legacy) return fallback;
+  return {
+    employees: emps,
+    schedules:
+      source.schedules && typeof source.schedules === "object"
+        ? source.schedules
+        : {},
+    amountOverrides:
+      source.amountOverrides && typeof source.amountOverrides === "object"
+        ? source.amountOverrides
+        : {},
+    salaryPayouts: payouts,
+    payoutTitles:
+      source.payoutTitles && typeof source.payoutTitles === "object"
+        ? source.payoutTitles
+        : {},
+    salaryAccruals:
+      source.salaryAccruals && typeof source.salaryAccruals === "object"
+        ? source.salaryAccruals
+        : {},
+    payPlans:
+      source.payPlans && typeof source.payPlans === "object"
+        ? source.payPlans
+        : {},
+  };
+}
 
-  const state: StoredState = {
-    employees: legacy.employees ?? defaultEmployees,
-    schedules: legacy.schedules ?? {},
-    amountOverrides: legacy.amountOverrides ?? {},
+/** Читает старое локальное хранилище для одноразового переноса в БД. */
+function loadState(): StoredState {
+  const v2 = readStored(STORAGE_KEY);
+  if (v2) return normalizeStoredState(v2);
+
+  const legacy = readStored(LEGACY_STORAGE_KEY);
+  if (!legacy) return createFallbackState();
+
+  const state = normalizeStoredState({
+    ...legacy,
     salaryPayouts: {},
     salaryAccruals: {},
-    payPlans: legacy.payPlans ?? {},
-  };
+  });
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     localStorage.removeItem(LEGACY_STORAGE_KEY);
@@ -267,29 +285,330 @@ function hoursInSchedule(
     .reduce((s, d) => s + (d.hours || 0), 0);
 }
 
-export function useDutySchedule(initialYear?: number, initialMonth?: number) {
+async function readDatabaseSnapshot(): Promise<DutyScheduleSnapshot | null> {
+  const response = await fetch("/api/admin/duty-schedule", {
+    method: "GET",
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    snapshot?: DutyScheduleSnapshot | null;
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(data.error || "Не удалось загрузить табель из базы");
+  }
+  return data.snapshot ?? null;
+}
+
+function normalizedOffset(value: unknown): number {
+  const n = Number(value);
+  return n === 0 || n === 1 || n === 2 ? n : 1;
+}
+
+export function useDutySchedule(
+  initialYear?: number,
+  initialMonth?: number,
+  initialSnapshot: DutyScheduleSnapshot | null = null,
+  initialDatabaseError: string | null = null
+) {
   const now = new Date();
+  const initialState = normalizeStoredState(initialSnapshot?.state);
+  const initialOffset = normalizedOffset(initialSnapshot?.payOffset);
+
   const [year, setYear] = useState(initialYear ?? now.getFullYear());
   const [month, setMonth] = useState(initialMonth ?? now.getMonth() + 1);
-  const [payOffset, setPayOffsetState] = useState<number>(loadOffset);
-  const [state, setState] = useState<StoredState>(loadState);
+  const [payOffset, setPayOffsetState] = useState<number>(initialOffset);
+  const [state, setState] = useState<StoredState>(initialState);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Если сервер уже прочитал запись, интерфейс готов сразу. При первой
+  // установке сначала забираем прежний localStorage и переносим его в БД.
+  const [storageReady, setStorageReady] = useState(Boolean(initialSnapshot));
+  const [databaseEnabled, setDatabaseEnabled] = useState(
+    !initialDatabaseError
+  );
+  const [saveStatus, setSaveStatus] = useState<DutyScheduleSaveStatus>(
+    initialSnapshot ? "saved" : "loading"
+  );
+  const [saveError, setSaveError] = useState<string | null>(
+    initialDatabaseError
+  );
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(
+    initialSnapshot?.updatedAt ?? null
+  );
+
+  const latestPayloadRef = useRef({ state: initialState, payOffset: initialOffset });
+  const databaseEnabledRef = useRef(!initialDatabaseError);
+  // true, если мы уже успешно прочитали БД (включая подтверждённо пустую)
+  // и поэтому можем безопасно отправлять поверх неё текущий снимок.
+  const canOverwriteDatabaseRef = useRef(
+    Boolean(initialSnapshot) || !initialDatabaseError
+  );
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
+  const queuedRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const versionRef = useRef(0);
+  // Загруженный из БД снимок не нужно тут же отправлять обратно.
+  const skipNextPersistenceRef = useRef(Boolean(initialSnapshot));
+
+  const setDatabaseAvailability = useCallback((enabled: boolean) => {
+    databaseEnabledRef.current = enabled;
+    setDatabaseEnabled(enabled);
+  }, []);
+
+  const drainSaveQueue = useCallback(async () => {
+    if (!databaseEnabledRef.current || !dirtyRef.current) return;
+    if (savingRef.current) {
+      queuedRef.current = true;
+      return;
+    }
+
+    savingRef.current = true;
+    try {
+      do {
+        queuedRef.current = false;
+        const payload = latestPayloadRef.current;
+        const savingVersion = versionRef.current;
+        setSaveStatus("saving");
+        setSaveError(null);
+
+        const response = await fetch("/api/admin/duty-schedule", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = (await response.json().catch(() => ({}))) as {
+          updatedAt?: string | null;
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(data.error || "Не удалось сохранить табель в базе");
+        }
+
+        if (savingVersion === versionRef.current) {
+          dirtyRef.current = false;
+          setSaveStatus("saved");
+          setLastSavedAt(data.updatedAt ?? new Date().toISOString());
+        } else {
+          // Пока шёл запрос, пользователь успел внести ещё одну правку.
+          // Сохраняем новый снимок следом, строго после предыдущего запроса,
+          // чтобы более старый ответ не мог перезаписать свежие данные.
+          queuedRef.current = true;
+          if (saveTimerRef.current) {
+            clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+          }
+        }
+      } while (queuedRef.current && databaseEnabledRef.current);
+    } catch (error) {
+      const text =
+        error instanceof Error
+          ? error.message
+          : "Не удалось сохранить табель в базе";
+      setSaveStatus("error");
+      setSaveError(text);
+      // После ошибки не спамим запросами на каждую клавишу. Кнопка
+      // «Повторить» сначала безопасно перечитает БД.
+      setDatabaseAvailability(false);
+    } finally {
+      savingRef.current = false;
+    }
+  }, [setDatabaseAvailability]);
+
+  // Одноразовая инициализация: если сервер не смог прочитать БД,
+  // повторяем GET из браузера. Только подтверждённо пустую БД заполняем
+  // локальным снимком — так временная ошибка не затрёт существующий табель.
   useEffect(() => {
+    if (initialSnapshot) return;
+    let cancelled = false;
+
+    const applyLocalState = (canSave: boolean, error?: string | null) => {
+      if (cancelled) return;
+      const localState = loadState();
+      const localOffset = loadOffset();
+      latestPayloadRef.current = { state: localState, payOffset: localOffset };
+      if (canSave) canOverwriteDatabaseRef.current = true;
+      setState(localState);
+      setPayOffsetState(localOffset);
+      setDatabaseAvailability(canSave);
+      setStorageReady(true);
+      setSaveStatus(canSave ? "idle" : "error");
+      setSaveError(error || null);
+    };
+
+    if (!initialDatabaseError) {
+      // Сервер успешно выяснил, что строки в таблице ещё нет.
+      applyLocalState(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setSaveStatus("loading");
+    void readDatabaseSnapshot()
+      .then((snapshot) => {
+        if (cancelled) return;
+        if (!snapshot) {
+          applyLocalState(true);
+          return;
+        }
+        const loadedState = normalizeStoredState(snapshot.state);
+        const loadedOffset = normalizedOffset(snapshot.payOffset);
+        skipNextPersistenceRef.current = true;
+        latestPayloadRef.current = {
+          state: loadedState,
+          payOffset: loadedOffset,
+        };
+        dirtyRef.current = false;
+        canOverwriteDatabaseRef.current = true;
+        setState(loadedState);
+        setPayOffsetState(loadedOffset);
+        setDatabaseAvailability(true);
+        setLastSavedAt(snapshot.updatedAt ?? null);
+        setSaveError(null);
+        setSaveStatus("saved");
+        setStorageReady(true);
+      })
+      .catch((error) => {
+        applyLocalState(
+          false,
+          error instanceof Error ? error.message : initialDatabaseError
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialDatabaseError, initialSnapshot, setDatabaseAvailability]);
+
+  // Резервная локальная копия + автосохранение полного снимка в БД.
+  // 650 мс не отправляют запрос на каждую введённую цифру, но изменения
+  // дней, зарплат, сотрудников и повторная генерация сохраняются одинаково.
+  useEffect(() => {
+    if (!storageReady) return;
+
+    latestPayloadRef.current = { state, payOffset };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(OFFSET_KEY, String(payOffset));
     } catch {
-      /* localStorage недоступен */
+      /* localStorage недоступен — основной источник всё равно БД */
     }
-  }, [state]);
+
+    if (skipNextPersistenceRef.current) {
+      skipNextPersistenceRef.current = false;
+      return;
+    }
+
+    versionRef.current += 1;
+    dirtyRef.current = true;
+    if (!databaseEnabledRef.current) return;
+
+    setSaveStatus("saving");
+    setSaveError(null);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void drainSaveQueue();
+    }, 650);
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [state, payOffset, storageReady, drainSaveQueue]);
+
+  /** После ошибки загрузки сначала перечитывает БД. После ошибки самого
+   * сохранения повторяет PUT текущих правок, не откатывая их к старой БД. */
+  const retryDatabase = useCallback(async () => {
+    setSaveError(null);
+
+    // База уже была успешно прочитана — ошибка возникла при записи/сети.
+    // Повторяем именно несохранённый локальный снимок.
+    if (canOverwriteDatabaseRef.current) {
+      setDatabaseAvailability(true);
+      setSaveStatus("saving");
+      await drainSaveQueue();
+      return;
+    }
+
+    setSaveStatus("loading");
+    try {
+      const snapshot = await readDatabaseSnapshot();
+      if (snapshot) {
+        const loadedState = normalizeStoredState(snapshot.state);
+        const loadedOffset = normalizedOffset(snapshot.payOffset);
+        skipNextPersistenceRef.current = true;
+        dirtyRef.current = false;
+        canOverwriteDatabaseRef.current = true;
+        latestPayloadRef.current = {
+          state: loadedState,
+          payOffset: loadedOffset,
+        };
+        setState(loadedState);
+        setPayOffsetState(loadedOffset);
+        setDatabaseAvailability(true);
+        setLastSavedAt(snapshot.updatedAt ?? null);
+        setSaveStatus("saved");
+        setStorageReady(true);
+        return;
+      }
+
+      canOverwriteDatabaseRef.current = true;
+      setDatabaseAvailability(true);
+      versionRef.current += 1;
+      dirtyRef.current = true;
+      setSaveStatus("saving");
+      await drainSaveQueue();
+    } catch (error) {
+      setDatabaseAvailability(false);
+      setSaveStatus("error");
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось подключиться к базе табелей"
+      );
+    }
+  }, [drainSaveQueue, setDatabaseAvailability]);
+
+  // При закрытии вкладки пытаемся отправить последнюю правку без ожидания
+  // debounce. keepalive позволяет браузеру закончить короткий PUT.
+  useEffect(() => {
+    const flushOnLeave = () => {
+      if (
+        !dirtyRef.current ||
+        !databaseEnabledRef.current ||
+        savingRef.current
+      ) {
+        return;
+      }
+      const payload = latestPayloadRef.current;
+      void fetch("/api/admin/duty-schedule", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushOnLeave();
+    };
+    window.addEventListener("beforeunload", flushOnLeave);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", flushOnLeave);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      flushOnLeave();
+    };
+  }, []);
 
   const setPayOffset = useCallback((n: number) => {
-    setPayOffsetState(n);
-    try {
-      localStorage.setItem(OFFSET_KEY, String(n));
-    } catch {
-      /* localStorage недоступен */
-    }
+    setPayOffsetState(normalizedOffset(n));
   }, []);
 
   // Месяц табеля = месяц навигации (сетка показывает именно его).
@@ -579,6 +898,28 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
 
   // ── Выплаты зарплаты по дням (кто и когда получает деньги) ──
 
+  /** Редактируемая надпись над таблицей выплат, отдельная для каждого месяца. */
+  const getPayoutTitleFor = useCallback(
+    (payPeriodKey: string, fallback: string): string => {
+      const saved = state.payoutTitles?.[payPeriodKey];
+      return typeof saved === "string" ? saved : fallback;
+    },
+    [state.payoutTitles]
+  );
+
+  const setPayoutTitle = useCallback(
+    (payPeriodKey: string, title: string) => {
+      setState((prev) => ({
+        ...prev,
+        payoutTitles: {
+          ...prev.payoutTitles,
+          [payPeriodKey]: title.slice(0, 120),
+        },
+      }));
+    },
+    []
+  );
+
   /** Список выплат за период. Пустой, если ещё ничего не задано, —
    *  дни и суммы указывает пользователь. */
   const getPayoutsFor = useCallback(
@@ -848,6 +1189,13 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
   };
 
   return {
+    // Состояние постоянного хранилища
+    storageReady,
+    databaseEnabled,
+    saveStatus,
+    saveError,
+    lastSavedAt,
+    retryDatabase,
     // Месяц табеля = месяц навигации (сетка, генерация, печать)
     year,
     month,
@@ -881,7 +1229,9 @@ export function useDutySchedule(initialYear?: number, initialMonth?: number) {
     addAccrualPerson,
     removeAccrual,
     resetAccrualsToTimesheet,
-    // Выплаты по дням
+    // Выплаты по дням и их заголовок
+    getPayoutTitleFor,
+    setPayoutTitle,
     getPayoutsFor,
     setSalaryPayouts,
     addPayout,

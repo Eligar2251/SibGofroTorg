@@ -4,8 +4,8 @@
 // печать и блок «Зарплата».
 //
 // МЕСЯЦ ТАБЕЛЯ = месяц навигации: сетка всегда показывает выбранный
-// месяц (ставлю октябрь — числа и календарь октября). Печатная
-// форма — чистый табель: только смены и часы, без ставок и сумм.
+// месяц (ставлю октябрь — числа и календарь октября). В печати
+// зарплата считается именно по часам этого календарного месяца.
 //
 // ЗАРПЛАТА — отдельная система с вариантами расчёта (сдвиг):
 //   • месяц в месяц — зп за M по табелю M;
@@ -41,7 +41,12 @@ import { useDutySchedule } from "./useDutySchedule";
 import { ScheduleTable } from "./ScheduleTable";
 import { EmployeeManagerModal } from "./EmployeeManagerModal";
 import { DutySchedulePrint } from "./DutySchedulePrint";
-import { Employee, SalaryAccrual, SalaryPayout } from "./types";
+import {
+  DutyScheduleSnapshot,
+  Employee,
+  SalaryAccrual,
+  SalaryPayout,
+} from "./types";
 import { MONTHS_RU, WEEKDAYS_SHORT_RU, daysInMonth } from "./scheduleGenerator";
 import "./DutySchedule.css";
 
@@ -50,6 +55,10 @@ interface Props {
   initialMonth?: number;
   companyPhone?: string;
   companyAddress?: string;
+  /** Сохранённый сервером снимок всех табелей. null — первая запись. */
+  initialSnapshot?: DutyScheduleSnapshot | null;
+  /** Ошибка первоначального чтения БД (клиент безопасно повторит GET). */
+  initialDatabaseError?: string | null;
   /** Зарплаты, уже перенесённые из табеля (для защиты от дублей). */
   existingTransfers?: {
     periodMonth: string;
@@ -211,10 +220,18 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   initialMonth,
   companyPhone,
   companyAddress,
+  initialSnapshot = null,
+  initialDatabaseError = null,
   existingTransfers = [],
 }) => {
   const router = useRouter();
   const {
+    storageReady,
+    databaseEnabled,
+    saveStatus,
+    saveError,
+    lastSavedAt,
+    retryDatabase,
     year,
     month,
     goToPrevMonth,
@@ -242,6 +259,8 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     addAccrualPerson,
     removeAccrual,
     resetAccrualsToTimesheet,
+    getPayoutTitleFor,
+    setPayoutTitle,
     getPayoutsFor,
     setSalaryPayouts,
     addPayout,
@@ -252,7 +271,12 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     fillPayoutsFromAccruals,
     message,
     setMessage,
-  } = useDutySchedule(initialYear, initialMonth);
+  } = useDutySchedule(
+    initialYear,
+    initialMonth,
+    initialSnapshot,
+    initialDatabaseError
+  );
 
   const [showEmployees, setShowEmployees] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
@@ -274,6 +298,13 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   // Подписи вариантов расчёта с конкретными месяцами
   const prev1 = monthBack(year, month, -1);
   const prev2 = monthBack(year, month, -2);
+
+  // Заголовок относится к месяцу, ЗА КОТОРЫЙ платят. По умолчанию
+  // подставляем базовый месяц, но окончательный текст задаётся вручную.
+  const defaultPayoutTitle = `Выплаты за ${MONTHS_RU[
+    basisMonth - 1
+  ].toLowerCase()}`;
+  const payoutTitle = getPayoutTitleFor(payPeriodKey, defaultPayoutTitle);
 
   const rotatingEmployees = employees.filter(
     (e) => e.role === "rotating" && e.active
@@ -460,10 +491,56 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     }
   };
 
+  if (!storageReady) {
+    return (
+      <div className="ds-root ds-storage-loading" aria-live="polite">
+        <Loader2 size={22} className="animate-spin" />
+        <span>Загружаем сохранённые табели из базы…</span>
+      </div>
+    );
+  }
+
   return (
     <div className="ds-root">
       <div className="ds-header">
         <h2>Табель охраны — дежурства</h2>
+        <div
+          className={`ds-db-status ds-db-status--${saveStatus}`}
+          role={saveStatus === "error" ? "alert" : "status"}
+          title={
+            lastSavedAt
+              ? `Последнее сохранение в БД: ${lastSavedAt.replace("T", " ").slice(0, 19)}`
+              : undefined
+          }
+        >
+          {saveStatus === "loading" || saveStatus === "saving" ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : saveStatus === "saved" ? (
+            <CheckCircle2 size={13} />
+          ) : saveStatus === "error" ? (
+            <AlertTriangle size={13} />
+          ) : (
+            <CalendarClock size={13} />
+          )}
+          <span>
+            {saveStatus === "loading"
+              ? "Подключение к БД…"
+              : saveStatus === "saving"
+                ? "Сохраняем в БД…"
+                : saveStatus === "saved"
+                  ? "Сохранено в БД"
+                  : saveStatus === "error"
+                    ? saveError || "Не сохранено в БД"
+                    : databaseEnabled
+                      ? "Автосохранение включено"
+                      : "БД недоступна"}
+          </span>
+          {saveStatus === "error" && (
+            <button type="button" onClick={() => void retryDatabase()}>
+              Повторить
+            </button>
+          )}
+        </div>
         <div className="ds-month-nav">
           <button
             className="ds-btn"
@@ -518,7 +595,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           <button
             className="ds-btn"
             onClick={() => setShowPrint(true)}
-            title="Печатная форма табеля (только смены и часы, без денег)"
+            title="Печатная форма: смены, часы и зарплата выбранного календарного месяца; выплаты — с выбранным сдвигом"
           >
             <Printer size={14} style={{ verticalAlign: "-2px" }} /> Печать
           </button>
@@ -835,8 +912,24 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
         </div>
 
         {/* ── Выплаты по дням ── */}
-        <div className="ds-payroll-section-title">
-          <span>Выплаты по дням — когда кто получает деньги</span>
+        <div className="ds-payroll-section-title ds-payout-title-editor">
+          <label htmlFor="ds-payout-print-title">
+            Заголовок таблицы выплат:
+          </label>
+          <input
+            id="ds-payout-print-title"
+            type="text"
+            value={payoutTitle}
+            placeholder="Например: Выплаты за июль"
+            maxLength={120}
+            onChange={(event) =>
+              setPayoutTitle(payPeriodKey, event.target.value)
+            }
+            title="Эта надпись сохраняется для выбранного месяца и печатается над таблицей выплат"
+          />
+          <span className="ds-payout-title-help">
+            месяц укажите вручную, например «Выплаты за июль»
+          </span>
         </div>
 
         <div className="ds-payroll-toolbar">
@@ -1163,6 +1256,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           schedule={schedule}
           amountOverrides={amountOverrides}
           payouts={payouts}
+          payoutTitle={payoutTitle}
           companyPhone={companyPhone}
           companyAddress={companyAddress}
           onDone={() => setShowPrint(false)}

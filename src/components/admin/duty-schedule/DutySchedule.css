@@ -25,6 +25,61 @@
   font-size: 20px;
 }
 
+.ds-storage-loading {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.ds-db-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(520px, 100%);
+  padding: 4px 8px;
+  border: 1px solid #dbe3ea;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.ds-db-status--saved {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+.ds-db-status--saving,
+.ds-db-status--loading {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.ds-db-status--error {
+  border-color: #fecaca;
+  border-radius: 7px;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.ds-db-status span {
+  overflow-wrap: anywhere;
+}
+.ds-db-status button {
+  border: 0;
+  border-bottom: 1px dashed currentColor;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .ds-month-nav {
   display: flex;
   align-items: center;
@@ -383,6 +438,40 @@
   margin: 10px 0 8px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.ds-payout-title-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ds-payout-title-editor label {
+  white-space: nowrap;
+}
+.ds-payout-title-editor input {
+  width: min(360px, 100%);
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: #fff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ds-payout-title-editor input:focus {
+  border-color: #2563eb;
+  outline: 2px solid rgba(37, 99, 235, 0.14);
+}
+.ds-payout-title-help {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .ds-payroll-summary-grid {
@@ -966,6 +1055,7 @@
   gap: 8px;
 }
 .ds-print-sheet {
+  box-sizing: border-box;
   max-width: 297mm;
   margin: 0 auto;
   background: #fff;
@@ -1029,6 +1119,10 @@
   font-size: 12px;
   font-weight: 800;
 }
+.ds-print-salary {
+  font-weight: 800;
+  white-space: nowrap;
+}
 .ds-print-subhead {
   font-size: 11px;
   font-weight: 700;
@@ -1077,7 +1171,7 @@
   line-height: 1.1;
 }
 .ds-grid-name {
-  width: 46mm;
+  width: 44mm;
   text-align: left !important;
   padding: 1mm 2mm !important;
   font-weight: 700;
@@ -1088,6 +1182,12 @@
 .ds-grid-col-hours {
   width: 10mm;
   font-size: 10px !important;
+}
+.ds-grid-col-sum {
+  width: 16mm;
+  font-size: 9px !important;
+  white-space: normal !important;
+  line-height: 1.05 !important;
 }
 .ds-grid-total-cell {
   font-size: 11px !important;
@@ -1212,12 +1312,17 @@
     display: none !important;
   }
   .ds-print-sheet {
+    width: 100% !important;
     max-width: none !important;
     padding: 0 !important;
     box-shadow: none !important;
     border-radius: 0 !important;
   }
   .ds-print-grid {
+    /* Небольшой безопасный зазор удерживает правую границу внутри A4:
+       некоторые драйверы принтера обрезают таблицу ровно на 100% ширины. */
+    width: calc(100% - 1.5mm) !important;
+    margin-right: 1.5mm;
     break-inside: avoid;
   }
   .ds-print-grid tr {

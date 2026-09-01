@@ -3,12 +3,12 @@
 // Печатная версия табеля дежурств охраны: A4 альбомная.
 // Структура листа (сверху вниз):
 //   1) ТАБЕЛЬ — дни 1..31 по горизонтали, строки — охранники,
-//      в ячейках часы смен, справа итог часов;
-//   2) СВОДКА по сотрудникам — телефон, часы и ставка
-//      (если сумма месяца задана вручную — ставка считается как
-//      сумма ÷ часы и печатается числом, иначе автоматическая
-//      ставка из справочника, по умолчанию 115);
-//   3) ВЫПЛАТЫ — каждый столбец это сотрудник, ниже даты и суммы
+//      в ячейках часы смен, справа часы и зарплата календарного месяца;
+//   2) СВОДКА по сотрудникам — телефон, часы, ставка и зарплата
+//      именно за напечатанный календарный месяц (если сумма месяца
+//      задана вручную — печатается она, иначе часы × ставка);
+//   3) ВЫПЛАТЫ — остаются отдельной системой со сдвигом 0/−1/−2:
+//      каждый столбец это сотрудник, ниже даты и суммы
 //      его выплат (столько дней, сколько задал пользователь —
 //      хоть 10 и больше).
 // Без легенды, комментариев и пометок — бланк чистый. Печатается
@@ -34,6 +34,8 @@ interface Props {
   amountOverrides: Record<string, number>;
   /** Выплаты за период: дни и суммы задаёт пользователь. */
   payouts: SalaryPayout[];
+  /** Редактируемая надпись над таблицей, например «Выплаты за июль». */
+  payoutTitle: string;
   companyPhone?: string;
   companyAddress?: string;
   onDone: () => void;
@@ -61,6 +63,7 @@ export function DutySchedulePrint({
   schedule,
   amountOverrides,
   payouts,
+  payoutTitle,
   companyPhone,
   companyAddress,
   onDone,
@@ -77,19 +80,22 @@ export function DutySchedulePrint({
     .filter((d) => d.date.startsWith(calPrefix))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // Сводка: часы и ставка (ручная — числом, иначе автоматическая).
+  // Сводка календарного месяца: часы, ставка и зарплата именно по
+  // напечатанному табелю. Сдвиг выплат сюда намеренно не применяется.
   const totals = activeEmployees.map((emp) => {
     const hours = schedule
       .filter((d) => d.employeeId === emp.id && d.status !== "missed")
       .reduce((s, d) => s + (d.hours || 0), 0);
     const overridden = amountOverrides[emp.id];
+    const amount = overridden ?? Math.round(hours * emp.rate);
     const rate =
       overridden != null && hours > 0
         ? Math.round(overridden / hours)
         : emp.rate;
-    return { emp, hours, rate };
+    return { emp, hours, rate, amount };
   });
   const grandHours = totals.reduce((s, t) => s + t.hours, 0);
+  const grandSalary = totals.reduce((s, t) => s + t.amount, 0);
 
   // Колонки выплат: сотрудники табеля (в порядке справочника),
   // затем люди, введённые вручную (группировка по имени).
@@ -155,6 +161,7 @@ export function DutySchedulePrint({
   }
 
   const monthLabel = `${MONTHS_RU[month - 1]} ${year}`;
+  const printPayoutTitle = payoutTitle.trim() || "Выплаты";
 
   return (
     <div className="ds-print-root">
@@ -209,6 +216,7 @@ export function DutySchedulePrint({
                 </th>
               ))}
               <th className="ds-grid-col-hours">Часов</th>
+              <th className="ds-grid-col-sum">Зарплата, ₽</th>
             </tr>
           </thead>
           <tbody>
@@ -244,6 +252,9 @@ export function DutySchedulePrint({
                   <td className="ds-print-num ds-grid-total-cell">
                     {totalsRow.hours}
                   </td>
+                  <td className="ds-print-num ds-grid-total-cell ds-print-salary">
+                    {totalsRow.amount.toLocaleString("ru-RU")} ₽
+                  </td>
                 </tr>
               );
             })}
@@ -251,16 +262,21 @@ export function DutySchedulePrint({
           <tfoot>
             <tr>
               <td className="ds-grid-name ds-grid-grand-label">
-                Итого часов за {MONTHS_RU[month - 1].toLowerCase()}
+                Зарплата за {MONTHS_RU[month - 1].toLowerCase()}
               </td>
               <td colSpan={days.length} />
               <td className="ds-print-num ds-print-total">{grandHours}</td>
+              <td className="ds-print-num ds-print-total ds-print-salary">
+                {grandSalary.toLocaleString("ru-RU")} ₽
+              </td>
             </tr>
           </tfoot>
         </table>
 
-        {/* 2. Сводка по сотрудникам: телефон, часы, ставка. */}
-        <div className="ds-print-subhead">Сводка по сотрудникам</div>
+        {/* 2. Сводка: зарплата считается по текущему календарю, без сдвига. */}
+        <div className="ds-print-subhead">
+          Сводка и зарплата за {monthLabel.toLowerCase()}
+        </div>
         <table className="ds-print-summary">
           <thead>
             <tr>
@@ -268,25 +284,32 @@ export function DutySchedulePrint({
               <th>Телефон</th>
               <th>Часов</th>
               <th>Ставка, ₽/ч</th>
+              <th>Зарплата за {MONTHS_RU[month - 1].toLowerCase()}, ₽</th>
             </tr>
           </thead>
           <tbody>
-            {totals.map(({ emp, hours, rate }) => (
+            {totals.map(({ emp, hours, rate, amount }) => (
               <tr key={emp.id}>
                 <td>{emp.name}</td>
                 <td>{emp.phone || "—"}</td>
                 <td className="ds-print-num">{hours}</td>
                 <td className="ds-print-num">{rate}</td>
+                <td className="ds-print-num ds-print-salary">
+                  {amount.toLocaleString("ru-RU")} ₽
+                </td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr>
               <td colSpan={2}>
-                Итого часов за {MONTHS_RU[month - 1].toLowerCase()}
+                Итого за {MONTHS_RU[month - 1].toLowerCase()}
               </td>
               <td className="ds-print-num ds-print-total">{grandHours}</td>
               <td />
+              <td className="ds-print-num ds-print-total ds-print-salary">
+                {grandSalary.toLocaleString("ru-RU")} ₽
+              </td>
             </tr>
           </tfoot>
         </table>
@@ -295,7 +318,7 @@ export function DutySchedulePrint({
             его выплат (сколько дней задал пользователь). */}
         {payoutColumns.length > 0 && (
           <>
-            <div className="ds-print-subhead">Выплаты</div>
+            <div className="ds-print-subhead">{printPayoutTitle}</div>
             <table className="ds-print-payouts">
               <thead>
                 <tr>
