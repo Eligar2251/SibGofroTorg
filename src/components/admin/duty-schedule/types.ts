@@ -92,3 +92,38 @@ export interface PayPlanEntry {
 
 /** [зарплатный месяц YYYY-MM] -> [employeeId] -> план выплаты. */
 export type PayPlans = Record<string, Record<string, PayPlanEntry>>;
+
+/**
+ * Полный рабочий снимок модуля табелей.
+ *
+ * Он хранится одной защищённой JSONB-записью в Supabase. Такой формат важен
+ * для автосохранения: повторная генерация месяца и любая ручная правка не
+ * создают дубликаты, а атомарно обновляют уже существующий снимок.
+ */
+export interface DutyScheduleStoredState {
+  employees: Employee[];
+  schedules: Record<string, DayAssignment[]>;
+  /** Ручные суммы месяца табеля: [YYYY-MM] -> [employeeId] -> сумма. */
+  amountOverrides: Record<string, Record<string, number>>;
+  /** Старый формат планов выплат — оставлен только для миграции данных. */
+  payPlans?: PayPlans;
+  /** [зарплатный месяц YYYY-MM] -> выплаты по дням. */
+  salaryPayouts?: SalaryPayoutsByPeriod;
+  /** [зарплатный месяц YYYY-MM] -> начисления (кто и сколько). */
+  salaryAccruals?: SalaryAccrualsByPeriod;
+}
+
+/** Снимок, который API читает и сохраняет в базе данных. */
+export interface DutyScheduleSnapshot {
+  state: DutyScheduleStoredState;
+  /** Сколько месяцев назад брать табель только для блока выплат: 0 / 1 / 2. */
+  payOffset: number;
+  updatedAt?: string | null;
+}
+
+export type DutyScheduleSaveStatus =
+  | "loading"
+  | "idle"
+  | "saving"
+  | "saved"
+  | "error";

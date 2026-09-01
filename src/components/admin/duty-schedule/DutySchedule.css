@@ -25,6 +25,61 @@
   font-size: 20px;
 }
 
+.ds-storage-loading {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.ds-db-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(520px, 100%);
+  padding: 4px 8px;
+  border: 1px solid #dbe3ea;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.ds-db-status--saved {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+.ds-db-status--saving,
+.ds-db-status--loading {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.ds-db-status--error {
+  border-color: #fecaca;
+  border-radius: 7px;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.ds-db-status span {
+  overflow-wrap: anywhere;
+}
+.ds-db-status button {
+  border: 0;
+  border-bottom: 1px dashed currentColor;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .ds-month-nav {
   display: flex;
   align-items: center;
@@ -1029,6 +1084,10 @@
   font-size: 12px;
   font-weight: 800;
 }
+.ds-print-salary {
+  font-weight: 800;
+  white-space: nowrap;
+}
 .ds-print-subhead {
   font-size: 11px;
   font-weight: 700;
@@ -1088,6 +1147,12 @@
 .ds-grid-col-hours {
   width: 10mm;
   font-size: 10px !important;
+}
+.ds-grid-col-sum {
+  width: 20mm;
+  font-size: 8px !important;
+  white-space: normal !important;
+  line-height: 1.05 !important;
 }
 .ds-grid-total-cell {
   font-size: 11px !important;

@@ -8,6 +8,10 @@ import { notFound } from "next/navigation";
 import { getSalaries } from "@/lib/warehouse";
 import { getSettings } from "@/lib/supabase-queries";
 import { SITE_ADDRESS, SITE_PHONE } from "@/lib/site-config";
+import {
+  dutyScheduleStoreErrorMessage,
+  getDutyScheduleSnapshot,
+} from "@/lib/duty-schedule-store";
 import { DutyScheduleAdmin } from "@/components/admin/duty-schedule";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
@@ -22,9 +26,18 @@ export default async function AdminDutySchedulePage({
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
-  const [salaries, settings] = await Promise.all([
+  const [salaries, settings, dutyScheduleResult] = await Promise.all([
     getSalaries().catch(() => []),
     getSettings().catch(() => ({} as Record<string, string>)),
+    getDutyScheduleSnapshot()
+      .then((snapshot) => ({ snapshot, error: null as string | null }))
+      .catch((error) => {
+        console.error("Load duty schedule page state error:", error);
+        return {
+          snapshot: null,
+          error: dutyScheduleStoreErrorMessage(error),
+        };
+      }),
   ]);
 
   // Уже перенесённые из табеля начисления — для защиты от случайных дублей.
@@ -43,6 +56,8 @@ export default async function AdminDutySchedulePage({
         existingTransfers={existingTransfers}
         companyPhone={settings.phone || SITE_PHONE}
         companyAddress={settings.address || SITE_ADDRESS}
+        initialSnapshot={dutyScheduleResult.snapshot}
+        initialDatabaseError={dutyScheduleResult.error}
       />
     </div>
   );
