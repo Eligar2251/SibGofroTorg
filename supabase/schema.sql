@@ -728,6 +728,7 @@ CREATE TABLE IF NOT EXISTS duty_schedule_state (
     "schedules": {},
     "amountOverrides": {},
     "salaryPayouts": {},
+    "payoutTitles": {},
     "salaryAccruals": {},
     "payPlans": {}
   }'::jsonb,

@@ -259,6 +259,8 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     addAccrualPerson,
     removeAccrual,
     resetAccrualsToTimesheet,
+    getPayoutTitleFor,
+    setPayoutTitle,
     getPayoutsFor,
     setSalaryPayouts,
     addPayout,
@@ -296,6 +298,13 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   // Подписи вариантов расчёта с конкретными месяцами
   const prev1 = monthBack(year, month, -1);
   const prev2 = monthBack(year, month, -2);
+
+  // Заголовок относится к месяцу, ЗА КОТОРЫЙ платят. По умолчанию
+  // подставляем базовый месяц, но окончательный текст задаётся вручную.
+  const defaultPayoutTitle = `Выплаты за ${MONTHS_RU[
+    basisMonth - 1
+  ].toLowerCase()}`;
+  const payoutTitle = getPayoutTitleFor(payPeriodKey, defaultPayoutTitle);
 
   const rotatingEmployees = employees.filter(
     (e) => e.role === "rotating" && e.active
@@ -903,8 +912,24 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
         </div>
 
         {/* ── Выплаты по дням ── */}
-        <div className="ds-payroll-section-title">
-          <span>Выплаты по дням — когда кто получает деньги</span>
+        <div className="ds-payroll-section-title ds-payout-title-editor">
+          <label htmlFor="ds-payout-print-title">
+            Заголовок таблицы выплат:
+          </label>
+          <input
+            id="ds-payout-print-title"
+            type="text"
+            value={payoutTitle}
+            placeholder="Например: Выплаты за июль"
+            maxLength={120}
+            onChange={(event) =>
+              setPayoutTitle(payPeriodKey, event.target.value)
+            }
+            title="Эта надпись сохраняется для выбранного месяца и печатается над таблицей выплат"
+          />
+          <span className="ds-payout-title-help">
+            месяц укажите вручную, например «Выплаты за июль»
+          </span>
         </div>
 
         <div className="ds-payroll-toolbar">
@@ -1231,9 +1256,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           schedule={schedule}
           amountOverrides={amountOverrides}
           payouts={payouts}
-          payoutBasisYear={basisYear}
-          payoutBasisMonth={basisMonth}
-          payOffset={payOffset}
+          payoutTitle={payoutTitle}
           companyPhone={companyPhone}
           companyAddress={companyAddress}
           onDone={() => setShowPrint(false)}

@@ -34,11 +34,8 @@ interface Props {
   amountOverrides: Record<string, number>;
   /** Выплаты за период: дни и суммы задаёт пользователь. */
   payouts: SalaryPayout[];
-  /** Месяц табеля, по которому посчитан нижний блок выплат. */
-  payoutBasisYear: number;
-  payoutBasisMonth: number;
-  /** 0 / 1 / 2 — сдвиг нижнего блока выплат. */
-  payOffset: number;
+  /** Редактируемая надпись над таблицей, например «Выплаты за июль». */
+  payoutTitle: string;
   companyPhone?: string;
   companyAddress?: string;
   onDone: () => void;
@@ -66,9 +63,7 @@ export function DutySchedulePrint({
   schedule,
   amountOverrides,
   payouts,
-  payoutBasisYear,
-  payoutBasisMonth,
-  payOffset,
+  payoutTitle,
   companyPhone,
   companyAddress,
   onDone,
@@ -166,11 +161,7 @@ export function DutySchedulePrint({
   }
 
   const monthLabel = `${MONTHS_RU[month - 1]} ${year}`;
-  const payoutBasisLabel = `${MONTHS_RU[payoutBasisMonth - 1]} ${payoutBasisYear}`;
-  const payoutTitle =
-    payOffset > 0
-      ? `Выплаты в ${monthLabel.toLowerCase()} — по табелю за ${payoutBasisLabel.toLowerCase()} (−${payOffset} мес.)`
-      : `Выплаты за ${monthLabel.toLowerCase()} (месяц в месяц)`;
+  const printPayoutTitle = payoutTitle.trim() || "Выплаты";
 
   return (
     <div className="ds-print-root">
@@ -225,9 +216,7 @@ export function DutySchedulePrint({
                 </th>
               ))}
               <th className="ds-grid-col-hours">Часов</th>
-              <th className="ds-grid-col-sum">
-                Зарплата за {MONTHS_RU[month - 1].toLowerCase()}, ₽
-              </th>
+              <th className="ds-grid-col-sum">Зарплата, ₽</th>
             </tr>
           </thead>
           <tbody>
@@ -329,7 +318,7 @@ export function DutySchedulePrint({
             его выплат (сколько дней задал пользователь). */}
         {payoutColumns.length > 0 && (
           <>
-            <div className="ds-print-subhead">{payoutTitle}</div>
+            <div className="ds-print-subhead">{printPayoutTitle}</div>
             <table className="ds-print-payouts">
               <thead>
                 <tr>

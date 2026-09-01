@@ -162,6 +162,7 @@ function createFallbackState(): StoredState {
     schedules: {},
     amountOverrides: {},
     salaryPayouts: {},
+    payoutTitles: {},
     salaryAccruals: {},
     payPlans: {},
   };
@@ -214,6 +215,10 @@ function normalizeStoredState(source?: Partial<StoredState> | null): StoredState
         ? source.amountOverrides
         : {},
     salaryPayouts: payouts,
+    payoutTitles:
+      source.payoutTitles && typeof source.payoutTitles === "object"
+        ? source.payoutTitles
+        : {},
     salaryAccruals:
       source.salaryAccruals && typeof source.salaryAccruals === "object"
         ? source.salaryAccruals
@@ -893,6 +898,28 @@ export function useDutySchedule(
 
   // ── Выплаты зарплаты по дням (кто и когда получает деньги) ──
 
+  /** Редактируемая надпись над таблицей выплат, отдельная для каждого месяца. */
+  const getPayoutTitleFor = useCallback(
+    (payPeriodKey: string, fallback: string): string => {
+      const saved = state.payoutTitles?.[payPeriodKey];
+      return typeof saved === "string" ? saved : fallback;
+    },
+    [state.payoutTitles]
+  );
+
+  const setPayoutTitle = useCallback(
+    (payPeriodKey: string, title: string) => {
+      setState((prev) => ({
+        ...prev,
+        payoutTitles: {
+          ...prev.payoutTitles,
+          [payPeriodKey]: title.slice(0, 120),
+        },
+      }));
+    },
+    []
+  );
+
   /** Список выплат за период. Пустой, если ещё ничего не задано, —
    *  дни и суммы указывает пользователь. */
   const getPayoutsFor = useCallback(
@@ -1202,7 +1229,9 @@ export function useDutySchedule(
     addAccrualPerson,
     removeAccrual,
     resetAccrualsToTimesheet,
-    // Выплаты по дням
+    // Выплаты по дням и их заголовок
+    getPayoutTitleFor,
+    setPayoutTitle,
     getPayoutsFor,
     setSalaryPayouts,
     addPayout,

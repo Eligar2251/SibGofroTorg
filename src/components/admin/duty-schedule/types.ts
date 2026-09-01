@@ -109,6 +109,8 @@ export interface DutyScheduleStoredState {
   payPlans?: PayPlans;
   /** [зарплатный месяц YYYY-MM] -> выплаты по дням. */
   salaryPayouts?: SalaryPayoutsByPeriod;
+  /** Редактируемый заголовок таблицы выплат: [YYYY-MM] -> текст. */
+  payoutTitles?: Record<string, string>;
   /** [зарплатный месяц YYYY-MM] -> начисления (кто и сколько). */
   salaryAccruals?: SalaryAccrualsByPeriod;
 }

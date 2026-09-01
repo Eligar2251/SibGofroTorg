@@ -440,6 +440,40 @@
   letter-spacing: 0.03em;
 }
 
+.ds-payout-title-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ds-payout-title-editor label {
+  white-space: nowrap;
+}
+.ds-payout-title-editor input {
+  width: min(360px, 100%);
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: #fff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ds-payout-title-editor input:focus {
+  border-color: #2563eb;
+  outline: 2px solid rgba(37, 99, 235, 0.14);
+}
+.ds-payout-title-help {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .ds-payroll-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -1021,6 +1055,7 @@
   gap: 8px;
 }
 .ds-print-sheet {
+  box-sizing: border-box;
   max-width: 297mm;
   margin: 0 auto;
   background: #fff;
@@ -1136,7 +1171,7 @@
   line-height: 1.1;
 }
 .ds-grid-name {
-  width: 46mm;
+  width: 44mm;
   text-align: left !important;
   padding: 1mm 2mm !important;
   font-weight: 700;
@@ -1149,8 +1184,8 @@
   font-size: 10px !important;
 }
 .ds-grid-col-sum {
-  width: 20mm;
-  font-size: 8px !important;
+  width: 16mm;
+  font-size: 9px !important;
   white-space: normal !important;
   line-height: 1.05 !important;
 }
@@ -1277,12 +1312,17 @@
     display: none !important;
   }
   .ds-print-sheet {
+    width: 100% !important;
     max-width: none !important;
     padding: 0 !important;
     box-shadow: none !important;
     border-radius: 0 !important;
   }
   .ds-print-grid {
+    /* Небольшой безопасный зазор удерживает правую границу внутри A4:
+       некоторые драйверы принтера обрезают таблицу ровно на 100% ширины. */
+    width: calc(100% - 1.5mm) !important;
+    margin-right: 1.5mm;
     break-inside: avoid;
   }
   .ds-print-grid tr {

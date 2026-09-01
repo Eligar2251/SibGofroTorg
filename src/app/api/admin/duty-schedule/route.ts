@@ -29,6 +29,7 @@ function isDutyScheduleState(value: unknown): value is DutyScheduleStoredState {
     isRecord(value.amountOverrides) &&
     (value.payPlans == null || isRecord(value.payPlans)) &&
     (value.salaryPayouts == null || isRecord(value.salaryPayouts)) &&
+    (value.payoutTitles == null || isRecord(value.payoutTitles)) &&
     (value.salaryAccruals == null || isRecord(value.salaryAccruals))
   );
 }
