@@ -1132,35 +1132,38 @@
   line-height: 1.15;
 }
 
-.ds-print-legend {
-  display: flex;
-  gap: 5mm;
-  align-items: center;
-  flex-wrap: wrap;
-  font-size: 9px;
+/* 3. Таблица выплат: столбец — сотрудник, ниже даты и суммы */
+.ds-print-payouts {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin-bottom: 3mm;
+  break-inside: avoid;
+}
+.ds-print-payouts th,
+.ds-print-payouts td {
+  border: 1px solid #bbb;
+  padding: 1.2mm 2mm;
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.15;
+  overflow: hidden;
+}
+.ds-print-payouts thead th {
+  background: #f1f1ee;
+  font-weight: 700;
+}
+.ds-print-payouts tfoot td {
+  font-weight: 700;
+  background: #f7f6f2;
+}
+.ds-print-payouts-num {
+  width: 10mm;
   color: #555;
-  margin-top: 2.5mm;
-  padding-top: 1.5mm;
-  border-top: 1px solid #ccc;
 }
-.ds-print-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 1.5mm;
-}
-.ds-print-swatch {
-  display: inline-block;
-  width: 3.2mm;
-  height: 3.2mm;
-  border: 1px solid #999;
-  border-radius: 0.6mm;
-}
-.ds-print-swatch--work {
-  background: #ffe135;
-  border-color: #d4b400;
-}
-.ds-print-legend-note {
-  margin-left: auto;
+.ds-print-payouts-total {
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .ds-print-sign {
@@ -1221,6 +1224,9 @@
     break-inside: avoid;
   }
   .ds-print-summary {
+    break-inside: avoid;
+  }
+  .ds-print-payouts {
     break-inside: avoid;
   }
 }

@@ -1106,6 +1106,8 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           month={month}
           employees={employees}
           schedule={schedule}
+          amountOverrides={amountOverrides}
+          payouts={payouts}
           companyPhone={companyPhone}
           companyAddress={companyAddress}
           onDone={() => setShowPrint(false)}
