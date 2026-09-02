@@ -1140,8 +1140,7 @@
     padding: 0 !important;
   }
   .admin-sidebar,
-  .admin-mobile-bar,
-  .NavigationProgress {
+  .admin-mobile-bar {
     display: none !important;
   }
   .admin-content,

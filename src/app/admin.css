@@ -2393,14 +2393,6 @@ body:has(.admin-login) > main {
   to { transform: rotate(360deg); }
 }
 
-/* Полоска прогресса навигации */
-@keyframes admin-progress-slide {
-  0%   { transform: scaleX(0); opacity: 1; }
-  50%  { transform: scaleX(0.7); opacity: 1; }
-  80%  { transform: scaleX(0.9); opacity: 0.8; }
-  100% { transform: scaleX(1); opacity: 0; }
-}
-
 .animate-spin {
   animation: adm-spin 0.8s linear infinite;
 }

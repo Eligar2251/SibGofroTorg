@@ -29,7 +29,6 @@ import {
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
-import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
@@ -252,7 +251,6 @@ export function AdminShell({
       className={`admin-shell${hideSidebar ? " admin-shell--sidebar-hidden" : ""}`}
       data-admin="true"
     >
-      <NavigationProgress />
       <aside
         id="admin-sidebar"
         className={`admin-sidebar${hideSidebar ? " admin-sidebar--hidden" : ""}`}

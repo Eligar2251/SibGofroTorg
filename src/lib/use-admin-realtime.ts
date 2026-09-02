@@ -139,6 +139,11 @@ export function useAdminRealtime(options: RealtimeOptions): ConnectionStatus {
   useEffect(() => {
     if (manual || tables.length === 0) return;
 
+    // "live"    — канал к Postgres поднят, событий ждём по всем таблицам:
+    //             достаточно редкого страховочного опроса.
+    // "partial" — SSE работает (заявки прилетают мгновенно), но канала к
+    //             Postgres нет: изменения мимо приложения ловим опросом,
+    //             поэтому период обычный, не разреженный.
     const interval = status === "live" ? safetyPollMs : pollIntervalMs;
     const id = setInterval(() => {
       if (document.hidden) return;

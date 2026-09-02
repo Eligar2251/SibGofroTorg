@@ -15,6 +15,7 @@ import {
 } from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { sendAdminNotifications } from "@/lib/notify";
+import { publishLocalChange } from "@/lib/realtime-hub";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -239,6 +240,26 @@ export async function POST(request: NextRequest) {
     }
 
     const createdOrder = await createOrder(orderData as any);
+
+    // ── Мгновенное уведомление админки ──
+    // Не ждём, пока об этой вставке расскажет Supabase Realtime: рассылаем
+    // событие подписчикам SSE прямо отсюда. Менеджер слышит сигнал в тот же
+    // момент, когда клиент нажал «Оформить», где бы он ни находился.
+    // Realtime (если настроен) пришлёт дубль — он гасится дедупликацией.
+    publishLocalChange({
+      table: "orders",
+      type: "INSERT",
+      id: createdOrder.id,
+      record: {
+        type: typeRaw,
+        status: "new",
+        customer_name: customerName,
+        customer_phone: finalPhoneDisplay,
+        total_sum: orderData.totalSum ?? null,
+        created_at: new Date().toISOString(),
+      },
+    });
+
     if (typeRaw === "order") {
       revalidateTag("products", { expire: 0 });
     }

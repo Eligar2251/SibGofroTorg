@@ -196,23 +196,42 @@ export async function GET() {
       }
     }
 
-    notifications.sort((a, b) => {
+    const bySeverityThenDate = (a: AdminNotification, b: AdminNotification) => {
       const priority = { danger: 2, warning: 1, info: 0 } as const;
       const pa = priority[a.severity];
       const pb = priority[b.severity];
       if (pa !== pb) return pb - pa;
       return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
-    });
+    };
+
+    notifications.sort(bySeverityThenDate);
+
+    // ── ГЛАВНОЕ: заявки клиентов НЕЛЬЗЯ терять при обрезке списка ──
+    // Раньше здесь стоял общий `notifications.slice(0, 50)`. Заявки имеют
+    // severity "warning", а остатки товаров — "danger", и сортировка ставит
+    // danger выше. Стоило накопиться полусотне товаров с низким остатком
+    // (а их тысяча в выборке), как ВСЕ новые заявки вылетали за границу
+    // первых 50 элементов. Колокольчик заявок фильтрует `items` по
+    // type === "order" и получал пустой массив — «уведомления не работают».
+    // Теперь заявки выделяются в отдельный, не обрезаемый список.
+    const requestItems = notifications.filter((n) => n.type === "order");
+    const otherItems = notifications.filter((n) => n.type !== "order");
+
+    const counts = {
+      orders: requestItems.length,
+      stock: notifications.filter((n) => n.type === "stock").length,
+      unpaidReleased: notifications.filter((n) => n.type === "unpaid_released").length,
+      rent: notifications.filter((n) => n.type === "rent").length,
+    };
 
     return NextResponse.json({
       total: notifications.length,
-      counts: {
-        orders: notifications.filter((n) => n.type === "order").length,
-        stock: notifications.filter((n) => n.type === "stock").length,
-        unpaidReleased: notifications.filter((n) => n.type === "unpaid_released").length,
-        rent: notifications.filter((n) => n.type === "rent").length,
-      },
-      items: notifications.slice(0, 50),
+      counts,
+      // Заявки — целиком (их максимум 100: по 50 из orders и wastepaper),
+      // остальное обрезаем, чтобы ответ не разрастался.
+      items: [...requestItems, ...otherItems.slice(0, 50)],
+      /** Отдельный ключ для колокольчика заявок: не зависит от обрезки. */
+      requests: requestItems,
     });
   } catch (error) {
     console.error("Admin notifications error:", error);

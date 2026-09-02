@@ -668,7 +668,7 @@
     margin: 8mm 8mm;
   }
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-  .admin-sidebar, .admin-mobile-bar, .NavigationProgress { display: none !important; }
+  .admin-sidebar, .admin-mobile-bar { display: none !important; }
   .admin-content, .admin-main { visibility: hidden !important; }
   .saz-print-root, .saz-print-root * { visibility: visible !important; }
   .saz-print-root {
