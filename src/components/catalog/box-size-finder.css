@@ -447,6 +447,13 @@
   background: var(--green-soft);
 }
 
+/* iOS: поле <16px включает авто-зум при фокусе — вёрстка «уезжает» */
+@media (max-width: 768px) {
+  .bsf-input {
+    font-size: 16px;
+  }
+}
+
 /* ── Мобильная компоновка ── */
 @media (max-width: 640px) {
   .bsf-input {

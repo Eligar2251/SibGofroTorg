@@ -6683,6 +6683,8 @@ body:has(.admin-modal-overlay) {
   width: 330px;
   max-width: calc(100vw - 16px);
   max-height: min(460px, calc(100vh - 16px));
+  /* dvh — с учётом мобильной панели браузера */
+  max-height: min(460px, calc(100dvh - 16px));
   overflow: auto;
   background: var(--adm-card);
   border: 1px solid var(--adm-border-mid);

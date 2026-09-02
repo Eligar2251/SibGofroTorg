@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
+import { useBodyLock } from "@/hooks/use-body-lock";
 import type { ClientRequest } from "@/lib/supabase-queries";
 
 /* ── Справочники ─────────────────────────────────────────── */
@@ -292,6 +293,10 @@ export function ClientRequestsManager({
   } | null>(null);
   const [closeReason, setCloseReason] = useState("");
   const [deleting, setDeleting] = useState<ClientRequest | null>(null);
+
+  // Эти модалки рендерятся inline (не через ModalPortal),
+  // поэтому блокируем скролл фона явно (iOS-safe блокировка).
+  useBodyLock(showCreate || editing !== null || closing !== null || deleting !== null);
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
