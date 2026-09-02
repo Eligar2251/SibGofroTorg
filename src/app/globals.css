@@ -684,6 +684,10 @@ select {
   right: max(14px, env(safe-area-inset-right));
   bottom: max(92px, calc(env(safe-area-inset-bottom) + 76px));
   width: min(360px, calc(100vw - 28px));
+  /* Ландшафтная ориентация телефона: ниже низа не вылезаем,
+     содержимое прокручивается внутри */
+  max-height: calc(100dvh - 150px);
+  overflow-y: auto;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -5772,8 +5776,22 @@ select {
   font-weight: 700;
   color: #fff;
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   text-decoration: none;
+}
+
+.footer-phone--wp {
+  margin-top: 10px;
+  font-size: 17px;
+}
+
+.footer-phone-role {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0 0 4px;
 }
 
 .footer-email {
@@ -6829,9 +6847,18 @@ body {
   inset: 0;
   z-index: 1200;
   display: flex;
-  align-items: center;
+  /* flex-start + auto-margin у детей (ниже): когда контент выше
+     экрана, он НЕ обрезается сверху — до него можно доскроллить.
+     Раньше был center без скролла оверлея: верх высокого попапа
+     был недостижим на мобильном. */
+  align-items: flex-start;
   justify-content: center;
   padding: 20px;
+  /* Оверлей сам прокручивается — страховка даже для контента,
+     у которого нет внутреннего скролла (сторис, модалка кабинета). */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   /* Плотный тёмный фон вместо backdrop-filter: blur() — блюр всего,
      что под оверлеем, перерисовывается каждый кадр и сильно лагал
      на десктопе. 0.78 непрозрачности даёт то же затемнение без блюра. */
@@ -6840,9 +6867,26 @@ body {
   animation: popup-fade-in 0.3s ease both;
 }
 
+.popup-root-overlay > * {
+  /* Безопасное центрирование: по центру, когда помещается;
+     со скроллом сверху, когда выше экрана. */
+  margin-top: auto;
+  margin-bottom: auto;
+  flex-shrink: 0;
+}
+
 .popup-root-overlay.closing {
   opacity: 0;
   pointer-events: none;
+}
+
+/* Пока открыта модалка/меню — фон не прокручивается. Основная
+   блокировка — JS (hooks/use-body-lock.ts, работает и в iOS
+   Safari), это страховка на случай одновременных состояний. */
+body:has(.popup-root-overlay),
+body:has(.pi-overlay),
+body:has(.mobile-menu-panel) {
+  overflow: hidden;
 }
 
 @keyframes popup-fade-in {
@@ -6858,6 +6902,10 @@ body {
      экран. Тень компактнее: 100px blur лагал при scale-анимации. */
   width: min(740px, 100%);
   max-height: min(90vh, 800px);
+  /* dvh — высота с учётом мобильной панели браузера: без неё
+     низ попапа прятался за тулбаром iOS Safari, и до кнопки
+     было не докрутить */
+  max-height: min(90dvh, 800px);
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--banner-bg);
@@ -7004,6 +7052,7 @@ body {
      пропорцию 9:16), поэтому на любом экране сохраняется соотношение
      сторон и сторис влезает по высоте без отдельного media-запроса. */
   width: min(460px, 92vw, calc(90vh * 9 / 16));
+  width: min(460px, 92vw, calc(90dvh * 9 / 16));
   aspect-ratio: 9 / 16;
   background: #000;
   border-radius: 28px;
@@ -7054,8 +7103,16 @@ body {
 }
 
 @media (max-width: 640px) {
+  .popup-root-overlay { padding: 12px; }
   .banner-v2__body { padding: 30px; }
   .story-v2 { border-radius: 20px; }
+}
+
+@media (max-width: 480px) {
+  .popup-root-overlay { padding: 10px; }
+  .banner-v2 { border-radius: 18px; }
+  .banner-v2__body { padding: 22px 16px; }
+  .banner-v2__close { top: 10px; right: 10px; }
 }
 
 /* ══════════════════════════════════════
@@ -7202,6 +7259,10 @@ body {
   justify-content: center;
   padding: 16px;
   overflow-y: auto;
+  /* iOS: свайп внутри модалки не «тянет» страницу под ней,
+     а сам скролл инерционный */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .pi-modal {
@@ -7956,7 +8017,9 @@ body {
   position: fixed;
   left: 16px;
   right: 16px;
-  bottom: 16px;
+  /* safe-area: на айфонах с «чёлкой» баннер не залезает
+     под системную полоску жестов */
+  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 2147483000;
   max-width: 760px;
   margin: 0 auto;
@@ -8043,21 +8106,63 @@ body {
 }
 .cookie-banner__decline:hover { border-color: var(--ink-3, #333); color: var(--ink, #1b2b4b); }
 @media (max-width: 640px) {
+  /* Компактный баннер на мобильных: одна строка, не перекрывает
+     полэкрана (жалоба тестировки о слишком высоком баннере) */
   .cookie-banner {
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    border-radius: 14px;
   }
   .cookie-banner__inner {
-    flex-wrap: wrap;
-    padding: 14px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
   }
   .cookie-banner__icon { display: none; }
-  .cookie-banner__actions {
-    width: 100%;
-    margin-top: 4px;
+  .cookie-banner__title {
+    font-size: 13px;
+    margin-bottom: 2px;
   }
-  .cookie-banner__accept, .cookie-banner__decline { flex: 1; justify-content: center; }
+  .cookie-banner__text {
+    font-size: 11px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .cookie-banner__actions {
+    width: auto;
+    margin-top: 0;
+    gap: 6px;
+  }
+  .cookie-banner__accept,
+  .cookie-banner__decline {
+    padding: 8px 12px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
+}
+
+/* Пока виден cookie-баннер, плавающая корзина и попап над ней
+   поднимаем выше баннера, чтобы он их не перекрывал. */
+:root {
+  --cookie-banner-h: 110px;
+}
+@media (max-width: 640px) {
+  :root {
+    --cookie-banner-h: 86px;
+  }
+}
+body.cookie-banner-visible .floating-cart-wrap {
+  bottom: calc(max(20px, env(safe-area-inset-bottom)) + var(--cookie-banner-h));
+}
+body.cookie-banner-visible .cart-popup {
+  bottom: calc(
+    max(92px, env(safe-area-inset-bottom) + 76px) + var(--cookie-banner-h)
+  );
 }
 
 /* =========================================================
@@ -8543,6 +8648,12 @@ body {
   justify-content: center;
   color: var(--tile-accent);
   background: linear-gradient(135deg, var(--green-bg), var(--bg-soft));
+}
+
+/* Плитка «Подбор коробки» — визуально выделяем среди разделов */
+.showcase-tile--finder .showcase-tile__glyph {
+  color: var(--green-dark);
+  background: linear-gradient(135deg, var(--green-soft), var(--green-bg));
 }
 
 .showcase-tile__body {

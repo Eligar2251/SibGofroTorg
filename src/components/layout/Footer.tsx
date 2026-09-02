@@ -64,6 +64,10 @@ export function Footer() {
   const footerEmail = siteSettings.email || SITE_EMAIL;
   const footerAddress = siteSettings.address || SITE_ADDRESS;
   const footerHours = siteSettings.hoursLabel || SITE_HOURS_LABEL;
+  // Телефон отдела приёма макулатуры — отдельная строка с подписью,
+  // чтобы три разных номера на сайте не сливались для посетителя.
+  const footerWpPhone = siteSettings.wastepaperPhone || "";
+  const footerWpPhoneHref = siteSettings.wastepaperPhoneHref || "";
 
   useEffect(() => {
     fetch("/api/categories")
@@ -106,6 +110,15 @@ export function Footer() {
             <a href={footerPhoneHref} className="footer-phone">
               {footerPhone}
             </a>
+            <p className="footer-phone-role">Отдел продаж · гофротара</p>
+            {footerWpPhone && (
+              <>
+                <a href={footerWpPhoneHref} className="footer-phone footer-phone--wp">
+                  {footerWpPhone}
+                </a>
+                <p className="footer-phone-role">Приём макулатуры</p>
+              </>
+            )}
             <p className="footer-hours">{footerHours}</p>
             {footerEmail && (
               <a href={`mailto:${footerEmail}`} className="footer-email">

@@ -31,6 +31,7 @@ import {
   SITE_EMAIL,
 } from "@/lib/site-config";
 import { useSiteSettings } from "@/hooks/use-site-settings";
+import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
 import { fetchJsonSafe } from "@/lib/safe-fetch";
 
 /** Категория в меню шапки. Приходит из серверного layout. */
@@ -163,8 +164,8 @@ export function Header({
     if (!isMobileMenuOpen) return;
 
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    // Надёжная блокировка скролла (в т.ч. iOS Safari) — см. use-body-lock.ts
+    lockBodyScroll();
     mobileMenuRef.current?.focus();
 
     function onKeyDown(event: KeyboardEvent) {
@@ -189,7 +190,7 @@ export function Header({
 
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = originalOverflow;
+      unlockBodyScroll();
       document.removeEventListener("keydown", onKeyDown);
       if (document.activeElement === document.body) previouslyFocused?.focus();
     };

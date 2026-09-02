@@ -20,6 +20,9 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { YandexMapEmbed } from "@/components/layout/YandexMapEmbed";
 import { buildLocalBusinessJsonLd, buildBreadcrumbJsonLd } from "@/lib/seo";
 import { getSettings } from "@/lib/supabase-queries";
+import { buildWeekdayLabel } from "@/lib/hours-label";
+import { getWastepaperPageConfig } from "@/lib/wastepaper";
+import { Recycle } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Контакты — склад и офис в Новосибирске",
@@ -30,18 +33,6 @@ export const metadata: Metadata = {
 
 function ContactIcon({ children }: { children: React.ReactNode }) {
   return <div className="contacts-icon">{children}</div>;
-}
-
-/** Превращает значение working_hours из БД в строку «Пн–Пт HH:MM–HH:MM» */
-function buildWeekdayLabel(workingHours: string, fallback: string): string {
-  if (workingHours && /пн[‐-―‑–—]?пт/i.test(workingHours)) {
-    // Если админ сохранил «Пн–Пт 8:30–17:00» целиком, оставляем как есть
-    return workingHours;
-  }
-  if (workingHours) {
-    return `Пн–Пт ${workingHours}`;
-  }
-  return `Пн–Пт: ${fallback}`;
 }
 
 export const dynamic = "force-dynamic";
@@ -55,9 +46,12 @@ export default async function ContactsPage() {
   const contactsEmail = (settings.email || SITE_EMAIL || "").trim();
   const contactsAddress = (settings.address || SITE_ADDRESS || "").trim();
   const contactsWeekday = buildWeekdayLabel(
-    (settings.working_hours || "").trim(),
+    settings.working_hours,
     SITE_HOURS_WEEKDAY
   );
+  // Отдельный номер отдела приёма макулатуры — с явной подписью,
+  // чтобы посетители не путали его с телефоном отдела продаж.
+  const wpCfg = getWastepaperPageConfig(settings);
 
   return (
     <div className="contacts-page">
@@ -103,7 +97,31 @@ export default async function ContactsPage() {
                   {contactsPhone}
                 </a>
                 <div className="contacts-card__hint">
-                  Принимаем звонки в рабочее время
+                  Заказ гофротары и упаковки · принимаем звонки в рабочее время
+                </div>
+              </div>
+            </div>
+
+            {/* Телефон приёма макулатуры */}
+            <div className="card-base contacts-card">
+              <ContactIcon>
+                <Recycle size={20} />
+              </ContactIcon>
+              <div>
+                <div className="contacts-card__label">
+                  Приём макулатуры
+                </div>
+                <a href={wpCfg.phoneHref} className="contacts-card__phone">
+                  {wpCfg.phone}
+                </a>
+                <div className="contacts-card__hint">
+                  Сдать картон и бумагу · вывоз от {wpCfg.pickupMinKg} кг ·{" "}
+                  <Link
+                    href="/wastepaper"
+                    style={{ color: "var(--green)", textDecoration: "underline" }}
+                  >
+                    цены и калькулятор
+                  </Link>
                 </div>
               </div>
             </div>

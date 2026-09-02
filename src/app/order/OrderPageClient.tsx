@@ -41,9 +41,15 @@ const STEPS = [
 export function OrderPageClient({
   deliveryPrice,
   freeDeliveryThreshold,
+  pickupAddress,
+  pickupHoursLabel,
 }: {
   deliveryPrice: number;
   freeDeliveryThreshold: number;
+  /** Адрес склада для блока «Самовывоз» — из настроек админки */
+  pickupAddress: string;
+  /** Режим работы склада «Пн–Пт 8:30–17:00» — из настроек админки */
+  pickupHoursLabel: string;
 }) {
   const router = useRouter();
   const { cart, updateQty, removeFromCart, rawSubtotal, discountPercent, discountAmount, totalSum, clearCart } = useCart();
@@ -241,6 +247,15 @@ export function OrderPageClient({
     if (step === 1 && cart.length === 0) {
       setError("Корзина пуста");
       return;
+    }
+    if (step === 2) {
+      // Поле адреса помечено «*» — не даём уйти дальше с пустым
+      // адресом при курьерской доставке (тестировка: шаг 2 пропускал
+      // пустое обязательное поле до самой оплаты).
+      if (delivery === "courier" && !address.trim()) {
+        setError("Укажите адрес доставки — курьеру он нужен обязательно");
+        return;
+      }
     }
     if (step === 3) {
       if (!name.trim()) {
@@ -685,7 +700,7 @@ export function OrderPageClient({
                           id: "pickup" as const,
                           icon: <MapPin size={20} />,
                           title: "Самовывоз со склада",
-                          desc: "ул. Ватутина, 42а к1 · Пн–Пт 8:30–17:00",
+                          desc: `${pickupAddress} · ${pickupHoursLabel}`,
                           price: "Бесплатно",
                           free: true,
                         },
@@ -745,6 +760,9 @@ export function OrderPageClient({
                         className="form-input"
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
+                        aria-invalid={
+                          delivery === "courier" && !!error && !address.trim()
+                        }
                         placeholder={
                           delivery === "transport"
                             ? "Адрес терминала ТК"
@@ -754,11 +772,17 @@ export function OrderPageClient({
                     </div>
                   )}
 
+                  {error && (
+                    <div className="checkout-error" style={{ marginTop: 14 }}>
+                      {error}
+                    </div>
+                  )}
+
                   <div
                     style={{
                       display: "flex",
                       gap: 12,
-                      marginTop: 20,
+                      marginTop: error ? 10 : 20,
                       flexWrap: "wrap",
                     }}
                   >

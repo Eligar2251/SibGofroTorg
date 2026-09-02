@@ -2,29 +2,22 @@
 // FILE: src/app/order/page.tsx
 // Серверная обёртка: достаёт настройки доставки (цена и порог
 // бесплатной — редактируются в админке) и передаёт в клиентскую форму.
+// Адрес и режим работы склада для блока «Самовывоз» берутся из тех
+// же настроек, что на странице контактов, — не дублируем их в коде.
 // =========================================================
 
-import { getSettings } from "@/lib/supabase-queries";
+import { getPublicSettingsView } from "@/lib/public-settings";
 import { OrderPageClient } from "./OrderPageClient";
 
 export default async function OrderPage() {
-  let deliveryPrice = 800;
-  let freeDeliveryThreshold = 30000;
-  try {
-    const settings = await getSettings();
-    const price = Number(settings.delivery_price);
-    const threshold = Number(settings.free_delivery_threshold);
-    if (Number.isFinite(price) && price >= 0) deliveryPrice = price;
-    if (Number.isFinite(threshold) && threshold > 0)
-      freeDeliveryThreshold = threshold;
-  } catch {
-    // без настроек/БД используем значения по умолчанию
-  }
+  const pub = await getPublicSettingsView();
 
   return (
     <OrderPageClient
-      deliveryPrice={deliveryPrice}
-      freeDeliveryThreshold={freeDeliveryThreshold}
+      deliveryPrice={pub.deliveryPrice}
+      freeDeliveryThreshold={pub.freeDeliveryThreshold}
+      pickupAddress={pub.address}
+      pickupHoursLabel={pub.weekdayLabel}
     />
   );
 }

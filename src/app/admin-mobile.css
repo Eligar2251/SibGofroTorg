@@ -468,7 +468,9 @@
   }
 
   [data-admin="true"] :is(.admin-input, .admin-select, .admin-textarea),
-  [data-admin="true"] :is(.ds-field input, .ds-field select, .saz-field input, .saz-field select, .saz-input) {
+  [data-admin="true"] :is(.ds-field input, .ds-field select, .saz-field input, .saz-field select, .saz-input),
+  /* Сканер штрих/QR: поле 15px — iOS зумил экран при фокусе */
+  .scan-page__input {
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -477,6 +479,11 @@
     border-radius: 8px;
     font-size: 16px; /* iOS: не увеличивать viewport при фокусе */
     line-height: 1.25;
+  }
+
+  /* Ширка сканера уже задана (border-radius у пилюли кнопок) */
+  .scan-page__input {
+    border-radius: 0;
   }
 
   [data-admin="true"] .admin-textarea {

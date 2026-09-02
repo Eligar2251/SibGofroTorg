@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, BellRing, CircleAlert, Gift, X } from "lucide-react";
 import type { PublicPopupCampaign } from "@/lib/popup-campaign";
+import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
 
 const STORAGE_PREFIX = "sib-info-window:";
 
@@ -114,14 +115,14 @@ export function PromotionPopups({
 
   useEffect(() => {
     if (!current) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    // Надёжная блокировка скролла фона (в т.ч. iOS Safari)
+    lockBodyScroll();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") closePopup();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previous;
+      unlockBodyScroll();
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [current, closePopup]);

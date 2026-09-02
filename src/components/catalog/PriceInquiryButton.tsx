@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { ymGoal } from "@/lib/ym";
+import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
 import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 import { useSiteSettings } from "@/hooks/use-site-settings";
 
@@ -114,14 +115,14 @@ export function PriceInquiryButton({
 
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    // Надёжная блокировка скролла фона (в т.ч. iOS Safari)
+    lockBodyScroll();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      unlockBodyScroll();
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);

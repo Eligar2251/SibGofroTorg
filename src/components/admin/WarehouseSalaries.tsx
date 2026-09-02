@@ -28,6 +28,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useBodyLock } from "@/hooks/use-body-lock";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -1249,6 +1250,9 @@ export function WarehouseSalaries({
   const [exportingImage, setExportingImage] = useState(false);
   const [scheduleStartValue, setScheduleStartValue] = useState("1");
   const [scheduleBusy, setScheduleBusy] = useState(false);
+  // Модалки этой страницы рендерятся inline (не через ModalPortal) —
+  // блокируем скролл фона явно, пока любая из них открыта.
+  useBodyLock(formOpen || empOpen || daysModalOpen || setupOpen);
   // Перетаскивание выплаты между ячейками дней (drag & drop).
   const [dragSalary, setDragSalary] = useState<{
     id: string;

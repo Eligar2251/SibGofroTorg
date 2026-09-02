@@ -875,7 +875,7 @@ export function DeliveriesManager({
                   Укажите количество товара для отгрузки. Остаток останется в заказе.
                 </p>
 
-                <div className="delivery-plan-modal__list" style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: "60vh", overflowY: "auto", paddingRight: 4 }}>
+                <div className="delivery-plan-modal__list" style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: "60dvh", overflowY: "auto", paddingRight: 4 }}>
                   {[...selected].map((key) => {
                     const row = byKey.get(key);
                     if (!row || !row.items || row.items.length === 0) return null;

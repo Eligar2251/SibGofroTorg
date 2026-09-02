@@ -10,6 +10,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getCategories, getProducts } from "@/lib/supabase-queries";
 import { SITE_URL, SITE_NAME, buildBreadcrumbJsonLd } from "@/lib/seo";
+import {
+  getPublicSettingsView,
+  formatRubles,
+} from "@/lib/public-settings";
 import { JsonLd } from "@/components/seo/JsonLd";
 import {
   LandingFaq,
@@ -38,10 +42,14 @@ export const metadata: Metadata = {
 
 export default async function GofrotaraPage() {
   // Страница не должна падать при сбое БД: показываем текст и ссылки.
-  const [categories, featured] = await Promise.all([
+  // Ключевые цифры (порог бесплатной доставки) и контакты — из настроек
+  // админки: меняются в одном месте и сразу во всех текстах сайта.
+  const [categories, featured, pub] = await Promise.all([
     getCategories().catch(() => []),
     getProducts({ featuredOnly: true, limitCount: 500 }).catch(() => []),
+    getPublicSettingsView(),
   ]);
+  const freeFrom = formatRubles(pub.freeDeliveryThreshold);
   const products = featured.filter((p) => p.isVisible !== false).slice(0, 8);
 
   return (
@@ -120,8 +128,8 @@ export default async function GofrotaraPage() {
           <h2>Доставка по Новосибирску и области</h2>
           <p>
             Заказанную гофротару привозим по Новосибирску и пригороду за 2–3 дня,
-            при заказе от 20 000 ₽ доставка по городу бесплатная. Можно забрать
-            самовывозом со склада: ул. Ватутина, 42А, к. 1. Подробные условия —
+            при заказе от {freeFrom} ₽ доставка по городу бесплатная. Можно забрать
+            самовывозом со склада: {pub.address}. Подробные условия —
             на странице <Link href="/delivery">доставки и оплаты</Link>.
           </p>
 
@@ -142,7 +150,7 @@ export default async function GofrotaraPage() {
               },
               {
                 q: "Как купить гофротару в Новосибирске с доставкой?",
-                a: `Оформите заказ на сайте (резерв без предоплаты) или позвоните ${"+7 (383) 291-08-20"}. Доставка по Новосибирску 2–3 дня, от 20 000 ₽ — бесплатно. Самовывоз: ${"ул. Ватутина, 42А, к. 1"}.`,
+                a: `Оформите заказ на сайте (резерв без предоплаты) или позвоните в отдел продаж: ${pub.phone}. Доставка по Новосибирску 2–3 дня, от ${freeFrom} ₽ — бесплатно. Самовывоз: ${pub.address}.`,
               },
             ]}
           />

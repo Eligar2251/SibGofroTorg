@@ -15,11 +15,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, ArrowLeft, Loader2, LayoutGrid } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, LayoutGrid, Ruler } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { CatalogOrderNote } from "@/components/catalog/CatalogOrderNote";
+import { BoxSizeFinder, type BoxFinderProduct } from "@/components/catalog/BoxSizeFinder";
 
 export interface ShowcaseProduct {
   id: string;
@@ -63,7 +64,19 @@ export interface ShowcaseTile {
 
 const SEARCH_HINTS = ["400×300×250", "Скотч 48мм", "Стрейч-плёнка", "Т-23"];
 
-export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
+/** Служебная «плитка» подбора коробки по размерам. Открывается тем же
+ *  мгновенным переключением, что и разделы, но вместо сетки товаров
+ *  показывает форму подбора. Отдельная страница: /podbor-korobki. */
+const FINDER_TILE_ID = "__box-finder__";
+
+export function HomeShowcase({
+  tiles,
+  finderProducts,
+}: {
+  tiles: ShowcaseTile[];
+  /** Товары с размерами для плитки «Подбор коробки» (мм). */
+  finderProducts?: BoxFinderProduct[];
+}) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [searchResults, setSearchResults] = useState<ShowcaseProduct[] | null>(null);
@@ -72,10 +85,39 @@ export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollRef = useRef(false);
 
-  const active = useMemo(
-    () => tiles.find((t) => t.id === activeId) || null,
-    [tiles, activeId]
+  const showFinder = (finderProducts?.length ?? 0) > 0;
+
+  // Плитка подбора всегда последней — после разделов каталога.
+  const finderTile: ShowcaseTile | null = useMemo(
+    () =>
+      showFinder
+        ? {
+            id: FINDER_TILE_ID,
+            title: "Подбор коробки по размерам",
+            subtitle: "Укажите Д×Ш×В — покажем ближайшие коробки, цену и наличие",
+            imageUrl: null,
+            icon: null,
+            accent: null,
+            href: "/podbor-korobki",
+            apiQuery: "",
+            count: finderProducts!.length,
+            products: [],
+          }
+        : null,
+    [showFinder, finderProducts]
   );
+
+  const allTiles = useMemo(
+    () => (finderTile ? [...tiles, finderTile] : tiles),
+    [tiles, finderTile]
+  );
+
+  const active = useMemo(
+    () => allTiles.find((t) => t.id === activeId) || null,
+    [allTiles, activeId]
+  );
+
+  const finderActive = active?.id === FINDER_TILE_ID;
 
   // Плавно подводим к панели только после клика по плитке
   // (при переключении вкладок внутри панели не дёргаем скролл).
@@ -163,45 +205,69 @@ export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
         {/* ── Плитки разделов ── */}
         {!active && (
           <div className="showcase-tiles">
-            {tiles.map((tile) => (
-              <button
-                key={tile.id}
-                type="button"
-                className="showcase-tile"
-                onClick={() => openTile(tile.id)}
-                style={
-                  tile.accent
-                    ? ({ "--tile-accent": tile.accent } as React.CSSProperties)
-                    : undefined
-                }
-              >
-                <span className="showcase-tile__media">
-                  {tile.imageUrl ? (
-                    <Image
-                      src={tile.imageUrl}
-                      alt={tile.title}
-                      fill
-                      sizes="(max-width: 768px) 50vw, 260px"
-                      style={{ objectFit: "cover" }}
-                    />
-                  ) : (
+            {allTiles.map((tile) =>
+              tile.id === FINDER_TILE_ID ? (
+                <button
+                  key={tile.id}
+                  type="button"
+                  className="showcase-tile showcase-tile--finder"
+                  onClick={() => openTile(tile.id)}
+                >
+                  <span className="showcase-tile__media">
                     <span className="showcase-tile__glyph">
-                      <GlyphIcon value={tile.icon || "box"} size={38} />
+                      <Ruler size={38} />
                     </span>
-                  )}
-                </span>
-                <span className="showcase-tile__body">
-                  <span className="showcase-tile__title">{tile.title}</span>
-                  {tile.subtitle && (
-                    <span className="showcase-tile__sub">{tile.subtitle}</span>
-                  )}
-                  <span className="showcase-tile__count">
-                    {tile.count} товаров <ArrowRight size={12} />
                   </span>
-                </span>
-              </button>
-            ))}
-            {tiles.length === 0 && (
+                  <span className="showcase-tile__body">
+                    <span className="showcase-tile__title">{tile.title}</span>
+                    {tile.subtitle && (
+                      <span className="showcase-tile__sub">{tile.subtitle}</span>
+                    )}
+                    <span className="showcase-tile__count">
+                      Подобрать коробку <ArrowRight size={12} />
+                    </span>
+                  </span>
+                </button>
+              ) : (
+                <button
+                  key={tile.id}
+                  type="button"
+                  className="showcase-tile"
+                  onClick={() => openTile(tile.id)}
+                  style={
+                    tile.accent
+                      ? ({ "--tile-accent": tile.accent } as React.CSSProperties)
+                      : undefined
+                  }
+                >
+                  <span className="showcase-tile__media">
+                    {tile.imageUrl ? (
+                      <Image
+                        src={tile.imageUrl}
+                        alt={tile.title}
+                        fill
+                        sizes="(max-width: 768px) 50vw, 260px"
+                        style={{ objectFit: "cover" }}
+                      />
+                    ) : (
+                      <span className="showcase-tile__glyph">
+                        <GlyphIcon value={tile.icon || "box"} size={38} />
+                      </span>
+                    )}
+                  </span>
+                  <span className="showcase-tile__body">
+                    <span className="showcase-tile__title">{tile.title}</span>
+                    {tile.subtitle && (
+                      <span className="showcase-tile__sub">{tile.subtitle}</span>
+                    )}
+                    <span className="showcase-tile__count">
+                      {tile.count} товаров <ArrowRight size={12} />
+                    </span>
+                  </span>
+                </button>
+              )
+            )}
+            {allTiles.length === 0 && (
               <div className="empty-state">
                 <span>
                   <LayoutGrid size={32} />
@@ -224,30 +290,32 @@ export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
                 <ArrowLeft size={14} /> Все разделы
               </button>
 
-              <div className="home-catalog-unified__search-block">
-                <div className="home-catalog-unified__label">Поиск</div>
-                <InstantSearchInput
-                  value={q}
-                  onChange={handleSearch}
-                  loading={loading}
-                  placeholder="Размер, марка, артикул..."
-                  className="sidebar-search-form"
-                  inputClassName="catalog-search-input"
-                  buttonClassName="catalog-search-btn"
-                />
-                <div className="home-catalog-unified__chips">
-                  {SEARCH_HINTS.map((hint) => (
-                    <button
-                      key={hint}
-                      type="button"
-                      className="search-chip"
-                      onClick={() => handleSearch(hint)}
-                    >
-                      {hint}
-                    </button>
-                  ))}
+              {!finderActive && (
+                <div className="home-catalog-unified__search-block">
+                  <div className="home-catalog-unified__label">Поиск</div>
+                  <InstantSearchInput
+                    value={q}
+                    onChange={handleSearch}
+                    loading={loading}
+                    placeholder="Размер, марка, артикул..."
+                    className="sidebar-search-form"
+                    inputClassName="catalog-search-input"
+                    buttonClassName="catalog-search-btn"
+                  />
+                  <div className="home-catalog-unified__chips">
+                    {SEARCH_HINTS.map((hint) => (
+                      <button
+                        key={hint}
+                        type="button"
+                        className="search-chip"
+                        onClick={() => handleSearch(hint)}
+                      >
+                        {hint}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="home-catalog-unified__label">Разделы</div>
 
@@ -260,9 +328,9 @@ export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
                     onChange={(e) => openTile(e.target.value)}
                     aria-label="Выбор раздела"
                   >
-                    {tiles.map((t) => (
+                    {allTiles.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.title} ({t.count})
+                        {t.id === FINDER_TILE_ID ? t.title : `${t.title} (${t.count})`}
                       </option>
                     ))}
                   </select>
@@ -270,7 +338,7 @@ export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
               </div>
 
               <div className="home-catalog-unified__cats">
-                {tiles.map((tile) => (
+                {allTiles.map((tile) => (
                   <button
                     key={tile.id}
                     type="button"
@@ -278,10 +346,16 @@ export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
                     className={`fcat-item${tile.id === active.id ? " fcat-item--active" : ""}`}
                   >
                     <span className="fcat-item__icon">
-                      <GlyphIcon value={tile.icon || "box"} size={16} />
+                      {tile.id === FINDER_TILE_ID ? (
+                        <Ruler size={16} />
+                      ) : (
+                        <GlyphIcon value={tile.icon || "box"} size={16} />
+                      )}
                     </span>
                     <span className="fcat-item__name">{tile.title}</span>
-                    <span className="fcat-item__count">{tile.count}</span>
+                    {tile.id !== FINDER_TILE_ID && (
+                      <span className="fcat-item__count">{tile.count}</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -295,22 +369,38 @@ export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
             </aside>
 
             <div className="home-catalog-unified__main">
-              <div className="catalog-top home-catalog-unified__top">
-                <div className="catalog-heading-row">
-                  <h3 className="section-title" style={{ margin: 0 }}>
-                    {heading}
-                    <span className="catalog-top__count" style={{ marginLeft: 8 }}>
-                      {loading ? "…" : countLabel}
-                    </span>
-                  </h3>
-                  <CatalogOrderNote />
-                </div>
-                <Link href={active.href} className="text-link" style={{ fontSize: 13 }}>
-                  Открыть в каталоге <ArrowRight size={13} />
-                </Link>
-              </div>
+              {finderActive ? (
+                <>
+                  <div className="catalog-top home-catalog-unified__top">
+                    <div className="catalog-heading-row">
+                      <h3 className="section-title" style={{ margin: 0 }}>
+                        Подбор коробки по размерам
+                      </h3>
+                    </div>
+                    <Link href="/podbor-korobki" className="text-link" style={{ fontSize: 13 }}>
+                      Открыть страницу подбора <ArrowRight size={13} />
+                    </Link>
+                  </div>
+                  <BoxSizeFinder products={finderProducts || []} />
+                </>
+              ) : (
+                <>
+                  <div className="catalog-top home-catalog-unified__top">
+                    <div className="catalog-heading-row">
+                      <h3 className="section-title" style={{ margin: 0 }}>
+                        {heading}
+                        <span className="catalog-top__count" style={{ marginLeft: 8 }}>
+                          {loading ? "…" : countLabel}
+                        </span>
+                      </h3>
+                      <CatalogOrderNote />
+                    </div>
+                    <Link href={active.href} className="text-link" style={{ fontSize: 13 }}>
+                      Открыть в каталоге <ArrowRight size={13} />
+                    </Link>
+                  </div>
 
-              {products.length > 0 ? (
+                  {products.length > 0 ? (
                 <div
                   className={`products-grid-4${loading ? " products-grid-4--loading" : ""}`}
                 >
@@ -337,12 +427,14 @@ export function HomeShowcase({ tiles }: { tiles: ShowcaseTile[] }) {
                 </div>
               )}
 
-              {!q.trim() && active.count > products.length && (
-                <div className="showcase-more">
-                  <Link href={active.href} className="btn-hero-ghost">
-                    Показать все {active.count} товаров <ArrowRight size={14} />
-                  </Link>
-                </div>
+                  {!q.trim() && active.count > products.length && (
+                    <div className="showcase-more">
+                      <Link href={active.href} className="btn-hero-ghost">
+                        Показать все {active.count} товаров <ArrowRight size={14} />
+                      </Link>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

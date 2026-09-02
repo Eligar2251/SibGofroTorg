@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
+import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
 import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
@@ -114,8 +115,8 @@ export function AdminShell({
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    // Надёжная блокировка скролла фона (в т.ч. iOS Safari)
+    lockBodyScroll();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMobileMenuOpen(false);
     };
@@ -125,7 +126,7 @@ export function AdminShell({
     window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("resize", closeOnDesktop, { passive: true });
     return () => {
-      document.body.style.overflow = previousOverflow;
+      unlockBodyScroll();
       window.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("resize", closeOnDesktop);
     };

@@ -1572,6 +1572,15 @@ html {
     min-height: 44px;
   }
 
+  /* Поля в модалках: <16px на iOS включает авто-зум при фокусе
+     и вёрстка модалки «уезжает»/обрезается */
+  .pi-input,
+  .pi-textarea,
+  .pi-select,
+  .bsf-input {
+    font-size: 16px;
+  }
+
   textarea.form-input,
   .qof-textarea {
     min-height: 80px;

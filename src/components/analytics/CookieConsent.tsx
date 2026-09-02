@@ -35,6 +35,17 @@ export function CookieConsent() {
     setMounted(true);
   }, []);
 
+  // Пока баннер висит, плавающую корзину (и попап над ней) поднимаем
+  // выше него — иначе баннер их перекрывает (жалоба тестировки).
+  const bannerVisible = mounted && consent === null;
+  useEffect(() => {
+    if (!bannerVisible) return;
+    document.body.classList.add("cookie-banner-visible");
+    return () => {
+      document.body.classList.remove("cookie-banner-visible");
+    };
+  }, [bannerVisible]);
+
   function decide(value: "accepted" | "declined") {
     try {
       localStorage.setItem(CONSENT_KEY, value);
@@ -69,7 +80,7 @@ export function CookieConsent() {
         </>
       )}
 
-      {mounted && consent === null && (
+      {bannerVisible && (
         <div
           className="cookie-banner"
           role="dialog"

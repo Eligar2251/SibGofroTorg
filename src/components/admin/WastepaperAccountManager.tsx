@@ -34,6 +34,7 @@ import {
   Check,
 } from "lucide-react";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
+import { useBodyLock } from "@/hooks/use-body-lock";
 import type { WastepaperRates } from "@/lib/wastepaper";
 import {
   WP_ACCOUNT_LABELS,
@@ -2201,6 +2202,8 @@ function StopModal({
   onClose: () => void;
   onSubmit: (stop: WpTransportItem) => void;
 }) {
+  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
+  useBodyLock(true);
   const suppliers = counterparties.filter((c) => c.roles.includes("supplier"));
   const [form, setForm] = useState({
     counterpartyName: stop?.counterpartyName || "",
@@ -2591,6 +2594,8 @@ function IntakeModal({
   onCancelDoc: () => void;
   onDelete: () => void;
 }) {
+  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
+  useBodyLock(true);
   const [form, setForm] = useState({
     date: item?.date || todayStr(),
     counterpartyName: item?.counterpartyName || "",
@@ -2916,6 +2921,8 @@ function ShipmentModal({
   onCancelDoc: () => void;
   onDelete: () => void;
 }) {
+  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
+  useBodyLock(true);
   const [form, setForm] = useState({
     date: item?.date || todayStr(),
     enterpriseName: item?.enterpriseName || "",
@@ -3204,6 +3211,8 @@ function PaymentModal({
   onSubmit: (form: PaymentFormPayload) => void;
   onDelete: () => void;
 }) {
+  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
+  useBodyLock(true);
   const [form, setForm] = useState({
     date: item?.date || todayStr(),
     direction: (item?.direction || "incoming") as "incoming" | "outgoing",
@@ -3436,6 +3445,8 @@ function CounterpartyModal({
   onSubmit: (form: CounterpartyFormPayload) => void;
   onDelete: () => void;
 }) {
+  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
+  useBodyLock(true);
   const [form, setForm] = useState({
     name: item?.name || "",
     roles: item?.roles || (["supplier"] as string[]),
@@ -3654,6 +3665,8 @@ function TransportModal({
   onClose: () => void;
   onSubmit: (form: TransportFormPayload) => void;
 }) {
+  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
+  useBodyLock(true);
   const suppliers = counterparties.filter((c) => c.roles.includes("supplier"));
   const [form, setForm] = useState({
     date: item?.date || todayStr(),

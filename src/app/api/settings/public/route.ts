@@ -13,6 +13,7 @@ import {
   SITE_EMAIL,
   SITE_HOURS_WEEKDAY,
 } from "@/lib/site-config";
+import { getWastepaperPageConfig } from "@/lib/wastepaper";
 
 export async function GET() {
   try {
@@ -25,6 +26,7 @@ export async function GET() {
       ? String(settings.messenger_banner_color)
       : "#1b2b4b";
     const registrationField = String(settings.registration_contact_field || "phone").toLowerCase() === "email" ? "email" : "phone";
+    const wpCfg = getWastepaperPageConfig(settings);
     return NextResponse.json(
       {
         // Публичные контактные данные берём из БД (админка),
@@ -32,6 +34,9 @@ export async function GET() {
         phone: (settings.phone || SITE_PHONE || "").trim(),
         email: (settings.email || SITE_EMAIL || "").trim(),
         address: (settings.address || SITE_ADDRESS || "").trim(),
+        // Отдельный номер отдела приёма макулатуры (вкладка «Макулатура»)
+        wastepaperPhone: wpCfg.phone,
+        wastepaperPhoneHref: wpCfg.phoneHref,
         // "Пн–Пт 8:30–17:00" или иной формат, сохранённый админом
         workingHours: (settings.working_hours || "").trim(),
         // Чтобы клиент мог собрать SITE_HOURS_LABEL даже когда в БД пусто
@@ -69,6 +74,8 @@ export async function GET() {
         phone: SITE_PHONE,
         email: SITE_EMAIL,
         address: SITE_ADDRESS,
+        wastepaperPhone: getWastepaperPageConfig({}).phone,
+        wastepaperPhoneHref: getWastepaperPageConfig({}).phoneHref,
         workingHours: "",
         hoursWeekday: SITE_HOURS_WEEKDAY,
         deliveryPrice: 800,

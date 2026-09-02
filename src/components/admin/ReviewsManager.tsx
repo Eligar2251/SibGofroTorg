@@ -276,7 +276,7 @@ export function ReviewsManager() {
       {viewingId && (
         <ModalPortal>
         <div className="admin-modal-overlay" onClick={() => setViewingId(null)}>
-          <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 800, maxHeight: "80vh", overflow: "auto" }}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 800, maxHeight: "80dvh", overflow: "auto" }}>
             {(() => {
               const r = reviews.find(x => x.id === viewingId);
               if (!r) return null;

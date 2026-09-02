@@ -16,6 +16,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { buildHoursLabel, DEFAULT_HOURS_WEEKDAY } from "@/lib/hours-label";
 
 export interface MessengerChannelSettings {
   url: string;
@@ -41,12 +42,14 @@ export interface SiteSettings {
   hoursLabel: string;
   /** Дефолт «8:30–17:00» для случая, когда админ задал только свои часы */
   hoursWeekday: string;
+  /** Телефон отдела приёма макулатуры (для подписей в футере и т.п.) */
+  wastepaperPhone: string;
+  wastepaperPhoneHref: string;
   messengerBanner: MessengerBannerSettings;
   registrationField: "phone" | "email";
   ready: boolean;
 }
 
-const DEFAULT_HOURS_WEEKDAY = "8:30–17:00";
 const EMPTY_MESSENGER_BANNER: MessengerBannerSettings = {
   enabled: false,
   text: "Мы есть в мессенджерах",
@@ -54,22 +57,6 @@ const EMPTY_MESSENGER_BANNER: MessengerBannerSettings = {
   whatsapp: { url: "", iconUrl: "" },
   max: { url: "", iconUrl: "" },
 };
-
-/** Превращает произвольное значение из БД в SITE_HOURS_LABEL-формат */
-function buildHoursLabel(workingHours: string, weekdayFallback: string): string {
-  // 1) Если в БД задан полный формат «Пн–Пт ...» — оставляем как есть.
-  if (workingHours && /пн[‐-―‑–—]?пт/i.test(workingHours)) {
-    return /сб.*вс|выходн/i.test(workingHours)
-      ? workingHours
-      : `${workingHours} · Сб, Вс — выходные`;
-  }
-  // 2) Если в БД только диапазон «8:30–17:00» — дополняем обвязкой.
-  if (workingHours) {
-    return `Пн–Пт ${workingHours} · Сб, Вс — выходные`;
-  }
-  // 3) Иначе используем дефолт «Пн–Пт 8:30–17:00».
-  return `Пн–Пт ${weekdayFallback || DEFAULT_HOURS_WEEKDAY} · Сб, Вс — выходные`;
-}
 
 let cache: SiteSettings | null = null;
 let inflight: Promise<SiteSettings> | null = null;
@@ -89,6 +76,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
       const hoursWeekday =
         String(data.hoursWeekday || "").trim() || DEFAULT_HOURS_WEEKDAY;
       const registrationField = String(data.registrationField || "phone").toLowerCase() === "email" ? "email" as const : "phone" as const;
+      const wastepaperPhone = String(data.wastepaperPhone || "").trim();
       const rawBanner = data.messengerBanner || {};
       const messengerBanner: MessengerBannerSettings = {
         enabled: rawBanner.enabled === true,
@@ -115,6 +103,10 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         workingHours,
         hoursLabel: buildHoursLabel(workingHours, hoursWeekday),
         hoursWeekday,
+        wastepaperPhone,
+        wastepaperPhoneHref: wastepaperPhone
+          ? `tel:${wastepaperPhone.replace(/[^\d+]/g, "")}`
+          : "",
         messengerBanner,
         registrationField,
         ready: true,
@@ -132,6 +124,8 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         workingHours: "",
         hoursLabel: "",
         hoursWeekday: DEFAULT_HOURS_WEEKDAY,
+        wastepaperPhone: "",
+        wastepaperPhoneHref: "",
         messengerBanner: EMPTY_MESSENGER_BANNER,
         registrationField: "phone",
         ready: false,
@@ -160,6 +154,8 @@ export function useSiteSettings(): SiteSettings {
     workingHours: "",
     hoursLabel: "",
     hoursWeekday: DEFAULT_HOURS_WEEKDAY,
+    wastepaperPhone: "",
+    wastepaperPhoneHref: "",
     messengerBanner: EMPTY_MESSENGER_BANNER,
     registrationField: "phone",
     ready: false,
