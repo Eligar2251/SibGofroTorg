@@ -8545,6 +8545,12 @@ body {
   background: linear-gradient(135deg, var(--green-bg), var(--bg-soft));
 }
 
+/* Плитка «Подбор коробки» — визуально выделяем среди разделов */
+.showcase-tile--finder .showcase-tile__glyph {
+  color: var(--green-dark);
+  background: linear-gradient(135deg, var(--green-soft), var(--green-bg));
+}
+
 .showcase-tile__body {
   display: flex;
   flex-direction: column;

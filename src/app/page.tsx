@@ -17,6 +17,8 @@ import { formatRate, getWastepaperPageConfig } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
 import { HomeShowcase, type ShowcaseTile } from "@/components/home/HomeShowcase";
+import { type BoxFinderProduct } from "@/components/catalog/BoxSizeFinder";
+import { toMm } from "@/lib/box-search";
 import { HomeOrderProductsSection } from "@/components/home/HomeOrderProductsSection";
 import { HomeSaleSection } from "@/components/home/HomeSaleSection";
 import { DealsRow } from "@/components/home/DealsRow";
@@ -281,6 +283,28 @@ export default async function HomePage() {
       return [showcaseTile];
   });
 
+  // Товары с заполненными габаритами — для плитки «Подбор коробки
+  // по размерам» на витрине (та же логика, что подбор в админке:
+  // размеры сравниваются в миллиметрах).
+  const boxFinderProducts: BoxFinderProduct[] = allVisibleProducts
+    .filter((p) => p.dimensionLength != null && p.dimensionWidth != null)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      sku: p.sku ?? null,
+      imageUrl: p.imageUrl ?? null,
+      price: p.price,
+      priceWholesale: p.priceWholesale ?? null,
+      minWholesaleQty: p.minWholesaleQty ?? null,
+      inStock: p.inStock,
+      stockQty: p.stockQty ?? null,
+      madeToOrder: p.madeToOrder ?? false,
+      lengthMm: toMm(p.dimensionLength, p.dimensionUnit),
+      widthMm: toMm(p.dimensionWidth, p.dimensionUnit),
+      heightMm: toMm(p.dimensionHeight, p.dimensionUnit),
+    }));
+
   const wpCfg = getWastepaperPageConfig(settings);
 
   const serializeSaleProduct = (p: FirestoreProduct) => ({
@@ -471,8 +495,9 @@ export default async function HomePage() {
       {/* РАСПРОДАЖА ОСТАТКОВ — перед популярными товарами */}
       <HomeSaleSection products={serializedSaleProducts} />
 
-      {/* ПЛИТКИ РАЗДЕЛОВ → мгновенное окно каталога (поиск + фильтр) */}
-      <HomeShowcase tiles={showcaseTiles} />
+      {/* ПЛИТКИ РАЗДЕЛОВ → мгновенное окно каталога (поиск + фильтр).
+          Последней добавлена плитка «Подбор коробки по размерам». */}
+      <HomeShowcase tiles={showcaseTiles} finderProducts={boxFinderProducts} />
 
       {/* Закончившиеся, но доступные к поставке позиции */}
       <HomeOrderProductsSection products={serializedOrderProducts} />
