@@ -20,6 +20,12 @@ import {
   setSoundEnabled,
   unlockSound,
 } from "@/lib/notification-sound";
+import {
+  isDesktopNotifyGranted,
+  isDesktopNotifySupported,
+  requestDesktopNotifyPermission,
+  showDesktopNotification,
+} from "@/lib/desktop-notification";
 
 type AlertItem = {
   id: string;
@@ -107,6 +113,8 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
   const [soundBlocked, setSoundBlocked] = useState(false);
   const [toast, setToast] = useState<{ items: AlertItem[]; key: number } | null>(null);
   const [pulse, setPulse] = useState(false);
+  /** Разрешены ли системные уведомления (видны при свёрнутой вкладке). */
+  const [desktopReady, setDesktopReady] = useState(true);
 
   const seenRef = useRef<Set<string>>(new Set());
   const initedRef = useRef(false);
@@ -116,6 +124,7 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
     seenRef.current = loadSeen();
     setSoundOn(isSoundEnabled());
     bindSoundUnlock();
+    setDesktopReady(!isDesktopNotifySupported() || isDesktopNotifyGranted());
     return onSoundBlockedChange(setSoundBlocked);
   }, []);
 
@@ -132,6 +141,23 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
       const played = playNotificationSound(fresh.length > 1);
       setPulse(true);
       window.setTimeout(() => setPulse(false), 2400);
+
+      // Вкладка свёрнута — показываем системное уведомление поверх всего.
+      // В фоне браузер глушит звук и таймеры, поэтому только оно и заметно.
+      if (document.hidden) {
+        const first = fresh[0];
+        showDesktopNotification({
+          title:
+            fresh.length > 1
+              ? `Новые заявки: ${fresh.length}`
+              : first.title || "Новая заявка",
+          body: fresh.length > 1
+            ? fresh.map((i) => i.description).join("\n").slice(0, 200)
+            : first.description,
+          url: first.href,
+          tag: fresh.length > 1 ? "sgt-requests" : first.id,
+        });
+      }
 
       setToast({ items: fresh.slice(0, 4), key: Date.now() });
       if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -152,28 +178,33 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
       else setLoading(true);
       setError("");
       try {
-        const res = await fetch("/api/admin/notifications", { cache: "no-store" });
+        // Лёгкий эндпоинт только с заявками: два запроса по индексу
+        // status='new'. Прежний /api/admin/notifications попутно считал
+        // остатки тысячи товаров и долги по двум тысячам платежей —
+        // из-за этого «мгновенное» уведомление приходило с задержкой,
+        // а сами заявки могли не долететь вовсе (их вытесняли из первых
+        // 50 элементов уведомления об остатках).
+        const res = await fetch("/api/admin/notifications/requests", {
+          cache: "no-store",
+        });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error || "Не удалось загрузить заявки");
 
-        // API уже отдаёт только status=new (и заказы, и макулатуру).
-        const orderItems: AlertItem[] = (Array.isArray(body.items) ? body.items : [])
-          .filter((item: { type?: string }) => item.type === "order")
-          .map(
-            (item: {
-              id: string;
-              title: string;
-              description: string;
-              href: string;
-              createdAt?: string | null;
-            }) => ({
-              id: String(item.id),
-              title: item.title,
-              description: item.description,
-              href: item.href,
-              createdAt: item.createdAt,
-            })
-          );
+        const orderItems: AlertItem[] = (Array.isArray(body.items) ? body.items : []).map(
+          (item: {
+            id: string;
+            title: string;
+            description: string;
+            href: string;
+            createdAt?: string | null;
+          }) => ({
+            id: String(item.id),
+            title: item.title,
+            description: item.description,
+            href: item.href,
+            createdAt: item.createdAt,
+          })
+        );
 
         setData({ total: orderItems.length, items: orderItems });
 
@@ -196,23 +227,80 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
     load();
   }, [load]);
 
-  // Мгновенная доставка: заявка с сайта → INSERT в orders/wastepaper_requests
-  // → событие в SSE-потоке → перезагрузка списка → звук.
-  useAdminRealtime({
+  // ── Мгновенная доставка ──
+  // Сервер рассылает событие сразу после вставки заявки (publishLocalChange
+  // в /api/orders и /api/wastepaper), поэтому здесь оно оказывается через
+  // доли секунды после нажатия «Оформить» клиентом.
+  //
+  // Звоним СРАЗУ по данным события, не дожидаясь ответа сервера со списком:
+  // в payload уже есть имя, телефон и сумма. Запрос списка идёт следом и
+  // лишь уточняет карточку — звук при этом не дублируется, потому что id
+  // заявки уже помечен как «услышанный».
+  const realtimeStatus = useAdminRealtime({
     tables: ["orders", "wastepaper_requests"],
     manual: true,
-    pollIntervalMs: 60_000,
-    onUpdate: useCallback(() => {
-      load(true);
-    }, [load]),
+    onUpdate: useCallback(
+      (table: string, type: string, event?: { id?: string | null; preview?: Record<string, unknown> }) => {
+        // Интересует только появление новой заявки. UPDATE (менеджер сменил
+        // статус) не должен звенеть.
+        if (type === "INSERT" && event?.id) {
+          const preview = event.preview || {};
+          const status = preview.status;
+          if (!status || status === "new") {
+            const prefix = table === "orders" ? "order" : "waste";
+            const id = `${prefix}-${event.id}`;
+            if (!seenRef.current.has(id)) {
+              const name = String(preview.customer_name || preview.name || "Клиент");
+              const sum = Number(preview.total_sum) || 0;
+              announce([
+                {
+                  id,
+                  title:
+                    table === "orders"
+                      ? "Новая заявка с сайта"
+                      : "Новая заявка на макулатуру",
+                  description: sum
+                    ? `${name} · ${sum.toLocaleString("ru-RU")} ₽`
+                    : name,
+                  href: `/${adminPath}/orders?status=new`,
+                  createdAt:
+                    typeof preview.created_at === "string"
+                      ? preview.created_at
+                      : new Date().toISOString(),
+                },
+              ]);
+            }
+          }
+        }
+        // В любом случае подтягиваем актуальный список (счётчик, детали).
+        load(true);
+      },
+      [load, announce, adminPath]
+    ),
   });
 
-  // Запасной опрос — на случай, если поток недоступен.
+  // Запасной опрос — на случай, если поток недоступен. Когда канал живой,
+  // опрашиваем редко: события и так приходят мгновенно.
   useEffect(() => {
+    const interval = realtimeStatus === "live" ? 120_000 : 20_000;
     const id = window.setInterval(() => {
       if (!document.hidden) load(true);
-    }, 60_000);
+    }, interval);
     return () => window.clearInterval(id);
+  }, [load, realtimeStatus]);
+
+  // Возврат на вкладку — сразу сверяемся с сервером: пока вкладка была
+  // в фоне, соединение могло уснуть (мобильные браузеры это делают).
+  useEffect(() => {
+    const onVisible = () => {
+      if (!document.hidden) load(true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [load]);
 
   // Если звук был заблокирован автоплеем, а пользователь наконец кликнул —
@@ -255,7 +343,15 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
     const next = !soundOn;
     setSoundOn(next);
     setSoundEnabled(next);
-    if (next) void unlockSound();
+    if (next) {
+      void unlockSound();
+      // Заодно (по явному клику — так требует браузер) просим разрешение
+      // на системные уведомления: они единственные видны, когда вкладка
+      // админки свёрнута.
+      if (isDesktopNotifySupported() && !isDesktopNotifyGranted()) {
+        void requestDesktopNotifyPermission().then(setDesktopReady);
+      }
+    }
   }
 
   return (
@@ -420,6 +516,20 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
             >
               Браузер пока не разрешил звук. Нажмите здесь, чтобы включить сигнал
               о новых заявках.
+            </button>
+          )}
+
+          {!soundBlocked && !desktopReady && (
+            <button
+              type="button"
+              onClick={() =>
+                void requestDesktopNotifyPermission().then(setDesktopReady)
+              }
+              className="admin-notify__error"
+              style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
+            >
+              Включить уведомления на экране — чтобы видеть новые заявки, даже
+              когда вкладка админки свёрнута.
             </button>
           )}
 

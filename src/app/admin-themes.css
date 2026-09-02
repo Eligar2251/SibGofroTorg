@@ -640,7 +640,6 @@
   .admin-sidebar,
   .admin-sidebar-handle,
   .admin-mobile-bar,
-  .admin-notifications,
   .no-print,
   #admin-sidebar {
     display: none !important;
@@ -1174,8 +1173,7 @@
 }
 
 /* Кнопки действий в таблицах не должны перекрывать друг друга */
-[data-admin="true"] .admin-table .admin-actions,
-[data-admin="true"] .admin-table td .admin-btn-group {
+[data-admin="true"] .admin-table .admin-actions {
   display: flex !important;
   align-items: center !important;
   gap: 6px !important;

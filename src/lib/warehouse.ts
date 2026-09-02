@@ -4077,6 +4077,90 @@ export async function reviseWebsiteOrderByCustomer(
   return { totalSum: total, paidTotal, additionalDue };
 }
 
+/**
+ * Ручная правка состава заявки менеджером из админки.
+ *
+ * Отличия от клиентской правки (reviseWebsiteOrderByCustomer):
+ *   • статус НЕ сбрасывается в «new» — менеджер правит опечатку или
+ *     согласованную с клиентом замену, и терять текущий этап сборки
+ *     нельзя;
+ *   • закрытая заявка не редактируется (иначе «воскресла» бы у клиента);
+ *   • позиции пересобираются из БД товаров, поэтому цены и названия
+ *     всегда настоящие — руками цену вписать нельзя.
+ */
+export async function reviseWebsiteOrderByManager(
+  orderId: string,
+  data: {
+    items: {
+      productId?: string;
+      quantity?: number;
+      variantId?: string | null;
+      variantName?: string | null;
+    }[];
+    comment?: string | null;
+  }
+): Promise<{ totalSum: number }> {
+  const db = getAdminDb();
+  const { data: order } = await db.from("orders").select("*").eq("id", orderId).maybeSingle();
+  if (!order) throw new Error("Заявка не найдена");
+  if (order.type !== "order") throw new Error("Менять состав можно только у заказа с позициями");
+  if (order.status === "completed" || order.status === "rejected") {
+    throw new Error("Заявка закрыта — её состав больше не редактируется");
+  }
+
+  const items = await buildOrderItemsFromProducts(data.items);
+  if (items.length === 0) throw new Error("В заказе должен быть хотя бы один товар");
+  const total = itemsTotal(items);
+  const comment = cleanText(data.comment, 2000);
+
+  const dealId = order.deal_id ? String(order.deal_id) : "";
+  if (dealId) {
+    const { data: deal } = await db.from("customer_deals").select("*").eq("id", dealId).maybeSingle();
+    if (deal) {
+      // Проведённый заказ уже списал товар со склада — возвращаем его
+      // перед перезаписью позиций, иначе остатки «съедут».
+      if (deal.status === "completed") await applyStockDelta(deal.items as StockDocItem[], 1);
+      await db
+        .from("customer_deals")
+        .update({
+          items,
+          total,
+          vat_rate: VAT_RATE,
+          vat_amount: includedVat(total, VAT_RATE),
+          comment: [deal.comment, "Состав изменён менеджером из админки"]
+            .filter(Boolean)
+            .join(". ")
+            .slice(0, 500),
+        })
+        .eq("id", dealId);
+    }
+  }
+
+  const { error } = await db
+    .from("orders")
+    .update({
+      items: items.map(({ productId, name, sku, quantity, price, variantId, variantName }) => ({
+        productId,
+        name,
+        sku: sku ?? "—",
+        quantity,
+        price,
+        variantId: variantId ?? null,
+        variantName: variantName ?? null,
+      })),
+      total_sum: total,
+      comment: comment ?? order.comment ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
+  if (error) throw error;
+
+  revalidateTag("orders", { expire: 0 });
+  revalidateTag("warehouse-deals", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
+  return { totalSum: total };
+}
+
 export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<void> {
   const db = getAdminDb();
   const { data: order } = await db.from("orders").select("*").eq("id", orderId).maybeSingle();

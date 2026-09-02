@@ -268,14 +268,12 @@
 }
 
 /* 6. Чекбоксы в зелёном контексте (оплата, активность) */
-[data-admin="true"] .wh-paid-toggle input[type="checkbox"]:checked,
 [data-admin="true"] .deal-delivery-block__toggle input[type="checkbox"]:checked {
   background: var(--adm-pine);
   border-color: var(--adm-pine);
   box-shadow: 0 1px 3px rgba(30,74,45,0.3);
 }
 
-[data-admin="true"] .wh-paid-toggle input[type="checkbox"]:checked::after,
 [data-admin="true"] .deal-delivery-block__toggle input[type="checkbox"]:checked::after {
   border-color: #fff;
 }
@@ -445,16 +443,6 @@
   letter-spacing: -0.02em;
 }
 
-.admin-sidebar__name {
-  font-family: var(--adm-font-head);
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #fff;
-  line-height: 1.15;
-}
-
 .admin-sidebar__sub {
   font-size: 9px;
   text-transform: uppercase;
@@ -616,11 +604,6 @@
 }
 
 /* Мини-логотип в мобильной панели */
-.admin-shell .admin-mobile-bar__logo {
-  height: 22px;
-  width: auto;
-  display: block;
-}
 
 .admin-mobile-bar__nav {
   display: grid;
@@ -2060,22 +2043,6 @@
 }
 
 /* Подсказка вместо кнопки действия */
-.admin-status__label-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  min-height: 38px;
-  padding: 8px 14px;
-  border-radius: var(--adm-r-sm);
-  background: var(--adm-paper-warm);
-  border: 1px dashed var(--adm-border-mid);
-  font-size: 12px;
-  color: var(--adm-ink-muted);
-  font-weight: 600;
-  text-align: center;
-}
 
 .admin-modal-overlay {
   position: fixed;
@@ -2340,18 +2307,6 @@
   color: var(--adm-sand);
 }
 
-.admin-link-amber {
-  color: var(--adm-kraft);
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.admin-link-amber:hover {
-  color: var(--adm-kraft-mid);
-  text-decoration: underline;
-}
-
 .admin-row {
   display: flex;
   align-items: center;
@@ -2436,14 +2391,6 @@ body:has(.admin-login) > main {
 
 @keyframes adm-spin {
   to { transform: rotate(360deg); }
-}
-
-/* Полоска прогресса навигации */
-@keyframes admin-progress-slide {
-  0%   { transform: scaleX(0); opacity: 1; }
-  50%  { transform: scaleX(0.7); opacity: 1; }
-  80%  { transform: scaleX(0.9); opacity: 0.8; }
-  100% { transform: scaleX(1); opacity: 0; }
 }
 
 .animate-spin {
@@ -2580,27 +2527,20 @@ body:has(.admin-login) > main {
    На десктопе — 2 колонки, на <1100px — 1 колонка.
    Блоки типа «Главные показатели» и «Статусы» растягиваются на 2 колонки через .dash-section--full
 */
-.dash-report-grid,
 .dash-main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; margin-bottom: 20px; }
-.dash-report-grid .dash-section,
 .dash-main-grid .dash-section { margin-bottom: 0; }
 .dash-finance-flat,
 .dash-deliveries-flat { display: flex; flex-direction: column; background: var(--adm-card); min-width: 0; }
 .dash-finance-flat .dash-finance-totals,
 .dash-finance-flat .dash-account-grid,
 .dash-deliveries-flat .dash-delivery-list { border-left: none; border-right: none; border-radius: 0; }
+
 /* Внутренняя карточка секции: сама секция уже карточка,
    поэтому вложенную рисуем без рамки и скруглений — плоский слой без двойных углов. */
-.dash-inner-card { margin: 0 !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; }
 .dash-finance, .dash-deliveries { min-width: 0; overflow: hidden; background: transparent; }
+
 /* Старый внутренний заголовок (dash-section-head) внутри collapsible — теперь просто описание, без градиента и скруглений */
-.dash-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 12px 16px; background: transparent; border-bottom: 1px solid var(--adm-border); }
-.dash-section-head > div { min-width: 0; }
-.dash-section-head .admin-btn { display: inline-flex; align-items: center; flex-wrap: nowrap; white-space: nowrap; }
-.dash-section-head .admin-btn > svg { display: block; flex: 0 0 auto; margin: 0; }
-.dash-section-head h2 { margin: 2px 0 3px; color: var(--adm-ink); font-family: var(--adm-font-head); font-size: 18px; }
-.dash-section-head p { margin: 0; color: var(--adm-sand); font-size: 11px; line-height: 1.4; }
-.dash-section-kicker { color: var(--adm-steel); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+
 .dash-finance-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px 16px; background: var(--adm-paper-warm); border-bottom: 1px solid var(--adm-border); border-top: 1px solid var(--adm-border); }
 .dash-finance-total { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 12px 14px; background: var(--adm-card); border: 1px solid var(--adm-border-soft); border-radius: 10px; box-shadow: none; transition: border-color 0.15s, box-shadow 0.15s; }
 .dash-finance-total__icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: 0 0 34px; color: currentColor; background: color-mix(in srgb, currentColor 10%, transparent); border-radius: 9px; line-height: 0; }
@@ -2641,7 +2581,7 @@ body:has(.admin-login) > main {
 .dash-finance-filter__search-control > svg { position: absolute; top: 50%; left: 10px; display: block; width: 14px; height: 14px; margin: 0; color: var(--adm-sand); pointer-events: none; transform: translateY(-50%); }
 .dash-finance-filter__search-control .admin-input { padding-left: 31px; }
 .dash-finance-filter__reset { grid-column: 1 / -1; justify-self: end; }
-.dash-finance-filter__actions { display: flex; gap: 6px; grid-column: 1 / -1; justify-content: flex-end; }
+
 .dash-finance-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 16px 8px; border-top: 1px solid var(--adm-border); }
 .dash-finance-list-head strong { color: var(--adm-ink); font-size: 13px; }
 .dash-finance-list-head span { color: var(--adm-sand); font-size: 10px; text-align: right; }
@@ -2650,8 +2590,7 @@ body:has(.admin-login) > main {
 .dash-finance-row:hover { background: var(--adm-paper); }
 .dash-finance-row__icon { display: inline-flex; align-self: center; align-items: center; justify-content: center; width: 32px; height: 32px; flex: 0 0 32px; border-radius: 50%; line-height: 0; }
 .dash-finance-row__icon > svg { display: block; width: 15px; height: 15px; margin: 0; }
-.dash-finance-row__icon--incoming { color: var(--adm-pine); background: var(--adm-pine-pale); }
-.dash-finance-row__icon--outgoing { color: var(--adm-rust); background: var(--adm-rust-pale); }
+
 .dash-finance-row__main { min-width: 0; overflow: hidden; }
 .dash-finance-row__top, .dash-finance-row__detail { display: flex; align-items: center; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .dash-finance-row__top::-webkit-scrollbar, .dash-finance-row__detail::-webkit-scrollbar { display: none; }
@@ -2678,8 +2617,7 @@ body:has(.admin-login) > main {
 .dash-delivery-row__address svg { margin-top: 1px; flex-shrink: 0; color: var(--adm-kraft); }
 .dash-delivery-row__meta { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 4px; color: var(--adm-sand); font-size: 10px; }
 .dash-delivery-row__items { margin-top: 4px; overflow: hidden; color: var(--adm-ink-muted); font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.dash-delivery-row__actions { display: flex; flex-wrap: wrap; gap: 10px; grid-column: 2; }
-.dash-delivery-row__actions a { color: var(--adm-steel); font-size: 10px; font-weight: 750; white-space: nowrap; }
+
 .dash-finance .admin-empty > svg, .dash-deliveries .admin-empty > svg { display: block; margin: 0 auto 8px; }
 
 @media (max-width: 1280px) {
@@ -2688,7 +2626,6 @@ body:has(.admin-login) > main {
 }
 
 @media (max-width: 1050px) {
-  .dash-report-grid,
   .dash-main-grid { grid-template-columns: 1fr; }
   .dash-delivery-list { max-height: 620px; }
 }
@@ -2700,14 +2637,11 @@ body:has(.admin-login) > main {
 }
 
 @media (max-width: 640px) {
-  .dash-section-head { flex-direction: column; padding-inline: 14px; }
-  .dash-section-head .admin-btn { width: 100%; justify-content: center; }
   .dash-finance-totals { grid-template-columns: 1fr; padding-inline: 12px; }
   .dash-account-grid { padding-inline: 12px; }
   .dash-finance-filter { grid-template-columns: 1fr; margin-inline: 12px; }
   .dash-finance-filter__search { grid-column: auto; }
-  .dash-finance-filter__actions { justify-content: stretch; }
-  .dash-finance-filter__actions .admin-btn { flex: 1; justify-content: center; }
+
   .dash-finance-list-head { align-items: flex-start; flex-direction: column; }
   .dash-finance-list-head span { text-align: left; }
   .dash-finance-row { grid-template-columns: auto minmax(0, 1fr); padding-inline: 12px; }
@@ -3334,121 +3268,14 @@ body:has(.admin-modal-overlay) {
   padding: 8px 0;
 }
 
-.wh-deal-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  padding: 7px 10px;
-  border-radius: var(--adm-r-sm);
-  border: 1px solid var(--adm-border);
-  background: var(--adm-card);
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-  transition: background-color, color, border-color, box-shadow, transform, opacity 0.12s ease;
-  min-width: 0;
-  max-width: 100%;
-}
-
-@media (max-width: 640px) {
-  .wh-deal-chip {
-    width: 100%;
-  }
-}
-
-.wh-deal-chip:hover {
-  border-color: var(--adm-ink-muted);
-}
-
-.wh-deal-chip--active {
-  background: var(--adm-ink-deep);
-  border-color: var(--adm-ink-deep);
-  color: #fff;
-}
-
-.wh-deal-chip__title {
-  font-size: 12px;
-  font-weight: 600;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wh-deal-chip__meta {
-  font-size: 10px;
-  opacity: 0.7;
-  white-space: nowrap;
-}
-
 /* ── Пометка оплаты ── */
-.wh-paid-toggle {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r-sm);
-  background: var(--adm-paper);
-  font-size: 13px;
-  color: var(--adm-ink);
-  cursor: pointer;
-}
-
-.wh-paid-toggle input {
-  flex-shrink: 0;
-}
 
 /* ── Сводка банка ── */
 .wh-stat-grid {
   margin-bottom: 18px;
 }
 
-.wh-bank-grid {
-  grid-template-columns: 1fr 1fr 1fr;
-}
-
-@media (max-width: 760px) {
-  .wh-bank-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.wh-bank-stat--balance .admin-stat__value {
-  color: var(--adm-pine);
-}
-
-.wh-bank-stat--in .admin-stat__value {
-  color: var(--adm-steel);
-}
-
-.wh-bank-stat--out .admin-stat__value {
-  color: var(--adm-rust);
-}
-
 /* ── Сумма платежа в списке ── */
-.wh-pay-amount {
-  display: flex;
-  align-items: center;
-}
-
-.wh-pay-amount__val {
-  font-family: var(--adm-font-head);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
-.wh-pay-amount__val--in {
-  color: var(--adm-pine);
-}
-
-.wh-pay-amount__val--out {
-  color: var(--adm-rust);
-}
 
 .wh-pay-controls {
   display: flex;
@@ -3710,11 +3537,11 @@ body:has(.admin-modal-overlay) {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .admin-tabs-with-actions .admin-filters {
     flex-wrap: wrap;
   }
-  
+
   .admin-tabs-with-actions .admin-page-head__actions {
     width: 100%;
   }
@@ -3801,26 +3628,25 @@ body:has(.admin-modal-overlay) {
     padding: 1px 6px;
     white-space: nowrap;
   }
-  
-  .bank-pay__badge,
+
   .bank-pay__wait,
   .bank-pay__num {
     font-size: 9px;
     padding: 1px 5px;
   }
-  
+
   .bank-pay__row1 {
     gap: 6px;
   }
-  
+
   .bank-pay__row2 {
     gap: 6px;
   }
-  
+
   .bank-pay__links {
     gap: 4px;
   }
-  
+
   .bank-pay__doc {
     font-size: 9px;
     padding: 1px 6px;
@@ -3892,10 +3718,6 @@ body:has(.admin-modal-overlay) {
   white-space: nowrap;
 }
 
-.bank-hero__value--neg {
-  color: #ef8f76;
-}
-
 .bank-hero__note {
   font-size: 11px;
   color: rgba(245, 242, 234, 0.45);
@@ -3935,24 +3757,6 @@ body:has(.admin-modal-overlay) {
   font-weight: 700;
   letter-spacing: 0.01em;
   white-space: nowrap;
-}
-
-.bank-hero__stat--in svg,
-.bank-hero__stat--in strong {
-  color: #7dd181;
-}
-
-.bank-hero__stat--out svg,
-.bank-hero__stat--out strong {
-  color: #ef8f76;
-}
-
-.bank-hero__stat--plan svg {
-  color: #e09b12;
-}
-
-.bank-hero__stat--plan strong {
-  color: #f5f2ea;
 }
 
 /* Баланс по контрагентам */
@@ -4034,14 +3838,6 @@ body:has(.admin-modal-overlay) {
   text-align: right;
 }
 
-.bank-due__sum--debt {
-  color: var(--adm-rust);
-}
-
-.bank-due__sum--clear {
-  color: var(--adm-pine);
-}
-
 .bank-due__empty {
   font-size: 12px;
   color: var(--adm-sand);
@@ -4071,10 +3867,6 @@ body:has(.admin-modal-overlay) {
   flex-shrink: 0;
 }
 
-.bank-toolbar__sort {
-  white-space: nowrap;
-}
-
 .bank-toolbar__date { display: flex; flex: 1 1 140px; flex-direction: column; gap: 4px; min-width: 0; }
 .bank-toolbar__date > span { min-height: 1em; color: var(--adm-sand); font-size: 9px; font-weight: 750; line-height: 1; text-transform: uppercase; }
 .bank-toolbar__date .admin-input { width: 100%; padding: 9px 10px; font-size: 12px; line-height: 1.2; }
@@ -4094,7 +3886,6 @@ body:has(.admin-modal-overlay) {
 
   .bank-toolbar__date { flex: 1 1 45%; }
 
-  .bank-toolbar__sort,
   .bank-toolbar .admin-btn--navy {
     flex: 1 1 45%;
     justify-content: center;
@@ -4304,12 +4095,6 @@ body:has(.admin-modal-overlay) {
   color: var(--adm-sand);
 }
 
-.bank-pay__vat {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--adm-pine);
-}
-
 .bank-pay__comment {
   font-size: 12px;
   color: var(--adm-ink-muted);
@@ -4336,10 +4121,6 @@ body:has(.admin-modal-overlay) {
 
 .bank-pay--pending .bank-pay__amount {
   opacity: 0.55;
-}
-
-.bank-pay__amount--in {
-  color: var(--adm-pine);
 }
 
 .bank-pay__amount--out {
@@ -4465,8 +4246,7 @@ body:has(.admin-modal-overlay) {
    ОТДЕЛЬНЫЕ ИНФОРМАЦИОННЫЕ ОКНА
    ══════════════════════════════════════ */
 .popup-admin-intro,
-.popup-admin-item,
-.popup-admin-actions {
+.popup-admin-item {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -4483,43 +4263,23 @@ body:has(.admin-modal-overlay) {
 
 .popup-admin-intro h2 { margin: 0 0 4px; font-family: var(--adm-font-head); font-size: 19px; text-transform: uppercase; letter-spacing: .04em; }
 .popup-admin-intro p { margin: 0; color: rgba(255,255,255,.58); font-size: 12px; }
-.popup-admin-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-.popup-admin-form { overflow: visible; }
+
 .popup-admin-schedule { display: flex; flex-direction: column; gap: 12px; padding: 15px; background: var(--adm-steel-pale); border: 1px solid var(--adm-steel-line); border-radius: var(--adm-r); }
 .popup-admin-schedule h3 { margin: 0; font-family: var(--adm-font-head); font-size: 14px; text-transform: uppercase; letter-spacing: .05em; }
-.popup-admin-actions { justify-content: flex-end; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--adm-border); }
-.popup-admin-preview { --preview-accent: var(--adm-pine); position: sticky; top: 80px; overflow: hidden; background: #fff; border: 1px solid var(--adm-border-mid); border-radius: 12px; box-shadow: var(--adm-sh-md); }
-.popup-admin-preview--promo { --preview-accent: var(--adm-kraft); }
-.popup-admin-preview--important { --preview-accent: var(--adm-rust); }
-.popup-admin-preview__bar { display: flex; align-items: center; gap: 7px; padding: 10px 12px; color: #fff; background: var(--adm-ink-deep); border-bottom: 3px solid var(--preview-accent); font-size: 11px; font-weight: 700; }
-.popup-admin-preview__bar svg:last-child { margin-left: auto; }
-.popup-admin-preview > img { width: 100%; height: 150px; object-fit: cover; }
-.popup-admin-preview__body { padding: 22px; }
-.popup-admin-preview__body > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; color: var(--preview-accent); background: var(--adm-paper); border-radius: 5px; font-size: 9px; font-weight: 800; text-transform: uppercase; }
-.popup-admin-preview__body h3 { margin: 12px 0 8px; font-family: var(--adm-font-body); font-size: 22px; line-height: 1.15; }
-.popup-admin-preview__body p { margin: 0; color: var(--adm-ink-muted); font-size: 12px; line-height: 1.55; white-space: pre-line; }
-.popup-admin-preview__body ul { margin: 12px 0 0; padding-left: 18px; color: var(--adm-ink-soft); font-size: 11px; }
-.popup-admin-preview__body button { margin-top: 16px; padding: 9px 14px; color: #fff; background: var(--preview-accent); border: 0; border-radius: 6px; font-weight: 700; }
+
 .popup-admin-list { display: flex; flex-direction: column; gap: 8px; }
 .popup-admin-item { padding: 13px 15px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); }
 .popup-admin-item__icon { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex-shrink: 0; color: var(--adm-pine); background: var(--adm-pine-pale); border-radius: 9px; }
-.popup-admin-item__icon--promo { color: var(--adm-kraft); background: var(--adm-kraft-pale); }
-.popup-admin-item__icon--important { color: var(--adm-rust); background: var(--adm-rust-pale); }
+
 .popup-admin-item__main { flex: 1; min-width: 0; }
 .popup-admin-item__title { color: var(--adm-ink); font-size: 13px; font-weight: 750; }
 .popup-admin-item__meta { margin-top: 2px; color: var(--adm-sand); font-size: 10px; }
-
-@media (max-width: 900px) {
-  .popup-admin-layout { grid-template-columns: 1fr; }
-  .popup-admin-preview { position: static; }
-}
 
 @media (max-width: 600px) {
   .popup-admin-intro { align-items: stretch; flex-direction: column; }
   .popup-admin-item { align-items: flex-start; flex-wrap: wrap; }
   .popup-admin-item__main { min-width: calc(100% - 54px); }
   .popup-admin-item > .admin-badge { margin-left: 50px; }
-  .popup-admin-actions .admin-btn { flex: 1 1 45%; }
 }
 
 /* Ручной остаток на складе */
@@ -4560,7 +4320,6 @@ body:has(.admin-modal-overlay) {
 .wh-counterparty-details { margin: 10px 0 14px; padding: 10px 12px; background: var(--adm-paper); border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
 .wh-counterparty-details summary { cursor: pointer; color: var(--adm-steel); font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; }
 .wh-counterparty-details[open] summary { margin-bottom: 10px; }
-.bank-pay__internal-num { color: var(--adm-sand); font-size: 9px; }
 
 /* Контрагенты */
 .cp-page { display: flex; flex-direction: column; gap: 14px; }
@@ -4569,39 +4328,19 @@ body:has(.admin-modal-overlay) {
 .cp-search { position: relative; flex: 1; }
 .cp-search > svg { position: absolute; z-index: 1; top: 50%; left: 11px; color: var(--adm-sand); transform: translateY(-50%); }
 .cp-search .admin-input { padding-left: 34px; }
-.cp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.cp-card { overflow: hidden; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r-lg); box-shadow: var(--adm-sh-xs); }
-.cp-card__head { display: flex; align-items: center; gap: 10px; padding: 14px 15px; background: var(--adm-paper); border-bottom: 1px solid var(--adm-border); }
-.cp-card__icon { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex-shrink: 0; color: var(--adm-steel); background: var(--adm-steel-pale); border-radius: 9px; }
-.cp-card__heading { flex: 1; min-width: 0; }
-.cp-card__heading h3 { margin: 0; overflow: hidden; color: var(--adm-ink); font-family: var(--adm-font-body); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.cp-card__roles { display: flex; gap: 4px; margin-top: 4px; }
-.cp-card__roles span { padding: 1px 6px; color: var(--adm-pine); background: var(--adm-pine-pale); border-radius: 999px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
-.cp-card__info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; padding: 15px; }
-.cp-card__info > div { display: flex; align-items: flex-start; gap: 7px; min-width: 0; color: var(--adm-ink-soft); font-size: 12px; }
-.cp-card__info > div > svg { margin-top: 3px; flex-shrink: 0; color: var(--adm-kraft); }
-.cp-card__info span { min-width: 0; overflow-wrap: anywhere; }
-.cp-card__info small { display: block; margin-bottom: 1px; color: var(--adm-sand); font-size: 9px; font-weight: 700; text-transform: uppercase; }
-.cp-card__missing { grid-column: 1 / -1; margin: 0; color: var(--adm-sand); font-size: 12px; }
-.cp-docs { border-top: 1px solid var(--adm-border); }
-.cp-docs summary { display: flex; align-items: center; gap: 8px; padding: 10px 15px; cursor: pointer; color: var(--adm-steel); font-size: 11px; font-weight: 700; list-style: none; }
-.cp-docs summary strong { margin-left: auto; color: var(--adm-ink); white-space: nowrap; }
-.cp-docs__list { padding: 0 15px 13px; }
+
 .cp-doc { display: grid; grid-template-columns: 60px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px dashed var(--adm-border); font-size: 11px; }
 .cp-doc > span { color: var(--adm-steel); font-weight: 750; }
 .cp-doc > small { color: var(--adm-sand); }
 .cp-doc > strong { white-space: nowrap; }
-.cp-docs__empty { color: var(--adm-sand); font-size: 11px; }
-.cp-card__comment { margin: 0 15px 14px; padding: 8px 10px; color: var(--adm-ink-muted); background: var(--adm-kraft-pale); border-radius: 5px; font-size: 11px; }
+
 .cp-modal { max-width: 620px; max-height: calc(100dvh - 32px); overflow-y: auto; }
 .cp-role-checks { display: flex; gap: 8px; }
 .cp-role-checks .admin-check { flex: 1; }
-
-@media (max-width: 850px) { .cp-grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) {
   .cp-toolbar { align-items: stretch; flex-direction: column; }
   .cp-toolbar > .admin-select { width: 100%; }
-  .cp-card__info { grid-template-columns: 1fr; }
+
   .cp-doc { grid-template-columns: 55px 1fr; }
   .cp-doc > strong { grid-column: 2; }
   .stock-inline-editor input { width: 62px; }
@@ -4881,7 +4620,6 @@ body:has(.admin-modal-overlay) {
 @keyframes admin-loading-in { from { opacity: 0; } }
 @media (max-width: 700px) { .admin-loading__stats { grid-template-columns: 1fr 1fr; } }
 @media (prefers-reduced-motion: reduce) { .admin-loading span { animation: none; } }
-
 
 /* ══════════════════════════════════════
    ДОСТАВКА ЗАКАЗОВ
@@ -5730,21 +5468,6 @@ body:has(.admin-modal-overlay) {
 @media (max-width: 430px) {
   .cs-tiles, .cs-tiles--big { grid-template-columns: 1fr; }
 }
-.wh-cashcollect__action {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 14px 16px;
-  background: var(--adm-paper);
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r);
-}
-.wh-cashcollect__total td {
-  background: var(--adm-paper);
-  border-top: 2px solid var(--adm-border);
-}
 
 /* ── Срочные уведомления в админке ── */
 .admin-notify {
@@ -5888,11 +5611,6 @@ body:has(.admin-modal-overlay) {
   border-color: var(--adm-border-mid);
 }
 
-.admin-notify__item--danger {
-  border-color: var(--adm-rust-line);
-  background: var(--adm-rust-pale);
-}
-
 .admin-notify__item-icon {
   width: 34px;
   height: 34px;
@@ -5902,11 +5620,6 @@ body:has(.admin-modal-overlay) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.admin-notify__item--danger .admin-notify__item-icon {
-  background: var(--adm-card);
-  color: var(--adm-rust);
 }
 
 .admin-notify__item-main {
@@ -6184,40 +5897,61 @@ body:has(.admin-modal-overlay) {
   vertical-align: middle;
 }
 
-/* ── Липкие колонки: ФИО / За месяц / Получено / Остаток ── */
+/* ── Липкие колонки: ФИО / За месяц / Долг / Получено / Остаток ──
+   Ширины и смещения раньше были прописаны числами (152/84/78/88 и
+   left: 152px / 236px / 314px). Теперь колонки тянутся мышью, поэтому
+   и то и другое считается из CSS-переменных: смещение каждой липкой
+   колонки — это сумма ширин всех, что стоят слева от неё. Значения
+   переменных задаёт JS (см. use-column-widths.ts), здесь только
+   значения по умолчанию — на случай, если ширины ещё не загрузились. */
+.whsal-table {
+  --whsal-w-name: 152px;
+  --whsal-w-accrued: 84px;
+  --whsal-w-debt: 78px;
+  --whsal-w-received: 88px;
+  --whsal-w-rest: 110px;
+  --whsal-w-day: 42px;
+}
+
 .whsal-th--name,
 .whsal-td--name {
   position: sticky;
   left: 0;
-  min-width: 152px;
-  max-width: 152px;
+  width: var(--whsal-w-name);
+  min-width: var(--whsal-w-name);
+  max-width: var(--whsal-w-name);
   z-index: 4;
 }
 
 .whsal-th--accrued,
 .whsal-td--accrued {
   position: sticky;
-  left: 152px;
-  min-width: 84px;
-  max-width: 84px;
+  left: var(--whsal-w-name);
+  width: var(--whsal-w-accrued);
+  min-width: var(--whsal-w-accrued);
+  max-width: var(--whsal-w-accrued);
   z-index: 4;
 }
 
 .whsal-th--debt,
 .whsal-td--debt {
   position: sticky;
-  left: 236px;
-  min-width: 78px;
-  max-width: 78px;
+  left: calc(var(--whsal-w-name) + var(--whsal-w-accrued));
+  width: var(--whsal-w-debt);
+  min-width: var(--whsal-w-debt);
+  max-width: var(--whsal-w-debt);
   z-index: 4;
 }
 
 .whsal-th--received,
 .whsal-td--received {
   position: sticky;
-  left: 314px;
-  min-width: 88px;
-  max-width: 88px;
+  left: calc(
+    var(--whsal-w-name) + var(--whsal-w-accrued) + var(--whsal-w-debt)
+  );
+  width: var(--whsal-w-received);
+  min-width: var(--whsal-w-received);
+  max-width: var(--whsal-w-received);
   z-index: 4;
   box-shadow: 6px 0 8px -6px rgba(26, 26, 24, 0.22);
 }
@@ -6226,10 +5960,78 @@ body:has(.admin-modal-overlay) {
 .whsal-td--rest {
   position: sticky;
   right: 0;
-  min-width: 110px;
-  max-width: 110px;
+  width: var(--whsal-w-rest);
+  min-width: var(--whsal-w-rest);
+  max-width: var(--whsal-w-rest);
   z-index: 4;
   box-shadow: -6px 0 8px -6px rgba(26, 26, 24, 0.22);
+}
+
+/* Колонки дней — одна общая ширина на все 31 сразу: тянуть каждый
+   день по отдельности бессмысленно, а вот сузить их все, чтобы месяц
+   влез на экран, — самый частый сценарий. */
+.whsal-th--day,
+.whsal-th--dow,
+.whsal-day {
+  width: var(--whsal-w-day);
+  min-width: var(--whsal-w-day);
+  max-width: var(--whsal-w-day);
+}
+
+/* ── Ручка перетаскивания на границе заголовка ──
+   Лежит поверх правой кромки th. Отдельный position ему не нужен:
+   у .whsal-th уже position: sticky, а это тоже позиционированный
+   элемент — значит он и служит точкой отсчёта для absolute. */
+.whsal-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 8;
+  width: 7px;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: col-resize;
+  /* Палец на планшете попадает мимо 7px, поэтому не даём браузеру
+     перехватывать жест прокруткой — тянем колонку. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.whsal-col-resizer::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.whsal-col-resizer:hover::after,
+.whsal-col-resizer:focus-visible::after,
+.whsal-col-resizer--active::after {
+  background: var(--adm-kraft);
+}
+
+.whsal-col-resizer--active::after {
+  top: 0;
+  bottom: 0;
+}
+
+/* Пока тянем — курсор col-resize на всей странице и никакого
+   случайного выделения текста в таблице. */
+body.is-col-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.is-col-resizing * {
+  cursor: col-resize !important;
 }
 
 .whsal-th--name,
@@ -6286,6 +6088,18 @@ body:has(.admin-modal-overlay) {
   left: auto !important;
   right: auto !important;
   box-shadow: none !important;
+}
+
+/* Ручки перетаскивания — элемент интерфейса, в выгруженную картинку
+   и в печать они попадать не должны. */
+.whsal-export-mode .whsal-col-resizer {
+  display: none !important;
+}
+
+@media print {
+  .whsal-col-resizer {
+    display: none !important;
+  }
 }
 
 /* ── Ячейка ФИО ── */
@@ -6414,9 +6228,8 @@ body:has(.admin-modal-overlay) {
 
 /* ── Ячейки дней ── */
 .whsal-day {
-  width: 42px;
-  min-width: 42px;
-  max-width: 42px;
+  /* Ширина берётся из --whsal-w-day (колонка тянется мышью) — см. блок
+     «Липкие колонки» выше. Здесь только то, что от ширины не зависит. */
   height: 48px;
   text-align: center;
   cursor: pointer;
@@ -6456,11 +6269,6 @@ body:has(.admin-modal-overlay) {
   box-shadow: inset 0 0 0 2px var(--adm-rust);
 }
 
-.whsal-day--paid .whsal-day-sum {
-  color: var(--adm-rust);
-  font-weight: 700;
-}
-
 .whsal-day--rent {
   background: var(--adm-steel-pale);
   box-shadow: inset 0 0 0 1px var(--adm-steel-line);
@@ -6468,11 +6276,6 @@ body:has(.admin-modal-overlay) {
 
 .whsal-day--rent:hover {
   box-shadow: inset 0 0 0 2px var(--adm-steel);
-}
-
-.whsal-day--rent .whsal-day-sum {
-  color: var(--adm-steel);
-  font-weight: 700;
 }
 
 /* Конкретная запланированная выплата: это реальная запись с суммой и датой,
@@ -6544,14 +6347,6 @@ body:has(.admin-modal-overlay) {
 
 .whsal-day-line--debt {
   color: var(--adm-kraft);
-}
-
-.whsal-day-sum {
-  font-size: 9.5px;
-  line-height: 1.1;
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
 }
 
 .whsal-day-mark {
@@ -7006,20 +6801,11 @@ body:has(.admin-modal-overlay) {
    СДАЧА КАССЫ: разметка нал / перевод
    ══════════════════════════════════════ */
 .cashc-modal { max-width: 46rem; }
-.cashc-close-date { display: flex; align-items: end; gap: 10px; margin-bottom: 12px; padding: 10px 12px; background: var(--adm-steel-pale); border: 1px solid var(--adm-steel-line); border-radius: var(--adm-r-sm); }
-.cashc-close-date .admin-field { flex: 0 1 190px; }
-.cashc-close-date .admin-hint { flex: 1 1 240px; padding-bottom: 8px; }
-.cashc-unlinked { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 12px; margin-bottom: 12px; padding: 10px 12px; background: var(--adm-pine-pale); border: 1px solid var(--adm-pine-line); border-radius: var(--adm-r-sm); }
-.cashc-unlinked__main { display: flex; align-items: center; gap: 9px; flex: 1 1 300px; cursor: pointer; }
-.cashc-unlinked__main > span { min-width: 0; }
-.cashc-unlinked__main strong, .cashc-unlinked__main small { display: block; }
-.cashc-unlinked__main strong { color: var(--adm-pine); font-size: 11px; }
-.cashc-unlinked__main small { margin-top: 2px; color: var(--adm-ink-muted); font-size: 10px; line-height: 1.35; }
-@media (max-width: 560px) { .cashc-close-date { align-items: stretch; flex-direction: column; } .cashc-close-date .admin-field, .cashc-close-date .admin-hint { flex-basis: auto; padding-bottom: 0; } .cashc-unlinked .cashc-seg { width: 100%; } .cashc-unlinked .cashc-seg__btn { flex: 1; } }
+
 .cashc-closed-settings { margin-bottom: 12px; padding: 10px 12px; background: var(--adm-kraft-pale); border: 1px solid var(--adm-kraft-line); border-radius: var(--adm-r-sm); }
 .cashc-closed-settings summary { display: flex; align-items: center; gap: 6px; color: var(--adm-kraft); cursor: pointer; font-size: 11px; font-weight: 800; }
 .cashc-closed-settings[open] summary { margin-bottom: 8px; }
-.cashc-closed-settings__note { margin-bottom: 8px; color: var(--adm-ink-muted); font-size: 10px; line-height: 1.4; }
+
 .cashc-closed-settings__list { display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; margin-bottom: 8px; }
 .cashc-closed-settings__row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: 5px; }
 .cashc-closed-settings__row > div { flex: 1 1 auto; min-width: 0; }
@@ -7097,218 +6883,11 @@ body:has(.admin-modal-overlay) {
 
 .cashc-day__count { font-size: 11px; color: var(--adm-sand); }
 
-.cashc-totals {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.cashc-total {
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r-sm);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  background: var(--adm-paper);
-}
-
-.cashc-total__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--adm-sand);
-}
-
-.cashc-total strong {
-  font-size: 17px;
-  font-variant-numeric: tabular-nums;
-  color: var(--adm-ink-soft);
-}
-
-.cashc-total--cash { border-color: var(--adm-pine-line); background: var(--adm-pine-pale); }
-.cashc-total--cash strong { color: var(--adm-pine); }
-.cashc-total--transfer { border-color: var(--adm-steel-line); background: var(--adm-steel-pale); }
-.cashc-total--transfer strong { color: var(--adm-steel); }
-.cashc-total--sum { border-color: var(--adm-border-mid); }
-.cashc-total--spent { border-color: var(--adm-rust-line); background: var(--adm-rust-pale); }
-.cashc-total--spent strong { color: var(--adm-rust); }
-
 /* ── Траты налом за день (ЗП и прочие расходы из кассы) ── */
-.cashc-spent {
-  margin-top: 10px;
-  border: 1px solid var(--adm-rust-line);
-  background: var(--adm-rust-pale);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-
-.cashc-spent__head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--adm-rust);
-  margin-bottom: 6px;
-}
-
-.cashc-spent__sum { margin-left: auto; }
-
-.cashc-spent__row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 3px 0;
-  font-size: 12px;
-  border-top: 1px dashed var(--adm-rust-line);
-}
-
-.cashc-spent__title { color: var(--adm-ink); min-width: 0; }
-.cashc-spent__note { color: var(--adm-sand); }
-
-.cashc-spent__amount {
-  margin-left: auto;
-  font-weight: 700;
-  color: var(--adm-rust);
-  white-space: nowrap;
-}
-
-.cashc-spent__foot {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--adm-rust-line);
-  font-size: 12px;
-  color: var(--adm-ink);
-}
-
-.cashc-bulk {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-
-.cashc-list {
-  max-height: 44vh;
-  overflow-y: auto;
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r-sm);
-  background: var(--adm-card, #fff);
-}
-
-.cashc-row {
-  display: grid;
-  grid-template-columns: 18px 1fr auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--adm-border);
-}
-
-.cashc-row:last-child { border-bottom: 0; }
-.cashc-row--off { opacity: 0.45; }
-
-.cashc-row__main { display: flex; flex-direction: column; min-width: 0; }
-
-.cashc-row__cp {
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--adm-ink-soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cashc-row__meta { font-size: 11px; color: var(--adm-sand); }
 
 /* Пометка «похоже на безнал» у платежа в списке сдачи кассы */
-.cashc-row__warn {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: 6px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-weight: 700;
-  color: var(--adm-rust);
-  background: var(--adm-rust-pale);
-  border: 1px solid var(--adm-rust-line);
-}
-
-.cashc-row__amount {
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 
 /* Переключатель «Нал / Перевод» */
-.cashc-seg {
-  display: inline-flex;
-  border: 1px solid var(--adm-border-mid);
-  border-radius: var(--adm-r-sm);
-  overflow: hidden;
-}
-
-.cashc-seg__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 9px;
-  font-size: 11.5px;
-  font-weight: 650;
-  background: var(--adm-card, #fff);
-  color: var(--adm-sand);
-  border: 0;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s, color 0.12s;
-}
-
-.cashc-seg__btn + .cashc-seg__btn { border-left: 1px solid var(--adm-border-mid); }
-.cashc-seg__btn:hover { background: var(--adm-paper); }
-
-.cashc-seg__btn--cash {
-  background: var(--adm-pine);
-  color: var(--adm-on-pine);
-}
-.cashc-seg__btn--cash:hover { background: var(--adm-pine); filter: brightness(0.94); }
-
-.cashc-seg__btn--transfer {
-  background: var(--adm-steel);
-  color: var(--adm-on-steel);
-}
-.cashc-seg__btn--transfer:hover { background: var(--adm-steel); filter: brightness(0.94); }
-
-.cashc-hint {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 8px 11px;
-  font-size: 12px;
-  line-height: 1.4;
-  background: var(--adm-kraft-pale);
-  border: 1px solid var(--adm-kraft-line);
-  border-radius: var(--adm-r-sm);
-  color: var(--adm-ink-soft);
-}
-
-@media (max-width: 640px) {
-  .cashc-totals { grid-template-columns: 1fr; gap: 6px; }
-  .cashc-row {
-    grid-template-columns: 18px 1fr auto;
-    row-gap: 6px;
-  }
-  .cashc-seg { grid-column: 2 / -1; justify-self: start; }
-}
 
 /* ══════════════════════════════════════
    РЕВИЗИЯ СКЛАДА
@@ -7634,29 +7213,57 @@ body:has(.admin-modal-overlay) {
     position: static;
     left: auto;
     right: auto;
-    min-width: 0;
-    max-width: none;
     box-shadow: none;
     z-index: auto;
   }
 
+  /* Ширины НЕ сбрасываем в фиксированные числа: колонки тянутся и на
+     телефоне (ручка ловит pointer-события пальцем), и выбранная ширина
+     должна сохраняться. Берём max() от пользовательской и минимально
+     читаемой — так узкий экран не схлопнет ФИО в столбик букв. */
   .whsal-th--name,
   .whsal-td--name {
-    min-width: 132px;
+    width: max(var(--whsal-w-name), 132px);
+    min-width: max(var(--whsal-w-name), 132px);
+    max-width: max(var(--whsal-w-name), 132px);
   }
 
   .whsal-th--accrued,
-  .whsal-td--accrued,
+  .whsal-td--accrued {
+    width: max(var(--whsal-w-accrued), 80px);
+    min-width: max(var(--whsal-w-accrued), 80px);
+    max-width: max(var(--whsal-w-accrued), 80px);
+  }
+
   .whsal-th--debt,
-  .whsal-td--debt,
+  .whsal-td--debt {
+    width: max(var(--whsal-w-debt), 80px);
+    min-width: max(var(--whsal-w-debt), 80px);
+    max-width: max(var(--whsal-w-debt), 80px);
+  }
+
   .whsal-th--received,
   .whsal-td--received {
-    min-width: 80px;
+    width: max(var(--whsal-w-received), 80px);
+    min-width: max(var(--whsal-w-received), 80px);
+    max-width: max(var(--whsal-w-received), 80px);
   }
 
   .whsal-th--rest,
   .whsal-td--rest {
-    min-width: 88px;
+    width: max(var(--whsal-w-rest), 88px);
+    min-width: max(var(--whsal-w-rest), 88px);
+    max-width: max(var(--whsal-w-rest), 88px);
+  }
+
+  /* На узком экране ручка шире — попасть пальцем в 7px нереально. */
+  .whsal-col-resizer {
+    right: -6px;
+    width: 14px;
+  }
+
+  .whsal-col-resizer::after {
+    background: var(--adm-border-mid);
   }
 
   /* Без sticky ячейки head/thead теряют свой фон поверх
@@ -7792,164 +7399,16 @@ body:has(.admin-modal-overlay) {
 
   @media (min-width: 1024px) {
     .admin-main { padding-top: 28px; }
-  }
+}
 
   .admin-sidebar {
     padding-top: env(safe-area-inset-top);
   }
 }
 
-
 /* ── Детализация сданной кассы: платежи, траты, куда ушли деньги ── */
-.wh-cc-row:hover { background: var(--adm-paper); }
-
-.wh-cc-details > td { background: var(--adm-paper); padding: 10px 12px !important; }
-
-.wh-cc-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 10px;
-}
-
-.wh-cc-box {
-  background: var(--adm-card);
-  border: 1px solid var(--adm-border-mid);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-
-.wh-cc-box__head {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--adm-ink);
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--adm-border-mid);
-  margin-bottom: 4px;
-}
-
-.wh-cc-box__head b { margin-left: auto; }
-
-.wh-cc-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  padding: 3px 0;
-}
-
-.wh-cc-line > span:first-child {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-.wh-cc-payment-link {
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  color: var(--adm-steel);
-  background: none;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 700;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wh-cc-payment-link:hover { text-decoration: underline; }
-
-.wh-cc-line__val {
-  margin-left: auto;
-  font-weight: 700;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.wh-cc-dest {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.wh-cc-dest--card { color: var(--adm-steel); background: var(--adm-steel-pale); }
-.wh-cc-dest--cash { color: var(--adm-pine); background: var(--adm-pine-pale); }
-.wh-cc-dest--exp { color: var(--adm-rust); background: var(--adm-rust-pale); }
-
-.wh-cc-note { color: var(--adm-sand); }
-.wh-cc-empty { font-size: 12px; color: var(--adm-sand); padding: 4px 0; }
-
-.wh-cc-total {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--adm-border-mid);
-  font-size: 12px;
-  color: var(--adm-ink);
-}
-
 
 /* ── Ручная разбивка платежа в сдаче кассы ── */
-.cashc-row--split { background: var(--adm-paper); }
-
-.cashc-seg__btn--split {
-  background: var(--adm-sand);
-  color: #fff;
-  border-color: var(--adm-sand);
-}
-
-.cashc-split {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border: 1px dashed var(--adm-border-mid);
-  border-radius: 8px;
-  background: var(--adm-card);
-}
-
-.cashc-split__field {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 150px;
-}
-
-.cashc-split__field > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--adm-ink);
-}
-
-.cashc-split__field .admin-input { padding: 5px 8px; font-size: 13px; }
-
-.cashc-split__rest {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--adm-steel);
-  padding-bottom: 6px;
-}
-
-.cashc-split__rest--bad { color: var(--adm-rust); font-weight: 700; }
-
-.cashc-close-day { margin-left: auto; }
 
 /* ══════════════════════════════════════
    ПОРЯДОК ПОПУЛЯРНЫХ ТОВАРОВ
@@ -8133,10 +7592,6 @@ body:has(.admin-modal-overlay) {
 
 .featured-sort__item--placeholder {
   opacity: 0.25;
-}
-
-.featured-sort__item--dragging {
-  z-index: 20;
 }
 
 .featured-sort__item--overlay {
@@ -8592,24 +8047,6 @@ body:has(.admin-modal-overlay) {
   border-radius: var(--adm-r-sm);
 }
 
-.scan-page__stock--ok {
-  background: var(--adm-pine-pale);
-  color: var(--adm-pine);
-  border: 1px solid var(--adm-pine-line);
-}
-
-.scan-page__stock--low {
-  background: var(--adm-kraft-pale);
-  color: var(--adm-kraft);
-  border: 1px solid var(--adm-kraft-line);
-}
-
-.scan-page__stock--out {
-  background: var(--adm-rust-pale);
-  color: var(--adm-rust);
-  border: 1px solid var(--adm-rust-line);
-}
-
 .scan-page__meta {
   display: flex;
   flex-direction: column;
@@ -8638,64 +8075,6 @@ body:has(.admin-modal-overlay) {
   background: #fff;
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-r-sm);
-}
-
-.scan-page__codes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.scan-page__code-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px;
-  background: var(--adm-paper);
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r-sm);
-}
-
-.scan-page__qr {
-  width: 100%;
-  height: auto;
-  max-width: 180px;
-  aspect-ratio: 1;
-  background: #fff;
-  border-radius: 4px;
-}
-
-.scan-page__barcode {
-  width: 100%;
-  height: auto;
-  max-width: 180px;
-  background: #fff;
-  border-radius: 4px;
-}
-
-.scan-page__copy {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10.5px;
-  font-family: var(--f-mono);
-  font-weight: 700;
-  color: var(--adm-muted);
-  background: transparent;
-  border: none;
-  padding: 4px 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-  letter-spacing: 0.02em;
-  width: 100%;
-  justify-content: center;
-}
-
-.scan-page__copy:hover {
-  background: var(--adm-kraft-pale);
-  color: var(--adm-kraft);
 }
 
 .scan-page__actions {
@@ -8761,12 +8140,7 @@ body:has(.admin-modal-overlay) {
   .scan-page__price-main {
     font-size: 24px;
   }
-
-  .scan-page__codes {
-    grid-template-columns: 1fr;
-  }
 }
-
 
 /* ══════════════════════════════════════
    ПЕЧАТЬ QR-КОДОВ (/admin/qr-print)
@@ -9490,7 +8864,6 @@ body:has(.admin-modal-overlay) {
   height: 22mm;
 }
 
-
 /* ── Печать на термоэтикетке 40×60 мм (альбомная, Xprinter XP-365B) ──
    Формула «1 этикетка = 1 страница = 1 QR по центру»:
      • @page = ровно 60×40 мм без полей (инъектируется из
@@ -9880,9 +9253,8 @@ body:has(.admin-modal-overlay) {
   .admin-status__btn,
   .scan-page__btn,
   .wh-direction__btn,
-  .cashc-seg__btn,
   .whsal-seg__btn
-) {
+  ) {
   max-width: 100%;
   min-width: 0;
   align-items: center;
@@ -9894,9 +9266,8 @@ body:has(.admin-modal-overlay) {
   .admin-status__btn,
   .scan-page__btn,
   .wh-direction__btn,
-  .cashc-seg__btn,
   .whsal-seg__btn
-) > svg {
+  ) > svg {
   flex: 0 0 auto;
   margin: 0;
 }
@@ -10307,7 +9678,6 @@ body:has(.admin-modal-overlay) {
     padding: 10px;
   }
 
-  .cashc-row,
   .bank-cash-posting,
   .dash-finance-row,
   .dash-delivery-row {
@@ -10357,7 +9727,6 @@ body:has(.admin-modal-overlay) {
   .admin-status__btn,
   .scan-page__btn,
   .wh-direction__btn,
-  .cashc-seg__btn,
   .whsal-seg__btn {
     flex-wrap: nowrap;
     white-space: nowrap;
@@ -10405,7 +9774,6 @@ body:has(.admin-modal-overlay) {
   .admin-status__btn,
   .scan-page__btn,
   .wh-direction__btn,
-  .cashc-seg__btn,
   .whsal-seg__btn {
     gap: var(--adm-mobile-control-gap);
     padding: var(--adm-mobile-control-pad-y) var(--adm-mobile-control-pad-x);
@@ -10418,7 +9786,6 @@ body:has(.admin-modal-overlay) {
   .admin-status__btn > svg,
   .scan-page__btn > svg,
   .wh-direction__btn > svg,
-  .cashc-seg__btn > svg,
   .whsal-seg__btn > svg {
     width: 1em;
     height: 1em;
@@ -10457,8 +9824,7 @@ body:has(.admin-modal-overlay) {
 .payment-details { display: grid; gap: 12px; }
 .payment-details__hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 14px; color: #fff; background: linear-gradient(120deg, var(--adm-ink-deep), var(--adm-ink-deep-soft)); border-radius: 10px; }
 .payment-details__direction { display: inline-flex; align-items: center; justify-content: center; padding: 10px; border-radius: 50%; }
-.payment-details__direction--incoming { color: #9de3a5; background: rgba(125,209,129,.14); }
-.payment-details__direction--outgoing { color: #ffad98; background: rgba(239,143,118,.14); }
+
 .payment-details__hero > div { min-width: 0; }
 .payment-details__hero > div span, .payment-details__hero > div strong { display: block; }
 .payment-details__hero > div span { color: rgba(255,255,255,.58); font-size: 9px; text-transform: uppercase; }
@@ -10703,8 +10069,7 @@ body:has(.admin-modal-overlay) {
   }
 
   /* Таблицы сохраняют горизонтальную прокрутку только внутри своей рамки. */
-  .admin-table-wrap,
-  .admin-table-scroll {
+  .admin-table-wrap {
     max-width: 100%;
     overflow-x: auto;
     overscroll-behavior-x: contain;
@@ -10901,7 +10266,6 @@ body:has(.admin-modal-overlay) {
   .admin-sidebar-handle { display: none !important; }
 }
 
-
 @media (max-width: 380px) {
   .admin-mobile-bar { height: 100px; }
   .admin-mobile-bar__link { min-width: 52px; padding-inline: 7px; }
@@ -10954,21 +10318,6 @@ body:has(.admin-modal-overlay) {
     overflow-y: auto;
   }
 }
-
-.cashc-unclassified {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--adm-kraft-line);
-  border-radius: 8px;
-  background: var(--adm-kraft-pale);
-  color: var(--adm-ink);
-  font-size: 12px;
-}
-.cashc-unclassified > span { color: var(--adm-ink-muted); }
-.cashc-unclassified__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-@media (max-width: 480px) { .cashc-unclassified__row { align-items: stretch; flex-direction: column; } }
 
 /* Банк и модалка платежа: иконка всегда остаётся слева от подписи.
    Для длинных вариантов оплаты расширяем строку, а не переносим слово под SVG. */
@@ -12359,430 +11708,6 @@ html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
   gap: 14px;
   min-width: 0;
 }
-.supply-planning__hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 17px 20px;
-  color: #fff;
-  background: linear-gradient(125deg, var(--adm-ink-deep), var(--adm-ink-deep-soft));
-  border: 1px solid color-mix(in srgb, var(--adm-kraft) 24%, transparent);
-  border-radius: var(--adm-r-lg);
-  box-shadow: var(--adm-sh-sm);
-}
-.supply-planning__hero-copy { min-width: 0; }
-.supply-planning__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--adm-kraft-light);
-  font-size: 9px;
-  font-weight: 850;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-}
-.supply-planning__hero h2 {
-  margin: 4px 0 2px;
-  font-family: var(--adm-font-head);
-  font-size: clamp(20px, 2vw, 25px);
-}
-.supply-planning__hero p {
-  margin: 0;
-  color: rgba(255, 255, 255, .66);
-  font-size: 11px;
-  line-height: 1.4;
-}
-.supply-planning__actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.supply-planning__hero .admin-btn--ghost {
-  color: #fff;
-  border-color: rgba(255, 255, 255, .22);
-  background: rgba(255, 255, 255, .08);
-}
-
-.supply-planning__stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 9px;
-}
-.supply-planning__stats > div {
-  min-width: 0;
-  padding: 11px 13px;
-  background: var(--adm-card);
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r);
-  box-shadow: var(--adm-sh-xs);
-}
-.supply-planning__stats span {
-  display: block;
-  overflow: hidden;
-  color: var(--adm-muted);
-  font-size: 9px;
-  font-weight: 750;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.supply-planning__stats strong {
-  display: block;
-  overflow: hidden;
-  margin-top: 3px;
-  color: var(--adm-ink);
-  font-size: 17px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.supply-planning__workspace {
-  display: grid;
-  grid-template-columns: 270px minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
-  min-width: 0;
-}
-.supply-planning__sidebar,
-.supply-planning__content {
-  min-width: 0;
-  background: var(--adm-card);
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r-lg);
-  box-shadow: var(--adm-sh-xs);
-}
-.supply-planning__sidebar {
-  position: sticky;
-  top: 14px;
-  overflow: hidden;
-}
-.supply-planning__sidebar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px;
-  border-bottom: 1px solid var(--adm-border-soft);
-}
-.supply-planning__sidebar-head > div { display: grid; gap: 2px; min-width: 0; }
-.supply-planning__sidebar-head strong { color: var(--adm-ink); font-size: 13px; }
-.supply-planning__sidebar-head span { color: var(--adm-muted); font-size: 9px; }
-.supply-planning__switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3px;
-  margin: 9px;
-  padding: 3px;
-  background: var(--adm-paper-warm);
-  border: 1px solid var(--adm-border-soft);
-  border-radius: 9px;
-}
-.supply-planning__switch button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 6px 5px;
-  color: var(--adm-muted);
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 9px;
-  font-weight: 750;
-}
-.supply-planning__switch button.is-active {
-  color: var(--adm-ink);
-  background: var(--adm-card);
-  box-shadow: var(--adm-sh-xs);
-}
-.supply-planning__switch button span {
-  min-width: 17px;
-  padding: 1px 4px;
-  background: var(--adm-paper);
-  border-radius: 999px;
-  font-size: 8px;
-}
-.supply-planning__plan-list {
-  display: grid;
-  gap: 5px;
-  max-height: min(64vh, 620px);
-  overflow-y: auto;
-  padding: 0 9px 9px;
-}
-.supply-planning__plan-nav {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 2px 8px;
-  width: 100%;
-  min-width: 0;
-  padding: 9px;
-  color: inherit;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  cursor: pointer;
-}
-.supply-planning__plan-nav:hover { background: var(--adm-paper-warm); }
-.supply-planning__plan-nav.is-active {
-  background: var(--adm-kraft-pale);
-  border-color: var(--adm-kraft-line);
-}
-.supply-planning__plan-nav-icon {
-  display: inline-flex;
-  grid-row: 1 / span 2;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  color: var(--adm-kraft);
-  background: var(--adm-kraft-pale);
-  border-radius: 8px;
-}
-.supply-planning__plan-nav-copy { display: grid; gap: 2px; min-width: 0; }
-.supply-planning__plan-nav-copy strong {
-  overflow: hidden;
-  color: var(--adm-ink);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.supply-planning__plan-nav-copy small {
-  overflow: hidden;
-  color: var(--adm-muted);
-  font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.supply-planning__plan-nav > b {
-  grid-column: 2;
-  color: var(--adm-ink-soft);
-  font-size: 10px;
-}
-.supply-planning__sidebar-empty,
-.supply-planning__content-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--adm-muted);
-  text-align: center;
-}
-.supply-planning__sidebar-empty { min-height: 150px; padding: 18px; font-size: 11px; }
-.supply-planning__content-empty { min-height: 360px; padding: 30px; }
-.supply-planning__content-empty strong { color: var(--adm-ink); }
-.supply-planning__content-empty span { max-width: 330px; font-size: 11px; }
-
-.supply-plan-editor { min-width: 0; }
-.supply-plan-editor__head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px;
-  background: var(--adm-paper-warm);
-  border-bottom: 1px solid var(--adm-border);
-}
-.supply-plan-editor__title {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  flex: 1;
-}
-.supply-plan-editor__title > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  color: var(--adm-kraft);
-  background: var(--adm-kraft-pale);
-  border: 1px solid var(--adm-kraft-line);
-  border-radius: 10px;
-}
-.supply-plan-editor__title > div { min-width: 0; }
-.supply-plan-editor__title .admin-input {
-  width: min(100%, 480px);
-  height: 36px;
-  color: var(--adm-ink);
-  font-size: 14px;
-  font-weight: 800;
-}
-.supply-plan-editor__summary {
-  display: grid;
-  flex: 0 0 auto;
-  gap: 1px;
-  text-align: right;
-}
-.supply-plan-editor__summary span { color: var(--adm-muted); font-size: 9px; }
-.supply-plan-editor__summary strong { color: var(--adm-ink); font-size: 16px; white-space: nowrap; }
-.supply-plan-editor__meta {
-  display: grid;
-  grid-template-columns: minmax(170px, .55fr) minmax(260px, 1.45fr);
-  gap: 10px;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--adm-border-soft);
-}
-.supply-plan-editor__meta .admin-field,
-.supply-plan-add__draft .admin-field,
-.supply-plan-item__fields .admin-field { min-width: 0; margin: 0; }
-.supply-plan-editor__meta .admin-input,
-.supply-plan-add__draft :is(.admin-input, .admin-select),
-.supply-plan-item__fields :is(.admin-input, .admin-select) { width: 100%; min-width: 0; }
-
-.supply-plan-add {
-  margin: 12px 14px;
-  overflow: visible;
-  background: color-mix(in srgb, var(--adm-kraft-pale) 58%, var(--adm-card));
-  border: 1px solid var(--adm-kraft-line);
-  border-radius: 11px;
-}
-.supply-plan-add__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px 0;
-}
-.supply-plan-add__head > div { display: grid; gap: 2px; }
-.supply-plan-add__head strong { display: inline-flex; align-items: center; gap: 6px; color: var(--adm-ink); font-size: 12px; }
-.supply-plan-add__head span { color: var(--adm-muted); font-size: 9px; }
-.supply-plan-add__picker { position: relative; z-index: 3; padding: 9px 12px; }
-.supply-plan-add__draft {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.4fr) minmax(170px, 1.2fr) repeat(3, minmax(90px, .65fr)) minmax(110px, .7fr) auto;
-  align-items: end;
-  gap: 8px;
-  padding: 0 12px 12px;
-}
-.supply-plan-add__product {
-  display: grid;
-  align-self: stretch;
-  align-content: center;
-  gap: 2px;
-  min-width: 0;
-  padding: 8px 10px;
-  background: var(--adm-card);
-  border: 1px solid var(--adm-border-soft);
-  border-radius: var(--adm-r-sm);
-}
-.supply-plan-add__product strong {
-  overflow: hidden;
-  color: var(--adm-ink);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.supply-plan-add__product span { color: var(--adm-muted); font-size: 9px; }
-.supply-plan-add__result {
-  display: grid;
-  align-self: stretch;
-  align-content: center;
-  min-width: 0;
-  padding: 6px 9px;
-  background: var(--adm-card);
-  border: 1px solid var(--adm-border-soft);
-  border-radius: var(--adm-r-sm);
-}
-.supply-plan-add__result span { color: var(--adm-muted); font-size: 8px; text-transform: uppercase; }
-.supply-plan-add__result strong { overflow: hidden; color: var(--adm-ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.supply-plan-add__submit { min-height: 36px; white-space: nowrap; }
-.supply-plan-add__hint { padding: 2px 12px 12px; color: var(--adm-muted); font-size: 10px; }
-
-.supply-plan-items { min-width: 0; border-top: 1px solid var(--adm-border-soft); }
-.supply-plan-items__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 11px 14px 8px;
-}
-.supply-plan-items__head > div { display: grid; gap: 2px; }
-.supply-plan-items__head strong { color: var(--adm-ink); font-size: 12px; }
-.supply-plan-items__head span { color: var(--adm-muted); font-size: 9px; }
-.supply-plan-items__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin: 0 14px 14px;
-  padding: 24px;
-  color: var(--adm-muted);
-  background: var(--adm-paper-warm);
-  border: 1px dashed var(--adm-border-mid);
-  border-radius: 10px;
-  font-size: 10px;
-}
-.supply-plan-items__list { display: grid; gap: 8px; padding: 0 14px 14px; }
-.supply-plan-item {
-  min-width: 0;
-  overflow: hidden;
-  background: var(--adm-card);
-  border: 1px solid var(--adm-border-soft);
-  border-radius: 10px;
-}
-.supply-plan-item__head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 30px;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  background: var(--adm-paper-warm);
-  border-bottom: 1px solid var(--adm-border-soft);
-}
-.supply-plan-item__head > div:first-child { display: grid; gap: 2px; min-width: 0; }
-.supply-plan-item__head a {
-  overflow: hidden;
-  color: var(--adm-ink);
-  font-size: 11px;
-  font-weight: 800;
-  text-decoration: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.supply-plan-item__head > div:first-child span { color: var(--adm-muted); font-size: 9px; }
-.supply-plan-item__amount { display: grid; gap: 1px; text-align: right; }
-.supply-plan-item__amount span { color: var(--adm-muted); font-size: 8px; text-transform: uppercase; }
-.supply-plan-item__amount strong { color: var(--adm-ink); font-size: 12px; white-space: nowrap; }
-.supply-plan-item__remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  color: var(--adm-rust);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.supply-plan-item__remove:hover { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
-.supply-plan-item__fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
-  align-items: end;
-  gap: 8px;
-  padding: 10px;
-}
-.supply-plan-item__supplier { grid-column: span 2; }
-.supply-plan-item__move { grid-column: span 2; }
-.supply-plan-editor__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--adm-border-soft);
-}
 
 /* Ссылка из старого раздела поставщиков */
 .supply-planning-link-card {
@@ -12809,44 +11734,10 @@ html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
 .dashboard-supply-plan__main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-supply-plan__main strong { color: var(--adm-ink); font-size: 12px; }
 .dashboard-supply-plan__main small { color: var(--adm-muted); font-size: 9px; }
-.dashboard-supply-plan__total { color: var(--adm-ink); font-size: 11px; font-weight: 800; white-space: nowrap; }
-.dashboard-supply-plan__date { grid-column: 2 / -1; color: var(--adm-muted); font-size: 9px; }
 
-@media (max-width: 1280px) {
-  .supply-plan-add__draft {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .supply-plan-add__product { grid-column: 1 / -1; }
-  .supply-plan-add__draft .admin-field:first-of-type { grid-column: span 2; }
-  .supply-plan-add__submit { width: 100%; }
-}
-@media (max-width: 980px) {
-  .supply-planning__workspace { grid-template-columns: 220px minmax(0, 1fr); }
-  .supply-plan-editor__meta { grid-template-columns: 1fr; }
-  .supply-plan-add__draft { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .supply-plan-add__product { grid-column: 1 / -1; }
-}
-@media (max-width: 760px) {
-  .supply-planning__hero { align-items: stretch; flex-direction: column; }
-  .supply-planning__actions { justify-content: stretch; }
-  .supply-planning__actions .admin-btn { flex: 1; justify-content: center; }
-  .supply-planning__workspace { grid-template-columns: 1fr; }
-  .supply-planning__sidebar { position: static; }
-  .supply-planning__plan-list { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); max-height: 280px; }
-  .supply-plan-editor__head { align-items: stretch; flex-direction: column; }
-  .supply-plan-editor__summary { grid-template-columns: auto auto; align-items: center; justify-content: space-between; text-align: left; }
-}
+.dashboard-supply-plan__date { grid-column: 2 / -1; color: var(--adm-muted); font-size: 9px; }
 @media (max-width: 520px) {
-  .supply-planning__stats { grid-template-columns: 1fr; }
-  .supply-plan-add__draft { grid-template-columns: 1fr; }
-  .supply-plan-add__product,
-  .supply-plan-add__draft .admin-field:first-of-type { grid-column: auto; }
-  .supply-plan-item__fields { grid-template-columns: 1fr 1fr; }
-  .supply-plan-item__supplier,
-  .supply-plan-item__move { grid-column: 1 / -1; }
-  .supply-plan-editor__footer,
   .supply-planning-link-card { align-items: stretch; flex-direction: column; }
-  .supply-plan-editor__footer .admin-btn { justify-content: center; }
 }
 @media print {
   .admin-plans-shortcut,
@@ -12924,8 +11815,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   font-weight: 800;
   line-height: 1;
 }
-.cashc-kind--cash { color: var(--adm-pine); background: var(--adm-pine-pale); border-color: var(--adm-pine-line); }
-.cashc-kind--card { color: var(--adm-steel); background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
+
 .cashc-ledger__card { color: var(--adm-steel) !important; }
 .cashc-ledger__expense { color: var(--adm-rust) !important; }
 .cashc-ledger__card-expense { color: var(--adm-steel) !important; }
@@ -12963,35 +11853,9 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 /* Ozon-превью — стили ниже, в блоке «Карточки закупок» */
 .purchase-create__name { margin-bottom: 9px !important; }
 .purchase-create__catalog-label { display: block; margin-bottom: 5px; color: var(--adm-muted); font-size: 9px; font-weight: 600; }
-.purchase-create__selected { display: flex; gap: 8px; align-items: center; margin-top: 6px; color: var(--adm-ink); font-size: 11px; }
-.purchase-create__selected span { color: var(--adm-muted); }
-.purchase-plan-list { display: grid; grid-template-columns: 1fr; gap: 16px; }
+
 .purchase-plan { min-width: 0; padding: 18px; background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-r); box-shadow: var(--adm-sh-xs); }
-.purchase-plan--completed { opacity: .78; }
-.purchase-plan__head { display: flex; align-items: center; gap: 10px; }
-.purchase-plan__product { display: flex; align-items: center; gap: 9px; flex: 1 1 auto; min-width: 0; }
-.purchase-plan__product > div { min-width: 0; }
-.purchase-plan__product strong, .purchase-plan__product small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.purchase-plan__product strong { color: var(--adm-ink); font-size: 13px; }
-.purchase-plan__product small { margin-top: 2px; color: var(--adm-muted); font-size: 9px; }
-.purchase-plan__icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; height: 34px; color: var(--adm-pine); background: var(--adm-pine-pale); border: 1px solid var(--adm-pine-line); border-radius: 50%; }
-.purchase-plan__amount { flex: 0 0 auto; text-align: right; }
-.purchase-plan__amount strong, .purchase-plan__amount span { display: block; }
-.purchase-plan__amount strong { color: var(--adm-pine); font-family: var(--adm-font-head); font-size: 18px; }
-.purchase-plan__amount span { color: var(--adm-muted); font-size: 9px; }
-.purchase-plan__ozon { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 14px; align-items: center; margin-top: 14px; padding: 12px; background: color-mix(in srgb, #005bff 6%, var(--adm-paper)); border: 1px solid color-mix(in srgb, #005bff 20%, var(--adm-border)); border-radius: var(--adm-r-sm); }
-.purchase-plan__ozon-media { display: grid; place-items: center; width: 112px; height: 112px; overflow: hidden; color: #005bff; background: #fff; border-radius: 8px; font-size: 12px; font-weight: 900; }
-.purchase-plan__ozon-media img { width: 100%; height: 100%; object-fit: contain; }
-.purchase-plan__ozon-info { display: grid; min-width: 0; gap: 2px; }
-.purchase-plan__ozon-info > a { display: inline-flex; align-items: center; gap: 3px; width: max-content; color: #005bff; font-size: 9px; font-weight: 800; text-decoration: none; }
-.purchase-plan__ozon-info > strong { color: var(--adm-ink); font-size: 22px; }
-.purchase-plan__ozon-info > small { color: var(--adm-muted); font-size: 10px; }
-.purchase-plan__ozon-info > em { overflow: hidden; color: var(--adm-rust); font-size: 9px; font-style: normal; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-.purchase-plan__progress { position: relative; height: 8px; margin: 12px 0; overflow: hidden; background: var(--adm-paper-warm); border-radius: 99px; }
-.purchase-plan__progress > span { display: block; height: 100%; background: var(--adm-pine); border-radius: inherit; }
-.purchase-plan__progress > b { position: absolute; right: 5px; top: -2px; color: var(--adm-ink); font-size: 8px; }
-.purchase-plan__actions { display: grid; grid-template-columns: minmax(110px, .6fr) auto minmax(150px, .9fr) auto; gap: 8px; align-items: end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--adm-border-soft); }
-.purchase-plan__actions .admin-field { margin: 0; }
+
 .purchase-plan__completed { display: flex; align-items: center; gap: 7px; margin-top: 12px; padding: 9px 10px; color: var(--adm-pine); background: var(--adm-pine-pale); border-radius: var(--adm-r-sm); font-size: 11px; font-weight: 700; }
 .purchase-plan__history { margin-top: 10px; color: var(--adm-muted); font-size: 10px; }
 .purchase-plan__history summary { cursor: pointer; font-weight: 700; }
@@ -13001,17 +11865,14 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 @media (max-width: 1050px) {
   .purchase-create { grid-template-columns: 1fr 1fr; }
   .purchase-create__picker { grid-column: 1 / -1; }
-  .purchase-plan__actions { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 620px) {
   .purchase-planning__hero { align-items: stretch; flex-direction: column; }
   .purchase-planning__summary { justify-content: flex-start; }
-  .purchase-create, .purchase-plan__actions, .purchase-plan-list { grid-template-columns: 1fr; }
+  .purchase-create { grid-template-columns: 1fr; }
   .purchase-create__picker { grid-column: auto; }
-  .purchase-create__ozon-input, .purchase-plan__ozon { grid-template-columns: 1fr; }
-  .purchase-create__ozon-input .admin-btn, .purchase-plan__ozon .admin-btn { width: 100%; }
-  .purchase-plan__ozon-media { width: 72px; height: 72px; }
-  .purchase-plan__actions .admin-btn { justify-content: center; }
+  .purchase-create__ozon-input { grid-template-columns: 1fr; }
+  .purchase-create__ozon-input .admin-btn { width: 100%; }
 }
 
 /* ══════════════════════════════════════
@@ -14174,17 +13035,13 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   display: grid;
   gap: 8px;
 }
-.purchase-tile__money,
 .purchase-tile__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
-.purchase-tile__money .admin-input {
-  flex: 1 1 120px;
-  min-width: 0;
-}
+
 .purchase-tile__photo-field {
   min-width: 0;
 }
@@ -14295,57 +13152,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 }
 
 /* Блок списания в карточке закупки */
-.purchase-spend {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  background: var(--adm-paper-warm);
-  border: 1px solid var(--adm-border);
-  border-radius: 10px;
-  min-width: 0;
-}
-.purchase-spend__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--adm-ink);
-}
-.purchase-spend__modes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-.purchase-spend__mode {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 7px 10px;
-  border: 1px solid var(--adm-border-mid);
-  border-radius: 8px;
-  background: var(--adm-card);
-  color: var(--adm-ink-muted);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color .12s, background .12s, color .12s;
-}
-.purchase-spend__mode--on {
-  border-color: var(--adm-pine-line);
-  background: var(--adm-pine-pale);
-  color: var(--adm-pine);
-}
-.purchase-spend__off {
-  align-self: end;
-  margin: 0;
-}
-.purchase-spend__hint {
-  margin: 0;
-  font-size: 11px;
-  color: var(--adm-muted);
-  line-height: 1.4;
-}
+
 .purchase-plan__completed {
   display: flex;
   flex-wrap: wrap;
@@ -14378,9 +13185,6 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
     width: 56px;
     height: 56px;
   }
-  .purchase-spend__modes {
-    grid-template-columns: 1fr;
-  }
 }
 @media (max-width: 420px) {
   .purchase-grid {
@@ -14402,13 +13206,6 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 
 .rf { display: flex; flex-direction: column; gap: 12px; }
 
-.rf-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 2px;
-}
 .rf-month-nav { display: inline-flex; align-items: center; gap: 4px; }
 .rf-month-label {
   font-family: var(--adm-font-head);

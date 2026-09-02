@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Bell, Building2, ClipboardList, Loader2, PackageSearch, RefreshCw, Wallet, X } from "lucide-react";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
@@ -89,13 +89,30 @@ export function AdminNotifications({ adminPath }: { adminPath: string }) {
   // тяжёлый (тысяча товаров, две тысячи платежей), и раньше его дёргали
   // ДВА колокольчика каждые 30 секунд. Теперь перезапрашиваем по событию,
   // а таймер оставлен редким страховочным.
+  // Эндпоинт тяжёлый (тысяча товаров, две тысячи платежей), а события при
+  // массовых операциях идут пачками — поэтому перезагрузку коалесцируем:
+  // серия изменений даёт один запрос, а не сотню. Заявки сюда больше не
+  // относятся, у них свой лёгкий поток в AdminRequestAlerts, так что
+  // секундная задержка здесь незаметна и безопасна.
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useAdminRealtime({
-    tables: ["orders", "products", "bank_payments", "customer_deals", "rent_invoices"],
+    tables: ["products", "bank_payments", "customer_deals", "rent_invoices"],
     manual: true,
     onUpdate: useCallback(() => {
-      load(true);
+      if (reloadTimer.current) clearTimeout(reloadTimer.current);
+      reloadTimer.current = setTimeout(() => {
+        reloadTimer.current = null;
+        load(true);
+      }, 1_000);
     }, [load]),
   });
+
+  useEffect(
+    () => () => {
+      if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    },
+    []
+  );
 
   useEffect(() => {
     load();

@@ -1,0 +1,499 @@
+/* =========================================================
+   FILE: src/app/admin-cabinet.css
+   «Кабинет клиента» внутри админки.
+
+   Стили кабинета живут в globals.css, а он в админку намеренно НЕ
+   импортируется (иначе весь сайтовый CSS попадёт в бандл админки).
+   Поэтому здесь лежит автономная копия внешнего вида карточки заказа,
+   ограниченная контейнером .acab-*: менеджер видит ту же вёрстку,
+   что и клиент, но админские стили при этом не затрагиваются.
+   ========================================================= */
+
+.acab-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .acab-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Список клиентов ───────────────────────────────── */
+
+.acab-users {
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  background: var(--adm-card);
+  overflow: hidden;
+  position: sticky;
+  top: 12px;
+}
+
+@media (max-width: 900px) {
+  .acab-users {
+    position: static;
+  }
+}
+
+.acab-users__search {
+  padding: 10px;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.acab-users__list {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .acab-users__list {
+    max-height: 320px;
+  }
+}
+
+.acab-user {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid var(--adm-border);
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.acab-user:hover {
+  background: var(--adm-paper);
+}
+
+.acab-user--active {
+  background: var(--adm-steel-pale);
+}
+
+.acab-user__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--adm-steel-pale);
+  color: var(--adm-steel);
+}
+
+.acab-user__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.acab-user__name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--adm-navy);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acab-user__sub {
+  font-size: 11px;
+  color: var(--adm-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acab-user__count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 20px;
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+  flex-shrink: 0;
+}
+
+/* ── Правая колонка: экран клиента ─────────────────── */
+
+.acab-screen {
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  background: var(--adm-card);
+  overflow: hidden;
+}
+
+.acab-screen__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--adm-border);
+  background: var(--adm-paper);
+}
+
+.acab-screen__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--adm-navy);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.acab-screen__hint {
+  font-size: 11px;
+  color: var(--adm-muted);
+}
+
+/* Полотно, имитирующее страницу «Мои заказы» на сайте. Светлое даже в
+   тёмной теме админки — менеджер должен видеть клиентский вид как есть. */
+.acab-canvas {
+  background: #f7f6f3;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: #2b2b2b;
+  min-height: 220px;
+}
+
+.acab-canvas__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #1f2937;
+}
+
+/* ── Карточка заказа (копия .cab-order) ────────────── */
+
+.acab-order {
+  background: #fff;
+  border: 1px solid #e5e2dc;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.acab-order__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.acab-order__head:hover {
+  background: #faf9f7;
+}
+
+.acab-order__head-left,
+.acab-order__head-right {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.acab-order__head-right {
+  flex-shrink: 0;
+}
+
+.acab-order__num {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f2937;
+  font-family: var(--f-mono, ui-monospace, monospace);
+  background: #f3f2ef;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.acab-order__type {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.acab-order__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.acab-order__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.acab-order__date {
+  font-size: 12px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.acab-order__body {
+  border-top: 1px solid #e5e2dc;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #faf9f7;
+}
+
+.acab-order__box {
+  background: #fff;
+  border: 1px solid #e5e2dc;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.acab-order__box-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #e5e2dc;
+  background: #faf9f7;
+}
+
+.acab-order__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.acab-order__item:last-child {
+  border-bottom: none;
+}
+
+.acab-order__item-name {
+  font-size: 13px;
+  color: #1f2937;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+}
+
+.acab-order__item-sku {
+  display: block;
+  font-size: 10px;
+  color: #9ca3af;
+  font-family: var(--f-mono, ui-monospace, monospace);
+  margin-top: 2px;
+}
+
+.acab-order__item-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.acab-order__item-qty {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.acab-order__item-sum {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+  white-space: nowrap;
+}
+
+.acab-order__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 12px;
+  background: #faf9f7;
+  border-top: 1px solid #e5e2dc;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.acab-order__total-sum {
+  font-size: 17px;
+  color: #15803d;
+}
+
+.acab-order__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #e5e2dc;
+  border-radius: 8px;
+  padding: 11px 12px;
+}
+
+.acab-order__meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.acab-order__meta-label {
+  color: #9ca3af;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.acab-order__meta-val {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.acab-order__note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.acab-order__pickup {
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: #fef3c7;
+  border: 1px dashed #d97706;
+}
+
+.acab-order__pickup-code {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #1f2937;
+}
+
+/* ── Панель менеджера под карточкой ────────────────── */
+
+.acab-tools {
+  border-top: 2px dashed var(--adm-border);
+  background: var(--adm-card);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--adm-ink);
+}
+
+.acab-tools__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--adm-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.acab-tools__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.acab-tools__error {
+  font-size: 12px;
+  color: var(--adm-rust);
+}
+
+.acab-editor {
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--adm-paper);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.acab-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.acab-editor__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  background: var(--adm-card);
+  font-size: 13px;
+}
+
+.acab-editor__results {
+  max-height: 220px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.acab-editor__result {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  background: var(--adm-card);
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  color: inherit;
+}
+
+.acab-editor__result:hover {
+  background: var(--adm-steel-pale);
+}
+
+.acab-empty {
+  padding: 28px 14px;
+  text-align: center;
+  color: var(--adm-muted);
+  font-size: 13px;
+}

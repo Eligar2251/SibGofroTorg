@@ -18,7 +18,19 @@ export interface AdminChangeEvent {
   preview?: Record<string, unknown>;
 }
 
-export type ConnectionStatus = "connecting" | "live" | "offline";
+/**
+ * "live"      — SSE-поток открыт И канал к Postgres поднят: мгновенно
+ *               приходит всё, включая правки мимо приложения.
+ * "partial"   — SSE-поток открыт, но канал к Postgres недоступен.
+ *               ВАЖНО: заявки с сайта всё равно доходят мгновенно —
+ *               сервер рассылает их сам, сразу после вставки
+ *               (publishLocalChange). «Просядут» только изменения,
+ *               сделанные в обход приложения (правка в SQL-редакторе),
+ *               их подхватит страховочный опрос.
+ * "connecting"— поток поднимается.
+ * "offline"   — нет и SSE: работаем только опросом.
+ */
+export type ConnectionStatus = "connecting" | "live" | "partial" | "offline";
 
 type ChangeHandler = (event: AdminChangeEvent) => void;
 type StatusHandler = (status: ConnectionStatus) => void;
@@ -58,13 +70,14 @@ function open() {
     try {
       const data = JSON.parse((event as MessageEvent).data);
       // Сервер честно сообщает, поднялся ли у него канал к Supabase.
-      // "connecting"/"idle" — канал ещё поднимается, ждём события status.
-      // "error" — Realtime недоступен, оставляем polling включённым.
+      // Само SSE-соединение при этом уже установлено (иначе мы бы сюда
+      // не попали), поэтому "error" — это НЕ offline: заявки с сайта
+      // сервер рассылает в этот поток напрямую.
       setStatus(
         data?.status === "connected"
           ? "live"
           : data?.status === "error"
-            ? "offline"
+            ? "partial"
             : "connecting"
       );
     } catch {
@@ -78,7 +91,7 @@ function open() {
   source.addEventListener("status", (event) => {
     try {
       const data = JSON.parse((event as MessageEvent).data);
-      setStatus(data?.status === "connected" ? "live" : "offline");
+      setStatus(data?.status === "connected" ? "live" : "partial");
     } catch {
       /* ignore */
     }

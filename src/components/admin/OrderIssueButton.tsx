@@ -14,9 +14,13 @@ import { Loader2, PackageCheck, RotateCcw } from "lucide-react";
 export function OrderIssueButton({
   orderId,
   status,
+  onChanged,
 }: {
   orderId: string;
   status: string;
+  /** См. OrderStatusUpdater: экраны с собственной загрузкой данных
+   *  обновляются колбэком, а не router.refresh(). */
+  onChanged?: () => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -38,7 +42,8 @@ export function OrderIssueButton({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Не удалось выполнить действие");
-      router.refresh();
+      if (onChanged) onChanged();
+      else router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {

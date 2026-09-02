@@ -260,7 +260,7 @@ const REVISION_PRINT_CSS = `
      её нужно скрыть явно, иначе печаталась именно она. */
   body > *:not(.rev-print-root) { display: none !important; }
   .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content,
-  .admin-main, .NavigationProgress, .admin-modal-overlay { display: none !important; }
+  .admin-main, .admin-modal-overlay { display: none !important; }
 
   .rev-print-root { display: block !important; }
   .rev-print-root, .rev-print-root * { visibility: visible !important; }

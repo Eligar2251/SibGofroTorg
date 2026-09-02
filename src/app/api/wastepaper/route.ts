@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/supabase";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { sendAdminNotifications } from "@/lib/notify";
+import { publishLocalChange } from "@/lib/realtime-hub";
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,6 +34,19 @@ export async function POST(request: NextRequest) {
       status: "new",
     }).select("id").single();
     if (error) throw error;
+
+    // Мгновенное уведомление админки — см. комментарий в /api/orders.
+    publishLocalChange({
+      table: "wastepaper_requests",
+      type: "INSERT",
+      id: data.id,
+      record: {
+        status: "new",
+        name: customerName,
+        phone: customerPhone,
+        created_at: new Date().toISOString(),
+      },
+    });
 
     const message = `<b>НОВАЯ ЗАЯВКА НА МАКУЛАТУРУ</b>
 <b>Клиент:</b> ${customerName}

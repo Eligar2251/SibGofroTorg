@@ -268,10 +268,16 @@ function connect() {
         { event: "*", schema: "public", table },
         (payload: any) => {
           const record = payload.new && Object.keys(payload.new).length ? payload.new : payload.old;
+          const type = payload.eventType || "UPDATE";
+          const id = record?.id != null ? String(record.id) : null;
+          // Если это же изменение мы уже разослали локально (publishLocalChange
+          // сразу после вставки) — не дублируем: иначе колокольчик дёргается
+          // дважды на одну заявку.
+          if (seenRecently(table, type, id)) return;
           emit({
             table,
-            type: payload.eventType || "UPDATE",
-            id: record?.id != null ? String(record.id) : null,
+            type,
+            id,
             at: new Date().toISOString(),
             preview: buildPreview(table, record),
           });
@@ -349,4 +355,83 @@ export function subscribeToChanges(listener: Listener): () => void {
 export function getHubStatus(): { status: string; error: string | null; listeners: number } {
   const hub = getHub();
   return { status: hub.status, error: hub.lastError, listeners: hub.listeners.size };
+}
+
+// =========================================================
+// ЛОКАЛЬНАЯ ПУБЛИКАЦИЯ СОБЫТИЙ
+//
+// ЗАЧЕМ. Доставка уведомления о заявке не должна зависеть от того,
+// настроен ли Supabase Realtime. На практике он молчит по трём причинам,
+// каждой достаточно: сервис Realtime не поднят на self-hosted инстансе;
+// таблицы не добавлены в публикацию supabase_realtime (миграция не
+// применена); WebSocket не проходит через прокси. Во всех этих случаях
+// менеджер узнавал о заявке только из опроса раз в минуту — или не узнавал
+// вовсе.
+//
+// Заявка при этом создаётся НАШИМ ЖЕ сервером (POST /api/orders,
+// /api/wastepaper). Значит, он может сообщить о ней подписчикам SSE
+// напрямую, в том же процессе, за микросекунды — не спрашивая Postgres.
+// Это делает уведомление мгновенным всегда, а Supabase Realtime остаётся
+// вторым каналом (нужен для изменений, сделанных мимо приложения:
+// правка строки руками в SQL-редакторе, другой сервис и т.п.).
+//
+// ДЕДУПЛИКАЦИЯ. Когда Realtime всё-таки настроен, на одну заявку придёт
+// два события: локальное (сразу) и из Postgres (через доли секунды).
+// Помним недавно разосланные пары table+id и гасим повтор.
+//
+// ОГРАНИЧЕНИЕ: события локальны для процесса. При нескольких инстансах
+// Node за балансировщиком админка, открытая на инстансе А, не получит
+// локальное событие от инстанса Б — там сработает канал Supabase Realtime
+// (или страховочный опрос). Для одного VPS, как сейчас, это неважно.
+// =========================================================
+
+/** Сколько помним разосланные события, чтобы погасить дубль из Postgres. */
+const DEDUP_TTL_MS = 15_000;
+
+const dedupRef = globalThis as unknown as {
+  __sgtRealtimeDedup?: Map<string, number>;
+};
+
+function dedupMap(): Map<string, number> {
+  if (!dedupRef.__sgtRealtimeDedup) dedupRef.__sgtRealtimeDedup = new Map();
+  return dedupRef.__sgtRealtimeDedup;
+}
+
+/** true — событие уже рассылали только что, повтор гасим. */
+function seenRecently(table: string, type: string, id: string | null): boolean {
+  if (!id) return false;
+  const map = dedupMap();
+  const now = Date.now();
+  // Чистим протухшее, чтобы map не рос бесконечно.
+  if (map.size > 500) {
+    for (const [k, at] of map) if (now - at > DEDUP_TTL_MS) map.delete(k);
+  }
+  const key = `${table}:${type}:${id}`;
+  const at = map.get(key);
+  if (at && now - at < DEDUP_TTL_MS) return true;
+  map.set(key, now);
+  return false;
+}
+
+/**
+ * Разослать событие подписчикам SSE немедленно, из своего же процесса.
+ * Вызывается сразу после успешной вставки в БД.
+ */
+export function publishLocalChange(input: {
+  table: string;
+  type?: string;
+  id?: string | number | null;
+  record?: Record<string, unknown> | null;
+}): void {
+  const table = input.table;
+  const type = input.type || "INSERT";
+  const id = input.id != null ? String(input.id) : null;
+  if (seenRecently(table, type, id)) return;
+  emit({
+    table,
+    type,
+    id,
+    at: new Date().toISOString(),
+    preview: buildPreview(table, input.record),
+  });
 }

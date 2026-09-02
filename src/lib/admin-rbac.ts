@@ -79,7 +79,10 @@ export function isOperationalSettingKey(key: string): boolean {
   return (
     key === "featured_products_order" ||
     key === "order_products_order" ||
-    /^salary_(?:plan|debt|calendar|schedule)_/.test(key)
+    /^salary_(?:plan|debt|calendar|schedule)_/.test(key) ||
+    // Ширины колонок таблицы зарплат — настройка интерфейса, а не сайта:
+    // менеджеру она нужна, ведь именно он и работает в этой таблице.
+    key === "salary_table_col_widths"
   );
 }
 

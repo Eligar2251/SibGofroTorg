@@ -26,7 +26,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBodyLock } from "@/hooks/use-body-lock";
 import { useRouter } from "next/navigation";
@@ -60,6 +60,7 @@ import {
   type PickerOption,
 } from "@/components/admin/SearchPicker";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { useColumnWidths, type ColumnSpec } from "@/lib/use-column-widths";
 import {
   type Employee,
   type Salary,
@@ -195,6 +196,28 @@ const debtSettingKey = (month: string, employeeId: string) =>
 const calendarSettingKey = (month: string) => `salary_calendar_${month}`;
 const scheduleSettingKey = (month: string, employeeId: string) =>
   `salary_schedule_${month}_${employeeId}`;
+
+/**
+ * Ширины колонок таблицы взаиморасчётов.
+ * Общие для всех месяцев и сотрудников — настройка интерфейса, а не данных,
+ * поэтому в ключе нет месяца: настроил один раз и работает везде.
+ */
+const COL_WIDTHS_SETTING_KEY = "salary_table_col_widths";
+
+/**
+ * Колонки, которые можно тянуть.
+ * min подобран так, чтобы заголовок ещё читался, max — чтобы колонку
+ * нельзя было растянуть на весь экран и «потерять» остальные.
+ * `day` — общая ширина всех 31 колонки дней сразу.
+ */
+const RESIZABLE_COLUMNS: ColumnSpec[] = [
+  { key: "name", def: 152, min: 90, max: 420 },
+  { key: "accrued", def: 84, min: 60, max: 200 },
+  { key: "debt", def: 78, min: 60, max: 200 },
+  { key: "received", def: 88, min: 60, max: 200 },
+  { key: "day", def: 42, min: 26, max: 120 },
+  { key: "rest", def: 110, min: 70, max: 240 },
+];
 
 function initialsOf(name: string): string {
   return name
@@ -1217,6 +1240,53 @@ interface GridRow {
   scheduledPlanByDay: Record<number, number>;
 }
 
+/**
+ * Ручка на правой границе заголовка колонки.
+ *
+ * Тянем — колонка меняет ширину; отпустили — ширина уезжает в БД.
+ * Двойной клик возвращает ширину по умолчанию.
+ * Доступна и с клавиатуры: стрелки ←/→ двигают границу по 8px
+ * (16px с Shift), чтобы настройка не была только «мышиной».
+ */
+function ColResizer({
+  col,
+  active,
+  onStart,
+  onReset,
+  onNudge,
+}: {
+  col: string;
+  active: boolean;
+  onStart: (col: string, event: React.PointerEvent) => void;
+  onReset: (col: string) => void;
+  onNudge: (col: string, deltaPx: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`whsal-col-resizer${active ? " whsal-col-resizer--active" : ""}`}
+      onPointerDown={(e) => onStart(col, e)}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onReset(col);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        const step = (e.shiftKey ? 16 : 8) * (e.key === "ArrowLeft" ? -1 : 1);
+        onNudge(col, step);
+      }}
+      // Заголовок — не кнопка сортировки, но клик по нему всё равно
+      // может что-то делать: гасим всплытие.
+      onClick={(e) => e.stopPropagation()}
+      aria-label="Изменить ширину колонки"
+      title="Потяните, чтобы изменить ширину. Двойной клик — сбросить."
+      tabIndex={-1}
+    />
+  );
+}
+
 export function WarehouseSalaries({
   employees: initialEmployees,
   salaries: initialSalaries,
@@ -1266,6 +1336,45 @@ export function WarehouseSalaries({
   const dragSuppressClickRef = useRef(false);
   const popRef = useRef<HTMLDivElement | null>(null);
   const salaryTableExportRef = useRef<HTMLDivElement | null>(null);
+
+  // ── Ширины колонок: тянутся мышью, хранятся в settings ──
+  // Сохранение идёт тем же путём, что планы и календарь, — через
+  // /api/admin/settings, поэтому настройка переезжает между устройствами.
+  const persistColWidths = useCallback(
+    async (key: string, value: string) => {
+      try {
+        const res = await fetch("/api/admin/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [key]: value }),
+        });
+        if (!res.ok) return false;
+        // Держим локальную копию настроек в актуальном виде, иначе
+        // следующий refreshSettings вернул бы старое значение.
+        setSettingsRaw((prev) => ({ ...prev, [key]: value }));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    []
+  );
+
+  const {
+    setHostRef: setColsHostRef,
+    resizing: colResizing,
+    startResize: startColResize,
+    nudge: nudgeCol,
+    resetColumn: resetCol,
+    resetAll: resetAllCols,
+    isCustomized: colsCustomized,
+  } = useColumnWidths({
+    settingKey: COL_WIDTHS_SETTING_KEY,
+    columns: RESIZABLE_COLUMNS,
+    settingsRaw,
+    onPersist: persistColWidths,
+    cssPrefix: "whsal",
+  });
 
   const monthOptions = useMemo(() => {
     const currentMonth = todayIso().slice(0, 7);
@@ -2313,21 +2422,48 @@ export function WarehouseSalaries({
           </h3>
           <span className="whsal-hint">
             месяц остаётся месяцем выплаты · подпись «за июн» показывает расчётный месяц зарплаты
+            {" · "}
+            границы колонок можно тянуть мышью
           </span>
+          {colsCustomized && (
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={resetAllCols}
+              title="Вернуть всем колонкам ширину по умолчанию"
+              style={{ marginLeft: "auto" }}
+            >
+              <RotateCcw size={13} /> Ширина колонок
+            </button>
+          )}
         </div>
 
         <div style={{ background: "var(--adm-card)" }}>
         <div className="whsal-grid-scroll">
           <div ref={salaryTableExportRef} style={{ width: "max-content", minWidth: "100%", background: "var(--adm-card)" }}>
-          <table className="whsal-table">
+          <table className="whsal-table" ref={setColsHostRef}>
             <thead>
               <tr>
                 <th rowSpan={2} className="whsal-th whsal-th--name">
                   ФИО
+                  <ColResizer
+                    col="name"
+                    active={colResizing === "name"}
+                    onStart={startColResize}
+                    onReset={resetCol}
+                    onNudge={nudgeCol}
+                  />
                 </th>
                 <th rowSpan={2} className="whsal-th whsal-th--accrued">
                   За {monthLabel(activeMonth).split(" ")[0]}
                   <span className="whsal-th-sub">план</span>
+                  <ColResizer
+                    col="accrued"
+                    active={colResizing === "accrued"}
+                    onStart={startColResize}
+                    onReset={resetCol}
+                    onNudge={nudgeCol}
+                  />
                 </th>
                 <th
                   rowSpan={2}
@@ -2336,10 +2472,24 @@ export function WarehouseSalaries({
                 >
                   Долг
                   <span className="whsal-th-sub">± к плану</span>
+                  <ColResizer
+                    col="debt"
+                    active={colResizing === "debt"}
+                    onStart={startColResize}
+                    onReset={resetCol}
+                    onNudge={nudgeCol}
+                  />
                 </th>
                 <th rowSpan={2} className="whsal-th whsal-th--received">
                   Получено
                   <span className="whsal-th-sub">факт</span>
+                  <ColResizer
+                    col="received"
+                    active={colResizing === "received"}
+                    onStart={startColResize}
+                    onReset={resetCol}
+                    onNudge={nudgeCol}
+                  />
                 </th>
                 {Array.from({ length: dayCount }).map((_, i) => {
                   const d = i + 1;
@@ -2356,6 +2506,17 @@ export function WarehouseSalaries({
                       }
                     >
                       {d}
+                      {/* Ручка только на первом дне: тянет сразу все 31
+                          колонку (у них общая ширина --whsal-w-day). */}
+                      {d === 1 && (
+                        <ColResizer
+                          col="day"
+                          active={colResizing === "day"}
+                          onStart={startColResize}
+                          onReset={resetCol}
+                          onNudge={nudgeCol}
+                        />
+                      )}
                     </th>
                   );
                 })}

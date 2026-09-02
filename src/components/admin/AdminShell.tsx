@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   ChevronRight,
   Headset,
+  UserSquare,
   Recycle,
   Building2,
   Printer,
@@ -29,7 +30,6 @@ import {
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
-import { NavigationProgress } from "./NavigationProgress";
 import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
@@ -184,6 +184,12 @@ export function AdminShell({
       icon: <Headset size={18} />,
     },
     {
+      // Кабинет клиента глазами клиента + ручное управление его заявками.
+      href: `/${adminPath}/user-cabinet`,
+      label: "Кабинет клиента",
+      icon: <UserSquare size={18} />,
+    },
+    {
       href: `/${adminPath}/warehouse`,
       label: "Учёт",
       icon: <Boxes size={18} />,
@@ -252,7 +258,6 @@ export function AdminShell({
       className={`admin-shell${hideSidebar ? " admin-shell--sidebar-hidden" : ""}`}
       data-admin="true"
     >
-      <NavigationProgress />
       <aside
         id="admin-sidebar"
         className={`admin-sidebar${hideSidebar ? " admin-sidebar--hidden" : ""}`}
