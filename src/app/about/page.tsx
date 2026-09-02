@@ -7,6 +7,10 @@ import { Check, ShieldCheck, HeartHandshake, History } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import type { Metadata } from "next";
 import { SITE_URL, SITE_NAME } from "@/lib/seo";
+import {
+  getPublicSettingsView,
+  formatRubles,
+} from "@/lib/public-settings";
 
 export const metadata: Metadata = {
   title: "О компании",
@@ -19,7 +23,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function AboutPage() {
+export const revalidate = 120;
+
+export default async function AboutPage() {
+  // Порог бесплатной доставки — из настроек админки (единый для всего сайта)
+  const pub = await getPublicSettingsView();
+  const freeFrom = formatRubles(pub.freeDeliveryThreshold);
   return (
     <div className="about-page">
       {/* Breadcrumb */}
@@ -61,7 +70,7 @@ export default function AboutPage() {
                 {[
                   "Оптовые цены от первой коробки",
                   "Изготовление тары по размерам заказчика",
-                  "Бесплатная доставка при покупке от 15 000 ₽",
+                  `Бесплатная доставка при покупке от ${freeFrom} ₽`,
                 ].map((t) => (
                   <div key={t} className="about-checklist__item">
                     <Check size={16} className="about-checklist__icon" />

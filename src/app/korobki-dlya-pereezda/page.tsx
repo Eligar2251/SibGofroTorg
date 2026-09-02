@@ -10,6 +10,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getProducts } from "@/lib/supabase-queries";
 import { SITE_URL, SITE_NAME, buildBreadcrumbJsonLd } from "@/lib/seo";
+import {
+  getPublicSettingsView,
+  formatRubles,
+} from "@/lib/public-settings";
 import { JsonLd } from "@/components/seo/JsonLd";
 import {
   LandingFaq,
@@ -51,6 +55,9 @@ export default async function MovingBoxesPage() {
   // Коробки для переезда: четырёхклапанные ящики объёмом 25–120 л,
   // отсортированные по объёму. При сбое БД страница остаётся текстовой.
   const all = await getProducts({ limitCount: 2000 }).catch(() => []);
+  // Порог бесплатной доставки, адрес и режим работы — из настроек
+  // админки (единый источник для всех страниц сайта).
+  const pub = await getPublicSettingsView();
   const movingBoxes = all
     .filter((p) => p.isVisible !== false)
     .filter((p) => {
@@ -163,7 +170,7 @@ export default async function MovingBoxesPage() {
               },
               {
                 q: "Есть ли доставка коробок по Новосибирску?",
-                a: "Да, 2–3 дня по городу и пригороду, при заказе от 20 000 ₽ — бесплатно. Возможен самовывоз со склада на ул. Ватутина, 42А, к. 1 в будни с 8:30 до 17:00.",
+                a: `Да, 2–3 дня по городу и пригороду, при заказе от ${formatRubles(pub.freeDeliveryThreshold)} ₽ — бесплатно. Возможен самовывоз со склада: ${pub.address}, ${pub.weekdayLabel.toLowerCase()}.`,
               },
             ]}
           />

@@ -69,10 +69,16 @@ interface SettingsFormProps {
 }
 
 const contactFields = [
-  { key: "phone", label: "Телефон", type: "text" },
-  { key: "address", label: "Адрес", type: "text" },
+  // Подписи уточнены: два разных телефона на сайте (продажи / макулатура),
+  // чтобы админ не путал, что где отображается.
+  { key: "phone", label: "Телефон отдела продаж (шапка, футер, контакты)", type: "text" },
+  { key: "address", label: "Адрес (шапка, футер, контакты, самовывоз в заказе)", type: "text" },
   { key: "email", label: "Email", type: "email" },
-  { key: "working_hours", label: "Режим работы", type: "text" },
+  {
+    key: "working_hours",
+    label: "Режим работы (везде на сайте: «8:30–17:00» или «Пн–Пт 8:30–17:00»)",
+    type: "text",
+  },
 ];
 
 /** Настройки доставки (отображаются в корзине при оформлении) */

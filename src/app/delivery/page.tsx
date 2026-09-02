@@ -4,7 +4,10 @@ import { Truck, MapPin, CreditCard, BadgePercent, Check } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
-import { SITE_HOURS_LABEL } from "@/lib/site-config";
+import {
+  getPublicSettingsView,
+  formatRubles,
+} from "@/lib/public-settings";
 
 export const metadata: Metadata = {
   title: "Доставка и оплата в Новосибирске",
@@ -13,7 +16,13 @@ export const metadata: Metadata = {
   alternates: { canonical: `${SITE_URL}/delivery` },
 };
 
-export default function DeliveryPage() {
+export const revalidate = 120;
+
+export default async function DeliveryPage() {
+  // Порог/цена доставки, адрес и режим работы склада — из настроек
+  // админки («Настройки → Доставка/Контакты»), чтобы на странице
+  // всегда были те же цифры, что в корзине и в подвале сайта.
+  const pub = await getPublicSettingsView();
   return (
     <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: "64px" }}>
       
@@ -42,7 +51,7 @@ export default function DeliveryPage() {
             </div>
             <h2 style={{ fontSize: "18px", fontWeight: "bold" }}>Доставка по Новосибирску</h2>
             <p style={{ color: "var(--ink-light)", fontSize: "14px", lineHeight: 1.5 }}>
-              При заказе на сумму <strong>от 15 000 ₽</strong> доставка по Новосибирску и ближайшему пригороду осуществляется <strong>бесплатно</strong>.
+              При заказе на сумму <strong>от {formatRubles(pub.freeDeliveryThreshold)} ₽</strong> доставка по Новосибирску и ближайшему пригороду осуществляется <strong>бесплатно</strong>. Меньшую сумму привезём за {formatRubles(pub.deliveryPrice)} ₽.
             </p>
             <ul style={{ display: "flex", flexDirection: "column", gap: "8px", listStyle: "none" }}>
               <li style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: "var(--ink-light)" }}>
@@ -68,10 +77,10 @@ export default function DeliveryPage() {
             </p>
             <ul style={{ display: "flex", flexDirection: "column", gap: "8px", listStyle: "none" }}>
               <li style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: "var(--ink-light)" }}>
-                <Check size={14} style={{ color: "var(--ink)" }} /> Адрес: г. Новосибирск, ул. Ватутина, 42а корп. 1
+                <Check size={14} style={{ color: "var(--ink)" }} /> Адрес: {pub.address}
               </li>
               <li style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: "var(--ink-light)" }}>
-                <Check size={14} style={{ color: "var(--ink)" }} /> {SITE_HOURS_LABEL}
+                <Check size={14} style={{ color: "var(--ink)" }} /> {pub.hoursLabel}
               </li>
               <li style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: "var(--ink-light)" }}>
                 <Check size={14} style={{ color: "var(--ink)" }} /> Без платы за сборку и подготовку заказа

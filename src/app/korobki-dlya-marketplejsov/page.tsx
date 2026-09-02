@@ -9,6 +9,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getProducts } from "@/lib/supabase-queries";
+import { getPublicSettingsView } from "@/lib/public-settings";
 import { productHasAnyTag } from "@/lib/home-tiles";
 import { isProductAvailable } from "@/lib/stock-availability";
 import { SITE_URL, SITE_NAME, buildBreadcrumbJsonLd } from "@/lib/seo";
@@ -57,6 +58,8 @@ export default async function MarketplaceBoxesPage() {
   // Списки объединяются без дублей — блок не остаётся с одной
   // карточкой, даже если метка проставлена всего у одного товара.
   const all = await getProducts({ limitCount: 2000 }).catch(() => []);
+  // Телефон отдела продаж — из настроек админки, не хардкодим
+  const pub = await getPublicSettingsView();
   const visible = all.filter((p) => p.isVisible !== false);
 
   const byTag = visible.filter((p) =>
@@ -159,7 +162,7 @@ export default async function MarketplaceBoxesPage() {
               },
               {
                 q: "Изготавливаете коробки под размер моего товара?",
-                a: `Да, производство коробок по индивидуальным размерам — от 1000 м² (например, 1000 коробок 400×300×300). Сроки и расчёт — по телефону ${"+7 (383) 291-08-20"} или через форму на сайте.`,
+                a: `Да, производство коробок по индивидуальным размерам — от 1000 м² (например, 1000 коробок 400×300×300). Сроки и расчёт — по телефону отдела продаж ${pub.phone} или через форму на сайте.`,
               },
             ]}
           />

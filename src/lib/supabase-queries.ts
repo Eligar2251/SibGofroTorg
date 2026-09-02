@@ -16,6 +16,7 @@ import {
   extractQueryDims,
   dimensionScore,
 } from "./dimension-search";
+import { isProductAvailable } from "./stock-availability";
 import {
   WASTEPAPER_RATE_IDS,
   WASTEPAPER_RATE_DEFAULTS,
@@ -675,7 +676,14 @@ function featuredRankFor(product: FirestoreProduct, orderMap: Map<string, number
   return Number.MAX_SAFE_INTEGER;
 }
 
+// Товары в наличии всегда выше отсутствующих; настраиваемый в админке
+// порядок применяется в первую очередь к товарам в наличии (требование
+// от 2026-09: «нет в наличии — выводится ниже тех, что есть»).
 function defaultProductCompare(a: FirestoreProduct, b: FirestoreProduct, orderMap: Map<string, number>): number {
+  const availA = isProductAvailable(a);
+  const availB = isProductAvailable(b);
+  if (availA !== availB) return availA ? -1 : 1;
+
   if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
 
   const rankA = featuredRankFor(a, orderMap);

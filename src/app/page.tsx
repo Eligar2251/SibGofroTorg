@@ -56,18 +56,7 @@ import { SITE_URL, SITE_NAME, DEFAULT_DESCRIPTION } from "@/lib/seo";
 import { HomeSeoSection } from "@/components/seo/HomeSeoSection";
 import "./seo-blocks.css";
 
-/** Превращает значение working_hours из БД в SITE_HOURS_LABEL-формат */
-function buildHoursLabel(workingHours: string, weekdayFallback: string): string {
-  if (workingHours && /пн[‐-―‑–—]?пт/i.test(workingHours)) {
-    return /сб.*вс|выходн/i.test(workingHours)
-      ? workingHours
-      : `${workingHours} · Сб, Вс — выходные`;
-  }
-  if (workingHours) {
-    return `Пн–Пт ${workingHours} · Сб, Вс — выходные`;
-  }
-  return `Пн–Пт ${weekdayFallback} · Сб, Вс — выходные`;
-}
+import { buildHoursLabel } from "@/lib/hours-label";
 
 export const metadata: Metadata = {
   // absolute — фиксирует title главной как есть, без суффикса-шаблона
