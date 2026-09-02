@@ -5897,40 +5897,61 @@ body:has(.admin-modal-overlay) {
   vertical-align: middle;
 }
 
-/* ── Липкие колонки: ФИО / За месяц / Получено / Остаток ── */
+/* ── Липкие колонки: ФИО / За месяц / Долг / Получено / Остаток ──
+   Ширины и смещения раньше были прописаны числами (152/84/78/88 и
+   left: 152px / 236px / 314px). Теперь колонки тянутся мышью, поэтому
+   и то и другое считается из CSS-переменных: смещение каждой липкой
+   колонки — это сумма ширин всех, что стоят слева от неё. Значения
+   переменных задаёт JS (см. use-column-widths.ts), здесь только
+   значения по умолчанию — на случай, если ширины ещё не загрузились. */
+.whsal-table {
+  --whsal-w-name: 152px;
+  --whsal-w-accrued: 84px;
+  --whsal-w-debt: 78px;
+  --whsal-w-received: 88px;
+  --whsal-w-rest: 110px;
+  --whsal-w-day: 42px;
+}
+
 .whsal-th--name,
 .whsal-td--name {
   position: sticky;
   left: 0;
-  min-width: 152px;
-  max-width: 152px;
+  width: var(--whsal-w-name);
+  min-width: var(--whsal-w-name);
+  max-width: var(--whsal-w-name);
   z-index: 4;
 }
 
 .whsal-th--accrued,
 .whsal-td--accrued {
   position: sticky;
-  left: 152px;
-  min-width: 84px;
-  max-width: 84px;
+  left: var(--whsal-w-name);
+  width: var(--whsal-w-accrued);
+  min-width: var(--whsal-w-accrued);
+  max-width: var(--whsal-w-accrued);
   z-index: 4;
 }
 
 .whsal-th--debt,
 .whsal-td--debt {
   position: sticky;
-  left: 236px;
-  min-width: 78px;
-  max-width: 78px;
+  left: calc(var(--whsal-w-name) + var(--whsal-w-accrued));
+  width: var(--whsal-w-debt);
+  min-width: var(--whsal-w-debt);
+  max-width: var(--whsal-w-debt);
   z-index: 4;
 }
 
 .whsal-th--received,
 .whsal-td--received {
   position: sticky;
-  left: 314px;
-  min-width: 88px;
-  max-width: 88px;
+  left: calc(
+    var(--whsal-w-name) + var(--whsal-w-accrued) + var(--whsal-w-debt)
+  );
+  width: var(--whsal-w-received);
+  min-width: var(--whsal-w-received);
+  max-width: var(--whsal-w-received);
   z-index: 4;
   box-shadow: 6px 0 8px -6px rgba(26, 26, 24, 0.22);
 }
@@ -5939,10 +5960,78 @@ body:has(.admin-modal-overlay) {
 .whsal-td--rest {
   position: sticky;
   right: 0;
-  min-width: 110px;
-  max-width: 110px;
+  width: var(--whsal-w-rest);
+  min-width: var(--whsal-w-rest);
+  max-width: var(--whsal-w-rest);
   z-index: 4;
   box-shadow: -6px 0 8px -6px rgba(26, 26, 24, 0.22);
+}
+
+/* Колонки дней — одна общая ширина на все 31 сразу: тянуть каждый
+   день по отдельности бессмысленно, а вот сузить их все, чтобы месяц
+   влез на экран, — самый частый сценарий. */
+.whsal-th--day,
+.whsal-th--dow,
+.whsal-day {
+  width: var(--whsal-w-day);
+  min-width: var(--whsal-w-day);
+  max-width: var(--whsal-w-day);
+}
+
+/* ── Ручка перетаскивания на границе заголовка ──
+   Лежит поверх правой кромки th. Отдельный position ему не нужен:
+   у .whsal-th уже position: sticky, а это тоже позиционированный
+   элемент — значит он и служит точкой отсчёта для absolute. */
+.whsal-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 8;
+  width: 7px;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: col-resize;
+  /* Палец на планшете попадает мимо 7px, поэтому не даём браузеру
+     перехватывать жест прокруткой — тянем колонку. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.whsal-col-resizer::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.whsal-col-resizer:hover::after,
+.whsal-col-resizer:focus-visible::after,
+.whsal-col-resizer--active::after {
+  background: var(--adm-kraft);
+}
+
+.whsal-col-resizer--active::after {
+  top: 0;
+  bottom: 0;
+}
+
+/* Пока тянем — курсор col-resize на всей странице и никакого
+   случайного выделения текста в таблице. */
+body.is-col-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.is-col-resizing * {
+  cursor: col-resize !important;
 }
 
 .whsal-th--name,
@@ -5999,6 +6088,18 @@ body:has(.admin-modal-overlay) {
   left: auto !important;
   right: auto !important;
   box-shadow: none !important;
+}
+
+/* Ручки перетаскивания — элемент интерфейса, в выгруженную картинку
+   и в печать они попадать не должны. */
+.whsal-export-mode .whsal-col-resizer {
+  display: none !important;
+}
+
+@media print {
+  .whsal-col-resizer {
+    display: none !important;
+  }
 }
 
 /* ── Ячейка ФИО ── */
@@ -6127,9 +6228,8 @@ body:has(.admin-modal-overlay) {
 
 /* ── Ячейки дней ── */
 .whsal-day {
-  width: 42px;
-  min-width: 42px;
-  max-width: 42px;
+  /* Ширина берётся из --whsal-w-day (колонка тянется мышью) — см. блок
+     «Липкие колонки» выше. Здесь только то, что от ширины не зависит. */
   height: 48px;
   text-align: center;
   cursor: pointer;
@@ -7113,29 +7213,57 @@ body:has(.admin-modal-overlay) {
     position: static;
     left: auto;
     right: auto;
-    min-width: 0;
-    max-width: none;
     box-shadow: none;
     z-index: auto;
   }
 
+  /* Ширины НЕ сбрасываем в фиксированные числа: колонки тянутся и на
+     телефоне (ручка ловит pointer-события пальцем), и выбранная ширина
+     должна сохраняться. Берём max() от пользовательской и минимально
+     читаемой — так узкий экран не схлопнет ФИО в столбик букв. */
   .whsal-th--name,
   .whsal-td--name {
-    min-width: 132px;
+    width: max(var(--whsal-w-name), 132px);
+    min-width: max(var(--whsal-w-name), 132px);
+    max-width: max(var(--whsal-w-name), 132px);
   }
 
   .whsal-th--accrued,
-  .whsal-td--accrued,
+  .whsal-td--accrued {
+    width: max(var(--whsal-w-accrued), 80px);
+    min-width: max(var(--whsal-w-accrued), 80px);
+    max-width: max(var(--whsal-w-accrued), 80px);
+  }
+
   .whsal-th--debt,
-  .whsal-td--debt,
+  .whsal-td--debt {
+    width: max(var(--whsal-w-debt), 80px);
+    min-width: max(var(--whsal-w-debt), 80px);
+    max-width: max(var(--whsal-w-debt), 80px);
+  }
+
   .whsal-th--received,
   .whsal-td--received {
-    min-width: 80px;
+    width: max(var(--whsal-w-received), 80px);
+    min-width: max(var(--whsal-w-received), 80px);
+    max-width: max(var(--whsal-w-received), 80px);
   }
 
   .whsal-th--rest,
   .whsal-td--rest {
-    min-width: 88px;
+    width: max(var(--whsal-w-rest), 88px);
+    min-width: max(var(--whsal-w-rest), 88px);
+    max-width: max(var(--whsal-w-rest), 88px);
+  }
+
+  /* На узком экране ручка шире — попасть пальцем в 7px нереально. */
+  .whsal-col-resizer {
+    right: -6px;
+    width: 14px;
+  }
+
+  .whsal-col-resizer::after {
+    background: var(--adm-border-mid);
   }
 
   /* Без sticky ячейки head/thead теряют свой фон поверх
