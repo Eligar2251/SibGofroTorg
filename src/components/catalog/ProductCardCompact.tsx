@@ -195,8 +195,12 @@ export function ProductCardCompact({
               alt={product.name}
               fill
               sizes="(max-width: 640px) 44vw, (max-width: 1100px) 30vw, 260px"
-              priority={!!highlight}
+              /* Раньше здесь стоял priority={highlight}: Next добавлял
+                 <link rel="preload"> на первую карточку КАЖДОЙ секции
+                 (главная, каталог, подборки) — браузер ругался
+                 "preloaded but not used". Достаточно eager-загрузки. */
               loading={highlight ? "eager" : "lazy"}
+              fetchPriority={highlight ? "high" : "auto"}
               /* Фото целиком в плитке: без обрезки кромок (contain).
                  Отступ от краёв задаётся в CSS (.pcc__img img). */
               style={{ objectFit: "contain" }}

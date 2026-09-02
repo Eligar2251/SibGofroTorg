@@ -44,6 +44,14 @@
     --adm-mobile-bar-height: 56px;
     --adm-mobile-touch: 44px;
     --adm-mobile-gutter: clamp(10px, 3.2vw, 16px);
+    /* Кружок действия в шапке (уведомления/заявки/планы) и бургер.
+       Размер и шаг вынесены в переменные: раньше отступы (56/106/156px)
+       и padding-right заголовка (200px) были прописаны числами и
+       расходились между брейкпоинтами — заголовок налезал на кнопки. */
+    --adm-mobile-hbtn: 40px;
+    --adm-mobile-hgap: 6px;
+    /* 4 кнопки (планы · заявки · уведомления · бургер) + зазоры. */
+    --adm-mobile-actions: calc(4 * var(--adm-mobile-hbtn) + 5 * var(--adm-mobile-hgap));
   }
 
   html:has([data-admin="true"]),
@@ -114,8 +122,8 @@
     width: 100%;
     max-width: none;
     min-width: 0;
-    /* Место под 3 кружка + бургер (~200px). */
-    padding-right: 200px;
+    /* Место под 3 кружка + бургер — считается из переменных. */
+    padding-right: calc(var(--adm-mobile-actions) + var(--adm-mobile-safe-right));
     overflow: hidden;
     color: var(--adm-sidebar-text-active);
     font-size: 13px;
@@ -128,8 +136,8 @@
 
   [data-admin="true"] .admin-mobile-bar__menu-toggle {
     position: absolute;
-    top: calc(var(--adm-mobile-safe-top) + 6px);
-    right: calc(var(--adm-mobile-safe-right) + 6px);
+    top: calc(var(--adm-mobile-safe-top) + (var(--adm-mobile-bar-height) - var(--adm-mobile-hbtn)) / 2);
+    right: calc(var(--adm-mobile-safe-right) + var(--adm-mobile-hgap));
     z-index: 3;
     display: inline-grid;
     width: var(--adm-mobile-touch);
@@ -299,20 +307,20 @@
   [data-admin="true"] .admin-notify,
   [data-admin="true"] .admin-requests-shortcut,
   [data-admin="true"] .admin-plans-shortcut {
-    top: calc(var(--adm-mobile-safe-top) + 6px);
+    top: calc(var(--adm-mobile-safe-top) + (var(--adm-mobile-bar-height) - var(--adm-mobile-hbtn)) / 2);
     z-index: 930;
   }
 
   [data-admin="true"] .admin-notify {
-    right: calc(var(--adm-mobile-safe-right) + 56px);
+    right: calc(var(--adm-mobile-safe-right) + var(--adm-mobile-hbtn) + 2 * var(--adm-mobile-hgap));
   }
 
   [data-admin="true"] .admin-requests-shortcut {
-    right: calc(var(--adm-mobile-safe-right) + 106px);
+    right: calc(var(--adm-mobile-safe-right) + 2 * var(--adm-mobile-hbtn) + 3 * var(--adm-mobile-hgap));
   }
 
   [data-admin="true"] .admin-plans-shortcut {
-    right: calc(var(--adm-mobile-safe-right) + 156px);
+    right: calc(var(--adm-mobile-safe-right) + 3 * var(--adm-mobile-hbtn) + 4 * var(--adm-mobile-hgap));
   }
 
   [data-admin="true"] :is(
@@ -321,9 +329,11 @@
     .admin-plans-shortcut__btn,
     .admin-mobile-bar__menu-toggle
   ) {
-    width: var(--adm-mobile-touch);
-    height: var(--adm-mobile-touch);
-    min-height: var(--adm-mobile-touch);
+    width: var(--adm-mobile-hbtn);
+    height: var(--adm-mobile-hbtn);
+    min-width: var(--adm-mobile-hbtn);
+    min-height: var(--adm-mobile-hbtn);
+    padding: 0;
     box-shadow: none;
   }
 
@@ -432,7 +442,6 @@
     .scan-page__btn,
     .wh-direction__btn,
     .wh-linkmode__btn,
-    .cashc-seg__btn,
     .whsal-seg__btn,
     .ds-btn,
     .saz-btn
@@ -468,7 +477,7 @@
   }
 
   [data-admin="true"] :is(.admin-input, .admin-select, .admin-textarea),
-  [data-admin="true"] :is(.ds-field input, .ds-field select, .saz-field input, .saz-field select, .saz-input),
+  [data-admin="true"] :is(.saz-field input, .saz-field select, .saz-input),
   /* Сканер штрих/QR: поле 15px — iOS зумил экран при фокусе */
   .scan-page__input {
     width: 100%;
@@ -519,7 +528,7 @@
   }
 
   /* Действия — предсказуемая мобильная сетка. */
-  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .popup-admin-actions, .cashc-actions) {
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .cashc-actions) {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
@@ -527,14 +536,16 @@
     gap: 8px;
   }
 
-  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .popup-admin-actions, .cashc-actions) > * {
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .cashc-actions) > * {
     width: 100%;
     min-width: 0;
     margin: 0;
   }
 
-  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .popup-admin-actions, .cashc-actions) .admin-btn {
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .cashc-actions) .admin-btn {
     width: 100%;
+    min-width: 0;
+    justify-content: center;
   }
 
   [data-admin="true"] .admin-actions {
@@ -585,6 +596,8 @@
 
   [data-admin="true"] .admin-tabs-with-actions .admin-page-head__actions {
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
   }
 
   /* ── Формы и сетки ── */
@@ -598,11 +611,6 @@
     .cashc-form-head,
     .cashc-ledgers,
     .purchase-create,
-    .purchase-plan__actions,
-    .supply-planning__workspace,
-    .supply-plan-editor__meta,
-    .supply-plan-add__draft,
-    .popup-admin-layout,
     .wh-report-constructor,
     .wh-report-fields,
     .rent-balances,
@@ -630,12 +638,12 @@
     gap: 8px;
   }
 
-  [data-admin="true"] :is(.dash-report-grid, .dash-main-grid, .admin-dash-grid, .dash-account-grid, .dash-finance-totals, .dash-finance-filter, .wh-report-summary, .cashc-facts, .supply-planning__stats) {
+  [data-admin="true"] :is(.dash-main-grid, .admin-dash-grid, .dash-account-grid, .dash-finance-totals, .dash-finance-filter, .wh-report-summary, .cashc-facts) {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
   /* ── Таблицы: только внутренний scroll, страница не растягивается ── */
-  [data-admin="true"] :is(.admin-table-wrap, .admin-table-scroll, .wh-report-table-wrap, .ds-table-wrapper, .saz-table-wrap) {
+  [data-admin="true"] :is(.admin-table-wrap, .wh-report-table-wrap, .ds-table-wrapper, .saz-table-wrap) {
     width: 100%;
     max-width: 100%;
     margin-inline: 0;
@@ -890,11 +898,7 @@
   }
 
   /* Контрагенты, попапы, пользователи, аренда */
-  [data-admin="true"] :is(.cp-grid, .popup-admin-layout, .rent-balances, .rent-two-col) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  [data-admin="true"] .cp-card__info {
+  [data-admin="true"] :is(.rent-balances, .rent-two-col) {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -947,58 +951,18 @@
   }
 
   /* Поставки и закупки */
-  [data-admin="true"] .supply-planning__hero,
   [data-admin="true"] .purchase-planning__hero,
-  [data-admin="true"] .supply-plan-editor__head,
   [data-admin="true"] .supply-planning-link-card {
     align-items: stretch;
     flex-direction: column;
   }
 
-  [data-admin="true"] .supply-planning__plan-list {
-    grid-template-columns: minmax(0, 1fr);
-    max-height: none;
-  }
-
-  [data-admin="true"] .supply-planning__sidebar {
-    position: static;
-  }
-
-  [data-admin="true"] :is(.supply-planning__stats, .purchase-create, .purchase-plan__actions) {
+  [data-admin="true"] :is(.purchase-create) {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
   [data-admin="true"] .purchase-plan {
     padding: 12px;
-  }
-
-  [data-admin="true"] .purchase-plan__head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-  }
-
-  [data-admin="true"] .purchase-plan__product {
-    grid-column: 1 / -1;
-  }
-
-  [data-admin="true"] .purchase-plan__amount {
-    text-align: left;
-  }
-
-  [data-admin="true"] .purchase-plan__ozon {
-    grid-template-columns: 88px minmax(0, 1fr);
-    gap: 10px;
-  }
-
-  [data-admin="true"] .purchase-plan__ozon-media {
-    width: 88px;
-    height: 88px;
-  }
-
-  [data-admin="true"] .purchase-plan__ozon > .admin-btn {
-    grid-column: 1 / -1;
-    width: 100%;
   }
 
   /* Отчёты */
@@ -1121,11 +1085,11 @@
     [data-admin="true"] :is(.admin-card, .admin-stat, .admin-btn, .admin-sidebar__link):hover {
       transform: none !important;
     }
-  }
+}
 }
 
 @media (max-width: 480px) {
-  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .popup-admin-actions, .cashc-actions),
+  [data-admin="true"] :is(.admin-page-head__actions, .admin-form-actions, .admin-form-actions__left, .admin-modal__actions, .wh-form-footer, .cashc-actions),
   [data-admin="true"] :is(.bank-pay__side .wh-pay-controls, .wh-report-actions, .ds-modal-actions),
   body:has(.admin-shell) > .admin-modal-overlay .admin-modal__actions,
   [data-admin="true"] .bulk-steps,
@@ -1146,24 +1110,20 @@
     padding-inline: 3px;
     font-size: 9px;
   }
-
-  [data-admin="true"] .purchase-plan__ozon {
-    grid-template-columns: 72px minmax(0, 1fr);
-  }
-
-  [data-admin="true"] .purchase-plan__ozon-media {
-    width: 72px;
-    height: 72px;
-  }
 }
 
 @media (max-width: 340px) {
+  :root {
+    /* Кнопки чуть меньше — заголовку остаётся место под названием раздела. */
+    --adm-mobile-hbtn: 34px;
+    --adm-mobile-hgap: 4px;
+  }
+
   [data-admin="true"] .admin-mobile-bar__nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   [data-admin="true"] .admin-mobile-bar__title {
-    padding-right: 150px;
     font-size: 12px;
   }
 }
@@ -1181,15 +1141,32 @@
    ========================================================= */
 
 @media (max-width: 768px) {
-
   /* ── Глобальные ограничения — ничего не вылезает за экран ──
      Табличные элементы исключены: таблица должна иметь право быть шире
      экрана и прокручиваться внутри .admin-table-wrap, иначе колонки
      сжимаются и названия рвутся по буквам в вертикальную строку. */
   [data-admin="true"] *:not(table):not(thead):not(tbody):not(tfoot):not(tr):not(th):not(td):not(col):not(colgroup) {
     max-width: 100%;
-    word-break: break-word;
+    /* break-word вместо anywhere: anywhere разрывал слова посреди буквы
+       даже когда строка помещалась целиком — из-за этого подписи кнопок
+       и заголовки «рассыпались» на 2–3 строки. Рвём только те слова,
+       которые реально не влезают. */
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
+  /* Длинные неразрывные токены (ссылки, e-mail, номера счетов, ИНН)
+     всё-таки рвём в любом месте — иначе они распирают карточку. */
+  [data-admin="true"] :is(a[href^="mailto:"], a[href^="http"], code, .admin-mono, .admin-order__meta-val) {
     overflow-wrap: anywhere;
+  }
+
+  /* Управляющие элементы не переносим по слогам: либо влезает
+     в одну строку, либо аккуратный перенос по пробелу. */
+  [data-admin="true"] :is(.admin-btn, .admin-filter, .admin-status__btn, .admin-badge, .admin-tab) {
+    word-break: keep-all;
+    overflow-wrap: normal;
+    hyphens: none;
   }
 
   [data-admin="true"] :is(table, thead, tbody, tfoot, tr, th, td) {
@@ -1484,7 +1461,6 @@
     min-width: 0 !important;
   }
 
-  [data-admin="true"] .bank-toolbar__sort,
   [data-admin="true"] .bank-toolbar .admin-btn--navy {
     width: 100% !important;
     justify-content: center !important;
@@ -1887,10 +1863,13 @@
     justify-content: center !important;
   }
 
-  /* ── ПОРЯДОК ДЕЙСТВИЙ: один на строку на узком экране ── */
+  /* ── ПОРЯДОК ДЕЙСТВИЙ ──
+     Не «строго один в строку»: короткие кнопки («Обновить», «Экспорт»)
+     вставали каждая на свою строку и шапка занимала пол-экрана.
+     auto-fit кладёт по две в ряд, если они помещаются. */
   [data-admin="true"] .admin-page-head__actions {
     display: grid !important;
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
     gap: 8px !important;
   }
 
@@ -2019,20 +1998,17 @@
   [data-admin="true"] .settings-messenger-grid,
   [data-admin="true"] .cashc-form-head,
   [data-admin="true"] .cashc-ledgers,
-  [data-admin="true"] .dash-report-grid,
   [data-admin="true"] .dash-main-grid,
   [data-admin="true"] .admin-dash-grid,
   [data-admin="true"] .dash-finance-totals,
   [data-admin="true"] .dash-finance-filter,
   [data-admin="true"] .wh-report-summary,
   [data-admin="true"] .cashc-facts,
-  [data-admin="true"] .supply-planning__stats,
   [data-admin="true"] .payment-details__facts,
   [data-admin="true"] .payment-details__meta {
     grid-template-columns: 1fr !important;
   }
 
-  [data-admin="true"] .dash-report-grid,
   [data-admin="true"] .dash-main-grid {
     grid-template-columns: 1fr !important;
     gap: 12px !important;
@@ -2046,15 +2022,6 @@
 
   [data-admin="true"] .dash-finance-filter__search {
     grid-column: auto !important;
-  }
-
-  [data-admin="true"] .dash-finance-filter__actions {
-    justify-content: stretch !important;
-  }
-
-  [data-admin="true"] .dash-finance-filter__actions .admin-btn {
-    flex: 1 !important;
-    justify-content: center !important;
   }
 
   /* ── Дашборд-секции ── */
@@ -2281,9 +2248,6 @@
   }
 
   /* ── Контрагенты ── */
-  [data-admin="true"] .cp-grid {
-    grid-template-columns: 1fr !important;
-  }
 
   [data-admin="true"] .cp-toolbar {
     flex-direction: column !important;
@@ -2292,10 +2256,6 @@
 
   [data-admin="true"] .cp-toolbar > .admin-select {
     width: 100% !important;
-  }
-
-  [data-admin="true"] .cp-card__info {
-    grid-template-columns: 1fr !important;
   }
 
   /* ── Массовый редактор ── */
@@ -2337,59 +2297,9 @@
   }
 
   /* ── Поставки и закупки ── */
-  [data-admin="true"] .supply-planning__workspace {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .supply-planning__sidebar {
-    position: static !important;
-  }
-
-  [data-admin="true"] .supply-planning__hero {
-    align-items: stretch !important;
-    flex-direction: column !important;
-    padding: 14px !important;
-  }
-
-  [data-admin="true"] .supply-planning__actions {
-    justify-content: stretch !important;
-  }
-
-  [data-admin="true"] .supply-planning__actions .admin-btn {
-    flex: 1 !important;
-    justify-content: center !important;
-  }
-
-  [data-admin="true"] .supply-plan-editor__head {
-    align-items: stretch !important;
-    flex-direction: column !important;
-    gap: 10px !important;
-    padding: 12px !important;
-  }
-
-  [data-admin="true"] .supply-plan-editor__meta {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .supply-plan-add__draft {
-    grid-template-columns: 1fr !important;
-  }
 
   [data-admin="true"] .purchase-create {
     grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .purchase-plan__actions {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .purchase-plan__ozon {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .purchase-plan__ozon-media {
-    width: 72px !important;
-    height: 72px !important;
   }
 
   [data-admin="true"] .purchase-planning__hero {
@@ -2416,13 +2326,6 @@
   }
 
   /* ── Попапы ── */
-  [data-admin="true"] .popup-admin-layout {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .popup-admin-preview {
-    position: static !important;
-  }
 
   [data-admin="true"] .popup-admin-intro {
     align-items: stretch !important;
@@ -2833,7 +2736,6 @@
   }
 
   /* ── Типографика текста ── */
-  [data-admin="true"] .admin-desc,
   [data-admin="true"] .admin-hint,
   [data-admin="true"] .wh-form-hint,
   [data-admin="true"] .wh-form-error {
@@ -2911,14 +2813,6 @@
   }
 
   /* ── Выбор заказа в платеже ── */
-  [data-admin="true"] .wh-deal-chip {
-    width: 100% !important;
-    padding: 7px 10px !important;
-  }
-
-  [data-admin="true"] .wh-deal-chip__title {
-    max-width: 100% !important;
-  }
 
   /* ── Маржинальный блок ── */
   [data-admin="true"] .admin-order__margin-box {
@@ -2933,8 +2827,7 @@
 
   /* ── Многострочные скроллы таблиц ── */
   [data-admin="true"] .admin-table-wrap,
-  [data-admin="true"] .wh-report-table-wrap,
-  [data-admin="true"] .wh-cc-detail-grid {
+  [data-admin="true"] .wh-report-table-wrap {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch !important;
     overscroll-behavior-x: contain !important;
@@ -2945,7 +2838,6 @@
    @media (max-width: 480px) — Extra small phones
    ═══════════════════════════════════════════════════════ */
 @media (max-width: 480px) {
-
   [data-admin="true"] .admin-main {
     padding-inline: 8px !important;
   }
@@ -3029,7 +2921,6 @@
     flex: 1 1 100% !important;
   }
 
-  [data-admin="true"] .bank-toolbar__sort,
   [data-admin="true"] .bank-toolbar .admin-btn--navy {
     width: 100% !important;
     justify-content: center !important;
@@ -3069,7 +2960,6 @@
     grid-row: 1 !important;
   }
 
-  [data-admin="true"] .dash-report-grid,
   [data-admin="true"] .dash-main-grid {
     grid-template-columns: 1fr !important;
   }
@@ -3083,29 +2973,8 @@
     margin-inline: 0 !important;
   }
 
-  [data-admin="true"] .supply-planning__workspace {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .supply-plan-add__draft {
-    grid-template-columns: 1fr !important;
-  }
-
   [data-admin="true"] .purchase-create {
     grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .purchase-plan__actions {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .purchase-plan__ozon {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .purchase-plan__ozon-media {
-    width: 60px !important;
-    height: 60px !important;
   }
 
   [data-admin="true"] .admin-mobile-bar__nav {
@@ -3146,10 +3015,6 @@
   }
 
   [data-admin="true"] .cashc-form-head {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-admin="true"] .cp-card__info {
     grid-template-columns: 1fr !important;
   }
 
@@ -3265,7 +3130,6 @@
    @media (max-width: 340px) — Tiny phones
    ═══════════════════════════════════════════════════════ */
 @media (max-width: 340px) {
-
   [data-admin="true"] .admin-mobile-bar__nav {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
@@ -3462,7 +3326,6 @@
   }
 }
 
-
 /* Учёт: заказы и поставки на телефоне */
 @media (max-width: 768px) {
   [data-admin="true"] .receipt-head {
@@ -3486,13 +3349,6 @@
     margin-left: auto;
   }
   [data-admin="true"] .admin-order__margin-box > div[style*="grid"] {
-    grid-template-columns: 1fr !important;
-  }
-  [data-admin="true"] .supply-planning__workspace {
-    grid-template-columns: 1fr !important;
-  }
-  [data-admin="true"] .supply-plan-add--simple .supply-plan-add__draft,
-  [data-admin="true"] .supply-plan-item--simple .supply-plan-item__head {
     grid-template-columns: 1fr !important;
   }
 }

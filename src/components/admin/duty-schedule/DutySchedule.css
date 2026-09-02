@@ -48,23 +48,7 @@
   font-size: 11px;
   line-height: 1.25;
 }
-.ds-db-status--saved {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-  color: #15803d;
-}
-.ds-db-status--saving,
-.ds-db-status--loading {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-.ds-db-status--error {
-  border-color: #fecaca;
-  border-radius: 7px;
-  background: #fef2f2;
-  color: #b91c1c;
-}
+
 .ds-db-status span {
   overflow-wrap: anywhere;
 }
@@ -388,27 +372,6 @@
   font-weight: 600;
   color: #b45309;
 }
-.ds-payroll-year {
-  width: 70px;
-  padding: 5px 6px;
-  border: 1px solid #cbd2d9;
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.ds-payroll-link-btn {
-  background: none;
-  border: 1px dashed #94a3b8;
-  color: #2563eb;
-  padding: 3px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.ds-payroll-link-btn:hover {
-  background: #eff6ff;
-  border-color: #2563eb;
-}
 
 .ds-payroll-status {
   display: inline-flex;
@@ -472,100 +435,6 @@
   font-weight: 400;
   text-transform: none;
   letter-spacing: normal;
-}
-
-.ds-payroll-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.ds-summary-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 10px 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ds-summary-card--ok {
-  border-color: #86efac;
-  background: #f0fdf4;
-}
-.ds-summary-card--warn {
-  border-color: #fde047;
-  background: #fefce8;
-}
-
-.ds-summary-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-.ds-summary-card-name {
-  font-weight: 700;
-  font-size: 13px;
-  color: #1e293b;
-}
-.ds-summary-card-hours {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 600;
-}
-
-.ds-summary-card-body {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 12px;
-  color: #334155;
-}
-.ds-summary-card-payout {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-}
-.ds-summary-card-count {
-  font-size: 11px;
-  color: #64748b;
-}
-
-.ds-summary-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-.ds-summary-badge--ok {
-  color: #166534;
-  background: #dcfce7;
-}
-.ds-summary-badge--warn {
-  color: #854d0e;
-  background: #fef9c3;
-}
-.ds-summary-badge--info {
-  color: #1e40af;
-  background: #dbeafe;
-}
-.ds-summary-badge--custom {
-  color: #6b21a8;
-  background: #f3e8ff;
-}
-
-.ds-summary-card-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 2px;
 }
 
 /* ── Панель инструментов выплат ── */
@@ -870,20 +739,6 @@
 }
 .ds-modal h3 {
   margin-top: 0;
-}
-
-.ds-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
-  font-size: 13px;
-}
-.ds-field select,
-.ds-field input {
-  padding: 6px 8px;
-  border: 1px solid #cbd2d9;
-  border-radius: 6px;
 }
 
 .ds-modal-actions {

@@ -183,16 +183,7 @@
   font-size: 12px;
   cursor: pointer;
 }
-.saz-mini {
-  margin-left: 6px;
-  padding: 2px 6px;
-  border: 1px solid #cbd2d9;
-  background: #fff;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 11px;
-}
-.saz-mini:hover { background: #f0f2f5; }
+
 .saz-print-cell { min-width: 170px; }
 .saz-print-buttons {
   display: flex;
@@ -323,11 +314,6 @@
   color: #374151;
 }
 
-.saz-hint {
-  font-size: 12px;
-  color: #6b7280;
-  line-height: 1.4;
-}
 .saz-card--print {
   background: #f0fdf4;
   border-color: #86efac;
