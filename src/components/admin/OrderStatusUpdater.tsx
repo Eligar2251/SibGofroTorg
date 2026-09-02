@@ -48,6 +48,7 @@ export function OrderStatusUpdater({
   dealNumber,
   adminPath = "admin",
   endpoint,
+  onChanged,
 }: {
   orderId: string;
   currentStatus: string;
@@ -55,6 +56,9 @@ export function OrderStatusUpdater({
   dealNumber?: number | null;
   adminPath?: string;
   endpoint?: string;
+  /** Экраны, которые сами грузят данные (например «Кабинет клиента»),
+   *  передают колбэк: одного router.refresh() им недостаточно. */
+  onChanged?: () => void;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -91,7 +95,8 @@ export function OrderStatusUpdater({
       if (body.dealError) {
         throw new Error(body.dealError);
       }
-      router.refresh();
+      if (onChanged) onChanged();
+      else router.refresh();
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Ошибка обновления заявки");

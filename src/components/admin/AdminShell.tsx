@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   ChevronRight,
   Headset,
+  UserSquare,
   Recycle,
   Building2,
   Printer,
@@ -181,6 +182,12 @@ export function AdminShell({
       href: `/${adminPath}/client-requests`,
       label: "Заявки клиентов",
       icon: <Headset size={18} />,
+    },
+    {
+      // Кабинет клиента глазами клиента + ручное управление его заявками.
+      href: `/${adminPath}/user-cabinet`,
+      label: "Кабинет клиента",
+      icon: <UserSquare size={18} />,
     },
     {
       href: `/${adminPath}/warehouse`,
