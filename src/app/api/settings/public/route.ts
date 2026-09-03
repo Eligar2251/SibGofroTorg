@@ -61,6 +61,10 @@ export async function GET() {
             iconUrl: (settings.messenger_max_icon_url || "").trim(),
           },
         },
+        boxBadge: {
+          enabled: settings.box_badge_enabled !== "false",
+          text: (settings.box_badge_text || "подобрать коробку под ваши размеры").trim(),
+        },
       },
       {
         headers: {
@@ -87,6 +91,10 @@ export async function GET() {
           color: "#1b2b4b",
           whatsapp: { url: "", iconUrl: "" },
           max: { url: "", iconUrl: "" },
+        },
+        boxBadge: {
+          enabled: true,
+          text: "подобрать коробку под ваши размеры",
         },
       },
       {

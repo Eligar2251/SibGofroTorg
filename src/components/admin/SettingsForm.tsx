@@ -113,6 +113,7 @@ const wastepaperFields: { id: WastepaperRateId; label: string }[] = [
 type TabId =
   | "contacts"
   | "wastepaper"
+  | "catalog"
   | "card"
   | "registration"
   | "delivery"
@@ -126,6 +127,7 @@ type TabId =
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "contacts", label: "Контакты", icon: <Phone size={14} /> },
   { id: "wastepaper", label: "Макулатура", icon: <Recycle size={14} /> },
+  { id: "catalog", label: "Каталог", icon: <Tags size={14} /> },
   { id: "card", label: "Визитка A4", icon: <Contact size={14} /> },
   { id: "registration", label: "Регистрация", icon: <UserPlus size={14} /> },
   { id: "delivery", label: "Доставка", icon: <Truck size={14} /> },
@@ -146,6 +148,8 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
       messenger_banner_enabled: "true",
       messenger_banner_text: "Мы есть в мессенджерах",
       messenger_banner_color: "#1b2b4b",
+      box_badge_enabled: "true",
+      box_badge_text: "подобрать коробку под ваши размеры",
       [CASH_CARD_HOLDER_SETTING_KEY]: DEFAULT_CASH_CARD_HOLDER,
     };
     for (const id of WASTEPAPER_RATE_IDS) {
@@ -496,6 +500,42 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                 </div>
               </div>
             </>
+          )}
+
+          {activeTab === "catalog" && (
+            <div className="admin-card" style={{ gridColumn: "1 / -1" }}>
+              <div className="admin-card__pad" style={cardPadStyle}>
+                <h2 className="admin-h2" style={{ margin: 0 }}>Каталог — плавающий бейдж</h2>
+                <p className="admin-hint" style={{ margin: 0 }}>
+                  На страницах категорий каталога показывается плавающий бейдж «Подобрать коробку под ваши размеры». Он ведёт на страницу /podbor-korobki. Настройки позволяют отключать бейдж или менять текст.
+                </p>
+                <div className="admin-grid-2" style={{ minWidth: 0, marginTop: 8 }}>
+                  <label className="admin-check" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={values.box_badge_enabled !== "false"}
+                      onChange={(e) =>
+                        setValues({ ...values, box_badge_enabled: e.target.checked ? "true" : "false" })
+                      }
+                    />
+                    <span>Показывать плавающий бейдж в категориях</span>
+                  </label>
+                  <div />
+                </div>
+                <div className="admin-field" style={{ marginTop: 4 }}>
+                  <label className="admin-label">Текст бейджа</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={values.box_badge_text || ""}
+                    onChange={(e) =>
+                      setValues({ ...values, box_badge_text: e.target.value })
+                    }
+                    placeholder="подобрать коробку под ваши размеры"
+                  />
+                </div>
+              </div>
+            </div>
           )}
 
           {activeTab === "registration" && (
