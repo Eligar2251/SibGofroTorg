@@ -23,6 +23,7 @@ import {
   UserSquare,
   Recycle,
   Building2,
+  DoorOpen,
   Printer,
   Ruler,
   Menu,
@@ -34,10 +35,7 @@ import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
 import { RealtimeStatusIndicator } from "./RealtimeStatusIndicator";
-import {
-  canAccessAdminPage,
-  type AdminRole,
-} from "@/lib/admin-rbac";
+import { canAccessAdminPage, type AdminRole } from "@/lib/admin-rbac";
 
 const SIDEBAR_PREF_KEY = "admin-sidebar-hidden";
 
@@ -65,9 +63,11 @@ export function AdminShell({
     // Минимальный service worker делает админку устанавливаемым PWA.
     // Он не кеширует учётные данные и не перехватывает API-запросы.
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/admin-sw.js", { scope: "/" }).catch(() => {
-        /* установка PWA недоступна — обычная веб-версия продолжает работать */
-      });
+      navigator.serviceWorker
+        .register("/admin-sw.js", { scope: "/" })
+        .catch(() => {
+          /* установка PWA недоступна — обычная веб-версия продолжает работать */
+        });
     }
     try {
       setSidebarHidden(window.localStorage.getItem(SIDEBAR_PREF_KEY) === "1");
@@ -76,7 +76,8 @@ export function AdminShell({
     }
     const readLayout = () =>
       setLayout(
-        document.documentElement.getAttribute("data-admin-layout") || "sidebar-left"
+        document.documentElement.getAttribute("data-admin-layout") ||
+          "sidebar-left",
       );
     readLayout();
     // Раскладку меняет кастомайзер в Настройках (атрибут на <html>) —
@@ -228,6 +229,12 @@ export function AdminShell({
       icon: <Printer size={18} />,
     },
     {
+      // Табличка на дверь: A4 landscape, крупный телефон, ч/б печать.
+      href: `/${adminPath}/door-sign`,
+      label: "Табличка на дверь",
+      icon: <DoorOpen size={18} />,
+    },
+    {
       // Подбор ближайшей коробки по габаритам Д×Ш×В (мм).
       href: `/${adminPath}/box-finder`,
       label: "Подбор коробки",
@@ -239,7 +246,7 @@ export function AdminShell({
       icon: <Settings size={18} />,
     },
   ].filter((item) =>
-    role ? canAccessAdminPage(role, item.href, adminPath) : false
+    role ? canAccessAdminPage(role, item.href, adminPath) : false,
   );
 
   const roleLabel =
@@ -319,19 +326,33 @@ export function AdminShell({
             title="Перейти на сайт"
             className="admin-sidebar__footer-link"
           >
-            <ExternalLink size={13} /> <span className="admin-sidebar__label">Перейти на сайт</span>
+            <ExternalLink size={13} />{" "}
+            <span className="admin-sidebar__label">Перейти на сайт</span>
           </Link>
           <form action={`/${adminPath}/api/logout`} method="POST">
-            <button type="submit" className="admin-sidebar__logout" title="Выйти из аккаунта">
-              <LogOut size={13} /> <span className="admin-sidebar__label">Выйти из аккаунта</span>
+            <button
+              type="submit"
+              className="admin-sidebar__logout"
+              title="Выйти из аккаунта"
+            >
+              <LogOut size={13} />{" "}
+              <span className="admin-sidebar__label">Выйти из аккаунта</span>
             </button>
           </form>
         </div>
       </aside>
 
-      <div className="admin-mobile-bar" role="navigation" aria-label="Навигация админ-панели">
+      <div
+        className="admin-mobile-bar"
+        role="navigation"
+        aria-label="Навигация админ-панели"
+      >
         <span className="admin-mobile-bar__title" aria-live="polite">
-          {nav.find((link) => link.href === `/${adminPath}` ? pathname === link.href : pathname.startsWith(link.href))?.label || "Управление"}
+          {nav.find((link) =>
+            link.href === `/${adminPath}`
+              ? pathname === link.href
+              : pathname.startsWith(link.href),
+          )?.label || "Управление"}
         </span>
         <button
           type="button"
@@ -379,12 +400,25 @@ export function AdminShell({
             })}
           </div>
           <div className="admin-mobile-bar__actions">
-            <Link href="/" prefetch={false} target="_blank" className="admin-mobile-bar__action" aria-label="Открыть сайт" title="Открыть сайт" onClick={() => setMobileMenuOpen(false)}>
+            <Link
+              href="/"
+              prefetch={false}
+              target="_blank"
+              className="admin-mobile-bar__action"
+              aria-label="Открыть сайт"
+              title="Открыть сайт"
+              onClick={() => setMobileMenuOpen(false)}
+            >
               <ExternalLink size={17} aria-hidden="true" />
               <span>Открыть сайт</span>
             </Link>
             <form action={`/${adminPath}/api/logout`} method="POST">
-              <button type="submit" className="admin-mobile-bar__action" aria-label="Выйти из аккаунта" title="Выйти из аккаунта">
+              <button
+                type="submit"
+                className="admin-mobile-bar__action"
+                aria-label="Выйти из аккаунта"
+                title="Выйти из аккаунта"
+              >
                 <LogOut size={17} aria-hidden="true" />
                 <span>Выйти</span>
               </button>
