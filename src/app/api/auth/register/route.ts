@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import {
+  claimGuestOrdersByPhone,
   createUser,
   createUserByEmail,
   createUserByUsername,
@@ -120,6 +121,10 @@ export async function POST(request: NextRequest) {
         phone: phoneDigits,
         name: result.name || undefined,
       });
+      // Гость оформил заказ до регистрации по этому же номеру — привязываем.
+      await claimGuestOrdersByPhone(result.id, phoneDigits).catch((e) =>
+        console.error("claim orders on register:", e)
+      );
       return NextResponse.json(
         {
           success: true,

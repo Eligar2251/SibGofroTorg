@@ -442,6 +442,53 @@ export async function createUserByUsername(data: {
   }
 }
 
+/**
+ * Привязывает гостевые заказы к аккаунту по тому же номеру телефона.
+ * Вызывается после регистрации/входа: если клиент оформил заказ без ЛК,
+ * а потом создал/восстановил кабинет по этому номеру — заказ появляется у
+ * него в «Моих заказах». Чужой аккаунт не перезаписываем: обновляются
+ * только строки без user_id.
+ */
+export async function claimGuestOrdersByPhone(
+  uid: string,
+  phoneDigits: string
+): Promise<number> {
+  const normalized = normalizePhone(phoneDigits);
+  if (!/^7\d{10}$/.test(normalized)) return 0;
+
+  const db = getAdminDb();
+  let count = 0;
+
+  try {
+    const { data, error } = await db
+      .from("orders")
+      .update({ user_id: uid })
+      .eq("customer_phone_digits", normalized)
+      .is("user_id", null)
+      .select("id");
+    if (error) throw error;
+    count += Array.isArray(data) ? data.length : 0;
+  } catch (e) {
+    console.error("Не удалось привязать заказы по phone_digits:", e);
+  }
+
+  try {
+    const display = formatPhoneDisplay(normalized);
+    const { data, error } = await db
+      .from("orders")
+      .update({ user_id: uid })
+      .eq("customer_phone", display)
+      .is("user_id", null)
+      .select("id");
+    if (error) throw error;
+    count += Array.isArray(data) ? data.length : 0;
+  } catch (e) {
+    console.error("Не удалось привязать заказы по display phone:", e);
+  }
+
+  return count;
+}
+
 export async function updateUserProfile(
   uid: string,
   data: Partial<{

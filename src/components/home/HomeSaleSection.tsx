@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ArrowRight, Tag, ShoppingCart, Plus, Minus } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { getProductEffectivePrice } from "@/lib/types";
 
 interface SaleProduct {
@@ -82,6 +83,21 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
         qty: next,
       });
     }
+  }
+
+  function handleManualQty(p: SaleProduct, requested: number) {
+    const price = effectivePrice(p);
+    if (price == null || requested < 1) return;
+    const maxStock = p.stockQty ?? null;
+    const next = maxStock != null ? Math.min(requested, maxStock) : requested;
+    updateQty(p.id, next);
+    openCartDock({
+      productId: p.id,
+      name: p.name,
+      imageUrl: p.imageUrl,
+      price,
+      qty: next,
+    });
   }
 
   return (
@@ -168,9 +184,13 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
                         >
                           <Minus size={14} />
                         </button>
-                        <span className="pcc__stepper-input" aria-live="polite">
-                          {inCart.quantity}
-                        </span>
+                        <EditableQuantityInput
+                          value={inCart.quantity}
+                          max={p.stockQty ?? null}
+                          className="pcc__stepper-input"
+                          ariaLabel="Количество"
+                          onCommit={(qty) => handleManualQty(p, qty)}
+                        />
                         <button
                           type="button"
                           className="pcc__stepper-btn"

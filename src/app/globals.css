@@ -3080,6 +3080,7 @@ select {
 
 .pcc__stepper-input {
   flex: 1;
+  min-width: 28px;
   width: 100%;
   border: none;
   border-left: 1px solid #e5e7eb;
@@ -3093,7 +3094,7 @@ select {
   -moz-appearance: textfield;
   padding: 0;
   height: 100%;
-  display: flex;
+  display: block;
   align-items: center;
   justify-content: center;
   font-variant-numeric: tabular-nums;
@@ -5012,7 +5013,8 @@ select {
 }
 
 .cart-item__qty {
-  width: 32px;
+  width: 40px;
+  min-width: 36px;
   text-align: center;
   font-size: 13px;
   font-weight: 700;
@@ -5020,9 +5022,17 @@ select {
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  background: transparent;
+  padding: 0;
+  -moz-appearance: textfield;
+  outline: none;
+}
+
+.cart-item__qty::-webkit-inner-spin-button,
+.cart-item__qty::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .cart-item__sum {

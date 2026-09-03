@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { createOrder } from "@/lib/supabase-queries";
 import {
+  findUserByPhone,
   formatPhoneDisplay,
   getUserById,
   isValidRussianPhone,
@@ -176,6 +177,18 @@ export async function POST(request: NextRequest) {
       paymentMethod = "transfer";
     }
 
+    // Если клиент оформил заказ без входа, но по номеру уже есть аккаунт,
+    // привязываем заказ сразу — он появится в ЛК после входа.
+    let linkedUserId = session?.uid ?? null;
+    if (!linkedUserId && phoneDigits) {
+      try {
+        const byPhoneUser = await findUserByPhone(phoneDigits);
+        if (byPhoneUser) linkedUserId = byPhoneUser.id;
+      } catch (e) {
+        console.error("Не удалось проверить привязку заказа по телефону:", e);
+      }
+    }
+
     const orderData: Record<string, unknown> = {
       type: typeRaw,
       customerType,
@@ -188,8 +201,9 @@ export async function POST(request: NextRequest) {
       comment,
       channel: "website",
       status: "new",
-      // ТОЛЬКО из session
-      userId: session?.uid ?? null,
+      // Если гость вошёл — из session; если нет, но номер уже есть в аккаунте —
+      // привязываем по телефону.
+      userId: linkedUserId,
       companyName,
       shortName,
       inn,

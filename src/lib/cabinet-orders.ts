@@ -108,10 +108,10 @@ export function serializeCabinetOrder(row: any): CabinetOrder {
  * Заявки конкретного пользователя ровно в том составе и порядке, в
  * котором он видит их у себя в «Моих заказах».
  *
- * Правило подбора гостевых заявок (оформленных до/без входа) намеренно
- * повторяет поведение кабинета: они подхватываются по номеру телефона,
- * но только если оформлены не раньше, чем за минуту до регистрации
- * аккаунта — иначе к новому владельцу номера прилипла бы чужая история.
+ * Гостевые заявки (оформленные до/без входа) подбираются по тому же
+ * номеру телефона. После регистрации/входа клиент ожидает увидеть весь
+ * свой заказ в кабинете, поэтому ограничение по времени создания аккаунта
+ * убрано: сам факт совпадения номера — достаточное условие.
  */
 export async function getCabinetOrdersForUser(input: {
   userId: string;
@@ -122,9 +122,6 @@ export async function getCabinetOrdersForUser(input: {
   const uid = input.userId;
   const phoneDigits = normalizePhone(input.phone || "");
   const phoneDisplay = phoneDigits ? formatPhoneDisplay(phoneDigits) : "";
-  const accountCreatedMs = input.accountCreatedAt
-    ? new Date(toIso(input.accountCreatedAt) || 0).getTime()
-    : 0;
 
   const queries: PromiseLike<any>[] = [
     db.from("orders").select("*").eq("user_id", uid),
@@ -141,22 +138,18 @@ export async function getCabinetOrdersForUser(input: {
   const map = new Map<string, CabinetOrder>();
   for (const row of byUserRes?.data || []) map.set(row.id, serializeCabinetOrder(row));
 
-  if (accountCreatedMs > 0) {
-    const extra = [
-      ...(byPhoneDigitsRes?.data || []),
-      ...(byPhoneDisplayRes?.data || []),
-    ];
-    for (const row of extra) {
-      if (row.user_id && row.user_id !== uid) continue;
-      if (row.user_id === uid) {
-        map.set(row.id, serializeCabinetOrder(row));
-        continue;
-      }
-      if (row.user_id) continue;
-      const orderMs = new Date(toIso(row.created_at) || 0).getTime();
-      if (orderMs + 60_000 < accountCreatedMs) continue;
-      if (!map.has(row.id)) map.set(row.id, serializeCabinetOrder(row));
+  const extra = [
+    ...(byPhoneDigitsRes?.data || []),
+    ...(byPhoneDisplayRes?.data || []),
+  ];
+  for (const row of extra) {
+    if (row.user_id && row.user_id !== uid) continue;
+    if (row.user_id === uid) {
+      map.set(row.id, serializeCabinetOrder(row));
+      continue;
     }
+    if (row.user_id) continue;
+    if (!map.has(row.id)) map.set(row.id, serializeCabinetOrder(row));
   }
 
   const results = Array.from(map.values());

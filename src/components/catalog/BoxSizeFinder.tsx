@@ -30,6 +30,7 @@ import {
   Minus,
 } from "lucide-react";
 import { useCart } from "@/context/CartContext";
+import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { PriceInquiryButton } from "@/components/catalog/PriceInquiryButton";
 import {
   isProductAvailable,
@@ -188,9 +189,15 @@ export function BoxSizeFinder({
           >
             <Minus size={13} />
           </button>
-          <span className="pcc__stepper-input" aria-live="polite">
-            {inCart.quantity}
-          </span>
+          <EditableQuantityInput
+            value={inCart.quantity}
+            max={maxStock}
+            className="pcc__stepper-input"
+            ariaLabel="Количество"
+            onCommit={(qty) =>
+              updateQty(p.id, maxStock != null ? Math.min(qty, maxStock) : qty)
+            }
+          />
           <button
             type="button"
             className="pcc__stepper-btn"

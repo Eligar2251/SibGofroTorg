@@ -23,6 +23,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 import { digitsPhone, formatPhoneMask } from "@/lib/phone-mask";
@@ -581,9 +582,19 @@ export function OrderPageClient({
                             >
                               <Minus size={12} />
                             </button>
-                            <span className="cart-item__qty">
-                              {item.quantity}
-                            </span>
+                            <EditableQuantityInput
+                              value={item.quantity}
+                              max={item.maxStock ?? null}
+                              className="cart-item__qty"
+                              ariaLabel="Количество"
+                              onCommit={(qty) =>
+                                updateQty(
+                                  item.productId,
+                                  qty,
+                                  item.variantId ?? null
+                                )
+                              }
+                            />
                             <button
                               type="button"
                               onClick={() =>

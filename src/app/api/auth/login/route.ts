@@ -4,6 +4,7 @@
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
 import {
+  claimGuestOrdersByPhone,
   createUserSession,
   findUserByPhoneOrEmail,
   formatPhoneDisplay,
@@ -67,6 +68,13 @@ export async function POST(request: NextRequest) {
       phone: sessionIdentifier,
       name: user.name || undefined,
     });
+
+    // Гостевые заказы по этому номеру телефона теперь принадлежат аккаунту.
+    if (/^7\d{10}$/.test(user.phoneDigits || "")) {
+      await claimGuestOrdersByPhone(user.id, user.phoneDigits).catch((e) =>
+        console.error("claim orders on login:", e)
+      );
+    }
 
     const isEmailUser =
       !!user.email && !user.username && identifier.includes("@");
