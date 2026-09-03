@@ -49,19 +49,17 @@ interface Category {
   name: string;
 }
 
-/* Порядок шагов:
-   1. Товар и склад
-   2. Цены
-   3. Изображения  ← теперь ДО публикации
-   4. Публикация
+/* Порядок шагов (3 таба — paginated):
+   1. Цена / склад
+   2. Информация (SKU, название, акция)
+   3. Изображения
 */
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3;
 
 const STEPS = [
-  { step: 1 as const, title: "Товар и склад", hint: "Название, остаток и пачка", icon: PackageCheck },
-  { step: 2 as const, title: "Цены", hint: "Розница и оптовые условия", icon: WalletCards },
+  { step: 1 as const, title: "Цена и склад", hint: "Розница, опт, остаток, упаковка", icon: WalletCards },
+  { step: 2 as const, title: "Информация", hint: "Название, SKU, акция, метки", icon: PackageCheck },
   { step: 3 as const, title: "Изображения", hint: "Фото для каждого товара", icon: ImageIcon },
-  { step: 4 as const, title: "Публикация", hint: "Видимость, наличие и акции", icon: Check },
 ];
 
 const INITIAL_RENDER_LIMIT = 60;
@@ -303,7 +301,7 @@ export function BulkProductEditor({
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Не удалось сохранить товары");
       setDirtyIds(new Set());
-      if (step < 4) {
+      if (step < 3) {
         setStep((step + 1) as Step);
         window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
@@ -399,7 +397,9 @@ export function BulkProductEditor({
             <table className="admin-table bulk-table bulk-table--stock">
               <thead><tr>
                 <th><input type="checkbox" checked={displayedProducts.length > 0 && displayedProducts.every((p) => workingIds.has(p.id))} onChange={toggleVisible} title="Выбрать показанные строки" /></th>
-                <th>Название</th><th>Артикул</th><th>Категория</th><th>Количество на складе</th><th>В пачке</th><th>Материал</th>
+                <th>Название</th><th>SKU</th><th>Категория</th>
+                <th>Цена, ₽</th><th>Опт, ₽</th><th>Опт от</th>
+                <th>Остаток</th><th>В пачке</th><th>Материал</th>
               </tr></thead>
               <tbody>{displayedProducts.map((product) => (
                 <tr key={product.id} className={workingIds.has(product.id) ? "bulk-row--selected" : ""}>
@@ -407,6 +407,9 @@ export function BulkProductEditor({
                   <td><input className="admin-input" value={product.name} onChange={(e) => update(product.id, "name", e.target.value)} /></td>
                   <td><input className="admin-input" value={product.sku} onChange={(e) => update(product.id, "sku", e.target.value)} /></td>
                   <td><select className="admin-select" value={product.categoryId} onChange={(e) => update(product.id, "categoryId", e.target.value)}><option value="">—</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
+                  <td><input type="number" min={0} step="0.01" className="admin-input bulk-number" value={product.price ?? ""} onChange={(e) => update(product.id, "price", numeric(e.target.value))} /></td>
+                  <td><input type="number" min={0} step="0.01" className="admin-input bulk-number" value={product.priceWholesale ?? ""} onChange={(e) => update(product.id, "priceWholesale", numeric(e.target.value))} /></td>
+                  <td><input type="number" min={1} className="admin-input bulk-number" value={product.minWholesaleQty ?? ""} onChange={(e) => update(product.id, "minWholesaleQty", numeric(e.target.value))} /></td>
                   <td><input type="number" min={0} className="admin-input bulk-number" value={product.stockQty ?? ""} onChange={(e) => update(product.id, "stockQty", numeric(e.target.value))} /></td>
                   <td><input type="number" min={1} className="admin-input bulk-number" value={product.packQty ?? ""} onChange={(e) => update(product.id, "packQty", numeric(e.target.value))} /></td>
                   <td><input className="admin-input" value={product.material} onChange={(e) => update(product.id, "material", e.target.value)} /></td>
@@ -415,18 +418,24 @@ export function BulkProductEditor({
             </table>
           )}
 
-          {/* ── Шаг 2: Цены ── */}
+          {/* ── Шаг 2: Информация (SKU, название, акция) ── */}
           {step === 2 && (
-            <table className="admin-table bulk-table bulk-table--prices">
-              <thead><tr><th>Товар</th><th>Цена, ₽</th><th>Оптовая цена, ₽</th><th>Опт от, шт.</th><th>Остаток</th><th>Пачка</th></tr></thead>
+            <table className="admin-table bulk-table bulk-table--info">
+              <thead><tr>
+                <th>Название</th><th>SKU</th><th>Категория</th>
+                <th>Метка акции</th><th>В наличии</th><th>Виден</th><th>Акция</th><th>На главной</th><th>Распродажа</th>
+              </tr></thead>
               <tbody>{displayedProducts.map((product) => (
                 <tr key={product.id} className={dirtyIds.has(product.id) ? "bulk-row--dirty" : ""}>
-                  <td><strong>{product.name}</strong><small className="bulk-sku">{product.sku || "без артикула"}</small></td>
-                  <td><input type="number" min={0} step="0.01" className="admin-input" value={product.price ?? ""} onChange={(e) => update(product.id, "price", numeric(e.target.value))} /></td>
-                  <td><input type="number" min={0} step="0.01" className="admin-input" value={product.priceWholesale ?? ""} onChange={(e) => update(product.id, "priceWholesale", numeric(e.target.value))} /></td>
-                  <td><input type="number" min={1} className="admin-input" value={product.minWholesaleQty ?? ""} onChange={(e) => update(product.id, "minWholesaleQty", numeric(e.target.value))} /></td>
-                  <td><span className="admin-stock-count">{product.stockQty ?? 0} шт.</span></td>
-                  <td>{product.packQty ?? "—"}</td>
+                  <td><input className="admin-input" value={product.name} onChange={(e) => update(product.id, "name", e.target.value)} /></td>
+                  <td><input className="admin-input" value={product.sku} onChange={(e) => update(product.id, "sku", e.target.value)} /></td>
+                  <td><select className="admin-select" value={product.categoryId} onChange={(e) => update(product.id, "categoryId", e.target.value)}><option value="">—</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
+                  <td><input className="admin-input" value={product.promoLabel} onChange={(e) => update(product.id, "promoLabel", e.target.value)} placeholder="Акция, Хит..." /></td>
+                  <td><input type="checkbox" checked={product.inStock} onChange={(e) => update(product.id, "inStock", e.target.checked)} /></td>
+                  <td><input type="checkbox" checked={product.isVisible} onChange={(e) => update(product.id, "isVisible", e.target.checked)} /></td>
+                  <td><input type="checkbox" checked={product.isPromo} onChange={(e) => update(product.id, "isPromo", e.target.checked)} /></td>
+                  <td><input type="checkbox" checked={product.isFeatured} onChange={(e) => update(product.id, "isFeatured", e.target.checked)} /></td>
+                  <td><input type="checkbox" checked={product.isSale} onChange={(e) => update(product.id, "isSale", e.target.checked)} /></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -452,24 +461,6 @@ export function BulkProductEditor({
             </div>
           )}
 
-          {/* ── Шаг 4: Публикация ── */}
-          {step === 4 && (
-            <table className="admin-table bulk-table bulk-table--publish">
-              <thead><tr><th>Товар</th><th>Примечание</th><th>Метка акции</th><th>В наличии</th><th>Виден</th><th>Акция</th><th>На главной</th><th>Распродажа</th></tr></thead>
-              <tbody>{displayedProducts.map((product) => (
-                <tr key={product.id} className={dirtyIds.has(product.id) ? "bulk-row--dirty" : ""}>
-                  <td><strong>{product.name}</strong><small className="bulk-sku">остаток: {product.stockQty ?? 0}</small></td>
-                  <td><input className="admin-input" value={product.note} onChange={(e) => update(product.id, "note", e.target.value)} /></td>
-                  <td><input className="admin-input" value={product.promoLabel} onChange={(e) => update(product.id, "promoLabel", e.target.value)} placeholder="Акция, Хит..." /></td>
-                  <td><input type="checkbox" checked={product.inStock} onChange={(e) => update(product.id, "inStock", e.target.checked)} /></td>
-                  <td><input type="checkbox" checked={product.isVisible} onChange={(e) => update(product.id, "isVisible", e.target.checked)} /></td>
-                  <td><input type="checkbox" checked={product.isPromo} onChange={(e) => update(product.id, "isPromo", e.target.checked)} /></td>
-                  <td><input type="checkbox" checked={product.isFeatured} onChange={(e) => update(product.id, "isFeatured", e.target.checked)} /></td>
-                  <td><input type="checkbox" checked={product.isSale} onChange={(e) => update(product.id, "isSale", e.target.checked)} /></td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
         </div>
       </div>
 
@@ -500,8 +491,8 @@ export function BulkProductEditor({
         ) : <span />}
         <div className="bulk-footer__summary">В работе: <strong>{workingIds.size}</strong> товаров</div>
         <button className="admin-btn admin-btn--primary" disabled={saving || loadingImages || workingIds.size === 0} onClick={saveAndContinue}>
-          {saving ? <Loader2 size={15} className="animate-spin" /> : step === 4 ? <Check size={15} /> : <ArrowRight size={15} />}
-          {step === 4 ? "Сохранить и завершить" : step === 1 ? "Сохранить и перейти к ценам" : step === 2 ? "Сохранить и перейти к фото" : "Сохранить и перейти к публикации"}
+          {saving ? <Loader2 size={15} className="animate-spin" /> : step === 3 ? <Check size={15} /> : <ArrowRight size={15} />}
+          {step === 3 ? "Сохранить и завершить" : step === 1 ? "Сохранить и перейти к информации" : "Сохранить и перейти к фото"}
         </button>
       </div>
     </div>

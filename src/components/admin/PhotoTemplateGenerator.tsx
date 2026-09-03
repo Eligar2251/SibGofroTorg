@@ -77,20 +77,117 @@ import {
   type SavedPhotoTemplate,
 } from "@/lib/photo-template";
 
+/* ── Drag-based number input (Figma-like) ── */
+function DragNumberInput({
+  value,
+  onChange,
+  min = -200,
+  max = 200,
+  step = 1,
+  label,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  label?: string;
+}) {
+  const dragRef = useRef<{ startX: number; startVal: number } | null>(null);
+
+  function onMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startVal: value };
+    document.body.style.cursor = "col-resize";
+  }
+
+  function onMouseMove(e: React.MouseEvent) {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const newVal = Math.round(Math.max(min, Math.min(max, dragRef.current.startVal + dx * step)) / step) * step;
+    onChange(newVal);
+  }
+
+  function onMouseUp() {
+    dragRef.current = null;
+    document.body.style.cursor = "";
+  }
+
+  return (
+    <div className="ptg-field" style={{ minWidth: 0 }}>
+      {label && <label>{label}</label>}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          height: 32,
+          padding: "0 8px",
+          background: "var(--bg-soft)",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          cursor: "col-resize",
+          userSelect: "none",
+          fontWeight: 600,
+        }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+      >
+        <span style={{ color: "var(--ink-faint)", fontSize: 11, letterSpacing: "0.06em" }}>
+          ↔
+        </span>
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value) || 0)}
+          min={min}
+          max={max}
+          style={{
+            border: "none",
+            background: "transparent",
+            width: 48,
+            font: "inherit",
+            fontWeight: 700,
+            color: "var(--ink)",
+            textAlign: "right",
+            outline: "none",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────────  Canvas helpers  ───────────────────────── */
+
+/* ── Кэш загруженных изображений ── */
+const imageCache = new Map<string, HTMLImageElement>();
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    if (imageCache.has(src)) {
+      const img = imageCache.get(src)!;
+      if (img.complete && img.naturalWidth > 0) {
+        resolve(img);
+        return;
+      }
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Не удалось загрузить изображение"));
+      return;
+    }
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
+    img.onload = () => {
+      imageCache.set(src, img);
+      resolve(img);
+    };
     img.onerror = () => reject(new Error("Не удалось загрузить изображение"));
-    // Сбрасываем кэш браузера для повторно залитых Cloudinary-файлов.
     if (src.startsWith("data:")) {
       img.src = src;
     } else {
-      const sep = src.includes("?") ? "&" : "?";
-      img.src = `${src}${sep}cb=${Date.now()}`;
+      img.src = src;
     }
   });
 }
@@ -463,6 +560,12 @@ function drawText(
   const cy = el.y + textH / 2;
 
   ctx.save();
+  if (el.shadow) {
+    ctx.shadowColor = el.shadow.color;
+    ctx.shadowBlur = el.shadow.blur;
+    ctx.shadowOffsetX = el.shadow.x;
+    ctx.shadowOffsetY = el.shadow.y;
+  }
   if (el.rotation) {
     ctx.translate(cx, cy);
     ctx.rotate(degToRad(el.rotation));
@@ -1051,22 +1154,34 @@ export function PhotoTemplateGenerator({
     [previewProduct]
   );
 
+  const renderTokenRef = useRef(0);
+
   /* ── Отрисовка превью ── */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    let cancelled = false;
+    const token = ++renderTokenRef.current;
     (async () => {
       try {
-        await renderTemplate(canvas, template, tokens);
-        if (!cancelled)
+        const tempCanvas = document.createElement("canvas");
+        await renderTemplate(tempCanvas, template, tokens);
+        if (token !== renderTokenRef.current) return;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          canvas.width = tempCanvas.width;
+          canvas.height = tempCanvas.height;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(tempCanvas, 0, 0);
+        }
+        if (token === renderTokenRef.current) {
           drawSelection(canvas, template, selectedIds, tokens, guides);
+        }
       } catch (err) {
         console.error(err);
       }
     })();
     return () => {
-      cancelled = true;
+      // Отмена происходит через token — старые рендеры не пишут в основной canvas
     };
   }, [template, tokens, selectedIds, guides]);
 
@@ -2753,6 +2868,87 @@ export function PhotoTemplateGenerator({
                           </button>
                         ))}
                       </div>
+
+                      {/* Тень текста (drag-based) */}
+                      <div className="ptg-side__title" style={{ marginTop: 8, fontSize: 12, color: "var(--ink-faint)" }}>
+                        Тень (drag для смещения)
+                      </div>
+                      <div className="ptg-grid2">
+                        <DragNumberInput
+                          label="X"
+                          value={(selectedEl as PhotoTextElement).shadow?.x ?? 0}
+                          onChange={(v) => updateElement(selectedEl.id, {
+                            shadow: {
+                              x: v,
+                              y: (selectedEl as PhotoTextElement).shadow?.y ?? 4,
+                              blur: (selectedEl as PhotoTextElement).shadow?.blur ?? 8,
+                              color: (selectedEl as PhotoTextElement).shadow?.color ?? "rgba(0,0,0,0.35)",
+                            }
+                          })}
+                          min={-60}
+                          max={60}
+                          step={1}
+                        />
+                        <DragNumberInput
+                          label="Y"
+                          value={(selectedEl as PhotoTextElement).shadow?.y ?? 4}
+                          onChange={(v) => updateElement(selectedEl.id, {
+                            shadow: {
+                              x: (selectedEl as PhotoTextElement).shadow?.x ?? 0,
+                              y: v,
+                              blur: (selectedEl as PhotoTextElement).shadow?.blur ?? 8,
+                              color: (selectedEl as PhotoTextElement).shadow?.color ?? "rgba(0,0,0,0.35)",
+                            }
+                          })}
+                          min={-60}
+                          max={60}
+                          step={1}
+                        />
+                      </div>
+                      <div className="ptg-grid2">
+                        <div className="ptg-field">
+                          <label>Размытие</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={80}
+                            value={(selectedEl as PhotoTextElement).shadow?.blur ?? 8}
+                            onChange={(e) => updateElement(selectedEl.id, {
+                              shadow: {
+                                x: (selectedEl as PhotoTextElement).shadow?.x ?? 0,
+                                y: (selectedEl as PhotoTextElement).shadow?.y ?? 4,
+                                blur: Math.max(0, Number(e.target.value) || 0),
+                                color: (selectedEl as PhotoTextElement).shadow?.color ?? "rgba(0,0,0,0.35)",
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="ptg-field">
+                          <label>Цвет тени</label>
+                          <input
+                            type="color"
+                            value={(selectedEl as PhotoTextElement).shadow?.color ?? "#000000"}
+                            onChange={(e) => updateElement(selectedEl.id, {
+                              shadow: {
+                                x: (selectedEl as PhotoTextElement).shadow?.x ?? 0,
+                                y: (selectedEl as PhotoTextElement).shadow?.y ?? 4,
+                                blur: (selectedEl as PhotoTextElement).shadow?.blur ?? 8,
+                                color: e.target.value + (e.target.value.length === 7 ? "59" : ""),
+                              }
+                            })}
+                          />
+                        </div>
+                      </div>
+                      <label className="ptg-check" style={{ marginTop: 2 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!(selectedEl as PhotoTextElement).shadow}
+                          onChange={(e) => updateElement(selectedEl.id, {
+                            shadow: e.target.checked ? { x: 0, y: 4, blur: 8, color: "rgba(0,0,0,0.35)" } : null,
+                          })}
+                        />
+                        <span>Включить тень</span>
+                      </label>
                     </>
                   )}
 

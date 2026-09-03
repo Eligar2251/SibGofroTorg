@@ -31,6 +31,11 @@ export interface MessengerBannerSettings {
   max: MessengerChannelSettings;
 }
 
+export interface BoxBadgeSettings {
+  enabled: boolean;
+  text: string;
+}
+
 export interface SiteSettings {
   phone: string;
   phoneHref: string;
@@ -46,6 +51,7 @@ export interface SiteSettings {
   wastepaperPhone: string;
   wastepaperPhoneHref: string;
   messengerBanner: MessengerBannerSettings;
+  boxBadge: BoxBadgeSettings;
   registrationField: "phone" | "email";
   ready: boolean;
 }
@@ -95,6 +101,11 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
           iconUrl: String(rawBanner.max?.iconUrl || "").trim(),
         },
       };
+      const rawBoxBadge = data.boxBadge || {};
+      const boxBadge: BoxBadgeSettings = {
+        enabled: rawBoxBadge.enabled === false ? false : true,
+        text: String(rawBoxBadge.text || "подобрать коробку под ваши размеры").trim() || "подобрать коробку под ваши размеры",
+      };
       const settings: SiteSettings = {
         phone,
         phoneHref: `tel:${phone.replace(/[^\d+]/g, "")}`,
@@ -108,6 +119,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
           ? `tel:${wastepaperPhone.replace(/[^\d+]/g, "")}`
           : "",
         messengerBanner,
+        boxBadge,
         registrationField,
         ready: true,
       };
@@ -127,6 +139,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         wastepaperPhone: "",
         wastepaperPhoneHref: "",
         messengerBanner: EMPTY_MESSENGER_BANNER,
+        boxBadge: { enabled: true, text: "подобрать коробку под ваши размеры" },
         registrationField: "phone",
         ready: false,
       };
@@ -157,6 +170,7 @@ export function useSiteSettings(): SiteSettings {
     wastepaperPhone: "",
     wastepaperPhoneHref: "",
     messengerBanner: EMPTY_MESSENGER_BANNER,
+    boxBadge: { enabled: true, text: "подобрать коробку под ваши размеры" },
     registrationField: "phone",
     ready: false,
   });

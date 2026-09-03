@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
@@ -8,6 +8,7 @@ import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { CatalogOrderNote } from "@/components/catalog/CatalogOrderNote";
 import { MobileCategorySelect } from "@/components/catalog/MobileCategorySelect";
+import { useSiteSettings } from "@/hooks/use-site-settings";
 
 interface CategoryItem {
   id: string;
@@ -185,6 +186,16 @@ export function CatalogShopClient({
     });
   }
 
+  const site = useSiteSettings();
+  const [badgeVisible, setBadgeVisible] = useState(false);
+  useEffect(() => {
+    if (mode === "category" && site.boxBadge?.enabled) {
+      setBadgeVisible(true);
+    } else {
+      setBadgeVisible(false);
+    }
+  }, [mode, activeSlug, site.boxBadge?.enabled]);
+
   const hasFilters = Boolean(q || (sort && sort !== "default") || stock);
   const title = activeSlug ? activeName : q ? `Поиск: «${q}»` : "Все товары";
 
@@ -345,6 +356,23 @@ export function CatalogShopClient({
                 <X size={13} style={{ marginRight: 4 }} />Сбросить фильтры
               </button>
             )}
+
+            {/* Постоянная кнопка подбора коробки — вне категорий */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+              <a
+                href="/podbor-korobki"
+                className="btn btn-primary btn-sm"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  textDecoration: "none",
+                }}
+              >
+                <GlyphIcon value="box" size={15} />
+                Подобрать коробку по размеру
+              </a>
+            </div>
           </aside>
 
           <div>
@@ -426,6 +454,40 @@ export function CatalogShopClient({
           </div>
         </div>
       </div>
+
+      {badgeVisible && site.boxBadge && (
+        <Link
+          href="/podbor-korobki"
+          className="box-badge-float"
+          aria-label={site.boxBadge.text || "Подбор коробки по размерам"}
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            zIndex: 200,
+            background: "#2d6a4f",
+            color: "#fff",
+            padding: "12px 20px",
+            borderRadius: 30,
+            fontWeight: 600,
+            fontSize: 14,
+            textDecoration: "none",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+            transition: "transform 0.2s, box-shadow 0.2s",
+            animation: "badgeSlideIn 0.4s ease-out",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
+            (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(0,0,0,0.22)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+            (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 16px rgba(0,0,0,0.18)";
+          }}
+        >
+          {site.boxBadge.text || "подобрать коробку под ваши размеры"}
+        </Link>
+      )}
     </div>
   );
 }

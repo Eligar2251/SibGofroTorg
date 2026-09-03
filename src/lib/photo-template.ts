@@ -35,6 +35,8 @@ export interface PhotoTextElement {
   paddingY?: number;
   /** Выравнивание текста внутри блока по вертикали */
   verticalAlign?: "top" | "middle" | "bottom";
+  /** Тень под блоком текста */
+  shadow?: { x: number; y: number; blur: number; color: string } | null;
 }
 
 export interface PhotoRectElement {

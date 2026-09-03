@@ -447,6 +447,11 @@
   background: var(--green-soft);
 }
 
+@keyframes badgeSlideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* iOS: поле <16px включает авто-зум при фокусе — вёрстка «уезжает» */
 @media (max-width: 768px) {
   .bsf-input {
