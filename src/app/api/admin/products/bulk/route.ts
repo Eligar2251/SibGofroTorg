@@ -9,6 +9,19 @@ import {
   firstImageUrl,
 } from "@/lib/supabase-queries";
 
+function isMissingOptionalProductColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("purchase_price") && !msg.includes("barcode")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist") ||
+    msg.includes("unknown column")
+  );
+}
+
 /** Фотографии не входят в тяжёлую начальную загрузку редактора. */
 export async function POST(request: NextRequest) {
   const auth = await requireAdminApi();
@@ -61,14 +74,17 @@ export async function PUT(request: NextRequest) {
 
     const db = getAdminDb();
     const fieldMap: Record<string, string> = {
-      name: "name", price: "price", priceWholesale: "price_wholesale",
+      name: "name", price: "price", purchasePrice: "purchase_price", priceWholesale: "price_wholesale",
       minWholesaleQty: "min_wholesale_qty", dimensionLength: "dimension_length",
       dimensionWidth: "dimension_width", dimensionHeight: "dimension_height",
-      dimensionUnit: "dimension_unit", weight: "weight", material: "material",
-      packQty: "pack_qty", volume: "volume", note: "note",
-      stockQty: "stock_qty", inStock: "in_stock", isVisible: "is_visible",
-      isPromo: "is_promo", isFeatured: "is_featured", isSale: "is_sale", categoryId: "category_id",
-      sku: "sku", promoLabel: "promo_label",
+      dimensionUnit: "dimension_unit", weight: "weight", volume: "volume", material: "material",
+      packQty: "pack_qty", note: "note", description: "description",
+      stockQty: "stock_qty", stockWarnQty: "stock_warn_qty", inStock: "in_stock", isVisible: "is_visible",
+      isPromo: "is_promo", isFeatured: "is_featured",
+      isSale: "is_sale", categoryId: "category_id",
+      sku: "sku", promoLabel: "promo_label", promoLabelColor: "promo_label_color",
+      promoLabelTextColor: "promo_label_text_color", tags: "tags", barcode: "barcode",
+      discountType: "discount_type", discountValue: "discount_value", discountBadge: "discount_badge",
       madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
       isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
       images: "images", imageUrl: "image_url",
@@ -84,7 +100,10 @@ export async function PUT(request: NextRequest) {
       if ("category_id" in payload && !payload.category_id) {
         payload.category_id = null;
       }
-      // Фото загружаются лениво только на третьем шаге. Если они ещё
+      if ("discount_type" in payload && !payload.discount_type) {
+        payload.discount_type = null;
+      }
+      // Фото загружаются лениво только на шаге изображений. Если они ещё
       // не загружены, ключа images нет и существующие фото не затрагиваются.
       if (rest.images !== undefined) {
         payload.images = normalizeProductImages(rest.images);
@@ -95,7 +114,18 @@ export async function PUT(request: NextRequest) {
           firstImageUrl(normalizeProductImages(rest.images)) ||
           null;
       }
-      const { error } = await db.from("products").update(payload).eq("id", p.id);
+      // Поля закупки/штрихкода добавлены миграциями и могут отсутствовать
+      // в конкретной БД — в этом случае сохраняем остальное без них.
+      let { error } = await db.from("products").update(payload).eq("id", p.id);
+      if (
+        error &&
+        isMissingOptionalProductColumnError(error) &&
+        ("purchase_price" in payload || "barcode" in payload)
+      ) {
+        delete payload.purchase_price;
+        delete payload.barcode;
+        ({ error } = await db.from("products").update(payload).eq("id", p.id));
+      }
       if (error) throw error;
     };
 

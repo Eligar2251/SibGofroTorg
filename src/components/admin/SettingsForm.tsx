@@ -25,6 +25,8 @@ import {
   FileText,
   ListChecks,
   Contact,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { ActivityLogs } from "@/components/admin/ActivityLogs";
@@ -97,10 +99,54 @@ const deliveryFields = [
   },
 ];
 
-const messengerFields = [
-  { id: "whatsapp", label: "WhatsApp", placeholder: "https://wa.me/79990000000" },
-  { id: "max", label: "MAX", placeholder: "Ссылка на чат в MAX" },
-] as const;
+const DEFAULT_MESSENGER_COLOR = "#1b2b4b";
+
+interface MessengerCell {
+  id: string;
+  label: string;
+  url: string;
+  iconUrl: string;
+  iconPublicId: string;
+}
+
+function parseMessengerCells(settings: Record<string, string>): MessengerCell[] {
+  const raw = String(settings.messenger_channels_json || "").trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((item) => item && typeof item === "object")
+          .map((item: any) => ({
+            id: String(item.id || `messenger-${Math.random().toString(36).slice(2)}`),
+            label: String(item.label || "Мессенджер"),
+            url: String(item.url || ""),
+            iconUrl: String(item.iconUrl || ""),
+            iconPublicId: String(item.iconPublicId || ""),
+          }));
+      }
+    } catch {
+      // Повреждённый JSON игнорируем и падаем в legacy-блок ниже.
+    }
+  }
+
+  const cells: MessengerCell[] = [];
+  for (const id of ["whatsapp", "max"]) {
+    const url = String(settings[`messenger_${id}_url`] || "").trim();
+    const iconUrl = String(settings[`messenger_${id}_icon_url`] || "").trim();
+    const iconPublicId = String(settings[`messenger_${id}_icon_public_id`] || "").trim();
+    if (url || iconUrl) {
+      cells.push({
+        id,
+        label: id === "whatsapp" ? "WhatsApp" : "MAX",
+        url,
+        iconUrl,
+        iconPublicId,
+      });
+    }
+  }
+  return cells;
+}
 
 /** Виды макулатуры, цены на которые редактируются в этом блоке */
 const wastepaperFields: { id: WastepaperRateId; label: string }[] = [
@@ -162,6 +208,12 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
     defaults[WP_PHONE_SETTING_KEY] = WASTEPAPER_PHONE_DEFAULT;
     return { ...defaults, ...settings };
   });
+  const [messengerCells, setMessengerCells] = useState<MessengerCell[]>(() =>
+    parseMessengerCells({
+      ...settings,
+      messenger_channels_json: String(settings.messenger_channels_json || ""),
+    })
+  );
   const [activeTab, setActiveTab] = useState<TabId>("contacts");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -260,23 +312,82 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
     setSaving(false);
   }
 
-  function messengerImages(id: (typeof messengerFields)[number]["id"]) {
-    const url = values[`messenger_${id}_icon_url`] || "";
-    return url
-      ? [{ url, publicId: values[`messenger_${id}_icon_public_id`] || "" }]
+  function updateMessengerCell(id: string, patch: Partial<MessengerCell>) {
+    const exists = messengerCells.some((cell) => cell.id === id);
+    const next = exists
+      ? messengerCells.map((cell) => (cell.id === id ? { ...cell, ...patch } : cell))
+      : [
+          ...messengerCells,
+          {
+            id,
+            label: "Мессенджер",
+            url: "",
+            iconUrl: "",
+            iconPublicId: "",
+            ...patch,
+          },
+        ];
+    setMessengerCells(next);
+    setValues((current) => {
+      const flattened: Record<string, string> = {
+        ...current,
+        messenger_channels_json: JSON.stringify(next),
+      };
+      for (const cell of next) {
+        flattened[`messenger_${cell.id}_url`] = cell.url;
+        flattened[`messenger_${cell.id}_icon_url`] = cell.iconUrl;
+        flattened[`messenger_${cell.id}_icon_public_id`] = cell.iconPublicId;
+      }
+      return flattened;
+    });
+  }
+
+  function addMessengerCell() {
+    const cell: MessengerCell = {
+      id: `messenger-${Date.now().toString(36)}`,
+      label: "Мессенджер",
+      url: "",
+      iconUrl: "",
+      iconPublicId: "",
+    };
+    updateMessengerCell(cell.id, cell);
+  }
+
+  function removeMessengerCell(id: string) {
+    const next = messengerCells.filter((cell) => cell.id !== id);
+    setMessengerCells(next);
+    setValues((current) => {
+      const flattened: Record<string, string> = {
+        ...current,
+        messenger_channels_json: JSON.stringify(next),
+      };
+      for (const key of [
+        `messenger_${id}_url`,
+        `messenger_${id}_icon_url`,
+        `messenger_${id}_icon_public_id`,
+      ]) {
+        delete flattened[key];
+      }
+      return flattened;
+    });
+  }
+
+  function messengerImages(id: string) {
+    const cell = messengerCells.find((c) => c.id === id);
+    return cell?.iconUrl
+      ? [{ url: cell.iconUrl, publicId: cell.iconPublicId }]
       : [];
   }
 
   function setMessengerImages(
-    id: (typeof messengerFields)[number]["id"],
+    id: string,
     images: { url: string; publicId: string }[]
   ) {
     const image = images[images.length - 1];
-    setValues((current) => ({
-      ...current,
-      [`messenger_${id}_icon_url`]: image?.url || "",
-      [`messenger_${id}_icon_public_id`]: image?.publicId || "",
-    }));
+    updateMessengerCell(id, {
+      iconUrl: image?.url || "",
+      iconPublicId: image?.publicId || "",
+    });
   }
 
   const authFieldOptions = [
@@ -740,23 +851,51 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                     </div>
                   </div>
                 </div>
-                <div className="settings-messenger-grid">
-                  {messengerFields.map((messenger) => (
+                <div className="settings-messenger-grid" style={{ marginTop: 8 }}>
+                  {messengerCells.length === 0 && (
+                    <div className="admin-empty" style={{ gridColumn: "1 / -1", padding: "14px" }}>
+                      Мессенджеров пока нет. Добавьте WhatsApp, MAX или любой другой чат.
+                    </div>
+                  )}
+                  {messengerCells.map((messenger) => (
                     <div key={messenger.id} className="settings-messenger-item">
-                      <strong>{messenger.label}</strong>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          width: "100%",
+                        }}
+                      >
+                        <input
+                          type="text"
+                          className="admin-input"
+                          style={{ fontWeight: 700, flex: 1, minWidth: 0 }}
+                          value={messenger.label}
+                          onChange={(e) =>
+                            updateMessengerCell(messenger.id, { label: e.target.value })
+                          }
+                          placeholder="Название (WhatsApp, MAX…)"
+                        />
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--icon admin-btn--ghost"
+                          title="Удалить мессенджер"
+                          onClick={() => removeMessengerCell(messenger.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                       <div className="admin-field">
                         <label className="admin-label">Ссылка на чат</label>
                         <input
                           type="url"
                           className="admin-input"
-                          value={values[`messenger_${messenger.id}_url`] || ""}
+                          value={messenger.url}
                           onChange={(e) =>
-                            setValues({
-                              ...values,
-                              [`messenger_${messenger.id}_url`]: e.target.value,
-                            })
+                            updateMessengerCell(messenger.id, { url: e.target.value })
                           }
-                          placeholder={messenger.placeholder}
+                          placeholder="https://wa.me/79990000000"
                         />
                       </div>
                       <div className="admin-label">Иконка / фото</div>
@@ -767,9 +906,40 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                     </div>
                   ))}
                 </div>
+                <div className="admin-row" style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--outline"
+                    onClick={addMessengerCell}
+                  >
+                    <Plus size={14} /> Добавить мессенджер
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                    onClick={() => {
+                      for (const legacy of [
+                        { id: "whatsapp", label: "WhatsApp", url: "" },
+                        { id: "max", label: "MAX", url: "" },
+                      ]) {
+                        if (!messengerCells.some((c) => c.id === legacy.id)) {
+                          updateMessengerCell(legacy.id, {
+                            id: legacy.id,
+                            label: legacy.label,
+                            url: legacy.url,
+                            iconUrl: "",
+                            iconPublicId: "",
+                          });
+                        }
+                      }
+                    }}
+                  >
+                    Вернуть WhatsApp / MAX
+                  </button>
+                </div>
                 <p className="admin-hint">
-                  На сайте появится небольшой фиксированный блок с тремя круглыми
-                  изображениями. Нажатие откроет соответствующий чат.
+                  На сайте появится небольшой фиксированный блок с настроенными
+                  ячейками. Нажатие откроет соответствующий чат.
                 </p>
               </div>
             </div>
