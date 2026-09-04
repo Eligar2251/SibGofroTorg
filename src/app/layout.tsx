@@ -29,8 +29,7 @@ import {
 } from "@/lib/seo";
 import { adminThemeInitScript } from "@/lib/admin-theme";
 
-const FONTS_CSS_URL =
-  "https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@800;900&display=swap";
+
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -137,10 +136,8 @@ export default async function RootLayout({
     <html lang="ru" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         {/* Ранние подключения источников (экономия на handshake/TLS). */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
-          href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
         <link rel="preconnect" href="https://res.cloudinary.com" />
