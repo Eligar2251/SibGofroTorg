@@ -100,6 +100,10 @@ export function CookieConsent() {
                 <Link href="/privacy" target="_blank" className="cookie-banner__link">
                   политикой конфиденциальности
                 </Link>
+                и{" "}
+                <Link href="/cookie-policy" target="_blank" className="cookie-banner__link">
+                  условиями использования cookie-файлов
+                </Link>
                 .
               </p>
             </div>

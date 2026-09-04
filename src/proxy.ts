@@ -58,9 +58,9 @@ function buildCsp(): string {
   const directives = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data:",
     // Метрика открывает WebSocket wss://mc.yandex.ru/solid.ws — схема wss://
     // не покрывается https-источником, поэтому её нужно указать явно,
     // иначе консоль засоряется "violates CSP directive: connect-src".

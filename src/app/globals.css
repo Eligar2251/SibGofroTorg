@@ -57,9 +57,9 @@
   --eco-light: var(--green-light);
   --eco-dark: var(--green-dark);
 
-  --font-head: "Oswald", sans-serif;
-  --font-body: "Inter", sans-serif;
-  --f-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-head: system-ui, sans-serif;
+  --font-body: system-ui, sans-serif;
+  --f-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --f-mono: "SF Mono", "Roboto Mono", Consolas, monospace;
 
   --max-w: 1440px;

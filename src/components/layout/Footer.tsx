@@ -27,6 +27,7 @@ const INFO_LINKS = [
   { href: "/wastepaper", label: "Приём макулатуры" },
   { href: "/contacts", label: "Контакты" },
   { href: "/privacy", label: "Политика конфиденциальности" },
+  { href: "/user-agreement", label: "Пользовательское соглашение" },
 ];
 
 // SEO-посадочные под кластеры запросов: продающие страницы
