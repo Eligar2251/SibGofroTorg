@@ -12683,14 +12683,25 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
    ═══════════════════════════════════════════════════════════ */
 .ps-print-root { display: none; }
 
+/* ВАЖНО: все правила ниже скоуплены через body:has(.ps-print-root).
+   Раньше «body * { visibility: hidden }» и «@page { margin: 0 }» были
+   глобальными и применялись при печати ЛЮБОЙ страницы админки
+   (admin.css грузится в [adminPath]/layout.tsx) — из-за этого ломалась
+   печать отчёта по коробкам и бланка ревизии (пустые страницы,
+   обрезанные поля). .ps-print-root существует только на странице
+   редактора таблиц (/print-sheet), поэтому :has() ограничивает
+   действие правил только ею. */
 @media print {
-  @page { size: A4; margin: 0; }
+  /* Нулевые поля страницы редактора таблиц задаются динамическим
+     <style> внутри PrintSheetEditor.tsx (@page нельзя скоупить
+     селектором, а глобальное «@page { margin: 0 }» в этом файле
+     сбрасывало поля при печати ДРУГИХ страниц админки — отчёта по
+     коробкам и бланка ревизии). */
+  body:has(.ps-print-root) * { visibility: hidden; }
+  body:has(.ps-print-root) .ps-print-root,
+  body:has(.ps-print-root) .ps-print-root * { visibility: visible; }
 
-  body * { visibility: hidden; }
-  .ps-print-root,
-  .ps-print-root * { visibility: visible; }
-
-  .ps-print-root {
+  body:has(.ps-print-root) .ps-print-root {
     display: block;
     position: absolute;
     left: 0;

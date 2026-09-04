@@ -253,14 +253,29 @@ const REVISION_PRINT_CSS = `
   @page { size: A4 portrait; margin: 10mm 8mm; }
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important; }
 
-  /* На печать уходит ТОЛЬКО бланк.
-     Прячем через display:none, а не visibility:hidden — скрытый по
-     visibility элемент сохраняет место и давал пустые первые страницы.
+  /* Изоляция печати бланка ревизии.
+     ВАЖНО: display:none, а не visibility:hidden — скрытый по visibility
+     элемент сохраняет место и давал пустые первые страницы.
      Модалка ревизии — соседний узел в <body> (оба через портал), поэтому
      её нужно скрыть явно, иначе печаталась именно она. */
   body > *:not(.rev-print-root) { display: none !important; }
   .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content,
   .admin-main, .admin-modal-overlay { display: none !important; }
+
+  /* Сброс ИНЛАЙНОВЫХ стилей блокировки скролла (use-body-lock):
+     модалка выбора товаров оставляет на <body> position:fixed и
+     top:-Npx (inline). Без этих !important-переопределений браузер
+     печатал бланк со сдвигом вверх и обрезал многостраничные таблицы —
+     inline-стиль сильнее любого CSS-правила без !important. */
+  body {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    padding-right: 0 !important;
+  }
 
   .rev-print-root { display: block !important; }
   .rev-print-root, .rev-print-root * { visibility: visible !important; }
