@@ -11,6 +11,7 @@ import {
   RESTOCK_INQUIRY_LABEL,
 } from "@/lib/stock-availability";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { ShoppingCart, Package, Clock3, Plus, Minus } from "lucide-react";
 import { ymGoal } from "@/lib/ym";
 import {
@@ -154,6 +155,19 @@ export function ProductCardCompact({
         qty: next,
       });
     }
+  }
+
+  function handleManualQty(next: number) {
+    const qty = maxStock != null ? Math.min(next, maxStock) : next;
+    if (qty < 1 || !inCart || !product.price || product.madeToOrder || outOfStock) return;
+    updateQty(product.id, qty);
+    openCartDock({
+      productId: product.id,
+      name: product.name,
+      imageUrl: product.imageUrl,
+      price: product.price,
+      qty,
+    });
   }
 
   return (
@@ -365,9 +379,13 @@ export function ProductCardCompact({
                 >
                   <Minus size={14} />
                 </button>
-                <span className="pcc__stepper-input" aria-live="polite">
-                  {inCart.quantity}
-                </span>
+                <EditableQuantityInput
+                  value={inCart.quantity}
+                  max={maxStock}
+                  className="pcc__stepper-input"
+                  ariaLabel="Количество"
+                  onCommit={handleManualQty}
+                />
                 <button
                   type="button"
                   className="pcc__stepper-btn"

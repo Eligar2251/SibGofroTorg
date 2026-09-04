@@ -786,35 +786,82 @@ export async function getProducts(opts: {
 }
 
 /**
- * Облегчённая выборка для массового редактора: без описаний, штрихкодов,
- * фотографий и агрегации вариантов. Фото выбранных товаров загружаются
- * отдельно только на соответствующем шаге.
+ * Выборка для массового редактора: берёт актуальные поля товара без фото
+ * и агрегации вариантов. Фото загружаются отдельно на шаге изображений.
  */
+const BULK_EDITOR_COLUMNS = [
+  "id",
+  "name",
+  "slug",
+  "sku",
+  "category_id",
+  "description",
+  "price",
+  "purchase_price",
+  "price_wholesale",
+  "min_wholesale_qty",
+  "discount_type",
+  "discount_value",
+  "discount_badge",
+  "dimension_length",
+  "dimension_width",
+  "dimension_height",
+  "dimension_unit",
+  "weight",
+  "volume",
+  "material",
+  "pack_qty",
+  "note",
+  "stock_qty",
+  "stock_warn_qty",
+  "in_stock",
+  "is_visible",
+  "is_promo",
+  "is_featured",
+  "is_sale",
+  "promo_label",
+  "promo_label_color",
+  "promo_label_text_color",
+  "tags",
+  "made_to_order",
+  "made_to_order_min_qty",
+  "is_cuttable",
+  "cut_meters_per_roll",
+  "cut_price_per_meter",
+  "cut_unit_name",
+  "barcode",
+];
+
+/** Колонки, добавленные отдельными миграциями; в БД без них редактор
+ *  продолжает работать, просто без закупочной цены и штрихкода. */
+const BULK_EDITOR_COLUMNS_WITHOUT_OPTIONAL = BULK_EDITOR_COLUMNS.filter(
+  (column) => column !== "purchase_price" && column !== "barcode"
+);
+
+function isMissingOptionalBulkColumnError(err: any): boolean {
+  return (
+    isMissingPurchasePriceColumnError(err) || isMissingBarcodeColumnError(err)
+  );
+}
+
 export async function getProductsForBulkEditor(): Promise<FirestoreProduct[]> {
   const db = getAdminDb();
-  const { data, error } = await db
+  let query = db
     .from("products")
-    .select([
-      "id",
-      "name",
-      "slug",
-      "sku",
-      "category_id",
-      "price",
-      "price_wholesale",
-      "min_wholesale_qty",
-      "material",
-      "pack_qty",
-      "note",
-      "stock_qty",
-      "in_stock",
-      "is_visible",
-      "is_promo",
-      "is_featured",
-      "is_sale",
-      "promo_label",
-    ].join(","))
+    .select(BULK_EDITOR_COLUMNS.join(","))
     .order("name", { ascending: true });
+  let { data, error } = await query;
+  if (error && isMissingOptionalBulkColumnError(error)) {
+    console.warn(
+      "[products] Нет колонок миграций — массовый редактор работает без закупки/штрихкода"
+    );
+    const fallback = await db
+      .from("products")
+      .select(BULK_EDITOR_COLUMNS_WITHOUT_OPTIONAL.join(","))
+      .order("name", { ascending: true });
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return (data || []).map(mapProductRow);
 }

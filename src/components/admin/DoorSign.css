@@ -1,0 +1,286 @@
+/* ══════════════════════════════════════════════════════════
+   ТАБЛИЧКА НА ДВЕРЬ — A4 landscape, чёрно-белая печать
+   Крупный номер телефона + «если никого нет — позвоните, выдадим товар».
+   ══════════════════════════════════════════════════════════ */
+
+.door-sign-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 22px 24px 60px;
+}
+
+.door-sign-page__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.door-sign-page__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--adm-steel);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+}
+
+.door-sign-page__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.door-sign__controls {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.door-sign__controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.door-sign__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.door-sign__field > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-sand);
+}
+
+.door-sign__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.door-sign__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.door-sign__hint {
+  font-size: 12px;
+  color: var(--adm-sand);
+  line-height: 1.45;
+}
+
+.door-sign__preview {
+  overflow-x: auto;
+  padding: 12px 4px 20px;
+}
+
+/* ── Лист A4 landscape ── */
+.door-sign__sheet {
+  position: relative;
+  overflow: hidden;
+  width: 297mm;
+  height: 210mm;
+  margin: 0 auto;
+  background: #fff;
+  color: #000;
+  border: 1px dashed #bbb;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.18);
+}
+
+.door-sign__frame {
+  position: absolute;
+  inset: 9mm;
+  display: flex;
+  flex-direction: column;
+  border: 1.6mm solid #000;
+  padding: 9mm 14mm 8mm;
+  background: #fff;
+}
+
+.door-sign__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12mm;
+  padding-bottom: 4mm;
+  border-bottom: 0.8mm solid #000;
+}
+
+.door-sign__company {
+  font-size: 16pt;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.door-sign__header-tag {
+  font-size: 12pt;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.door-sign__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 0;
+  gap: 7mm;
+}
+
+.door-sign__line1 {
+  font-size: 30pt;
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.door-sign__phone-box {
+  width: 100%;
+  max-width: 250mm;
+  border: 3.2mm solid #000;
+  padding: 7mm 8mm 8mm;
+  background: #fff;
+}
+
+.door-sign__phone-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7mm;
+}
+
+.door-sign__phone-icon {
+  flex: 0 0 auto;
+  width: 0.82em;
+  height: 0.82em;
+}
+
+.door-sign__phone {
+  font-weight: 900;
+  font-size: var(--door-sign-phone-size, 60pt);
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.door-sign__line2 {
+  font-size: 26pt;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.door-sign__footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10mm;
+  padding-top: 4mm;
+  border-top: 0.8mm solid #000;
+  font-size: 13pt;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.door-sign__footer-address,
+.door-sign__footer-hours {
+  max-width: 50%;
+}
+
+.door-sign__footer-hours {
+  text-align: right;
+}
+
+/* ── Печать ── */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  body.door-sign-mode,
+  body.door-sign-mode .admin-shell,
+  body.door-sign-mode .admin-content,
+  body.door-sign-mode .admin-main,
+  body.door-sign-mode .door-sign-page {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.door-sign-mode * {
+    visibility: hidden !important;
+  }
+
+  body.door-sign-mode .door-sign__sheet,
+  body.door-sign-mode .door-sign__sheet * {
+    visibility: visible !important;
+  }
+
+  body.door-sign-mode .door-sign__sheet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 297mm !important;
+    height: 210mm !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  body.door-sign-mode .door-sign__frame {
+    inset: 6mm !important;
+  }
+
+  body.door-sign-mode .door-sign__sheet,
+  body.door-sign-mode .door-sign__frame,
+  body.door-sign-mode .door-sign__phone-box {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+@media (max-width: 760px) {
+  .door-sign-page {
+    padding: 14px 12px 40px;
+  }
+
+  .door-sign-page__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .door-sign__footer {
+    flex-direction: column;
+    gap: 4mm;
+  }
+
+  .door-sign__footer-address,
+  .door-sign__footer-hours {
+    max-width: 100%;
+  }
+
+  .door-sign__footer-hours {
+    text-align: left;
+  }
+}

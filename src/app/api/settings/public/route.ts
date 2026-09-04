@@ -15,6 +15,46 @@ import {
 } from "@/lib/site-config";
 import { getWastepaperPageConfig } from "@/lib/wastepaper";
 
+function parseMessengerChannels(settings: Record<string, any>) {
+  const raw = String(settings.messenger_channels_json || "").trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item: any) => ({
+            id: String(item?.id || ""),
+            label: String(item?.label || "Мессенджер"),
+            url: String(item?.url || "").trim(),
+            iconUrl: String(item?.iconUrl || "").trim(),
+          }))
+          .filter((channel: any) => channel.url || channel.iconUrl);
+      }
+    } catch {
+      // Повреждённый JSON — используем legacy-поля ниже.
+    }
+  }
+
+  const channels: { id: string; label: string; url: string; iconUrl: string }[] = [];
+  const legacy = [
+    { id: "whatsapp", label: "WhatsApp", url: settings.messenger_whatsapp_url, iconUrl: settings.messenger_whatsapp_icon_url },
+    { id: "max", label: "MAX", url: settings.messenger_max_url, iconUrl: settings.messenger_max_icon_url },
+  ] as const;
+  for (const channel of legacy) {
+    const url = String(channel.url || "").trim();
+    const iconUrl = String(channel.iconUrl || "").trim();
+    if (url || iconUrl) {
+      channels.push({
+        id: channel.id,
+        label: channel.label,
+        url,
+        iconUrl,
+      });
+    }
+  }
+  return channels;
+}
+
 export async function GET() {
   try {
     const settings = (await getSettings()) || {};
@@ -60,6 +100,7 @@ export async function GET() {
             url: (settings.messenger_max_url || "").trim(),
             iconUrl: (settings.messenger_max_icon_url || "").trim(),
           },
+          channels: parseMessengerChannels(settings),
         },
         boxBadge: {
           enabled: settings.box_badge_enabled !== "false",
@@ -91,6 +132,7 @@ export async function GET() {
           color: "#1b2b4b",
           whatsapp: { url: "", iconUrl: "" },
           max: { url: "", iconUrl: "" },
+          channels: [],
         },
         boxBadge: {
           enabled: true,

@@ -153,10 +153,23 @@ export function MessengerFloatingBanner() {
     }
   }, [corner, dragging]);
 
-  const channels = [
-    { id: "whatsapp", label: "WhatsApp", short: "WA", ...messengerBanner.whatsapp },
-    { id: "max", label: "MAX", short: "MAX", ...messengerBanner.max },
-  ].map((channel) => ({ ...channel, href: safeMessengerUrl(channel.url) }));
+  const sourceChannels =
+    messengerBanner.channels.length > 0
+      ? messengerBanner.channels.map((channel) => ({
+          id: channel.id || "",
+          label: channel.label || "Мессенджер",
+          short: (channel.label || "M").trim().slice(0, 3) || "MSG",
+          url: channel.url || "",
+          iconUrl: channel.iconUrl || "",
+        }))
+      : [
+          { id: "whatsapp", label: "WhatsApp", short: "WA", ...messengerBanner.whatsapp },
+          { id: "max", label: "MAX", short: "MAX", ...messengerBanner.max },
+        ];
+  const channels = sourceChannels.map((channel) => ({
+    ...channel,
+    href: safeMessengerUrl(channel.url),
+  }));
   const hasActiveChannel = channels.some((channel) => channel.href);
 
   useEffect(() => {

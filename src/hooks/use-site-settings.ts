@@ -19,6 +19,8 @@ import { useEffect, useState } from "react";
 import { buildHoursLabel, DEFAULT_HOURS_WEEKDAY } from "@/lib/hours-label";
 
 export interface MessengerChannelSettings {
+  id?: string;
+  label?: string;
   url: string;
   iconUrl: string;
 }
@@ -29,6 +31,8 @@ export interface MessengerBannerSettings {
   color: string;
   whatsapp: MessengerChannelSettings;
   max: MessengerChannelSettings;
+  /** Динамический список ячеек, созданный в админке. */
+  channels: MessengerChannelSettings[];
 }
 
 export interface BoxBadgeSettings {
@@ -62,6 +66,7 @@ const EMPTY_MESSENGER_BANNER: MessengerBannerSettings = {
   color: "#1b2b4b",
   whatsapp: { url: "", iconUrl: "" },
   max: { url: "", iconUrl: "" },
+  channels: [],
 };
 
 let cache: SiteSettings | null = null;
@@ -100,6 +105,16 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
           url: String(rawBanner.max?.url || "").trim(),
           iconUrl: String(rawBanner.max?.iconUrl || "").trim(),
         },
+        channels: Array.isArray(rawBanner.channels)
+          ? rawBanner.channels
+              .map((channel: any) => ({
+                id: String(channel?.id || ""),
+                label: String(channel?.label || ""),
+                url: String(channel?.url || "").trim(),
+                iconUrl: String(channel?.iconUrl || "").trim(),
+              }))
+              .filter((channel: any) => channel.id || channel.label || channel.url || channel.iconUrl)
+          : [],
       };
       const rawBoxBadge = data.boxBadge || {};
       const boxBadge: BoxBadgeSettings = {

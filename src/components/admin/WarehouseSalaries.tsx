@@ -66,6 +66,7 @@ import {
   type Salary,
   type SalarySource,
   composeSalaryComment,
+  getSalaryColor,
   isDebtSalaryComment,
   isRentSalaryComment,
   isYmCardSalaryComment,
@@ -277,6 +278,9 @@ function SalaryFormModal({
   );
   const [source, setSource] = useState<SalarySource>(initial?.source || "cash");
   const [comment, setComment] = useState(stripSalaryMetaTags(initial?.comment));
+  const [color, setColor] = useState<string>(
+    getSalaryColor(initial?.comment) || "#2563eb"
+  );
   const [excludeFromBalance, setExcludeFromBalance] = useState(
     Boolean(initial && isSalaryExcludedFromBalance(initial.comment))
   );
@@ -344,6 +348,7 @@ function SalaryFormModal({
               excludeFromBalance,
               debtPayment,
               periodMonth,
+              color,
             }),
           }),
         }
@@ -492,6 +497,26 @@ function SalaryFormModal({
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Например: аванс, премия, комментарий"
               />
+            </div>
+
+            <div className="admin-field" style={{ marginTop: 12 }}>
+              <label className="admin-label">Цвет плитки</label>
+              <div className="settings-color-control">
+                <input
+                  type="color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  aria-label="Выбрать цвет плитки зарплаты"
+                />
+                <input
+                  type="text"
+                  className="admin-input"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  placeholder="#2563eb"
+                  pattern="#[0-9A-Fa-f]{3,8}"
+                />
+              </div>
             </div>
 
             <label className="admin-check" style={{ marginTop: 12 }}>
@@ -2966,6 +2991,11 @@ export function WarehouseSalaries({
             <div
               key={s.id}
               className={`bank-pay${!s.isPaid ? " bank-pay--pending" : ""}`}
+              style={{
+                borderLeft: `4px solid ${
+                  getSalaryColor(s.comment) || "var(--adm-border-mid)"
+                }`,
+              }}
             >
               <div
                 className={`bank-pay__icon ${

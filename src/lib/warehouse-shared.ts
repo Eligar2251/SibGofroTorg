@@ -417,6 +417,7 @@ export const SALARY_YM_CARD_TAG_SHORT = "[ЮМ]";
 /** Расчётный месяц хранится служебной пометкой — миграция БД не нужна. */
 export const SALARY_PERIOD_TAG_PREFIX = "Период:";
 const SALARY_PERIOD_TAG_RE = /\[Период:(\d{4}-\d{2})\]/g;
+const SALARY_COLOR_TAG_RE = /\[Цвет:#([0-9a-fA-F]{3,8})\]/g;
 
 function salaryHasTag(comment: string | null | undefined, tag: string): boolean {
   return (comment || "").includes(tag);
@@ -452,6 +453,14 @@ export function getSalaryPeriodMonth(
   return String(fallbackDate || "").slice(0, 7);
 }
 
+/** Кастомный цвет плитки зарплаты из комментария (без миграции БД). */
+export function getSalaryColor(comment: string | null | undefined): string | null {
+  const match = String(comment || "").match(/\[Цвет:#([0-9a-fA-F]{3,8})\]/);
+  return match?.[1]
+    ? `#${match[1].toLowerCase()}`
+    : null;
+}
+
 /** Убирает служебные теги из комментария для отображения в UI. */
 export function stripSalaryMetaTags(comment: string | null | undefined): string {
   return String(comment || "")
@@ -461,6 +470,7 @@ export function stripSalaryMetaTags(comment: string | null | undefined): string 
     .replaceAll(SALARY_YM_CARD_TAG, "")
     .replaceAll(SALARY_YM_CARD_TAG_SHORT, "")
     .replace(SALARY_PERIOD_TAG_RE, "")
+    .replace(SALARY_COLOR_TAG_RE, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -474,6 +484,8 @@ export function composeSalaryComment(options: {
   ymCard?: boolean;
   /** Расчётный месяц YYYY-MM: например, выплата в июле за июнь. */
   periodMonth?: string | null;
+  /** Кастомный HEX-цвет плитки. */
+  color?: string | null;
 }): string | null {
   const tags: string[] = [];
   if (options.ymCard) {
@@ -485,6 +497,10 @@ export function composeSalaryComment(options: {
   if (options.debtPayment) tags.push(SALARY_DEBT_PAYMENT_TAG);
   if (/^\d{4}-\d{2}$/.test(options.periodMonth || "")) {
     tags.push(`[${SALARY_PERIOD_TAG_PREFIX}${options.periodMonth}]`);
+  }
+  const color = String(options.color || "").trim();
+  if (/^#[0-9a-fA-F]{3,8}$/.test(color)) {
+    tags.push(`[Цвет:${color.slice(1).toLowerCase()}]`);
   }
   const clean = stripSalaryMetaTags(options.comment);
   const joined = [...tags, clean].filter(Boolean).join(" ").trim();
