@@ -29,11 +29,11 @@ import {
 } from "@/lib/seo";
 import { adminThemeInitScript } from "@/lib/admin-theme";
 
-// Google Fonts (Oswald — заголовки, Inter — текст, Montserrat — акценты).
-// Подключаем через <link> в <head>: без цепочки @import в CSS-бандле (быстрее FCP/LCP).
-const FONTS_CSS_URL =
-  "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&display=swap";
-
+// Шрифты Oswald/Inter/Montserrat — self-hosted (public/fonts/*.woff2,
+// @font-face в src/app/fonts.css). Google Fonts не используется:
+// запросы к fonts.googleapis.com/fonts.gstatic.com блокировались нашим
+// CSP (style-src/font-src 'self') и передавали бы данные посетителей
+// на зарубежные серверы (152-ФЗ / требования РКН о локализации).
 
 
 export const metadata: Metadata = {
@@ -141,14 +141,31 @@ export default async function RootLayout({
     <html lang="ru" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         {/* Ранние подключения источников (экономия на handshake/TLS). */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://res.cloudinary.com" />
+        {/* Preload основных шрифтов (кириллица) — они критичны для LCP:
+            файлы локальные (public/fonts), подключены через @font-face
+            в src/app/fonts.css с font-display: swap. */}
         <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
+          rel="preload"
+          href="/fonts/inter-cyrillic.woff2"
+          as="font"
+          type="font/woff2"
           crossOrigin="anonymous"
         />
-        <link rel="preconnect" href="https://res.cloudinary.com" />
-        <link rel="stylesheet" href={FONTS_CSS_URL} />
+        <link
+          rel="preload"
+          href="/fonts/oswald-cyrillic.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/fonts/montserrat-cyrillic.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
         <JsonLd
           data={[buildLocalBusinessJsonLd(), buildWebSiteJsonLd()]}
         />
