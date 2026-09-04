@@ -1,10 +1,11 @@
-/* Шрифты Google (Oswald/Inter/Montserrat) подключены в src/app/layout.tsx
-   через <link rel="preconnect"> + <link rel="stylesheet"> — без цепочки
-   @import внутри CSS-бандла (быстрее FCP/LCP).
+/* Шрифты Oswald/Inter/Montserrat — self-hosted: @font-face в fonts.css,
+   файлы woff2 лежат в public/fonts/ (никаких запросов к Google Fonts,
+   см. комментарий в fonts.css и public/fonts/LICENSE-OFL.txt).
    admin.css и pdp.css больше не грузятся на всех страницах:
    admin.css — только в админке ([adminPath]/layout.tsx),
    pdp.css — только на странице товара. */
 @import "tailwindcss";
+@import "./fonts.css";
 
 /* ══════════════════════════════════════
    ПЕРЕМЕННЫЕ — чёрный + зелёный

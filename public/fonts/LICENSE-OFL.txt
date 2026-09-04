@@ -1,0 +1,16 @@
+Сайт self-hostит три шрифта с лицензией SIL Open Font License 1.1 (OFL):
+
+  Oswald     — Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont)
+  Inter      — Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
+  Montserrat — Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)
+
+Источники файлов: репозиторий google/fonts (github.com/google/fonts), ветка main.
+Файлы *.woff2 — вариативные шрифты, сабсет latin + cyrillic (собраны fontTools).
+
+OFL разрешает свободное использование, распространение и встраивание шрифтов
+в любые проекты; продажа шрифтов сама по себе запрещена, изменение текста
+лицензии — тоже. Полные тексты лицензий:
+
+  Oswald:     https://github.com/google/fonts/blob/main/ofl/oswald/OFL.txt
+  Inter:      https://github.com/google/fonts/blob/main/ofl/inter/OFL.txt
+  Montserrat: https://github.com/google/fonts/blob/main/ofl/montserrat/OFL.txt

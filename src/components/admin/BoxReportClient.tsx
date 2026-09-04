@@ -893,24 +893,47 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
-          body * { visibility: hidden !important; }
+          /* Блокировка скролла модалок (use-body-lock) оставляет на <body>
+             инлайновые position:fixed; top:-Npx — из-за них печать съезжала
+             вверх и обрезалась. Инлайн-стиль перебивается только !important. */
+          body {
+            position: static !important;
+            top: auto !important;
+            left: auto !important;
+            right: auto !important;
+            width: auto !important;
+            max-width: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: visible !important;
+          }
+
+          /* Изоляция печати через display:none, а НЕ visibility:hidden:
+             скрытое по visibility занимает место и даёт пустые страницы,
+             а position:absolute у зоны печати ломал разбиение длинной
+             таблицы на страницы. Теперь зона печати остаётся в потоке,
+             а всё лишнее физически удаляется из раскладки:
+             • прячем детей <body>, не содержащих зону печати (порталы,
+               оверлеи, next-элементы);
+             • внутри отчёта прячем соседние карточки (панель управления
+               и список коробок — они no-print);
+             • цепочку предков (admin-shell → … → карточка) обнуляем. */
+          body > *:not(:has(.box-report-print-area)) { display: none !important; }
+          .box-report > *:not(.box-report-print-area) { display: none !important; }
           .box-report-print-area,
-          .box-report-print-area * { visibility: visible !important; }
-          .box-report-print-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
+          .box-report-print-area .admin-card__pad {
+            display: block !important;
+            width: auto !important;
+            max-width: none !important;
+            min-height: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
             box-shadow: none !important;
             border: none !important;
           }
-          .box-report-print-area .admin-card__pad {
-            padding: 0 !important;
-          }
           .box-report-a4-stage {
+            display: block !important;
             background: #fff !important;
             padding: 0 !important;
             box-shadow: none !important;
@@ -923,6 +946,10 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
             padding: 0 !important;
             box-shadow: none !important;
           }
+          /* Многостраничная таблица: шапка повторяется на каждом листе,
+             строки не разрываются между страницами. */
+          .box-report-table thead { display: table-header-group; }
+          .box-report-table tr { break-inside: avoid; }
           .br-edit {
             background: none !important;
             box-shadow: none !important;
@@ -936,8 +963,21 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
           .admin-notify,
           .admin-plans-shortcut,
           .admin-requests-shortcut { display: none !important; }
-          .admin-content { margin: 0 !important; }
-          .admin-main { padding: 0 !important; }
+          .admin-content { margin: 0 !important; padding: 0 !important; }
+          .admin-main { padding: 0 !important; max-width: none !important; }
+          .admin-stack { display: block !important; gap: 0 !important; }
+          /* Предки зоны печати — flex/grid-контейнеры админки. На печати
+             превращаем их в обычные блоки, чтобы таблица стояла в потоке
+             с самого верха листа и корректно переносилась на страницы. */
+          .admin-shell,
+          .admin-content,
+          .box-report {
+            display: block !important;
+            min-height: 0 !important;
+            width: auto !important;
+            max-width: none !important;
+            background: #fff !important;
+          }
         }
       `}</style>
 

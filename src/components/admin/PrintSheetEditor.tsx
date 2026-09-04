@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Printer,
   Plus,
@@ -126,6 +126,12 @@ export function PrintSheetEditor() {
 
   return (
     <div className="ps-editor">
+      {/* Нулевые поля страницы — ТОЛЬКО на этой странице: редактор задаёт
+          поля сам (padding у .ps-print-area). Раньше это правило жило
+          глобально в admin.css и сбрасывало поля у любой печати админки
+          (отчёт по коробкам, бланк ревизии). @page нельзя скоупить
+          селектором, поэтому рендерим его вместе с компонентом. */}
+      <style>{`@media print { @page { size: A4; margin: 0; } }`}</style>
       {/* ── Панель настроек ── */}
       <div className="ps-controls admin-card">
         <div className="admin-card__pad">
