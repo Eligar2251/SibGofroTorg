@@ -395,8 +395,10 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
           aria-live="polite"
           style={{
             position: "fixed",
-            right: 16,
-            bottom: 16,
+            // 74px — над нижним мобильным меню (58px) и домашней полосой
+            // iOS; на десктопе это обычный отступ тоста от края.
+            right: "calc(env(safe-area-inset-right, 0px) + 16px)",
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 74px)",
             zIndex: 1200,
             width: "min(340px, calc(100vw - 32px))",
             background: "var(--adm-card, #fff)",

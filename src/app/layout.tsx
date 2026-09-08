@@ -14,6 +14,7 @@ import { getCategories } from "@/lib/supabase-queries";
 import type { HeaderCategory } from "@/components/layout/Header";
 import { CookieConsent } from "@/components/analytics/CookieConsent";
 import { PhoneClickTracking } from "@/components/analytics/PhoneClickTracking";
+import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { getAllPopupCampaigns } from "@/lib/supabase-queries";
 import {
@@ -185,6 +186,11 @@ export default async function RootLayout({
         </CartProvider>
         <CookieConsent />
         <PhoneClickTracking />
+        {/* PWA: регистрируем /sw.js, чтобы браузер предложил установить
+            сайт на домашний экран и открывал его без адресной строки.
+            На страницах админки компонент ничего не делает — там свой
+            worker (см. AdminShell и public/admin-sw.js). */}
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

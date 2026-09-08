@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import { AdminBottomNav } from "./mobile/AdminBottomNav";
 import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
@@ -55,6 +57,10 @@ export function AdminShell({
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileDrawerEnabled, setMobileDrawerEnabled] = useState(false);
+  // Телефон или нет — решает, рендерить ли мобильное нижнее меню.
+  // Десктопная оболочка (сайдбар + верхняя панель) при этом не меняется:
+  // мобильная навигация — отдельный компонент рядом с оригиналом.
+  const isMobile = useIsMobile();
   // Текущая раскладка (data-admin-layout на <html>): в «Верхнем меню»
   // панель обязана быть видна всегда, даже если раньше её сворачивали.
   const [layout, setLayout] = useState("sidebar-left");
@@ -475,6 +481,21 @@ export function AdminShell({
           </>
         )}
         <main className="admin-main">{children}</main>
+
+        {/* Мобильная навигация: нижнее меню + лист «Ещё».
+            Рендерится только на телефоне (useIsMobile), на десктопе
+            компонент не создаётся вовсе. */}
+        {isMobile && (
+          <AdminBottomNav
+            items={nav.map((link) => ({
+              href: link.href,
+              label: link.label,
+              icon: link.icon,
+            }))}
+            pathname={pathname}
+            adminPath={adminPath}
+          />
+        )}
       </div>
     </div>
   );
