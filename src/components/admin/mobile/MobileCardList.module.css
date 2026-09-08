@@ -1,0 +1,106 @@
+/* =========================================================
+   FILE: src/components/admin/mobile/MobileCardList.module.css
+   Карточный список — мобильная замена <table> в админке.
+   Медиазапросов нет: компонент рендерится только на телефоне.
+   ========================================================= */
+
+.list {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--adm-card, #fff);
+  border: 1px solid var(--adm-border, #e5e2da);
+  border-radius: 12px;
+  box-shadow: var(--adm-sh-xs, none);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.title {
+  min-width: 0;
+  color: var(--adm-ink, #1a1a18);
+  font-family: var(--adm-font-head, inherit);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  flex: 0 0 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Пары «подпись: значение» — в одну колонку, подпись узкая. */
+.rows {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: baseline;
+}
+
+.label {
+  color: var(--adm-sand, #8b8578);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.value {
+  min-width: 0;
+  color: var(--adm-ink-soft, #3b3a36);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+}
+
+.strong {
+  color: var(--adm-ink, #1a1a18);
+  font-weight: 700;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--adm-border-soft, #efece5);
+}
+
+/* Одна кнопка действия — на всю ширину. */
+.actions > :only-child {
+  grid-column: 1 / -1;
+}
+
+.empty {
+  padding: 28px 14px;
+  color: var(--adm-sand, #8b8578);
+  background: var(--adm-paper-warm, #faf8f4);
+  border: 1px dashed var(--adm-border, #e5e2da);
+  border-radius: 12px;
+  font-size: 13px;
+  text-align: center;
+}
