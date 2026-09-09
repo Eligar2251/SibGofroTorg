@@ -1,0 +1,507 @@
+/* =========================================================
+   FILE: src/app/[adminPath]/orders/OrdersMobile.module.css
+   Мобильный экран «Заявки». Без медиазапросов (компонент живёт
+   только на телефоне/планшете), анимации — transform/opacity,
+   списки — content-visibility для лёгкого скролла на 120 Гц.
+   ========================================================= */
+
+.page {
+  display: grid;
+  gap: 10px;
+}
+
+/* ── Поиск ── */
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchField {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--adm-card, #fefefe);
+  border: 1px solid var(--adm-border-mid, #ccc9c0);
+  border-radius: 12px;
+  transition: border-color 0.15s ease-out;
+}
+
+.searchField:focus-within {
+  border-color: var(--adm-kraft, #c8860a);
+}
+
+.searchIcon {
+  flex-shrink: 0;
+  color: var(--adm-ink-muted, #6b6b60);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  color: var(--adm-ink, #1a1a18);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 15px; /* ≥16px не нужен: type=search не зумит iOS */
+}
+
+.searchInput::-webkit-search-cancel-button {
+  display: none;
+}
+
+.searchClear {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--adm-ink-muted, #6b6b60);
+  background: var(--adm-paper-warm, #ece9e1);
+  border: 0;
+  border-radius: 999px;
+}
+
+.resetChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 12px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  background: var(--adm-card, #fefefe);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* ── Чипы статусов ── */
+.chips {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0 4px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  padding: 8px 13px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  background: var(--adm-card, #fefefe);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s ease-out;
+}
+
+.chip:active {
+  transform: scale(0.95);
+}
+
+.chipActive {
+  color: #fff;
+  background: var(--adm-ink, #1a1a18);
+  border-color: var(--adm-ink, #1a1a18);
+}
+
+/* ── Счётчик + сортировка ── */
+.metaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+}
+
+.count {
+  color: var(--adm-ink-muted, #6b6b60);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.sortWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--adm-ink-muted, #6b6b60);
+}
+
+.sortSelect {
+  max-width: 46vw;
+  min-height: 36px;
+  padding: 0 8px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  background: var(--adm-card, #fefefe);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ── Пустой список ── */
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 42px 16px;
+  text-align: center;
+}
+
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  color: var(--adm-sand, #8c8070);
+  background: var(--adm-paper-warm, #ece9e1);
+  border-radius: 20px;
+}
+
+.empty p {
+  color: var(--adm-ink-muted, #6b6b60);
+  font-size: 14px;
+}
+
+/* ── Список карточек ── */
+.list {
+  display: grid;
+  gap: 10px;
+}
+
+.card {
+  background: var(--adm-card, #fefefe);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 16px;
+  /* Не рисуем карточки за пределами экрана — список любой длины
+     листается одинаково легко (композитор не захлёбывается). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 132px;
+}
+
+.cardOpen {
+  border-color: var(--adm-kraft, #c8860a);
+  box-shadow: 0 6px 20px rgba(200, 134, 10, 0.12);
+}
+
+/* Голова карточки — вся область кликабельна (палец, не мышь). */
+.cardHead {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.cardTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.orderId {
+  color: var(--adm-ink-muted, #6b6b60);
+  font-family: var(--f-mono, "SF Mono", "Roboto Mono", monospace);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.customer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.customerName {
+  overflow: hidden;
+  color: var(--adm-ink, #1a1a18);
+  font-size: 15.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.callBtn {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  color: #fff;
+  background: var(--adm-pine, #1e4a2d);
+  border-radius: 999px;
+  transition: transform 0.12s ease-out;
+}
+
+.callBtn:active {
+  transform: scale(0.9);
+}
+
+.summary {
+  overflow: hidden;
+  color: var(--adm-ink-muted, #6b6b60);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardBottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date {
+  color: var(--adm-ink-muted, #6b6b60);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pickup {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  color: var(--adm-steel, #1e3a5a);
+  background: var(--adm-steel-pale, #e8eef6);
+  border-radius: 999px;
+  font-family: var(--f-mono, "SF Mono", "Roboto Mono", monospace);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.chevron {
+  margin-left: auto;
+  color: var(--adm-ink-muted, #6b6b60);
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0.16, 1);
+}
+
+.chevronUp {
+  transform: rotate(180deg);
+}
+
+/* ── Раскрытые детали ── */
+.cardBody {
+  display: grid;
+  gap: 12px;
+  padding: 4px 14px 14px;
+  border-top: 1px dashed var(--adm-border, #dbd8d0);
+  /* отступ сверху visual: голова заканчивается, тело отделено */
+  margin: 0 0 0;
+  padding-top: 12px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin: 0;
+}
+
+.factWide {
+  grid-column: 1 / -1;
+}
+
+.factLabel {
+  color: var(--adm-ink-muted, #6b6b60);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.factValue {
+  margin: 2px 0 0;
+  color: var(--adm-ink, #1a1a18);
+  font-size: 13.5px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.factRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.link {
+  color: var(--adm-steel, #1e3a5a);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Позиции ── */
+.items {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--adm-paper, #f5f3ee);
+  border-radius: 12px;
+}
+
+.itemsTitle {
+  color: var(--adm-ink-muted, #6b6b60);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--adm-ink, #1a1a18);
+  font-size: 13px;
+}
+
+.itemQty {
+  color: var(--adm-ink-muted, #6b6b60);
+}
+
+.itemSum {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--adm-border, #dbd8d0);
+  color: var(--adm-ink, #1a1a18);
+  font-size: 13.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  color: var(--adm-ink-soft, #2e2e2a);
+  font-size: 13.5px;
+}
+
+.comment {
+  padding: 10px 12px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  background: var(--adm-paper-warm, #ece9e1);
+  border-radius: 12px;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.closeReason {
+  padding: 10px 12px;
+  color: var(--adm-rust, #b83a1e);
+  background: var(--adm-rust-pale, #fdf0ed);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+/* ── Действия ── */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Кнопки действий (глобальные .admin-btn внутри статус-апдейтера)
+   укрупняем под палец, не трогая десктоп. */
+.actions :global(.admin-btn) {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+}
+
+.actions :global(.admin-btn--icon) {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+/* ── Тоновые чипы ── */
+.tone {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.toneAmber {
+  color: #92600a;
+  background: #fdf3dc;
+}
+
+.toneBlue {
+  color: #1e3a5a;
+  background: #e8eef6;
+}
+
+.toneIndigo {
+  color: #40368f;
+  background: #eceafb;
+}
+
+.toneTeal {
+  color: #0f5d57;
+  background: #dff5f2;
+}
+
+.toneGreen {
+  color: #1e4a2d;
+  background: #ebf4ee;
+}
+
+.toneRed {
+  color: #b83a1e;
+  background: #fdf0ed;
+}
+
+.toneMuted {
+  color: var(--adm-ink-muted, #6b6b60);
+  background: var(--adm-paper-warm, #ece9e1);
+}

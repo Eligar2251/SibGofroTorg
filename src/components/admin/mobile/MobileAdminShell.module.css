@@ -1,0 +1,100 @@
+/* =========================================================
+   FILE: src/components/admin/mobile/MobileAdminShell.module.css
+   Оболочка мобильной админки «как нативное приложение».
+
+   Правила слоя:
+   • ни одного медиазапроса — компонент существует только на
+     телефонах (useIsPhone), «мобильность» не требует брейкпоинтов;
+   • анимации — только transform/opacity (композитор, 60–120 Гц);
+   • все отступы — через env(safe-area-inset-*) для чёлки и жестов;
+   • цвета — только переменные --adm-* (темы админки продолжают
+     работать: тёмная тема красит оболочку автоматически).
+   ========================================================= */
+
+/* Геометрия шапки совпадает со старым слоем admin-mobile.css:
+   индикаторы (планы/заявки/уведомления) позиционируются этими
+   переменными как fixed-элементы и должны попасть точно в шапку. */
+.app {
+  --header-h: 56px;
+  --tabbar-h: 60px;
+  /* Переменные ниже читает слой admin-mobile.css (≤768px),
+     чтобы поставить три кружка-индикатора в нашу шапку. */
+  --adm-mobile-safe-top: env(safe-area-inset-top, 0px);
+  --adm-mobile-safe-right: env(safe-area-inset-right, 0px);
+  --adm-mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --adm-mobile-safe-left: env(safe-area-inset-left, 0px);
+  --adm-mobile-bar-height: var(--header-h);
+  --adm-mobile-hbtn: 40px;
+  --adm-mobile-hgap: 6px;
+
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  background: var(--adm-paper, #f5f3ee);
+}
+
+/* ── Шапка приложения ── */
+.header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px)
+    calc(env(safe-area-inset-right, 0px) + 3 * var(--adm-mobile-hbtn) + 4 * var(--adm-mobile-hgap) + 8px)
+    0
+    calc(env(safe-area-inset-left, 0px) + 16px);
+  /* Тема шапки = тема сайдбара десктопа: единый «каркас» приложения. */
+  background: var(--adm-sidebar-bg, #1a1a18);
+  border-bottom: 1px solid var(--adm-kraft, #c8860a);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  /* Лёгкий blur-контент под шапкой при «резиновой» прокрутке iOS. */
+  -webkit-backdrop-filter: saturate(1.4);
+  backdrop-filter: saturate(1.4);
+}
+
+.heading {
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--adm-sidebar-text-active, #fff);
+  font-family: var(--font-head, "Oswald", system-ui, sans-serif);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--adm-sidebar-muted, rgba(255, 255, 255, 0.55));
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Контейнер для fixed-индикаторов: сам в потоке не участвует. */
+.circles {
+  display: contents;
+}
+
+/* ── Контент ──
+   padding-top/bottom задаёт легаси-слой для .admin-main
+   (safe-top + 56 + зазор), здесь только страхуемся от нулевого
+   отступа, если слой отключат. */
+.main {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 12px);
+}

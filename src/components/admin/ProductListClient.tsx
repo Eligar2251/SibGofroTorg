@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { normalizeProductLabelColor } from "@/lib/product-fields";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import { ProductsMobile } from "./mobile/ProductsMobile";
 
 interface ProductItem {
   id: string;
@@ -56,8 +58,8 @@ export function ProductListClient({
 }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedStock, setSelectedStock] = useState("all");
-  const [selectedVisibility, setSelectedVisibility] = useState("all");
+  const [selectedStock, setSelectedStock] = useState<"all" | "in" | "out">("all");
+  const [selectedVisibility, setSelectedVisibility] = useState<"all" | "visible" | "hidden">("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [fixingBarcodes, setFixingBarcodes] = useState(false);
@@ -172,6 +174,28 @@ export function ProductListClient({
     setDeleting(false);
   }
 
+  // Мобильный слой: карточки вместо таблицы — отдельный компонент,
+  // десктопная вёрстка ниже не меняется. Фильтрация общая (тот же
+  // useMemo), мобильный экран лишь управляет этими же значениями.
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <ProductsMobile
+        products={filtered}
+        categories={categories}
+        adminPath={adminPath}
+        search={search}
+        onSearch={setSearch}
+        category={selectedCategory}
+        onCategory={setSelectedCategory}
+        stock={selectedStock}
+        onStock={setSelectedStock}
+        visibility={selectedVisibility}
+        onVisibility={setSelectedVisibility}
+      />
+    );
+  }
+
   return (
     <div className="admin-stack">
       {/* Поиск и фильтры */}
@@ -221,7 +245,7 @@ export function ProductListClient({
         <select
           className="admin-select"
           value={selectedStock}
-          onChange={(e) => setSelectedStock(e.target.value)}
+          onChange={(e) => setSelectedStock(e.target.value as "all" | "in" | "out")}
           style={{ minWidth: 150 }}
         >
           <option value="all">Все наличие</option>
@@ -232,7 +256,7 @@ export function ProductListClient({
         <select
           className="admin-select"
           value={selectedVisibility}
-          onChange={(e) => setSelectedVisibility(e.target.value)}
+          onChange={(e) => setSelectedVisibility(e.target.value as "all" | "visible" | "hidden")}
           style={{ minWidth: 150 }}
         >
           <option value="all">Любая видимость</option>

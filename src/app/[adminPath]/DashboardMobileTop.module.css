@@ -1,0 +1,155 @@
+/* =========================================================
+   FILE: src/app/[adminPath]/DashboardMobileTop.module.css
+   Мобильная шапка дашборда. Без медиазапросов (рендер только на
+   телефоне), только transform/opacity-анимации, content-visibility
+   не нужен (блок маленький).
+   ========================================================= */
+
+.hero {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--adm-card, #fefefe);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 18px;
+}
+
+.dateRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--adm-ink-muted, #6b6b60);
+}
+
+.dateIcon {
+  color: var(--adm-kraft, #c8860a);
+}
+
+.date {
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.tile {
+  display: grid;
+  grid-template-areas:
+    "icon value"
+    "icon label"
+    "icon sub";
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 10px;
+  padding: 12px;
+  background: var(--adm-paper, #f5f3ee);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 14px;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s ease-out;
+}
+
+.tile:active {
+  transform: scale(0.97);
+}
+
+.tileIcon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+.tone_sand {
+  color: var(--adm-sand, #8c8070);
+  background: var(--adm-sand-pale, #f0ede5);
+}
+
+.tone_rust {
+  color: var(--adm-rust, #b83a1e);
+  background: var(--adm-rust-pale, #fdf0ed);
+}
+
+.tone_steel {
+  color: var(--adm-steel, #1e3a5a);
+  background: var(--adm-steel-pale, #e8eef6);
+}
+
+.tone_pine {
+  color: var(--adm-pine, #1e4a2d);
+  background: var(--adm-pine-pale, #ebf4ee);
+}
+
+.tileValue {
+  grid-area: value;
+  color: var(--adm-ink, #1a1a18);
+  font-family: var(--font-head, "Oswald", system-ui, sans-serif);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileLabel {
+  grid-area: label;
+  margin-top: 2px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tileSub {
+  grid-area: sub;
+  margin-top: 1px;
+  color: var(--adm-ink-muted, #6b6b60);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.quickRow {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.quickRow::-webkit-scrollbar {
+  display: none;
+}
+
+.quick {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 9px 14px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  background: var(--adm-paper, #f5f3ee);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s ease-out;
+}
+
+.quick:active {
+  transform: scale(0.95);
+}
