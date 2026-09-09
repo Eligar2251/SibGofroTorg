@@ -1,0 +1,329 @@
+/* =========================================================
+   FILE: src/components/admin/mobile/MobileTabBar.module.css
+   Нижняя панель вкладок + лист «Ещё».
+   Без медиазапросов (см. MobileTabBar.tsx). Все анимации —
+   transform/opacity: работают на композиторе и не сбивают кадры
+   на 90–120 Гц экранах.
+   ========================================================= */
+
+/* Прокладка в потоке под фиксированную панель. */
+.spacer {
+  height: calc(60px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── Панель вкладок ── */
+.bar {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 900;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  height: calc(60px + env(safe-area-inset-bottom, 0px));
+  padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
+  background: var(--adm-sidebar-bg, #1a1a18);
+  /* Тонкая светлая линия сверху — «каркас» приложения. */
+  border-top: 1px solid var(--adm-sidebar-line, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.tab {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 2px 4px;
+  color: var(--adm-sidebar-muted, rgba(255, 255, 255, 0.55));
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.15;
+  text-align: center;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  /* Отклик на нажатие: сжатие на композиторе, без reflow. */
+  transition: transform 0.12s ease-out, color 0.15s ease-out;
+}
+
+.tab:active {
+  transform: scale(0.92);
+}
+
+.tabActive {
+  color: var(--adm-kraft, #e0a020);
+}
+
+.tabIcon {
+  display: grid;
+  place-items: center;
+  min-height: 24px;
+}
+
+.tabLabel {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Индикатор активной вкладки — «пилюля» под иконкой. */
+.tabIndicator {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--adm-kraft, #e0a020);
+  transform: translateX(-50%);
+  /* Появление — только transform+opacity. */
+  animation: tabIn 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes tabIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scaleX(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scaleX(1);
+  }
+}
+
+/* ── Лист «Ещё» ── */
+
+.sheetRoot {
+  position: fixed;
+  inset: 0;
+  z-index: 960;
+  pointer-events: none;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  padding: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: fadeIn 0.2s ease-out both;
+}
+
+.backdropOut {
+  animation: fadeOut 0.24s ease-in both;
+}
+
+.sheet {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: grid;
+  gap: 12px;
+  max-height: min(82dvh, 680px);
+  padding: 6px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: auto;
+  background: var(--adm-card, #fefefe);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-bottom: 0;
+  box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.28);
+  will-change: transform;
+  /* Пружинная кривая «как в iOS»: быстрый разгон, мягкий доезд. */
+  animation: sheetIn 0.28s cubic-bezier(0.32, 0.72, 0.16, 1) both;
+}
+
+.sheetOut {
+  animation: sheetOut 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+/* «Ручка» листа — системный жест свайпа вниз. */
+.handle {
+  justify-self: center;
+  width: 40px;
+  height: 4px;
+  margin: 6px 0 0;
+  border-radius: 999px;
+  background: var(--adm-border-mid, #ccc9c0);
+}
+
+.sheetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheetTitle {
+  color: var(--adm-ink, #1a1a18);
+  font-family: var(--font-head, "Oswald", system-ui, sans-serif);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.sheetClose {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--adm-ink-muted, #6b6b60);
+  background: var(--adm-paper-warm, #ece9e1);
+  border: 0;
+  border-radius: 12px;
+  transition: transform 0.12s ease-out;
+}
+
+.sheetClose:active {
+  transform: scale(0.92);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tile {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  min-height: 78px;
+  padding: 10px 6px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  background: var(--adm-paper, #f5f3ee);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 14px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s ease-out, border-color 0.15s ease-out,
+    background-color 0.15s ease-out;
+}
+
+.tile:active {
+  transform: scale(0.96);
+}
+
+.tileIcon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  color: var(--adm-kraft, #c8860a);
+  background: var(--adm-kraft-pale, #fdf3dc);
+  border-radius: 12px;
+}
+
+.tileActive {
+  background: var(--adm-kraft-pale, #fdf3dc);
+  border-color: var(--adm-kraft, #c8860a);
+}
+
+.tileLabel {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.sheetActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--adm-border, #dbd8d0);
+}
+
+/* Форма выхода — ячейкой сетки, иначе кнопка схлопнется. */
+.sheetActions form {
+  min-width: 0;
+}
+
+.sheetAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 10px;
+  color: var(--adm-ink-soft, #2e2e2a);
+  background: var(--adm-paper, #f5f3ee);
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s ease-out;
+}
+
+.sheetAction:active {
+  transform: scale(0.97);
+}
+
+.sheetActions form .sheetAction {
+  width: 100%;
+}
+
+.sheetActionDanger {
+  color: var(--adm-rust, #b83a1e);
+}
+
+@keyframes sheetIn {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheetOut {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

@@ -63,6 +63,8 @@ import {
   type Salary,
 } from "@/lib/warehouse-shared";
 import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
+import { DashboardMobileTop } from "./DashboardMobileTop";
+import { HideOnMobile } from "@/components/admin/mobile/HideOnMobile";
 import {
   DashboardFinanceHistory,
   type DashboardFinanceRow,
@@ -463,6 +465,26 @@ export default async function AdminDashboard() {
   return (
     <div className="dash-page">
       <DashboardRealtime limited={isLawyer} />
+      {/* Мобильная шапка дашборда: на десктопе рендерит null,
+          на телефоне — плитки показателей + быстрые действия.
+          Данные те же, что и в блоках ниже (второго запроса к БД нет). */}
+      <DashboardMobileTop
+        stats={{
+          isLawyer,
+          productsTotal: allProducts.length,
+          productsInStock: allProducts.filter(
+            (p: any) => (p.stockQty ?? 0) > 0,
+          ).length,
+          newOrders: newOrdersCount,
+          inProgressOrders: inProgressOrdersCount,
+          revenueK:
+            financeIncoming - financeOutgoing !== 0
+              ? Math.round((financeIncoming - financeOutgoing) / 1000)
+              : null,
+          expectedInK: Math.round(bankSummary.expectedIn / 1000),
+          deliveries: dashboardDeliveries.length,
+        }}
+      />
       <div
         style={{
           display: "flex",
@@ -504,6 +526,10 @@ export default async function AdminDashboard() {
         <DashboardVisibilityToggle />
       </div>
 
+      {/* Десктопный блок «Главные показатели» скрыт на телефоне:
+          его заменяют плитки DashboardMobileTop выше (без дублей).
+          На десктопе HideOnMobile отдаёт блок как есть. */}
+      <HideOnMobile>
       {!isLawyer && (
         <CollapsibleSection
           id="stats"
@@ -613,6 +639,7 @@ export default async function AdminDashboard() {
           </div>
         </CollapsibleSection>
       )}
+      </HideOnMobile>
 
       {!isLawyer && activeSupplyPlans.length > 0 && (
         <CollapsibleSection

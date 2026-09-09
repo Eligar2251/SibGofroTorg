@@ -31,7 +31,8 @@ import {
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
-import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useIsMobile, useIsPhone } from "@/hooks/use-is-mobile";
+import { MobileAdminShell } from "./mobile/MobileAdminShell";
 import { AdminBottomNav } from "./mobile/AdminBottomNav";
 import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
@@ -61,6 +62,10 @@ export function AdminShell({
   // Десктопная оболочка (сайдбар + верхняя панель) при этом не меняется:
   // мобильная навигация — отдельный компонент рядом с оригиналом.
   const isMobile = useIsMobile();
+  // Телефон (≤768px) получает полностью отдельную мобильную оболочку
+  // MobileAdminShell: шапка приложения + нижние вкладки, без сайдбара
+  // и бургера. Планшет 769–1024px остаётся на прежней панели.
+  const isPhone = useIsPhone();
   // Текущая раскладка (data-admin-layout на <html>): в «Верхнем меню»
   // панель обязана быть видна всегда, даже если раньше её сворачивали.
   const [layout, setLayout] = useState("sidebar-left");
@@ -155,10 +160,9 @@ export function AdminShell({
     });
   }
 
-  if (isLogin) {
-    return <div data-admin="true">{children}</div>;
-  }
-
+  // ── Навигация ──
+  // Список нужен и сайдбару (десктоп), и планшетной панели, и мобильной
+  // оболочке, поэтому считается до ветки рендера.
   const nav = [
     {
       href: `/${adminPath}`,
@@ -254,6 +258,32 @@ export function AdminShell({
   ].filter((item) =>
     role ? canAccessAdminPage(role, item.href, adminPath) : false,
   );
+
+  if (isLogin) {
+    return <div data-admin="true">{children}</div>;
+  }
+
+  // ── Телефон: отдельная оболочка «как нативное приложение» ──
+  // Шапка с заголовком раздела + нижние вкладки + лист «Ещё».
+  // Десктопная разметка (сайдбар, тулбар, бургер) на телефон вообще
+  // не рендерится — мобильный вид больше не «ужимает» десктопный,
+  // телефон получает собственный интерфейс.
+  if (isPhone) {
+    return (
+      <MobileAdminShell
+        adminPath={adminPath}
+        role={role}
+        displayName={displayName}
+        items={nav.map((link) => ({
+          href: link.href,
+          label: link.label,
+          icon: link.icon,
+        }))}
+      >
+        {children}
+      </MobileAdminShell>
+    );
+  }
 
   const roleLabel =
     role === "admin"

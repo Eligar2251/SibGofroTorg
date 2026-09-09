@@ -70,6 +70,39 @@ export function useIsMobile(): boolean {
 }
 
 /**
+ * `true`, только если экран УЗКИЙ (≤768px) — телефон.
+ *
+ * Зачем отдельный хук рядом с useIsMobile:
+ * мобильная ОБОЛОЧКА админки (MobileAdminShell) привязана к границе
+ * 768px — той же, на которую рассчитан CSS-слой admin-mobile.css
+ * (safe-area, позиции кружков-индикаторов, отступы .admin-main).
+ * Вертикальный планшет 769–1024px остаётся на прежней панели с
+ * бургером: там достаточно места, а «телефонный» интерфейс с
+ * нижними вкладками на большой диагонали выглядит растянуто.
+ *
+ * Контент страниц (карточки вместо таблиц) по-прежнему переключается
+ * по useIsMobile — карточкам и на планшете хорошо.
+ */
+export function useIsPhone(): boolean {
+  const [isPhone, setIsPhone] = useState(false);
+
+  useLayoutEffect(() => {
+    const media = window.matchMedia(QUERY);
+    const update = () => setIsPhone(media.matches);
+    update();
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", update);
+      return () => media.removeEventListener("change", update);
+    }
+    media.addListener(update);
+    return () => media.removeListener(update);
+  }, []);
+
+  return isPhone;
+}
+
+/**
  * Высота нижней панели в пикселях — нужна, чтобы контент не прятался
  * под фиксированным меню (см. AdminBottomNav).
  */

@@ -8,76 +8,42 @@ import { OrdersSortControl } from "@/components/admin/OrdersSortControl";
 import { isOrderSortId, type OrderSortId } from "@/lib/orders-sort";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { OrdersRealtime } from "@/components/admin/OrdersRealtime";
+// Мобильный слой: карточки вместо таблицы. Подписи/тона статусов
+// вынесены в orders-labels, чтобы десктоп и мобилка не дублировали.
+import { OrdersMobileGate } from "./OrdersMobile";
+import {
+  ORDER_COMM_LABELS,
+  ORDER_FILTER_OPTIONS,
+  ORDER_PAYMENT_LABELS,
+  ORDER_STATUS_LABELS,
+  ORDER_STATUS_TONE,
+  formatOrderDate,
+} from "@/lib/orders-labels";
 
 export const dynamic = "force-dynamic";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
-const statusLabels: Record<string, string> = {
-  new: "Новая",
-  in_progress: "В работе",
-  ready: "Готов к выдаче",
-  issued: "Выдан",
-  completed: "Проведена",
-  rejected: "Отменена",
-  // Фильтр-агрегат: заявки, с которыми менеджеры сейчас работают.
-  active: "Активные",
-};
+const statusLabels = ORDER_STATUS_LABELS;
 
-const statusBadge: Record<string, string> = {
-  new: "admin-badge admin-badge--amber",
-  in_progress: "admin-badge admin-badge--blue",
-  ready: "admin-badge admin-badge--indigo",
-  issued: "admin-badge admin-badge--teal",
-  completed: "admin-badge admin-badge--green",
-  rejected: "admin-badge admin-badge--red",
-};
+const statusBadge: Record<string, string> = Object.fromEntries(
+  Object.entries(ORDER_STATUS_TONE).map(([key, tone]) => [
+    key,
+    `admin-badge admin-badge--${tone}`,
+  ]),
+);
 
-const commLabels: Record<string, { token: string; text: string }> = {
-  call: { token: "phone", text: "Звонок" },
-  whatsapp: { token: "chat", text: "WhatsApp" },
-  telegram: { token: "send", text: "Telegram" },
-  max: { token: "chats", text: "Макс" },
-  email: { token: "mail", text: "Почта" },
-  self: { token: "truck", text: "Привезут сами" },
-  pickup: { token: "truck", text: "Нужен вывоз" },
-};
+const commLabels = ORDER_COMM_LABELS;
 
-const paymentLabels: Record<string, { token: string; text: string }> = {
-  transfer: { token: "card", text: "Перевод" },
-  cash: { token: "cash", text: "Наличные" },
-  invoice: { token: "receipt", text: "Счет" },
-};
+const paymentLabels = ORDER_PAYMENT_LABELS;
 
-const filterOptions = [
-  { value: "active", label: "Активные" },
-  { value: "new", label: "Новые" },
-  { value: "in_progress", label: "В работе" },
-  { value: "ready", label: "Готов к выдаче" },
-  { value: "issued", label: "Выданные" },
-  { value: "completed", label: "Проведённые (архив)" },
-  { value: "rejected", label: "Отменённые" },
-  { value: "all", label: "Все" },
-];
+// Единственное текстовое отличие от общего списка — подпись архива.
+const filterOptions = ORDER_FILTER_OPTIONS.map((opt) =>
+  opt.value === "completed" ? { ...opt, label: "Проведённые (архив)" } : opt,
+);
 
 function formatDate(raw: any): string {
-  if (!raw) return "—";
-  if (typeof raw === "string") {
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleString("ru-RU", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    }
-  }
-  if (typeof raw === "number") return new Date(raw).toLocaleString("ru-RU");
-  if (raw?.seconds !== undefined)
-    return new Date(raw.seconds * 1000).toLocaleString("ru-RU");
-  return "—";
+  return formatOrderDate(raw);
 }
 
 function createdMs(raw: any): number {
@@ -167,7 +133,16 @@ export default async function AdminOrdersPage({
   const qSuffix = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
   const sortSuffix = activeSort !== "date_desc" ? `&sort=${activeSort}` : "";
 
+  // Мобильный слой — отдельный экран-карточки (OrdersMobile.tsx).
+  // Десктопная вёрстка ниже передана children и не меняется.
   return (
+    <OrdersMobileGate
+      orders={filteredOrders}
+      adminPath={ADMIN_PATH}
+      status={activeFilter}
+      q={searchQuery}
+      sort={activeSort}
+    >
     <div>
       <OrdersRealtime />
       <div className="admin-page-head">
@@ -403,5 +378,6 @@ export default async function AdminOrdersPage({
         )}
       </div>
     </div>
+    </OrdersMobileGate>
   );
 }
