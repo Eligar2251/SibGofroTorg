@@ -86,6 +86,7 @@ const statusStyles: Record<string, { bg: string; color: string; dot: string }> =
   new: { bg: "#fff7ed", color: "#c2410c", dot: "#f97316" },
   in_progress: { bg: "#eff6ff", color: "#1d4ed8", dot: "#3b82f6" },
   ready: { bg: "#f5f3ff", color: "#6d28d9", dot: "#8b5cf6" },
+  in_delivery: { bg: "#e8f3fb", color: "#0b5f8f", dot: "#38bdf8" },
   issued: { bg: "#ecfeff", color: "#0e7490", dot: "#06b6d4" },
   completed: { bg: "#f0fdf4", color: "#15803d", dot: "#22c55e" },
   rejected: { bg: "#fef2f2", color: "#dc2626", dot: "#ef4444" },
@@ -158,6 +159,9 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
     order.status === "issued" ||
     order.status === "completed" ||
     order.status === "rejected";
+  // Груз уже у водителя: состав заявки менять и отменять её самому
+  // уже нельзя — это решение менеджера.
+  const isOnDelivery = order.status === "in_delivery";
 
   async function loadProducts(q = "") {
     setLoadingProducts(true);
@@ -377,6 +381,25 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
             </div>
           )}
 
+          {/* Менеджер передал груз водителю — клиент видит это здесь же. */}
+          {isOnDelivery && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: "10px 14px",
+                borderRadius: 10,
+                fontSize: 13,
+                lineHeight: 1.5,
+                background: "#e8f3fb",
+                color: "#0b5f8f",
+                border: "1px solid #bae0f7",
+              }}
+            >
+              <strong>Заказ передан в доставку.</strong> Груз у водителя, состав
+              заявки изменить уже нельзя — по вопросам позвоните менеджеру.
+            </div>
+          )}
+
           {/* Менеджер собрал заказ и отметил «Готов к выдаче» на сайте —
               здесь видно то же самое (прямая связь статусов). */}
           {order.status === "ready" && (
@@ -423,7 +446,7 @@ function OrderCard({ order, onChanged }: { order: Order; onChanged: () => void }
 
           {/* Редактирование состава — только для заявок-заказов (есть позиции).
               Отмена доступна любой НЕ закрытой заявке. */}
-          {!isClosed && (
+          {!isClosed && !isOnDelivery && (
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
               {isOrder && (
                 <button type="button" className="btn-primary" onClick={startEdit} disabled={saving} style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>

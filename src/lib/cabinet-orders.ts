@@ -52,6 +52,13 @@ export interface CabinetOrder {
   updatedAt: string | null;
   /** Заявка оформлена без входа в аккаунт и найдена по номеру телефона. */
   guest: boolean;
+  /** Только для админки: заявка принадлежит другому аккаунту с тем же
+   *  телефоном. Клиент её видит у себя, поэтому и менеджер обязан увидеть —
+   *  иначе «в кабинете клиента» показывает меньше, чем в кабинете клиента. */
+  otherAccount: boolean;
+  /** Владелец заявки (user_id строки orders) — нужен, чтобы объяснить
+   *  менеджеру, чей это аккаунт. */
+  ownerUserId: string | null;
 }
 
 export function toIso(raw: unknown): string | null {
@@ -61,7 +68,10 @@ export function toIso(raw: unknown): string | null {
   return null;
 }
 
-export function serializeCabinetOrder(row: any): CabinetOrder {
+export function serializeCabinetOrder(
+  row: any,
+  flags: { otherAccount?: boolean } = {}
+): CabinetOrder {
   return {
     id: row.id,
     type: row.type,
@@ -101,7 +111,22 @@ export function serializeCabinetOrder(row: any): CabinetOrder {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     guest: !row.user_id,
+    otherAccount: flags.otherAccount === true,
+    ownerUserId: row.user_id ?? null,
   };
+}
+
+/**
+ * Потолок PostgREST: один запрос отдаёт не больше этого числа строк.
+ * Если у клиента заявок больше, мы обязаны честно сказать об этом,
+ * а не показывать «не все заявки» как будто так и надо.
+ */
+export const CABINET_QUERY_LIMIT = 1000;
+
+export interface CabinetOrdersResult {
+  orders: CabinetOrder[];
+  /** true — где-то сработал потолок выборки: возможен пропуск старых заявок. */
+  capped: boolean;
 }
 
 /**
@@ -112,44 +137,72 @@ export function serializeCabinetOrder(row: any): CabinetOrder {
  * номеру телефона. После регистрации/входа клиент ожидает увидеть весь
  * свой заказ в кабинете, поэтому ограничение по времени создания аккаунта
  * убрано: сам факт совпадения номера — достаточное условие.
+ *
+ * Режим forAdmin (вкладка «Кабинет клиента») шире клиентского ровно на одно:
+ * в него попадают и заявки ДРУГОГО аккаунта с тем же телефоном. Клиент,
+ * у которого два аккаунта (или телефон перешёл на новый), видит их все у
+ * себя — значит и менеджер обязан их увидеть, иначе экран «не все заявки».
+ * Такие карточки помечаются otherAccount: это не «лишние» заявки, а подсказка,
+ * что у телефона два аккаунта.
  */
-export async function getCabinetOrdersForUser(input: {
+export async function getCabinetOrdersDetailed(input: {
   userId: string;
   phone: string | null;
   accountCreatedAt?: unknown;
-}): Promise<CabinetOrder[]> {
+  forAdmin?: boolean;
+}): Promise<CabinetOrdersResult> {
   const db = getAdminDb();
   const uid = input.userId;
   const phoneDigits = normalizePhone(input.phone || "");
   const phoneDisplay = phoneDigits ? formatPhoneDisplay(phoneDigits) : "";
 
-  const queries: PromiseLike<any>[] = [
-    db.from("orders").select("*").eq("user_id", uid),
-  ];
+  // Свежие заявки важнее старых: сортировка + лимит гарантируют, что при
+  // очень большой истории на экран попадут последние, а не «первые 1000
+  // когда-то созданных».
+  const shape = (q: any) =>
+    q.order("created_at", { ascending: false }).limit(CABINET_QUERY_LIMIT);
+  const run = async (build: (q: any) => any) => {
+    const { data, count, error } = await build(
+      db.from("orders").select("*", { count: "exact" })
+    );
+    if (error) throw error;
+    const rows = data || [];
+    return {
+      rows,
+      total: typeof count === "number" ? count : rows.length,
+    };
+  };
+
+  const parts = [await run((q) => shape(q.eq("user_id", uid)))];
   if (phoneDigits) {
-    queries.push(
-      db.from("orders").select("*").eq("customer_phone_digits", phoneDigits),
-      db.from("orders").select("*").eq("customer_phone", phoneDisplay)
+    parts.push(
+      ...(await Promise.all([
+        run((q) => shape(q.eq("customer_phone_digits", phoneDigits))),
+        run((q) => shape(q.eq("customer_phone", phoneDisplay))),
+      ]))
     );
   }
 
-  const [byUserRes, byPhoneDigitsRes, byPhoneDisplayRes] = await Promise.all(queries);
+  const capped = parts.some((part) => part.total > part.rows.length);
 
   const map = new Map<string, CabinetOrder>();
-  for (const row of byUserRes?.data || []) map.set(row.id, serializeCabinetOrder(row));
-
-  const extra = [
-    ...(byPhoneDigitsRes?.data || []),
-    ...(byPhoneDisplayRes?.data || []),
-  ];
-  for (const row of extra) {
-    if (row.user_id && row.user_id !== uid) continue;
-    if (row.user_id === uid) {
-      map.set(row.id, serializeCabinetOrder(row));
-      continue;
+  for (const part of parts) {
+    for (const row of part.rows) {
+      if (row.user_id === uid) {
+        map.set(row.id, serializeCabinetOrder(row));
+        continue;
+      }
+      // Заявка вообще без владельца — гостевая, найдена по телефону.
+      if (!row.user_id) {
+        if (!map.has(row.id)) map.set(row.id, serializeCabinetOrder(row));
+        continue;
+      }
+      // Заявка другого аккаунта с этим же телефоном: клиенту она показана,
+      // значит и здесь она обязана быть.
+      if (input.forAdmin && !map.has(row.id)) {
+        map.set(row.id, serializeCabinetOrder(row, { otherAccount: true }));
+      }
     }
-    if (row.user_id) continue;
-    if (!map.has(row.id)) map.set(row.id, serializeCabinetOrder(row));
   }
 
   const results = Array.from(map.values());
@@ -158,5 +211,15 @@ export async function getCabinetOrdersForUser(input: {
     const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return tb - ta;
   });
-  return results;
+  return { orders: results, capped };
+}
+
+/** Клиентский вариант: ровно то, что видит сам клиент (без админских примесей). */
+export async function getCabinetOrdersForUser(input: {
+  userId: string;
+  phone: string | null;
+  accountCreatedAt?: unknown;
+}): Promise<CabinetOrder[]> {
+  const { orders } = await getCabinetOrdersDetailed(input);
+  return orders;
 }

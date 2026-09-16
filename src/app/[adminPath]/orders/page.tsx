@@ -77,7 +77,7 @@ export default async function AdminOrdersPage({
   const requestedStatus = firstParam(params.status);
   // По умолчанию — «active»: показываем новые, в работе и готовые к выдаче,
   // чтобы заявка не исчезала из списка сразу после кнопки «В работу».
-  const activeFilter = ["active", "new", "in_progress", "ready", "issued", "completed", "rejected", "all"].includes(requestedStatus)
+  const activeFilter = ["active", "new", "in_progress", "ready", "in_delivery", "issued", "completed", "rejected", "all"].includes(requestedStatus)
     ? requestedStatus
     : "active";
   const searchQuery = firstParam(params.q);

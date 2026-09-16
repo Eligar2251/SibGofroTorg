@@ -11,6 +11,7 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
   new: "Новая",
   in_progress: "В работе",
   ready: "Готов к выдаче",
+  in_delivery: "Передано в доставку",
   issued: "Выдан",
   completed: "Проведена",
   rejected: "Отменена",
@@ -23,6 +24,7 @@ export type OrderStatusTone =
   | "amber"
   | "blue"
   | "indigo"
+  | "sky"
   | "teal"
   | "green"
   | "red";
@@ -31,6 +33,7 @@ export const ORDER_STATUS_TONE: Record<string, OrderStatusTone> = {
   new: "amber",
   in_progress: "blue",
   ready: "indigo",
+  in_delivery: "sky",
   issued: "teal",
   completed: "green",
   rejected: "red",
@@ -77,6 +80,7 @@ export const ORDER_FILTER_OPTIONS = [
   { value: "new", label: "Новые" },
   { value: "in_progress", label: "В работе" },
   { value: "ready", label: "Готов к выдаче" },
+  { value: "in_delivery", label: "В доставке" },
   { value: "issued", label: "Выданные" },
   { value: "completed", label: "Проведённые" },
   { value: "rejected", label: "Отменённые" },
