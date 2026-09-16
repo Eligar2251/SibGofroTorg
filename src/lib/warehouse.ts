@@ -4466,21 +4466,30 @@ export async function getReceiptById(id: string): Promise<WarehouseReceipt | nul
 // ══════════════════════════════════════
 
 export interface TransportItem {
-  dealId: string;
-  dealNumber: number;
+  /** null — своя (самостоятельная) точка без заказа учёта */
+  dealId: string | null;
+  dealNumber: number | null;
   customerName: string;
   contactName?: string | null;
   address: string | null;
   phone: string | null;
   deliveryNote?: string | null;
-  items: { productId: string; name: string; orderedQty: number; transportQty: number }[];
+  /** Ориентировочное время на точке («09:30») — печатается в путевом листе */
+  plannedTime?: string | null;
+  items: {
+    productId: string | null;
+    name: string;
+    orderedQty: number;
+    transportQty: number;
+  }[];
   totalSum: number | null;
   /**
-   * Тип поездки (для самостоятельных перевозок без заказа):
-   *  - "delivery" — доставка клиенту (по умолчанию);
+   * Пометка на точке (для путевого листа водителю):
+   *  - "delivery" — доставка товара клиенту (по умолчанию);
    *  - "pickup"   — забор груза у контрагента;
    *  - "handover" — сдача груза (например, на переработку).
-   * Для поездок по заказам всегда "delivery".
+   * Влияет только на бланк: списание склада считается по позициям заказа
+   * и от пометки не зависит.
    */
   tripType?: "delivery" | "pickup" | "handover" | null;
 }
@@ -4555,9 +4564,12 @@ function capTransportItem(
   const left = new Map(remaining);
   const items = item.items
     .map((line) => {
-      const available = left.get(line.productId) ?? 0;
+      // Своя строка (без товара склада, productId = null) не урезается —
+      // везём ровно столько, сколько написал диспетчер.
+      const pid = line.productId ? String(line.productId) : "";
+      const available = pid ? (left.get(pid) ?? 0) : Number.MAX_SAFE_INTEGER;
       const transportQty = Math.max(0, Math.min(Number(line.transportQty) || 0, available));
-      left.set(line.productId, available - transportQty);
+      if (pid) left.set(pid, available - transportQty);
       return {
         ...line,
         // «Заказано» показываем как актуальный долг по заказу: то, что уже
@@ -4665,7 +4677,9 @@ async function writeTransportItems(row: any, items: TransportItem[]): Promise<vo
 async function enrichTransportItems(transports: Transport[]): Promise<void> {
   const dealIds = [
     ...new Set(
-      transports.flatMap((t) => t.items.map((i) => String(i.dealId))).filter(Boolean)
+      transports
+        .flatMap((t) => t.items.map((i) => (i.dealId ? String(i.dealId) : "")))
+        .filter(Boolean)
     ),
   ];
   if (dealIds.length === 0) return;
@@ -4683,12 +4697,19 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
     const isActive = t.status === "draft" || t.status === "active";
     const items: TransportItem[] = [];
     for (const i of t.items) {
-      const deal = dealMap.get(String(i.dealId));
+      const deal = i.dealId ? dealMap.get(String(i.dealId)) : undefined;
       const enriched: TransportItem = {
         ...i,
         contactName: i.contactName ?? deal?.contact_name ?? null,
         deliveryNote: i.deliveryNote ?? deal?.delivery_note ?? null,
       };
+      // Своя точка (без заказа): адрес и груз набраны вручную, урезать
+      // нечего — иначе такие точки исчезали из активных перевозок и из
+      // путевого листа, ломая порядок маршрута.
+      if (!i.dealId) {
+        items.push(enriched);
+        continue;
+      }
       if (!isActive) {
         items.push(enriched);
         continue;
@@ -4825,6 +4846,13 @@ export async function completeTransport(id: string): Promise<void> {
 
   // Обновляем shipped_items для каждого заказа
   for (const ti of items) {
+    // Своя точка (без заказа учёта): склад не трогаем, но в документ
+    // перевозки строку сохраняем — иначе она исчезала из завершённого бланка.
+    if (!ti.dealId) {
+      const loaded = (ti.items || []).filter((line) => (Number(line.transportQty) || 0) > 0);
+      if (loaded.length > 0) postedItems.push({ ...ti, items: loaded });
+      continue;
+    }
     const { data: deal } = await db
       .from("customer_deals")
       .select("shipped_items, items, status")
@@ -4845,11 +4873,20 @@ export async function completeTransport(id: string): Promise<void> {
     const postedLines: TransportItem["items"] = [];
 
     for (const item of ti.items) {
-      const available = remaining.get(item.productId) ?? 0;
+      const pid = item.productId ? String(item.productId) : "";
+      // Строка, вписанная руками (без товара склада): на склад не влияет,
+      // но в документе перевозки должна остаться — иначе «ручная» строка
+      // исчезала из бланка после завершения перевозки.
+      if (!pid) {
+        const manualQty = Math.max(0, Number(item.transportQty) || 0);
+        if (manualQty > 0) postedLines.push({ ...item, transportQty: manualQty });
+        continue;
+      }
+      const available = remaining.get(pid) ?? 0;
       const qty = Math.max(0, Math.min(Number(item.transportQty) || 0, available));
       if (qty <= 0) continue;
-      remaining.set(item.productId, available - qty);
-      shippedMap.set(item.productId, (shippedMap.get(item.productId) || 0) + qty);
+      remaining.set(pid, available - qty);
+      shippedMap.set(pid, (shippedMap.get(pid) || 0) + qty);
       postedLines.push({ ...item, transportQty: qty });
     }
 

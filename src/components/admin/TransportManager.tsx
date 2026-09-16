@@ -1,49 +1,45 @@
 // src/components/admin/TransportManager.tsx
-// Система перевозок: создание, управление, завершение, архив
+// Система перевозок: создание, порядок точек маршрута, путевой лист,
+// отрывные полоски, завершение и архив.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Truck, Calendar, User, MapPin, Phone, Package, CheckCircle2,
+  Truck, Calendar, User, MapPin, CheckCircle2,
   Clock, Loader2, Plus, Trash2, Printer, X, Archive, RotateCcw,
-  ChevronDown, ChevronUp, AlertTriangle, Banknote, PackageSearch,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
-import { ProductPicker, type PickerProduct } from "@/components/admin/ProductPicker";
+import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { TransportPrintSheet, type TransportPrintData } from "./TransportPrintSheet";
+import { TransportTripSheet, type TripSheetData } from "./TransportTripSheet";
+import { TripStopsEditor } from "./TripStopsEditor";
+import {
+  TRIP_TYPE_LABEL,
+  TRIP_TYPE_SHORT,
+  dealAvailableFor,
+  emptyCustomStop,
+  stopFromDeal,
+  stopTotalQty,
+  stopsFromTransportItems,
+  stopsToTransportItems,
+  summarizeStops,
+  validateStops,
+  type TripStop,
+  type TripStopDeal,
+  type TripType,
+} from "@/lib/trip-stops";
 
-export type TripType = "delivery" | "pickup" | "handover";
+// Совместимость: типы и подписи tripType раньше жили здесь.
+export type { TripType } from "@/lib/trip-stops";
+export { TRIP_TYPE_LABEL, TRIP_TYPE_SHORT };
 
-export const TRIP_TYPE_LABEL: Record<TripType, string> = {
-  delivery: "Доставка клиенту",
-  pickup: "Забор груза",
-  handover: "Сдача груза",
-};
-
-export const TRIP_TYPE_SHORT: Record<TripType, string> = {
-  delivery: "Доставка",
-  pickup: "Забор груза",
-  handover: "Сдача груза",
-};
+export type { TripStop };
+/** Заказ с доставкой, из которого можно собрать точку маршрута. */
+export type TransportDeal = TripStopDeal;
 
 type FilterTab = "active" | "completed" | "archived" | "all";
-
-export interface TransportDeal {
-  id: string;
-  number: number;
-  customerName: string;
-  contactName?: string | null;
-  customerPhone?: string | null;
-  deliveryAddress?: string | null;
-  deliveryNote?: string | null;
-  deliveryType?: "free" | "paid" | null;
-  deliveryCost?: number | null;
-  items: { productId: string; name: string; quantity: number }[];
-  totalSum?: number | null;
-  shippedItems?: { productId: string; shippedQty: number }[];
-  deliveryItems?: { productId: string; quantity: number }[];
-}
 
 export interface TransportRow {
   id: string;
@@ -55,14 +51,20 @@ export interface TransportRow {
   status: "draft" | "active" | "completed" | "archived";
   note?: string | null;
   items: {
-    dealId: string;
-    dealNumber: number;
+    dealId: string | null;
+    dealNumber: number | null;
     customerName: string;
     contactName?: string | null;
     address: string | null;
     phone: string | null;
     deliveryNote?: string | null;
-    items: { productId: string | null; name: string; orderedQty: number; transportQty: number }[];
+    plannedTime?: string | null;
+    items: {
+      productId: string | null;
+      name: string;
+      orderedQty: number;
+      transportQty: number;
+    }[];
     totalSum: number | null;
     tripType?: TripType | null;
   }[];
@@ -77,7 +79,6 @@ export interface DriverOption {
   phone?: string | null;
 }
 
-const fmt = (n: number) => n.toLocaleString("ru-RU");
 const fmtDate = (iso?: string | null) => {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-");
@@ -104,7 +105,7 @@ export function TransportManager({
   companyPhone?: string;
   companyAddress?: string;
   focusTransportId?: string | null;
-  /** Товары каталога сайта — для выбора груза в самостоятельных поездках */
+  /** Товары склада — для выбора груза в своих точках маршрута */
   products?: PickerProduct[];
 }) {
   const router = useRouter();
@@ -113,6 +114,10 @@ export function TransportManager({
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(focusTransportId || null);
   const [showCreate, setShowCreate] = useState(false);
+  const [printData, setPrintData] = useState<TransportPrintData | null>(null);
+  const [tripData, setTripData] = useState<TripSheetData | null>(null);
+  // Черновик порядка/пометок для уже созданной перевозки: {id: stops}
+  const [stopDraft, setStopDraft] = useState<Record<string, TripStop[]>>({});
 
   useEffect(() => {
     if (!focusTransportId) return;
@@ -131,7 +136,6 @@ export function TransportManager({
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 120);
   }, [focusTransportId, initialTransports]);
-  const [printData, setPrintData] = useState<TransportPrintData | null>(null);
 
   const filtered = useMemo(() => {
     let list = [...initialTransports];
@@ -182,19 +186,63 @@ export function TransportManager({
     await apiCall(`/api/admin/transports/${id}`, "PATCH", { action: "archive" });
   }
 
-  function handlePrint(t: TransportRow) {
+  /**
+   * Сохранить порядок/пометки/количества в уже созданной перевозке.
+   * items[] пишется в том же порядке, что в редакторе, — он и есть
+   * порядок точек в путевом листе (колонки сортировки не заводим:
+   * transports.items — JSONB-массив, он сохраняет порядок записи).
+   */
+  async function saveStops(t: TransportRow, stops: TripStop[]) {
+    const err = validateStops(stops);
+    if (err) {
+      setError(err);
+      return;
+    }
+    const res = await apiCall(`/api/admin/transports/${t.id}`, "PATCH", {
+      items: stopsToTransportItems(stops),
+    });
+    if (res) {
+      setStopDraft((prev) => {
+        const next = { ...prev };
+        delete next[t.id];
+        return next;
+      });
+      setError("");
+    }
+  }
+
+  function handlePrint(t: TransportRow, stops: TripStop[]) {
     setPrintData({
       transportNumber: t.number,
       date: t.plannedDate || t.date,
       driverName: t.driverName,
       driverPhone: t.driverPhone,
       // В бланк попадает только реально выбранный/загруженный груз.
-      items: t.items
-        .map((deal) => ({
-          ...deal,
-          items: deal.items.filter((item) => Number(item.transportQty) > 0),
-        }))
-        .filter((deal) => deal.items.length > 0),
+      items: stops
+        .filter((stop) => stop.lines.length > 0)
+        .map((stop) => ({
+          dealNumber: stop.dealNumber ?? 0,
+          customerName: stop.customerName,
+          contactName: stop.contactName,
+          address: stop.address,
+          phone: stop.phone,
+          deliveryNote: stop.deliveryNote,
+          tripType: stop.tripType,
+          items: stop.lines.map((line) => ({ name: line.name, transportQty: line.qty })),
+        })),
+      companyPhone,
+      companyAddress,
+    });
+  }
+
+  function handleTripSheet(t: TransportRow, stops: TripStop[]) {
+    setTripData({
+      transportNumber: t.number,
+      date: t.plannedDate || t.date,
+      note: t.note,
+      driverName: t.driverName,
+      driverPhone: t.driverPhone,
+      stops,
       companyPhone,
       companyAddress,
     });
@@ -203,12 +251,15 @@ export function TransportManager({
   return (
     <div>
       {printData && <TransportPrintSheet data={printData} onDone={() => setPrintData(null)} />}
+      {tripData && <TransportTripSheet data={tripData} onDone={() => setTripData(null)} />}
 
       {/* ── Шапка ── */}
       <div className="admin-page-head">
         <div>
-          <h1 className="admin-h1">Перевозки</h1>
-          <p className="admin-sub">Формирование, печать бланков, отгрузка и архив</p>
+          <h1 className="admin-h1">Перевозки · путевые листы</h1>
+          <p className="admin-sub">
+            Путевой лист водителю: точки по порядку, пометки «забор / доставка», печать А4
+          </p>
         </div>
         <div className="admin-page-head__actions">
           <button className="admin-btn admin-btn--primary" onClick={() => setShowCreate(true)}>
@@ -261,7 +312,9 @@ export function TransportManager({
             {filtered.map((t) => {
               const expanded = expandedId === t.id;
               const isActive = t.status === "draft" || t.status === "active";
-              const totalQty = t.items.reduce((s, it) => s + it.items.reduce((s2, i) => s2 + i.transportQty, 0), 0);
+              const stops = stopDraft[t.id] ?? stopsFromTransportItems(t.items);
+              const dirty = Boolean(stopDraft[t.id]);
+              const totals = summarizeStops(stops);
               return (
                 <div
                   key={t.id}
@@ -290,7 +343,8 @@ export function TransportManager({
                         </span>
                       )}
                       <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--adm-sand)" }}>
-                        {t.items.length} заказ(ов) · {totalQty} шт.
+                        {totals.total} точ. · {totals.qty} шт.
+                        {dirty && <strong style={{ color: "var(--adm-kraft)" }}> · не сохранено</strong>}
                       </span>
                       <span style={{ color: "var(--adm-sand)", flexShrink: 0 }}>
                         {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -299,42 +353,53 @@ export function TransportManager({
 
                     {expanded && (
                       <div style={{ marginTop: 12, borderTop: "1px solid var(--adm-border)", paddingTop: 12 }}>
-                        {t.items.map((deal, idx) => (
-                          <div key={deal.dealId || `custom-${deal.customerName}-${idx}`} style={{ marginBottom: 14, padding: "10px 12px", background: "var(--adm-paper)", borderRadius: 8, border: "1px solid var(--adm-border)" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                              <span className="admin-order__id">{deal.dealNumber ? `ЗК-${deal.dealNumber}` : "Самостоятельная перевозка"}</span>
-                              {!deal.dealNumber && deal.tripType && deal.tripType !== "delivery" && (
-                                <span className={`admin-badge ${deal.tripType === "pickup" ? "admin-badge--blue" : "admin-badge--indigo"}`}>
-                                  {TRIP_TYPE_SHORT[deal.tripType]}
-                                </span>
-                              )}
-                              <strong style={{ fontSize: 13 }}>{deal.customerName}</strong>
-                      {deal.phone && (
-                        <a href={`tel:${deal.phone}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--adm-steel)", whiteSpace: "nowrap" }}>
-                          <Phone size={11} style={{ flexShrink: 0 }} /> {deal.phone}
-                        </a>
-                      )}
-                      {deal.address && (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
-                          <MapPin size={11} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.address}</span>
-                        </span>
-                      )}
-                            </div>
-                            {deal.items.filter((item) => item.transportQty > 0).map((item, itemIdx) => (
-                              <div key={item.productId || `it-${item.name}-${itemIdx}`} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", color: "var(--adm-ink-soft)" }}>
-                                <span>{item.name} × {item.transportQty} из {item.orderedQty}</span>
-                                <span style={{ color: "var(--adm-sand)" }}>
-                                  {item.transportQty < item.orderedQty && (
-                                    <span style={{ color: "var(--adm-kraft)", fontWeight: 600 }}>остаток: {item.orderedQty - item.transportQty}</span>
-                                  )}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ))}
+                        {/* Порядок точек: drag&drop, пометки, время, груз */}
+                        <div className="transport-card__stops">
+                          <TripStopsEditor
+                            stops={stops}
+                            defaultOpen="none"
+                            onChange={(next) => setStopDraft((prev) => ({ ...prev, [t.id]: next }))}
+                            sortable={isActive}
+                            editable={isActive}
+                            removable={isActive}
+                            allowSort={isActive}
+                            products={products}
+                            title={isActive ? "Порядок точек (правки сохраняются кнопкой ниже)" : "Порядок точек маршрута"}
+                            hint={isActive ? "Можно поправить количества — попадёт в бланк и в списание" : undefined}
+                            showTotals
+                          />
+                        </div>
+
                         {t.note && <div style={{ fontSize: 12, color: "var(--adm-sand)", marginBottom: 8 }}>📝 {t.note}</div>}
 
-                        <div className="transport-modal__trip-types" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <div className="transport-modal__trip-types" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                          <button className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => handleTripSheet(t, stops)}>
+                            <Printer size={13} /> Путевой лист (А4)
+                          </button>
+                          <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={() => handlePrint(t, stops)}>
+                            <Printer size={13} /> Полоски под УПД
+                          </button>
+                          {isActive && dirty && (
+                            <button className="admin-btn admin-btn--ghost admin-btn--sm" disabled={saving} onClick={() => saveStops(t, stops)}>
+                              {saving ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Сохранить порядок
+                            </button>
+                          )}
+                          {isActive && dirty && (
+                            <button
+                              className="admin-btn admin-btn--ghost admin-btn--sm"
+                              disabled={saving}
+                              onClick={() => {
+                                setStopDraft((prev) => {
+                                  const next = { ...prev };
+                                  delete next[t.id];
+                                  return next;
+                                });
+                                setError("");
+                              }}
+                            >
+                              <RotateCcw size={13} /> Отменить правки
+                            </button>
+                          )}
                           {isActive && (
                             <button className="admin-btn admin-btn--primary admin-btn--sm" disabled={saving} onClick={() => handleComplete(t.id)}>
                               <CheckCircle2 size={13} /> Завершить перевозку
@@ -345,9 +410,6 @@ export function TransportManager({
                               <Archive size={13} /> В архив
                             </button>
                           )}
-                          <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={() => handlePrint(t)}>
-                            <Printer size={13} /> Бланк водителю
-                          </button>
                           {isActive && (
                             <button className="admin-btn admin-btn--danger admin-btn--sm" disabled={saving} onClick={() => handleDelete(t.id)}>
                               <Trash2 size={13} /> Удалить
@@ -374,155 +436,94 @@ export function TransportManager({
           deals={pendingDeals}
           drivers={drivers}
           products={products}
+          companyPhone={companyPhone}
+          companyAddress={companyAddress}
           onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); router.refresh(); }}
+          onCreated={(created) => {
+            setShowCreate(false);
+            // Сразу открываем путевой лист: собрал маршрут → распечатал.
+            if (created) setTripData(created);
+            router.refresh();
+          }}
         />
       )}
     </div>
   );
 }
 
-/* ── Модалка создания перевозки ── */
-interface CustomCargoRow {
-  productId: string | null;
-  name: string;
-  transportQty: number;
-}
+/* ─────────────────────────────────────────────────────────
+   Модалка создания: заказы → точки маршрута по порядку
+   ───────────────────────────────────────────────────────── */
 
-interface CustomIndependentTrip {
-  id: string;
-  tripType: TripType;
-  customerName: string;
-  contactName: string;
-  phone: string;
-  address: string;
-  deliveryNote: string;
-  items: CustomCargoRow[];
-}
-
-function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: {
+function CreateTransportModal({
+  deals,
+  drivers,
+  products,
+  companyPhone,
+  companyAddress,
+  onClose,
+  onCreated,
+}: {
   deals: TransportDeal[];
   drivers: DriverOption[];
   products?: PickerProduct[];
+  companyPhone?: string;
+  companyAddress?: string;
   onClose: () => void;
-  onCreated: () => void;
+  /** null — создание не удалось; иначе — данные для немедленной печати */
+  onCreated: (created: TripSheetData | null) => void;
 }) {
-  const [rowPicker, setRowPicker] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [driverId, setDriverId] = useState("");
   const [note, setNote] = useState("");
-  // {dealId: {productId: qty}}
-  const [selectedDeals, setSelectedDeals] = useState<Set<string>>(new Set());
-  const [qtys, setQtys] = useState<Record<string, Record<string, number>>>({});
-  const [customTrips, setCustomTrips] = useState<CustomIndependentTrip[]>([]);
+  const [panel, setPanel] = useState<"deals" | "stops">("deals");
+  // Единый источник правды: порядок = порядок массива.
+  const [stops, setStops] = useState<TripStop[]>([]);
+  // Предпросмотр путевого листа прямо в модалке
+  const [tripPreview, setTripPreview] = useState<TripSheetData | null>(null);
 
-  function toggleDeal(dealId: string) {
-    setSelectedDeals((prev) => {
-      const next = new Set(prev);
-      if (next.has(dealId)) {
-        next.delete(dealId);
-      } else {
-        next.add(dealId);
-        // Инициализируем количества
-        const deal = deals.find((d) => d.id === dealId);
-        if (deal) {
-          const existing = qtys[dealId] || {};
-          if (Object.keys(existing).length === 0) {
-            const newQtys: Record<string, number> = {};
-            for (const item of deal.items) {
-              const alreadyShipped = (deal.shippedItems || []).find((s) => s.productId === item.productId)?.shippedQty || 0;
-              const alreadyPlanned = (deal.deliveryItems || []).find((d) => d.productId === item.productId)?.quantity || 0;
-              newQtys[item.productId] = Math.max(0, item.quantity - alreadyShipped - alreadyPlanned);
-            }
-            setQtys((prev) => ({ ...prev, [dealId]: newQtys }));
-          }
-        }
-      }
-      return next;
-    });
+  const selectedDealIds = useMemo(
+    () => new Set(stops.filter((s) => s.kind === "deal" && s.dealId).map((s) => String(s.dealId))),
+    [stops]
+  );
+  const totals = summarizeStops(stops);
+
+  function toggleDeal(deal: TransportDeal) {
+    const existing = stops.find((s) => s.kind === "deal" && String(s.dealId) === String(deal.id));
+    if (existing) {
+      setStops((prev) => prev.filter((s) => s.key !== existing.key));
+      return;
+    }
+    setStops((prev) => [...prev, stopFromDeal(deal)]);
+  }
+
+  function addCustomStop() {
+    setStops((prev) => [...prev, emptyCustomStop()]);
+    setPanel("stops");
+  }
+
+  /** Сколько едем везём с заказа (для подписи в списке заказов). */
+  function dealStopSummary(deal: TransportDeal) {
+    const stop = stops.find((s) => s.kind === "deal" && String(s.dealId) === String(deal.id));
+    if (!stop) {
+      const avail = deal.items.reduce(
+        (sum, item) => sum + dealAvailableFor(deal, item.productId),
+        0
+      );
+      return { qty: avail, picked: false };
+    }
+    return { qty: stopTotalQty(stop), picked: true };
   }
 
   async function handleSubmit() {
-    if (selectedDeals.size === 0 && customTrips.length === 0) {
-      setError("Выберите хотя бы один заказ или добавьте самостоятельную поездку");
+    const err = validateStops(stops);
+    if (err) {
+      setError(err);
       return;
     }
     const driver = drivers.find((d) => d.id === driverId);
-
-    const items = [];
-
-    // 1. Process selected deals
-    for (const dealId of selectedDeals) {
-      const deal = deals.find((d) => d.id === dealId)!;
-      const dealQtys = qtys[dealId] || {};
-      const loadedItems = deal.items
-        .map((item) => ({
-          productId: item.productId,
-          name: item.name,
-          orderedQty: item.quantity,
-          transportQty: dealQtys[item.productId] || 0,
-        }))
-        .filter((item) => item.transportQty > 0);
-      // Нулевые/невыбранные строки не сохраняем в перевозке: иначе они
-      // попадали в карточку и печатный бланк вместе с загруженным товаром.
-      if (loadedItems.length === 0) continue;
-      items.push({
-        dealId: deal.id,
-        dealNumber: deal.number,
-        customerName: deal.customerName,
-        contactName: deal.contactName || null,
-        address: deal.deliveryAddress || null,
-        phone: deal.customerPhone || null,
-        deliveryNote: deal.deliveryNote || null,
-        items: loadedItems,
-        totalSum: deal.totalSum || null,
-      });
-    }
-
-    // 2. Process custom independent trips
-    for (const trip of customTrips) {
-      if (!trip.customerName.trim()) {
-        setError("Укажите контрагента для самостоятельной поездки");
-        return;
-      }
-      if (!trip.address.trim()) {
-        setError("Укажите адрес (куда ехать) для самостоятельной поездки");
-        return;
-      }
-      const tripItems = trip.items.filter(it => it.name.trim() && it.transportQty > 0);
-      if (tripItems.length === 0) {
-        setError("Добавьте хотя бы один товар/груз в самостоятельной поездке");
-        return;
-      }
-      const tripType = trip.tripType || "delivery";
-      items.push({
-        dealId: null,
-        dealNumber: null,
-        customerName: trip.customerName.trim(),
-        contactName: trip.contactName.trim() || null,
-        address: trip.address.trim() || null,
-        phone: trip.phone.trim() || null,
-        deliveryNote: trip.deliveryNote.trim() || null,
-        items: tripItems.map(it => ({
-          productId: it.productId || null,
-          name: it.name.trim(),
-          orderedQty: it.transportQty,
-          transportQty: it.transportQty,
-        })),
-        totalSum: null,
-        // Тип поездки: доставка клиенту / забор груза / сдача груза.
-        // Для поездок по заказам всегда "delivery" (не задаём — по умолчанию).
-        tripType,
-      });
-    }
-
-    if (items.length === 0) {
-      setError("Укажите количество хотя бы одной загруженной позиции");
-      return;
-    }
-
     setSaving(true);
     setError("");
     try {
@@ -536,28 +537,58 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
           driverName: driver?.name || null,
           driverPhone: driver?.phone || null,
           note: note || null,
-          items,
+          items: stopsToTransportItems(stops),
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Ошибка");
-      onCreated();
+      // Бланк открываем сразу: номер уже присвоен, точки те же, что собрали.
+      onCreated({
+        transportNumber: Number(data.number) || 0,
+        date,
+        note: note || null,
+        driverName: driver?.name ?? null,
+        driverPhone: driver?.phone ?? null,
+        stops,
+        companyPhone,
+        companyAddress,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка сети");
     }
     setSaving(false);
   }
 
+  function openTripPreview() {
+    const err = validateStops(stops);
+    if (err) {
+      setError(err);
+      return;
+    }
+    const driver = drivers.find((d) => d.id === driverId);
+    setError("");
+    setTripPreview({
+      transportNumber: 0,
+      date,
+      note: note || null,
+      driverName: driver?.name ?? null,
+      driverPhone: driver?.phone ?? null,
+      stops,
+      companyPhone,
+      companyAddress,
+    });
+  }
+
   return (
     <ModalPortal>
       <div className="admin-modal-overlay" data-admin="true">
-        <div className="admin-modal wh-modal transport-modal" style={{ maxWidth: 700 }} onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal wh-modal transport-modal transport-modal--builder" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
           <div className="admin-modal__head">
-            <h3 className="admin-modal__title">Новая перевозка</h3>
+            <h3 className="admin-modal__title">Новая перевозка · путевой лист</h3>
             <button type="button" onClick={onClose} className="admin-modal__close"><X size={14} /></button>
           </div>
 
-          <div className="wh-form-grid" style={{ marginBottom: 16 }}>
+          <div className="wh-form-grid" style={{ marginBottom: 12 }}>
             <div className="admin-field">
               <label className="admin-label">Дата</label>
               <input type="date" className="admin-input" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -570,391 +601,121 @@ function CreateTransportModal({ deals, drivers, products, onClose, onCreated }: 
               </select>
             </div>
             <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
-              <label className="admin-label">Заметка</label>
-              <input className="admin-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Необязательно" />
+              <label className="admin-label">Заметка к перевозке (в шапке бланка)</label>
+              <input className="admin-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Напр.: после 17:00 не звонить, ключи у охранника" />
             </div>
           </div>
 
-          <label className="admin-label" style={{ marginBottom: 8 }}>Заказы для перевозки</label>
-          <div className="transport-modal__orders" style={{ maxHeight: "45vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
-            {deals.length === 0 ? (
-              <div className="admin-empty" style={{ padding: 20 }}>Нет заказов с доставкой</div>
-            ) : deals.map((deal) => {
-              const sel = selectedDeals.has(deal.id);
-              return (
-                <div key={deal.id} className="transport-modal__order" style={{ border: `1px solid ${sel ? "var(--adm-kraft)" : "var(--adm-border)"}`, borderRadius: 8, padding: 12, background: sel ? "var(--adm-kraft-pale)" : "var(--adm-card)", transition: "all 0.12s" }}>
-                  <label className="transport-modal__order-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: sel ? 10 : 0 }}>
-                    <input type="checkbox" checked={sel} onChange={() => toggleDeal(deal.id)} />
-                    <strong style={{ fontSize: 13 }}>ЗК-{deal.number}</strong>
-                    <span style={{ fontSize: 13 }}>{deal.customerName}</span>
-                    {deal.deliveryAddress && (
-                      <span className="transport-modal__address" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
-                        <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.deliveryAddress}</span>
-                      </span>
-                    )}
-                  </label>
-                  {sel && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 26 }}>
-                      {deal.items.map((item) => {
-                        const alreadyShipped = (deal.shippedItems || []).find((s) => s.productId === item.productId)?.shippedQty || 0;
-                        const alreadyPlanned = (deal.deliveryItems || []).find((d) => d.productId === item.productId)?.quantity || 0;
-                        const maxQty = item.quantity - alreadyShipped - alreadyPlanned;
-                        const curQty = qtys[deal.id]?.[item.productId] ?? maxQty;
-                        return (
-                          <div key={item.productId} className="transport-modal__deal-item" style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, alignItems: "center" }}>
-                            <span style={{ fontSize: 12 }}>
-                              {item.name} <span style={{ color: "var(--adm-sand)" }}>(заказано: {item.quantity}{alreadyShipped > 0 ? `, отгружено: ${alreadyShipped}` : ""}{alreadyPlanned > 0 ? `, в перевозках: ${alreadyPlanned}` : ""})</span>
+          <div className="transport-builder__tabs" role="tablist" aria-label="Шаги">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={panel === "deals"}
+              className={`admin-filter${panel === "deals" ? " admin-filter--active" : ""}`}
+              onClick={() => setPanel("deals")}
+            >
+              1. Что везём ({deals.length} заказов доступно)
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={panel === "stops"}
+              className={`admin-filter${panel === "stops" ? " admin-filter--active" : ""}`}
+              onClick={() => setPanel("stops")}
+            >
+              2. Порядок и пометки ({stops.length})
+            </button>
+          </div>
+
+          {panel === "deals" ? (
+            <>
+              <div className="transport-modal__orders" style={{ maxHeight: "42vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
+                {deals.length === 0 ? (
+                  <div className="admin-empty" style={{ padding: 20 }}>Нет заказов с доставкой — добавьте свою точку</div>
+                ) : (
+                  deals.map((deal) => {
+                    const summary = dealStopSummary(deal);
+                    return (
+                      <div
+                        key={deal.id}
+                        id={`transport-deal-${deal.id}`}
+                        className="transport-modal__order"
+                        style={{
+                          border: `1px solid ${summary.picked ? "var(--adm-kraft)" : "var(--adm-border)"}`,
+                          borderRadius: 8,
+                          padding: 10,
+                          background: summary.picked ? "var(--adm-kraft-pale)" : "var(--adm-card)",
+                          transition: "all 0.12s",
+                        }}
+                      >
+                        <label className="transport-modal__order-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flexWrap: "wrap" }}>
+                          <input type="checkbox" checked={summary.picked} onChange={() => toggleDeal(deal)} />
+                          <strong style={{ fontSize: 13 }}>ЗК-{deal.number}</strong>
+                          <span style={{ fontSize: 13 }}>{deal.customerName}</span>
+                          <span className="admin-badge admin-badge--muted" style={{ fontSize: 11 }}>
+                            {summary.picked ? `в маршруте ${summary.qty} ед.` : `можно ${summary.qty} ед.`}
+                          </span>
+                          {deal.deliveryAddress && (
+                            <span className="transport-modal__address" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
+                              <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.deliveryAddress}</span>
                             </span>
-                            <input type="number" className="admin-input" min={0} max={maxQty} value={curQty} style={{ textAlign: "right" }}
-                              onChange={(e) => {
-                                const v = Math.min(Math.max(0, Number(e.target.value) || 0), maxQty);
-                                setQtys((prev) => ({ ...prev, [deal.id]: { ...(prev[deal.id] || {}), [item.productId]: v } }));
-                              }}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Раздел самостоятельных перевозок (без заказа) */}
-          <div style={{ marginTop: 16, borderTop: "1px solid var(--adm-border)", paddingTop: 16 }}>
-            <div className="transport-modal__custom-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <label className="admin-label" style={{ margin: 0 }}>Самостоятельные перевозки (без привязки к заказам)</label>
-              <button
-                type="button"
-                className="admin-btn admin-btn--outline admin-btn--sm transport-modal__add-trip"
-                onClick={() => {
-                  setCustomTrips(prev => [
-                    ...prev,
-                    {
-                      id: Math.random().toString(36).substring(7),
-                      tripType: "delivery",
-                      customerName: "",
-                      contactName: "",
-                      phone: "",
-                      address: "",
-                      deliveryNote: "",
-                      items: [{ productId: null, name: "Макулатура", transportQty: 100 }],
-                    }
-                  ]);
-                }}
-              >
-                <Plus size={13} style={{ marginRight: 4 }} /> Добавить самостоятельную перевозку
-              </button>
-            </div>
-
-            {customTrips.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: "35vh", overflowY: "auto", paddingRight: 4 }}>
-                {customTrips.map((trip, tripIdx) => (
-                  <div
-                    key={trip.id}
-                    style={{
-                      border: "1px solid var(--adm-kraft)",
-                      borderRadius: 8,
-                      padding: 12,
-                      background: "rgba(224, 155, 18, 0.03)",
-                      position: "relative",
-                    }}
-                  >
-                    {/* Кнопка удаления поездки */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomTrips(prev => prev.filter(t => t.id !== trip.id));
-                      }}
-                      style={{
-                        position: "absolute",
-                        top: 10,
-                        right: 10,
-                        background: "none",
-                        border: "none",
-                        color: "var(--adm-rust)",
-                        cursor: "pointer",
-                      }}
-                      title="Удалить поездку"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: "var(--adm-kraft)" }}>
-                        🚗 Самостоятельная перевозка #{tripIdx + 1}
-                      </span>
-                      <span className={`admin-badge ${trip.tripType === "pickup" ? "admin-badge--blue" : trip.tripType === "handover" ? "admin-badge--indigo" : "admin-badge--green"}`}>
-                        {TRIP_TYPE_SHORT[trip.tripType || "delivery"]}
-                      </span>
-                    </div>
-
-                    {/* Тип поездки: доставка / забор груза / сдача груза */}
-                    <div className="admin-field" style={{ marginBottom: 12 }}>
-                      <label className="admin-label">Тип поездки</label>
-                      <div className="transport-modal__trip-types" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {([
-                          { id: "delivery" as TripType, label: "🚚 Доставка клиенту", hint: "везём товар клиенту" },
-                          { id: "pickup" as TripType, label: "📥 Забор груза", hint: "забираем груз у контрагента" },
-                          { id: "handover" as TripType, label: "📤 Сдача груза", hint: "сдаём груз (напр. на переработку)" },
-                        ]).map((opt) => (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            className={`admin-btn ${(trip.tripType || "delivery") === opt.id ? "admin-btn--primary" : "admin-btn--ghost"}`}
-                            style={{ flex: 1, minWidth: 150 }}
-                            title={opt.hint}
-                            onClick={() => {
-                              setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, tripType: opt.id } : t));
-                            }}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                      <span className="wh-form-hint" style={{ margin: "4px 0 0" }}>
-                        Забор — забираем груз у контрагента, сдача — привозим груз (например, на переработку).
-                      </span>
-                    </div>
-
-                    <div className="wh-form-grid" style={{ marginBottom: 12 }}>
-                      <div className="admin-field">
-                        <label className="admin-label">
-                          {trip.tripType === "pickup" ? "Откуда забираем (Контрагент) *" : trip.tripType === "handover" ? "Куда сдаём (Контрагент) *" : "Контрагент / Клиент *"}
+                          )}
                         </label>
-                        <input
-                          type="text"
-                          className="admin-input"
-                          value={trip.customerName}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, customerName: val } : t));
-                          }}
-                          placeholder="ООО 'Приемка', Магазин..."
-                          required
-                        />
                       </div>
-
-                      <div className="admin-field">
-                        <label className="admin-label">Адрес *</label>
-                        <input
-                          type="text"
-                          className="admin-input"
-                          value={trip.address}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, address: val } : t));
-                          }}
-                          placeholder="ул. Сибирская, 10..."
-                          required
-                        />
-                      </div>
-
-                      <div className="admin-field">
-                        <label className="admin-label">Контактное лицо</label>
-                        <input
-                          type="text"
-                          className="admin-input"
-                          value={trip.contactName}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, contactName: val } : t));
-                          }}
-                          placeholder="Имя получателя"
-                        />
-                      </div>
-
-                      <div className="admin-field">
-                        <label className="admin-label">Телефон</label>
-                        <input
-                          type="text"
-                          className="admin-input"
-                          value={trip.phone}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, phone: val } : t));
-                          }}
-                          placeholder="+7..."
-                        />
-                      </div>
-
-                      <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
-                        <label className="admin-label">Заметка водителю</label>
-                        <input
-                          type="text"
-                          className="admin-input"
-                          value={trip.deliveryNote}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setCustomTrips(prev => prev.map(t => t.id === trip.id ? { ...t, deliveryNote: val } : t));
-                          }}
-                          placeholder="Сдать макулатуру, забрать коробки..."
-                        />
-                      </div>
-                    </div>
-
-                    {/* Товары для этой самостоятельной поездки */}
-                    <div style={{ borderTop: "1px dashed var(--adm-border)", paddingTop: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 12, fontWeight: 700 }}>📦 Груз / Товары:</span>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--outline admin-btn--sm"
-                            disabled={!products || products.length === 0}
-                            title={!products || products.length === 0 ? "Каталог не загружен" : "Выбрать товар из каталога сайта"}
-                            onClick={() => setRowPicker(`${trip.id}:new`)}
-                          >
-                            <PackageSearch size={13} /> Из каталога
-                          </button>
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--ghost admin-btn--sm"
-                            onClick={() => {
-                              setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                ...t,
-                                items: [...t.items, { productId: null, name: "", transportQty: 10 }]
-                              } : t));
-                            }}
-                          >
-                            + Добавить строку груза
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Выбор товара из каталога сайта */}
-                      {rowPicker === `${trip.id}:new` && (
-                        <div style={{ marginBottom: 8 }}>
-                          <ProductPicker
-                            products={products || []}
-                            onPick={(p) => {
-                              setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                ...t,
-                                items: [...t.items, { productId: p.id, name: p.name, transportQty: 10 }],
-                              } : t));
-                              setRowPicker(null);
-                            }}
-                            placeholder="Поиск товара по каталогу сайта..."
-                          />
-                        </div>
-                      )}
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {trip.items.map((item, itemIdx) => {
-                          const pickerKey = `${trip.id}:${itemIdx}`;
-                          return (
-                            <div key={`${trip.id}-${itemIdx}`} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              <div className="transport-modal__cargo-row" style={{ display: "grid", gridTemplateColumns: "1fr 100px 30px", gap: 8, alignItems: "center" }}>
-                                <input
-                                  type="text"
-                                  className="admin-input"
-                                  value={item.name}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                      ...t,
-                                      // Пользователь правит название вручную — привязка к товару каталога сбрасывается
-                                      items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, name: val, productId: null } : it)
-                                    } : t));
-                                  }}
-                                  placeholder="Название (например, Макулатура, Поддоны)"
-                                  required
-                                />
-                                <input
-                                  type="number"
-                                  className="admin-input"
-                                  min={1}
-                                  value={item.transportQty || ""}
-                                  onChange={(e) => {
-                                    const val = Math.max(1, Number(e.target.value) || 0);
-                                    setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                      ...t,
-                                      items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, transportQty: val } : it)
-                                    } : t));
-                                  }}
-                                  style={{ textAlign: "right" }}
-                                  required
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                      ...t,
-                                      items: t.items.filter((_, iIdx) => iIdx !== itemIdx)
-                                    } : t));
-                                  }}
-                                  style={{
-                                    background: "none",
-                                    border: "none",
-                                    color: "var(--adm-rust)",
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center"
-                                  }}
-                                  disabled={trip.items.length <= 1}
-                                  title="Удалить товар"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                              <div className="transport-modal__cargo-actions" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                {item.productId ? (
-                                  <span className="admin-badge admin-badge--green" style={{ fontSize: 11 }}>
-                                    ✓ из каталога: {item.name}
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: 11, color: "var(--adm-sand)" }}>
-                                    свободное описание груза
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  className="admin-btn admin-btn--ghost admin-btn--sm"
-                                  style={{ padding: "2px 8px", fontSize: 11 }}
-                                  onClick={() => setRowPicker(rowPicker === pickerKey ? null : pickerKey)}
-                                >
-                                  {item.productId ? "Заменить из каталога" : "Выбрать из каталога"}
-                                </button>
-                              </div>
-                              {rowPicker === pickerKey && (
-                                <div style={{ marginBottom: 4 }}>
-                                  <ProductPicker
-                                    products={products || []}
-                                    onPick={(p) => {
-                                      setCustomTrips(prev => prev.map(t => t.id === trip.id ? {
-                                        ...t,
-                                        items: t.items.map((it, iIdx) => iIdx === itemIdx ? { ...it, productId: p.id, name: p.name } : it)
-                                      } : t));
-                                      setRowPicker(null);
-                                    }}
-                                    placeholder="Поиск товара по каталогу сайта..."
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })
+                )}
               </div>
-            )}
-          </div>
+
+              <div className="transport-builder__hint">
+                Количество груза и пометки (забор / доставка) настраиваются на шаге 2 — в карточке точки.
+              </div>
+            </>
+          ) : (
+            <div className="transport-builder__stops">
+              <TripStopsEditor
+                stops={stops}
+                onChange={setStops}
+                products={products}
+                defaultOpen="all"
+                removable
+                onOpenDeal={() => setPanel("deals")}
+                title="Точки маршрута по порядку"
+                hint="тяните за ⠿ — в бланке будет этот порядок"
+                emptyText="Пока пусто: отметьте заказы на шаге 1 или добавьте свою точку"
+                actions={
+                  <button type="button" className="admin-btn admin-btn--outline admin-btn--sm" onClick={addCustomStop}>
+                    <Plus size={13} /> Своя точка
+                  </button>
+                }
+              />
+            </div>
+          )}
 
           {error && <div className="admin-error" style={{ marginTop: 10 }}>{error}</div>}
 
-          <div className="admin-modal__actions" style={{gap: 10,  marginTop: 14 }}>
+          <div className="admin-modal__actions transport-builder__footer" style={{ gap: 10, marginTop: 14 }}>
             <button type="button" onClick={onClose} className="admin-btn admin-btn--ghost" disabled={saving}>Отмена</button>
-            <button type="button" onClick={handleSubmit} className="admin-btn admin-btn--primary" disabled={saving || (selectedDeals.size === 0 && customTrips.length === 0)}>
+            <button type="button" onClick={openTripPreview} className="admin-btn admin-btn--outline" disabled={stops.length === 0}>
+              <Printer size={14} /> Предпросмотр
+            </button>
+            <span className="transport-builder__totals">
+              {totals.total} точ. · {totals.positions} поз. · {totals.qty} ед.
+            </span>
+            <button type="button" onClick={handleSubmit} className="admin-btn admin-btn--primary" disabled={saving || stops.length === 0}>
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
-              Создать перевозку ({selectedDeals.size + customTrips.length})
+              Создать перевозку ({stops.length})
             </button>
           </div>
         </div>
       </div>
+
+      {tripPreview && (
+        <TransportTripSheet
+          data={tripPreview}
+          onDone={() => setTripPreview(null)}
+        />
+      )}
     </ModalPortal>
   );
 }
