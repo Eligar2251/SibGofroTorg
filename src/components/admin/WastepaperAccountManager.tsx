@@ -180,7 +180,7 @@ function AddressField({
   }
 
   return (
-    <div>
+    <div className="wp-modal-stack">
       {hasBranches && (
         <div className="admin-field">
           <label className="admin-label">
@@ -301,7 +301,7 @@ function ItemsEditor({
   const totals = wpDocTotals(items);
 
   return (
-    <div className="admin-field">
+    <div className="admin-field" style={{ gap: 10 }}>
       <label className="admin-label">
         <Scale size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
         Позиции (макулатура разных профилей)
@@ -311,7 +311,7 @@ function ItemsEditor({
           Нет позиций — добавьте хотя бы одну.
         </p>
       )}
-      <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "grid", gap: 10 }}>
         {items.map((it) => (
           <div
             key={it.id}
@@ -370,7 +370,7 @@ function ItemsEditor({
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={addItem}>
           <Plus size={13} /> Позиция
         </button>
@@ -624,7 +624,7 @@ export function WastepaperAccountManager(props: Props) {
   /* ── Рендер ── */
 
   return (
-    <div>
+    <div className="wp-account">
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Учёт макулатуры</h1>
@@ -1336,7 +1336,7 @@ function DayRowFragment({
                   gap: 8,
                   alignItems: "center",
                   flexWrap: "wrap",
-                  padding: "4px 0",
+                  padding: "6px 0",
                   fontSize: "0.85rem",
                 }}
               >
@@ -1396,7 +1396,7 @@ function ForecastCard({
           <p className="admin-hint">Незапланированных ожиданий нет.</p>
         </div>
       ) : (
-        <div className="admin-card__pad" style={{ display: "grid", gap: 8 }}>
+        <div className="admin-card__pad" style={{ display: "grid", gap: 10 }}>
           {events.slice(0, 20).map((e) => (
             <div
               key={`${e.kind}-${e.id}`}
@@ -1580,7 +1580,7 @@ function PaymentsTab({
         </button>
       </div>
 
-      <p className="admin-hint" style={{ marginTop: -4 }}>
+      <p className="admin-hint" style={{ marginTop: -4, marginBottom: 10 }}>
         Показано операций: {filtered.length}. По оплаченным: приход{" "}
         <b style={{ color: "var(--adm-pine)" }}>+{fmtMoney(totals.inSum)}</b>, расход{" "}
         <b style={{ color: "var(--adm-kraft)" }}>−{fmtMoney(totals.outSum)}</b>.
@@ -1614,7 +1614,7 @@ function PaymentsTab({
                     <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>{" "}
                     {e.title}
                     {e.comment && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         {e.comment}
                       </div>
                     )}
@@ -1768,7 +1768,7 @@ function IntakesTab({
         </button>
       </div>
 
-      <p className="admin-hint" style={{ marginTop: -4 }}>
+      <p className="admin-hint" style={{ marginTop: -4, marginBottom: 10 }}>
         Показано приёмов: {filtered.length} · {fmtKg(totals.kg)} на {fmtMoney(totals.sum)}.
       </p>
 
@@ -1813,13 +1813,13 @@ function IntakesTab({
                   <td>
                     {i.counterpartyName}
                     {i.address && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         <MapPin size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
                         {i.address}
                       </div>
                     )}
                     {i.phone && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         {i.phone}
                         {i.contactPerson ? ` · ${i.contactPerson}` : ""}
                       </div>
@@ -1961,7 +1961,7 @@ function ShipmentsTab({
             style={{ display: "flex", gap: 14, flexWrap: "wrap" }}
           >
             {stock.map((row) => (
-              <div key={row.wastepaperType} style={{ minWidth: 170 }}>
+              <div key={row.wastepaperType} style={{ minWidth: 170, display: "grid", gap: 3 }}>
                 <div style={{ fontWeight: 700 }}>
                   {wpTypeLabel(row.wastepaperType, WP_TYPE_LABELS)}
                 </div>
@@ -2056,13 +2056,13 @@ function ShipmentsTab({
                   <td>
                     {s.enterpriseName}
                     {s.address && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         <MapPin size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
                         {s.address}
                       </div>
                     )}
                     {s.comment && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         {s.comment}
                       </div>
                     )}
@@ -2253,7 +2253,7 @@ function CounterpartiesTab({
                   <td style={{ fontWeight: 600 }}>
                     {c.name}
                     {c.comment && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", fontWeight: 400 }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", fontWeight: 400, marginTop: 3 }}>
                         {c.comment}
                       </div>
                     )}
@@ -2276,7 +2276,7 @@ function CounterpartiesTab({
                   </td>
                   <td style={{ minWidth: 260 }}>
                     {c.branches && c.branches.length > 0 ? (
-                      <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ display: "grid", gap: 8 }}>
                         {c.branches.map((b) => (
                           <div key={b.id} style={{ fontSize: "0.85rem" }}>
                             <div style={{ fontWeight: 600 }}>
@@ -2285,7 +2285,7 @@ function CounterpartiesTab({
                               {b.address || "—"}
                             </div>
                             {(b.contactPerson || b.phone) && (
-                              <div style={{ color: "var(--adm-muted)", paddingLeft: 15 }}>
+                              <div style={{ color: "var(--adm-muted)", paddingLeft: 15, marginTop: 2 }}>
                                 {b.contactPerson}
                                 {b.contactPerson && b.phone ? " · " : ""}
                                 {b.phone ? <a href={`tel:${b.phone}`}>{b.phone}</a> : ""}
@@ -2461,6 +2461,7 @@ function IntakeModal({
         </p>
 
         <form
+          className="wp-modal-form"
           onSubmit={(e) => {
             e.preventDefault();
             if (!valid || transportError) return;
@@ -2815,6 +2816,7 @@ function ShipmentModal({
         </p>
 
         <form
+          className="wp-modal-form"
           onSubmit={(e) => {
             e.preventDefault();
             if (!valid || transportError) return;
@@ -3122,6 +3124,7 @@ function PaymentModal({
         </p>
 
         <form
+          className="wp-modal-form"
           onSubmit={(e) => {
             e.preventDefault();
             if (!valid) return;
@@ -3397,6 +3400,7 @@ function CounterpartyModal({
         </p>
 
         <form
+          className="wp-modal-form"
           onSubmit={(e) => {
             e.preventDefault();
             if (!valid) return;
@@ -3438,7 +3442,7 @@ function CounterpartyModal({
           </div>
 
           {/* Точки / филиалы */}
-          <div className="admin-field">
+          <div className="admin-field" style={{ gap: 10 }}>
             <label className="admin-label">
               <Building2 size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
               Точки / филиалы (адрес + контактное лицо + телефон)
@@ -3455,7 +3459,7 @@ function CounterpartyModal({
                   className="admin-card"
                   style={{ padding: "10px 12px", borderStyle: "dashed" }}
                 >
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                     <span className="admin-badge admin-badge--muted">Точка {idx + 1}</span>
                     <input
                       className="admin-input"
@@ -3474,7 +3478,7 @@ function CounterpartyModal({
                       <Trash2 size={13} />
                     </button>
                   </div>
-                  <div className="admin-field" style={{ marginBottom: 6 }}>
+                  <div className="admin-field" style={{ marginBottom: 8 }}>
                     <input
                       className="admin-input"
                       value={b.address}
@@ -3504,7 +3508,6 @@ function CounterpartyModal({
             <button
               type="button"
               className="admin-btn admin-btn--ghost admin-btn--sm"
-              style={{ marginTop: 8 }}
               onClick={addBranch}
             >
               <Plus size={13} /> Добавить точку

@@ -10518,6 +10518,32 @@ body.is-col-resizing * {
   color: var(--adm-muted);
 }
 
+/* Вертикальный ритм форм в модалках макулатуры: все блоки
+   (ряды полей, адрес точки, перевозка, позиции, кнопки) идут с зазором. */
+.wp-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* У блока перевозки свои внешние отступы — внутри формы за них отвечает gap. */
+.wp-modal-form > .deal-delivery-block {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Внутренние группы модалок (адрес точки): тот же ритм. */
+.wp-modal-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Кнопки действий в таблицах модуля не слипаются. */
+.wp-account .admin-table td .admin-btn + .admin-btn {
+  margin-left: 6px;
+}
+
 @media (max-width: 480px) {
   .wp-days-filters {
     display: grid;
