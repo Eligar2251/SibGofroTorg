@@ -87,6 +87,7 @@ import {
   type CounterpartyOption,
 } from "@/components/admin/WarehouseCounterparties";
 import type { TransportDeal, TransportRow, DriverOption } from "@/components/admin/TransportManager";
+import type { WpTransportQueueDoc } from "@/lib/wastepaper-account-shared";
 import type { SupplyPlan } from "@/lib/supply-plans-shared";
 import type { PurchasePlan } from "@/lib/purchase-plans-shared";
 
@@ -301,6 +302,8 @@ interface WarehouseManagerProps {
   freeDeliveryThreshold?: number;
   transports?: TransportRow[];
   pendingDeals?: TransportDeal[];
+  /** Очередь макулатуры для тех же рейсов (приёмы — забор, сдачи — сдача). */
+  pendingWpDocs?: WpTransportQueueDoc[];
   drivers?: DriverOption[];
   cashCollections?: CashCollection[];
   consignmentManual?: ConsignmentManualSale[];
@@ -337,6 +340,7 @@ export function WarehouseManager({
   freeDeliveryThreshold = 30000,
   transports = [],
   pendingDeals = [],
+  pendingWpDocs = [],
   drivers = [],
   cashCollections = [],
   consignmentManual = [],
@@ -2339,6 +2343,7 @@ export function WarehouseManager({
         <TransportManager
           transports={transports}
           pendingDeals={pendingDeals}
+          pendingWpDocs={pendingWpDocs}
           drivers={drivers}
           companyPhone={companyPhone}
           companyAddress={companyAddress}

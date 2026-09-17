@@ -35,6 +35,175 @@ export const WP_STOP_STATUS_LABELS = {
 } as const;
 export type WpStopStatus = keyof typeof WP_STOP_STATUS_LABELS;
 
+/**
+ * Как приём/сдача попадает на площадку / уезжает с неё.
+ * Самовывоз — клиент привозит/забирает сам, перевозка не нужна.
+ * Перевозка — едем мы: приём идёт в путевой лист как «забор груза»,
+ * сдача — как «сдача груза» (та же логика, что доставка ЗК в учёте).
+ */
+export const WP_DELIVERY_MODE_LABELS = {
+  pickup: "Забор груза",
+  handover: "Сдача груза",
+  self: "Самовывоз",
+} as const;
+
+/** Приём ждёт перевозки: помечен «в перевозку» и не отменён. */
+export function wpIntakeNeedsTransport(i: Pick<WpIntake, "needsTransport" | "status">): boolean {
+  return Boolean(i.needsTransport) && i.status === "active";
+}
+
+/** Сдача ждёт перевозки: помечена «в перевозку» и не отменена. */
+export function wpShipmentNeedsTransport(s: Pick<WpShipment, "needsTransport" | "status">): boolean {
+  return Boolean(s.needsTransport) && s.status === "active";
+}
+
+// ── Очередь макулатуры для ЕДИНЫХ перевозок ───────────────
+// Приёмы и сдачи с needsTransport попадают в те же перевозки учёта
+// (ПЕР-...), что и заказы ЗК: приём — «забор груза», сдача — «сдача
+// груза». Здесь только логистика (без цен и сумм): очередь видна и
+// макулатурщику, и менеджеру учёта.
+
+/** Документ макулатуры, ожидающий перевозки (для конструктора рейса). */
+export interface WpTransportQueueDoc {
+  id: string;
+  /** intake — приём (забор у клиента), shipment — сдача (везём на предприятие) */
+  kind: "intake" | "shipment";
+  number: number;
+  customerName: string;
+  contactName: string | null;
+  phone: string | null;
+  address: string | null;
+  /** Комментарий документа — водителю как заметка на точке. */
+  note: string | null;
+  date: string;
+  /** Желаемая дата вывоза (если указана). */
+  plannedDate: string | null;
+  weightKg: number;
+  /** Груз точками: вид макулатуры + кг. Цен и сумм здесь нет. */
+  lines: { name: string; qty: number }[];
+}
+
+/** Ключ документа в очереди — им же помечаем точки внутри перевозки. */
+export function wpQueueKey(kind: "intake" | "shipment", id: string): string {
+  return `${kind}:${id}`;
+}
+
+/**
+ * Документы макулатуры, уже лежащие точками в активных (черновик/в пути)
+ * единых перевозках. Их убираем из очереди «Ожидают формирования» —
+ * та же логика, что activeTransportDealIds у заказов учёта.
+ */
+export function wpTakenKeysFromTransports(
+  transports:
+    | {
+        status: string;
+        items?:
+          | {
+              wpDocKind?: string | null;
+              wpDocId?: string | null;
+            }[]
+          | null;
+      }[]
+    | null
+    | undefined
+): Set<string> {
+  const taken = new Set<string>();
+  for (const t of transports || []) {
+    if (t.status !== "draft" && t.status !== "active") continue;
+    for (const it of t.items || []) {
+      if (
+        (it.wpDocKind === "intake" || it.wpDocKind === "shipment") &&
+        it.wpDocId
+      ) {
+        taken.add(wpQueueKey(it.wpDocKind, String(it.wpDocId)));
+      }
+    }
+  }
+  return taken;
+}
+
+function wpQueueLines(
+  items: WpDocItem[],
+  fallbackType: string,
+  fallbackKg: number,
+  typeLabels: Record<string, string>
+): { name: string; qty: number }[] {
+  const source =
+    items && items.length > 0
+      ? items.map((it) => ({
+          name: wpTypeLabel(it.wastepaperType, typeLabels),
+          qty: Number(it.weightKg) || 0,
+        }))
+      : [
+          {
+            name: wpTypeLabel(fallbackType, typeLabels),
+            qty: Number(fallbackKg) || 0,
+          },
+        ];
+  return source.filter((l) => l.qty > 0);
+}
+
+/**
+ * Очередь «ожидают формирования»: приёмы/сдачи с needsTransport,
+ * кроме отменённых и уже взятых в активный рейс. Сортировка — сначала
+ * с желаемой датой вывоза (раньше — выше), затем по дате документа.
+ */
+export function buildWpTransportQueue(args: {
+  intakes: WpIntake[];
+  shipments: WpShipment[];
+  /** Документы, уже лежащие в активных перевозках (wpQueueKey). */
+  takenKeys: Set<string>;
+  /** Подписи видов макулатуры (WP_TYPE_LABELS + справочник видов). */
+  typeLabels: Record<string, string>;
+}): WpTransportQueueDoc[] {
+  const { intakes, shipments, takenKeys, typeLabels } = args;
+  const out: WpTransportQueueDoc[] = [];
+  for (const i of intakes) {
+    if (!wpIntakeNeedsTransport(i)) continue;
+    if (takenKeys.has(wpQueueKey("intake", i.id))) continue;
+    out.push({
+      id: i.id,
+      kind: "intake",
+      number: i.number,
+      customerName: i.counterpartyName || "Без имени",
+      contactName: i.contactPerson,
+      phone: i.phone,
+      address: i.address,
+      note: i.comment,
+      date: i.date,
+      plannedDate: i.transportPlannedDate,
+      weightKg: i.weightKg,
+      lines: wpQueueLines(i.items, i.wastepaperType, i.weightKg, typeLabels),
+    });
+  }
+  for (const s of shipments) {
+    if (!wpShipmentNeedsTransport(s)) continue;
+    if (takenKeys.has(wpQueueKey("shipment", s.id))) continue;
+    out.push({
+      id: s.id,
+      kind: "shipment",
+      number: s.number,
+      customerName: s.enterpriseName || "Без имени",
+      contactName: s.contactPerson,
+      phone: s.phone,
+      address: s.address,
+      note: s.comment,
+      date: s.date,
+      plannedDate: s.transportPlannedDate,
+      weightKg: s.weightKg,
+      lines: wpQueueLines(s.items, s.wastepaperType, s.weightKg, typeLabels),
+    });
+  }
+  const rank = (d: WpTransportQueueDoc) => d.plannedDate || `~${d.date}`;
+  out.sort((a, b) => rank(a).localeCompare(rank(b)) || a.number - b.number);
+  return out;
+}
+
+/** Подпись документа очереди: «ПМ-12» / «СМ-34». */
+export function wpQueueDocLabel(doc: Pick<WpTransportQueueDoc, "kind" | "number">): string {
+  return `${doc.kind === "intake" ? "ПМ" : "СМ"}-${doc.number}`;
+}
+
 /** Виды макулатуры (совпадают с тарифами сайта wp_rate_*). */
 export const WP_TYPE_OPTIONS = [
   { id: "cardboard", label: "Гофрокартон" },
@@ -128,6 +297,13 @@ export interface WpIntake {
   paidAt: string | null; // ISO datetime фактической оплаты
   transportId: string | null;
   transportItemId: string | null;
+  /**
+   * TRUE — приём нужно забрать нашей перевозкой (очередь перевозок учёта,
+   * в путевом листе — «забор груза»); FALSE — самопривоз.
+   */
+  needsTransport: boolean;
+  /** Желаемая дата забора (подсказка диспетчеру, необязательно). */
+  transportPlannedDate: string | null;
   status: "active" | "cancelled";
   comment: string | null;
   createdBy: string | null;
@@ -156,6 +332,13 @@ export interface WpShipment {
   account: WpAccount;
   isPaid: boolean;
   paidAt: string | null;
+  /**
+   * TRUE — сдачу нужно отвезти нашей перевозкой (очередь перевозок учёта,
+   * в путевом листе — «сдача груза»); FALSE — без нашей перевозки.
+   */
+  needsTransport: boolean;
+  /** Желаемая дата вывоза (подсказка диспетчеру, необязательно). */
+  transportPlannedDate: string | null;
   status: "active" | "cancelled";
   comment: string | null;
   createdBy: string | null;

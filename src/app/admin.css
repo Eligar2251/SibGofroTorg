@@ -14267,6 +14267,13 @@ a.client-card__contact:hover {
 .trip-stop__line-name { font-size: 12px; overflow-wrap: anywhere; }
 .trip-stop__line-ordered { font-size: 11px; color: var(--adm-sand); }
 .trip-stop__line-qty { display: flex; align-items: center; gap: 4px; }
+.trip-stop__line-qty .admin-input { min-width: 0; flex: 1 1 auto; }
+.trip-stop__line-unit {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--adm-sand);
+}
 .trip-stop__line-qty-static { text-align: right; font-weight: 800; }
 .trip-stop__nolines { font-size: 11.5px; color: var(--adm-rust); }
 

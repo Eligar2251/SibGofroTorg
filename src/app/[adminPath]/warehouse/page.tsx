@@ -18,6 +18,12 @@ import {
   getConsignmentManualSales,
 } from "@/lib/warehouse";
 import { dealNeedsDelivery, getPriceTierDiscounts } from "@/lib/warehouse-shared";
+import { getWpIntakes, getWpProducts, getWpShipments } from "@/lib/wastepaper-account";
+import {
+  WP_TYPE_LABELS,
+  buildWpTransportQueue,
+  wpTakenKeysFromTransports,
+} from "@/lib/wastepaper-account-shared";
 import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
 import { getAdminDb } from "@/lib/supabase";
@@ -158,6 +164,9 @@ export default async function AdminWarehousePage({
     consignmentManual,
     supplyPlans,
     purchasePlans,
+    wpIntakes,
+    wpShipments,
+    wpProducts,
   ] = await Promise.all([
     needStock ? getWarehouseStock() : Promise.resolve([]),
     needReceipts ? getReceipts() : Promise.resolve([]),
@@ -175,6 +184,10 @@ export default async function AdminWarehousePage({
     needConsignmentManual ? getConsignmentManualSales() : Promise.resolve([]),
     initialTab === "plans" ? getSupplyPlans() : Promise.resolve([]),
     initialTab === "purchases" ? getPurchasePlans() : Promise.resolve([]),
+    // Очередь макулатуры для тех же рейсов — только вкладке перевозок.
+    needTransports ? getWpIntakes(500).catch(() => []) : Promise.resolve([]),
+    needTransports ? getWpShipments(300).catch(() => []) : Promise.resolve([]),
+    needTransports ? getWpProducts().catch(() => []) : Promise.resolve([]),
   ]);
 
   const receipts =
@@ -300,6 +313,19 @@ export default async function AdminWarehousePage({
 
   const drivers = employees.map((e) => ({ id: e.id, name: e.name, phone: e.phone ?? null }));
 
+  // Приёмы/сдачи с пометкой «в перевозку», ещё не взятые в активный рейс, —
+  // очередь того же конструктора рейса на вкладке «Доставки».
+  const wpTypeLabels: Record<string, string> = {
+    ...WP_TYPE_LABELS,
+    ...Object.fromEntries(wpProducts.map((p) => [p.id, p.name])),
+  };
+  const pendingWpDocs = buildWpTransportQueue({
+    intakes: wpIntakes,
+    shipments: wpShipments,
+    takenKeys: wpTakenKeysFromTransports(transportsData),
+    typeLabels: wpTypeLabels,
+  });
+
   const needSettings = ["deals", "deliveries", "bank", "reports", "counterparties"].includes(initialTab);
   const settings = needSettings
     ? await getSettings().catch(() => ({} as Record<string, string>))
@@ -343,6 +369,7 @@ export default async function AdminWarehousePage({
       freeDeliveryThreshold={freeDeliveryThreshold}
       transports={transportsData}
       pendingDeals={pendingDeals}
+      pendingWpDocs={pendingWpDocs}
       drivers={drivers}
       cashCollections={cashCollections}
       consignmentManual={consignmentManual}

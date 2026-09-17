@@ -115,15 +115,27 @@ export interface TripStopLine {
   orderedQty?: number | null;
   /** Максимум, который можно взять (остаток на складе) */
   maxQty?: number | null;
+  /** Единица измерения для бланка («кг» у макулатуры, иначе «ед.»). */
+  unit?: string | null;
 }
 
 /** Точка маршрута: адрес + пометка + груз. */
 export interface TripStop {
   key: string;
-  /** "deal" — точка из заказа учёта, "custom" — самостоятельная (своя) точка */
-  kind: "deal" | "custom";
+  /**
+   * "deal" — точка из заказа учёта (ЗК),
+   * "wp_intake" — приём макулатуры (ПМ-, забор),
+   * "wp_shipment" — сдача макулатуры (СМ-, сдача),
+   * "custom" — самостоятельная (своя) точка.
+   */
+  kind: "deal" | "custom" | "wp_intake" | "wp_shipment";
   dealId: string | null;
   dealNumber: number | null;
+  /** Привязка к приёму/сдаче макулатуры (для kind wp_*). */
+  wpDocId?: string | null;
+  /** intake — приём, shipment — сдача. */
+  wpDocKind?: "intake" | "shipment" | null;
+  wpDocNumber?: number | null;
   customerName: string;
   contactName: string | null;
   phone: string | null;
@@ -155,6 +167,10 @@ export interface TripStopDeal {
 export interface TripStopTransportItem {
   dealId: string | null;
   dealNumber: number | null;
+  /** Привязка к приёму/сдаче макулатуры (wp_intakes / wp_shipments). */
+  wpDocId?: string | null;
+  wpDocKind?: "intake" | "shipment" | null;
+  wpDocNumber?: number | null;
   customerName: string;
   contactName?: string | null;
   address: string | null;
@@ -166,6 +182,8 @@ export interface TripStopTransportItem {
     name: string;
     orderedQty: number;
     transportQty: number;
+    /** Единица измерения для бланка («кг» у макулатуры). */
+    unit?: string | null;
   }[];
   totalSum: number | null;
   tripType?: TripType | null;
@@ -190,7 +208,16 @@ export function stopLoadedLines(stop: TripStop): TripStopLine[] {
 
 export function stopTitle(stop: TripStop): string {
   if (stop.kind === "deal" && stop.dealNumber) return `ЗК-${stop.dealNumber}`;
+  if (stop.kind === "wp_intake" && stop.wpDocNumber != null) return `ПМ-${stop.wpDocNumber}`;
+  if (stop.kind === "wp_shipment" && stop.wpDocNumber != null) return `СМ-${stop.wpDocNumber}`;
+  if (stop.kind === "wp_intake") return "Приём макулатуры";
+  if (stop.kind === "wp_shipment") return "Сдача макулатуры";
   return "Своя точка";
+}
+
+/** Точка из макулатуры (приём/сдача), а не из заказа учёта. */
+export function isWpStop(stop: Pick<TripStop, "kind">): boolean {
+  return stop.kind === "wp_intake" || stop.kind === "wp_shipment";
 }
 
 /** Краткая сводка грузов одной строкой — для компактных карточек и бланка. */
@@ -251,6 +278,50 @@ export function dealAvailableFor(deal: TripStopDeal, productId: string): number 
   return dealAvailableQty(deal, productId).available;
 }
 
+/**
+ * Точка из приёма/сдачи макулатуры.
+ * Приём — всегда «забор груза» (едем забирать у клиента),
+ * сдача — всегда «сдача груза» (везём на предприятие).
+ * Груз — позиции документа в кг; пометку можно поменять вручную.
+ */
+export function stopFromWpDoc(doc: {
+  id: string;
+  kind: "intake" | "shipment";
+  number: number;
+  customerName: string;
+  contactName?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  note?: string | null;
+  lines: { name: string; qty: number }[];
+}): TripStop {
+  return {
+    key: `wp-${doc.kind}-${doc.id}`,
+    kind: doc.kind === "intake" ? "wp_intake" : "wp_shipment",
+    dealId: null,
+    dealNumber: null,
+    wpDocId: doc.id,
+    wpDocKind: doc.kind,
+    wpDocNumber: doc.number,
+    customerName: doc.customerName || "",
+    contactName: doc.contactName ?? null,
+    phone: doc.phone ?? null,
+    address: doc.address ?? null,
+    deliveryNote: doc.note ?? null,
+    plannedTime: null,
+    tripType: doc.kind === "intake" ? "pickup" : "handover",
+    lines: doc.lines.map((line) => ({
+      productId: null,
+      name: line.name,
+      qty: Number(line.qty) || 0,
+      orderedQty: Number(line.qty) || 0,
+      maxQty: null,
+      unit: "кг",
+    })),
+    totalSum: null,
+  };
+}
+
 /** Своя (самостоятельная) точка — адрес и груз пишем руками. */
 export function emptyCustomStop(): TripStop {
   return {
@@ -258,6 +329,9 @@ export function emptyCustomStop(): TripStop {
     kind: "custom",
     dealId: null,
     dealNumber: null,
+    wpDocId: null,
+    wpDocKind: null,
+    wpDocNumber: null,
     customerName: "",
     contactName: "",
     phone: "",
@@ -276,11 +350,30 @@ export function stopFromTransportItem(
   index: number
 ): TripStop {
   const dealId = item.dealId ? String(item.dealId) : null;
+  const wpDocId = item.wpDocId ? String(item.wpDocId) : null;
+  const wpDocKind =
+    item.wpDocKind === "intake" || item.wpDocKind === "shipment"
+      ? item.wpDocKind
+      : null;
+  const kind: TripStop["kind"] = dealId
+    ? "deal"
+    : wpDocId && wpDocKind
+      ? wpDocKind === "intake"
+        ? "wp_intake"
+        : "wp_shipment"
+      : "custom";
   return {
-    key: dealId ? `deal-${dealId}` : `custom-legacy-${index}`,
-    kind: dealId ? "deal" : "custom",
+    key: dealId
+      ? `deal-${dealId}`
+      : wpDocId && wpDocKind
+        ? `wp-${wpDocKind}-${wpDocId}`
+        : `custom-legacy-${index}`,
+    kind,
     dealId,
     dealNumber: item.dealNumber ?? null,
+    wpDocId,
+    wpDocKind,
+    wpDocNumber: item.wpDocNumber ?? null,
     customerName: item.customerName || "",
     contactName: item.contactName ?? null,
     phone: item.phone ?? null,
@@ -293,7 +386,8 @@ export function stopFromTransportItem(
       name: line.name || "",
       qty: Number(line.transportQty) || 0,
       orderedQty: Number(line.orderedQty) || null,
-      maxQty: Number(line.orderedQty) || null,
+      maxQty: dealId ? Number(line.orderedQty) || null : null,
+      unit: line.unit ?? (wpDocId ? "кг" : null),
     })),
     totalSum: item.totalSum ?? null,
   };
@@ -315,6 +409,9 @@ export function stopsToTransportItems(stops: TripStop[]): TripStopTransportItem[
       return {
         dealId: stop.dealId,
         dealNumber: stop.dealNumber,
+        wpDocId: stop.wpDocId,
+        wpDocKind: stop.wpDocKind,
+        wpDocNumber: stop.wpDocNumber,
         customerName: stop.customerName.trim(),
         contactName: stop.contactName?.trim() || null,
         address: stop.address?.trim() || null,
@@ -326,6 +423,7 @@ export function stopsToTransportItems(stops: TripStop[]): TripStopTransportItem[
           name: line.name.trim(),
           orderedQty: Number(line.orderedQty) || line.qty,
           transportQty: Number(line.qty) || 0,
+          unit: line.unit ?? null,
         })),
         totalSum: stop.totalSum ?? null,
         tripType: stop.tripType,
@@ -418,18 +516,24 @@ export function sortStops<T extends TripStop>(stops: T[], mode: StopSortMode): T
 /** Сводка по точкам — для подписей «всего N точек · M ед.». */
 export function summarizeStops(stops: TripStop[]): {
   total: number;
+  /** Единицы товара учёта (штуки). Макулатура считается отдельно в кг. */
   qty: number;
+  /** Килограммы макулатуры (точки ПМ-/СМ-). */
+  kg: number;
   positions: number;
   byType: Record<TripType, number>;
 } {
   const byType: Record<TripType, number> = { delivery: 0, pickup: 0, handover: 0 };
   let qty = 0;
+  let kg = 0;
   let positions = 0;
   for (const stop of stops) {
     byType[normalizeTripType(stop.tripType)] += 1;
     const lines = stopLoadedLines(stop);
     positions += lines.length;
-    qty += lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
+    const sum = lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
+    if (isWpStop(stop)) kg += sum;
+    else qty += sum;
   }
-  return { total: stops.length, qty, positions, byType };
+  return { total: stops.length, qty, kg, positions, byType };
 }

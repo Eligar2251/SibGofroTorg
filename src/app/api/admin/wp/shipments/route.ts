@@ -63,6 +63,8 @@ export async function POST(request: NextRequest) {
         account: body.account === "cash" ? "cash" : "bank",
         isPaid: Boolean(body.isPaid),
         paidAt: body.paidAt ?? null,
+        needsTransport: body.needsTransport === true,
+        transportPlannedDate: body.transportPlannedDate ?? null,
         comment: body.comment ?? null,
       },
       auth.displayName

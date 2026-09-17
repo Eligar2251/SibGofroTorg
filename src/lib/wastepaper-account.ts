@@ -435,6 +435,10 @@ function mapIntake(row: any): WpIntake {
     paidAt: toIso(row.paid_at),
     transportId: row.transport_id || null,
     transportItemId: row.transport_item_id || null,
+    needsTransport: Boolean(row.needs_transport),
+    transportPlannedDate: row.transport_planned_date
+      ? String(row.transport_planned_date).slice(0, 10)
+      : null,
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
     createdBy: row.created_by || null,
@@ -475,6 +479,10 @@ export interface WpIntakeInput {
   paidAt?: string | null;
   transportId?: string | null;
   transportItemId?: string | null;
+  /** TRUE — забрать нашей перевозкой (очередь перевозок учёта, «забор груза»). */
+  needsTransport?: boolean;
+  /** Желаемая дата вывоза (подсказка диспетчеру). */
+  transportPlannedDate?: string | null;
   comment?: string | null;
 }
 
@@ -506,11 +514,16 @@ function cleanIntakeInput(data: WpIntakeInput) {
   const totals = wpDocTotals(items);
   if (totals.weightKg <= 0) throw new Error("Укажите вес, кг хотя бы по одной позиции");
   const first = items[0];
+  const address = String(data.address || "").trim().slice(0, 400) || null;
+  const needsTransport = data.needsTransport === true;
+  if (needsTransport && !address) {
+    throw new Error("Для перевозки укажите адрес забора — куда ехать водителю");
+  }
   return {
     date,
     counterparty_id: data.counterpartyId || null,
     counterparty_name: counterpartyName,
-    address: String(data.address || "").trim().slice(0, 400) || null,
+    address,
     phone: String(data.phone || "").trim().slice(0, 60) || null,
     contact_person: String(data.contactPerson || "").trim().slice(0, 200) || null,
     items,
@@ -521,6 +534,10 @@ function cleanIntakeInput(data: WpIntakeInput) {
     account: data.account === "bank" ? "bank" : "cash",
     cash_amount: Math.max(0, Number(data.cashAmount) || (data.account === "cash" ? totals.total : 0)),
     bank_amount: Math.max(0, Number(data.bankAmount) || (data.account === "bank" ? totals.total : 0)),
+    needs_transport: needsTransport,
+    transport_planned_date: data.transportPlannedDate
+      ? String(data.transportPlannedDate).slice(0, 10)
+      : null,
     comment: String(data.comment || "").trim().slice(0, 500) || null,
   };
 }
@@ -580,6 +597,14 @@ export async function updateWpIntake(
     pricePerKg: data.pricePerKg ?? (Number(existing.price_per_kg) || 0),
     account: (data.account ?? (existing.account === "bank" ? "bank" : "cash")) as WpAccount,
     comment: data.comment !== undefined ? data.comment : existing.comment,
+    needsTransport:
+      data.needsTransport !== undefined
+        ? data.needsTransport
+        : Boolean(existing.needs_transport),
+    transportPlannedDate:
+      data.transportPlannedDate !== undefined
+        ? data.transportPlannedDate
+        : existing.transport_planned_date || null,
   });
   const isPaid = data.isPaid !== undefined ? Boolean(data.isPaid) : Boolean(existing.is_paid);
   const { data: row, error } = await db
@@ -595,6 +620,11 @@ export async function updateWpIntake(
     .single();
   if (error) throw error;
   bumpWpCaches();
+  // Сняли пометку «в перевозку» — убираем приём из активных единых рейсов,
+  // чтобы он не висел точкой в чужом путевом листе.
+  if (Boolean(existing.needs_transport) && !merged.needs_transport) {
+    await removeWpDocFromActiveTransports("intake", id);
+  }
   return mapIntake(row);
 }
 
@@ -609,10 +639,15 @@ export async function setWpIntakeCancelled(id: string, cancelled: boolean): Prom
     .eq("id", id);
   if (error) throw error;
   bumpWpCaches();
+  // Отменённый приём не едет: убираем из активных единых рейсов.
+  // При восстановлении он сам вернётся в очередь (needs_transport сохранён).
+  if (cancelled) await removeWpDocFromActiveTransports("intake", id);
 }
 
 export async function deleteWpIntake(id: string): Promise<void> {
   const db = getAdminDb();
+  // Убираем из активных ЕДИНЫХ рейсов (transports учёта).
+  await removeWpDocFromActiveTransports("intake", id);
   // Если приём создан перевозкой — отвязываем остановку, чтобы её можно
   // было оформить заново.
   const { data: intake } = await db
@@ -667,6 +702,10 @@ function mapShipment(row: any): WpShipment {
     account: (row.account === "cash" ? "cash" : "bank") as WpAccount,
     isPaid: Boolean(row.is_paid),
     paidAt: toIso(row.paid_at),
+    needsTransport: Boolean(row.needs_transport),
+    transportPlannedDate: row.transport_planned_date
+      ? String(row.transport_planned_date).slice(0, 10)
+      : null,
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
     createdBy: row.created_by || null,
@@ -703,6 +742,10 @@ export interface WpShipmentInput {
   account: WpAccount;
   isPaid?: boolean;
   paidAt?: string | null;
+  /** TRUE — отвезти нашей перевозкой (очередь перевозок учёта, «сдача груза»). */
+  needsTransport?: boolean;
+  /** Желаемая дата вывоза (подсказка диспетчеру). */
+  transportPlannedDate?: string | null;
   comment?: string | null;
 }
 
@@ -732,11 +775,16 @@ function cleanShipmentInput(data: WpShipmentInput) {
   const totals = wpDocTotals(items);
   if (totals.weightKg <= 0) throw new Error("Укажите вес, кг хотя бы по одной позиции");
   const first = items[0];
+  const address = String(data.address || "").trim().slice(0, 400) || null;
+  const needsTransport = data.needsTransport === true;
+  if (needsTransport && !address) {
+    throw new Error("Для перевозки укажите адрес предприятия — куда везти");
+  }
   return {
     date,
     enterprise_id: data.enterpriseId || null,
     enterprise_name: enterpriseName,
-    address: String(data.address || "").trim().slice(0, 400) || null,
+    address,
     phone: String(data.phone || "").trim().slice(0, 60) || null,
     contact_person: String(data.contactPerson || "").trim().slice(0, 200) || null,
     items,
@@ -745,6 +793,10 @@ function cleanShipmentInput(data: WpShipmentInput) {
     price_per_kg: first?.pricePerKg ?? 0,
     total: totals.total,
     account: data.account === "cash" ? "cash" : "bank",
+    needs_transport: needsTransport,
+    transport_planned_date: data.transportPlannedDate
+      ? String(data.transportPlannedDate).slice(0, 10)
+      : null,
     comment: String(data.comment || "").trim().slice(0, 500) || null,
   };
 }
@@ -807,6 +859,14 @@ export async function updateWpShipment(
           ? "cash"
           : "bank",
     comment: data.comment !== undefined ? data.comment : existing.comment,
+    needsTransport:
+      data.needsTransport !== undefined
+        ? data.needsTransport
+        : Boolean(existing.needs_transport),
+    transportPlannedDate:
+      data.transportPlannedDate !== undefined
+        ? data.transportPlannedDate
+        : existing.transport_planned_date || null,
   });
   const isPaid = data.isPaid !== undefined ? Boolean(data.isPaid) : Boolean(existing.is_paid);
   const { data: row, error } = await db
@@ -822,6 +882,10 @@ export async function updateWpShipment(
     .single();
   if (error) throw error;
   bumpWpCaches();
+  // Сняли пометку «в перевозку» — убираем сдачу из активных единых рейсов.
+  if (Boolean(existing.needs_transport) && !merged.needs_transport) {
+    await removeWpDocFromActiveTransports("shipment", id);
+  }
   return mapShipment(row);
 }
 
@@ -836,13 +900,64 @@ export async function setWpShipmentCancelled(id: string, cancelled: boolean): Pr
     .eq("id", id);
   if (error) throw error;
   bumpWpCaches();
+  // Отменённая сдача не едет: убираем из активных единых рейсов.
+  if (cancelled) await removeWpDocFromActiveTransports("shipment", id);
 }
 
 export async function deleteWpShipment(id: string): Promise<void> {
   const db = getAdminDb();
+  await removeWpDocFromActiveTransports("shipment", id);
   const { error } = await db.from("wp_shipments").delete().eq("id", id);
   if (error) throw error;
   bumpWpCaches();
+}
+
+// ── Связь с ЕДИНЫМИ перевозками учёта (transports) ───────
+
+/**
+ * Убрать приём/сдачу макулатуры из всех активных единых рейсов.
+ * Вызывается, когда с документа сняли пометку «в перевозку», отменили
+ * или удалили его — точка не должна висеть в чужом путевом листе.
+ * Опустевший рейс помечаем завершённым (та же логика, что у заказов ЗК).
+ */
+export async function removeWpDocFromActiveTransports(
+  kind: "intake" | "shipment",
+  id: string
+): Promise<void> {
+  const db = getAdminDb();
+  try {
+    const { data: rows, error } = await db
+      .from("transports")
+      .select("id, items, completed_at")
+      .in("status", ["draft", "active"]);
+    if (error || !rows) return;
+    for (const row of rows) {
+      const items = Array.isArray(row.items) ? row.items : [];
+      const next = items.filter(
+        (it: any) => !(it?.wpDocKind === kind && String(it?.wpDocId) === String(id))
+      );
+      if (next.length === items.length) continue;
+      const totalItems = next.reduce((s: number, it: any) => {
+        const lines = Array.isArray(it?.items) ? it.items : [];
+        return (
+          s +
+          lines.reduce((s2: number, l: any) => s2 + (Number(l?.transportQty) || 0), 0)
+        );
+      }, 0);
+      const payload: Record<string, any> = {
+        items: next,
+        total_items: totalItems,
+        updated_at: new Date().toISOString(),
+      };
+      if (next.length === 0) {
+        payload.status = "completed";
+        payload.completed_at = row.completed_at || new Date().toISOString();
+      }
+      await db.from("transports").update(payload).eq("id", row.id);
+    }
+  } catch (e) {
+    console.error("removeWpDocFromActiveTransports:", e);
+  }
 }
 
 // ── Ручные платежи ───────────────────────────────────────
@@ -1273,21 +1388,21 @@ export interface WpDashboardData {
   intakes: WpIntake[];
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
-  transports: WpTransport[];
   products: WpProduct[];
 }
 
 export async function getWpDashboardData(): Promise<WpDashboardData> {
-  const [counterparties, intakes, shipments, manualPayments, transports, products] =
+  const [counterparties, intakes, shipments, manualPayments, products] =
     await Promise.all([
       getWpCounterparties(),
       getWpIntakes(500),
       getWpShipments(300),
       getWpManualPayments(500),
-      getWpTransports(200),
       getWpProducts(),
     ]);
-  return { counterparties, intakes, shipments, manualPayments, transports, products };
+  // Отдельных перевозок макулатуры (ТМ-...) в интерфейсе больше нет:
+  // вкладка «Перевозки» показывает единые перевозки учёта (ПЕР-...).
+  return { counterparties, intakes, shipments, manualPayments, products };
 }
 
 /** Облегчённая выборка для финансовой карточки на главном дашборде. */

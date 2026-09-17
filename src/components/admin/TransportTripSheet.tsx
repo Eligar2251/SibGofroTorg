@@ -22,7 +22,9 @@ import { SITE_ADDRESS, SITE_HOURS_LABEL, SITE_PHONE } from "@/lib/site-config";
 import { SITE_NAME } from "@/lib/seo";
 import {
   TRIP_TYPE_INSTRUCTION,
+  isWpStop,
   stopLoadedLines,
+  stopTitle,
   stopTotalQty,
   summarizeStops,
   tripTypeDef,
@@ -229,6 +231,7 @@ export function TransportTripSheet({
               <span className="tls-k">Маршрут</span>
               <span className="tls-v">
                 склад → {totals.total} точ. → склад · {totals.qty} ед.
+                {totals.kg > 0 ? ` · ${totals.kg} кг макулатуры` : ""}
               </span>
             </div>
           </div>
@@ -248,6 +251,7 @@ export function TransportTripSheet({
             const qty = stopTotalQty(stop);
             const note = stop.deliveryNote?.trim() || null;
             const isLast = index === stops.length - 1;
+            const wp = isWpStop(stop);
             return (
               <Fragment key={stop.key}>
               <article className={`tls-strip tls-strip--${type.id}`}>
@@ -257,7 +261,7 @@ export function TransportTripSheet({
                   <span className="tls-strip__num-total">из {stops.length}</span>
                   <span className="tls-strip__num-qty">
                     {qty}
-                    <span className="tls-strip__num-qty-unit">ед.</span>
+                    <span className="tls-strip__num-qty-unit">{wp ? "кг" : "ед."}</span>
                   </span>
                 </div>
 
@@ -268,7 +272,10 @@ export function TransportTripSheet({
                       {type.icon} {type.mark}
                     </span>
                     <span className="tls-strip__client">{stop.customerName || "без названия"}</span>
-                    {stop.dealNumber ? <span className="tls-strip__deal">ЗК-{stop.dealNumber}</span> : null}
+                    {stop.kind === "deal" && stop.dealNumber ? (
+                      <span className="tls-strip__deal">ЗК-{stop.dealNumber}</span>
+                    ) : null}
+                    {wp ? <span className="tls-strip__deal">{stopTitle(stop)}</span> : null}
                     {stop.plannedTime ? (
                       <span className="tls-strip__time">⏱ {stop.plannedTime}</span>
                     ) : null}
@@ -315,7 +322,12 @@ export function TransportTripSheet({
                     <div className="tls-strip__cargo">
                       {opts.goods === "short" ? (
                         <span className="tls-strip__cargo-line">
-                          {stop.lines.map((l) => `${l.name || "без названия"} — ${l.qty}`).join(" · ")}
+                          {stop.lines
+                            .map(
+                              (l) =>
+                                `${l.name || "без названия"} — ${l.qty}${wp ? " кг" : ""}`
+                            )
+                            .join(" · ")}
                         </span>
                       ) : (
                         <span className="tls-strip__cargo-list">
@@ -323,11 +335,16 @@ export function TransportTripSheet({
                             <span className="tls-strip__cargo-item" key={i}>
                               <span className="tls-strip__cargo-name">{l.name || "без названия"}</span>
                               <span className="tls-strip__cargo-qty">
-                                {l.qty} <span className="tls-strip__cargo-unit">ед.</span>
+                                {l.qty}{" "}
+                                <span className="tls-strip__cargo-unit">
+                                  {l.unit || (wp ? "кг" : "ед.")}
+                                </span>
                               </span>
                               {l.orderedQty != null && l.orderedQty !== l.qty ? (
                                 <span className="tls-strip__cargo-ordered">
-                                  заказано {l.orderedQty} · не хватает {l.orderedQty - l.qty}
+                                  {wp
+                                    ? `в документе ${l.orderedQty} кг · остаток ${l.orderedQty - l.qty} кг`
+                                    : `заказано ${l.orderedQty} · не хватает ${l.orderedQty - l.qty}`}
                                 </span>
                               ) : null}
                             </span>
@@ -394,6 +411,11 @@ export function TransportTripSheet({
             </span>
             <span>
               позиций: <strong>{totals.positions}</strong> · единиц: <strong>{totals.qty}</strong>
+              {totals.kg > 0 ? (
+                <>
+                  {" "}· макулатура: <strong>{totals.kg} кг</strong>
+                </>
+              ) : null}
             </span>
           </div>
 
