@@ -15,8 +15,18 @@ cmds = [
   "pnpm install --frozen-lockfile --prefer-offline"
 ]
 
+# Копируем public и .next/static внутрь standalone — иначе сервер отдаст
+# 404 на все CSS/JS-чанки. После этого scripts/start.mjs выберет
+# standalone-путь без warning'а «next start does not work with output: standalone».
 [phases.build]
-cmds = ["pnpm build"]
+cmds = [
+  "pnpm build",
+  "cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static"
+]
 
+# Универсальный вход (см. scripts/start.mjs): сам выбирает next start или
+# standalone-сервер, корректно биндится на 0.0.0.0 и слушает $PORT.
+# Раньше здесь был `node .next/standalone/server.js` — сервер стартовал,
+# но без скопированного .next/static отдавал 404 на все CSS/JS-чанки.
 [start]
-cmd = "node .next/standalone/server.js"
+cmd = "node scripts/start.mjs"

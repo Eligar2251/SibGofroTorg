@@ -382,28 +382,37 @@ function mapViewRow(row: any): ProductView {
 const DATA_REVALIDATE = 120;
 
 async function fetchAllCategories(): Promise<FirestoreCategory[]> {
-  const db = getAdminDb();
-  const { data, error } = await db
-    .from("categories")
-    .select("*")
-    .order("sort_order", { ascending: true });
-  // Сеть/БД могут быть недоступны — не роняем страницу целиком,
-  // отдаём пустой список (следующий запрос через revalidate перечитает).
-  if (error) {
+  // getAdminDb() бросает синхронно при отсутствии SUPABASE_URL/SERVICE_ROLE_KEY,
+  // а fetch внутри supabase-js — reject при сетевой недоступности (в РФ к
+  // supabase.co бывают проблемы с доступностью). Оба случая не должны ронять
+  // весь лэйаут → 500 на всех страницах → нездоровый health-check контейнера.
+  try {
+    const db = getAdminDb();
+    const { data, error } = await db
+      .from("categories")
+      .select("*")
+      .order("sort_order", { ascending: true });
+    // Сеть/БД могут быть недоступны — не роняем страницу целиком,
+    // отдаём пустой список (следующий запрос через revalidate перечитает).
+    if (error) {
+      console.error("fetchAllCategories error:", error?.message || error);
+      return [];
+    }
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      name: row.name || "",
+      slug: row.slug || "",
+      icon: row.icon || null,
+      description: row.description || null,
+      sortOrder: Number(row.sort_order || 0),
+      isVisible: row.is_visible ?? true,
+      imageUrl: row.image_url || null,
+      createdAt: toIso(row.created_at),
+    }));
+  } catch (error: any) {
     console.error("fetchAllCategories error:", error?.message || error);
     return [];
   }
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    name: row.name || "",
-    slug: row.slug || "",
-    icon: row.icon || null,
-    description: row.description || null,
-    sortOrder: Number(row.sort_order || 0),
-    isVisible: row.is_visible ?? true,
-    imageUrl: row.image_url || null,
-    createdAt: toIso(row.created_at),
-  }));
 }
 
 const getCachedCategories = unstable_cache(
@@ -532,18 +541,25 @@ function mapHomeTileRow(row: any): HomeTile {
 }
 
 async function fetchAllHomeTiles(): Promise<HomeTile[]> {
-  const db = getAdminDb();
-  const { data, error } = await db
-    .from("home_tiles")
-    .select("*")
-    .order("sort_order", { ascending: true });
-  if (error) {
-    // Таблицы может ещё не быть (миграция не применена) — главная
-    // в этом случае показывает плитки, собранные из категорий.
+  try {
+    const db = getAdminDb();
+    const { data, error } = await db
+      .from("home_tiles")
+      .select("*")
+      .order("sort_order", { ascending: true });
+    if (error) {
+      // Таблицы может ещё не быть (миграция не применена) — главная
+      // в этом случае показывает плитки, собранные из категорий.
+      console.error("fetchAllHomeTiles error:", error?.message || error);
+      return [];
+    }
+    return sortHomeTiles((data || []).map(mapHomeTileRow));
+  } catch (error: any) {
+    // getAdminDb() падает без SUPABASE_URL/SERVICE_ROLE_KEY — главная не
+    // должна превращаться в 500 (health-пробы платформы и первый экран).
     console.error("fetchAllHomeTiles error:", error?.message || error);
     return [];
   }
-  return sortHomeTiles((data || []).map(mapHomeTileRow));
 }
 
 const getCachedHomeTiles = unstable_cache(fetchAllHomeTiles, ["home-tiles"], {
@@ -1818,19 +1834,25 @@ export async function updateOrderDelivery(
 // ─── Settings ──────────────────────────────────────────────
 
 async function fetchSettings(): Promise<Record<string, string>> {
-  const db = getAdminDb();
-  const { data, error } = await db.from("settings").select("key, value");
-  // При сбое сети отдаём пустые настройки — вызывающий код
-  // подставляет дефолты (телефоны/адрес/цены из site-config).
-  if (error) {
+  try {
+    const db = getAdminDb();
+    const { data, error } = await db.from("settings").select("key, value");
+    // При сбое сети отдаём пустые настройки — вызывающий код
+    // подставляет дефолты (телефоны/адрес/цены из site-config).
+    if (error) {
+      console.error("fetchSettings error:", error?.message || error);
+      return {};
+    }
+    const result: Record<string, string> = {};
+    for (const row of data || []) {
+      if (row.value != null) result[row.key] = row.value;
+    }
+    return result;
+  } catch (error: any) {
+    // Нет env-переменных / сеть до Supabase недоступна — отдаём дефолты.
     console.error("fetchSettings error:", error?.message || error);
     return {};
   }
-  const result: Record<string, string> = {};
-  for (const row of data || []) {
-    if (row.value != null) result[row.key] = row.value;
-  }
-  return result;
 }
 
 const getCachedSettings = unstable_cache(
@@ -1887,33 +1909,38 @@ export async function getWastepaperRates(): Promise<WastepaperRates> {
 // ─── Promotions ────────────────────────────────────────────
 
 export async function getPromotions(): Promise<Promotion[]> {
-  const db = getAdminDb();
-  const { data, error } = await db.from("promotions").select("*").order("sort_order", { ascending: true });
-  if (error) {
+  try {
+    const db = getAdminDb();
+    const { data, error } = await db.from("promotions").select("*").order("sort_order", { ascending: true });
+    if (error) {
+      console.error("getPromotions error:", error?.message || error);
+      return [];
+    }
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      title: row.title,
+      subtitle: row.subtitle || null,
+      badge: row.badge || null,
+      imageUrl: row.image_url || null,
+      linkType: row.link_type,
+      productId: row.product_id || null,
+      linkUrl: row.link_url || null,
+      sortOrder: Number(row.sort_order || 0),
+      isVisible: row.is_visible ?? true,
+      icon: row.icon || null,
+      color: row.color || null,
+      light: row.light || null,
+      deadline: row.deadline || null,
+      isPopup: row.is_popup ?? false,
+      popupStartAt: row.popup_start_at || null,
+      popupDelaySeconds: row.popup_delay_seconds ?? null,
+      popupDurationSeconds: row.popup_duration_seconds ?? null,
+      createdAt: toIso(row.created_at),
+    }));
+  } catch (error: any) {
     console.error("getPromotions error:", error?.message || error);
     return [];
   }
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    title: row.title,
-    subtitle: row.subtitle || null,
-    badge: row.badge || null,
-    imageUrl: row.image_url || null,
-    linkType: row.link_type,
-    productId: row.product_id || null,
-    linkUrl: row.link_url || null,
-    sortOrder: Number(row.sort_order || 0),
-    isVisible: row.is_visible ?? true,
-    icon: row.icon || null,
-    color: row.color || null,
-    light: row.light || null,
-    deadline: row.deadline || null,
-    isPopup: row.is_popup ?? false,
-    popupStartAt: row.popup_start_at || null,
-    popupDelaySeconds: row.popup_delay_seconds ?? null,
-    popupDurationSeconds: row.popup_duration_seconds ?? null,
-    createdAt: toIso(row.created_at),
-  }));
 }
 
 /** Alias — страницы админки импортируют это имя */
@@ -1922,34 +1949,40 @@ export const getAllPromotions = getPromotions;
 // ─── Popup Campaigns ───────────────────────────────────────
 
 async function fetchAllPopupCampaigns(): Promise<PopupCampaign[]> {
-  const db = getAdminDb();
-  const { data, error } = await db.from("popup_campaigns").select("*").order("sort_order", { ascending: true });
-  // Попапы — не критичны: при сбое просто не показываем их.
-  if (error) {
+  // Попапы — не критичны: при сбое (нет env, сеть до Supabase недоступна)
+  // просто не показываем их — но не роняем весь сайт в 500.
+  try {
+    const db = getAdminDb();
+    const { data, error } = await db.from("popup_campaigns").select("*").order("sort_order", { ascending: true });
+    if (error) {
+      console.error("fetchAllPopupCampaigns error:", error?.message || error);
+      return [];
+    }
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      type: row.type,
+      title: row.title,
+      isActive: row.is_active ?? true,
+      kicker: row.kicker || null,
+      description: row.description || null,
+      details: row.details || null,
+      buttonText: row.button_text || null,
+      buttonUrl: row.button_url || null,
+      style: row.style || "info",
+      imageUrl: row.image_url || null,
+      startAt: row.start_at || null,
+      endAt: row.end_at || null,
+      delaySeconds: Number(row.delay_seconds || 0),
+      durationSeconds: Number(row.duration_seconds || 20),
+      frequency: row.frequency || "session",
+      sortOrder: Number(row.sort_order || 0),
+      createdAt: toIso(row.created_at),
+      updatedAt: toIso(row.updated_at),
+    }));
+  } catch (error: any) {
     console.error("fetchAllPopupCampaigns error:", error?.message || error);
     return [];
   }
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    isActive: row.is_active ?? true,
-    kicker: row.kicker || null,
-    description: row.description || null,
-    details: row.details || null,
-    buttonText: row.button_text || null,
-    buttonUrl: row.button_url || null,
-    style: row.style || "info",
-    imageUrl: row.image_url || null,
-    startAt: row.start_at || null,
-    endAt: row.end_at || null,
-    delaySeconds: Number(row.delay_seconds || 0),
-    durationSeconds: Number(row.duration_seconds || 20),
-    frequency: row.frequency || "session",
-    sortOrder: Number(row.sort_order || 0),
-    createdAt: toIso(row.created_at),
-    updatedAt: toIso(row.updated_at),
-  }));
 }
 
 const getCachedPopupCampaigns = unstable_cache(

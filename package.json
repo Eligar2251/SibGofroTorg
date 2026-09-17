@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "next build",
-    "start": "node node_modules/next/dist/bin/next start -H 0.0.0.0 -p ${PORT:-3000}",
+        "start": "node scripts/start.mjs",
+    "start:legacy": "node node_modules/next/dist/bin/next start -H 0.0.0.0 -p ${PORT:-3000}",
     "admin:sql": "node scripts/generate-admin-sql.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
