@@ -456,7 +456,7 @@ const PRINT_CSS = `
   .admin-sidebar, .admin-mobile-bar { display: none !important; }
   .admin-content, .admin-main { visibility: hidden !important; }
   .deliv-print-root, .deliv-print-root * { visibility: visible !important; }
-  .deliv-print-root.tls-root { position: static !important; inset: auto !important; width: auto !important; background: #fff !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
+  .deliv-print-root.tls-root { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; z-index: 999999 !important; }
   .tls { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
   .tls-toolbar, .tls-base-button { display: none !important; }
   .tls-base-break { break-before: auto; page-break-inside: avoid; }
