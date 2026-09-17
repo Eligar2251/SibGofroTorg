@@ -11,16 +11,28 @@
 Проект полностью настроен для запуска в **Timeweb Cloud** и других облачных платформах как через автосборку (Cloudpack / Nixpacks), так и через `Dockerfile`:
 
 - **Порт и хост**: Приложение запускается на `0.0.0.0` и слушает порт из переменной окружения `${PORT:-3000}`.
-- **Команда запуска**: Для Docker/standalone используется `node server.js` из `.next/standalone` — рантайму больше не нужно ставить зависимости повторно.
-- **Отключение автоинсталляции в проде**: В `pnpm-workspace.yaml` и `.npmrc` явно отключена проверка зависимостей (`verifyDepsBeforeRun: false`, `verify-deps-before-run=never`), благодаря чему `pnpm start` не пытается выполнять `pnpm install` или создавать временные файлы в директории приложения `/app` при запуске контейнера от неротового пользователя (`uid 2000`).
+- **Команда запуска**: в образе есть универсальный entrypoint (`scripts/docker-entrypoint.sh`), поэтому **в панели Timeweb команду запуска лучше вообще не задавать** — сработает `CMD` из Dockerfile. Если поле обязательное — укажите `node server.js`.
+- **Почему раньше был restart-loop**: `Dockerfile` копирует `.next/standalone` **в корень** `/app`, поэтому команда `node .next/standalone/server.js` в Docker-образе падала с `Cannot find module`, а `pnpm start` — потому что `next` CLI не входит в standalone-trace. Теперь обе команды безопасно обрабатываются entrypoint-ом и скриптом `scripts/start.mjs`.
+- **Здоровье контейнера**: `GET /api/health` — это liveness, он **не зависит от Supabase** и отвечает `200`, пока процесс жив (раньше health-check падал из-за отсутствующих env-переменных, и платформа перезапускала контейнер). Проверку доступности БД вынесли отдельно: `GET /api/health/db` (503 — если Supabase недоступен/не настроен).
+- **Отключение автоинсталляции в проде**: В `pnpm-workspace.yaml` и `.npmrc` явно отключена проверка зависимостей (`verifyDepsBeforeRun: false`, `verify-deps-before-run=never`), благодаря чему `pnpm start` не пытается выполнять `pnpm install` при запуске контейнера; в runner-слой эти файлы и заранее подготовленный corepack-кэш pnpm копируются намеренно.
 - **Почему деплой стал быстрее**: `Dockerfile` теперь использует `output: "standalone"` и делает только **одну** установку зависимостей в builder-слое вместо двух.
 
-#### Рекомендуемая конфигурация в панели Timeweb Cloud:
-- **Команда сборки (Build Command)**: `corepack enable && pnpm install --frozen-lockfile --prefer-offline && pnpm run build`
-- **Команда запуска (Start Command)**: `node .next/standalone/server.js`
-- **Порт (Port)**: `3000`
+#### Рекомендуемая конфигурация в панели Timeweb Cloud (сборка из Dockerfile):
+- **Команда сборки**: не нужна — всё делает `docker build`.
+- **Команда запуска (Start Command)**: оставить пустой (дефолтный `CMD` образа). Если поле обязательное: `node server.js`.
+- **Порт (Port)**: `3000` (совпадает с `ENV PORT=3000` в Dockerfile; если поменяете `PORT` в env — поменяйте и порт в настройках приложения).
+- **Health check путь** (если настраивается): `/api/health`.
+- **Переменные окружения runtime** (обязательные для работы сайта с данными — см. `ENV_GUIDE.md`): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ADMIN_SESSION_SECRET`, `ADMIN_SECRET_PATH`, Cloudinary/MAX-ключи. ⚠️ Их отсутствие больше **не** приводит к перезапуску контейнера, но страницы с каталогом будут пустыми, а `/api/health/db` — отвечать 503.
 
-> Если в Timeweb используется автодетект пакетов (Cloudpack / Nixpacks), в репозитории уже добавлен `nixpacks.toml`, который принудительно включает `pnpm` и запускает standalone-рантайм. Это нужно потому, что исторически в проекте есть и `package-lock.json`, и `pnpm-lock.yaml`, а без явной конфигурации платформа может выбрать более медленный `npm install`.
+#### Если используете автосборку Cloudpack / Nixpacks (без Dockerfile):
+
+В репозитории есть `nixpacks.toml`: install — только через `pnpm` (иначе исторический `package-lock.json` может сбить платформу на `npm install`), старт — `node scripts/start.mjs`, который в такой сборке использует `next start -H 0.0.0.0 -p $PORT`. Порт приложения в панели — `3000` (или тот, что передан в `PORT`).
+
+#### Быстрая диагностика «контейнер перезапускается»
+
+1. `docker logs <контейнер>` (в Timeweb: логи контейнера, а не логи сборки) — ищите `Cannot find module` (неверная команда запуска) или стектрейс env-ошибок.
+2. Если статус «unhealthy», а процесс жив — проверьте, что health-check ходит на `/api/health`, а не на страницу, зависящую от БД.
+3. Убедитесь, что порт в настройках приложения = порт, который слушает процесс (`node server.js` печатает `- Network: http://0.0.0.0:<PORT>`).
 
 ---
 

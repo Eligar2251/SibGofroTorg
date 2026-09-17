@@ -39,11 +39,16 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV TMPDIR=/tmp
+# COREPACK_HOME — глобальный, чтобы заранее скачанный на сборке pnpm
+# работал под неротовым USER без обращения к npm-реестру при старте.
+ENV COREPACK_HOME=/opt/corepack
 
 RUN groupadd --system --gid 1001 nextjs \
     && useradd --system --uid 1001 --gid nextjs nextjs \
-    && mkdir -p /tmp && chmod 1777 /tmp
-
+    && mkdir -p /tmp && chmod 1777 /tmp \
+    && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable \
+    && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare pnpm@11.17.0 --activate \
+    && chmod -R a+rX /opt/corepack
 # --- Системные зависимости НЕ ставим по умолчанию ---
 # Если нужен curl/wget для healthcheck или отладки — раскомментируйте
 # устойчивый вариант с fallback на яндекс-зеркало и невлиянием на сборку:
@@ -63,13 +68,23 @@ RUN groupadd --system --gid 1001 nextjs \
 COPY --from=builder --chown=nextjs:nextjs /app/public ./public
 COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
+# .npmrc/pnpm-workspace.yaml отключают verify-deps-before-run: без них
+# `pnpm start` в контейнере попытался бы сделать pnpm install при запуске.
+COPY --from=builder --chown=nextjs:nextjs /app/.npmrc /app/pnpm-workspace.yaml ./
+# Универсальный вход + fallback-скрипт: выдерживают переопределение
+# команды запуска в панели Timeweb (pnpm start / npm start / node ...).
+COPY --chown=root:root scripts/docker-entrypoint.sh scripts/start.mjs /app/scripts/
+RUN chmod 755 /app/scripts/docker-entrypoint.sh
 
 USER nextjs
 
 EXPOSE 3000
 
-# Healthcheck без curl/wget — через Node fetch, не требует apt
+# Healthcheck без curl/wget — через Node fetch, не требует apt.
+# /api/health — liveness (не зависит от БД; see src/app/api/health/route.ts).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["sh", "-c", "exec node server.js"]
+# Скрипт сам выбирает, что исполнять: /app/server.js (standalone в корне)
+# или .next/standalone/server.js.
+CMD ["/app/scripts/docker-entrypoint.sh"]
