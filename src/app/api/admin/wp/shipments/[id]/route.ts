@@ -22,6 +22,11 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
+    if (body.action === "postBank") {
+      const item = await updateWpShipment(id, { isPaid: true, account: "bank", bankPostedAt: new Date().toISOString() } as any);
+      return NextResponse.json({ success: true, item });
+    }
+
     if (body.action === "cancel" || body.action === "restore") {
       const cancelled = body.action === "cancel";
       await setWpShipmentCancelled(id, cancelled);
@@ -60,6 +65,9 @@ export async function PATCH(
         ? { wastepaperType: String(body.wastepaperType) }
         : {}),
       ...(body.weightKg !== undefined ? { weightKg: Number(body.weightKg) } : {}),
+      ...(body.shippedWeightKg !== undefined ? { shippedWeightKg: Number(body.shippedWeightKg) } : {}),
+      ...(body.acceptedWeightKg !== undefined ? { acceptedWeightKg: Number(body.acceptedWeightKg) } : {}),
+      ...(body.receivedAmount !== undefined ? { receivedAmount: Number(body.receivedAmount) } : {}),
       ...(body.pricePerKg !== undefined ? { pricePerKg: Number(body.pricePerKg) } : {}),
       ...(body.account !== undefined
         ? { account: body.account === "cash" ? ("cash" as const) : ("bank" as const) }

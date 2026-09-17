@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       branches: Array.isArray(body.branches) ? body.branches : null,
       inn: body.inn ?? null,
       comment: body.comment ?? null,
+      paymentDetails: body.paymentDetails ?? null,
       createdBy: auth.displayName,
     });
     await logAdminAction(

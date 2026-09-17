@@ -14,6 +14,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -86,9 +87,11 @@ const TABS = [
   { key: "days", label: "Дни и финансы" },
   { key: "payments", label: "Платежи" },
   { key: "intakes", label: "Приём" },
-  { key: "shipments", label: "Сдачи" },
+  { key: "shipments", label: "Продажи" },
+  { key: "stock", label: "Склад" },
   { key: "transports", label: "Перевозки" },
   { key: "counterparties", label: "Контрагенты" },
+  { key: "debts", label: "Мы должны" },
   { key: "products", label: "Виды макулатуры" },
 ] as const;
 
@@ -634,6 +637,13 @@ export function WastepaperAccountManager(props: Props) {
             едут в одном путевом листе с заказами.
           </p>
         </div>
+        <Link
+          href={`/${props.adminPath}/deliveries`}
+          className="admin-btn admin-btn--ghost"
+          style={{ whiteSpace: "nowrap" }}
+        >
+          <Truck size={14} /> Открыть общий путевой лист
+        </Link>
       </div>
 
       {/* Вкладки */}
@@ -715,6 +725,8 @@ export function WastepaperAccountManager(props: Props) {
         />
       )}
 
+      {tab === "stock" && <StockTab stock={stock} />}
+
       {tab === "shipments" && (
         <ShipmentsTab
           shipments={shipments}
@@ -737,6 +749,9 @@ export function WastepaperAccountManager(props: Props) {
             })
           }
           onToggleTransport={(item) => toggleDocTransport("shipments", item)}
+          onPostBank={async (item) => {
+            await callApi(() => fetch(`/api/admin/wp/shipments/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "postBank" }) }), "Не удалось провести поступление в банк");
+          }}
         />
       )}
 
@@ -751,6 +766,8 @@ export function WastepaperAccountManager(props: Props) {
           products={props.stockProducts || []}
         />
       )}
+
+      {tab === "debts" && <DebtsTab intakes={intakes} counterparties={counterparties} onEditCounterparty={(item) => setCounterpartyModal({ mode: "edit", item })} />}
 
       {tab === "counterparties" && (
         <CounterpartiesTab
@@ -1921,6 +1938,7 @@ function ShipmentsTab({
   onCopy,
   onTogglePaid,
   onToggleTransport,
+  onPostBank,
 }: {
   shipments: WpShipment[];
   stock: ReturnType<typeof getWpStock>;
@@ -1929,6 +1947,7 @@ function ShipmentsTab({
   onCopy: (item: WpShipment) => void;
   onTogglePaid: (item: WpShipment) => void;
   onToggleTransport: (item: WpShipment) => void;
+  onPostBank: (item: WpShipment) => void;
 }) {
   const [query, setQuery] = useState("");
   const [showCancelled, setShowCancelled] = useState(false);
@@ -2009,7 +2028,7 @@ function ShipmentsTab({
           отменённые
         </label>
         <button type="button" className="admin-btn admin-btn--navy" onClick={onNew}>
-          <Plus size={15} /> Сдача
+          <Plus size={15} /> Продажа
         </button>
       </div>
 
@@ -2078,6 +2097,17 @@ function ShipmentsTab({
                     <span className={ACCOUNT_BADGE[s.account]}>
                       {WP_ACCOUNT_LABELS[s.account]}
                     </span>
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {s.status === "cancelled" ? (
+                      <span className="admin-badge admin-badge--muted">Отменена</span>
+                    ) : s.receivedAmount > 0 && !s.bankPostedAt ? (
+                      <button type="button" className="admin-badge admin-badge--amber" style={{ border: 0, cursor: "pointer" }} onClick={() => onPostBank(s)}>Провести в банк</button>
+                    ) : s.bankPostedAt ? (
+                      <span className="admin-badge admin-badge--green">В банке</span>
+                    ) : (
+                      <span className="admin-badge admin-badge--muted">Нет поступления</span>
+                    )}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     {s.status === "cancelled" ? (
@@ -2335,6 +2365,8 @@ interface IntakeFormPayload {
   comment: string | null;
   saveCounterparty: boolean;
   /** Забрать нашим транспортом: приём попадёт в очередь перевозок учёта. */
+  acceptedWeightKg: number;
+  payableWeightKg: number;
   needsTransport: boolean;
   /** На когда планируем забор (пусто = как можно скорее). */
   transportPlannedDate: string | null;
@@ -2381,6 +2413,8 @@ function IntakeModal({
         ? cloneDocItems(item.items)
         : item.items
       : [emptyDocItem(rates)],
+    acceptedWeightKg: item?.acceptedWeightKg || 0,
+    payableWeightKg: item?.payableWeightKg || 0,
     account: (item?.account || "cash") as WpAccount,
     isPaid: isCopy ? false : item?.isPaid || false,
     comment: item?.comment || "",
@@ -2422,7 +2456,7 @@ function IntakeModal({
 
   const totals = wpDocTotals(form.items);
   const valid =
-    form.date !== "" && form.counterpartyName.trim() !== "" && totals.weightKg > 0;
+    form.date !== "" && form.counterpartyName.trim() !== "";
   // В перевозку без адреса нельзя: водитель не будет знать, куда ехать.
   const transportError =
     form.needsTransport && form.address.trim() === ""
@@ -2477,6 +2511,8 @@ function IntakeModal({
               isPaid: form.isPaid,
               comment: form.comment.trim() || null,
               saveCounterparty: form.saveCounterparty,
+              acceptedWeightKg: parseNum(String(form.acceptedWeightKg)),
+              payableWeightKg: parseNum(String(form.payableWeightKg)),
               needsTransport: form.needsTransport,
               transportPlannedDate: form.needsTransport
                 ? form.transportPlannedDate || null
@@ -2576,6 +2612,10 @@ function IntakeModal({
             )}
           </div>
 
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div className="admin-field"><label className="admin-label">Фактически принято, кг (на склад)</label><input className="admin-input" type="number" min="0" step="0.1" value={form.acceptedWeightKg || ""} onChange={(e) => set("acceptedWeightKg", parseNum(e.target.value))} placeholder="После взвешивания" /></div>
+            <div className="admin-field"><label className="admin-label">Вес к оплате, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.payableWeightKg || ""} onChange={(e) => set("payableWeightKg", parseNum(e.target.value))} placeholder="Можно меньше принятого" /></div>
+          </div>
           <ItemsEditor
             items={form.items}
             rates={rates}
@@ -2693,6 +2733,9 @@ interface ShipmentFormPayload {
   comment: string | null;
   saveCounterparty: boolean;
   /** Отвезти нашим транспортом: сдача попадёт в очередь перевозок учёта. */
+  shippedWeightKg: number;
+  acceptedWeightKg: number;
+  receivedAmount: number;
   needsTransport: boolean;
   /** На когда планируем отвоз (пусто = как можно скорее). */
   transportPlannedDate: string | null;
@@ -2737,6 +2780,9 @@ function ShipmentModal({
         ? cloneDocItems(item.items)
         : item.items
       : [emptyDocItem(rates)],
+    shippedWeightKg: item?.shippedWeightKg || 0,
+    acceptedWeightKg: item?.acceptedWeightKg || 0,
+    receivedAmount: item?.receivedAmount || 0,
     account: (item?.account || "bank") as WpAccount,
     isPaid: isCopy ? false : item?.isPaid || false,
     comment: item?.comment || "",
@@ -2777,7 +2823,7 @@ function ShipmentModal({
 
   const totals = wpDocTotals(form.items);
   const valid =
-    form.date !== "" && form.enterpriseName.trim() !== "" && totals.weightKg > 0;
+    form.date !== "" && form.enterpriseName.trim() !== "";
   // В перевозку без адреса нельзя: водитель не будет знать, куда везти.
   const transportError =
     form.needsTransport && form.address.trim() === ""
@@ -2832,6 +2878,9 @@ function ShipmentModal({
               isPaid: form.isPaid,
               comment: form.comment.trim() || null,
               saveCounterparty: form.saveCounterparty,
+              shippedWeightKg: parseNum(String(form.shippedWeightKg)),
+              acceptedWeightKg: parseNum(String(form.acceptedWeightKg)),
+              receivedAmount: parseNum(String(form.receivedAmount)),
               needsTransport: form.needsTransport,
               transportPlannedDate: form.needsTransport
                 ? form.transportPlannedDate || null
@@ -2931,6 +2980,11 @@ function ShipmentModal({
             )}
           </div>
 
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div className="admin-field"><label className="admin-label">Отгружено по нашим весам, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.shippedWeightKg || ""} onChange={(e) => set("shippedWeightKg", parseNum(e.target.value))} /></div>
+            <div className="admin-field"><label className="admin-label">Принято предприятием, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.acceptedWeightKg || ""} onChange={(e) => set("acceptedWeightKg", parseNum(e.target.value))} /></div>
+            <div className="admin-field"><label className="admin-label">Поступление денег, ₽</label><input className="admin-input" type="number" min="0" step="0.01" value={form.receivedAmount || ""} onChange={(e) => set("receivedAmount", parseNum(e.target.value))} /></div>
+          </div>
           <ItemsEditor
             items={form.items}
             rates={rates}
@@ -3324,6 +3378,7 @@ function CounterpartyModal({
     branches: initialBranches(item),
     inn: item?.inn || "",
     comment: item?.comment || "",
+    paymentDetails: item?.paymentDetails || "",
   }));
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -3410,6 +3465,7 @@ function CounterpartyModal({
               branches: cleanBranches,
               inn: form.inn.trim() || null,
               comment: form.comment.trim() || null,
+              paymentDetails: form.paymentDetails.trim() || null,
             });
           }}
         >
@@ -3514,6 +3570,11 @@ function CounterpartyModal({
             </button>
           </div>
 
+          <div className="admin-field">
+            <label className="admin-label">Куда переводить деньги</label>
+            <textarea className="admin-input" rows={2} value={form.paymentDetails} onChange={(e) => set("paymentDetails", e.target.value)} placeholder="Карта, СБП, расчётный счёт, банк…" />
+          </div>
+
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <div className="admin-field" style={{ flex: "1 1 160px" }}>
               <label className="admin-label">ИНН</label>
@@ -3575,4 +3636,21 @@ function CounterpartyModal({
       </div>
     </div>
   );
+}
+
+function DebtsTab({ intakes, counterparties, onEditCounterparty }: { intakes: WpIntake[]; counterparties: WpCounterparty[]; onEditCounterparty: (item: WpCounterparty) => void }) {
+  const rows = counterparties.map((c) => {
+    const docs = intakes.filter((i) => i.status === "active" && !i.isPaid && (i.counterpartyId === c.id || i.counterpartyName.trim().toLowerCase() === c.name.trim().toLowerCase()));
+    return { c, docs, total: docs.reduce((sum, d) => sum + d.total, 0) };
+  }).filter((r) => r.total > 0 || r.docs.length > 0);
+  const total = rows.reduce((sum, r) => sum + r.total, 0);
+  return <div>
+    <div className="admin-card" style={{ marginBottom: 14 }}><div className="admin-card__head"><span className="admin-card__title">Мы должны за приём макулатуры</span><strong>{fmtMoney(total)}</strong></div><div className="admin-card__pad"><p className="admin-hint">Показываются активные приёмы, которые ещё не отмечены оплаченными.</p></div></div>
+    {rows.length === 0 ? <div className="admin-card"><div className="admin-card__pad"><p className="admin-hint">Долгов за приём макулатуры нет.</p></div></div> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Кому</th><th>Документы</th><th>Куда переводить</th><th>Сумма</th><th></th></tr></thead><tbody>{rows.map(({c,docs,total}) => <tr key={c.id}><td>{c.name}</td><td>{docs.map(d => `ПМ-${d.number}`).join(", ")}</td><td>{c.paymentDetails || <span className="admin-hint">Не указано</span>}</td><td style={{fontWeight:700}}>{fmtMoney(total)}</td><td><button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => onEditCounterparty(c)}><Pencil size={13}/> Реквизиты</button></td></tr>)}</tbody></table></div>}
+  </div>;
+}
+
+function StockTab({ stock }: { stock: ReturnType<typeof getWpStock> }) {
+  const total = stock.reduce((sum, row) => sum + Math.max(0, row.stockKg), 0);
+  return <div><div className="admin-card" style={{ marginBottom: 14 }}><div className="admin-card__head"><span className="admin-card__title">Фактический склад макулатуры</span><strong>{fmtKg(total)}</strong></div><div className="admin-card__pad"><p className="admin-hint">На склад попадает фактически принятое количество, а не вес к оплате.</p></div></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Вид макулатуры</th><th>Принято фактически</th><th>Продано / отгружено</th><th>Остаток</th></tr></thead><tbody>{stock.map((row) => <tr key={row.wastepaperType}><td>{wpTypeLabel(row.wastepaperType, WP_TYPE_LABELS)}</td><td>{fmtKg(row.intakeKg)}</td><td>{fmtKg(row.shipmentKg)}</td><td style={{fontWeight:700}}>{fmtKg(Math.max(0,row.stockKg))}</td></tr>)}</tbody></table></div></div>;
 }

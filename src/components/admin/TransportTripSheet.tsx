@@ -21,7 +21,6 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { SITE_ADDRESS, SITE_HOURS_LABEL, SITE_PHONE } from "@/lib/site-config";
 import { SITE_NAME } from "@/lib/seo";
 import {
-  TRIP_TYPE_INSTRUCTION,
   isWpStop,
   stopLoadedLines,
   stopTitle,
@@ -53,6 +52,7 @@ interface SheetOptions {
   dense: boolean;
   signs: boolean;
   instructions: boolean;
+  showTime: boolean;
   contacts: boolean;
   vehicle: string;
   issuedBy: string;
@@ -63,6 +63,7 @@ const DEFAULT_OPTIONS: SheetOptions = {
   dense: false,
   signs: true,
   instructions: true,
+  showTime: true,
   contacts: true,
   vehicle: "",
   issuedBy: "",
@@ -83,6 +84,7 @@ export function TransportTripSheet({
 }) {
   const [printing, setPrinting] = useState(false);
   const [opts, setOpts] = useState<SheetOptions>(DEFAULT_OPTIONS);
+  const [baseAfter, setBaseAfter] = useState<number[]>([]);
   const triggered = useRef(false);
 
   // Бланк печатают каждый день по несколько раз — настройки помним.
@@ -172,7 +174,11 @@ export function TransportTripSheet({
           </label>
           <label className="tls-toolbar__check">
             <input type="checkbox" checked={opts.signs} onChange={(e) => patch({ signs: e.target.checked })} />
-            Строки «время / подпись»
+            Строки подписи
+          </label>
+          <label className="tls-toolbar__check">
+            <input type="checkbox" checked={opts.showTime} onChange={(e) => patch({ showTime: e.target.checked })} />
+            Время
           </label>
           <label className="tls-toolbar__check">
             <input type="checkbox" checked={opts.dense} onChange={(e) => patch({ dense: e.target.checked })} />
@@ -239,10 +245,7 @@ export function TransportTripSheet({
 
         {data.note && opts.instructions && <div className="tls-note">📝 {data.note}</div>}
 
-        <div className="tls-order">
-          Порядок объезда: сверху вниз, точки 1 → {stops.length}. Не заезжать «как удобнее» —
-          отклонение от порядка согласовать с диспетчером.
-        </div>
+
 
         {/* ── Точки по порядку ── */}
         <div className="tls-stops">
@@ -277,7 +280,7 @@ export function TransportTripSheet({
                     ) : null}
                     {wp ? <span className="tls-strip__deal">{stopTitle(stop)}</span> : null}
                     {stop.plannedTime ? (
-                      <span className="tls-strip__time">⏱ {stop.plannedTime}</span>
+                      <span className="tls-strip__time">⏱ {opts.showTime && stop.plannedTime}</span>
                     ) : null}
                   </div>
 
@@ -298,22 +301,7 @@ export function TransportTripSheet({
                         <span className="tls-strip__k">Контакт</span>{" "}
                         <span className="tls-strip__contact">{stop.contactName || "—"}</span>
                       </span>
-                      <span className="tls-strip__duty">
-                        <span className="tls-strip__k">На месте</span>{" "}
-                        <span className="tls-strip__duty-action">
-                          {type.id === "pickup"
-                            ? "погрузить, посчитать, забрать документы"
-                            : type.id === "handover"
-                              ? "сдать под подпись, забрать отметку"
-                              : "выгрузить, получить подпись"}
-                        </span>
-                      </span>
-                      {!stop.phone && (
-                        <span className="tls-strip__duty tls-strip__duty--alert">
-                          <span className="tls-strip__k">Тела нет</span>{" "}
-                          <span className="tls-strip__duty-action">звонить диспетчеру: {officePhone}</span>
-                        </span>
-                      )}
+                      {!stop.phone && <span className="tls-strip__duty tls-strip__duty--alert">Телефон: __________________</span>}
                     </div>
                   )}
 
@@ -365,7 +353,7 @@ export function TransportTripSheet({
                       <span className="tls-strip__instr-k">Инструкция</span>
                       <span className="tls-strip__instr-v">
                         {note && <span className="tls-strip__instr-custom">{note}</span>}
-                        <span className="tls-strip__instr-default">{TRIP_TYPE_INSTRUCTION[type.id]}</span>
+                        <span className="tls-strip__instr-default"></span>
                       </span>
                     </div>
                   )}
@@ -378,7 +366,7 @@ export function TransportTripSheet({
                         <span className="tls-strip__underline" />
                       </span>
                       <span className="tls-strip__sign">
-                        Время <span className="tls-strip__underline tls-strip__underline--short" />
+                        {opts.showTime && <>Время <span className="tls-strip__underline tls-strip__underline--short" /></>}
                       </span>
                       <span className="tls-strip__sign">
                         Проблемы: <span className="tls-strip__checks">☐ нет ☐ есть</span>
@@ -386,10 +374,10 @@ export function TransportTripSheet({
                     </div>
                   )}
                 </div>
-
+                {!isLast && !printing && <button type="button" className="tls-base-button" onClick={() => setBaseAfter((v) => v.includes(index) ? v.filter((n) => n !== index) : [...v, index])}>{baseAfter.includes(index) ? "↩ Убрать возврат на базу" : "↩ Вернуться на базу после этой точки"}</button>}
               </article>
-              {/* Стрелка «дальше» между точками — по ней видно маршрут сверху вниз */}
-              {!isLast && (
+              {baseAfter.includes(index) && <div className="tls-base-break">↩ ВЕРНУТЬСЯ НА БАЗУ</div>}
+              {!isLast && !baseAfter.includes(index) && (
                 <div className="tls-next" aria-hidden>
                   ↓ точка {index + 2}
                 </div>
@@ -470,7 +458,8 @@ const PRINT_CSS = `
   .deliv-print-root, .deliv-print-root * { visibility: visible !important; }
   .deliv-print-root.tls-root { position: static !important; inset: auto !important; width: auto !important; background: #fff !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
   .tls { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
-  .tls-toolbar { display: none !important; }
+  .tls-toolbar, .tls-base-button { display: none !important; }
+  .tls-base-break { break-before: auto; page-break-inside: avoid; }
   /* Карточка точки не рвётся между страницами: водителю важна целостность */
   .tls-strip { break-inside: avoid; page-break-inside: avoid; }
   .tls-foot { break-inside: avoid; }
@@ -490,7 +479,6 @@ const PRINT_CSS = `
 .tls-k { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #8c857a; flex-shrink: 0; }
 .tls-v { font-size: 10.5px; font-weight: 700; }
 .tls-note { margin-top: 1.4mm; padding: 1.2mm 2mm; background: #fdf8ec; border-left: 1mm solid #e0b84f; font-size: 9.5px; font-weight: 700; white-space: pre-line; }
-.tls-order { margin-top: 1.4mm; font-size: 8.5px; color: #6d675e; }
 
 /* ── Карточка точки ── */
 .tls-stops { margin-top: 2mm; display: flex; flex-direction: column; gap: 1.6mm; }
@@ -558,6 +546,8 @@ const PRINT_CSS = `
 .tls-strip__underline--short { min-width: 13mm; }
 .tls-strip__checks { font-weight: 700; color: #211f1c; }
 
+.tls-base-button { display: block; width: 100%; margin: 2mm 0; padding: 2mm; border: 1px dashed #1d4ed8; background: #eff6ff; color: #1d4ed8; font-weight: 800; cursor: pointer; }
+.tls-base-break { margin: 3mm 0; padding: 4mm; text-align: center; border-top: 2pt solid #111; border-bottom: 2pt solid #111; font-size: 18px; font-weight: 900; letter-spacing: .08em; break-inside: avoid; }
 .tls-next { text-align: center; font-size: 7.5px; color: #a29a8d; letter-spacing: 0.06em; }
 
 /* ── Подвал ── */

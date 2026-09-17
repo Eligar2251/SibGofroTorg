@@ -29,6 +29,7 @@ export async function PATCH(
       branches: Array.isArray(body.branches) ? body.branches : null,
       inn: body.inn ?? null,
       comment: body.comment ?? null,
+      paymentDetails: body.paymentDetails ?? null,
     });
     await logAdminAction(
       auth.displayName,

@@ -140,6 +140,7 @@ function mapCounterparty(row: any): WpCounterparty {
     branches,
     inn: row.inn || null,
     comment: row.comment || null,
+    paymentDetails: row.payment_details || null,
     createdBy: row.created_by || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -329,6 +330,7 @@ export async function upsertWpCounterparty(data: {
   branches?: WpBranch[] | null;
   inn?: string | null;
   comment?: string | null;
+  paymentDetails?: string | null;
   createdBy?: string | null;
 }): Promise<WpCounterparty> {
   const db = getAdminDb();
@@ -357,6 +359,7 @@ export async function upsertWpCounterparty(data: {
     ...counterpartyBranchPayload(branches),
     inn: String(data.inn || "").trim().slice(0, 20) || null,
     comment: String(data.comment || "").trim().slice(0, 500) || null,
+    payment_details: String(data.paymentDetails || "").trim().slice(0, 1000) || null,
     updated_at: new Date().toISOString(),
   };
   if (data.id) {
@@ -426,6 +429,8 @@ function mapIntake(row: any): WpIntake {
     items,
     wastepaperType: first?.wastepaperType || row.wastepaper_type || "cardboard",
     weightKg: items.length ? totals.weightKg : Number(row.weight_kg) || 0,
+    acceptedWeightKg: Number(row.accepted_weight_kg) || (items.length ? totals.weightKg : 0),
+    payableWeightKg: Number(row.payable_weight_kg) || 0,
     pricePerKg: first?.pricePerKg ?? (Number(row.price_per_kg) || 0),
     total: items.length ? totals.total : Number(row.total) || 0,
     account: (row.account === "bank" ? "bank" : "cash") as WpAccount,
@@ -441,6 +446,7 @@ function mapIntake(row: any): WpIntake {
       : null,
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
+    paymentDetails: row.payment_details || null,
     createdBy: row.created_by || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -471,6 +477,8 @@ export interface WpIntakeInput {
   /** Одиночные поля — для совместимости / когда позиций нет. */
   wastepaperType?: string;
   weightKg?: number;
+  acceptedWeightKg?: number;
+  payableWeightKg?: number;
   pricePerKg?: number;
   account: WpAccount;
   cashAmount?: number;
@@ -512,7 +520,8 @@ function cleanIntakeInput(data: WpIntakeInput) {
     }
   }
   const totals = wpDocTotals(items);
-  if (totals.weightKg <= 0) throw new Error("Укажите вес, кг хотя бы по одной позиции");
+  // Вес и цена могут быть неизвестны при создании: документ заполняется
+  // после фактического забора и взвешивания.
   const first = items[0];
   const address = String(data.address || "").trim().slice(0, 400) || null;
   const needsTransport = data.needsTransport === true;
@@ -529,6 +538,8 @@ function cleanIntakeInput(data: WpIntakeInput) {
     items,
     wastepaper_type: first?.wastepaperType || "cardboard",
     weight_kg: totals.weightKg,
+    accepted_weight_kg: Math.max(0, Number(data.acceptedWeightKg) || totals.weightKg),
+    payable_weight_kg: Math.max(0, Number(data.payableWeightKg) || 0),
     price_per_kg: first?.pricePerKg ?? 0,
     total: totals.total,
     account: data.account === "bank" ? "bank" : "cash",
@@ -613,6 +624,7 @@ export async function updateWpIntake(
       ...merged,
       is_paid: isPaid,
       paid_at: isPaid ? existing.paid_at || new Date().toISOString() : null,
+      ...(data.bankPostedAt !== undefined ? { bank_posted_at: data.bankPostedAt } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -697,6 +709,10 @@ function mapShipment(row: any): WpShipment {
     items,
     wastepaperType: first?.wastepaperType || row.wastepaper_type || "cardboard",
     weightKg: items.length ? totals.weightKg : Number(row.weight_kg) || 0,
+    shippedWeightKg: Number(row.shipped_weight_kg) || 0,
+    acceptedWeightKg: Number(row.accepted_weight_kg) || 0,
+    receivedAmount: Number(row.received_amount) || 0,
+    bankPostedAt: toIso(row.bank_posted_at),
     pricePerKg: first?.pricePerKg ?? (Number(row.price_per_kg) || 0),
     total: items.length ? totals.total : Number(row.total) || 0,
     account: (row.account === "cash" ? "cash" : "bank") as WpAccount,
@@ -708,6 +724,7 @@ function mapShipment(row: any): WpShipment {
       : null,
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
+    paymentDetails: row.payment_details || null,
     createdBy: row.created_by || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -738,6 +755,9 @@ export interface WpShipmentInput {
   /** Одиночные поля — для совместимости / когда позиций нет. */
   wastepaperType?: string;
   weightKg?: number;
+  shippedWeightKg?: number;
+  acceptedWeightKg?: number;
+  receivedAmount?: number;
   pricePerKg?: number;
   account: WpAccount;
   isPaid?: boolean;
@@ -773,7 +793,8 @@ function cleanShipmentInput(data: WpShipmentInput) {
     }
   }
   const totals = wpDocTotals(items);
-  if (totals.weightKg <= 0) throw new Error("Укажите вес, кг хотя бы по одной позиции");
+  // Вес и цена могут быть неизвестны при создании: документ заполняется
+  // после фактического забора и взвешивания.
   const first = items[0];
   const address = String(data.address || "").trim().slice(0, 400) || null;
   const needsTransport = data.needsTransport === true;
@@ -828,7 +849,7 @@ export async function createWpShipment(
 
 export async function updateWpShipment(
   id: string,
-  data: Partial<WpShipmentInput> & { isPaid?: boolean }
+  data: Partial<WpShipmentInput> & { isPaid?: boolean; bankPostedAt?: string | null }
 ): Promise<WpShipment> {
   const db = getAdminDb();
   const { data: existing, error: existErr } = await db
@@ -851,6 +872,9 @@ export async function updateWpShipment(
         : (normalizeWpDocItems(existing.items) as WpDocItem[]),
     wastepaperType: data.wastepaperType ?? existing.wastepaper_type,
     weightKg: data.weightKg ?? (Number(existing.weight_kg) || 0),
+    shippedWeightKg: data.shippedWeightKg ?? (Number(existing.shipped_weight_kg) || 0),
+    acceptedWeightKg: data.acceptedWeightKg ?? (Number(existing.accepted_weight_kg) || 0),
+    receivedAmount: data.receivedAmount ?? (Number(existing.received_amount) || 0),
     pricePerKg: data.pricePerKg ?? (Number(existing.price_per_kg) || 0),
     account:
       data.account !== undefined
@@ -975,6 +999,7 @@ function mapManualPayment(row: any): WpManualPayment {
     isPaid: Boolean(row.is_paid),
     paidAt: toIso(row.paid_at),
     comment: row.comment || null,
+    paymentDetails: row.payment_details || null,
     createdBy: row.created_by || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
