@@ -1,0 +1,6 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getWpProducts, requireWastepaperApi, upsertWpProduct } from "@/lib/wastepaper-account";
+export const dynamic = "force-dynamic";
+export async function GET() { const auth = await requireWastepaperApi(); if (auth instanceof NextResponse) return auth; return NextResponse.json({ items: await getWpProducts() }); }
+export async function POST(req: NextRequest) { const auth = await requireWastepaperApi(); if (auth instanceof NextResponse) return auth; try { const b = await req.json(); return NextResponse.json({ item: await upsertWpProduct({ name: b.name, pricePerKg: b.pricePerKg, isActive: b.isActive }) }); } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка сервера" }, { status: 400 }); } }
+export async function PATCH(req: NextRequest) { const auth = await requireWastepaperApi(); if (auth instanceof NextResponse) return auth; try { const b = await req.json(); return NextResponse.json({ item: await upsertWpProduct({ id: String(b.id), name: b.name, pricePerKg: b.pricePerKg, isActive: b.isActive }) }); } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка сервера" }, { status: 400 }); } }

@@ -47,6 +47,16 @@ export const WP_TYPE_LABELS: Record<string, string> = Object.fromEntries(
   WP_TYPE_OPTIONS.map((o) => [o.id, o.label])
 );
 
+/** Собственный справочник закупаемых видов макулатуры (не товары сайта). */
+export interface WpProduct {
+  id: string;
+  name: string;
+  pricePerKg: number;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 // ── Типы данных (сериализованные для клиента) ────────────
 
 /**
@@ -111,6 +121,9 @@ export interface WpIntake {
   pricePerKg: number;
   total: number;
   account: WpAccount;
+  /** Раздельные фактические суммы; старые записи используют account/total. */
+  cashAmount: number;
+  bankAmount: number;
   isPaid: boolean;
   paidAt: string | null; // ISO datetime фактической оплаты
   transportId: string | null;
@@ -179,8 +192,12 @@ export interface WpTransportItem {
   /** Примерное время заезда (HH:MM или «~14:00»). */
   approxTime: string;
   wastepaperType: string;
+  /** Цена закупки за кг и раздельная оплата остановки. */
+  pricePerKg: number;
   plannedKg: number;
   actualKg: number | null;
+  cashAmount: number;
+  bankAmount: number;
   note: string;
   status: WpStopStatus;
   /** Оформленный по этой остановке приём (wp_intakes.id). */
@@ -342,14 +359,17 @@ export function wpCollectMoneyEvents(
 ): WpMoneyEvent[] {
   const events: WpMoneyEvent[] = [];
   for (const i of intakes) {
-    events.push({
+    const splits = i.cashAmount > 0 && i.bankAmount > 0
+      ? ([{ account: "cash" as WpAccount, amount: i.cashAmount }, { account: "bank" as WpAccount, amount: i.bankAmount }])
+      : [{ account: i.account, amount: i.total }];
+    for (const split of splits) events.push({
       kind: "intake",
       id: i.id,
       number: i.number,
       date: i.date,
       direction: "outgoing",
-      account: i.account,
-      amount: i.total,
+      account: split.account,
+      amount: split.amount,
       isPaid: i.isPaid,
       paidAt: i.paidAt,
       counterpartyName: i.counterpartyName,

@@ -1,0 +1,14 @@
+"use client";
+import { useState } from "react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import type { WpProduct } from "@/lib/wastepaper-account-shared";
+export function WpProductsTab({ products, onSaved }: { products: WpProduct[]; onSaved: () => void }) {
+  const [editing, setEditing] = useState<WpProduct | null>(null); const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [busy, setBusy] = useState(false);
+  function open(p?: WpProduct) { setEditing(p || null); setName(p?.name || ""); setPrice(p ? String(p.pricePerKg) : "0"); }
+  async function save(e: React.FormEvent) { e.preventDefault(); setBusy(true); try { const r = await fetch("/api/admin/wp/products", { method: editing ? "PATCH" : "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ id: editing?.id, name, pricePerKg: Number(price) }) }); if (!r.ok) throw new Error((await r.json()).error); setEditing(null); onSaved(); } finally { setBusy(false); } }
+  async function remove(p: WpProduct) { if (!confirm(`Скрыть вид «${p.name}»?`)) return; await fetch(`/api/admin/wp/products/${p.id}`, { method: "DELETE" }); onSaved(); }
+  return <div><div className="admin-page-head"><div><h2 className="admin-h2">Виды макулатуры</h2><p className="admin-sub">Отдельный справочник макулатурных позиций. Цена указывается за килограмм и не смешивается с товарами сайта.</p></div><button className="admin-btn admin-btn--primary" onClick={() => open()}><Plus size={15}/> Вид макулатуры</button></div>
+    {editing !== null || name !== "" ? <form onSubmit={save} className="admin-card" style={{padding:16, marginBottom:16, display:"flex", gap:10, flexWrap:"wrap"}}><input className="admin-input" style={{flex:"2 1 240px"}} placeholder="Например, картон гофрированный" value={name} onChange={e=>setName(e.target.value)} required/><input className="admin-input" style={{flex:"1 1 130px"}} type="number" min="0" step="0.01" placeholder="Цена за кг" value={price} onChange={e=>setPrice(e.target.value)} required/><button className="admin-btn admin-btn--primary" disabled={busy}>Сохранить</button><button type="button" className="admin-btn admin-btn--ghost" onClick={()=>{setEditing(null);setName("");}}>Отмена</button></form> : null}
+    <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Вид</th><th>Цена за кг</th><th>Статус</th><th></th></tr></thead><tbody>{products.filter(p=>p.isActive).map(p=><tr key={p.id}><td>{p.name}</td><td>{p.pricePerKg.toLocaleString("ru-RU")} ₽/кг</td><td>Активен</td><td style={{textAlign:"right"}}><button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={()=>open(p)}><Pencil size={13}/></button><button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={()=>remove(p)}><Trash2 size={13}/></button></td></tr>)}</tbody></table></div>
+  </div>;
+}

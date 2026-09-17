@@ -42,6 +42,7 @@ import { useAdminRealtime } from "@/lib/use-admin-realtime";
 import { useBodyLock } from "@/hooks/use-body-lock";
 import type { WastepaperRates } from "@/lib/wastepaper";
 import { TransportTripSheet, type TripSheetData } from "@/components/admin/TransportTripSheet";
+import { WpProductsTab } from "@/components/admin/WpProductsTab";
 import type { TripStop } from "@/lib/trip-stops";
 import {
   WP_ACCOUNT_LABELS,
@@ -75,6 +76,7 @@ import {
   type WpShipment,
   type WpTransport,
   type WpTransportItem,
+  type WpProduct,
 } from "@/lib/wastepaper-account-shared";
 
 /* ── Константы и хелперы ───────────────────────────────── */
@@ -86,6 +88,7 @@ const TABS = [
   { key: "shipments", label: "Сдачи" },
   { key: "transports", label: "Перевозки" },
   { key: "counterparties", label: "Контрагенты" },
+  { key: "products", label: "Виды макулатуры" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -465,6 +468,7 @@ interface Props {
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
   transports: WpTransport[];
+  products: WpProduct[];
   rates: WastepaperRates | null;
 }
 
@@ -493,6 +497,7 @@ export function WastepaperAccountManager(props: Props) {
   const [shipments, setShipments] = useState(props.shipments);
   const [manualPayments, setManualPayments] = useState(props.manualPayments);
   const [transports, setTransports] = useState(props.transports);
+  const [products, setProducts] = useState(props.products);
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -539,6 +544,7 @@ export function WastepaperAccountManager(props: Props) {
   useEffect(() => setShipments(props.shipments), [props.shipments]);
   useEffect(() => setManualPayments(props.manualPayments), [props.manualPayments]);
   useEffect(() => setTransports(props.transports), [props.transports]);
+  useEffect(() => setProducts(props.products), [props.products]);
 
   // Сохраняем вкладку в URL (?tab=...), чтобы ссылки с дашборда и
   // обновление страницы не сбрасывали рабочее место.
@@ -746,6 +752,7 @@ export function WastepaperAccountManager(props: Props) {
         <TransportsTab
           transports={transports}
           counterparties={counterparties}
+          products={products}
           saving={saving}
           onNew={() => {
             setFormError("");
@@ -829,6 +836,10 @@ export function WastepaperAccountManager(props: Props) {
             setCounterpartyModal({ mode: "edit", item });
           }}
         />
+      )}
+
+      {tab === "products" && (
+        <WpProductsTab products={products} onSaved={() => router.refresh()} />
       )}
 
       {/* ── Модалки ── */}
@@ -1065,6 +1076,7 @@ export function WastepaperAccountManager(props: Props) {
           mode={transportModal.mode}
           item={transportModal.mode === "edit" ? transportModal.item : null}
           counterparties={counterparties}
+          products={products}
           saving={saving}
           error={formError}
           onClose={() => setTransportModal(null)}
@@ -2198,6 +2210,7 @@ function ShipmentsTab({
 function TransportsTab({
   transports,
   counterparties,
+  products,
   saving,
   onNew,
   onEdit,
@@ -2209,6 +2222,7 @@ function TransportsTab({
 }: {
   transports: WpTransport[];
   counterparties: WpCounterparty[];
+  products: WpProduct[];
   saving: boolean;
   onNew: () => void;
   onEdit: (item: WpTransport) => void;
@@ -2620,6 +2634,9 @@ function StopModal({
     contactPerson: stop?.contactPerson || "",
     approxTime: stop?.approxTime || "",
     wastepaperType: stop?.wastepaperType || "cardboard",
+    pricePerKg: stop?.pricePerKg != null ? String(stop.pricePerKg) : "",
+    cashAmount: stop?.cashAmount != null ? String(stop.cashAmount) : "",
+    bankAmount: stop?.bankAmount != null ? String(stop.bankAmount) : "",
     plannedKg: stop?.plannedKg ? String(stop.plannedKg) : "",
     actualKg: stop?.actualKg != null ? String(stop.actualKg) : "",
     note: stop?.note || "",
@@ -2698,6 +2715,9 @@ function StopModal({
               contactPerson: form.contactPerson.trim(),
               approxTime: approxTimeOk(form.approxTime) ? form.approxTime.trim() : "",
               wastepaperType: form.wastepaperType,
+              pricePerKg: parseNum(form.pricePerKg),
+              cashAmount: parseNum(form.cashAmount),
+              bankAmount: parseNum(form.bankAmount),
               plannedKg: parseNum(form.plannedKg),
               actualKg: form.actualKg.trim() === "" ? null : parseNum(form.actualKg),
               note: form.note.trim(),
@@ -4158,6 +4178,7 @@ function TransportModal({
   mode,
   item,
   counterparties,
+  products,
   saving,
   error,
   onClose,
@@ -4166,6 +4187,7 @@ function TransportModal({
   mode: "create" | "edit";
   item: WpTransport | null;
   counterparties: WpCounterparty[];
+  products: WpProduct[];
   saving: boolean;
   error: string;
   onClose: () => void;
@@ -4208,9 +4230,12 @@ function TransportModal({
           phone: "",
           contactPerson: "",
           approxTime: "",
-          wastepaperType: "cardboard",
+          wastepaperType: products[0]?.id || "cardboard",
+          pricePerKg: products[0]?.pricePerKg || 0,
           plannedKg: 0,
           actualKg: null,
+          cashAmount: 0,
+          bankAmount: 0,
           note: "",
           status: "pending",
           intakeId: null,
@@ -4377,12 +4402,10 @@ function TransportModal({
                       className="admin-select"
                       style={{ flex: "1 1 150px" }}
                       value={stop.wastepaperType}
-                      onChange={(e) => setStop(idx, { wastepaperType: e.target.value })}
+                      onChange={(e) => { const p = products.find(x => x.id === e.target.value); setStop(idx, { wastepaperType: e.target.value, pricePerKg: p?.pricePerKg || 0 }); }}
                     >
-                      {WP_TYPE_OPTIONS.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
+                      {products.filter(p => p.isActive).map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
                     </select>
                     <input
@@ -4395,6 +4418,9 @@ function TransportModal({
                       value={stop.plannedKg || ""}
                       onChange={(e) => setStop(idx, { plannedKg: parseNum(e.target.value) })}
                     />
+                    <input className="admin-input" style={{ flex: "0 1 100px" }} type="number" min="0" step="0.01" placeholder="Цена/кг" value={stop.pricePerKg || ""} onChange={e => setStop(idx, { pricePerKg: parseNum(e.target.value) })} />
+                    <input className="admin-input" style={{ flex: "0 1 110px" }} type="number" min="0" step="0.01" placeholder="Наличка" value={stop.cashAmount || ""} onChange={e => setStop(idx, { cashAmount: parseNum(e.target.value) })} />
+                    <input className="admin-input" style={{ flex: "0 1 110px" }} type="number" min="0" step="0.01" placeholder="Перевод" value={stop.bankAmount || ""} onChange={e => setStop(idx, { bankAmount: parseNum(e.target.value) })} />
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
