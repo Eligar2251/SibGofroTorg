@@ -17,7 +17,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Building2,
   Eye,
@@ -50,6 +50,7 @@ interface CabUser {
   companyName: string | null;
   createdAt: string | null;
   ordersCount: number;
+  ordersCountApprox?: boolean;
 }
 
 interface CabItem {
@@ -79,6 +80,8 @@ interface CabOrder {
   closeReason: string | null;
   createdAt: string | null;
   guest: boolean;
+  /** Заявка другого аккаунта с тем же телефоном (у клиента она в списке есть). */
+  otherAccount?: boolean;
 }
 
 interface ProductOption {
@@ -93,6 +96,7 @@ const statusStyles: Record<string, { bg: string; color: string; dot: string }> =
   new: { bg: "#fff7ed", color: "#c2410c", dot: "#f97316" },
   in_progress: { bg: "#eff6ff", color: "#1d4ed8", dot: "#3b82f6" },
   ready: { bg: "#f5f3ff", color: "#6d28d9", dot: "#8b5cf6" },
+  in_delivery: { bg: "#e8f3fb", color: "#0b5f8f", dot: "#38bdf8" },
   issued: { bg: "#ecfeff", color: "#0e7490", dot: "#06b6d4" },
   completed: { bg: "#f0fdf4", color: "#15803d", dot: "#22c55e" },
   rejected: { bg: "#fef2f2", color: "#dc2626", dot: "#ef4444" },
@@ -289,6 +293,24 @@ function CabinetOrderCard({
           <span className="acab-order__type">
             {isOrder ? "Заказ" : "Заявка"}
           </span>
+          {order.otherAccount && (
+            <span
+              className="acab-order__type"
+              title="Заявка оформлена с другого аккаунта, у которого тот же телефон. У клиента она в кабинете есть — поэтому она здесь тоже."
+              style={{ background: "#fff7ed", color: "#c2410c" }}
+            >
+              другой аккаунт по телефону
+            </span>
+          )}
+          {order.guest && (
+            <span
+              className="acab-order__type"
+              title="Заявка без привязки к аккаунту — найдена по номеру телефона."
+              style={{ background: "#f3f4f6", color: "#6b7280" }}
+            >
+              гостевая
+            </span>
+          )}
         </span>
         <span className="acab-order__head-right">
           <span
@@ -391,6 +413,20 @@ function CabinetOrderCard({
               <div style={{ fontSize: 12, color: "#6b7280" }}>
                 Назовите код при получении товара на складе
               </div>
+            </div>
+          )}
+
+          {order.status === "in_delivery" && (
+            <div
+              className="acab-order__note"
+              style={{
+                background: "#e8f3fb",
+                color: "#0b5f8f",
+                border: "1px solid #bae0f7",
+              }}
+            >
+              <strong>Заказ передан в доставку.</strong> Клиент видит это же
+              сообщение у себя в кабинете.
             </div>
           )}
 
@@ -610,21 +646,44 @@ export function UserCabinetViewer() {
   const [orders, setOrders] = useState<CabOrder[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  /** Сервер сообщил, что выборку обрезал потолок PostgREST. */
+  const [truncated, setTruncated] = useState(false);
+  /** Сколько клиентов всего в базе (список показывает только свежие). */
+  const [usersTotal, setUsersTotal] = useState<number | null>(null);
+  const [listTruncated, setListTruncated] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+  /** Ошибка фонового обновления: молча «обновиться в ничего» нельзя —
+   *  менеджер примет это за «у клиента нет заявок». */
+  const [syncError, setSyncError] = useState("");
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (q?: string) => {
     setLoadingUsers(true);
     try {
-      const res = await fetch("/api/admin/user-orders", { cache: "no-store" });
+      const res = await fetch(
+        `/api/admin/user-orders${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+        { cache: "no-store" }
+      );
       const data = await res.json();
       setUsers(Array.isArray(data.users) ? data.users : []);
+      setListTruncated(Boolean(data.truncated));
+      setUsersTotal(typeof data.total === "number" ? data.total : null);
     } catch {
       setUsers([]);
     }
     setLoadingUsers(false);
   }, []);
 
-  const loadOrders = useCallback(async (userId: string) => {
-    setLoadingOrders(true);
+  // Поиск идёт на сервере по всей таблице клиентов: в списке только
+  // первые N самых свежих, и фильтровать по ним — значит «терять»
+  // клиентов (и их заявки) старше этой границы.
+  useEffect(() => {
+    const q = search.trim();
+    const timer = setTimeout(() => loadUsers(q), q ? 350 : 0);
+    return () => clearTimeout(timer);
+  }, [search, loadUsers]);
+
+  const loadOrders = useCallback(async (userId: string, silent = false) => {
+    if (!silent) setLoadingOrders(true);
     try {
       const res = await fetch(
         `/api/admin/user-orders?userId=${encodeURIComponent(userId)}`,
@@ -632,43 +691,81 @@ export function UserCabinetViewer() {
       );
       const data = await res.json();
       setOrders(Array.isArray(data.orders) ? data.orders : []);
+      setTruncated(Boolean(data.truncated));
+      setLastSync(new Date().toISOString());
+      setSyncError("");
     } catch {
-      setOrders([]);
+      if (!silent) setOrders([]);
+      setSyncError("не удалось обновить");
     }
-    setLoadingOrders(false);
+    if (!silent) setLoadingOrders(false);
   }, []);
 
   useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
-
-  useEffect(() => {
     if (selectedId) loadOrders(selectedId);
-    else setOrders([]);
+    else {
+      setOrders([]);
+      setTruncated(false);
+      setLastSync(null);
+    }
   }, [selectedId, loadOrders]);
 
   const refresh = useCallback(() => {
     if (selectedId) loadOrders(selectedId);
-    loadUsers();
-  }, [selectedId, loadOrders, loadUsers]);
+    loadUsers(search.trim());
+  }, [selectedId, loadOrders, loadUsers, search]);
 
   // Клиент оформил или изменил заявку — экран обновляется сам, без F5:
   // иначе «проверка синхронизации» показывала бы устаревший снимок.
+  //
+  // Реалтайм здесь только подсказка: канал может молчать (SSE не открылся,
+  // простоявшая всю смену вкладка, прокси оборвал соединение), а own
+  // опроса у экрана не было — из-за этого сегодняшняя заявка появлялась
+  // только после перезагрузки страницы. Поэтому свои 25 секунд + выходы
+  // из сна вкладок, а события канала группируются, чтобы не дёргать
+  // выборку на каждое изменение любой заявки в базе.
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSyncAt = useRef(0);
+
+  const scheduleSync = useCallback(
+    (silent: boolean) => {
+      if (!selectedId) return;
+      if (syncTimer.current) return;
+      const wait = silent ? Math.max(0, 1200 - (Date.now() - lastSyncAt.current)) : 0;
+      syncTimer.current = setTimeout(() => {
+        syncTimer.current = null;
+        lastSyncAt.current = Date.now();
+        loadOrders(selectedId, silent);
+      }, wait);
+    },
+    [selectedId, loadOrders]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+      syncTimer.current = null;
+    };
+  }, []);
+
   useAdminRealtime({
     tables: ["orders"],
     manual: true,
-    onUpdate: refresh,
+    onUpdate: () => scheduleSync(true),
   });
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((user) =>
-      [user.name, user.phone, user.email, user.username, user.companyName]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q))
-    );
-  }, [users, search]);
+  useEffect(() => {
+    if (!selectedId) return;
+    const timer = setInterval(() => scheduleSync(true), 25000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") scheduleSync(true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [selectedId, scheduleSync]);
 
   const selected = users.find((user) => user.id === selectedId) || null;
 
@@ -691,10 +788,29 @@ export function UserCabinetViewer() {
               <Loader2 size={18} className="animate-spin" />
             </div>
           )}
-          {!loadingUsers && filtered.length === 0 && (
-            <div className="acab-empty">Клиенты не найдены</div>
+          {!loadingUsers && users.length === 0 && (
+            <div className="acab-empty">
+              Клиенты не найдены
+              {search ? " — поиск идёт по всей базе, а не по первым строкам" : ""}
+            </div>
           )}
-          {filtered.map((user) => (
+          {!loadingUsers && users.length > 0 && (search ? listTruncated : true) && (
+            <div
+              className="acab-empty"
+              style={
+                search
+                  ? { color: "#92400e", background: "#fffbeb" }
+                  : { color: "#6b7280" }
+              }
+            >
+              {search
+                ? `Поиск дал больше клиентов, чем помещается в списке (${users.length}) — показаны самые свежие. Уточните запрос.`
+                : `Показаны ${users.length} самых свежих клиентов${
+                    usersTotal && usersTotal > users.length ? ` из ${usersTotal}` : ""
+                  }. Клиента нет в списке — его нужно искать: поиск ходит по всей базе.`}
+            </div>
+          )}
+          {users.map((user) => (
             <button
               type="button"
               key={user.id}
@@ -716,7 +832,16 @@ export function UserCabinetViewer() {
                   {user.phone || user.email || user.username || "—"}
                 </span>
               </span>
-              <span className="acab-user__count">{user.ordersCount}</span>
+              <span
+                className="acab-user__count"
+                title={
+                  user.ordersCountApprox
+                    ? "Нижняя граница: часть заявок не вошла в счётчик"
+                    : "Заявок у клиента"
+                }
+              >
+                {user.ordersCountApprox ? `${user.ordersCount}+` : user.ordersCount}
+              </span>
             </button>
           ))}
         </div>
@@ -731,8 +856,15 @@ export function UserCabinetViewer() {
               : "Выберите клиента слева"}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="acab-screen__hint">
-              Верх карточки — то, что видит клиент
+            <span
+              className="acab-screen__hint"
+              style={syncError ? { color: "#dc2626" } : undefined}
+            >
+              {syncError
+                ? `${syncError} — показаны данные из последней удачной загрузки`
+                : lastSync
+                ? `Синхронно с ${new Date(lastSync).toLocaleTimeString("ru-RU")} · автообновление 25 с`
+                : "Верх карточки — то, что видит клиент"}
             </span>
             <button
               type="button"
@@ -763,9 +895,20 @@ export function UserCabinetViewer() {
               {loadingOrders && <Loader2 size={15} className="animate-spin" />}
             </div>
 
+            {truncated && (
+              <div
+                className="acab-empty"
+                style={{ color: "#92400e", background: "#fffbeb" }}
+              >
+                Выборка обрезана потолком базы (1000 заявок на запрос) — ниже
+                самые свежие, старые могли не поместиться.
+              </div>
+            )}
+
             {!loadingOrders && orders.length === 0 && (
               <div className="acab-empty" style={{ color: "#6b7280" }}>
-                Заказов пока нет — именно это видит клиент.
+                Заказов пока нет. Если заявка оформлена только что — она
+                подтянется сама в течение 25 секунд (или по кнопке «Обновить»).
               </div>
             )}
 

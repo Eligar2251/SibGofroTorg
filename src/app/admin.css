@@ -76,6 +76,10 @@
   --adm-indigo:      #4338ca;
   --adm-indigo-pale: #f0f0ff;
   --adm-indigo-line: #c7c7f5;
+  --adm-sky:         #0b5f8f;
+  --adm-sky-pale:    #e8f3fb;
+  --adm-sky-line:    #a6d3ee;
+
   --adm-teal:        #0d7377;
   --adm-teal-pale:   #f0fafa;
   --adm-teal-line:   #9ae0e0;
@@ -1540,6 +1544,12 @@
   background: var(--adm-indigo-pale);
   color: var(--adm-indigo);
   border-color: var(--adm-indigo-line);
+}
+
+.admin-badge--sky {
+  background: var(--adm-sky-pale);
+  color: var(--adm-sky);
+  border-color: var(--adm-sky-line);
 }
 
 .admin-badge--teal {
@@ -13902,5 +13912,445 @@ a.client-card__contact:hover {
   }
   .admin-order__date {
     margin-left: 0;
+  }
+}
+
+/* ══════════════════════════════════════
+   Точки маршрута (путевой лист): порядок, пометки, груз
+   Редактор — TripStopsEditor, используется в перевозках.
+   ══════════════════════════════════════ */
+.trip-stops-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-stops-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trip-stops-block__titles {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.trip-stops-block__title {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--adm-ink-soft);
+}
+
+.trip-stops-block__count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--adm-sand);
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.trip-stops-block__hint {
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.trip-stops-block__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trip-stops-block__sort {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.trip-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* На время drag отключаем transition — иначе карточки «догоняют» палец */
+.trip-stops--dragging .trip-stop {
+  transition: none;
+}
+
+.trip-stop {
+  border: 1px solid var(--adm-border);
+  border-left: 3px solid var(--adm-sand);
+  border-radius: 10px;
+  background: var(--adm-card);
+  transition: box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.trip-stop--delivery { border-left-color: var(--adm-pine); }
+.trip-stop--pickup  { border-left-color: #1d4ed8; }
+.trip-stop--handover { border-left-color: #6d28d9; }
+
+.trip-stop--dragging {
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  border-color: var(--adm-kraft);
+  opacity: 0.97;
+}
+
+.trip-stop__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+}
+
+/* Ручка = номер точки. touch-action: none — скролл по карточке живёт своей жизнью */
+.trip-stop__grip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  background: var(--adm-paper);
+  color: var(--adm-ink-soft);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: grab;
+  touch-action: none;
+}
+
+.trip-stop__grip:active { cursor: grabbing; }
+.trip-stop__grip:focus-visible { outline: 2px solid var(--adm-kraft); outline-offset: 2px; }
+.trip-stop__grip-num { font-size: 12.5px; }
+
+.trip-stop__head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.trip-stop__head-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.trip-stop__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.trip-stop__mark--delivery { background: var(--adm-pine); }
+.trip-stop__mark--pickup { background: #1d4ed8; }
+.trip-stop__mark--handover { background: #6d28d9; }
+
+.trip-stop__title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink-soft);
+  white-space: nowrap;
+}
+
+.trip-stop__customer {
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.trip-stop__time {
+  width: 96px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.trip-stop__time-static {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--adm-kraft);
+  white-space: nowrap;
+}
+
+.trip-stop__spacer { flex: 1 1 auto; }
+
+.trip-stop__qty {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--adm-kraft);
+  white-space: nowrap;
+}
+
+.trip-stop__moves {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.trip-stop__remove { color: var(--adm-rust); }
+
+.trip-stop__summary {
+  display: flex;
+  gap: 4px 10px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--adm-ink-soft);
+}
+
+.trip-stop__addr { font-weight: 600; overflow-wrap: anywhere; }
+.trip-stop__phone { color: var(--adm-steel); font-weight: 700; white-space: nowrap; }
+.trip-stop__contact { color: var(--adm-sand); }
+
+.trip-stop__cargo {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--adm-sand);
+  overflow-wrap: anywhere;
+}
+
+.trip-stop__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border-top: 1px dashed var(--adm-border);
+  border-radius: 0 0 10px 10px;
+  background: var(--adm-paper);
+}
+
+.trip-stop__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.trip-stop__row-label,
+.trip-stop__cargo-head .trip-stop__row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--adm-sand);
+}
+
+.trip-stop__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
+.trip-stop__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trip-stop__field--wide { grid-column: 1 / -1; }
+
+.trip-stop__field-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--adm-sand);
+}
+
+.trip-stop__deal-info {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  font-size: 11.5px;
+  color: var(--adm-ink-soft);
+}
+
+.trip-stop__deal-hint {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.trip-stop__cargo-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--adm-border);
+}
+
+.trip-stop__cargo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trip-stop__cargo-head-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.trip-stop__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trip-stop__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  gap: 8px;
+  align-items: center;
+}
+
+.trip-stop__line-name { font-size: 12px; overflow-wrap: anywhere; }
+.trip-stop__line-ordered { font-size: 11px; color: var(--adm-sand); }
+.trip-stop__line-qty { display: flex; align-items: center; gap: 4px; }
+.trip-stop__line-qty-static { text-align: right; font-weight: 800; }
+.trip-stop__nolines { font-size: 11.5px; color: var(--adm-rust); }
+
+.trip-type-picker {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.trip-type-picker__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  background: var(--adm-card);
+  color: var(--adm-ink-soft);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trip-type-picker--compact .trip-type-picker__btn {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.trip-type-picker__btn--delivery.trip-type-picker__btn--on { background: var(--adm-pine); border-color: var(--adm-pine); color: #fff; }
+.trip-type-picker__btn--pickup.trip-type-picker__btn--on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+.trip-type-picker__btn--handover.trip-type-picker__btn--on { background: #6d28d9; border-color: #6d28d9; color: #fff; }
+
+.trip-stops-block__totals {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--adm-ink-soft);
+}
+
+.trip-stops-block__totals-hint {
+  margin-left: auto;
+  color: var(--adm-sand);
+  font-size: 11px;
+}
+
+/* Модалка сборки перевозки */
+.transport-builder__tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.transport-builder__hint {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--adm-sand);
+}
+
+.transport-builder__stops {
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.transport-builder__footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.transport-builder__totals {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--adm-ink-soft);
+  white-space: nowrap;
+}
+
+.transport-card__stops { margin-bottom: 10px; }
+
+@media (max-width: 600px) {
+  .trip-stop__main {
+    align-items: flex-start;
+    padding: 8px 6px;
+  }
+
+  .trip-stop__head-top { gap: 6px; }
+
+  .trip-stop__time {
+    width: 84px;
+  }
+
+  .trip-stop__qty { margin-left: auto; }
+
+  .trip-stop__fields,
+  .trip-stop__deal-info { grid-template-columns: minmax(0, 1fr); }
+
+  .trip-stop__line { grid-template-columns: minmax(0, 1fr) 84px; }
+
+  .trip-stop__body { padding: 10px; }
+
+  .trip-type-picker { width: 100%; }
+
+  .trip-type-picker__btn {
+    flex: 1 1 30%;
+    justify-content: center;
+    min-height: 34px;
+  }
+
+  .transport-builder__stops {
+    max-height: none;
+    padding-right: 0;
+  }
+
+  .transport-builder__totals {
+    margin-left: 0;
+    width: 100%;
   }
 }

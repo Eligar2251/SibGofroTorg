@@ -491,6 +491,7 @@ const TONE_CLASS: Record<OrderStatusTone | "muted", string> = {
   amber: "toneAmber",
   blue: "toneBlue",
   indigo: "toneIndigo",
+  sky: "toneSky",
   teal: "toneTeal",
   green: "toneGreen",
   red: "toneRed",

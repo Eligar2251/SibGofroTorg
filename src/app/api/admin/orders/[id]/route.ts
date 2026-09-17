@@ -1,6 +1,6 @@
 // src/app/api/admin/orders/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { updateOrderStatus, deleteOrder } from "@/lib/supabase-queries";
+import { updateOrderStatus, updateOrderDelivery, deleteOrder } from "@/lib/supabase-queries";
 import { convertOrderToDeal, returnOrderFromWork } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
 import { logAdminAction } from "@/lib/activity-log";
@@ -15,7 +15,9 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const ALLOWED_STATUSES = ["new", "in_progress", "ready", "completed", "rejected"];
+    // Статусы, которые менеджер может выставить вручную. «Передано в доставку» —
+    // отдельный статус (груз у водителя), «выдан» — только через кнопку выдачи.
+    const ALLOWED_STATUSES = ["new", "in_progress", "ready", "in_delivery", "completed", "rejected"];
     if (!body.status || !ALLOWED_STATUSES.includes(body.status)) {
       return NextResponse.json(
         { error: "Недопустимый статус заявки" },
@@ -91,6 +93,29 @@ export async function PATCH(
     }
 
     await updateOrderStatus(id, body.status, body.closeReason ?? null);
+
+    // «Передано в доставку» у заявки с доставкой = тот же «выпущен в доставку»,
+    // что и в карточке доставки: ставим дату выпуска, чтобы вкладки не
+    // расходились. Возврат в работу/готовность — дату снимаем.
+    if (body.status === "in_delivery" || oldStatus === "in_delivery") {
+      try {
+        const { data: current } = await db
+          .from("orders")
+          .select("has_delivery, delivery_released_at")
+          .eq("id", id)
+          .maybeSingle();
+        if (current?.has_delivery) {
+          if (body.status === "in_delivery" && !current.delivery_released_at) {
+            await updateOrderDelivery(id, { deliveryReleasedAt: new Date().toISOString() });
+          } else if (oldStatus === "in_delivery" && current.delivery_released_at) {
+            await updateOrderDelivery(id, { clearRelease: true });
+          }
+        }
+      } catch (e) {
+        // Статус уже сохранён — дата выпуска в доставке не должна отменять действие.
+        console.error("Не удалось синхронизировать дату выпуска в доставке:", e);
+      }
+    }
 
     await logAdminAction(
       auth.displayName, auth.role, "status_change", "order", id,

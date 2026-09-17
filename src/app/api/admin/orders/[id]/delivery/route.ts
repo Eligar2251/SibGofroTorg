@@ -1,6 +1,6 @@
 // src/app/api/admin/orders/[id]/delivery/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { updateOrderDelivery, getOrderById } from "@/lib/supabase-queries";
+import { updateOrderDelivery, updateOrderStatus, getOrderById } from "@/lib/supabase-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -97,11 +97,30 @@ export async function PATCH(
       const order = await updateOrderDelivery(id, {
         deliveryReleasedAt: new Date().toISOString(),
       });
+      // Товар у водителя — статус заявки идёт в ногу с вкладкой «Доставки»:
+      // «Передано в доставку». Закрытые, отменённые и «выданные» не трогаем:
+      // их финал решает учёт, а не отметка о выпуске.
+      if (["new", "in_progress", "ready"].includes(String(existing.status))) {
+        try {
+          await updateOrderStatus(id, "in_delivery");
+        } catch (e) {
+          console.error("Не удалось отметить «Передано в доставку»:", e);
+        }
+      }
       return NextResponse.json({ success: true, order });
     }
 
     if (action === "unrelease") {
       const order = await updateOrderDelivery(id, { clearRelease: true });
+      // Отменили выпуск — груз вернулся на склад: заявка снова «Готова к
+      // выдаче» (тот же шаг, что и кнопка «Вернуть из доставки» в заявках).
+      if (existing.status === "in_delivery") {
+        try {
+          await updateOrderStatus(id, "ready");
+        } catch (e) {
+          console.error("Не удалось вернуть заявке статус «Готов к выдаче»:", e);
+        }
+      }
       return NextResponse.json({ success: true, order });
     }
 

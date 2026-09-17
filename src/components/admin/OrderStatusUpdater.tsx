@@ -6,40 +6,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle, Clock, XCircle, Loader2, Send, RotateCcw, PackageCheck } from "lucide-react";
+import { CheckCircle, Clock, XCircle, Loader2, Send, RotateCcw, PackageCheck, Truck } from "lucide-react";
+import { adminStatusBadge, adminStatusLabel } from "@/lib/order-status";
 
-const STATUSES = [
-  {
-    value: "new",
-    label: "Новая",
-    badge: "admin-badge admin-badge--amber",
-    icon: <Clock size={13} />,
-  },
-  {
-    value: "in_progress",
-    label: "В работе",
-    badge: "admin-badge admin-badge--blue",
-    icon: <Clock size={13} />,
-  },
-  {
-    value: "ready",
-    label: "Готов к выдаче",
-    badge: "admin-badge admin-badge--indigo",
-    icon: <PackageCheck size={13} />,
-  },
-  {
-    value: "completed",
-    label: "Проведена",
-    badge: "admin-badge admin-badge--green",
-    icon: <CheckCircle size={13} />,
-  },
-  {
-    value: "rejected",
-    label: "Отменена",
-    badge: "admin-badge admin-badge--red",
-    icon: <XCircle size={13} />,
-  },
-];
+// Подпись и цвет берём из общего справочника статусов (src/lib/order-status.ts),
+// чтобы менеджер никогда не видел названия, отличного от того, что видит
+// клиент в кабинете. Здесь только иконки.
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  new: <Clock size={13} />,
+  in_progress: <Clock size={13} />,
+  ready: <PackageCheck size={13} />,
+  in_delivery: <Truck size={13} />,
+  issued: <PackageCheck size={13} />,
+  completed: <CheckCircle size={13} />,
+  rejected: <XCircle size={13} />,
+};
 
 export function OrderStatusUpdater({
   orderId,
@@ -64,8 +45,11 @@ export function OrderStatusUpdater({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const currentStatusObj =
-    STATUSES.find((s) => s.value === currentStatus) ?? STATUSES[0];
+  const currentStatusObj = {
+    label: adminStatusLabel(currentStatus),
+    badge: adminStatusBadge(currentStatus),
+    icon: STATUS_ICONS[String(currentStatus)] ?? <Clock size={13} />,
+  };
 
   async function updateStatus(
     newStatus: string,
@@ -151,7 +135,9 @@ export function OrderStatusUpdater({
         </div>
       )}
 
-      {(currentStatus === "in_progress" || currentStatus === "ready") && (
+      {(currentStatus === "in_progress" ||
+        currentStatus === "ready" ||
+        currentStatus === "in_delivery") && (
         <div className="admin-status__btns">
           {/* «Готов к выдаче» — только для заявок сайта (у макулатуры свой
               процесс): заказ собран, клиент в кабинете видит тот же статус.
@@ -172,6 +158,25 @@ export function OrderStatusUpdater({
               Готов к выдаче
             </button>
           )}
+          {/* «Передано в доставку» — отдельный статус: груз у водителя и едет
+              клиенту. Для заявки с доставкой одновременно проставляется дата
+              выпуска в карточке доставки (см. api/admin/orders/[id]). */}
+          {!endpoint && currentStatus !== "in_delivery" && (
+            <button
+              type="button"
+              onClick={() => updateStatus("in_delivery")}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--primary"
+              title="Груз передан водителю — у клиента в кабинете появится «Передано в доставку»"
+            >
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Truck size={14} />
+              )}
+              Передано в доставку
+            </button>
+          )}
           {/* Заявка не передана в учёт (уточнение цены, макулатура) —
               менеджер закрывает её прямо здесь. Заявке со связью ЗК
               статус «Проведена» придёт автоматически из учёта. */}
@@ -189,6 +194,18 @@ export function OrderStatusUpdater({
                 <CheckCircle size={14} />
               )}
               Проведена
+            </button>
+          )}
+          {!endpoint && currentStatus === "in_delivery" && (
+            <button
+              type="button"
+              onClick={() => updateStatus("ready")}
+              disabled={saving}
+              className="admin-status__btn admin-status__btn--outline"
+              title="Груз вернулся на склад — заявка снова «Готова к выдаче», дата выпуска в доставке снимается"
+            >
+              <RotateCcw size={14} />
+              Вернуть из доставки
             </button>
           )}
           {!endpoint && currentStatus === "ready" && (

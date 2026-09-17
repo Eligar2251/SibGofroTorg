@@ -175,6 +175,7 @@ export default async function AdminDashboard() {
     inProgressAgg,
     inProgressWastepaperAgg,
     readyAgg,
+    inDeliveryAgg,
     completedAgg,
     completedWastepaperAgg,
     rejectedAgg,
@@ -196,6 +197,7 @@ export default async function AdminDashboard() {
     safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("orders", "in_progress"), 0),
     safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "in_progress"), 0),
     safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("orders", "ready"), 0),
+    safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("orders", "in_delivery"), 0),
     safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("orders", "completed"), 0),
     safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "completed"), 0),
     safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("orders", "rejected"), 0),
@@ -222,12 +224,14 @@ export default async function AdminDashboard() {
   const newOrdersCount = newOrdersAgg + newWastepaperAgg;
   const inProgressOrdersCount = inProgressAgg + inProgressWastepaperAgg;
   const readyOrdersCount = readyAgg;
+  const inDeliveryOrdersCount = inDeliveryAgg;
   const completedOrdersCount = completedAgg + completedWastepaperAgg;
   const rejectedOrdersCount = rejectedAgg + rejectedWastepaperAgg;
   const totalOrdersCount =
     newOrdersCount +
     inProgressOrdersCount +
     readyOrdersCount +
+    inDeliveryOrdersCount +
     completedOrdersCount +
     rejectedOrdersCount;
   const bankSummary = getBankSummary(
@@ -930,6 +934,7 @@ export default async function AdminDashboard() {
                   { label: "Новые", count: newOrdersCount, color: "var(--adm-kraft)", bg: "var(--adm-kraft-pale)", line: "var(--adm-kraft-line)", status: "new", icon: <Clock size={14} /> },
                   { label: "В работе", count: inProgressOrdersCount, color: "var(--adm-steel)", bg: "var(--adm-steel-pale)", line: "var(--adm-steel-line)", status: "in_progress", icon: <TrendingUp size={14} /> },
                   { label: "Готов", count: readyOrdersCount, color: "var(--adm-indigo)", bg: "var(--adm-indigo-pale)", line: "var(--adm-indigo-line)", status: "ready", icon: <Package size={14} /> },
+                  { label: "В доставке", count: inDeliveryOrdersCount, color: "var(--adm-sky)", bg: "var(--adm-sky-pale)", line: "var(--adm-sky-line)", status: "in_delivery", icon: <Truck size={14} /> },
                   { label: "Выполнены", count: completedOrdersCount, color: "var(--adm-pine)", bg: "var(--adm-pine-pale)", line: "var(--adm-pine-line)", status: "completed", icon: <CheckCircle size={14} /> },
                   { label: "Отменены", count: rejectedOrdersCount, color: "var(--adm-rust)", bg: "var(--adm-rust-pale)", line: "var(--adm-rust-line)", status: "rejected", icon: <XCircle size={14} /> },
                 ].map((s) => (

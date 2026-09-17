@@ -191,7 +191,9 @@ CREATE TABLE IF NOT EXISTS orders (
   quantity INT,
   comment TEXT,
   channel TEXT DEFAULT 'website',
-  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'ready', 'completed', 'rejected')),
+  -- набор статусов единый для сайта и админки (src/lib/order-status.ts):
+  -- in_delivery = «Передано в доставку», issued = «Выдан» (код выдачи на складе)
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'ready', 'in_delivery', 'issued', 'completed', 'rejected')),
   close_reason TEXT,
   deal_id UUID,        -- логическая связь с customer_deals.id
   deal_number INT,

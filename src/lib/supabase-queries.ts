@@ -1473,7 +1473,7 @@ function mapOrderRow(row: any): FirestoreOrder {
 // конкретный статус или список через запятую — точный фильтр.
 function applyOrderStatusFilter(q: any, status?: string): any {
   if (!status || status === "all") return q;
-  if (status === "active") return q.in("status", ["new", "in_progress", "ready"]);
+  if (status === "active") return q.in("status", ["new", "in_progress", "ready", "in_delivery"]);
   if (status === "archived") return q.in("status", ["issued", "completed", "rejected"]);
   const parts = status.split(",").map((s) => s.trim()).filter(Boolean);
   if (parts.length === 0) return q;

@@ -338,7 +338,7 @@ export interface FirestoreOrder {
    * → completed (проведена/архив) либо rejected (отменена).
    * Статусы синхронизированы между сайтом и личным кабинетом клиента.
    */
-  status: "new" | "in_progress" | "ready" | "issued" | "completed" | "rejected";
+  status: "new" | "in_progress" | "ready" | "in_delivery" | "issued" | "completed" | "rejected";
   closeReason?: string | null;
   /** Короткий код выдачи заказа (для поиска на вкладке «Выдача товара») */
   pickupCode?: string | null;
