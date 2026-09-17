@@ -1,0 +1,49 @@
+#!/usr/bin/env node
+"use strict";
+// =========================================================
+// FILE: pnpm (шим в корне репозитория)
+//
+// ЗАЧЕМ: деплой в Timeweb Cloud Apps (автосборка, без Dockerfile).
+//
+// Автобилдер Timeweb генерирует собственный Dockerfile и включает
+// corepack/pnpm ТОЛЬКО в builder-слое. В runtime-слой (stage-1)
+// pnpm НЕ попадает — там есть только node. При этом автоопределённая
+// команда запуска для проекта с pnpm-lock.yaml — `pnpm start`, которую
+// платформа фактически исполняет как `node pnpm start` из /app.
+// Node не находит модуль и контейнер уходит в restart-loop:
+//
+//   Error: Cannot find module '/app/pnpm'
+//
+// РЕШЕНИЕ: этот файл-прокси лежит в корне репозитория и попадает
+// в /app при копировании сборки. Теперь `node pnpm start` исполняет
+// его, а он передаёт управление универсальной точке входа
+// scripts/start.mjs (next start либо standalone-сервер из .next).
+//
+// Локально и в CI файл не мешает: настоящая утилита pnpm вызывается
+// из PATH (corepack/npm), а не из корня проекта.
+// =========================================================
+
+const { spawn } = require("node:child_process");
+const path = require("node:path");
+
+const entry = path.join(__dirname, "scripts", "start.mjs");
+
+console.log("[pnpm-shim] Timeweb autobuild: exec -> node scripts/start.mjs");
+
+const child = spawn(process.execPath, [entry], {
+  cwd: __dirname,
+  stdio: "inherit",
+  env: process.env,
+});
+
+child.on("exit", (code, signal) => {
+  process.exit(signal ? 1 : code ?? 1);
+});
+
+child.on("error", (err) => {
+  console.error(
+    "[pnpm-shim] Не удалось запустить scripts/start.mjs:",
+    err?.message || err,
+  );
+  process.exit(1);
+});
