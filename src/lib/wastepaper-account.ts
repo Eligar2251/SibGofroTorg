@@ -21,6 +21,7 @@ import type {
   WpShipment,
   WpTransport,
   WpTransportItem,
+  WpProduct,
 } from "@/lib/wastepaper-account-shared";
 import {
   WP_TRANSPORT_STATUS_LABELS,
@@ -33,6 +34,35 @@ import {
 } from "@/lib/wastepaper-account-shared";
 
 export const WP_TAG = "wastepaper-account";
+
+function mapWpProduct(row: any): WpProduct {
+  return { id: row.id, name: String(row.name || ""), pricePerKg: Number(row.price_per_kg) || 0, isActive: row.is_active !== false, createdAt: toIso(row.created_at), updatedAt: toIso(row.updated_at) };
+}
+
+export async function getWpProducts(): Promise<WpProduct[]> {
+  const { data, error } = await getAdminDb().from("wp_products").select("*").order("name");
+  if (error) throw error;
+  return (data || []).map(mapWpProduct);
+}
+
+export async function upsertWpProduct(data: { id?: string; name: string; pricePerKg: number; isActive?: boolean }): Promise<WpProduct> {
+  const name = String(data.name || "").trim().slice(0, 200);
+  if (!name) throw new Error("Укажите вид макулатуры");
+  const payload = { name, price_per_kg: Math.max(0, Number(data.pricePerKg) || 0), is_active: data.isActive !== false, updated_at: new Date().toISOString() };
+  const db = getAdminDb();
+  const result = data.id
+    ? await db.from("wp_products").update(payload).eq("id", data.id).select("*").single()
+    : await db.from("wp_products").insert(payload).select("*").single();
+  if (result.error) throw result.error;
+  bumpWpCaches();
+  return mapWpProduct(result.data);
+}
+
+export async function deleteWpProduct(id: string): Promise<void> {
+  const { error } = await getAdminDb().from("wp_products").update({ is_active: false, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw error;
+  bumpWpCaches();
+}
 
 // ── Доступ к модулю ──────────────────────────────────────
 
@@ -399,6 +429,8 @@ function mapIntake(row: any): WpIntake {
     pricePerKg: first?.pricePerKg ?? (Number(row.price_per_kg) || 0),
     total: items.length ? totals.total : Number(row.total) || 0,
     account: (row.account === "bank" ? "bank" : "cash") as WpAccount,
+    cashAmount: Number(row.cash_amount) || (row.account === "cash" ? (Number(row.total) || 0) : 0),
+    bankAmount: Number(row.bank_amount) || (row.account === "bank" ? (Number(row.total) || 0) : 0),
     isPaid: Boolean(row.is_paid),
     paidAt: toIso(row.paid_at),
     transportId: row.transport_id || null,
@@ -437,6 +469,8 @@ export interface WpIntakeInput {
   weightKg?: number;
   pricePerKg?: number;
   account: WpAccount;
+  cashAmount?: number;
+  bankAmount?: number;
   isPaid?: boolean;
   paidAt?: string | null;
   transportId?: string | null;
@@ -485,6 +519,8 @@ function cleanIntakeInput(data: WpIntakeInput) {
     price_per_kg: first?.pricePerKg ?? 0,
     total: totals.total,
     account: data.account === "bank" ? "bank" : "cash",
+    cash_amount: Math.max(0, Number(data.cashAmount) || (data.account === "cash" ? totals.total : 0)),
+    bank_amount: Math.max(0, Number(data.bankAmount) || (data.account === "bank" ? totals.total : 0)),
     comment: String(data.comment || "").trim().slice(0, 500) || null,
   };
 }
@@ -958,11 +994,14 @@ export function normalizeTransportItems(raw: unknown): WpTransportItem[] {
     contactPerson: String(item?.contactPerson || "").slice(0, 200),
     approxTime: String(item?.approxTime || "").slice(0, 30),
     wastepaperType: String(item?.wastepaperType || "cardboard").slice(0, 120),
+    pricePerKg: Math.max(0, Number(item?.pricePerKg) || 0),
     plannedKg: Math.max(0, Number(item?.plannedKg) || 0),
     actualKg:
       item?.actualKg == null || item?.actualKg === ""
         ? null
         : Math.max(0, Number(item.actualKg) || 0),
+    cashAmount: Math.max(0, Number(item?.cashAmount) || 0),
+    bankAmount: Math.max(0, Number(item?.bankAmount) || 0),
     note: String(item?.note || "").slice(0, 500),
     status: ["done", "skipped"].includes(item?.status) ? item.status : "pending",
     intakeId: item?.intakeId ? String(item.intakeId) : null,
@@ -1202,8 +1241,10 @@ export async function createWpIntakesFromTransport(
         contactPerson: item.contactPerson || null,
         wastepaperType: item.wastepaperType,
         weightKg,
-        pricePerKg: rate ?? 0,
-        account: "cash",
+        pricePerKg: item.pricePerKg || rate || 0,
+        account: item.bankAmount > 0 && item.cashAmount <= 0 ? "bank" : "cash",
+        cashAmount: item.cashAmount,
+        bankAmount: item.bankAmount,
         isPaid: false,
         transportId,
         transportItemId: item.id,
@@ -1233,18 +1274,20 @@ export interface WpDashboardData {
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
   transports: WpTransport[];
+  products: WpProduct[];
 }
 
 export async function getWpDashboardData(): Promise<WpDashboardData> {
-  const [counterparties, intakes, shipments, manualPayments, transports] =
+  const [counterparties, intakes, shipments, manualPayments, transports, products] =
     await Promise.all([
       getWpCounterparties(),
       getWpIntakes(500),
       getWpShipments(300),
       getWpManualPayments(500),
       getWpTransports(200),
+      getWpProducts(),
     ]);
-  return { counterparties, intakes, shipments, manualPayments, transports };
+  return { counterparties, intakes, shipments, manualPayments, transports, products };
 }
 
 /** Облегчённая выборка для финансовой карточки на главном дашборде. */

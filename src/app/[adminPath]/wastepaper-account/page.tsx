@@ -55,6 +55,7 @@ export default async function WastepaperAccountPage({
       shipments: [],
       manualPayments: [],
       transports: [],
+      products: [],
     };
   }
   const rates = await getWastepaperRates().catch(() => null);
@@ -68,6 +69,7 @@ export default async function WastepaperAccountPage({
       shipments={data.shipments}
       manualPayments={data.manualPayments}
       transports={data.transports}
+      products={data.products}
       rates={rates}
     />
   );
