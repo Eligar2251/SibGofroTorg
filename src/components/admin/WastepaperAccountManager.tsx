@@ -3333,6 +3333,7 @@ interface CounterpartyFormPayload {
   branches: WpBranch[];
   inn: string | null;
   comment: string | null;
+  paymentDetails: string | null;
 }
 
 /** Точки из карточки: JSONB или одна точка из старых одиночных полей. */

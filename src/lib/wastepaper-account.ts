@@ -446,7 +446,6 @@ function mapIntake(row: any): WpIntake {
       : null,
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
-    paymentDetails: row.payment_details || null,
     createdBy: row.created_by || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -624,7 +623,6 @@ export async function updateWpIntake(
       ...merged,
       is_paid: isPaid,
       paid_at: isPaid ? existing.paid_at || new Date().toISOString() : null,
-      ...(data.bankPostedAt !== undefined ? { bank_posted_at: data.bankPostedAt } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -724,7 +722,6 @@ function mapShipment(row: any): WpShipment {
       : null,
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
-    paymentDetails: row.payment_details || null,
     createdBy: row.created_by || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -899,6 +896,7 @@ export async function updateWpShipment(
       ...merged,
       is_paid: isPaid,
       paid_at: isPaid ? existing.paid_at || new Date().toISOString() : null,
+      ...(data.bankPostedAt !== undefined ? { bank_posted_at: data.bankPostedAt } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -999,7 +997,6 @@ function mapManualPayment(row: any): WpManualPayment {
     isPaid: Boolean(row.is_paid),
     paidAt: toIso(row.paid_at),
     comment: row.comment || null,
-    paymentDetails: row.payment_details || null,
     createdBy: row.created_by || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
