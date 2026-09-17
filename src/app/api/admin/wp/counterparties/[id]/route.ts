@@ -26,6 +26,7 @@ export async function PATCH(
       phone: body.phone ?? null,
       address: body.address ?? null,
       contactPerson: body.contactPerson ?? null,
+      branches: Array.isArray(body.branches) ? body.branches : null,
       inn: body.inn ?? null,
       comment: body.comment ?? null,
     });

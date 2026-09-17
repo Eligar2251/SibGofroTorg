@@ -49,13 +49,43 @@ export const WP_TYPE_LABELS: Record<string, string> = Object.fromEntries(
 
 // ── Типы данных (сериализованные для клиента) ────────────
 
+/**
+ * Точка (филиал) контрагента. Одна фирма — например «Детский мир» —
+ * может иметь несколько адресов; у каждого адреса своё контактное
+ * лицо (ФИО) и свой телефон. Связка «адрес + ФИО + телефон» и есть точка.
+ */
+export interface WpBranch {
+  /** Стабильный id точки (для React-ключей и сопоставления). */
+  id: string;
+  /** Необязательная метка: «Филиал №1», «Центральный», «Склад». */
+  label: string;
+  address: string;
+  /** ФИО контактного лица этого адреса. */
+  contactPerson: string;
+  /** Телефон, привязанный к адресу/контактному лицу. */
+  phone: string;
+}
+
+/** Позиция табличной части документа (приём/сдача): вид + вес + цена. */
+export interface WpDocItem {
+  id: string;
+  wastepaperType: string;
+  weightKg: number;
+  pricePerKg: number;
+  /** weightKg * pricePerKg (округлённо до копеек). */
+  total: number;
+}
+
 export interface WpCounterparty {
   id: string;
   name: string;
   roles: string[];
+  /** Зеркало первой точки — для совместимости и быстрых подписей. */
   phone: string | null;
   address: string | null;
   contactPerson: string | null;
+  /** Точки/филиалы: адрес + ФИО + телефон. */
+  branches: WpBranch[];
   inn: string | null;
   comment: string | null;
   createdBy: string | null;
@@ -70,6 +100,12 @@ export interface WpIntake {
   counterpartyId: string | null;
   counterpartyName: string;
   address: string | null;
+  /** Телефон и контактное лицо точки — подставляются в путевой лист. */
+  phone: string | null;
+  contactPerson: string | null;
+  /** Позиции документа (макулатура разных профилей). */
+  items: WpDocItem[];
+  /** Агрегат первой/единственной позиции — для списков и совместимости. */
   wastepaperType: string;
   weightKg: number;
   pricePerKg: number;
@@ -92,6 +128,14 @@ export interface WpShipment {
   date: string;
   enterpriseId: string | null;
   enterpriseName: string;
+  /** Куда везём (точка/филиал предприятия). */
+  address: string | null;
+  /** Телефон и контактное лицо точки — подставляются в путевой лист. */
+  phone: string | null;
+  contactPerson: string | null;
+  /** Позиции документа (макулатура разных профилей). */
+  items: WpDocItem[];
+  /** Агрегат первой/единственной позиции — для списков и совместимости. */
   wastepaperType: string;
   weightKg: number;
   pricePerKg: number;
@@ -129,6 +173,9 @@ export interface WpTransportItem {
   counterpartyId: string | null;
   counterpartyName: string;
   address: string;
+  /** Телефон и контактное лицо точки — подставляются в путевой лист. */
+  phone: string;
+  contactPerson: string;
   /** Примерное время заезда (HH:MM или «~14:00»). */
   approxTime: string;
   wastepaperType: string;
@@ -156,6 +203,107 @@ export interface WpTransport {
   createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+// ── Нормализация точек и позиций документа ───────────────
+
+function round2kg(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function round2money(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Приводит произвольный JSONB к списку точек контрагента. */
+export function normalizeWpBranches(raw: unknown): WpBranch[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((b: any, idx: number) => ({
+      id: String(b?.id || `br-${idx + 1}`),
+      label: String(b?.label || "").slice(0, 120),
+      address: String(b?.address || "").slice(0, 400),
+      contactPerson: String(b?.contactPerson || "").slice(0, 200),
+      phone: String(b?.phone || "").slice(0, 60),
+    }))
+    .filter((b) => b.address || b.phone || b.contactPerson);
+}
+
+/** Приводит произвольный JSONB к позициям документа (приём/сдача). */
+export function normalizeWpDocItems(raw: unknown): WpDocItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((it: any, idx: number) => {
+      const weightKg = Math.max(0, Number(it?.weightKg) || 0);
+      const pricePerKg = Math.max(0, Number(it?.pricePerKg) || 0);
+      return {
+        id: String(it?.id || `it-${idx + 1}`),
+        wastepaperType: String(it?.wastepaperType || "cardboard").slice(0, 120),
+        weightKg,
+        pricePerKg,
+        total: round2money(weightKg * pricePerKg),
+      };
+    })
+    .filter((it) => it.weightKg > 0 || it.pricePerKg > 0);
+}
+
+/** Итоги документа по позициям: суммарный вес и сумма. */
+export function wpDocTotals(items: WpDocItem[]): { weightKg: number; total: number } {
+  let weightKg = 0;
+  let total = 0;
+  for (const it of items) {
+    weightKg += Number(it.weightKg) || 0;
+    total += Number(it.total) || 0;
+  }
+  return { weightKg: round2kg(weightKg), total: round2money(total) };
+}
+
+/** Краткая подпись позиций: «Гофрокартон 500 кг; Белая бумага 120 кг». */
+export function wpItemsSummary(items: WpDocItem[], labels: Record<string, string>): string {
+  return items
+    .map((it) => `${wpTypeLabel(it.wastepaperType, labels)} · ${fmtKg(it.weightKg)}`)
+    .join("; ");
+}
+
+/**
+ * Найти точку контрагента по адресу (нечувствительно к регистру/пробелам).
+ * Используется, чтобы не дублировать филиалы при автосохранении.
+ */
+export function findWpBranchByAddress(
+  branches: WpBranch[],
+  address: string
+): WpBranch | null {
+  const key = String(address || "").trim().toLowerCase();
+  if (!key) return null;
+  return branches.find((b) => b.address.trim().toLowerCase() === key) || null;
+}
+
+/**
+ * Точное совпадение точки: сначала по адресу+телефону+контакту (чтобы
+ * различать несколько контактов на одном адресе), иначе — по адресу.
+ */
+export function findWpBranchMatch(
+  branches: WpBranch[],
+  address: string,
+  phone?: string,
+  contactPerson?: string
+): WpBranch | null {
+  const a = String(address || "").trim().toLowerCase();
+  if (!a) return null;
+  const p = String(phone || "").trim().toLowerCase();
+  const c = String(contactPerson || "").trim().toLowerCase();
+  const exact = branches.find(
+    (b) =>
+      b.address.trim().toLowerCase() === a &&
+      b.phone.trim().toLowerCase() === p &&
+      b.contactPerson.trim().toLowerCase() === c
+  );
+  return exact || findWpBranchByAddress(branches, address);
+}
+
+/** Новый id точки/позиции. */
+export function wpUid(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 // ── Денежные события (единая лента для финансов) ─────────
@@ -406,13 +554,29 @@ export interface WpStockRow {
 export function getWpStock(intakes: WpIntake[], shipments: WpShipment[]): WpStockRow[] {
   const intakeMap = new Map<string, number>();
   const shipmentMap = new Map<string, number>();
+  // Учитываем позиции документа; если позиций нет (старые записи) —
+  // берём одиночные вид/вес.
+  const accumulate = (
+    map: Map<string, number>,
+    items: WpDocItem[],
+    fallbackType: string,
+    fallbackKg: number
+  ) => {
+    if (items && items.length > 0) {
+      for (const it of items) {
+        map.set(it.wastepaperType, (map.get(it.wastepaperType) || 0) + (Number(it.weightKg) || 0));
+      }
+    } else if (fallbackKg > 0) {
+      map.set(fallbackType, (map.get(fallbackType) || 0) + fallbackKg);
+    }
+  };
   for (const i of intakes) {
     if (i.status !== "active") continue;
-    intakeMap.set(i.wastepaperType, (intakeMap.get(i.wastepaperType) || 0) + i.weightKg);
+    accumulate(intakeMap, i.items, i.wastepaperType, i.weightKg);
   }
   for (const s of shipments) {
     if (s.status !== "active") continue;
-    shipmentMap.set(s.wastepaperType, (shipmentMap.get(s.wastepaperType) || 0) + s.weightKg);
+    accumulate(shipmentMap, s.items, s.wastepaperType, s.weightKg);
   }
   const types = new Set([...intakeMap.keys(), ...shipmentMap.keys()]);
   return [...types]

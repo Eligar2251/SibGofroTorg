@@ -13,7 +13,9 @@ import { requireAdminApi, type AdminSession } from "@/lib/auth";
 import { getWastepaperRates } from "@/lib/supabase-queries";
 import type {
   WpAccount,
+  WpBranch,
   WpCounterparty,
+  WpDocItem,
   WpIntake,
   WpManualPayment,
   WpShipment,
@@ -22,6 +24,11 @@ import type {
 } from "@/lib/wastepaper-account-shared";
 import {
   WP_TRANSPORT_STATUS_LABELS,
+  findWpBranchByAddress,
+  normalizeWpBranches,
+  normalizeWpDocItems,
+  wpDocTotals,
+  wpUid,
   type WpTransportStatus,
 } from "@/lib/wastepaper-account-shared";
 
@@ -75,14 +82,32 @@ function bumpWpCaches() {
 
 // ── Контрагенты ──────────────────────────────────────────
 
+/**
+ * Точки контрагента: из JSONB branches; если их нет, но заполнены
+ * старые одиночные адрес/телефон/контакт — синтезируем одну точку,
+ * чтобы существующие записи не потеряли данные.
+ */
+function branchesFromRow(row: any): WpBranch[] {
+  const parsed = normalizeWpBranches(row?.branches);
+  if (parsed.length > 0) return parsed;
+  const address = String(row?.address || "").trim();
+  const phone = String(row?.phone || "").trim();
+  const contactPerson = String(row?.contact_person || "").trim();
+  if (!address && !phone && !contactPerson) return [];
+  return [{ id: "br-legacy", label: "", address, contactPerson, phone }];
+}
+
 function mapCounterparty(row: any): WpCounterparty {
+  const branches = branchesFromRow(row);
+  const first = branches[0] || null;
   return {
     id: row.id,
     name: row.name || "",
     roles: Array.isArray(row.roles) ? row.roles.map(String) : [],
-    phone: row.phone || null,
-    address: row.address || null,
-    contactPerson: row.contact_person || null,
+    phone: first?.phone || row.phone || null,
+    address: first?.address || row.address || null,
+    contactPerson: first?.contactPerson || row.contact_person || null,
+    branches,
     inn: row.inn || null,
     comment: row.comment || null,
     createdBy: row.created_by || null,
@@ -102,15 +127,73 @@ export async function getWpCounterparties(): Promise<WpCounterparty[]> {
   return (data || []).map(mapCounterparty);
 }
 
+/** Нормализует точку из произвольного входа формы. */
+function cleanBranch(raw: Partial<WpBranch> | null | undefined): WpBranch | null {
+  if (!raw) return null;
+  const address = String(raw.address || "").trim().slice(0, 400);
+  const phone = String(raw.phone || "").trim().slice(0, 60);
+  const contactPerson = String(raw.contactPerson || "").trim().slice(0, 200);
+  const label = String(raw.label || "").trim().slice(0, 120);
+  if (!address && !phone && !contactPerson) return null;
+  return { id: String(raw.id || wpUid("br")), label, address, contactPerson, phone };
+}
+
+function cleanBranches(raw: unknown): WpBranch[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: WpBranch[] = [];
+  for (const b of raw) {
+    const branch = cleanBranch(b as Partial<WpBranch>);
+    if (!branch) continue;
+    // Убираем только полные дубли (адрес+телефон+контакт). Один адрес может
+    // иметь несколько разных контактов — их сохраняем.
+    const key = `${branch.address.trim().toLowerCase()}|${branch.phone
+      .trim()
+      .toLowerCase()}|${branch.contactPerson.trim().toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(branch);
+  }
+  return out;
+}
+
+/**
+ * Поля контрагента для записи: список точек + «зеркало» первой точки
+ * в одиночные колонки phone/address/contact_person (для совместимости
+ * и быстрых подписей в списках).
+ */
+function counterpartyBranchPayload(branches: WpBranch[]) {
+  const first = branches[0] || null;
+  return {
+    branches,
+    phone: first?.phone || null,
+    address: first?.address || null,
+    contact_person: first?.contactPerson || null,
+  };
+}
+
 /** Найти контрагента по имени или создать нового (роль дополняется). */
 export async function ensureWpCounterparty(
   name: string,
   role: "supplier" | "enterprise",
-  extra: { phone?: string; address?: string } = {}
+  extra: {
+    phone?: string;
+    address?: string;
+    contactPerson?: string;
+    label?: string;
+    branches?: WpBranch[];
+  } = {}
 ): Promise<WpCounterparty> {
   const db = getAdminDb();
   const clean = String(name || "").trim().slice(0, 200);
   if (!clean) throw new Error("Укажите контрагента");
+  // Точка из одиночных полей extra (если заданы).
+  const extraBranch = cleanBranch({
+    address: extra.address,
+    phone: extra.phone,
+    contactPerson: extra.contactPerson,
+    label: extra.label,
+  });
   const { data: found } = await db
     .from("wp_counterparties")
     .select("*")
@@ -119,39 +202,91 @@ export async function ensureWpCounterparty(
     .maybeSingle();
   if (found) {
     const roles = new Set<string>(Array.isArray(found.roles) ? found.roles.map(String) : []);
-    const patch: Record<string, any> = { updated_at: new Date().toISOString() };
-    let changed = false;
+    let branches = branchesFromRow(found);
+    if (Array.isArray(extra.branches) && extra.branches.length > 0) {
+      branches = cleanBranches(extra.branches);
+    } else if (extraBranch && !findWpBranchByAddress(branches, extraBranch.address)) {
+      branches = [...branches, extraBranch];
+    }
+    const patch: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+      ...counterpartyBranchPayload(branches),
+    };
     if (!roles.has(role)) {
       roles.add(role);
       patch.roles = [...roles];
-      changed = true;
     }
-    if (extra.address && !found.address) {
-      patch.address = String(extra.address).slice(0, 400);
-      changed = true;
-    }
-    if (extra.phone && !found.phone) {
-      patch.phone = String(extra.phone).slice(0, 60);
-      changed = true;
-    }
-    if (changed) {
-      await db.from("wp_counterparties").update(patch).eq("id", found.id);
-    }
+    await db.from("wp_counterparties").update(patch).eq("id", found.id);
     return mapCounterparty({ ...found, ...patch });
   }
+  const branches = Array.isArray(extra.branches) && extra.branches.length > 0
+    ? cleanBranches(extra.branches)
+    : extraBranch
+      ? [extraBranch]
+      : [];
   const { data, error } = await db
     .from("wp_counterparties")
     .insert({
       name: clean,
       roles: [role],
-      phone: extra.phone ? String(extra.phone).slice(0, 60) : null,
-      address: extra.address ? String(extra.address).slice(0, 400) : null,
+      ...counterpartyBranchPayload(branches),
     })
     .select("*")
     .single();
   if (error) throw error;
   bumpWpCaches();
   return mapCounterparty(data);
+}
+
+/**
+ * Добавить точку (филиал) контрагенту, если такого адреса ещё нет.
+ * Используется при автосохранении нового адреса прямо из документа
+ * (приём/сдача/остановка перевозки). Возвращает обновлённые точки.
+ */
+export async function ensureWpBranch(
+  counterpartyId: string | null | undefined,
+  branch: Partial<WpBranch> | null | undefined
+): Promise<WpBranch[]> {
+  if (!counterpartyId) return [];
+  const clean = cleanBranch(branch);
+  if (!clean || !clean.address) return [];
+  const db = getAdminDb();
+  const { data: found, error } = await db
+    .from("wp_counterparties")
+    .select("*")
+    .eq("id", counterpartyId)
+    .maybeSingle();
+  if (error || !found) return [];
+  const branches = branchesFromRow(found);
+  const existing = findWpBranchByAddress(branches, clean.address);
+  if (existing) {
+    // Адрес уже есть — при необходимости дополняем телефон/контакт.
+    let changed = false;
+    const merged = { ...existing };
+    if (clean.phone && !merged.phone) {
+      merged.phone = clean.phone;
+      changed = true;
+    }
+    if (clean.contactPerson && !merged.contactPerson) {
+      merged.contactPerson = clean.contactPerson;
+      changed = true;
+    }
+    if (!changed) return branches;
+    const next = branches.map((b) => (b.id === merged.id ? merged : b));
+    await db
+      .from("wp_counterparties")
+      .update({ ...counterpartyBranchPayload(next), updated_at: new Date().toISOString() })
+      .eq("id", counterpartyId);
+    bumpWpCaches();
+    return next;
+  }
+  const next = [...branches, clean];
+  await db
+    .from("wp_counterparties")
+    .update({ ...counterpartyBranchPayload(next), updated_at: new Date().toISOString() })
+    .eq("id", counterpartyId);
+  bumpWpCaches();
+  return next;
 }
 
 export async function upsertWpCounterparty(data: {
@@ -161,6 +296,7 @@ export async function upsertWpCounterparty(data: {
   phone?: string | null;
   address?: string | null;
   contactPerson?: string | null;
+  branches?: WpBranch[] | null;
   inn?: string | null;
   comment?: string | null;
   createdBy?: string | null;
@@ -172,12 +308,23 @@ export async function upsertWpCounterparty(data: {
     (data.roles || []).includes(r) ? [r] : []
   );
   if (roles.length === 0) throw new Error("Укажите роль контрагента: сдаёт нам и/или принимает у нас");
+  // Точки: если прислали список — берём его; иначе собираем одну из
+  // одиночных полей (совместимость со старой формой).
+  const branches = Array.isArray(data.branches)
+    ? cleanBranches(data.branches)
+    : cleanBranches([
+        {
+          id: "br-legacy",
+          label: "",
+          address: data.address,
+          contactPerson: data.contactPerson,
+          phone: data.phone,
+        },
+      ]);
   const payload = {
     name,
     roles,
-    phone: String(data.phone || "").trim().slice(0, 60) || null,
-    address: String(data.address || "").trim().slice(0, 400) || null,
-    contact_person: String(data.contactPerson || "").trim().slice(0, 200) || null,
+    ...counterpartyBranchPayload(branches),
     inn: String(data.inn || "").trim().slice(0, 20) || null,
     comment: String(data.comment || "").trim().slice(0, 500) || null,
     updated_at: new Date().toISOString(),
@@ -212,7 +359,31 @@ export async function deleteWpCounterparty(id: string): Promise<void> {
 
 // ── Приём макулатуры ─────────────────────────────────────
 
+/**
+ * Позиции документа: из JSONB items; если их нет (старые записи) —
+ * собираем одну позицию из одиночных вид/вес/цена.
+ */
+function docItemsFromRow(row: any): WpDocItem[] {
+  const parsed = normalizeWpDocItems(row?.items);
+  if (parsed.length > 0) return parsed;
+  const weightKg = Number(row?.weight_kg) || 0;
+  const pricePerKg = Number(row?.price_per_kg) || 0;
+  if (weightKg <= 0 && pricePerKg <= 0) return [];
+  return [
+    {
+      id: "it-legacy",
+      wastepaperType: row?.wastepaper_type || "cardboard",
+      weightKg,
+      pricePerKg,
+      total: Number(row?.total) || Math.round(weightKg * pricePerKg * 100) / 100,
+    },
+  ];
+}
+
 function mapIntake(row: any): WpIntake {
+  const items = docItemsFromRow(row);
+  const totals = wpDocTotals(items);
+  const first = items[0] || null;
   return {
     id: row.id,
     number: Number(row.number) || 0,
@@ -220,10 +391,13 @@ function mapIntake(row: any): WpIntake {
     counterpartyId: row.counterparty_id || null,
     counterpartyName: row.counterparty_name || "",
     address: row.address || null,
-    wastepaperType: row.wastepaper_type || "cardboard",
-    weightKg: Number(row.weight_kg) || 0,
-    pricePerKg: Number(row.price_per_kg) || 0,
-    total: Number(row.total) || 0,
+    phone: row.phone || null,
+    contactPerson: row.contact_person || null,
+    items,
+    wastepaperType: first?.wastepaperType || row.wastepaper_type || "cardboard",
+    weightKg: items.length ? totals.weightKg : Number(row.weight_kg) || 0,
+    pricePerKg: first?.pricePerKg ?? (Number(row.price_per_kg) || 0),
+    total: items.length ? totals.total : Number(row.total) || 0,
     account: (row.account === "bank" ? "bank" : "cash") as WpAccount,
     isPaid: Boolean(row.is_paid),
     paidAt: toIso(row.paid_at),
@@ -254,9 +428,14 @@ export interface WpIntakeInput {
   counterpartyId?: string | null;
   counterpartyName: string;
   address?: string | null;
-  wastepaperType: string;
-  weightKg: number;
-  pricePerKg: number;
+  phone?: string | null;
+  contactPerson?: string | null;
+  /** Позиции документа (макулатура разных профилей). */
+  items?: WpDocItem[];
+  /** Одиночные поля — для совместимости / когда позиций нет. */
+  wastepaperType?: string;
+  weightKg?: number;
+  pricePerKg?: number;
   account: WpAccount;
   isPaid?: boolean;
   paidAt?: string | null;
@@ -270,20 +449,41 @@ function cleanIntakeInput(data: WpIntakeInput) {
   if (!date) throw new Error("Укажите дату приёма");
   const counterpartyName = String(data.counterpartyName || "").trim().slice(0, 200);
   if (!counterpartyName) throw new Error("Укажите, от кого приняли макулатуру");
-  const wastepaperType = String(data.wastepaperType || "").trim().slice(0, 120) || "cardboard";
-  const weightKg = Math.max(0, Number(data.weightKg) || 0);
-  if (weightKg <= 0) throw new Error("Укажите вес, кг");
-  const pricePerKg = Math.max(0, Number(data.pricePerKg) || 0);
-  const total = Math.round(weightKg * pricePerKg * 100) / 100;
+  // Позиции: если прислали табличную часть — берём её; иначе собираем
+  // одну позицию из одиночных вид/вес/цена (старая форма, транспорт).
+  let items = Array.isArray(data.items) ? normalizeWpDocItems(data.items) : [];
+  if (items.length === 0) {
+    const weightKg = Math.max(0, Number(data.weightKg) || 0);
+    const pricePerKg = Math.max(0, Number(data.pricePerKg) || 0);
+    const wastepaperType =
+      String(data.wastepaperType || "").trim().slice(0, 120) || "cardboard";
+    if (weightKg > 0 || pricePerKg > 0) {
+      items = [
+        {
+          id: wpUid("it"),
+          wastepaperType,
+          weightKg,
+          pricePerKg,
+          total: Math.round(weightKg * pricePerKg * 100) / 100,
+        },
+      ];
+    }
+  }
+  const totals = wpDocTotals(items);
+  if (totals.weightKg <= 0) throw new Error("Укажите вес, кг хотя бы по одной позиции");
+  const first = items[0];
   return {
     date,
     counterparty_id: data.counterpartyId || null,
     counterparty_name: counterpartyName,
     address: String(data.address || "").trim().slice(0, 400) || null,
-    wastepaper_type: wastepaperType,
-    weight_kg: weightKg,
-    price_per_kg: pricePerKg,
-    total,
+    phone: String(data.phone || "").trim().slice(0, 60) || null,
+    contact_person: String(data.contactPerson || "").trim().slice(0, 200) || null,
+    items,
+    wastepaper_type: first?.wastepaperType || "cardboard",
+    weight_kg: totals.weightKg,
+    price_per_kg: first?.pricePerKg ?? 0,
+    total: totals.total,
     account: data.account === "bank" ? "bank" : "cash",
     comment: String(data.comment || "").trim().slice(0, 500) || null,
   };
@@ -332,6 +532,13 @@ export async function updateWpIntake(
     counterpartyId: data.counterpartyId !== undefined ? data.counterpartyId : existing.counterparty_id,
     counterpartyName: data.counterpartyName ?? existing.counterparty_name,
     address: data.address !== undefined ? data.address : existing.address,
+    phone: data.phone !== undefined ? data.phone : existing.phone,
+    contactPerson:
+      data.contactPerson !== undefined ? data.contactPerson : existing.contact_person,
+    items:
+      data.items !== undefined
+        ? data.items
+        : (normalizeWpDocItems(existing.items) as WpDocItem[]),
     wastepaperType: data.wastepaperType ?? existing.wastepaper_type,
     weightKg: data.weightKg ?? (Number(existing.weight_kg) || 0),
     pricePerKg: data.pricePerKg ?? (Number(existing.price_per_kg) || 0),
@@ -404,16 +611,23 @@ export async function deleteWpIntake(id: string): Promise<void> {
 // ── Сдача на предприятие ─────────────────────────────────
 
 function mapShipment(row: any): WpShipment {
+  const items = docItemsFromRow(row);
+  const totals = wpDocTotals(items);
+  const first = items[0] || null;
   return {
     id: row.id,
     number: Number(row.number) || 0,
     date: toDateStr(row.date),
     enterpriseId: row.enterprise_id || null,
     enterpriseName: row.enterprise_name || "",
-    wastepaperType: row.wastepaper_type || "cardboard",
-    weightKg: Number(row.weight_kg) || 0,
-    pricePerKg: Number(row.price_per_kg) || 0,
-    total: Number(row.total) || 0,
+    address: row.address || null,
+    phone: row.phone || null,
+    contactPerson: row.contact_person || null,
+    items,
+    wastepaperType: first?.wastepaperType || row.wastepaper_type || "cardboard",
+    weightKg: items.length ? totals.weightKg : Number(row.weight_kg) || 0,
+    pricePerKg: first?.pricePerKg ?? (Number(row.price_per_kg) || 0),
+    total: items.length ? totals.total : Number(row.total) || 0,
     account: (row.account === "cash" ? "cash" : "bank") as WpAccount,
     isPaid: Boolean(row.is_paid),
     paidAt: toIso(row.paid_at),
@@ -441,9 +655,15 @@ export interface WpShipmentInput {
   date: string;
   enterpriseId?: string | null;
   enterpriseName: string;
-  wastepaperType: string;
-  weightKg: number;
-  pricePerKg: number;
+  address?: string | null;
+  phone?: string | null;
+  contactPerson?: string | null;
+  /** Позиции документа (макулатура разных профилей). */
+  items?: WpDocItem[];
+  /** Одиночные поля — для совместимости / когда позиций нет. */
+  wastepaperType?: string;
+  weightKg?: number;
+  pricePerKg?: number;
   account: WpAccount;
   isPaid?: boolean;
   paidAt?: string | null;
@@ -455,19 +675,39 @@ function cleanShipmentInput(data: WpShipmentInput) {
   if (!date) throw new Error("Укажите дату сдачи");
   const enterpriseName = String(data.enterpriseName || "").trim().slice(0, 200);
   if (!enterpriseName) throw new Error("Укажите предприятие-приёмщик");
-  const wastepaperType = String(data.wastepaperType || "").trim().slice(0, 120) || "cardboard";
-  const weightKg = Math.max(0, Number(data.weightKg) || 0);
-  if (weightKg <= 0) throw new Error("Укажите вес, кг");
-  const pricePerKg = Math.max(0, Number(data.pricePerKg) || 0);
-  const total = Math.round(weightKg * pricePerKg * 100) / 100;
+  let items = Array.isArray(data.items) ? normalizeWpDocItems(data.items) : [];
+  if (items.length === 0) {
+    const weightKg = Math.max(0, Number(data.weightKg) || 0);
+    const pricePerKg = Math.max(0, Number(data.pricePerKg) || 0);
+    const wastepaperType =
+      String(data.wastepaperType || "").trim().slice(0, 120) || "cardboard";
+    if (weightKg > 0 || pricePerKg > 0) {
+      items = [
+        {
+          id: wpUid("it"),
+          wastepaperType,
+          weightKg,
+          pricePerKg,
+          total: Math.round(weightKg * pricePerKg * 100) / 100,
+        },
+      ];
+    }
+  }
+  const totals = wpDocTotals(items);
+  if (totals.weightKg <= 0) throw new Error("Укажите вес, кг хотя бы по одной позиции");
+  const first = items[0];
   return {
     date,
     enterprise_id: data.enterpriseId || null,
     enterprise_name: enterpriseName,
-    wastepaper_type: wastepaperType,
-    weight_kg: weightKg,
-    price_per_kg: pricePerKg,
-    total,
+    address: String(data.address || "").trim().slice(0, 400) || null,
+    phone: String(data.phone || "").trim().slice(0, 60) || null,
+    contact_person: String(data.contactPerson || "").trim().slice(0, 200) || null,
+    items,
+    wastepaper_type: first?.wastepaperType || "cardboard",
+    weight_kg: totals.weightKg,
+    price_per_kg: first?.pricePerKg ?? 0,
+    total: totals.total,
     account: data.account === "cash" ? "cash" : "bank",
     comment: String(data.comment || "").trim().slice(0, 500) || null,
   };
@@ -513,6 +753,14 @@ export async function updateWpShipment(
     date: data.date ?? toDateStr(existing.date),
     enterpriseId: data.enterpriseId !== undefined ? data.enterpriseId : existing.enterprise_id,
     enterpriseName: data.enterpriseName ?? existing.enterprise_name,
+    address: data.address !== undefined ? data.address : existing.address,
+    phone: data.phone !== undefined ? data.phone : existing.phone,
+    contactPerson:
+      data.contactPerson !== undefined ? data.contactPerson : existing.contact_person,
+    items:
+      data.items !== undefined
+        ? data.items
+        : (normalizeWpDocItems(existing.items) as WpDocItem[]),
     wastepaperType: data.wastepaperType ?? existing.wastepaper_type,
     weightKg: data.weightKg ?? (Number(existing.weight_kg) || 0),
     pricePerKg: data.pricePerKg ?? (Number(existing.price_per_kg) || 0),
@@ -706,6 +954,8 @@ export function normalizeTransportItems(raw: unknown): WpTransportItem[] {
     counterpartyId: item?.counterpartyId ? String(item.counterpartyId) : null,
     counterpartyName: String(item?.counterpartyName || "").slice(0, 200),
     address: String(item?.address || "").slice(0, 400),
+    phone: String(item?.phone || "").slice(0, 60),
+    contactPerson: String(item?.contactPerson || "").slice(0, 200),
     approxTime: String(item?.approxTime || "").slice(0, 30),
     wastepaperType: String(item?.wastepaperType || "cardboard").slice(0, 120),
     plannedKg: Math.max(0, Number(item?.plannedKg) || 0),
@@ -786,12 +1036,49 @@ function cleanTransportInput(data: WpTransportInput, existing?: any) {
   };
 }
 
+/**
+ * Автосохранение контрагентов/точек по остановкам перевозки: если в точке
+ * указано имя — находим или создаём контрагента (роль «сдаёт нам») и
+ * добавляем адрес как точку (филиал). Так новое отделение, вписанное прямо
+ * в рейс, сразу попадает в справочник контрагентов.
+ */
+async function resolveTransportStopParties(
+  items: WpTransportItem[]
+): Promise<WpTransportItem[]> {
+  const out: WpTransportItem[] = [];
+  for (const it of items) {
+    let counterpartyId = it.counterpartyId;
+    const name = String(it.counterpartyName || "").trim();
+    try {
+      if (name) {
+        const cp = await ensureWpCounterparty(name, "supplier", {
+          address: it.address || undefined,
+          phone: it.phone || undefined,
+          contactPerson: it.contactPerson || undefined,
+        });
+        counterpartyId = cp.id;
+      } else if (counterpartyId && it.address) {
+        await ensureWpBranch(counterpartyId, {
+          address: it.address,
+          phone: it.phone || undefined,
+          contactPerson: it.contactPerson || undefined,
+        });
+      }
+    } catch (e) {
+      console.error("resolveTransportStopParties:", e);
+    }
+    out.push({ ...it, counterpartyId });
+  }
+  return out;
+}
+
 export async function createWpTransport(
   data: WpTransportInput,
   createdBy: string
 ): Promise<WpTransport> {
   const db = getAdminDb();
-  const fields = cleanTransportInput(data);
+  const cleaned = cleanTransportInput(data);
+  const fields = { ...cleaned, items: await resolveTransportStopParties(cleaned.items) };
   const number = await nextNumber("wp_transport");
   const { data: row, error } = await db
     .from("wp_transports")
@@ -822,7 +1109,8 @@ export async function updateWpTransport(
   if (existing.status === "completed" || existing.status === "cancelled") {
     throw new Error("Завершённую/отменённую перевозку менять нельзя — создайте новую");
   }
-  const fields = cleanTransportInput(data, existing);
+  const cleaned = cleanTransportInput(data, existing);
+  const fields = { ...cleaned, items: await resolveTransportStopParties(cleaned.items) };
   const status =
     data.status && data.status in WP_TRANSPORT_STATUS_LABELS
       ? data.status
@@ -910,6 +1198,8 @@ export async function createWpIntakesFromTransport(
         counterpartyId: item.counterpartyId,
         counterpartyName: item.counterpartyName,
         address: item.address || null,
+        phone: item.phone || null,
+        contactPerson: item.contactPerson || null,
         wastepaperType: item.wastepaperType,
         weightKg,
         pricePerKg: rate ?? 0,

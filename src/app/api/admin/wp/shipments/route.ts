@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createWpShipment,
+  ensureWpBranch,
   ensureWpCounterparty,
   getWpShipments,
   requireWastepaperApi,
@@ -28,16 +29,34 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   try {
     const body = await request.json();
+    // Новый адрес предприятия автоматически становится его точкой (филиалом),
+    // чтобы в следующий раз адрес/телефон подставлялись сами.
+    const branch = {
+      address: body.address ? String(body.address) : undefined,
+      phone: body.phone ? String(body.phone) : undefined,
+      contactPerson: body.contactPerson ? String(body.contactPerson) : undefined,
+      label: body.branchLabel ? String(body.branchLabel) : undefined,
+    };
     let enterpriseId = body.enterpriseId || null;
     if (!enterpriseId && body.saveCounterparty && body.enterpriseName) {
-      const saved = await ensureWpCounterparty(String(body.enterpriseName), "enterprise");
+      const saved = await ensureWpCounterparty(
+        String(body.enterpriseName),
+        "enterprise",
+        branch
+      );
       enterpriseId = saved.id;
+    } else if (enterpriseId && branch.address) {
+      await ensureWpBranch(enterpriseId, branch);
     }
     const item = await createWpShipment(
       {
         date: String(body.date || ""),
         enterpriseId,
         enterpriseName: String(body.enterpriseName || ""),
+        address: body.address ?? null,
+        phone: body.phone ?? null,
+        contactPerson: body.contactPerson ?? null,
+        items: Array.isArray(body.items) ? body.items : undefined,
         wastepaperType: String(body.wastepaperType || "cardboard"),
         weightKg: Number(body.weightKg) || 0,
         pricePerKg: Number(body.pricePerKg) || 0,
