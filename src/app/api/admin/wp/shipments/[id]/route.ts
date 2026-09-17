@@ -23,7 +23,11 @@ export async function PATCH(
     const body = await request.json();
 
     if (body.action === "postBank") {
-      const item = await updateWpShipment(id, { isPaid: true, account: "bank", bankPostedAt: new Date().toISOString() } as any);
+      const item = await updateWpShipment(id, {
+        isPaid: true,
+        account: "bank",
+        bankPostedAt: new Date().toISOString(),
+      });
       return NextResponse.json({ success: true, item });
     }
 
