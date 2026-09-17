@@ -310,7 +310,7 @@ export function stopFromWpDoc(doc: {
     deliveryNote: doc.note ?? null,
     plannedTime: null,
     tripType: doc.kind === "intake" ? "pickup" : "handover",
-    lines: doc.lines.map((line) => ({
+    lines: (doc.lines.length > 0 ? doc.lines : [{ name: "Макулатура (вес уточнить)", qty: 0 }]).map((line) => ({
       productId: null,
       name: line.name,
       qty: Number(line.qty) || 0,
@@ -405,7 +405,11 @@ export function stopsFromTransportItems(items: TripStopTransportItem[] | null | 
 export function stopsToTransportItems(stops: TripStop[]): TripStopTransportItem[] {
   return stops
     .map((stop) => {
-      const lines = stopLoadedLines(stop);
+      // Для пустого приёма/сдачи сохраняем нулевую строку в рейсе:
+      // вес уточняется после забора и взвешивания.
+      const lines = stopLoadedLines(stop).length > 0
+        ? stopLoadedLines(stop)
+        : (stop.kind === "wp_intake" || stop.kind === "wp_shipment" ? stop.lines : []);
       return {
         dealId: stop.dealId,
         dealNumber: stop.dealNumber,
@@ -441,7 +445,8 @@ export function validateStops(stops: TripStop[]): string | null {
     if (!stop.address || !stop.address.trim()) {
       return `Точка ${num}: укажите адрес — куда ехать водителю`;
     }
-    if (stopLoadedLines(stop).length === 0) {
+    // Для макулатуры вес может быть неизвестен до приезда и взвешивания.
+    if (stopLoadedLines(stop).length === 0 && stop.kind !== "wp_intake" && stop.kind !== "wp_shipment") {
       return `Точка ${num}: укажите груз (что ${tripTypeDef(stop.tripType).cargoLabel.toLowerCase()})`;
     }
     if (stop.kind === "custom" && !stop.customerName.trim()) {

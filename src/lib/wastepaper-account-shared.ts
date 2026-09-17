@@ -267,6 +267,8 @@ export interface WpCounterparty {
   branches: WpBranch[];
   inn: string | null;
   comment: string | null;
+  /** Реквизиты/куда переводить деньги поставщику. */
+  paymentDetails: string | null;
   createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -287,6 +289,10 @@ export interface WpIntake {
   /** Агрегат первой/единственной позиции — для списков и совместимости. */
   wastepaperType: string;
   weightKg: number;
+  /** Фактически принято на склад, независимо от веса к оплате. */
+  acceptedWeightKg: number;
+  /** Вес, за который рассчитываем выплату. */
+  payableWeightKg: number;
   pricePerKg: number;
   total: number;
   account: WpAccount;
@@ -327,6 +333,10 @@ export interface WpShipment {
   /** Агрегат первой/единственной позиции — для списков и совместимости. */
   wastepaperType: string;
   weightKg: number;
+  shippedWeightKg: number;
+  acceptedWeightKg: number;
+  receivedAmount: number;
+  bankPostedAt: string | null;
   pricePerKg: number;
   total: number;
   account: WpAccount;
@@ -552,7 +562,9 @@ export function wpCollectMoneyEvents(
       date: i.date,
       direction: "outgoing",
       account: split.account,
-      amount: split.amount,
+      amount: i.payableWeightKg > 0 && i.pricePerKg > 0
+        ? Math.round(i.payableWeightKg * i.pricePerKg * 100) / 100
+        : split.amount,
       isPaid: i.isPaid,
       paidAt: i.paidAt,
       counterpartyName: i.counterpartyName,
@@ -569,8 +581,8 @@ export function wpCollectMoneyEvents(
       date: s.date,
       direction: "incoming",
       account: s.account,
-      amount: s.total,
-      isPaid: s.isPaid,
+      amount: s.receivedAmount > 0 ? s.receivedAmount : s.total,
+      isPaid: s.isPaid && (s.receivedAmount > 0 ? Boolean(s.bankPostedAt) : true),
       paidAt: s.paidAt,
       counterpartyName: s.enterpriseName,
       title: `Сдача №${s.number}`,
@@ -775,7 +787,12 @@ export function getWpStock(intakes: WpIntake[], shipments: WpShipment[]): WpStoc
   };
   for (const i of intakes) {
     if (i.status !== "active") continue;
-    accumulate(intakeMap, i.items, i.wastepaperType, i.weightKg);
+    // На склад попадает фактически принятое, а не оплачиваемое количество.
+    if (i.acceptedWeightKg > 0 && (!i.items || i.items.length <= 1)) {
+      intakeMap.set(i.wastepaperType, (intakeMap.get(i.wastepaperType) || 0) + i.acceptedWeightKg);
+    } else {
+      accumulate(intakeMap, i.items, i.wastepaperType, i.weightKg);
+    }
   }
   for (const s of shipments) {
     if (s.status !== "active") continue;
