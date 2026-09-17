@@ -10481,6 +10481,32 @@ body.is-col-resizing * {
 /* ══════════════════════════════════════
    МАКУЛАТУРА (УЧЁТ): мобильный адаптив
    ══════════════════════════════════════ */
+
+/* Стат-карточки макулатуры — в строку: иконка-квадрат слева,
+   сумма и подпись справа. Класс wp-stat--row есть только в этом
+   модуле; остальная админка сохраняет классическую карточку
+   (иконка над суммой). */
+.admin-stat.wp-stat--row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-stat.wp-stat--row .admin-stat__icon {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.admin-stat.wp-stat--row .wp-stat__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-stat.wp-stat--row .admin-stat__value {
+  margin-bottom: 0;
+}
+
 .wp-days-filters {
   display: flex;
   gap: 8px;

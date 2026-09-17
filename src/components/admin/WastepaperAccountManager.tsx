@@ -1170,9 +1170,10 @@ function DaysTab({
 
   return (
     <div>
-      {/* Баланс сейчас */}
+      {/* Баланс сейчас. Карточки в строку: иконка слева, сумма и подпись
+          справа (wp-stat--row) — только в этом модуле. */}
       <div className="admin-stat-grid" style={{ marginBottom: 18 }}>
-        <div className="admin-stat">
+        <div className="admin-stat wp-stat--row">
           <div
             className="admin-stat__icon"
             style={{ background: "var(--adm-teal-pale)", color: "var(--adm-teal)" }}
@@ -1180,10 +1181,12 @@ function DaysTab({
           >
             <Banknote size={18} />
           </div>
-          <div className="admin-stat__value">{fmtMoney(balance.cash)}</div>
-          <div className="admin-stat__label">Наличка сейчас</div>
+          <div className="wp-stat__body">
+            <div className="admin-stat__value">{fmtMoney(balance.cash)}</div>
+            <div className="admin-stat__label">Наличка сейчас</div>
+          </div>
         </div>
-        <div className="admin-stat">
+        <div className="admin-stat wp-stat--row">
           <div
             className="admin-stat__icon"
             style={{ background: "var(--adm-indigo-pale)", color: "var(--adm-indigo)" }}
@@ -1191,10 +1194,12 @@ function DaysTab({
           >
             <CreditCard size={18} />
           </div>
-          <div className="admin-stat__value">{fmtMoney(balance.bank)}</div>
-          <div className="admin-stat__label">Безнал сейчас</div>
+          <div className="wp-stat__body">
+            <div className="admin-stat__value">{fmtMoney(balance.bank)}</div>
+            <div className="admin-stat__label">Безнал сейчас</div>
+          </div>
         </div>
-        <div className="admin-stat">
+        <div className="admin-stat wp-stat--row">
           <div
             className="admin-stat__icon"
             style={{ background: "var(--adm-steel-pale)", color: "var(--adm-steel)" }}
@@ -1202,10 +1207,12 @@ function DaysTab({
           >
             <Scale size={18} />
           </div>
-          <div className="admin-stat__value">{fmtMoney(balance.total)}</div>
-          <div className="admin-stat__label">Итого (нал + безнал)</div>
+          <div className="wp-stat__body">
+            <div className="admin-stat__value">{fmtMoney(balance.total)}</div>
+            <div className="admin-stat__label">Итого (нал + безнал)</div>
+          </div>
         </div>
-        <div className="admin-stat">
+        <div className="admin-stat wp-stat--row">
           <div
             className="admin-stat__icon"
             style={{ background: "var(--adm-pine-pale)", color: "var(--adm-pine)" }}
@@ -1213,15 +1220,17 @@ function DaysTab({
           >
             <ArrowDownLeft size={18} />
           </div>
-          <div className="admin-stat__value" style={{ fontSize: "1.25rem" }}>
-            +{fmtMoney(forecastCash.inTotal)}
-          </div>
-          <div className="admin-stat__label">
-            Прогноз прихода · нал {fmtMoney(forecastCash.inCash)} · безнал{" "}
-            {fmtMoney(forecastCash.inBank)}
+          <div className="wp-stat__body">
+            <div className="admin-stat__value" style={{ fontSize: "1.25rem" }}>
+              +{fmtMoney(forecastCash.inTotal)}
+            </div>
+            <div className="admin-stat__label">
+              Прогноз прихода · нал {fmtMoney(forecastCash.inCash)} · безнал{" "}
+              {fmtMoney(forecastCash.inBank)}
+            </div>
           </div>
         </div>
-        <div className="admin-stat">
+        <div className="admin-stat wp-stat--row">
           <div
             className="admin-stat__icon"
             style={{ background: "var(--adm-kraft-pale)", color: "var(--adm-kraft)" }}
@@ -1229,12 +1238,14 @@ function DaysTab({
           >
             <ArrowUpRight size={18} />
           </div>
-          <div className="admin-stat__value" style={{ fontSize: "1.25rem" }}>
-            −{fmtMoney(forecastCash.outTotal)}
-          </div>
-          <div className="admin-stat__label">
-            Прогноз расхода · нал {fmtMoney(forecastCash.outCash)} · безнал{" "}
-            {fmtMoney(forecastCash.outBank)}
+          <div className="wp-stat__body">
+            <div className="admin-stat__value" style={{ fontSize: "1.25rem" }}>
+              −{fmtMoney(forecastCash.outTotal)}
+            </div>
+            <div className="admin-stat__label">
+              Прогноз расхода · нал {fmtMoney(forecastCash.outCash)} · безнал{" "}
+              {fmtMoney(forecastCash.outBank)}
+            </div>
           </div>
         </div>
       </div>
