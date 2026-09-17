@@ -32,10 +32,17 @@ import {
   ChevronUp,
   Scale,
   Check,
+  Copy,
+  Printer,
+  Building2,
+  Phone,
+  UserRound,
 } from "lucide-react";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
 import { useBodyLock } from "@/hooks/use-body-lock";
 import type { WastepaperRates } from "@/lib/wastepaper";
+import { TransportTripSheet, type TripSheetData } from "@/components/admin/TransportTripSheet";
+import type { TripStop } from "@/lib/trip-stops";
 import {
   WP_ACCOUNT_LABELS,
   WP_COUNTERPARTY_ROLE_LABELS,
@@ -44,6 +51,8 @@ import {
   WP_TYPE_LABELS,
   WP_TYPE_OPTIONS,
   buildWpDayReport,
+  findWpBranchByAddress,
+  findWpBranchMatch,
   fmtDate,
   fmtKg,
   fmtMoney,
@@ -52,9 +61,14 @@ import {
   getWpForecast,
   getWpStock,
   wpCollectMoneyEvents,
+  wpDocTotals,
+  wpItemsSummary,
   wpTypeLabel,
+  wpUid,
   type WpAccount,
+  type WpBranch,
   type WpCounterparty,
+  type WpDocItem,
   type WpIntake,
   type WpManualPayment,
   type WpMoneyEvent,
@@ -137,6 +151,310 @@ function apiBaseForEvent(e: WpMoneyEvent): string {
   return "payments";
 }
 
+/** Цена по виду из тарифов настроек (если есть). */
+function rateFor(rates: WastepaperRates | null, type: string): number | null {
+  if (!rates) return null;
+  const v = (rates as Record<string, number>)[type];
+  return v == null ? null : Number(v);
+}
+
+/* ── Поле «адрес точки» (филиалы контрагента) ────────────
+   Один контрагент (например «Детский мир») может иметь несколько
+   адресов-филиалов; у каждого свой телефон и контактное лицо. Адрес
+   выбираем из списка ИЛИ вписываем новый — новый автоматически
+   сохранится в точки контрагента при сохранении документа.        */
+
+function AddressField({
+  branches,
+  address,
+  phone,
+  contactPerson,
+  onChange,
+  addressLabel = "Адрес",
+  autoFocus,
+}: {
+  branches: WpBranch[];
+  address: string;
+  phone: string;
+  contactPerson: string;
+  onChange: (patch: { address: string; phone: string; contactPerson: string }) => void;
+  addressLabel?: string;
+  autoFocus?: boolean;
+}) {
+  const matched = findWpBranchMatch(branches, address, phone, contactPerson);
+  const hasBranches = branches.length > 0;
+
+  function onSelectId(id: string) {
+    if (id === "__new") {
+      onChange({ address: "", phone: "", contactPerson: "" });
+      return;
+    }
+    const b = branches.find((x) => x.id === id);
+    if (b) onChange({ address: b.address, phone: b.phone, contactPerson: b.contactPerson });
+  }
+
+  return (
+    <div>
+      {hasBranches && (
+        <div className="admin-field">
+          <label className="admin-label">
+            <Building2 size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+            Филиал / точка
+          </label>
+          <select
+            className="admin-select"
+            value={matched?.id || "__new"}
+            onChange={(e) => onSelectId(e.target.value)}
+          >
+            <option value="__new">➕ Другой адрес (вписать новый)</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.label ? `${b.label} — ${b.address}` : b.address}
+                {b.contactPerson ? ` (${b.contactPerson})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {(!hasBranches || !matched) && (
+        <div className="admin-field">
+          <label className="admin-label">{addressLabel}</label>
+          <input
+            className="admin-input"
+            value={address}
+            autoFocus={autoFocus}
+            onChange={(e) => onChange({ address: e.target.value, phone, contactPerson })}
+            placeholder="Улица, дом, ориентир"
+          />
+          {!hasBranches && (
+            <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
+              Новый адрес сохранится в карточку контрагента автоматически.
+            </span>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="admin-field" style={{ flex: "1 1 150px" }}>
+          <label className="admin-label">
+            <Phone size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+            Телефон точки
+          </label>
+          <input
+            className="admin-input"
+            value={phone}
+            onChange={(e) => onChange({ address, phone: e.target.value, contactPerson })}
+            placeholder="+7…"
+          />
+        </div>
+        <div className="admin-field" style={{ flex: "1 1 170px" }}>
+          <label className="admin-label">
+            <UserRound size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+            Контактное лицо
+          </label>
+          <input
+            className="admin-input"
+            value={contactPerson}
+            onChange={(e) => onChange({ address, phone, contactPerson: e.target.value })}
+            placeholder="ФИО"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Табличная часть документа (позиции макулатуры) ───────
+   Как в 1С: несколько профилей макулатуры, у каждого свой вес и
+   цена за кг. Сумма документа = сумма позиций.                    */
+
+function ItemsEditor({
+  items,
+  onChange,
+  rates,
+}: {
+  items: WpDocItem[];
+  onChange: (items: WpDocItem[]) => void;
+  rates: WastepaperRates | null;
+}) {
+  function setItem(id: string, patch: Partial<WpDocItem>) {
+    onChange(
+      items.map((it) => {
+        if (it.id !== id) return it;
+        const next = { ...it, ...patch };
+        // При смене вида подставляем тариф, если цена ещё не задана вручную.
+        if (patch.wastepaperType && !patch.pricePerKg && !it.pricePerKg) {
+          const r = rateFor(rates, next.wastepaperType);
+          if (r != null) next.pricePerKg = r;
+        }
+        next.total = Math.round((Number(next.weightKg) || 0) * (Number(next.pricePerKg) || 0) * 100) / 100;
+        return next;
+      })
+    );
+  }
+
+  function addItem() {
+    const first = WP_TYPE_OPTIONS[0].id;
+    onChange([
+      ...items,
+      {
+        id: wpUid("it"),
+        wastepaperType: first,
+        weightKg: 0,
+        pricePerKg: rateFor(rates, first) ?? 0,
+        total: 0,
+      },
+    ]);
+  }
+
+  function removeItem(id: string) {
+    onChange(items.filter((it) => it.id !== id));
+  }
+
+  const totals = wpDocTotals(items);
+
+  return (
+    <div className="admin-field">
+      <label className="admin-label">
+        <Scale size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+        Позиции (макулатура разных профилей)
+      </label>
+      {items.length === 0 && (
+        <p className="admin-hint" style={{ marginTop: 0 }}>
+          Нет позиций — добавьте хотя бы одну.
+        </p>
+      )}
+      <div style={{ display: "grid", gap: 8 }}>
+        {items.map((it) => (
+          <div
+            key={it.id}
+            className="admin-card"
+            style={{ padding: "8px 10px", borderStyle: "dashed", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+          >
+            <select
+              className="admin-select"
+              style={{ flex: "2 1 160px" }}
+              value={it.wastepaperType}
+              onChange={(e) => setItem(it.id, { wastepaperType: e.target.value })}
+            >
+              {WP_TYPE_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+              {!WP_TYPE_OPTIONS.some((o) => o.id === it.wastepaperType) && (
+                <option value={it.wastepaperType}>{wpTypeLabel(it.wastepaperType, WP_TYPE_LABELS)}</option>
+              )}
+            </select>
+            <input
+              className="admin-input"
+              style={{ flex: "1 1 90px" }}
+              type="number"
+              min="0"
+              step="0.1"
+              placeholder="Вес, кг"
+              value={it.weightKg || ""}
+              onChange={(e) => setItem(it.id, { weightKg: parseNum(e.target.value) })}
+            />
+            <input
+              className="admin-input"
+              style={{ flex: "1 1 90px" }}
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="₽/кг"
+              value={it.pricePerKg || ""}
+              onChange={(e) => setItem(it.id, { pricePerKg: parseNum(e.target.value) })}
+            />
+            <div
+              className="admin-hint"
+              style={{ flex: "1 1 100px", fontWeight: 700, color: "var(--adm-pine)", whiteSpace: "nowrap" }}
+            >
+              {fmtMoney(it.total)}
+            </div>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={() => removeItem(it.id)}
+              title="Удалить позицию"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+        <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={addItem}>
+          <Plus size={13} /> Позиция
+        </button>
+        <span className="admin-hint" style={{ fontWeight: 700 }}>
+          Итого: {fmtKg(totals.weightKg)} · {fmtMoney(totals.total)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Пустая позиция документа (для новых приёмов/сдач). */
+function emptyDocItem(rates: WastepaperRates | null): WpDocItem {
+  const first = WP_TYPE_OPTIONS[0].id;
+  return {
+    id: wpUid("it"),
+    wastepaperType: first,
+    weightKg: 0,
+    pricePerKg: rateFor(rates, first) ?? 0,
+    total: 0,
+  };
+}
+
+/** Копия позиций с новыми id (для «Копировать документ»). */
+function cloneDocItems(items: WpDocItem[]): WpDocItem[] {
+  return items.map((it) => ({ ...it, id: wpUid("it") }));
+}
+
+/**
+ * Перевозка макулатуры → данные путевого листа. Переиспользуем общий
+ * бланк TransportTripSheet: точки become «Забор груза», адрес/телефон/
+ * контакт подставляются из выбранной точки контрагента.
+ */
+function buildWpTripSheet(t: WpTransport): TripSheetData {
+  const stops: TripStop[] = t.items.map((stop) => {
+    const kg = stop.actualKg ?? stop.plannedKg ?? 0;
+    return {
+      key: stop.id,
+      kind: "custom",
+      dealId: null,
+      dealNumber: null,
+      customerName: stop.counterpartyName || "",
+      contactName: stop.contactPerson || null,
+      phone: stop.phone || null,
+      address: stop.address || null,
+      deliveryNote: stop.note || null,
+      plannedTime: stop.approxTime || null,
+      tripType: "pickup",
+      lines: [
+        {
+          productId: null,
+          name: `${wpTypeLabel(stop.wastepaperType, WP_TYPE_LABELS)}, кг`,
+          qty: kg,
+          orderedQty: stop.plannedKg || null,
+          maxQty: null,
+        },
+      ],
+      totalSum: null,
+    };
+  });
+  return {
+    transportNumber: t.number,
+    date: t.date,
+    note: t.note,
+    driverName: t.driverName,
+    driverPhone: t.driverPhone,
+    stops,
+  };
+}
+
 /* ── Основной компонент ────────────────────────────────── */
 
 interface Props {
@@ -183,10 +501,13 @@ export function WastepaperAccountManager(props: Props) {
 
   // Модалки
   const [intakeModal, setIntakeModal] = useState<
-    { mode: "create" } | { mode: "edit"; item: WpIntake } | null
+    { mode: "create" } | { mode: "edit"; item: WpIntake } | { mode: "copy"; item: WpIntake } | null
   >(null);
   const [shipmentModal, setShipmentModal] = useState<
-    { mode: "create" } | { mode: "edit"; item: WpShipment } | null
+    | { mode: "create" }
+    | { mode: "edit"; item: WpShipment }
+    | { mode: "copy"; item: WpShipment }
+    | null
   >(null);
   const [paymentModal, setPaymentModal] = useState<
     { mode: "create" } | { mode: "edit"; item: WpManualPayment } | null
@@ -197,6 +518,8 @@ export function WastepaperAccountManager(props: Props) {
   const [transportModal, setTransportModal] = useState<
     { mode: "create" } | { mode: "edit"; item: WpTransport } | null
   >(null);
+  // Путевой лист перевозки (печать) — переиспользуем общий бланк.
+  const [tripSheet, setTripSheet] = useState<TripSheetData | null>(null);
 
   // Мгновенное обновление при правках (Realtime + polling fallback)
   useAdminRealtime({
@@ -383,6 +706,10 @@ export function WastepaperAccountManager(props: Props) {
             setFormError("");
             setIntakeModal({ mode: "edit", item });
           }}
+          onCopy={(item) => {
+            setFormError("");
+            setIntakeModal({ mode: "copy", item });
+          }}
           onTogglePaid={(item) =>
             toggleEventPaid({
               ...events.find((e) => e.kind === "intake" && e.id === item.id)!,
@@ -402,6 +729,10 @@ export function WastepaperAccountManager(props: Props) {
           onEdit={(item) => {
             setFormError("");
             setShipmentModal({ mode: "edit", item });
+          }}
+          onCopy={(item) => {
+            setFormError("");
+            setShipmentModal({ mode: "copy", item });
           }}
           onTogglePaid={(item) =>
             toggleEventPaid({
@@ -424,6 +755,7 @@ export function WastepaperAccountManager(props: Props) {
             setFormError("");
             setTransportModal({ mode: "edit", item });
           }}
+          onPrint={(item) => setTripSheet(buildWpTripSheet(item))}
           onSetStatus={async (item, status) => {
             const ok = await callApi(
               () =>
@@ -503,7 +835,7 @@ export function WastepaperAccountManager(props: Props) {
       {intakeModal && (
         <IntakeModal
           mode={intakeModal.mode}
-          item={intakeModal.mode === "edit" ? intakeModal.item : null}
+          item={intakeModal.mode === "create" ? null : intakeModal.item}
           suppliers={suppliers}
           rates={props.rates}
           saving={saving}
@@ -568,8 +900,9 @@ export function WastepaperAccountManager(props: Props) {
       {shipmentModal && (
         <ShipmentModal
           mode={shipmentModal.mode}
-          item={shipmentModal.mode === "edit" ? shipmentModal.item : null}
+          item={shipmentModal.mode === "create" ? null : shipmentModal.item}
           enterprises={enterprises}
+          rates={props.rates}
           saving={saving}
           error={formError}
           onClose={() => setShipmentModal(null)}
@@ -758,6 +1091,9 @@ export function WastepaperAccountManager(props: Props) {
           }}
         />
       )}
+
+      {/* Путевой лист перевозки (печать) — общий бланк доставок */}
+      {tripSheet && <TransportTripSheet data={tripSheet} onDone={() => setTripSheet(null)} />}
     </div>
   );
 }
@@ -1429,11 +1765,13 @@ function IntakesTab({
   intakes,
   onNew,
   onEdit,
+  onCopy,
   onTogglePaid,
 }: {
   intakes: WpIntake[];
   onNew: () => void;
   onEdit: (item: WpIntake) => void;
+  onCopy: (item: WpIntake) => void;
   onTogglePaid: (item: WpIntake) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -1533,10 +1871,9 @@ function IntakesTab({
               <tr>
                 <th>№</th>
                 <th>Дата</th>
-                <th>От кого</th>
-                <th>Вид</th>
+                <th>От кого / адрес</th>
+                <th>Позиции</th>
                 <th>Вес</th>
-                <th>Цена/кг</th>
                 <th>Сумма</th>
                 <th>Счёт</th>
                 <th>Оплата</th>
@@ -1559,13 +1896,23 @@ function IntakesTab({
                     {i.counterpartyName}
                     {i.address && (
                       <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                        <MapPin size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
                         {i.address}
                       </div>
                     )}
+                    {i.phone && (
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                        {i.phone}
+                        {i.contactPerson ? ` · ${i.contactPerson}` : ""}
+                      </div>
+                    )}
                   </td>
-                  <td>{WP_TYPE_LABELS[i.wastepaperType] || i.wastepaperType}</td>
+                  <td style={{ minWidth: 180 }}>
+                    {i.items.length > 0
+                      ? wpItemsSummary(i.items, WP_TYPE_LABELS)
+                      : WP_TYPE_LABELS[i.wastepaperType] || i.wastepaperType}
+                  </td>
                   <td style={{ whiteSpace: "nowrap" }}>{fmtKg(i.weightKg)}</td>
-                  <td style={{ whiteSpace: "nowrap" }}>{fmtMoney(i.pricePerKg)}</td>
                   <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{fmtMoney(i.total)}</td>
                   <td>
                     <span className={ACCOUNT_BADGE[i.account]}>
@@ -1591,11 +1938,20 @@ function IntakesTab({
                       </button>
                     )}
                   </td>
-                  <td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      onClick={() => onCopy(i)}
+                      title="Копировать (как в 1С)"
+                    >
+                      <Copy size={13} />
+                    </button>
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
                       onClick={() => onEdit(i)}
+                      title="Редактировать"
                     >
                       <Pencil size={13} />
                     </button>
@@ -1619,12 +1975,14 @@ function ShipmentsTab({
   stock,
   onNew,
   onEdit,
+  onCopy,
   onTogglePaid,
 }: {
   shipments: WpShipment[];
   stock: ReturnType<typeof getWpStock>;
   onNew: () => void;
   onEdit: (item: WpShipment) => void;
+  onCopy: (item: WpShipment) => void;
   onTogglePaid: (item: WpShipment) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -1637,6 +1995,7 @@ function ShipmentsTab({
       if (!q) return true;
       return (
         s.enterpriseName.toLowerCase().includes(q) ||
+        (s.address || "").toLowerCase().includes(q) ||
         String(s.number).includes(q) ||
         (s.comment || "").toLowerCase().includes(q)
       );
@@ -1727,10 +2086,9 @@ function ShipmentsTab({
               <tr>
                 <th>№</th>
                 <th>Дата</th>
-                <th>Предприятие</th>
-                <th>Вид</th>
+                <th>Предприятие / адрес</th>
+                <th>Позиции</th>
                 <th>Вес</th>
-                <th>Цена/кг</th>
                 <th>Сумма</th>
                 <th>Счёт</th>
                 <th>Оплата</th>
@@ -1751,15 +2109,24 @@ function ShipmentsTab({
                   <td style={{ whiteSpace: "nowrap" }}>{fmtDate(s.date)}</td>
                   <td>
                     {s.enterpriseName}
+                    {s.address && (
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                        <MapPin size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
+                        {s.address}
+                      </div>
+                    )}
                     {s.comment && (
                       <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
                         {s.comment}
                       </div>
                     )}
                   </td>
-                  <td>{WP_TYPE_LABELS[s.wastepaperType] || s.wastepaperType}</td>
+                  <td style={{ minWidth: 180 }}>
+                    {s.items.length > 0
+                      ? wpItemsSummary(s.items, WP_TYPE_LABELS)
+                      : WP_TYPE_LABELS[s.wastepaperType] || s.wastepaperType}
+                  </td>
                   <td style={{ whiteSpace: "nowrap" }}>{fmtKg(s.weightKg)}</td>
-                  <td style={{ whiteSpace: "nowrap" }}>{fmtMoney(s.pricePerKg)}</td>
                   <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{fmtMoney(s.total)}</td>
                   <td>
                     <span className={ACCOUNT_BADGE[s.account]}>
@@ -1785,11 +2152,20 @@ function ShipmentsTab({
                       </button>
                     )}
                   </td>
-                  <td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      onClick={() => onCopy(s)}
+                      title="Копировать (как в 1С)"
+                    >
+                      <Copy size={13} />
+                    </button>
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
                       onClick={() => onEdit(s)}
+                      title="Редактировать"
                     >
                       <Pencil size={13} />
                     </button>
@@ -1814,6 +2190,7 @@ function TransportsTab({
   saving,
   onNew,
   onEdit,
+  onPrint,
   onSetStatus,
   onSaveItems,
   onCreateIntakes,
@@ -1824,6 +2201,7 @@ function TransportsTab({
   saving: boolean;
   onNew: () => void;
   onEdit: (item: WpTransport) => void;
+  onPrint: (item: WpTransport) => void;
   onSetStatus: (item: WpTransport, status: keyof typeof WP_TRANSPORT_STATUS_LABELS) => void;
   onSaveItems: (item: WpTransport, items: WpTransportItem[]) => Promise<boolean>;
   onCreateIntakes: (item: WpTransport) => void;
@@ -1997,6 +2375,17 @@ function TransportsTab({
                         <Pencil size={13} /> Править рейс
                       </button>
                     )}
+                    {t.items.length > 0 && (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        disabled={saving || busyStop}
+                        onClick={() => onPrint(t)}
+                        title="Печать путевого листа с адресами и телефонами точек"
+                      >
+                        <Printer size={13} /> Путевой лист
+                      </button>
+                    )}
                     {editable && (
                       <button
                         type="button"
@@ -2054,6 +2443,13 @@ function TransportsTab({
                                 {stop.address && (
                                   <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
                                     <MapPin size={11} style={{ verticalAlign: "-1px" }} /> {stop.address}
+                                  </div>
+                                )}
+                                {(stop.phone || stop.contactPerson) && (
+                                  <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                                    {stop.contactPerson}
+                                    {stop.contactPerson && stop.phone ? " · " : ""}
+                                    {stop.phone ? <a href={`tel:${stop.phone}`}>{stop.phone}</a> : ""}
                                   </div>
                                 )}
                                 {stop.note && (
@@ -2209,6 +2605,8 @@ function StopModal({
     counterpartyName: stop?.counterpartyName || "",
     counterpartyId: stop?.counterpartyId || null as string | null,
     address: stop?.address || "",
+    phone: stop?.phone || "",
+    contactPerson: stop?.contactPerson || "",
     approxTime: stop?.approxTime || "",
     wastepaperType: stop?.wastepaperType || "cardboard",
     plannedKg: stop?.plannedKg ? String(stop.plannedKg) : "",
@@ -2221,16 +2619,30 @@ function StopModal({
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  const selectedSupplier =
+    suppliers.find((c) => c.id === form.counterpartyId) ||
+    suppliers.find(
+      (c) => c.name.trim().toLowerCase() === form.counterpartyName.trim().toLowerCase()
+    ) ||
+    null;
+  const branches = selectedSupplier?.branches || [];
+
   function onNameChange(value: string) {
     const found = suppliers.find(
       (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
     );
-    setForm((prev) => ({
-      ...prev,
-      counterpartyName: value,
-      counterpartyId: found ? found.id : null,
-      address: prev.address || found?.address || prev.address,
-    }));
+    setForm((prev) => {
+      const first = found?.branches?.[0];
+      return {
+        ...prev,
+        counterpartyName: value,
+        counterpartyId: found ? found.id : null,
+        address: prev.address || first?.address || found?.address || "",
+        phone: prev.phone || first?.phone || found?.phone || "",
+        contactPerson:
+          prev.contactPerson || first?.contactPerson || found?.contactPerson || "",
+      };
+    });
   }
 
   const valid = form.counterpartyName.trim() !== "" || form.address.trim() !== "";
@@ -2271,6 +2683,8 @@ function StopModal({
               counterpartyId: form.counterpartyId,
               counterpartyName: form.counterpartyName.trim(),
               address: form.address.trim(),
+              phone: form.phone.trim(),
+              contactPerson: form.contactPerson.trim(),
               approxTime: approxTimeOk(form.approxTime) ? form.approxTime.trim() : "",
               wastepaperType: form.wastepaperType,
               plannedKg: parseNum(form.plannedKg),
@@ -2298,15 +2712,14 @@ function StopModal({
             </datalist>
           </div>
 
-          <div className="admin-field">
-            <label className="admin-label">Адрес забора</label>
-            <input
-              className="admin-input"
-              value={form.address}
-              onChange={(e) => set("address", e.target.value)}
-              placeholder="Улица, дом, ориентир"
-            />
-          </div>
+          <AddressField
+            branches={branches}
+            address={form.address}
+            phone={form.phone}
+            contactPerson={form.contactPerson}
+            addressLabel="Адрес забора"
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          />
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <div className="admin-field" style={{ flex: "1 1 120px" }}>
@@ -2425,11 +2838,14 @@ function CounterpartiesTab({
     return counterparties.filter((c) => {
       if (role !== "all" && !c.roles.includes(role)) return false;
       if (!q) return true;
-      return (
-        c.name.toLowerCase().includes(q) ||
-        (c.address || "").toLowerCase().includes(q) ||
-        (c.phone || "").includes(q) ||
-        (c.inn || "").includes(q)
+      if (c.name.toLowerCase().includes(q) || (c.inn || "").includes(q)) return true;
+      // Ищем по всем точкам: адрес, телефон, контактное лицо, метка.
+      return (c.branches || []).some(
+        (b) =>
+          b.address.toLowerCase().includes(q) ||
+          b.phone.toLowerCase().includes(q) ||
+          b.contactPerson.toLowerCase().includes(q) ||
+          b.label.toLowerCase().includes(q)
       );
     });
   }, [counterparties, role, query]);
@@ -2493,9 +2909,7 @@ function CounterpartiesTab({
               <tr>
                 <th>Название</th>
                 <th>Роль</th>
-                <th>Телефон</th>
-                <th>Адрес</th>
-                <th>Контакт</th>
+                <th>Точки / филиалы</th>
                 <th>ИНН</th>
                 <th></th>
               </tr>
@@ -2527,11 +2941,30 @@ function CounterpartiesTab({
                       </span>
                     ))}
                   </td>
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    {c.phone ? <a href={`tel:${c.phone}`}>{c.phone}</a> : "—"}
+                  <td style={{ minWidth: 260 }}>
+                    {c.branches && c.branches.length > 0 ? (
+                      <div style={{ display: "grid", gap: 4 }}>
+                        {c.branches.map((b) => (
+                          <div key={b.id} style={{ fontSize: "0.85rem" }}>
+                            <div style={{ fontWeight: 600 }}>
+                              <MapPin size={11} style={{ verticalAlign: "-1px", marginRight: 4 }} />
+                              {b.label ? `${b.label}: ` : ""}
+                              {b.address || "—"}
+                            </div>
+                            {(b.contactPerson || b.phone) && (
+                              <div style={{ color: "var(--adm-muted)", paddingLeft: 15 }}>
+                                {b.contactPerson}
+                                {b.contactPerson && b.phone ? " · " : ""}
+                                {b.phone ? <a href={`tel:${b.phone}`}>{b.phone}</a> : ""}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span style={{ color: "var(--adm-muted)" }}>—</span>
+                    )}
                   </td>
-                  <td>{c.address || "—"}</td>
-                  <td>{c.contactPerson || "—"}</td>
                   <td>{c.inn || "—"}</td>
                   <td>
                     <button
@@ -2561,14 +2994,13 @@ interface IntakeFormPayload {
   counterpartyId: string | null;
   counterpartyName: string;
   address: string | null;
-  wastepaperType: string;
-  weightKg: number;
-  pricePerKg: number;
+  phone: string | null;
+  contactPerson: string | null;
+  items: WpDocItem[];
   account: WpAccount;
   isPaid: boolean;
   comment: string | null;
   saveCounterparty: boolean;
-  counterpartyPhone: string;
 }
 
 function IntakeModal({
@@ -2583,7 +3015,7 @@ function IntakeModal({
   onCancelDoc,
   onDelete,
 }: {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "copy";
   item: WpIntake | null;
   suppliers: WpCounterparty[];
   rates: WastepaperRates | null;
@@ -2596,65 +3028,77 @@ function IntakeModal({
 }) {
   // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
-  const [form, setForm] = useState({
-    date: item?.date || todayStr(),
+  const isEdit = mode === "edit";
+  const isCopy = mode === "copy";
+  // Копия как в 1С: всё переносится, но дата — сегодня, оплата сброшена,
+  // позиции можно полностью править/удалять.
+  const [form, setForm] = useState(() => ({
+    date: isCopy ? todayStr() : item?.date || todayStr(),
     counterpartyName: item?.counterpartyName || "",
     counterpartyId: item?.counterpartyId || (null as string | null),
     address: item?.address || "",
-    wastepaperType: item?.wastepaperType || "cardboard",
-    weightKg: item ? String(item.weightKg) : "",
-    pricePerKg: item ? String(item.pricePerKg) : "",
+    phone: item?.phone || "",
+    contactPerson: item?.contactPerson || "",
+    items: item
+      ? isCopy
+        ? cloneDocItems(item.items)
+        : item.items
+      : [emptyDocItem(rates)],
     account: (item?.account || "cash") as WpAccount,
-    isPaid: item?.isPaid || false,
+    isPaid: isCopy ? false : item?.isPaid || false,
     comment: item?.comment || "",
     saveCounterparty: true,
-    counterpartyPhone: "",
-  });
+  }));
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  // Точки выбранного контрагента — для выбора адреса/филиала.
+  const selected =
+    suppliers.find((c) => c.id === form.counterpartyId) ||
+    suppliers.find((c) => c.name.trim().toLowerCase() === form.counterpartyName.trim().toLowerCase()) ||
+    null;
+  const branches = selected?.branches || [];
+
   function onNameChange(value: string) {
     const found = suppliers.find(
       (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
     );
-    setForm((prev) => ({
-      ...prev,
-      counterpartyName: value,
-      counterpartyId: found ? found.id : null,
-      address: found?.address || prev.address,
-    }));
-  }
-
-  function onTypeChange(value: string) {
     setForm((prev) => {
-      // Подставляем тариф из настроек, если цена пустая.
-      const rate = rates ? (rates as Record<string, number>)[value] : undefined;
+      // При выборе известного контрагента подставляем адрес/телефон/контакт
+      // его первой точки (если у документа они ещё пустые).
+      const first = found?.branches?.[0];
       return {
         ...prev,
-        wastepaperType: value,
-        pricePerKg:
-          prev.pricePerKg.trim() === "" && rate != null ? String(rate) : prev.pricePerKg,
+        counterpartyName: value,
+        counterpartyId: found ? found.id : null,
+        address: prev.address || first?.address || found?.address || "",
+        phone: prev.phone || first?.phone || found?.phone || "",
+        contactPerson:
+          prev.contactPerson || first?.contactPerson || found?.contactPerson || "",
       };
     });
   }
 
-  const weight = parseNum(form.weightKg);
-  const price = parseNum(form.pricePerKg);
-  const total = Math.round(weight * price * 100) / 100;
-  const valid = form.date !== "" && form.counterpartyName.trim() !== "" && weight > 0;
+  const totals = wpDocTotals(form.items);
+  const valid =
+    form.date !== "" && form.counterpartyName.trim() !== "" && totals.weightKg > 0;
 
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
       <div
         className="admin-modal"
-        style={{ maxWidth: "34rem" }}
+        style={{ maxWidth: "40rem" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-modal__head">
           <h3 className="admin-modal__title">
-            {mode === "edit" ? `Приём №${item?.number}` : "Новый приём макулатуры"}
+            {isEdit
+              ? `Приём №${item?.number}`
+              : isCopy
+                ? `Копия приёма №${item?.number}`
+                : "Новый приём макулатуры"}
           </h3>
           <button
             type="button"
@@ -2667,8 +3111,9 @@ function IntakeModal({
           </button>
         </div>
         <p className="admin-modal__desc">
-          Приняли макулатуру от клиента: от кого, сколько кг и по какой цене.
-          Сумма уйдёт в расход выбранного счёта (после отметки «Оплачен»).
+          Забор макулатуры у контрагента: выберите филиал (адрес, телефон,
+          контактное лицо подставятся) и добавьте позиции — разные профили
+          макулатуры со своим весом и ценой за кг. Сумма уйдёт в расход счёта.
         </p>
 
         <form
@@ -2680,14 +3125,13 @@ function IntakeModal({
               counterpartyId: form.counterpartyId,
               counterpartyName: form.counterpartyName.trim(),
               address: form.address.trim() || null,
-              wastepaperType: form.wastepaperType,
-              weightKg: weight,
-              pricePerKg: price,
+              phone: form.phone.trim() || null,
+              contactPerson: form.contactPerson.trim() || null,
+              items: form.items,
               account: form.account,
               isPaid: form.isPaid,
               comment: form.comment.trim() || null,
               saveCounterparty: form.saveCounterparty,
-              counterpartyPhone: form.counterpartyPhone.trim(),
             });
           }}
         >
@@ -2709,7 +3153,7 @@ function IntakeModal({
                 list="wp-intake-suppliers"
                 value={form.counterpartyName}
                 onChange={(e) => onNameChange(e.target.value)}
-                placeholder="Имя или компания"
+                placeholder="Имя или компания (например «Детский мир»)"
                 autoFocus={mode === "create"}
                 required
               />
@@ -2721,77 +3165,32 @@ function IntakeModal({
             </div>
           </div>
 
-          <div className="admin-field">
-            <label className="admin-label">Адрес</label>
-            <input
-              className="admin-input"
-              value={form.address}
-              onChange={(e) => set("address", e.target.value)}
-              placeholder="Где забрали / куда привезли"
-            />
-          </div>
-
-          {mode === "create" && !form.counterpartyId && form.counterpartyName.trim() && (
+          {!isEdit && !form.counterpartyId && form.counterpartyName.trim() && (
             <label className="admin-hint" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: -6 }}>
               <input
                 type="checkbox"
                 checked={form.saveCounterparty}
                 onChange={(e) => set("saveCounterparty", e.target.checked)}
               />
-              Сохранить «{form.counterpartyName.trim()}» в контрагенты (чтобы адрес
-              подставлялся в следующий раз)
+              Сохранить «{form.counterpartyName.trim()}» в контрагенты (адрес и
+              телефон добавятся в его точки)
             </label>
           )}
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "1 1 150px" }}>
-              <label className="admin-label">Вид макулатуры</label>
-              <select
-                className="admin-select"
-                value={form.wastepaperType}
-                onChange={(e) => onTypeChange(e.target.value)}
-              >
-                {WP_TYPE_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 110px" }}>
-              <label className="admin-label">Вес, кг *</label>
-              <input
-                className="admin-input"
-                type="number"
-                min="0"
-                step="0.1"
-                value={form.weightKg}
-                onChange={(e) => set("weightKg", e.target.value)}
-                placeholder="0"
-                required
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 110px" }}>
-              <label className="admin-label">Цена, ₽/кг</label>
-              <input
-                className="admin-input"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.pricePerKg}
-                onChange={(e) => set("pricePerKg", e.target.value)}
-                placeholder={
-                  rates
-                    ? String((rates as Record<string, number>)[form.wastepaperType] ?? 0)
-                    : "0"
-                }
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 120px" }}>
-              <label className="admin-label">Сумма</label>
-              <input className="admin-input" value={fmtMoney(total)} readOnly />
-            </div>
-          </div>
+          <AddressField
+            branches={branches}
+            address={form.address}
+            phone={form.phone}
+            contactPerson={form.contactPerson}
+            addressLabel="Адрес забора"
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          />
+
+          <ItemsEditor
+            items={form.items}
+            rates={rates}
+            onChange={(items) => set("items", items)}
+          />
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
             <div className="admin-field" style={{ flex: "1 1 200px" }}>
@@ -2816,6 +3215,10 @@ function IntakeModal({
               />
               Уже оплачено
             </label>
+            <div className="admin-field" style={{ flex: "1 1 140px" }}>
+              <label className="admin-label">Итого</label>
+              <input className="admin-input" value={fmtMoney(totals.total)} readOnly />
+            </div>
           </div>
 
           <div className="admin-field">
@@ -2836,7 +3239,7 @@ function IntakeModal({
 
           <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
             <div style={{ display: "flex", gap: 8 }}>
-              {mode === "edit" && (
+              {isEdit && (
                 <>
                   <button
                     type="button"
@@ -2873,7 +3276,7 @@ function IntakeModal({
                 disabled={saving || !valid}
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}{" "}
-                {mode === "edit" ? "Сохранить" : "Добавить приём"}
+                {isEdit ? "Сохранить" : isCopy ? "Создать копию" : "Добавить приём"}
               </button>
             </div>
           </div>
@@ -2891,9 +3294,10 @@ interface ShipmentFormPayload {
   date: string;
   enterpriseId: string | null;
   enterpriseName: string;
-  wastepaperType: string;
-  weightKg: number;
-  pricePerKg: number;
+  address: string | null;
+  phone: string | null;
+  contactPerson: string | null;
+  items: WpDocItem[];
   account: WpAccount;
   isPaid: boolean;
   comment: string | null;
@@ -2904,6 +3308,7 @@ function ShipmentModal({
   mode,
   item,
   enterprises,
+  rates,
   saving,
   error,
   onClose,
@@ -2911,9 +3316,10 @@ function ShipmentModal({
   onCancelDoc,
   onDelete,
 }: {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "copy";
   item: WpShipment | null;
   enterprises: WpCounterparty[];
+  rates: WastepaperRates | null;
   saving: boolean;
   error: string;
   onClose: () => void;
@@ -2923,49 +3329,74 @@ function ShipmentModal({
 }) {
   // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
-  const [form, setForm] = useState({
-    date: item?.date || todayStr(),
+  const isEdit = mode === "edit";
+  const isCopy = mode === "copy";
+  const [form, setForm] = useState(() => ({
+    date: isCopy ? todayStr() : item?.date || todayStr(),
     enterpriseName: item?.enterpriseName || "",
     enterpriseId: item?.enterpriseId || (null as string | null),
-    wastepaperType: item?.wastepaperType || "cardboard",
-    weightKg: item ? String(item.weightKg) : "",
-    pricePerKg: item ? String(item.pricePerKg) : "",
+    address: item?.address || "",
+    phone: item?.phone || "",
+    contactPerson: item?.contactPerson || "",
+    items: item
+      ? isCopy
+        ? cloneDocItems(item.items)
+        : item.items
+      : [emptyDocItem(rates)],
     account: (item?.account || "bank") as WpAccount,
-    isPaid: item?.isPaid || false,
+    isPaid: isCopy ? false : item?.isPaid || false,
     comment: item?.comment || "",
     saveCounterparty: true,
-  });
+  }));
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  const selected =
+    enterprises.find((c) => c.id === form.enterpriseId) ||
+    enterprises.find(
+      (c) => c.name.trim().toLowerCase() === form.enterpriseName.trim().toLowerCase()
+    ) ||
+    null;
+  const branches = selected?.branches || [];
+
   function onNameChange(value: string) {
     const found = enterprises.find(
       (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
     );
-    setForm((prev) => ({
-      ...prev,
-      enterpriseName: value,
-      enterpriseId: found ? found.id : null,
-    }));
+    setForm((prev) => {
+      const first = found?.branches?.[0];
+      return {
+        ...prev,
+        enterpriseName: value,
+        enterpriseId: found ? found.id : null,
+        address: prev.address || first?.address || found?.address || "",
+        phone: prev.phone || first?.phone || found?.phone || "",
+        contactPerson:
+          prev.contactPerson || first?.contactPerson || found?.contactPerson || "",
+      };
+    });
   }
 
-  const weight = parseNum(form.weightKg);
-  const price = parseNum(form.pricePerKg);
-  const total = Math.round(weight * price * 100) / 100;
-  const valid = form.date !== "" && form.enterpriseName.trim() !== "" && weight > 0;
+  const totals = wpDocTotals(form.items);
+  const valid =
+    form.date !== "" && form.enterpriseName.trim() !== "" && totals.weightKg > 0;
 
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
       <div
         className="admin-modal"
-        style={{ maxWidth: "34rem" }}
+        style={{ maxWidth: "40rem" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-modal__head">
           <h3 className="admin-modal__title">
-            {mode === "edit" ? `Сдача №${item?.number}` : "Сдача на предприятие"}
+            {isEdit
+              ? `Сдача №${item?.number}`
+              : isCopy
+                ? `Копия сдачи №${item?.number}`
+                : "Сдача на предприятие"}
           </h3>
           <button
             type="button"
@@ -2978,8 +3409,9 @@ function ShipmentModal({
           </button>
         </div>
         <p className="admin-modal__desc">
-          Сдали накопленную макулатуру на предприятие: вес, цена, сумма придёт в
-          выбранный счёт. Когда деньги получите — отметьте оплату.
+          Везём накопленную макулатуру на переработку: выберите предприятие и его
+          точку (адрес, телефон, контакт подставятся), добавьте позиции. Сумма
+          придёт в выбранный счёт; когда деньги получены — отметьте оплату.
         </p>
 
         <form
@@ -2990,9 +3422,10 @@ function ShipmentModal({
               date: form.date,
               enterpriseId: form.enterpriseId,
               enterpriseName: form.enterpriseName.trim(),
-              wastepaperType: form.wastepaperType,
-              weightKg: weight,
-              pricePerKg: price,
+              address: form.address.trim() || null,
+              phone: form.phone.trim() || null,
+              contactPerson: form.contactPerson.trim() || null,
+              items: form.items,
               account: form.account,
               isPaid: form.isPaid,
               comment: form.comment.trim() || null,
@@ -3030,62 +3463,32 @@ function ShipmentModal({
             </div>
           </div>
 
-          {mode === "create" && !form.enterpriseId && form.enterpriseName.trim() && (
+          {!isEdit && !form.enterpriseId && form.enterpriseName.trim() && (
             <label className="admin-hint" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: -6 }}>
               <input
                 type="checkbox"
                 checked={form.saveCounterparty}
                 onChange={(e) => set("saveCounterparty", e.target.checked)}
               />
-              Сохранить «{form.enterpriseName.trim()}» в контрагенты
+              Сохранить «{form.enterpriseName.trim()}» в контрагенты (адрес
+              добавится в его точки)
             </label>
           )}
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "1 1 150px" }}>
-              <label className="admin-label">Вид макулатуры</label>
-              <select
-                className="admin-select"
-                value={form.wastepaperType}
-                onChange={(e) => set("wastepaperType", e.target.value)}
-              >
-                {WP_TYPE_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 110px" }}>
-              <label className="admin-label">Вес, кг *</label>
-              <input
-                className="admin-input"
-                type="number"
-                min="0"
-                step="0.1"
-                value={form.weightKg}
-                onChange={(e) => set("weightKg", e.target.value)}
-                placeholder="0"
-                required
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 110px" }}>
-              <label className="admin-label">Цена, ₽/кг</label>
-              <input
-                className="admin-input"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.pricePerKg}
-                onChange={(e) => set("pricePerKg", e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 120px" }}>
-              <label className="admin-label">Сумма</label>
-              <input className="admin-input" value={fmtMoney(total)} readOnly />
-            </div>
-          </div>
+          <AddressField
+            branches={branches}
+            address={form.address}
+            phone={form.phone}
+            contactPerson={form.contactPerson}
+            addressLabel="Адрес предприятия (куда везём)"
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          />
+
+          <ItemsEditor
+            items={form.items}
+            rates={rates}
+            onChange={(items) => set("items", items)}
+          />
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
             <div className="admin-field" style={{ flex: "1 1 200px" }}>
@@ -3110,6 +3513,10 @@ function ShipmentModal({
               />
               Деньги уже получены
             </label>
+            <div className="admin-field" style={{ flex: "1 1 140px" }}>
+              <label className="admin-label">Итого</label>
+              <input className="admin-input" value={fmtMoney(totals.total)} readOnly />
+            </div>
           </div>
 
           <div className="admin-field">
@@ -3130,7 +3537,7 @@ function ShipmentModal({
 
           <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
             <div style={{ display: "flex", gap: 8 }}>
-              {mode === "edit" && (
+              {isEdit && (
                 <>
                   <button
                     type="button"
@@ -3167,7 +3574,7 @@ function ShipmentModal({
                 disabled={saving || !valid}
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}{" "}
-                {mode === "edit" ? "Сохранить" : "Добавить сдачу"}
+                {isEdit ? "Сохранить" : isCopy ? "Создать копию" : "Добавить сдачу"}
               </button>
             </div>
           </div>
@@ -3421,11 +3828,27 @@ function PaymentModal({
 interface CounterpartyFormPayload {
   name: string;
   roles: string[];
-  phone: string | null;
-  address: string | null;
-  contactPerson: string | null;
+  branches: WpBranch[];
   inn: string | null;
   comment: string | null;
+}
+
+/** Точки из карточки: JSONB или одна точка из старых одиночных полей. */
+function initialBranches(item: WpCounterparty | null): WpBranch[] {
+  if (!item) return [];
+  if (item.branches && item.branches.length > 0) return item.branches;
+  if (item.address || item.phone || item.contactPerson) {
+    return [
+      {
+        id: "br-legacy",
+        label: "",
+        address: item.address || "",
+        contactPerson: item.contactPerson || "",
+        phone: item.phone || "",
+      },
+    ];
+  }
+  return [];
 }
 
 function CounterpartyModal({
@@ -3447,15 +3870,13 @@ function CounterpartyModal({
 }) {
   // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     name: item?.name || "",
     roles: item?.roles || (["supplier"] as string[]),
-    phone: item?.phone || "",
-    address: item?.address || "",
-    contactPerson: item?.contactPerson || "",
+    branches: initialBranches(item),
     inn: item?.inn || "",
     comment: item?.comment || "",
-  });
+  }));
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -3470,13 +3891,44 @@ function CounterpartyModal({
     }));
   }
 
+  function setBranch(id: string, patch: Partial<WpBranch>) {
+    setForm((prev) => ({
+      ...prev,
+      branches: prev.branches.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+    }));
+  }
+
+  function addBranch() {
+    setForm((prev) => ({
+      ...prev,
+      branches: [
+        ...prev.branches,
+        { id: wpUid("br"), label: "", address: "", contactPerson: "", phone: "" },
+      ],
+    }));
+  }
+
+  function removeBranch(id: string) {
+    setForm((prev) => ({ ...prev, branches: prev.branches.filter((b) => b.id !== id) }));
+  }
+
   const valid = form.name.trim() !== "" && form.roles.length > 0;
+  // В сохранение идут только заполненные точки (адрес/телефон/контакт непустые).
+  const cleanBranches = form.branches
+    .map((b) => ({
+      ...b,
+      label: b.label.trim(),
+      address: b.address.trim(),
+      contactPerson: b.contactPerson.trim(),
+      phone: b.phone.trim(),
+    }))
+    .filter((b) => b.address || b.phone || b.contactPerson);
 
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
       <div
         className="admin-modal"
-        style={{ maxWidth: "32rem" }}
+        style={{ maxWidth: "40rem" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-modal__head">
@@ -3494,8 +3946,9 @@ function CounterpartyModal({
           </button>
         </div>
         <p className="admin-modal__desc">
-          Кто сдаёт нам макулатуру или какое предприятие принимает у нас — с
-          адресом, телефоном и реквизитами.
+          Одна фирма — несколько точек (филиалов). У каждой точки свой адрес,
+          контактное лицо и телефон: они подставляются в приёмы, сдачи и печать
+          путевого листа. Например «Детский мир» и три его адреса.
         </p>
 
         <form
@@ -3505,9 +3958,7 @@ function CounterpartyModal({
             onSubmit({
               name: form.name.trim(),
               roles: form.roles,
-              phone: form.phone.trim() || null,
-              address: form.address.trim() || null,
-              contactPerson: form.contactPerson.trim() || null,
+              branches: cleanBranches,
               inn: form.inn.trim() || null,
               comment: form.comment.trim() || null,
             });
@@ -3519,7 +3970,7 @@ function CounterpartyModal({
               className="admin-input"
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
-              placeholder="Имя или компания"
+              placeholder="Имя или компания (например «Детский мир»)"
               autoFocus={mode === "create"}
               required
             />
@@ -3541,34 +3992,78 @@ function CounterpartyModal({
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "1 1 160px" }}>
-              <label className="admin-label">Телефон</label>
-              <input
-                className="admin-input"
-                value={form.phone}
-                onChange={(e) => set("phone", e.target.value)}
-                placeholder="+7…"
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 160px" }}>
-              <label className="admin-label">Контактное лицо</label>
-              <input
-                className="admin-input"
-                value={form.contactPerson}
-                onChange={(e) => set("contactPerson", e.target.value)}
-              />
-            </div>
-          </div>
-
+          {/* Точки / филиалы */}
           <div className="admin-field">
-            <label className="admin-label">Адрес</label>
-            <input
-              className="admin-input"
-              value={form.address}
-              onChange={(e) => set("address", e.target.value)}
-              placeholder="Где забирать / куда везти"
-            />
+            <label className="admin-label">
+              <Building2 size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              Точки / филиалы (адрес + контактное лицо + телефон)
+            </label>
+            {form.branches.length === 0 && (
+              <p className="admin-hint" style={{ marginTop: 0 }}>
+                Точек пока нет — добавьте адрес, чтобы он подставлялся в документы.
+              </p>
+            )}
+            <div style={{ display: "grid", gap: 10 }}>
+              {form.branches.map((b, idx) => (
+                <div
+                  key={b.id}
+                  className="admin-card"
+                  style={{ padding: "10px 12px", borderStyle: "dashed" }}
+                >
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                    <span className="admin-badge admin-badge--muted">Точка {idx + 1}</span>
+                    <input
+                      className="admin-input"
+                      style={{ flex: 1 }}
+                      value={b.label}
+                      onChange={(e) => setBranch(b.id, { label: e.target.value })}
+                      placeholder="Метка (необязательно): Филиал №1, Центральный…"
+                      maxLength={120}
+                    />
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      onClick={() => removeBranch(b.id)}
+                      title="Удалить точку"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  <div className="admin-field" style={{ marginBottom: 6 }}>
+                    <input
+                      className="admin-input"
+                      value={b.address}
+                      onChange={(e) => setBranch(b.id, { address: e.target.value })}
+                      placeholder="Адрес * (где забирать / куда везти)"
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      className="admin-input"
+                      style={{ flex: "1 1 160px" }}
+                      value={b.contactPerson}
+                      onChange={(e) => setBranch(b.id, { contactPerson: e.target.value })}
+                      placeholder="Контактное лицо (ФИО)"
+                    />
+                    <input
+                      className="admin-input"
+                      style={{ flex: "1 1 150px" }}
+                      value={b.phone}
+                      onChange={(e) => setBranch(b.id, { phone: e.target.value })}
+                      placeholder="Телефон +7…"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              style={{ marginTop: 8 }}
+              onClick={addBranch}
+            >
+              <Plus size={13} /> Добавить точку
+            </button>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -3699,6 +4194,8 @@ function TransportModal({
           counterpartyId: null,
           counterpartyName: "",
           address: "",
+          phone: "",
+          contactPerson: "",
           approxTime: "",
           wastepaperType: "cardboard",
           plannedKg: 0,
@@ -3843,10 +4340,17 @@ function TransportModal({
                         const found = suppliers.find(
                           (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
                         );
+                        const first = found?.branches?.[0];
                         setStop(idx, {
                           counterpartyName: value,
                           counterpartyId: found ? found.id : null,
-                          address: stop.address || found?.address || stop.address,
+                          address: stop.address || first?.address || found?.address || stop.address,
+                          phone: stop.phone || first?.phone || found?.phone || stop.phone,
+                          contactPerson:
+                            stop.contactPerson ||
+                            first?.contactPerson ||
+                            found?.contactPerson ||
+                            stop.contactPerson,
                         });
                       }}
                     />
@@ -3889,6 +4393,51 @@ function TransportModal({
                       <Trash2 size={13} />
                     </button>
                   </div>
+
+                  {/* Выбор филиала, если у контрагента несколько точек */}
+                  {(() => {
+                    const stopSupplier =
+                      suppliers.find((c) => c.id === stop.counterpartyId) ||
+                      suppliers.find(
+                        (c) =>
+                          c.name.trim().toLowerCase() ===
+                          stop.counterpartyName.trim().toLowerCase()
+                      ) ||
+                      null;
+                    const stopBranches = stopSupplier?.branches || [];
+                    if (stopBranches.length === 0) return null;
+                    const matched = findWpBranchByAddress(stopBranches, stop.address);
+                    return (
+                      <select
+                        className="admin-select"
+                        style={{ marginTop: 8 }}
+                        value={matched?.id || "__new"}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          if (id === "__new") {
+                            setStop(idx, { address: "", phone: "", contactPerson: "" });
+                            return;
+                          }
+                          const b = stopBranches.find((x) => x.id === id);
+                          if (b)
+                            setStop(idx, {
+                              address: b.address,
+                              phone: b.phone,
+                              contactPerson: b.contactPerson,
+                            });
+                        }}
+                      >
+                        <option value="__new">➕ Другой адрес (вписать новый)</option>
+                        {stopBranches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.label ? `${b.label} — ${b.address}` : b.address}
+                            {b.contactPerson ? ` (${b.contactPerson})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
+
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                     <input
                       className="admin-input"
@@ -3899,8 +4448,22 @@ function TransportModal({
                     />
                     <input
                       className="admin-input"
+                      style={{ flex: "1 1 140px" }}
+                      placeholder="Телефон точки"
+                      value={stop.phone}
+                      onChange={(e) => setStop(idx, { phone: e.target.value })}
+                    />
+                    <input
+                      className="admin-input"
+                      style={{ flex: "1 1 150px" }}
+                      placeholder="Контактное лицо"
+                      value={stop.contactPerson}
+                      onChange={(e) => setStop(idx, { contactPerson: e.target.value })}
+                    />
+                    <input
+                      className="admin-input"
                       style={{ flex: "1 1 160px" }}
-                      placeholder="Заметка (контакт, домофон…)"
+                      placeholder="Заметка (домофон…)"
                       value={stop.note}
                       onChange={(e) => setStop(idx, { note: e.target.value })}
                     />

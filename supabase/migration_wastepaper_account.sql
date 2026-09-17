@@ -21,9 +21,10 @@ CREATE TABLE IF NOT EXISTS wp_counterparties (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL DEFAULT '',
   roles TEXT[] NOT NULL DEFAULT '{}',          -- 'supplier' сдаёт нам, 'enterprise' принимает у нас
-  phone TEXT,
-  address TEXT,
-  contact_person TEXT,
+  phone TEXT,                                  -- зеркало первой точки (для совместимости)
+  address TEXT,                                -- зеркало первой точки (для совместимости)
+  contact_person TEXT,                         -- зеркало первой точки (для совместимости)
+  branches JSONB NOT NULL DEFAULT '[]'::jsonb, -- точки/филиалы: [{id,label,address,contactPerson,phone}]
   inn TEXT,
   comment TEXT,
   created_by TEXT,
@@ -44,6 +45,9 @@ CREATE TABLE IF NOT EXISTS wp_intakes (
   weight_kg NUMERIC NOT NULL DEFAULT 0,
   price_per_kg NUMERIC NOT NULL DEFAULT 0,
   total NUMERIC NOT NULL DEFAULT 0,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,    -- позиции: [{id,wastepaperType,weightKg,pricePerKg,total}]
+  phone TEXT,                                  -- телефон точки (для путевого листа)
+  contact_person TEXT,                         -- контактное лицо точки
   account TEXT NOT NULL DEFAULT 'cash' CHECK (account IN ('cash','bank')),  -- как платим поставщику
   is_paid BOOLEAN NOT NULL DEFAULT FALSE,
   paid_at TIMESTAMPTZ,                         -- фактическая дата/время оплаты (осн. для баланса)
@@ -65,10 +69,14 @@ CREATE TABLE IF NOT EXISTS wp_shipments (
   date DATE NOT NULL,
   enterprise_id UUID,                          -- логическая связь с wp_counterparties (роль enterprise)
   enterprise_name TEXT NOT NULL DEFAULT '',
+  address TEXT,                                -- куда везём (точка/филиал предприятия)
   wastepaper_type TEXT NOT NULL DEFAULT 'cardboard',
   weight_kg NUMERIC NOT NULL DEFAULT 0,
   price_per_kg NUMERIC NOT NULL DEFAULT 0,
   total NUMERIC NOT NULL DEFAULT 0,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,    -- позиции: [{id,wastepaperType,weightKg,pricePerKg,total}]
+  phone TEXT,                                  -- телефон точки (для путевого листа)
+  contact_person TEXT,                         -- контактное лицо точки
   account TEXT NOT NULL DEFAULT 'bank' CHECK (account IN ('cash','bank')),  -- как получаем деньги
   is_paid BOOLEAN NOT NULL DEFAULT FALSE,
   paid_at TIMESTAMPTZ,

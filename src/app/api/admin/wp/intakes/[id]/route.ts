@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   deleteWpIntake,
+  ensureWpBranch,
   requireWastepaperApi,
   setWpIntakeCancelled,
   updateWpIntake,
@@ -36,6 +37,16 @@ export async function PATCH(
       return NextResponse.json({ success: true });
     }
 
+    // Новый адрес существующего контрагента — автоматически в его точки.
+    if (body.counterpartyId && body.address) {
+      await ensureWpBranch(String(body.counterpartyId), {
+        address: String(body.address),
+        phone: body.phone ? String(body.phone) : undefined,
+        contactPerson: body.contactPerson ? String(body.contactPerson) : undefined,
+        label: body.branchLabel ? String(body.branchLabel) : undefined,
+      });
+    }
+
     // Быстрое переключение «оплачен» без остальных полей.
     const item = await updateWpIntake(id, {
       ...(body.date !== undefined ? { date: String(body.date) } : {}),
@@ -44,6 +55,9 @@ export async function PATCH(
         ? { counterpartyName: String(body.counterpartyName) }
         : {}),
       ...(body.address !== undefined ? { address: body.address } : {}),
+      ...(body.phone !== undefined ? { phone: body.phone } : {}),
+      ...(body.contactPerson !== undefined ? { contactPerson: body.contactPerson } : {}),
+      ...(body.items !== undefined && Array.isArray(body.items) ? { items: body.items } : {}),
       ...(body.wastepaperType !== undefined
         ? { wastepaperType: String(body.wastepaperType) }
         : {}),

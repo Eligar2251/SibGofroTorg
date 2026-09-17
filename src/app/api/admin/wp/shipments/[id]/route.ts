@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   deleteWpShipment,
+  ensureWpBranch,
   requireWastepaperApi,
   setWpShipmentCancelled,
   updateWpShipment,
@@ -35,12 +36,26 @@ export async function PATCH(
       return NextResponse.json({ success: true });
     }
 
+    // Новый адрес предприятия — автоматически в его точки (филиалы).
+    if (body.enterpriseId && body.address) {
+      await ensureWpBranch(String(body.enterpriseId), {
+        address: String(body.address),
+        phone: body.phone ? String(body.phone) : undefined,
+        contactPerson: body.contactPerson ? String(body.contactPerson) : undefined,
+        label: body.branchLabel ? String(body.branchLabel) : undefined,
+      });
+    }
+
     const item = await updateWpShipment(id, {
       ...(body.date !== undefined ? { date: String(body.date) } : {}),
       ...(body.enterpriseId !== undefined ? { enterpriseId: body.enterpriseId } : {}),
       ...(body.enterpriseName !== undefined
         ? { enterpriseName: String(body.enterpriseName) }
         : {}),
+      ...(body.address !== undefined ? { address: body.address } : {}),
+      ...(body.phone !== undefined ? { phone: body.phone } : {}),
+      ...(body.contactPerson !== undefined ? { contactPerson: body.contactPerson } : {}),
+      ...(body.items !== undefined && Array.isArray(body.items) ? { items: body.items } : {}),
       ...(body.wastepaperType !== undefined
         ? { wastepaperType: String(body.wastepaperType) }
         : {}),
