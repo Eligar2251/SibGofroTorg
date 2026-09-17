@@ -66,6 +66,12 @@ export async function PATCH(
         : {}),
       ...(body.isPaid !== undefined ? { isPaid: Boolean(body.isPaid) } : {}),
       ...(body.paidAt !== undefined ? { paidAt: body.paidAt } : {}),
+      ...(body.needsTransport !== undefined
+        ? { needsTransport: Boolean(body.needsTransport) }
+        : {}),
+      ...(body.transportPlannedDate !== undefined
+        ? { transportPlannedDate: body.transportPlannedDate || null }
+        : {}),
       ...(body.comment !== undefined ? { comment: body.comment } : {}),
     });
     await logAdminAction(

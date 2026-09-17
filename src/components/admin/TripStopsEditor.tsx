@@ -35,6 +35,7 @@ import { ProductPicker, type PickerProduct } from "@/components/admin/ProductPic
 import {
   STOP_SORT_OPTIONS,
   TRIP_TYPES,
+  isWpStop,
   moveStop,
   normalizeTripType,
   sortStops,
@@ -332,11 +333,14 @@ export function TripStopsEditor({
 
   const totals = stops.reduce(
     (acc, s) => {
-      acc.qty += stopTotalQty(s);
+      // Макулатура считается в кг — отдельно от единиц товара учёта,
+      // иначе итог «единиц груза» складывал бы штуки с килограммами.
+      if (isWpStop(s)) acc.kg += stopTotalQty(s);
+      else acc.qty += stopTotalQty(s);
       acc.positions += stopLoadedLines(s).length;
       return acc;
     },
-    { qty: 0, positions: 0 }
+    { qty: 0, kg: 0, positions: 0 }
   );
 
   return (
@@ -424,8 +428,11 @@ export function TripStopsEditor({
                         )
                       )}
                       <span className="trip-stop__spacer" />
-                      <span className="trip-stop__qty" title="Единиц груза на точке">
-                        {qty} ед.
+                      <span
+                        className="trip-stop__qty"
+                        title={isWpStop(stop) ? "Килограммов макулатуры на точке" : "Единиц груза на точке"}
+                      >
+                        {qty} {isWpStop(stop) ? "кг" : "ед."}
                       </span>
                       {canDrag && (
                         <span className="trip-stop__moves">
@@ -492,7 +499,12 @@ export function TripStopsEditor({
                       )}
                       {loaded.length > 0 && (
                         <span className="trip-stop__cargo">
-                          {loaded.map((l) => `${l.name || "без названия"} ×${l.qty}`).join(", ")}
+                          {loaded
+                            .map(
+                              (l) =>
+                                `${l.name || "без названия"} ×${l.qty}${isWpStop(stop) ? " кг" : ""}`
+                            )
+                            .join(", ")}
                         </span>
                       )}
                     </div>
@@ -566,13 +578,32 @@ export function TripStopsEditor({
                             </Field>
                           </>
                         ) : (
-                          /* Точка из заказа: адрес/телефон/заметка приходят из заказа
-                             ZK-N. Правки здесь — только для этого бланка (в заказ не
-                             пишутся), чтобы можно было доуказать ворота, этаж, время. */
+                          /* Точка из документа: адрес/телефон/заметка приходят из
+                             заказа ЗК-N, приёма ПМ-N или сдачи СМ-N. Правки здесь —
+                             только для этого бланка (в документ не пишутся), чтобы
+                             можно было доуказать ворота, этаж, время. */
                           <div className="trip-stop__deal-info">
                             <span className="trip-stop__deal-hint">
-                              Данные из заказа{stop.dealNumber ? ` ЗК-${stop.dealNumber}` : ""}. Поля ниже
-                              уточняют только этот бланк.
+                              {stop.kind === "wp_intake" && (
+                                <>
+                                  Данные из приёма
+                                  {stop.wpDocNumber != null ? ` ПМ-${stop.wpDocNumber}` : ""} (забор
+                                  макулатуры). Поля ниже уточняют только этот бланк.
+                                </>
+                              )}
+                              {stop.kind === "wp_shipment" && (
+                                <>
+                                  Данные из сдачи
+                                  {stop.wpDocNumber != null ? ` СМ-${stop.wpDocNumber}` : ""} (везём на
+                                  предприятие). Поля ниже уточняют только этот бланк.
+                                </>
+                              )}
+                              {stop.kind === "deal" && (
+                                <>
+                                  Данные из заказа{stop.dealNumber ? ` ЗК-${stop.dealNumber}` : ""}.
+                                  Поля ниже уточняют только этот бланк.
+                                </>
+                              )}
                             </span>
                             <Field label="Адрес в бланке">
                               <input
@@ -634,7 +665,7 @@ export function TripStopsEditor({
                                 <Plus size={12} /> Строка груза
                               </button>
                             )}
-                            {stop.kind === "deal" && (
+                            {stop.kind !== "custom" && (
                               <button
                                 type="button"
                                 className="admin-btn admin-btn--ghost admin-btn--sm"
@@ -686,10 +717,12 @@ export function TripStopsEditor({
                           <span className="trip-stop__nolines">Груз не указан</span>
                         )}
                         {stop.lines.map((line, lineIndex) => {
+                          // Точка из документа: больше, чем в документе, увезти
+                          // нельзя (у заказа — ещё и не больше остатка склада).
                           const max =
-                            stop.kind === "deal"
-                              ? (line.maxQty ?? line.orderedQty ?? line.qty)
-                              : null;
+                            stop.kind === "custom"
+                              ? null
+                              : (line.maxQty ?? line.orderedQty ?? line.qty);
                           return (
                             <div className="trip-stop__line" key={`${stop.key}-${lineIndex}`}>
                               {editable && stop.kind === "custom" ? (
@@ -718,6 +751,12 @@ export function TripStopsEditor({
                                       )
                                     </span>
                                   )}
+                                  {isWpStop(stop) && line.orderedQty != null && (
+                                    <span className="trip-stop__line-ordered">
+                                      {" "}
+                                      (в документе {line.orderedQty} кг)
+                                    </span>
+                                  )}
                                 </span>
                               )}
                               {editable ? (
@@ -729,6 +768,11 @@ export function TripStopsEditor({
                                     max={max ?? undefined}
                                     value={line.qty || ""}
                                     placeholder="0"
+                                    title={
+                                      isWpStop(stop)
+                                        ? "Килограммов макулатуры в этом рейсе (можно меньше, чем в документе)"
+                                        : undefined
+                                    }
                                     onChange={(e) => {
                                       const raw = Math.max(0, Number(e.target.value) || 0);
                                       patchLine(stop.key, lineIndex, {
@@ -736,6 +780,11 @@ export function TripStopsEditor({
                                       });
                                     }}
                                   />
+                                  {isWpStop(stop) && (
+                                    <span className="trip-stop__line-unit" aria-hidden>
+                                      кг
+                                    </span>
+                                  )}
                                   {stop.kind === "custom" && (
                                     <button
                                       type="button"
@@ -750,7 +799,10 @@ export function TripStopsEditor({
                                   )}
                                 </div>
                               ) : (
-                                <span className="trip-stop__line-qty-static">×{line.qty}</span>
+                                <span className="trip-stop__line-qty-static">
+                                  ×{line.qty}
+                                  {isWpStop(stop) ? " кг" : ""}
+                                </span>
                               )}
                             </div>
                           );
@@ -769,6 +821,11 @@ export function TripStopsEditor({
         <div className="trip-stops-block__totals">
           Точек: <strong>{stops.length}</strong> · позиций: <strong>{totals.positions}</strong> ·
           единиц груза: <strong>{totals.qty}</strong>
+          {totals.kg > 0 && (
+            <>
+              {" "}· макулатура: <strong>{totals.kg} кг</strong>
+            </>
+          )}
           <span className="trip-stops-block__totals-hint">
             {canDrag
               ? "Порядок — как в бланке: тяните карточку за ⠿ или жмите ↑↓"

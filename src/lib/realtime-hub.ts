@@ -75,6 +75,8 @@ const ROLE_TABLES: Record<string, readonly string[] | "all"> = {
     "wp_payments",
     "wp_transports",
     "wp_counterparties",
+    // Единые перевозки учёта — общее рабочее место с разделом «Доставки».
+    "transports",
   ],
 };
 

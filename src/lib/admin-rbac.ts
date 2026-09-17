@@ -148,8 +148,17 @@ export function canAccessAdminApi(
   // только чтение, тоже доступен всем ролям.
   if (pathname === "/api/admin/events/status") return method.toUpperCase() === "GET";
 
-  // Макулатурщику доступны только API отдельного учёта макулатуры.
+  // Макулатурщику доступны API отдельного учёта макулатуры плюс ЕДИНЫЕ
+  // перевозки учёта: вкладка «Перевозки» в его модуле показывает те же
+  // рейсы (ПЕР-...), что и раздел «Доставки», — он собирает их из своих
+  // заборов/сдач, а водитель везёт один общий путевой лист.
   if (role === "wastepaper") {
+    if (
+      pathname === "/api/admin/transports" ||
+      pathname.startsWith("/api/admin/transports/")
+    ) {
+      return true;
+    }
     return pathname === "/api/admin/wp" || pathname.startsWith("/api/admin/wp/");
   }
 

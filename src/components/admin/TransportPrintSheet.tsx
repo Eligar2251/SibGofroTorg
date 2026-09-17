@@ -22,12 +22,15 @@ export interface TransportPrintData {
   driverPhone?: string | null;
   items: {
     dealNumber: number;
+    /** Привязка к приёму/сдаче макулатуры (полоска ПМ-/СМ-). */
+    wpDocKind?: "intake" | "shipment" | null;
+    wpDocNumber?: number | null;
     customerName: string;
     contactName?: string | null;
     address: string | null;
     phone: string | null;
     deliveryNote?: string | null;
-    items: { name: string; transportQty: number }[];
+    items: { name: string; transportQty: number; unit?: string | null }[];
     tripType?: "delivery" | "pickup" | "handover" | null;
   }[];
   companyPhone?: string;
@@ -135,13 +138,19 @@ export function TransportPrintSheet({
               ? deal.deliveryNote.trim()
               : null;
           const isLast = idx === lastIdx;
+          const isWp = Boolean(deal.wpDocKind);
+          const stripTitle = deal.wpDocKind
+            ? `${deal.wpDocKind === "intake" ? "ПМ" : "СМ"}-${deal.wpDocNumber ?? "?"}`
+            : deal.dealNumber
+              ? `ЗК-${deal.dealNumber}`
+              : "Самостоятельная перевозка";
           return (
-            <Fragment key={`${deal.dealNumber || "self"}-${idx}`}>
+            <Fragment key={`${deal.wpDocKind || ""}${deal.wpDocNumber ?? ""}${deal.dealNumber || "self"}-${idx}`}>
               <div className="transport-strip">
-                {/* Шапка: номер заказа + количество товара */}
+                {/* Шапка: номер документа + количество груза */}
                 <div className="strip-top">
                   <div className="strip-top__left">
-                    <span className="strip-deal">{deal.dealNumber ? `ЗК-${deal.dealNumber}` : "Самостоятельная перевозка"}</span>
+                    <span className="strip-deal">{stripTitle}</span>
                     <span className="strip-per">
                       ПЕР-{data.transportNumber} · {fmtDate(data.date)}
                     </span>
@@ -153,7 +162,7 @@ export function TransportPrintSheet({
                   </div>
                   <div className="strip-top__right">
                     <span className="strip-boxes">{totalQty}</span>
-                    <span className="strip-boxes-label">кол-во товара</span>
+                    <span className="strip-boxes-label">{isWp ? "вес, кг" : "кол-во товара"}</span>
                   </div>
                 </div>
 
@@ -192,12 +201,12 @@ export function TransportPrintSheet({
                   </div>
                 )}
 
-                {/* Товары */}
+                {/* Груз: товары учёта или макулатура в кг */}
                 <table className="strip-items">
                   <thead>
                     <tr>
-                      <th>Товар</th>
-                      <th className="strip-items__qty-head">Кол-во</th>
+                      <th>{isWp ? "Макулатура" : "Товар"}</th>
+                      <th className="strip-items__qty-head">{isWp ? "Вес, кг" : "Кол-во"}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -208,7 +217,9 @@ export function TransportPrintSheet({
                           <span className="strip-items__num">
                             {item.transportQty}
                           </span>
-                          <span className="strip-items__unit">(ед.)</span>
+                          <span className="strip-items__unit">
+                            ({item.unit || (isWp ? "кг" : "ед.")})
+                          </span>
                         </td>
                       </tr>
                     ))}

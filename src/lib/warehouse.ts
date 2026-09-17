@@ -4469,6 +4469,13 @@ export interface TransportItem {
   /** null — своя (самостоятельная) точка без заказа учёта */
   dealId: string | null;
   dealNumber: number | null;
+  /**
+   * Привязка к приёму/сдаче макулатуры (wp_intakes / wp_shipments).
+   * Приём едет как «забор груза», сдача — как «сдача груза».
+   */
+  wpDocId?: string | null;
+  wpDocKind?: "intake" | "shipment" | null;
+  wpDocNumber?: number | null;
   customerName: string;
   contactName?: string | null;
   address: string | null;
@@ -4481,6 +4488,8 @@ export interface TransportItem {
     name: string;
     orderedQty: number;
     transportQty: number;
+    /** Единица измерения для бланка («кг» у макулатуры). */
+    unit?: string | null;
   }[];
   totalSum: number | null;
   /**
@@ -4682,14 +4691,75 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
         .filter(Boolean)
     ),
   ];
-  if (dealIds.length === 0) return;
+  const hasWpItems = transports.some((t) =>
+    t.items.some((i) => !i.dealId && i.wpDocId && i.wpDocKind)
+  );
+  if (dealIds.length === 0 && !hasWpItems) return;
   const db = getAdminDb();
-  const { data: deals } = await db
-    .from("customer_deals")
-    .select("id, contact_name, delivery_note, items, shipped_items, status")
-    .in("id", dealIds);
-  if (!deals || deals.length === 0) return;
-  const dealMap = new Map<string, any>(deals.map((d: any) => [String(d.id), d]));
+  const dealMap = new Map<string, any>();
+  if (dealIds.length > 0) {
+    const { data: deals } = await db
+      .from("customer_deals")
+      .select("id, contact_name, delivery_note, items, shipped_items, status")
+      .in("id", dealIds);
+    for (const d of deals || []) dealMap.set(String((d as any).id), d);
+  }
+
+  // Точки макулатуры: подтягиваем статус документов, чтобы из активных
+  // рейсов исчезали отменённые и снятые с перевозки приёмы/сдачи.
+  // Запрос обёрнут: если миграция связи ещё не применена — показываем
+  // точки как есть (как свои), а не роняем страницу перевозок.
+  const wpAlive = new Map<string, boolean>();
+  try {
+    const wpIntakeIds = [
+      ...new Set(
+        transports
+          .flatMap((t) =>
+            t.items
+              .filter((i) => !i.dealId && i.wpDocKind === "intake" && i.wpDocId)
+              .map((i) => String(i.wpDocId))
+          )
+      ),
+    ];
+    const wpShipmentIds = [
+      ...new Set(
+        transports
+          .flatMap((t) =>
+            t.items
+              .filter((i) => !i.dealId && i.wpDocKind === "shipment" && i.wpDocId)
+              .map((i) => String(i.wpDocId))
+          )
+      ),
+    ];
+    if (wpIntakeIds.length > 0) {
+      const { data: rows, error } = await db
+        .from("wp_intakes")
+        .select("id, status, needs_transport")
+        .in("id", wpIntakeIds);
+      if (error) throw error;
+      for (const r of rows || []) {
+        wpAlive.set(
+          `intake:${r.id}`,
+          r.status !== "cancelled" && r.needs_transport === true
+        );
+      }
+    }
+    if (wpShipmentIds.length > 0) {
+      const { data: rows, error } = await db
+        .from("wp_shipments")
+        .select("id, status, needs_transport")
+        .in("id", wpShipmentIds);
+      if (error) throw error;
+      for (const r of rows || []) {
+        wpAlive.set(
+          `shipment:${r.id}`,
+          r.status !== "cancelled" && r.needs_transport === true
+        );
+      }
+    }
+  } catch (e) {
+    console.error("enrichTransportItems: wp-статусы недоступны:", e);
+  }
 
   for (const t of transports) {
     // Завершённые и архивные перевозки — исторические документы,
@@ -4703,6 +4773,19 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
         contactName: i.contactName ?? deal?.contact_name ?? null,
         deliveryNote: i.deliveryNote ?? deal?.delivery_note ?? null,
       };
+      // Точка макулатуры: в активном рейсе показываем, только пока
+      // документ ждёт перевозки (иначе отменённый приём висел бы
+      // в путевом листе). В завершённых — история, не трогаем.
+      if (!i.dealId && i.wpDocId && i.wpDocKind) {
+        if (isActive && wpAlive.size > 0) {
+          const alive = wpAlive.get(`${i.wpDocKind}:${i.wpDocId}`);
+          // Документ удалён (нет в выборке) или снят с перевозки —
+          // точку из активного рейса убираем.
+          if (alive !== true) continue;
+        }
+        items.push(enriched);
+        continue;
+      }
       // Своя точка (без заказа): адрес и груз набраны вручную, урезать
       // нечего — иначе такие точки исчезали из активных перевозок и из
       // путевого листа, ломая порядок маршрута.
@@ -4851,6 +4934,23 @@ export async function completeTransport(id: string): Promise<void> {
     if (!ti.dealId) {
       const loaded = (ti.items || []).filter((line) => (Number(line.transportQty) || 0) > 0);
       if (loaded.length > 0) postedItems.push({ ...ti, items: loaded });
+      // Точка макулатуры: рейс выполнен — приём/сдача больше не ждёт
+      // перевозки и уходит из очереди «Ожидают формирования».
+      // Финансовый документ при этом не меняется (оплата — отдельно).
+      if (ti.wpDocId && ti.wpDocKind) {
+        try {
+          const table = ti.wpDocKind === "intake" ? "wp_intakes" : "wp_shipments";
+          await db
+            .from(table)
+            .update({
+              needs_transport: false,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", ti.wpDocId);
+        } catch (e) {
+          console.error("completeTransport: снять needs_transport:", e);
+        }
+      }
       continue;
     }
     const { data: deal } = await db

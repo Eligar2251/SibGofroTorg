@@ -10518,6 +10518,32 @@ body.is-col-resizing * {
   color: var(--adm-muted);
 }
 
+/* Вертикальный ритм форм в модалках макулатуры: все блоки
+   (ряды полей, адрес точки, перевозка, позиции, кнопки) идут с зазором. */
+.wp-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* У блока перевозки свои внешние отступы — внутри формы за них отвечает gap. */
+.wp-modal-form > .deal-delivery-block {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Внутренние группы модалок (адрес точки): тот же ритм. */
+.wp-modal-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Кнопки действий в таблицах модуля не слипаются. */
+.wp-account .admin-table td .admin-btn + .admin-btn {
+  margin-left: 6px;
+}
+
 @media (max-width: 480px) {
   .wp-days-filters {
     display: grid;
@@ -14267,6 +14293,13 @@ a.client-card__contact:hover {
 .trip-stop__line-name { font-size: 12px; overflow-wrap: anywhere; }
 .trip-stop__line-ordered { font-size: 11px; color: var(--adm-sand); }
 .trip-stop__line-qty { display: flex; align-items: center; gap: 4px; }
+.trip-stop__line-qty .admin-input { min-width: 0; flex: 1 1 auto; }
+.trip-stop__line-unit {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--adm-sand);
+}
 .trip-stop__line-qty-static { text-align: right; font-weight: 800; }
 .trip-stop__nolines { font-size: 11.5px; color: var(--adm-rust); }
 

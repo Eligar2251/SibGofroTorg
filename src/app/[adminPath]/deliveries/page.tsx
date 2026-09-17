@@ -1,6 +1,12 @@
 // src/app/[adminPath]/deliveries/page.tsx
 import { notFound } from "next/navigation";
 import { getDealDeliveries, getEmployees, getTransports, getWarehouseStock } from "@/lib/warehouse";
+import { getWpIntakes, getWpProducts, getWpShipments } from "@/lib/wastepaper-account";
+import {
+  WP_TYPE_LABELS,
+  buildWpTransportQueue,
+  wpTakenKeysFromTransports,
+} from "@/lib/wastepaper-account-shared";
 import { getSettings } from "@/lib/supabase-queries";
 import { TransportManager, type TransportDeal } from "@/components/admin/TransportManager";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
@@ -24,17 +30,27 @@ export default async function AdminDeliveriesPage({
   let dealOrders: Awaited<ReturnType<typeof getDealDeliveries>> = [];
   let employees: Awaited<ReturnType<typeof getEmployees>> = [];
   let products: PickerProduct[] = [];
+  let wpIntakes: Awaited<ReturnType<typeof getWpIntakes>> = [];
+  let wpShipments: Awaited<ReturnType<typeof getWpShipments>> = [];
+  let wpProducts: Awaited<ReturnType<typeof getWpProducts>> = [];
 
   try {
-    const [trs, deals, emps, stock] = await Promise.all([
+    const [trs, deals, emps, stock, wpi, wps, wpp] = await Promise.all([
       getTransports({ limit: 200 }),
       getDealDeliveries({ filter: "all", limit: 500 }),
       getEmployees().catch(() => []),
       getWarehouseStock().catch(() => []),
+      // Очередь макулатуры для тех же рейсов (пусто, если модуль не настроен).
+      getWpIntakes(500).catch(() => []),
+      getWpShipments(300).catch(() => []),
+      getWpProducts().catch(() => []),
     ]);
     transports = trs;
     dealOrders = deals;
     employees = emps;
+    wpIntakes = wpi;
+    wpShipments = wps;
+    wpProducts = wpp;
     products = stock.map((p) => ({
       id: p.id,
       name: p.name,
@@ -107,12 +123,26 @@ export default async function AdminDeliveriesPage({
       deliveryItems: Array.isArray(d.deliveryItems) ? d.deliveryItems : [],
     }));
 
+  // Приёмы/сдачи с пометкой «в перевозку», ещё не взятые в активный рейс.
+  // Подписи видов: справочник видов + базовые (картон, бумага…).
+  const wpTypeLabels: Record<string, string> = {
+    ...WP_TYPE_LABELS,
+    ...Object.fromEntries(wpProducts.map((p) => [p.id, p.name])),
+  };
+  const pendingWpDocs = buildWpTransportQueue({
+    intakes: wpIntakes,
+    shipments: wpShipments,
+    takenKeys: wpTakenKeysFromTransports(transports),
+    typeLabels: wpTypeLabels,
+  });
+
   return (
     <div>
       <DeliveriesRealtime />
       <TransportManager
         transports={transports}
         pendingDeals={pendingDeals}
+        pendingWpDocs={pendingWpDocs}
         drivers={drivers}
         companyPhone={companyPhone}
         companyAddress={companyAddress}

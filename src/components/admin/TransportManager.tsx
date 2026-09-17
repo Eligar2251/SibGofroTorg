@@ -21,6 +21,7 @@ import {
   dealAvailableFor,
   emptyCustomStop,
   stopFromDeal,
+  stopFromWpDoc,
   stopTotalQty,
   stopsFromTransportItems,
   stopsToTransportItems,
@@ -30,6 +31,10 @@ import {
   type TripStopDeal,
   type TripType,
 } from "@/lib/trip-stops";
+import {
+  wpQueueDocLabel,
+  type WpTransportQueueDoc,
+} from "@/lib/wastepaper-account-shared";
 
 // Совместимость: типы и подписи tripType раньше жили здесь.
 export type { TripType } from "@/lib/trip-stops";
@@ -53,6 +58,10 @@ export interface TransportRow {
   items: {
     dealId: string | null;
     dealNumber: number | null;
+    /** Привязка к приёму/сдаче макулатуры (точки ПМ-/СМ-). */
+    wpDocId?: string | null;
+    wpDocKind?: "intake" | "shipment" | null;
+    wpDocNumber?: number | null;
     customerName: string;
     contactName?: string | null;
     address: string | null;
@@ -64,6 +73,7 @@ export interface TransportRow {
       name: string;
       orderedQty: number;
       transportQty: number;
+      unit?: string | null;
     }[];
     totalSum: number | null;
     tripType?: TripType | null;
@@ -93,6 +103,7 @@ const fmtDateTime = (raw: any) => {
 export function TransportManager({
   transports: initialTransports,
   pendingDeals,
+  pendingWpDocs = [],
   drivers,
   companyPhone,
   companyAddress,
@@ -101,6 +112,12 @@ export function TransportManager({
 }: {
   transports: TransportRow[];
   pendingDeals: TransportDeal[];
+  /**
+   * Приёмы/сдачи макулатуры с пометкой «в перевозку» — очередь того же
+   * конструктора рейса: заборы (ПМ-) и сдачи (СМ-) едут в общем путевом
+   * листе вместе с заказами учёта.
+   */
+  pendingWpDocs?: WpTransportQueueDoc[];
   drivers: DriverOption[];
   companyPhone?: string;
   companyAddress?: string;
@@ -149,8 +166,8 @@ export function TransportManager({
     active: initialTransports.filter((t) => t.status === "draft" || t.status === "active").length,
     completed: initialTransports.filter((t) => t.status === "completed").length,
     archived: initialTransports.filter((t) => t.status === "archived").length,
-    pending: pendingDeals.length,
-  }), [initialTransports, pendingDeals]);
+    pending: pendingDeals.length + pendingWpDocs.length,
+  }), [initialTransports, pendingDeals, pendingWpDocs]);
 
   async function apiCall(url: string, method: string, body?: any) {
     setSaving(true);
@@ -177,9 +194,13 @@ export function TransportManager({
     await apiCall(`/api/admin/transports/${id}`, "DELETE");
   }
 
-  async function handleComplete(id: string) {
-    if (!confirm("Завершить перевозку? Товары будут списаны со склада.")) return;
-    await apiCall(`/api/admin/transports/${id}`, "PATCH", { action: "complete" });
+  async function handleComplete(t: TransportRow, stops: TripStop[]) {
+    const hasWp = stops.some((s) => s.wpDocId);
+    const msg = hasWp
+      ? "Завершить перевозку? Товары спишутся со склада, а приёмы/сдачи макулатуры снимутся с очереди перевозок."
+      : "Завершить перевозку? Товары будут списаны со склада.";
+    if (!confirm(msg)) return;
+    await apiCall(`/api/admin/transports/${t.id}`, "PATCH", { action: "complete" });
   }
 
   async function handleArchive(id: string) {
@@ -222,13 +243,19 @@ export function TransportManager({
         .filter((stop) => stop.lines.length > 0)
         .map((stop) => ({
           dealNumber: stop.dealNumber ?? 0,
+          wpDocKind: stop.wpDocKind,
+          wpDocNumber: stop.wpDocNumber,
           customerName: stop.customerName,
           contactName: stop.contactName,
           address: stop.address,
           phone: stop.phone,
           deliveryNote: stop.deliveryNote,
           tripType: stop.tripType,
-          items: stop.lines.map((line) => ({ name: line.name, transportQty: line.qty })),
+          items: stop.lines.map((line) => ({
+            name: line.name,
+            transportQty: line.qty,
+            unit: line.unit ?? null,
+          })),
         })),
       companyPhone,
       companyAddress,
@@ -258,7 +285,8 @@ export function TransportManager({
         <div>
           <h1 className="admin-h1">Перевозки · путевые листы</h1>
           <p className="admin-sub">
-            Путевой лист водителю: точки по порядку, пометки «забор / доставка», печать А4
+            Путевой лист водителю: точки по порядку, пометки «забор / доставка», печать А4.
+            Заказы учёта и макулатура едут в одном маршруте.
           </p>
         </div>
         <div className="admin-page-head__actions">
@@ -344,6 +372,7 @@ export function TransportManager({
                       )}
                       <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--adm-sand)" }}>
                         {totals.total} точ. · {totals.qty} шт.
+                        {totals.kg > 0 && <> · {totals.kg} кг</>}
                         {dirty && <strong style={{ color: "var(--adm-kraft)" }}> · не сохранено</strong>}
                       </span>
                       <span style={{ color: "var(--adm-sand)", flexShrink: 0 }}>
@@ -401,7 +430,7 @@ export function TransportManager({
                             </button>
                           )}
                           {isActive && (
-                            <button className="admin-btn admin-btn--primary admin-btn--sm" disabled={saving} onClick={() => handleComplete(t.id)}>
+                            <button className="admin-btn admin-btn--primary admin-btn--sm" disabled={saving} onClick={() => handleComplete(t, stops)}>
                               <CheckCircle2 size={13} /> Завершить перевозку
                             </button>
                           )}
@@ -434,6 +463,7 @@ export function TransportManager({
       {showCreate && (
         <CreateTransportModal
           deals={pendingDeals}
+          wpDocs={pendingWpDocs}
           drivers={drivers}
           products={products}
           companyPhone={companyPhone}
@@ -457,6 +487,7 @@ export function TransportManager({
 
 function CreateTransportModal({
   deals,
+  wpDocs = [],
   drivers,
   products,
   companyPhone,
@@ -465,6 +496,8 @@ function CreateTransportModal({
   onCreated,
 }: {
   deals: TransportDeal[];
+  /** Очередь макулатуры: приёмы (забор) и сдачи (на предприятие). */
+  wpDocs?: WpTransportQueueDoc[];
   drivers: DriverOption[];
   products?: PickerProduct[];
   companyPhone?: string;
@@ -499,6 +532,21 @@ function CreateTransportModal({
     setStops((prev) => [...prev, stopFromDeal(deal)]);
   }
 
+  /** Приём/сдача макулатуры → точка маршрута (забор/сдача груза). */
+  function toggleWpDoc(doc: WpTransportQueueDoc) {
+    const existing = stops.find(
+      (s) => s.wpDocKind === doc.kind && s.wpDocId && String(s.wpDocId) === String(doc.id)
+    );
+    if (existing) {
+      setStops((prev) => prev.filter((s) => s.key !== existing.key));
+      return;
+    }
+    setStops((prev) => [...prev, stopFromWpDoc(doc)]);
+  }
+
+  const wpIntakes = useMemo(() => wpDocs.filter((d) => d.kind === "intake"), [wpDocs]);
+  const wpShipments = useMemo(() => wpDocs.filter((d) => d.kind === "shipment"), [wpDocs]);
+
   function addCustomStop() {
     setStops((prev) => [...prev, emptyCustomStop()]);
     setPanel("stops");
@@ -514,6 +562,15 @@ function CreateTransportModal({
       );
       return { qty: avail, picked: false };
     }
+    return { qty: stopTotalQty(stop), picked: true };
+  }
+
+  /** Сколько килограммов везём с приёма/сдачи (подпись в очереди). */
+  function wpStopSummary(doc: WpTransportQueueDoc) {
+    const stop = stops.find(
+      (s) => s.wpDocKind === doc.kind && s.wpDocId && String(s.wpDocId) === String(doc.id)
+    );
+    if (!stop) return { qty: doc.weightKg, picked: false };
     return { qty: stopTotalQty(stop), picked: true };
   }
 
@@ -614,7 +671,8 @@ function CreateTransportModal({
               className={`admin-filter${panel === "deals" ? " admin-filter--active" : ""}`}
               onClick={() => setPanel("deals")}
             >
-              1. Что везём ({deals.length} заказов доступно)
+              1. Что везём (заказы: {deals.length}
+              {wpDocs.length > 0 ? ` · макулатура: ${wpDocs.length}` : ""})
             </button>
             <button
               type="button"
@@ -630,10 +688,16 @@ function CreateTransportModal({
           {panel === "deals" ? (
             <>
               <div className="transport-modal__orders" style={{ maxHeight: "42vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
-                {deals.length === 0 ? (
-                  <div className="admin-empty" style={{ padding: 20 }}>Нет заказов с доставкой — добавьте свою точку</div>
+                {deals.length === 0 && wpDocs.length === 0 ? (
+                  <div className="admin-empty" style={{ padding: 20 }}>Очередь пуста: нет ни заказов, ни макулатуры в перевозку — добавьте свою точку</div>
                 ) : (
-                  deals.map((deal) => {
+                  <>
+                  {deals.length > 0 && (
+                    <div className="admin-label" style={{ marginTop: 2 }}>
+                      Заказы учёта — доставка ({deals.length})
+                    </div>
+                  )}
+                  {deals.map((deal) => {
                     const summary = dealStopSummary(deal);
                     return (
                       <div
@@ -663,7 +727,90 @@ function CreateTransportModal({
                         </label>
                       </div>
                     );
-                  })
+                  })}
+                  {/* Очередь макулатуры: приёмы едут как «забор груза»… */}
+                  {wpIntakes.length > 0 && (
+                    <div className="admin-label" style={{ marginTop: 6 }}>
+                      ⭡ Забор макулатуры — приёмы ({wpIntakes.length})
+                    </div>
+                  )}
+                  {wpIntakes.map((doc) => {
+                    const summary = wpStopSummary(doc);
+                    return (
+                      <div
+                        key={`wp-${doc.kind}-${doc.id}`}
+                        className="transport-modal__order"
+                        style={{
+                          border: `1px solid ${summary.picked ? "var(--adm-kraft)" : "var(--adm-border)"}`,
+                          borderRadius: 8,
+                          padding: 10,
+                          background: summary.picked ? "var(--adm-kraft-pale)" : "var(--adm-card)",
+                          transition: "all 0.12s",
+                        }}
+                      >
+                        <label className="transport-modal__order-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flexWrap: "wrap" }}>
+                          <input type="checkbox" checked={summary.picked} onChange={() => toggleWpDoc(doc)} />
+                          <strong style={{ fontSize: 13 }}>{wpQueueDocLabel(doc)}</strong>
+                          <span style={{ fontSize: 13 }}>{doc.customerName}</span>
+                          <span className="admin-badge admin-badge--muted" style={{ fontSize: 11 }}>
+                            {summary.picked ? `в маршруте ${summary.qty} кг` : `можно ${summary.qty} кг`}
+                          </span>
+                          {doc.plannedDate && (
+                            <span className="admin-badge admin-badge--indigo" style={{ fontSize: 11 }} title="Желаемая дата вывоза">
+                              к {fmtDate(doc.plannedDate)}
+                            </span>
+                          )}
+                          {doc.address && (
+                            <span className="transport-modal__address" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
+                              <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.address}</span>
+                            </span>
+                          )}
+                        </label>
+                      </div>
+                    );
+                  })}
+                  {/* …а сдачи — как «сдача груза» на предприятие. */}
+                  {wpShipments.length > 0 && (
+                    <div className="admin-label" style={{ marginTop: 6 }}>
+                      ⭣ Сдача макулатуры — на предприятие ({wpShipments.length})
+                    </div>
+                  )}
+                  {wpShipments.map((doc) => {
+                    const summary = wpStopSummary(doc);
+                    return (
+                      <div
+                        key={`wp-${doc.kind}-${doc.id}`}
+                        className="transport-modal__order"
+                        style={{
+                          border: `1px solid ${summary.picked ? "var(--adm-kraft)" : "var(--adm-border)"}`,
+                          borderRadius: 8,
+                          padding: 10,
+                          background: summary.picked ? "var(--adm-kraft-pale)" : "var(--adm-card)",
+                          transition: "all 0.12s",
+                        }}
+                      >
+                        <label className="transport-modal__order-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flexWrap: "wrap" }}>
+                          <input type="checkbox" checked={summary.picked} onChange={() => toggleWpDoc(doc)} />
+                          <strong style={{ fontSize: 13 }}>{wpQueueDocLabel(doc)}</strong>
+                          <span style={{ fontSize: 13 }}>{doc.customerName}</span>
+                          <span className="admin-badge admin-badge--muted" style={{ fontSize: 11 }}>
+                            {summary.picked ? `в маршруте ${summary.qty} кг` : `можно ${summary.qty} кг`}
+                          </span>
+                          {doc.plannedDate && (
+                            <span className="admin-badge admin-badge--indigo" style={{ fontSize: 11 }} title="Желаемая дата вывоза">
+                              к {fmtDate(doc.plannedDate)}
+                            </span>
+                          )}
+                          {doc.address && (
+                            <span className="transport-modal__address" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
+                              <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.address}</span>
+                            </span>
+                          )}
+                        </label>
+                      </div>
+                    );
+                  })}
+                  </>
                 )}
               </div>
 
@@ -682,7 +829,7 @@ function CreateTransportModal({
                 onOpenDeal={() => setPanel("deals")}
                 title="Точки маршрута по порядку"
                 hint="тяните за ⠿ — в бланке будет этот порядок"
-                emptyText="Пока пусто: отметьте заказы на шаге 1 или добавьте свою точку"
+                emptyText="Пока пусто: отметьте заказы или макулатуру на шаге 1 — или добавьте свою точку"
                 actions={
                   <button type="button" className="admin-btn admin-btn--outline admin-btn--sm" onClick={addCustomStop}>
                     <Plus size={13} /> Своя точка
@@ -701,6 +848,7 @@ function CreateTransportModal({
             </button>
             <span className="transport-builder__totals">
               {totals.total} точ. · {totals.positions} поз. · {totals.qty} ед.
+              {totals.kg > 0 && <> · {totals.kg} кг</>}
             </span>
             <button type="button" onClick={handleSubmit} className="admin-btn admin-btn--primary" disabled={saving || stops.length === 0}>
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}

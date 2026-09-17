@@ -3,9 +3,12 @@
 // Отдельный учёт макулатуры — рабочее место макулатурщика.
 // Вкладки: Дни и финансы (остатки по дням, прогноз), Платежи
 // (нал/безнал вместе и по отдельности), Приём от клиентов,
-// Сдачи на предприятие, Перевозки (планирование рейсов с
-// быстрой правкой при ЧП), Контрагенты.
-// Модуль не связан с сайтом и товарным учётом.
+// Сдачи на предприятие, Перевозки, Контрагенты.
+// Перевозки — ТЕ ЖЕ, что в товарном учёте (раздел «Доставки»):
+// приёмы и сдачи с пометкой «в перевозку» едут в общем путевом
+// листе как «забор груза» и «сдача груза».
+// Деньги модуля (приём, сдачи, платежи) с сайтом и товарным
+// учётом не связаны.
 // =========================================================
 
 "use client";
@@ -27,13 +30,11 @@ import {
   Truck,
   MapPin,
   PackageOpen,
-  PackageCheck,
   ChevronDown,
   ChevronUp,
   Scale,
   Check,
   Copy,
-  Printer,
   Building2,
   Phone,
   UserRound,
@@ -41,14 +42,16 @@ import {
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
 import { useBodyLock } from "@/hooks/use-body-lock";
 import type { WastepaperRates } from "@/lib/wastepaper";
-import { TransportTripSheet, type TripSheetData } from "@/components/admin/TransportTripSheet";
+import {
+  TransportManager,
+  type DriverOption,
+  type TransportRow,
+} from "@/components/admin/TransportManager";
 import { WpProductsTab } from "@/components/admin/WpProductsTab";
-import type { TripStop } from "@/lib/trip-stops";
+import type { PickerProduct } from "@/components/admin/ProductPicker";
 import {
   WP_ACCOUNT_LABELS,
   WP_COUNTERPARTY_ROLE_LABELS,
-  WP_STOP_STATUS_LABELS,
-  WP_TRANSPORT_STATUS_LABELS,
   WP_TYPE_LABELS,
   WP_TYPE_OPTIONS,
   buildWpDayReport,
@@ -57,7 +60,6 @@ import {
   fmtDate,
   fmtKg,
   fmtMoney,
-  fmtTime,
   getWpBalance,
   getWpForecast,
   getWpStock,
@@ -74,9 +76,8 @@ import {
   type WpManualPayment,
   type WpMoneyEvent,
   type WpShipment,
-  type WpTransport,
-  type WpTransportItem,
   type WpProduct,
+  type WpTransportQueueDoc,
 } from "@/lib/wastepaper-account-shared";
 
 /* ── Константы и хелперы ───────────────────────────────── */
@@ -118,11 +119,6 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Свободный ввод примерного времени: допускаем «~14:00», «утром» и т.п. */
-function approxTimeOk(raw: string): boolean {
-  return String(raw).trim().length <= 30;
-}
-
 const ACCOUNT_BADGE: Record<WpAccount, string> = {
   cash: "admin-badge admin-badge--teal",
   bank: "admin-badge admin-badge--indigo",
@@ -132,19 +128,6 @@ const KIND_BADGE: Record<WpMoneyEvent["kind"], { cls: string; label: string }> =
   intake: { cls: "admin-badge admin-badge--amber", label: "Приём" },
   shipment: { cls: "admin-badge admin-badge--teal", label: "Сдача" },
   manual: { cls: "admin-badge admin-badge--blue", label: "Платёж" },
-};
-
-const TRANSPORT_BADGE: Record<string, string> = {
-  planned: "admin-badge admin-badge--blue",
-  active: "admin-badge admin-badge--amber",
-  completed: "admin-badge admin-badge--green",
-  cancelled: "admin-badge admin-badge--muted",
-};
-
-const STOP_BADGE: Record<string, string> = {
-  pending: "admin-badge admin-badge--muted",
-  done: "admin-badge admin-badge--green",
-  skipped: "admin-badge admin-badge--red",
 };
 
 /** Конец API по виду денежного события. */
@@ -197,7 +180,7 @@ function AddressField({
   }
 
   return (
-    <div>
+    <div className="wp-modal-stack">
       {hasBranches && (
         <div className="admin-field">
           <label className="admin-label">
@@ -318,7 +301,7 @@ function ItemsEditor({
   const totals = wpDocTotals(items);
 
   return (
-    <div className="admin-field">
+    <div className="admin-field" style={{ gap: 10 }}>
       <label className="admin-label">
         <Scale size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
         Позиции (макулатура разных профилей)
@@ -328,7 +311,7 @@ function ItemsEditor({
           Нет позиций — добавьте хотя бы одну.
         </p>
       )}
-      <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "grid", gap: 10 }}>
         {items.map((it) => (
           <div
             key={it.id}
@@ -387,7 +370,7 @@ function ItemsEditor({
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={addItem}>
           <Plus size={13} /> Позиция
         </button>
@@ -415,49 +398,6 @@ function emptyDocItem(rates: WastepaperRates | null): WpDocItem {
 function cloneDocItems(items: WpDocItem[]): WpDocItem[] {
   return items.map((it) => ({ ...it, id: wpUid("it") }));
 }
-
-/**
- * Перевозка макулатуры → данные путевого листа. Переиспользуем общий
- * бланк TransportTripSheet: точки become «Забор груза», адрес/телефон/
- * контакт подставляются из выбранной точки контрагента.
- */
-function buildWpTripSheet(t: WpTransport): TripSheetData {
-  const stops: TripStop[] = t.items.map((stop) => {
-    const kg = stop.actualKg ?? stop.plannedKg ?? 0;
-    return {
-      key: stop.id,
-      kind: "custom",
-      dealId: null,
-      dealNumber: null,
-      customerName: stop.counterpartyName || "",
-      contactName: stop.contactPerson || null,
-      phone: stop.phone || null,
-      address: stop.address || null,
-      deliveryNote: stop.note || null,
-      plannedTime: stop.approxTime || null,
-      tripType: "pickup",
-      lines: [
-        {
-          productId: null,
-          name: `${wpTypeLabel(stop.wastepaperType, WP_TYPE_LABELS)}, кг`,
-          qty: kg,
-          orderedQty: stop.plannedKg || null,
-          maxQty: null,
-        },
-      ],
-      totalSum: null,
-    };
-  });
-  return {
-    transportNumber: t.number,
-    date: t.date,
-    note: t.note,
-    driverName: t.driverName,
-    driverPhone: t.driverPhone,
-    stops,
-  };
-}
-
 /* ── Основной компонент ────────────────────────────────── */
 
 interface Props {
@@ -467,9 +407,20 @@ interface Props {
   intakes: WpIntake[];
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
-  transports: WpTransport[];
   products: WpProduct[];
   rates: WastepaperRates | null;
+  /**
+   * ЕДИНЫЕ перевозки учёта (ПЕР-...) для вкладки «Перевозки»: те же рейсы,
+   * что видит раздел «Доставки». Макулатурщик собирает их из своих
+   * заборов/сдач (очередь pendingWpDocs), заказы учёта ему не показываем.
+   */
+  unifiedTransports: TransportRow[];
+  pendingWpDocs: WpTransportQueueDoc[];
+  drivers: DriverOption[];
+  companyPhone?: string;
+  companyAddress?: string;
+  /** Товары склада — выбор груза для своих точек маршрута. */
+  stockProducts?: PickerProduct[];
 }
 
 export function WastepaperAccountManager(props: Props) {
@@ -483,6 +434,8 @@ export function WastepaperAccountManager(props: Props) {
       "wp_payments",
       "wp_transports",
       "wp_counterparties",
+      // Единые перевозки — вкладка «Перевозки» обновляется вместе с учётом.
+      "transports",
     ],
     pollIntervalMs: 60_000,
   });
@@ -496,7 +449,6 @@ export function WastepaperAccountManager(props: Props) {
   const [intakes, setIntakes] = useState(props.intakes);
   const [shipments, setShipments] = useState(props.shipments);
   const [manualPayments, setManualPayments] = useState(props.manualPayments);
-  const [transports, setTransports] = useState(props.transports);
   const [products, setProducts] = useState(props.products);
 
   const [saving, setSaving] = useState(false);
@@ -520,11 +472,7 @@ export function WastepaperAccountManager(props: Props) {
   const [counterpartyModal, setCounterpartyModal] = useState<
     { mode: "create" } | { mode: "edit"; item: WpCounterparty } | null
   >(null);
-  const [transportModal, setTransportModal] = useState<
-    { mode: "create" } | { mode: "edit"; item: WpTransport } | null
-  >(null);
-  // Путевой лист перевозки (печать) — переиспользуем общий бланк.
-  const [tripSheet, setTripSheet] = useState<TripSheetData | null>(null);
+
 
   // Мгновенное обновление при правках (Realtime + polling fallback)
   useAdminRealtime({
@@ -534,6 +482,7 @@ export function WastepaperAccountManager(props: Props) {
       "wp_payments",
       "wp_transports",
       "wp_counterparties",
+      "transports",
     ],
     pollIntervalMs: 30_000,
   });
@@ -543,7 +492,6 @@ export function WastepaperAccountManager(props: Props) {
   useEffect(() => setIntakes(props.intakes), [props.intakes]);
   useEffect(() => setShipments(props.shipments), [props.shipments]);
   useEffect(() => setManualPayments(props.manualPayments), [props.manualPayments]);
-  useEffect(() => setTransports(props.transports), [props.transports]);
   useEffect(() => setProducts(props.products), [props.products]);
 
   // Сохраняем вкладку в URL (?tab=...), чтобы ссылки с дашборда и
@@ -618,6 +566,48 @@ export function WastepaperAccountManager(props: Props) {
     if (ok) setNotice(e.isPaid ? "Помечено как неоплаченное" : "Проведено: оплачено");
   }
 
+  /**
+   * Пометить приём/сдачу «в перевозку» (или снять пометку) прямо из списка.
+   * Помеченный документ попадает в очередь перевозок учёта и едет в общем
+   * путевом листе: приём — как «забор груза», сдача — как «сдача груза».
+   */
+  async function toggleDocTransport(
+    docType: "intakes" | "shipments",
+    item: WpIntake | WpShipment
+  ) {
+    const to = !item.needsTransport;
+    if (to && !item.address?.trim()) {
+      // Без адреса в рейс нельзя — открываем документ, чтобы вписать адрес.
+      setNotice(
+        docType === "intakes"
+          ? "Укажите адрес забора — без него непонятно, куда ехать, — и отметьте «в перевозку»."
+          : "Укажите адрес предприятия — без него непонятно, куда везти, — и отметьте «в перевозку»."
+      );
+      setFormError("");
+      if (docType === "intakes") setIntakeModal({ mode: "edit", item: item as WpIntake });
+      else setShipmentModal({ mode: "edit", item: item as WpShipment });
+      return;
+    }
+    const ok = await callApi(
+      () =>
+        fetch(`/api/admin/wp/${docType}/${item.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ needsTransport: to }),
+        }),
+      "Не удалось обновить перевозку"
+    );
+    if (ok) {
+      setNotice(
+        to
+          ? docType === "intakes"
+            ? `Приём ПМ-${item.number} — в очереди перевозок (забор груза).`
+            : `Сдача СМ-${item.number} — в очереди перевозок (сдача груза).`
+          : "Снято с перевозки."
+      );
+    }
+  }
+
   function openEventEdit(e: WpMoneyEvent) {
     if (e.kind === "intake") {
       const item = intakes.find((i) => i.id === e.id);
@@ -634,14 +624,14 @@ export function WastepaperAccountManager(props: Props) {
   /* ── Рендер ── */
 
   return (
-    <div>
+    <div className="wp-account">
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Учёт макулатуры</h1>
           <p className="admin-sub">
             Отдельный модуль: приём макулатуры, сдача на предприятие, наличка и
-            безнал по дням, планирование перевозок. С сайтом и товарным учётом
-            не связан.
+            безнал по дням. Перевозки — общие с товарным учётом: заборы и сдачи
+            едут в одном путевом листе с заказами.
           </p>
         </div>
       </div>
@@ -721,6 +711,7 @@ export function WastepaperAccountManager(props: Props) {
               ...events.find((e) => e.kind === "intake" && e.id === item.id)!,
             })
           }
+          onToggleTransport={(item) => toggleDocTransport("intakes", item)}
         />
       )}
 
@@ -745,82 +736,19 @@ export function WastepaperAccountManager(props: Props) {
               ...events.find((e) => e.kind === "shipment" && e.id === item.id)!,
             })
           }
+          onToggleTransport={(item) => toggleDocTransport("shipments", item)}
         />
       )}
 
       {tab === "transports" && (
-        <TransportsTab
-          transports={transports}
-          counterparties={counterparties}
-          products={products}
-          saving={saving}
-          onNew={() => {
-            setFormError("");
-            setTransportModal({ mode: "create" });
-          }}
-          onEdit={(item) => {
-            setFormError("");
-            setTransportModal({ mode: "edit", item });
-          }}
-          onPrint={(item) => setTripSheet(buildWpTripSheet(item))}
-          onSetStatus={async (item, status) => {
-            const ok = await callApi(
-              () =>
-                fetch(`/api/admin/wp/transports/${item.id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action: "status", status }),
-                }),
-              "Не удалось обновить статус перевозки"
-            );
-            if (ok) setNotice(`Перевозка ТМ-${item.number}: «${WP_TRANSPORT_STATUS_LABELS[status]}»`);
-          }}
-          onSaveItems={async (item, items) => {
-            const ok = await callApi(
-              () =>
-                fetch(`/api/admin/wp/transports/${item.id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    date: item.date,
-                    startTime: item.startTime,
-                    driverName: item.driverName,
-                    driverPhone: item.driverPhone,
-                    vehicle: item.vehicle,
-                    note: item.note,
-                    items,
-                  }),
-                }),
-              "Не удалось сохранить остановки"
-            );
-            return ok;
-          }}
-          onCreateIntakes={async (item) => {
-            const res = await fetch(`/api/admin/wp/transports/${item.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "create_intakes" }),
-            });
-            const body = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              setActionError(body.error || "Не удалось оформить приёмы");
-              return;
-            }
-            setNotice(
-              body.created > 0
-                ? `Оформлено приёмов: ${body.created}. Укажите цену и оплату во вкладке «Приём».`
-                : "Новых приёмов нет — отметьте остановки «Забрано»."
-            );
-            router.refresh();
-          }}
-          onDelete={async (item) => {
-            if (!confirm(`Удалить перевозку ТМ-${item.number} на ${fmtDate(item.date)}?`)) return;
-            const ok = await callApi(
-              () => fetch(`/api/admin/wp/transports/${item.id}`, { method: "DELETE" }),
-              "Не удалось удалить перевозку"
-            );
-            if (ok) setNotice("Перевозка удалена");
-          }}
+        <TransportManager
+          transports={props.unifiedTransports}
+          pendingDeals={[]}
+          pendingWpDocs={props.pendingWpDocs}
+          drivers={props.drivers}
+          companyPhone={props.companyPhone}
+          companyAddress={props.companyAddress}
+          products={props.stockProducts || []}
         />
       )}
 
@@ -1070,42 +998,6 @@ export function WastepaperAccountManager(props: Props) {
           }}
         />
       )}
-
-      {transportModal && (
-        <TransportModal
-          mode={transportModal.mode}
-          item={transportModal.mode === "edit" ? transportModal.item : null}
-          counterparties={counterparties}
-          products={products}
-          saving={saving}
-          error={formError}
-          onClose={() => setTransportModal(null)}
-          onSubmit={async (form) => {
-            const isEdit = transportModal.mode === "edit";
-            const ok = await callApi(
-              () =>
-                fetch(
-                  isEdit
-                    ? `/api/admin/wp/transports/${(transportModal as any).item.id}`
-                    : "/api/admin/wp/transports",
-                  {
-                    method: isEdit ? "PATCH" : "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(form),
-                  }
-                ),
-              isEdit ? "Не удалось сохранить перевозку" : "Не удалось создать перевозку"
-            );
-            if (ok) {
-              setTransportModal(null);
-              setNotice(isEdit ? "Перевозка сохранена" : "Перевозка создана");
-            }
-          }}
-        />
-      )}
-
-      {/* Путевой лист перевозки (печать) — общий бланк доставок */}
-      {tripSheet && <TransportTripSheet data={tripSheet} onDone={() => setTripSheet(null)} />}
     </div>
   );
 }
@@ -1444,7 +1336,7 @@ function DayRowFragment({
                   gap: 8,
                   alignItems: "center",
                   flexWrap: "wrap",
-                  padding: "4px 0",
+                  padding: "6px 0",
                   fontSize: "0.85rem",
                 }}
               >
@@ -1504,7 +1396,7 @@ function ForecastCard({
           <p className="admin-hint">Незапланированных ожиданий нет.</p>
         </div>
       ) : (
-        <div className="admin-card__pad" style={{ display: "grid", gap: 8 }}>
+        <div className="admin-card__pad" style={{ display: "grid", gap: 10 }}>
           {events.slice(0, 20).map((e) => (
             <div
               key={`${e.kind}-${e.id}`}
@@ -1688,7 +1580,7 @@ function PaymentsTab({
         </button>
       </div>
 
-      <p className="admin-hint" style={{ marginTop: -4 }}>
+      <p className="admin-hint" style={{ marginTop: -4, marginBottom: 10 }}>
         Показано операций: {filtered.length}. По оплаченным: приход{" "}
         <b style={{ color: "var(--adm-pine)" }}>+{fmtMoney(totals.inSum)}</b>, расход{" "}
         <b style={{ color: "var(--adm-kraft)" }}>−{fmtMoney(totals.outSum)}</b>.
@@ -1722,7 +1614,7 @@ function PaymentsTab({
                     <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>{" "}
                     {e.title}
                     {e.comment && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         {e.comment}
                       </div>
                     )}
@@ -1790,12 +1682,14 @@ function IntakesTab({
   onEdit,
   onCopy,
   onTogglePaid,
+  onToggleTransport,
 }: {
   intakes: WpIntake[];
   onNew: () => void;
   onEdit: (item: WpIntake) => void;
   onCopy: (item: WpIntake) => void;
   onTogglePaid: (item: WpIntake) => void;
+  onToggleTransport: (item: WpIntake) => void;
 }) {
   const [query, setQuery] = useState("");
   const [account, setAccount] = useState<"all" | WpAccount>("all");
@@ -1874,7 +1768,7 @@ function IntakesTab({
         </button>
       </div>
 
-      <p className="admin-hint" style={{ marginTop: -4 }}>
+      <p className="admin-hint" style={{ marginTop: -4, marginBottom: 10 }}>
         Показано приёмов: {filtered.length} · {fmtKg(totals.kg)} на {fmtMoney(totals.sum)}.
       </p>
 
@@ -1900,6 +1794,7 @@ function IntakesTab({
                 <th>Сумма</th>
                 <th>Счёт</th>
                 <th>Оплата</th>
+                <th>Перевозка</th>
                 <th></th>
               </tr>
             </thead>
@@ -1918,13 +1813,13 @@ function IntakesTab({
                   <td>
                     {i.counterpartyName}
                     {i.address && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         <MapPin size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
                         {i.address}
                       </div>
                     )}
                     {i.phone && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         {i.phone}
                         {i.contactPerson ? ` · ${i.contactPerson}` : ""}
                       </div>
@@ -1958,6 +1853,31 @@ function IntakesTab({
                         title="Нажмите, чтобы отметить оплаченным"
                       >
                         Ожидает
+                      </button>
+                    )}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {i.status === "cancelled" ? (
+                      <span className="admin-hint">—</span>
+                    ) : i.needsTransport ? (
+                      <button
+                        type="button"
+                        className="admin-badge admin-badge--blue"
+                        style={{ border: 0, cursor: "pointer" }}
+                        onClick={() => onToggleTransport(i)}
+                        title="В очереди перевозок (забор груза). Нажмите, чтобы снять."
+                      >
+                        <Truck size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />{" "}
+                        Забор{i.transportPlannedDate ? ` · ${fmtDate(i.transportPlannedDate)}` : ""}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        onClick={() => onToggleTransport(i)}
+                        title="Отметить: забрать нашим транспортом"
+                      >
+                        <Truck size={13} /> В перевозку
                       </button>
                     )}
                   </td>
@@ -2000,6 +1920,7 @@ function ShipmentsTab({
   onEdit,
   onCopy,
   onTogglePaid,
+  onToggleTransport,
 }: {
   shipments: WpShipment[];
   stock: ReturnType<typeof getWpStock>;
@@ -2007,6 +1928,7 @@ function ShipmentsTab({
   onEdit: (item: WpShipment) => void;
   onCopy: (item: WpShipment) => void;
   onTogglePaid: (item: WpShipment) => void;
+  onToggleTransport: (item: WpShipment) => void;
 }) {
   const [query, setQuery] = useState("");
   const [showCancelled, setShowCancelled] = useState(false);
@@ -2039,7 +1961,7 @@ function ShipmentsTab({
             style={{ display: "flex", gap: 14, flexWrap: "wrap" }}
           >
             {stock.map((row) => (
-              <div key={row.wastepaperType} style={{ minWidth: 170 }}>
+              <div key={row.wastepaperType} style={{ minWidth: 170, display: "grid", gap: 3 }}>
                 <div style={{ fontWeight: 700 }}>
                   {wpTypeLabel(row.wastepaperType, WP_TYPE_LABELS)}
                 </div>
@@ -2115,6 +2037,7 @@ function ShipmentsTab({
                 <th>Сумма</th>
                 <th>Счёт</th>
                 <th>Оплата</th>
+                <th>Перевозка</th>
                 <th></th>
               </tr>
             </thead>
@@ -2133,13 +2056,13 @@ function ShipmentsTab({
                   <td>
                     {s.enterpriseName}
                     {s.address && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         <MapPin size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
                         {s.address}
                       </div>
                     )}
                     {s.comment && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         {s.comment}
                       </div>
                     )}
@@ -2176,6 +2099,31 @@ function ShipmentsTab({
                     )}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
+                    {s.status === "cancelled" ? (
+                      <span className="admin-hint">—</span>
+                    ) : s.needsTransport ? (
+                      <button
+                        type="button"
+                        className="admin-badge admin-badge--blue"
+                        style={{ border: 0, cursor: "pointer" }}
+                        onClick={() => onToggleTransport(s)}
+                        title="В очереди перевозок (сдача груза). Нажмите, чтобы снять."
+                      >
+                        <Truck size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />{" "}
+                        Сдача{s.transportPlannedDate ? ` · ${fmtDate(s.transportPlannedDate)}` : ""}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        onClick={() => onToggleTransport(s)}
+                        title="Отметить: отвезти нашим транспортом"
+                      >
+                        <Truck size={13} /> В перевозку
+                      </button>
+                    )}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
@@ -2202,652 +2150,6 @@ function ShipmentsTab({
     </div>
   );
 }
-
-/* ═══════════════════════════════════════════════════════
-   ВКЛАДКА «ПЕРЕВОЗКИ»
-   ═══════════════════════════════════════════════════════ */
-
-function TransportsTab({
-  transports,
-  counterparties,
-  products,
-  saving,
-  onNew,
-  onEdit,
-  onPrint,
-  onSetStatus,
-  onSaveItems,
-  onCreateIntakes,
-  onDelete,
-}: {
-  transports: WpTransport[];
-  counterparties: WpCounterparty[];
-  products: WpProduct[];
-  saving: boolean;
-  onNew: () => void;
-  onEdit: (item: WpTransport) => void;
-  onPrint: (item: WpTransport) => void;
-  onSetStatus: (item: WpTransport, status: keyof typeof WP_TRANSPORT_STATUS_LABELS) => void;
-  onSaveItems: (item: WpTransport, items: WpTransportItem[]) => Promise<boolean>;
-  onCreateIntakes: (item: WpTransport) => void;
-  onDelete: (item: WpTransport) => void;
-}) {
-  const [showPast, setShowPast] = useState(false);
-  const [stopModal, setStopModal] = useState<{
-    transport: WpTransport;
-    stop: WpTransportItem | null; // null = новая остановка
-    items: WpTransportItem[];
-  } | null>(null);
-  const [busyStop, setBusyStop] = useState(false);
-
-  const active = transports
-    .filter((t) => t.status === "planned" || t.status === "active")
-    .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number);
-  const past = transports
-    .filter((t) => t.status === "completed" || t.status === "cancelled")
-    .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
-  const shown = showPast ? past : active;
-
-  /** Быстрая отметка статуса остановки; при «Забрано» спрашиваем фактический вес. */
-  async function markStop(t: WpTransport, stop: WpTransportItem, status: string) {
-    if (status === stop.status) return;
-    let actualKg = stop.actualKg;
-    if (status === "done") {
-      const answer = window.prompt(
-        `Фактический вес на точке «${stop.counterpartyName || stop.address}», кг.\n` +
-          "Оставьте пустым — возьмём плановый вес.",
-        stop.actualKg != null ? String(stop.actualKg) : String(stop.plannedKg || "")
-      );
-      if (answer === null) return; // отмена ввода
-      const parsed = parseNum(answer);
-      actualKg = answer.trim() === "" ? null : parsed;
-    }
-    const items = t.items.map((i) =>
-      i.id === stop.id ? { ...i, status: status as WpTransportItem["status"], actualKg } : i
-    );
-    setBusyStop(true);
-    await onSaveItems(t, items);
-    setBusyStop(false);
-  }
-
-  async function removeStop(t: WpTransport, stop: WpTransportItem) {
-    if (!confirm(`Убрать остановку «${stop.counterpartyName || stop.address}» из перевозки ТМ-${t.number}?`))
-      return;
-    const items = t.items.filter((i) => i.id !== stop.id);
-    setBusyStop(true);
-    await onSaveItems(t, items);
-    setBusyStop(false);
-  }
-
-  return (
-    <div>
-      <div
-        className="admin-card"
-        style={{ padding: "12px 16px", marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}
-      >
-        <div className="admin-filters" style={{ marginBottom: 0 }}>
-          <button
-            type="button"
-            className={`admin-filter${!showPast ? " admin-filter--active" : ""}`}
-            onClick={() => setShowPast(false)}
-          >
-            Активные ({active.length})
-          </button>
-          <button
-            type="button"
-            className={`admin-filter${showPast ? " admin-filter--active" : ""}`}
-            onClick={() => setShowPast(true)}
-          >
-            Архив ({past.length})
-          </button>
-        </div>
-        <p className="admin-hint" style={{ margin: 0, flex: 1, minWidth: 200 }}>
-          Планируйте рейсы за макулатурой: остановки с примерным временем, при ЧП
-          правьте точки прямо здесь. После рейса отметьте «Забрано» и оформите
-          приёмы одной кнопкой.
-        </p>
-        <button type="button" className="admin-btn admin-btn--navy" onClick={onNew}>
-          <Plus size={15} /> Перевозка
-        </button>
-      </div>
-
-      {shown.length === 0 ? (
-        <div className="admin-card">
-          <div className="admin-card__pad">
-            <p className="admin-hint">
-              {showPast
-                ? "Завершённых и отменённых перевозок пока нет."
-                : "Активных перевозок нет. Создайте первую — укажите дату, водителя и остановки."}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gap: 14 }}>
-          {shown.map((t) => {
-            const doneStops = t.items.filter((i) => i.status === "done");
-            const needIntakes = doneStops.some((i) => !i.intakeId);
-            const editable = t.status === "planned" || t.status === "active";
-            return (
-              <div key={t.id} className="admin-card">
-                <div className="admin-card__head" style={{ flexWrap: "wrap" }}>
-                  <span className="admin-card__title" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <Truck size={16} />
-                    ТМ-{t.number} · {fmtDate(t.date)}
-                    {t.startTime && (
-                      <span className="admin-badge admin-badge--muted" title="Примерное время выезда">
-                        {fmtTime(t.startTime)}
-                      </span>
-                    )}
-                    <span className={TRANSPORT_BADGE[t.status]}>
-                      {WP_TRANSPORT_STATUS_LABELS[t.status]}
-                    </span>
-                  </span>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    {(t.driverName || t.vehicle) && (
-                      <span className="admin-hint">
-                        {[t.driverName, t.vehicle].filter(Boolean).join(" · ")}
-                      </span>
-                    )}
-                    {t.driverPhone && (
-                      <a className="admin-hint" href={`tel:${t.driverPhone}`}>
-                        {t.driverPhone}
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                <div className="admin-card__pad" style={{ paddingTop: 12 }}>
-                  {/* Кнопки статуса и действий */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: t.items.length ? 12 : 0 }}>
-                    {t.status === "planned" && (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--primary admin-btn--sm"
-                        disabled={saving || busyStop}
-                        onClick={() => onSetStatus(t, "active")}
-                      >
-                        <Truck size={13} /> В пути
-                      </button>
-                    )}
-                    {editable && (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--primary admin-btn--sm"
-                        disabled={saving || busyStop}
-                        onClick={() => onSetStatus(t, "completed")}
-                      >
-                        <PackageCheck size={13} /> Завершена
-                      </button>
-                    )}
-                    {needIntakes && (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--navy admin-btn--sm"
-                        disabled={saving || busyStop}
-                        onClick={() => onCreateIntakes(t)}
-                        title="Создать приёмы по остановкам «Забрано»"
-                      >
-                        <Plus size={13} /> Оформить приёмы ({doneStops.filter((i) => !i.intakeId).length})
-                      </button>
-                    )}
-                    {editable && (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--ghost admin-btn--sm"
-                        disabled={saving || busyStop}
-                        onClick={() => onEdit(t)}
-                      >
-                        <Pencil size={13} /> Править рейс
-                      </button>
-                    )}
-                    {t.items.length > 0 && (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--ghost admin-btn--sm"
-                        disabled={saving || busyStop}
-                        onClick={() => onPrint(t)}
-                        title="Печать путевого листа с адресами и телефонами точек"
-                      >
-                        <Printer size={13} /> Путевой лист
-                      </button>
-                    )}
-                    {editable && (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--danger-ghost admin-btn--sm"
-                        disabled={saving || busyStop}
-                        onClick={() => onSetStatus(t, "cancelled")}
-                      >
-                        Отменить
-                      </button>
-                    )}
-                    {t.status === "planned" && (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--ghost admin-btn--sm"
-                        disabled={saving || busyStop}
-                        onClick={() => onDelete(t)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-                  </div>
-
-                  {t.note && <p className="admin-hint">{t.note}</p>}
-
-                  {/* Остановки */}
-                  {t.items.length === 0 ? (
-                    <p className="admin-hint">
-                      Остановок нет
-                      {editable && " — добавьте точки забора через «Добавить остановку»."}
-                    </p>
-                  ) : (
-                    <div className="admin-table-wrap" style={{ marginBottom: 10 }}>
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Время</th>
-                            <th>Контрагент / адрес</th>
-                            <th>Вид</th>
-                            <th>План</th>
-                            <th>Факт</th>
-                            <th>Статус</th>
-                            {editable && <th></th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {t.items.map((stop) => (
-                            <tr key={stop.id}>
-                              <td style={{ whiteSpace: "nowrap" }}>
-                                {stop.approxTime ? fmtTime(stop.approxTime) : "—"}
-                              </td>
-                              <td>
-                                <div style={{ fontWeight: 600 }}>
-                                  {stop.counterpartyName || "—"}
-                                </div>
-                                {stop.address && (
-                                  <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
-                                    <MapPin size={11} style={{ verticalAlign: "-1px" }} /> {stop.address}
-                                  </div>
-                                )}
-                                {(stop.phone || stop.contactPerson) && (
-                                  <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
-                                    {stop.contactPerson}
-                                    {stop.contactPerson && stop.phone ? " · " : ""}
-                                    {stop.phone ? <a href={`tel:${stop.phone}`}>{stop.phone}</a> : ""}
-                                  </div>
-                                )}
-                                {stop.note && (
-                                  <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem" }}>
-                                    {stop.note}
-                                  </div>
-                                )}
-                                {stop.intakeId && (
-                                  <span className="admin-badge admin-badge--teal">приём оформлен</span>
-                                )}
-                              </td>
-                              <td>{WP_TYPE_LABELS[stop.wastepaperType] || stop.wastepaperType}</td>
-                              <td style={{ whiteSpace: "nowrap" }}>{fmtKg(stop.plannedKg)}</td>
-                              <td style={{ whiteSpace: "nowrap" }}>
-                                {stop.actualKg != null ? fmtKg(stop.actualKg) : "—"}
-                              </td>
-                              <td>
-                                <span className={STOP_BADGE[stop.status]}>
-                                  {WP_STOP_STATUS_LABELS[stop.status]}
-                                </span>
-                              </td>
-                              {editable && (
-                                <td style={{ whiteSpace: "nowrap" }}>
-                                  {stop.status !== "done" && (
-                                    <button
-                                      type="button"
-                                      className="admin-btn admin-btn--ghost admin-btn--sm"
-                                      disabled={saving || busyStop}
-                                      onClick={() => markStop(t, stop, "done")}
-                                      title="Макулатуру забрали"
-                                    >
-                                      <Check size={13} />
-                                    </button>
-                                  )}
-                                  {stop.status !== "skipped" && (
-                                    <button
-                                      type="button"
-                                      className="admin-btn admin-btn--ghost admin-btn--sm"
-                                      disabled={saving || busyStop}
-                                      onClick={() => markStop(t, stop, "skipped")}
-                                      title="Точка пропущена (ЧП)"
-                                    >
-                                      <X size={13} />
-                                    </button>
-                                  )}
-                                  {stop.status !== "pending" && !stop.intakeId && (
-                                    <button
-                                      type="button"
-                                      className="admin-btn admin-btn--ghost admin-btn--sm"
-                                      disabled={saving || busyStop}
-                                      onClick={() => markStop(t, stop, "pending")}
-                                      title="Вернуть в ожидание"
-                                    >
-                                      <RotateCcw size={13} />
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className="admin-btn admin-btn--ghost admin-btn--sm"
-                                    disabled={saving || busyStop}
-                                    onClick={() =>
-                                      setStopModal({ transport: t, stop, items: t.items })
-                                    }
-                                    title="Править остановку"
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-                                  {!stop.intakeId && (
-                                    <button
-                                      type="button"
-                                      className="admin-btn admin-btn--ghost admin-btn--sm"
-                                      disabled={saving || busyStop}
-                                      onClick={() => removeStop(t, stop)}
-                                      title="Убрать остановку"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  )}
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {editable && (
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--ghost admin-btn--sm"
-                      disabled={saving || busyStop}
-                      onClick={() => setStopModal({ transport: t, stop: null, items: t.items })}
-                    >
-                      <Plus size={13} /> Добавить остановку
-                    </button>
-                  )}
-                  <span className="admin-hint" style={{ marginLeft: 10 }}>
-                    План всего: {fmtKg(t.totalPlannedKg)} · остановок: {t.items.length}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Модалка одной остановки (быстрая правка при ЧП) */}
-      {stopModal && (
-        <StopModal
-          transport={stopModal.transport}
-          stop={stopModal.stop}
-          counterparties={counterparties}
-          saving={saving || busyStop}
-          onClose={() => setStopModal(null)}
-          onSubmit={async (stop) => {
-            let items: WpTransportItem[];
-            if (stopModal.stop) {
-              items = stopModal.items.map((i) => (i.id === stop.id ? stop : i));
-            } else {
-              items = [...stopModal.items, stop];
-            }
-            const ok = await onSaveItems(stopModal.transport, items);
-            if (ok) setStopModal(null);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ── Модалка остановки ─────────────────────────────────── */
-
-function StopModal({
-  transport,
-  stop,
-  counterparties,
-  saving,
-  onClose,
-  onSubmit,
-}: {
-  transport: WpTransport;
-  stop: WpTransportItem | null;
-  counterparties: WpCounterparty[];
-  saving: boolean;
-  onClose: () => void;
-  onSubmit: (stop: WpTransportItem) => void;
-}) {
-  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
-  useBodyLock(true);
-  const suppliers = counterparties.filter((c) => c.roles.includes("supplier"));
-  const [form, setForm] = useState({
-    counterpartyName: stop?.counterpartyName || "",
-    counterpartyId: stop?.counterpartyId || null as string | null,
-    address: stop?.address || "",
-    phone: stop?.phone || "",
-    contactPerson: stop?.contactPerson || "",
-    approxTime: stop?.approxTime || "",
-    wastepaperType: stop?.wastepaperType || "cardboard",
-    pricePerKg: stop?.pricePerKg != null ? String(stop.pricePerKg) : "",
-    cashAmount: stop?.cashAmount != null ? String(stop.cashAmount) : "",
-    bankAmount: stop?.bankAmount != null ? String(stop.bankAmount) : "",
-    plannedKg: stop?.plannedKg ? String(stop.plannedKg) : "",
-    actualKg: stop?.actualKg != null ? String(stop.actualKg) : "",
-    note: stop?.note || "",
-    status: (stop?.status || "pending") as WpTransportItem["status"],
-  });
-
-  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  const selectedSupplier =
-    suppliers.find((c) => c.id === form.counterpartyId) ||
-    suppliers.find(
-      (c) => c.name.trim().toLowerCase() === form.counterpartyName.trim().toLowerCase()
-    ) ||
-    null;
-  const branches = selectedSupplier?.branches || [];
-
-  function onNameChange(value: string) {
-    const found = suppliers.find(
-      (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
-    );
-    setForm((prev) => {
-      const first = found?.branches?.[0];
-      return {
-        ...prev,
-        counterpartyName: value,
-        counterpartyId: found ? found.id : null,
-        address: prev.address || first?.address || found?.address || "",
-        phone: prev.phone || first?.phone || found?.phone || "",
-        contactPerson:
-          prev.contactPerson || first?.contactPerson || found?.contactPerson || "",
-      };
-    });
-  }
-
-  const valid = form.counterpartyName.trim() !== "" || form.address.trim() !== "";
-
-  return (
-    <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
-      <div
-        className="admin-modal"
-        style={{ maxWidth: "32rem" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="admin-modal__head">
-          <h3 className="admin-modal__title">
-            {stop ? "Остановка перевозки" : "Новая остановка"} · ТМ-{transport.number}
-          </h3>
-          <button
-            type="button"
-            className="admin-modal__close"
-            onClick={onClose}
-            disabled={saving}
-            aria-label="Закрыть"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <p className="admin-modal__desc">
-          Точка забора макулатуры: кто сдаёт, адрес, примерное время заезда.
-        </p>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!valid) return;
-            onSubmit({
-              id:
-                stop?.id ||
-                `stop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-              counterpartyId: form.counterpartyId,
-              counterpartyName: form.counterpartyName.trim(),
-              address: form.address.trim(),
-              phone: form.phone.trim(),
-              contactPerson: form.contactPerson.trim(),
-              approxTime: approxTimeOk(form.approxTime) ? form.approxTime.trim() : "",
-              wastepaperType: form.wastepaperType,
-              pricePerKg: parseNum(form.pricePerKg),
-              cashAmount: parseNum(form.cashAmount),
-              bankAmount: parseNum(form.bankAmount),
-              plannedKg: parseNum(form.plannedKg),
-              actualKg: form.actualKg.trim() === "" ? null : parseNum(form.actualKg),
-              note: form.note.trim(),
-              status: form.status,
-              intakeId: stop?.intakeId || null,
-            });
-          }}
-        >
-          <div className="admin-field">
-            <label className="admin-label">Кто сдаёт *</label>
-            <input
-              className="admin-input"
-              list="wp-stop-suppliers"
-              value={form.counterpartyName}
-              onChange={(e) => onNameChange(e.target.value)}
-              placeholder="Имя или компания"
-              autoFocus
-            />
-            <datalist id="wp-stop-suppliers">
-              {suppliers.map((c) => (
-                <option key={c.id} value={c.name} />
-              ))}
-            </datalist>
-          </div>
-
-          <AddressField
-            branches={branches}
-            address={form.address}
-            phone={form.phone}
-            contactPerson={form.contactPerson}
-            addressLabel="Адрес забора"
-            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-          />
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "1 1 120px" }}>
-              <label className="admin-label">Примерное время</label>
-              <input
-                className="admin-input"
-                value={form.approxTime}
-                onChange={(e) => set("approxTime", e.target.value)}
-                placeholder="~14:00"
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 160px" }}>
-              <label className="admin-label">Вид макулатуры</label>
-              <select
-                className="admin-select"
-                value={form.wastepaperType}
-                onChange={(e) => set("wastepaperType", e.target.value)}
-              >
-                {WP_TYPE_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "1 1 120px" }}>
-              <label className="admin-label">План, кг</label>
-              <input
-                className="admin-input"
-                type="number"
-                min="0"
-                step="0.1"
-                value={form.plannedKg}
-                onChange={(e) => set("plannedKg", e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 120px" }}>
-              <label className="admin-label">Факт, кг</label>
-              <input
-                className="admin-input"
-                type="number"
-                min="0"
-                step="0.1"
-                value={form.actualKg}
-                onChange={(e) => set("actualKg", e.target.value)}
-                placeholder="—"
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 140px" }}>
-              <label className="admin-label">Статус</label>
-              <select
-                className="admin-select"
-                value={form.status}
-                onChange={(e) => set("status", e.target.value as WpTransportItem["status"])}
-              >
-                {Object.entries(WP_STOP_STATUS_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="admin-field">
-            <label className="admin-label">Заметка</label>
-            <input
-              className="admin-input"
-              value={form.note}
-              onChange={(e) => set("note", e.target.value)}
-              placeholder="Код домофона, контакт на месте…"
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <button
-              type="button"
-              className="admin-btn admin-btn--ghost"
-              onClick={onClose}
-              disabled={saving}
-            >
-              Отмена
-            </button>
-            <button type="submit" className="admin-btn admin-btn--primary" disabled={saving || !valid}>
-              {saving && <Loader2 size={14} className="animate-spin" />} Сохранить
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 /* ═══════════════════════════════════════════════════════
    ВКЛАДКА «КОНТРАГЕНТЫ»
    ═══════════════════════════════════════════════════════ */
@@ -2951,7 +2253,7 @@ function CounterpartiesTab({
                   <td style={{ fontWeight: 600 }}>
                     {c.name}
                     {c.comment && (
-                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", fontWeight: 400 }}>
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", fontWeight: 400, marginTop: 3 }}>
                         {c.comment}
                       </div>
                     )}
@@ -2974,7 +2276,7 @@ function CounterpartiesTab({
                   </td>
                   <td style={{ minWidth: 260 }}>
                     {c.branches && c.branches.length > 0 ? (
-                      <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ display: "grid", gap: 8 }}>
                         {c.branches.map((b) => (
                           <div key={b.id} style={{ fontSize: "0.85rem" }}>
                             <div style={{ fontWeight: 600 }}>
@@ -2983,7 +2285,7 @@ function CounterpartiesTab({
                               {b.address || "—"}
                             </div>
                             {(b.contactPerson || b.phone) && (
-                              <div style={{ color: "var(--adm-muted)", paddingLeft: 15 }}>
+                              <div style={{ color: "var(--adm-muted)", paddingLeft: 15, marginTop: 2 }}>
                                 {b.contactPerson}
                                 {b.contactPerson && b.phone ? " · " : ""}
                                 {b.phone ? <a href={`tel:${b.phone}`}>{b.phone}</a> : ""}
@@ -3032,6 +2334,10 @@ interface IntakeFormPayload {
   isPaid: boolean;
   comment: string | null;
   saveCounterparty: boolean;
+  /** Забрать нашим транспортом: приём попадёт в очередь перевозок учёта. */
+  needsTransport: boolean;
+  /** На когда планируем забор (пусто = как можно скорее). */
+  transportPlannedDate: string | null;
 }
 
 function IntakeModal({
@@ -3079,6 +2385,8 @@ function IntakeModal({
     isPaid: isCopy ? false : item?.isPaid || false,
     comment: item?.comment || "",
     saveCounterparty: true,
+    needsTransport: isCopy ? false : item?.needsTransport || false,
+    transportPlannedDate: isCopy ? "" : item?.transportPlannedDate || "",
   }));
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -3115,6 +2423,11 @@ function IntakeModal({
   const totals = wpDocTotals(form.items);
   const valid =
     form.date !== "" && form.counterpartyName.trim() !== "" && totals.weightKg > 0;
+  // В перевозку без адреса нельзя: водитель не будет знать, куда ехать.
+  const transportError =
+    form.needsTransport && form.address.trim() === ""
+      ? "Укажите адрес забора — без него в перевозку нельзя."
+      : "";
 
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
@@ -3148,9 +2461,10 @@ function IntakeModal({
         </p>
 
         <form
+          className="wp-modal-form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!valid) return;
+            if (!valid || transportError) return;
             onSubmit({
               date: form.date,
               counterpartyId: form.counterpartyId,
@@ -3163,6 +2477,10 @@ function IntakeModal({
               isPaid: form.isPaid,
               comment: form.comment.trim() || null,
               saveCounterparty: form.saveCounterparty,
+              needsTransport: form.needsTransport,
+              transportPlannedDate: form.needsTransport
+                ? form.transportPlannedDate || null
+                : null,
             });
           }}
         >
@@ -3216,6 +2534,47 @@ function IntakeModal({
             addressLabel="Адрес забора"
             onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
           />
+
+          <div className="deal-delivery-block">
+            <div className="deal-delivery-block__head">
+              <Truck size={14} />
+              <span>Перевозка</span>
+              <label className="deal-delivery-block__toggle">
+                <input
+                  type="checkbox"
+                  checked={form.needsTransport}
+                  onChange={(e) => set("needsTransport", e.target.checked)}
+                />
+                Забрать нашим транспортом
+              </label>
+            </div>
+
+            {form.needsTransport ? (
+              <div className="deal-delivery-block__body">
+                <div className="admin-field" style={{ maxWidth: 220 }}>
+                  <label className="admin-label">Забрать не позже</label>
+                  <input
+                    type="date"
+                    className="admin-input"
+                    value={form.transportPlannedDate}
+                    onChange={(e) => set("transportPlannedDate", e.target.value)}
+                  />
+                </div>
+                <p className="deal-delivery-block__empty" style={{ marginTop: 0 }}>
+                  Приём встанет в очередь перевозок учёта: водитель заберёт груз
+                  по адресу выше, в общем путевом листе это будет «забор груза».
+                </p>
+                {transportError && (
+                  <p className="admin-error" style={{ margin: 0 }}>{transportError}</p>
+                )}
+              </div>
+            ) : (
+              <p className="deal-delivery-block__empty">
+                Самопривоз: контрагент привезёт макулатуру сам. Включите, если
+                нужно отправить за грузом нашу машину.
+              </p>
+            )}
+          </div>
 
           <ItemsEditor
             items={form.items}
@@ -3304,7 +2663,7 @@ function IntakeModal({
               <button
                 type="submit"
                 className="admin-btn admin-btn--primary"
-                disabled={saving || !valid}
+                disabled={saving || !valid || !!transportError}
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}{" "}
                 {isEdit ? "Сохранить" : isCopy ? "Создать копию" : "Добавить приём"}
@@ -3333,6 +2692,10 @@ interface ShipmentFormPayload {
   isPaid: boolean;
   comment: string | null;
   saveCounterparty: boolean;
+  /** Отвезти нашим транспортом: сдача попадёт в очередь перевозок учёта. */
+  needsTransport: boolean;
+  /** На когда планируем отвоз (пусто = как можно скорее). */
+  transportPlannedDate: string | null;
 }
 
 function ShipmentModal({
@@ -3378,6 +2741,8 @@ function ShipmentModal({
     isPaid: isCopy ? false : item?.isPaid || false,
     comment: item?.comment || "",
     saveCounterparty: true,
+    needsTransport: isCopy ? false : item?.needsTransport || false,
+    transportPlannedDate: isCopy ? "" : item?.transportPlannedDate || "",
   }));
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -3413,6 +2778,11 @@ function ShipmentModal({
   const totals = wpDocTotals(form.items);
   const valid =
     form.date !== "" && form.enterpriseName.trim() !== "" && totals.weightKg > 0;
+  // В перевозку без адреса нельзя: водитель не будет знать, куда везти.
+  const transportError =
+    form.needsTransport && form.address.trim() === ""
+      ? "Укажите адрес предприятия — без него в перевозку нельзя."
+      : "";
 
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
@@ -3446,9 +2816,10 @@ function ShipmentModal({
         </p>
 
         <form
+          className="wp-modal-form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!valid) return;
+            if (!valid || transportError) return;
             onSubmit({
               date: form.date,
               enterpriseId: form.enterpriseId,
@@ -3461,6 +2832,10 @@ function ShipmentModal({
               isPaid: form.isPaid,
               comment: form.comment.trim() || null,
               saveCounterparty: form.saveCounterparty,
+              needsTransport: form.needsTransport,
+              transportPlannedDate: form.needsTransport
+                ? form.transportPlannedDate || null
+                : null,
             });
           }}
         >
@@ -3514,6 +2889,47 @@ function ShipmentModal({
             addressLabel="Адрес предприятия (куда везём)"
             onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
           />
+
+          <div className="deal-delivery-block">
+            <div className="deal-delivery-block__head">
+              <Truck size={14} />
+              <span>Перевозка</span>
+              <label className="deal-delivery-block__toggle">
+                <input
+                  type="checkbox"
+                  checked={form.needsTransport}
+                  onChange={(e) => set("needsTransport", e.target.checked)}
+                />
+                Отвезти нашим транспортом
+              </label>
+            </div>
+
+            {form.needsTransport ? (
+              <div className="deal-delivery-block__body">
+                <div className="admin-field" style={{ maxWidth: 220 }}>
+                  <label className="admin-label">Отвезти не позже</label>
+                  <input
+                    type="date"
+                    className="admin-input"
+                    value={form.transportPlannedDate}
+                    onChange={(e) => set("transportPlannedDate", e.target.value)}
+                  />
+                </div>
+                <p className="deal-delivery-block__empty" style={{ marginTop: 0 }}>
+                  Сдача встанет в очередь перевозок учёта: водитель отвезёт груз
+                  по адресу выше, в общем путевом листе это будет «сдача груза».
+                </p>
+                {transportError && (
+                  <p className="admin-error" style={{ margin: 0 }}>{transportError}</p>
+                )}
+              </div>
+            ) : (
+              <p className="deal-delivery-block__empty">
+                Самовывоз: предприятие заберёт макулатуру само. Включите, если
+                повезём груз нашей машиной.
+              </p>
+            )}
+          </div>
 
           <ItemsEditor
             items={form.items}
@@ -3602,7 +3018,7 @@ function ShipmentModal({
               <button
                 type="submit"
                 className="admin-btn admin-btn--primary"
-                disabled={saving || !valid}
+                disabled={saving || !valid || !!transportError}
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}{" "}
                 {isEdit ? "Сохранить" : isCopy ? "Создать копию" : "Добавить сдачу"}
@@ -3708,6 +3124,7 @@ function PaymentModal({
         </p>
 
         <form
+          className="wp-modal-form"
           onSubmit={(e) => {
             e.preventDefault();
             if (!valid) return;
@@ -3983,6 +3400,7 @@ function CounterpartyModal({
         </p>
 
         <form
+          className="wp-modal-form"
           onSubmit={(e) => {
             e.preventDefault();
             if (!valid) return;
@@ -4024,7 +3442,7 @@ function CounterpartyModal({
           </div>
 
           {/* Точки / филиалы */}
-          <div className="admin-field">
+          <div className="admin-field" style={{ gap: 10 }}>
             <label className="admin-label">
               <Building2 size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
               Точки / филиалы (адрес + контактное лицо + телефон)
@@ -4041,7 +3459,7 @@ function CounterpartyModal({
                   className="admin-card"
                   style={{ padding: "10px 12px", borderStyle: "dashed" }}
                 >
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                     <span className="admin-badge admin-badge--muted">Точка {idx + 1}</span>
                     <input
                       className="admin-input"
@@ -4060,7 +3478,7 @@ function CounterpartyModal({
                       <Trash2 size={13} />
                     </button>
                   </div>
-                  <div className="admin-field" style={{ marginBottom: 6 }}>
+                  <div className="admin-field" style={{ marginBottom: 8 }}>
                     <input
                       className="admin-input"
                       value={b.address}
@@ -4090,7 +3508,6 @@ function CounterpartyModal({
             <button
               type="button"
               className="admin-btn admin-btn--ghost admin-btn--sm"
-              style={{ marginTop: 8 }}
               onClick={addBranch}
             >
               <Plus size={13} /> Добавить точку
@@ -4153,399 +3570,6 @@ function CounterpartyModal({
                 {mode === "edit" ? "Сохранить" : "Добавить"}
               </button>
             </div>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
-   МОДАЛКА: ПЕРЕВОЗКА (с редактором остановок)
-   ═══════════════════════════════════════════════════════ */
-
-interface TransportFormPayload {
-  date: string;
-  startTime: string | null;
-  driverName: string | null;
-  driverPhone: string | null;
-  vehicle: string | null;
-  note: string | null;
-  items: WpTransportItem[];
-}
-
-function TransportModal({
-  mode,
-  item,
-  counterparties,
-  products,
-  saving,
-  error,
-  onClose,
-  onSubmit,
-}: {
-  mode: "create" | "edit";
-  item: WpTransport | null;
-  counterparties: WpCounterparty[];
-  products: WpProduct[];
-  saving: boolean;
-  error: string;
-  onClose: () => void;
-  onSubmit: (form: TransportFormPayload) => void;
-}) {
-  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
-  useBodyLock(true);
-  const suppliers = counterparties.filter((c) => c.roles.includes("supplier"));
-  const [form, setForm] = useState({
-    date: item?.date || todayStr(),
-    startTime: item?.startTime || "",
-    driverName: item?.driverName || "",
-    driverPhone: item?.driverPhone || "",
-    vehicle: item?.vehicle || "",
-    note: item?.note || "",
-    items: (item?.items || []) as WpTransportItem[],
-  });
-
-  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function setStop(idx: number, patch: Partial<WpTransportItem>) {
-    setForm((prev) => ({
-      ...prev,
-      items: prev.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
-    }));
-  }
-
-  function addStop() {
-    setForm((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        {
-          id: `stop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-          counterpartyId: null,
-          counterpartyName: "",
-          address: "",
-          phone: "",
-          contactPerson: "",
-          approxTime: "",
-          wastepaperType: products[0]?.id || "cardboard",
-          pricePerKg: products[0]?.pricePerKg || 0,
-          plannedKg: 0,
-          actualKg: null,
-          cashAmount: 0,
-          bankAmount: 0,
-          note: "",
-          status: "pending",
-          intakeId: null,
-        },
-      ],
-    }));
-  }
-
-  function removeStop(idx: number) {
-    setForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
-  }
-
-  const valid =
-    form.date !== "" &&
-    form.items.every((it) => it.counterpartyName.trim() !== "" || it.address.trim() !== "");
-
-  return (
-    <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
-      <div
-        className="admin-modal"
-        style={{ maxWidth: "46rem" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="admin-modal__head">
-          <h3 className="admin-modal__title">
-            {mode === "edit" ? `Перевозка ТМ-${item?.number}` : "Новая перевозка за макулатурой"}
-          </h3>
-          <button
-            type="button"
-            className="admin-modal__close"
-            onClick={onClose}
-            disabled={saving}
-            aria-label="Закрыть"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <p className="admin-modal__desc">
-          Рейс за макулатурой: дата, водитель и остановки с примерным временем.
-          Потом статусы точек меняются прямо в карточке перевозки.
-        </p>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!valid) return;
-            onSubmit({
-              date: form.date,
-              startTime: form.startTime.trim() || null,
-              driverName: form.driverName.trim() || null,
-              driverPhone: form.driverPhone.trim() || null,
-              vehicle: form.vehicle.trim() || null,
-              note: form.note.trim() || null,
-              items: form.items.map((it) => ({ ...it, approxTime: it.approxTime.trim() })),
-            });
-          }}
-        >
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "1 1 140px" }}>
-              <label className="admin-label">Дата *</label>
-              <input
-                className="admin-input"
-                type="date"
-                value={form.date}
-                onChange={(e) => set("date", e.target.value)}
-                required
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 120px" }}>
-              <label className="admin-label">Выезд (примерно)</label>
-              <input
-                className="admin-input"
-                value={form.startTime}
-                onChange={(e) => set("startTime", e.target.value)}
-                placeholder="~10:00"
-                maxLength={30}
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 170px" }}>
-              <label className="admin-label">Водитель</label>
-              <input
-                className="admin-input"
-                value={form.driverName}
-                onChange={(e) => set("driverName", e.target.value)}
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 140px" }}>
-              <label className="admin-label">Телефон водителя</label>
-              <input
-                className="admin-input"
-                value={form.driverPhone}
-                onChange={(e) => set("driverPhone", e.target.value)}
-                placeholder="+7…"
-              />
-            </div>
-            <div className="admin-field" style={{ flex: "1 1 170px" }}>
-              <label className="admin-label">Машина</label>
-              <input
-                className="admin-input"
-                value={form.vehicle}
-                onChange={(e) => set("vehicle", e.target.value)}
-                placeholder="Газель А123БВ74"
-              />
-            </div>
-          </div>
-
-          <div className="admin-field">
-            <label className="admin-label">Заметка по рейсу</label>
-            <input
-              className="admin-input"
-              value={form.note}
-              onChange={(e) => set("note", e.target.value)}
-            />
-          </div>
-
-          {/* Остановки */}
-          <div className="admin-field">
-            <label className="admin-label">Остановки (забор макулатуры)</label>
-            {form.items.length === 0 && (
-              <p className="admin-hint">Пока пусто — добавьте первую точку.</p>
-            )}
-            <div style={{ display: "grid", gap: 10 }}>
-              {form.items.map((stop, idx) => (
-                <div
-                  key={stop.id}
-                  className="admin-card"
-                  style={{ padding: "10px 12px", borderStyle: "dashed" }}
-                >
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <input
-                      className="admin-input"
-                      style={{ flex: "2 1 170px" }}
-                      list="wp-transport-suppliers"
-                      placeholder="Кто сдаёт *"
-                      value={stop.counterpartyName}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        const found = suppliers.find(
-                          (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
-                        );
-                        const first = found?.branches?.[0];
-                        setStop(idx, {
-                          counterpartyName: value,
-                          counterpartyId: found ? found.id : null,
-                          address: stop.address || first?.address || found?.address || stop.address,
-                          phone: stop.phone || first?.phone || found?.phone || stop.phone,
-                          contactPerson:
-                            stop.contactPerson ||
-                            first?.contactPerson ||
-                            found?.contactPerson ||
-                            stop.contactPerson,
-                        });
-                      }}
-                    />
-                    <input
-                      className="admin-input"
-                      style={{ flex: "1 1 90px" }}
-                      placeholder="~время"
-                      maxLength={30}
-                      value={stop.approxTime}
-                      onChange={(e) => setStop(idx, { approxTime: e.target.value })}
-                    />
-                    <select
-                      className="admin-select"
-                      style={{ flex: "1 1 150px" }}
-                      value={stop.wastepaperType}
-                      onChange={(e) => { const p = products.find(x => x.id === e.target.value); setStop(idx, { wastepaperType: e.target.value, pricePerKg: p?.pricePerKg || 0 }); }}
-                    >
-                      {products.filter(p => p.isActive).map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                    <input
-                      className="admin-input"
-                      style={{ flex: "0 1 100px" }}
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      placeholder="План, кг"
-                      value={stop.plannedKg || ""}
-                      onChange={(e) => setStop(idx, { plannedKg: parseNum(e.target.value) })}
-                    />
-                    <input className="admin-input" style={{ flex: "0 1 100px" }} type="number" min="0" step="0.01" placeholder="Цена/кг" value={stop.pricePerKg || ""} onChange={e => setStop(idx, { pricePerKg: parseNum(e.target.value) })} />
-                    <input className="admin-input" style={{ flex: "0 1 110px" }} type="number" min="0" step="0.01" placeholder="Наличка" value={stop.cashAmount || ""} onChange={e => setStop(idx, { cashAmount: parseNum(e.target.value) })} />
-                    <input className="admin-input" style={{ flex: "0 1 110px" }} type="number" min="0" step="0.01" placeholder="Перевод" value={stop.bankAmount || ""} onChange={e => setStop(idx, { bankAmount: parseNum(e.target.value) })} />
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--ghost admin-btn--sm"
-                      onClick={() => removeStop(idx)}
-                      title="Убрать остановку"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-
-                  {/* Выбор филиала, если у контрагента несколько точек */}
-                  {(() => {
-                    const stopSupplier =
-                      suppliers.find((c) => c.id === stop.counterpartyId) ||
-                      suppliers.find(
-                        (c) =>
-                          c.name.trim().toLowerCase() ===
-                          stop.counterpartyName.trim().toLowerCase()
-                      ) ||
-                      null;
-                    const stopBranches = stopSupplier?.branches || [];
-                    if (stopBranches.length === 0) return null;
-                    const matched = findWpBranchByAddress(stopBranches, stop.address);
-                    return (
-                      <select
-                        className="admin-select"
-                        style={{ marginTop: 8 }}
-                        value={matched?.id || "__new"}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          if (id === "__new") {
-                            setStop(idx, { address: "", phone: "", contactPerson: "" });
-                            return;
-                          }
-                          const b = stopBranches.find((x) => x.id === id);
-                          if (b)
-                            setStop(idx, {
-                              address: b.address,
-                              phone: b.phone,
-                              contactPerson: b.contactPerson,
-                            });
-                        }}
-                      >
-                        <option value="__new">➕ Другой адрес (вписать новый)</option>
-                        {stopBranches.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.label ? `${b.label} — ${b.address}` : b.address}
-                            {b.contactPerson ? ` (${b.contactPerson})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    );
-                  })()}
-
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                    <input
-                      className="admin-input"
-                      style={{ flex: "2 1 200px" }}
-                      placeholder="Адрес забора"
-                      value={stop.address}
-                      onChange={(e) => setStop(idx, { address: e.target.value })}
-                    />
-                    <input
-                      className="admin-input"
-                      style={{ flex: "1 1 140px" }}
-                      placeholder="Телефон точки"
-                      value={stop.phone}
-                      onChange={(e) => setStop(idx, { phone: e.target.value })}
-                    />
-                    <input
-                      className="admin-input"
-                      style={{ flex: "1 1 150px" }}
-                      placeholder="Контактное лицо"
-                      value={stop.contactPerson}
-                      onChange={(e) => setStop(idx, { contactPerson: e.target.value })}
-                    />
-                    <input
-                      className="admin-input"
-                      style={{ flex: "1 1 160px" }}
-                      placeholder="Заметка (домофон…)"
-                      value={stop.note}
-                      onChange={(e) => setStop(idx, { note: e.target.value })}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="admin-btn admin-btn--ghost admin-btn--sm"
-              style={{ marginTop: 8 }}
-              onClick={addStop}
-            >
-              <Plus size={13} /> Остановка
-            </button>
-            <datalist id="wp-transport-suppliers">
-              {suppliers.map((c) => (
-                <option key={c.id} value={c.name} />
-              ))}
-            </datalist>
-          </div>
-
-          {error && (
-            <p className="admin-error" style={{ marginTop: -4 }}>
-              {error}
-            </p>
-          )}
-
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <button
-              type="button"
-              className="admin-btn admin-btn--ghost"
-              onClick={onClose}
-              disabled={saving}
-            >
-              Закрыть
-            </button>
-            <button
-              type="submit"
-              className="admin-btn admin-btn--primary"
-              disabled={saving || !valid}
-            >
-              {saving && <Loader2 size={14} className="animate-spin" />}{" "}
-              {mode === "edit" ? "Сохранить рейс" : "Создать перевозку"}
-            </button>
           </div>
         </form>
       </div>
