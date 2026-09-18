@@ -24,6 +24,9 @@ export async function POST(request: NextRequest) {
       linkedPaymentIds: body.linkedPaymentIds,
       noPayment: body.noPayment === true,
       isConsignment: body.isConsignment === true,
+      // «Заберём сами»: поставка встанет в очередь перевозок («забор груза»).
+      needsTransport: body.needsTransport === true,
+      transportPlannedDate: body.transportPlannedDate ?? null,
       paymentSplits: body.paymentSplits,
     });
     return NextResponse.json(result);

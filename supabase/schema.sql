@@ -536,6 +536,10 @@ CREATE TABLE IF NOT EXISTS warehouse_receipts (
   linked_deal_ids JSONB DEFAULT '[]'::jsonb,
   linked_deal_numbers JSONB DEFAULT '[]'::jsonb,
   is_consignment BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Забрать поставку нашим транспортом («Заберём сами»): поставка встаёт
+  -- в очередь перевозок учёта и едет в путевом листе как «забор груза».
+  needs_transport BOOLEAN NOT NULL DEFAULT FALSE,
+  transport_planned_date DATE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -543,6 +547,7 @@ CREATE INDEX IF NOT EXISTS idx_receipts_number ON warehouse_receipts(number);
 CREATE INDEX IF NOT EXISTS idx_receipts_status ON warehouse_receipts(status);
 CREATE INDEX IF NOT EXISTS idx_receipts_date ON warehouse_receipts(date);
 CREATE INDEX IF NOT EXISTS idx_receipts_items_gin ON warehouse_receipts USING GIN (items jsonb_path_ops);
+CREATE INDEX IF NOT EXISTS idx_receipts_needs_transport ON warehouse_receipts(needs_transport) WHERE needs_transport = TRUE;
 DROP TRIGGER IF EXISTS trg_receipts_updated ON warehouse_receipts;
 CREATE TRIGGER trg_receipts_updated BEFORE UPDATE ON warehouse_receipts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

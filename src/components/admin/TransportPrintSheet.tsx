@@ -25,6 +25,8 @@ export interface TransportPrintData {
     /** Привязка к приёму/сдаче макулатуры (полоска ПМ-/СМ-). */
     wpDocKind?: "intake" | "shipment" | null;
     wpDocNumber?: number | null;
+    /** Привязка к поставке — приходному ордеру (полоска ПО-). */
+    receiptNumber?: number | null;
     customerName: string;
     contactName?: string | null;
     address: string | null;
@@ -139,13 +141,18 @@ export function TransportPrintSheet({
               : null;
           const isLast = idx === lastIdx;
           const isWp = Boolean(deal.wpDocKind);
+          // Забор поставки помечаем номером приходного ордера (ПО-N),
+          // чтобы водитель и приёмка говорили об одном документе.
+          const isReceipt = !deal.wpDocKind && !deal.dealNumber && Boolean(deal.receiptNumber);
           const stripTitle = deal.wpDocKind
             ? `${deal.wpDocKind === "intake" ? "ПМ" : "СМ"}-${deal.wpDocNumber ?? "?"}`
-            : deal.dealNumber
-              ? `ЗК-${deal.dealNumber}`
-              : "Самостоятельная перевозка";
+            : deal.receiptNumber
+              ? `ПО-${deal.receiptNumber}`
+              : deal.dealNumber
+                ? `ЗК-${deal.dealNumber}`
+                : "Самостоятельная перевозка";
           return (
-            <Fragment key={`${deal.wpDocKind || ""}${deal.wpDocNumber ?? ""}${deal.dealNumber || "self"}-${idx}`}>
+            <Fragment key={`${deal.wpDocKind || ""}${deal.wpDocNumber ?? ""}${deal.receiptNumber ?? ""}${deal.dealNumber || "self"}-${idx}`}>
               <div className="transport-strip">
                 {/* Шапка: номер документа + количество груза */}
                 <div className="strip-top">

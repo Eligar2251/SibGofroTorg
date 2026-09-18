@@ -11,7 +11,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { id } = await params;
     const body = await request.json();
     if (body.action === "complete") {
-      await completeTransport(id);
+      // Фактические количества по поставкам (ПО-): диспетчер может указать
+      // их при завершении рейса — «приняли меньше», остаток останется
+      // в поставке. Без них принимаем столько, сколько стоит в точках рейса.
+      await completeTransport(id, {
+        receipts: Array.isArray(body.receipts)
+          ? body.receipts.map((row: any) => ({
+              receiptId: String(row?.receiptId || ""),
+              items: (Array.isArray(row?.items) ? row.items : []).map((item: any) => ({
+                productId: String(item?.productId || ""),
+                quantity: Number(item?.quantity) || 0,
+              })),
+            }))
+          : undefined,
+      });
     } else if (body.action === "archive") {
       await archiveTransport(id);
     } else {

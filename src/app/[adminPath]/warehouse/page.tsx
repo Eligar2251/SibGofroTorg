@@ -17,7 +17,12 @@ import {
   getCashCollections,
   getConsignmentManualSales,
 } from "@/lib/warehouse";
-import { dealNeedsDelivery, getPriceTierDiscounts } from "@/lib/warehouse-shared";
+import {
+  buildReceiptTransportQueue,
+  dealNeedsDelivery,
+  getPriceTierDiscounts,
+  receiptTakenIdsFromTransports,
+} from "@/lib/warehouse-shared";
 import { getWpIntakes, getWpProducts, getWpShipments } from "@/lib/wastepaper-account";
 import {
   WP_TYPE_LABELS,
@@ -126,7 +131,9 @@ export default async function AdminWarehousePage({
   const needStock = ["stock", "deals", "plan", "plans", "purchases", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
   // На вкладке заказов поступления нужны для пометки «в поставке»: связь
   // хранится на приходном ордере в linked_deal_ids.
-  const needReceipts = ["supplies", "receipts", "deals", "bank", "counterparties", "reports"].includes(initialTab) || !!sp.receipt;
+  // На вкладке «Доставки» перевозки строятся в том числе по поставкам
+  // «Заберём сами» — нужны сами приходные ордера (остаток по приёмке).
+  const needReceipts = ["supplies", "receipts", "deals", "bank", "counterparties", "reports", "deliveries"].includes(initialTab) || !!sp.receipt;
   // Ручные продажи реестра «Товар на реализации» (лёгкий запрос).
   const needConsignmentManual = needReceipts;
   // "receipts" обязателен: на вкладке «Поставки» работает реестр
@@ -326,6 +333,13 @@ export default async function AdminWarehousePage({
     typeLabels: wpTypeLabels,
   });
 
+  // Поставки «Заберём сами» — та же очередь рейса: забор товара у поставщика
+  // с приёмкой на склад при завершении перевозки.
+  const pendingReceipts = buildReceiptTransportQueue({
+    receipts,
+    takenIds: receiptTakenIdsFromTransports(transportsData),
+  });
+
   const needSettings = ["deals", "deliveries", "bank", "reports", "counterparties"].includes(initialTab);
   const settings = needSettings
     ? await getSettings().catch(() => ({} as Record<string, string>))
@@ -370,6 +384,7 @@ export default async function AdminWarehousePage({
       transports={transportsData}
       pendingDeals={pendingDeals}
       pendingWpDocs={pendingWpDocs}
+      pendingReceipts={pendingReceipts}
       drivers={drivers}
       cashCollections={cashCollections}
       consignmentManual={consignmentManual}

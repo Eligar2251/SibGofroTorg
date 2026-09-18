@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { deleteReceipt, postReceipt, cancelReceipt, updateReceipt } from "@/lib/warehouse";
+import {
+  deleteReceipt,
+  postReceipt,
+  cancelReceipt,
+  setReceiptTransport,
+  updateReceipt,
+} from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function PUT(
@@ -28,6 +34,13 @@ export async function PUT(
       linkedPaymentIds: body.linkedPaymentIds,
       noPayment: body.noPayment === true,
       isConsignment: body.isConsignment === true,
+      // «Заберём сами»: пометку перевозки сохраняем вместе с документом.
+      ...(body.needsTransport !== undefined
+        ? {
+            needsTransport: body.needsTransport === true,
+            transportPlannedDate: body.transportPlannedDate ?? null,
+          }
+        : {}),
       paymentSplits: Array.isArray(body.paymentSplits)
         ? body.paymentSplits
         : undefined,
@@ -64,6 +77,13 @@ export async function PATCH(
       );
     } else if (body.action === "cancel") {
       await cancelReceipt(id);
+    } else if (body.action === "transport") {
+      // Быстрая пометка «Заберём сами» из списка поставок (в т.ч. для
+      // частично принятой поставки, где обычное редактирование запрещено).
+      await setReceiptTransport(id, {
+        needsTransport: body.needsTransport === true,
+        transportPlannedDate: body.transportPlannedDate ?? null,
+      });
     } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }

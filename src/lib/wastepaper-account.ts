@@ -444,6 +444,7 @@ function mapIntake(row: any): WpIntake {
     transportPlannedDate: row.transport_planned_date
       ? String(row.transport_planned_date).slice(0, 10)
       : null,
+    awaitingWeight: Boolean(row.awaiting_weight),
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
     createdBy: row.created_by || null,
@@ -490,6 +491,11 @@ export interface WpIntakeInput {
   needsTransport?: boolean;
   /** Желаемая дата вывоза (подсказка диспетчеру). */
   transportPlannedDate?: string | null;
+  /**
+   * Пометка «приёмка выполнена · ожидание взвешивания». Сохранение
+   * карточки приёма с фактическим весом снимает её (false).
+   */
+  awaitingWeight?: boolean;
   comment?: string | null;
 }
 
@@ -617,12 +623,20 @@ export async function updateWpIntake(
         : existing.transport_planned_date || null,
   });
   const isPaid = data.isPaid !== undefined ? Boolean(data.isPaid) : Boolean(existing.is_paid);
+  // Пометка «ожидание взвешивания»: сохранение карточки приёма с весом
+  // снимает её (форма всегда присылает awaitingWeight: false), а служебные
+  // правки без поля — сохраняют как есть.
+  const awaitingWeight =
+    data.awaitingWeight !== undefined
+      ? data.awaitingWeight === true
+      : Boolean(existing.awaiting_weight);
   const { data: row, error } = await db
     .from("wp_intakes")
     .update({
       ...merged,
       is_paid: isPaid,
       paid_at: isPaid ? existing.paid_at || new Date().toISOString() : null,
+      awaiting_weight: awaitingWeight,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

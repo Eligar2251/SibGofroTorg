@@ -1,6 +1,16 @@
 // src/app/[adminPath]/deliveries/page.tsx
 import { notFound } from "next/navigation";
-import { getDealDeliveries, getEmployees, getTransports, getWarehouseStock } from "@/lib/warehouse";
+import {
+  getDealDeliveries,
+  getEmployees,
+  getReceipts,
+  getTransports,
+  getWarehouseStock,
+} from "@/lib/warehouse";
+import {
+  buildReceiptTransportQueue,
+  receiptTakenIdsFromTransports,
+} from "@/lib/warehouse-shared";
 import { getWpIntakes, getWpProducts, getWpShipments } from "@/lib/wastepaper-account";
 import {
   WP_TYPE_LABELS,
@@ -33,9 +43,10 @@ export default async function AdminDeliveriesPage({
   let wpIntakes: Awaited<ReturnType<typeof getWpIntakes>> = [];
   let wpShipments: Awaited<ReturnType<typeof getWpShipments>> = [];
   let wpProducts: Awaited<ReturnType<typeof getWpProducts>> = [];
+  let receipts: Awaited<ReturnType<typeof getReceipts>> = [];
 
   try {
-    const [trs, deals, emps, stock, wpi, wps, wpp] = await Promise.all([
+    const [trs, deals, emps, stock, wpi, wps, wpp, rcs] = await Promise.all([
       getTransports({ limit: 200 }),
       getDealDeliveries({ filter: "all", limit: 500 }),
       getEmployees().catch(() => []),
@@ -44,6 +55,8 @@ export default async function AdminDeliveriesPage({
       getWpIntakes(500).catch(() => []),
       getWpShipments(300).catch(() => []),
       getWpProducts().catch(() => []),
+      // Поставки с пометкой «Заберём сами» — привозим на свой склад.
+      getReceipts().catch(() => []),
     ]);
     transports = trs;
     dealOrders = deals;
@@ -51,6 +64,7 @@ export default async function AdminDeliveriesPage({
     wpIntakes = wpi;
     wpShipments = wps;
     wpProducts = wpp;
+    receipts = rcs;
     products = stock.map((p) => ({
       id: p.id,
       name: p.name,
@@ -136,6 +150,13 @@ export default async function AdminDeliveriesPage({
     typeLabels: wpTypeLabels,
   });
 
+  // Поставки «Заберём сами», ещё не взятые в активный рейс: забор груза
+  // у поставщика, груз — остаток по приёмке (заказано − уже принято).
+  const pendingReceipts = buildReceiptTransportQueue({
+    receipts,
+    takenIds: receiptTakenIdsFromTransports(transports),
+  });
+
   return (
     <div>
       <DeliveriesRealtime />
@@ -143,6 +164,7 @@ export default async function AdminDeliveriesPage({
         transports={transports}
         pendingDeals={pendingDeals}
         pendingWpDocs={pendingWpDocs}
+        pendingReceipts={pendingReceipts}
         drivers={drivers}
         companyPhone={companyPhone}
         companyAddress={companyAddress}

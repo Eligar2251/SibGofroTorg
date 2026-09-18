@@ -58,6 +58,10 @@ export interface EditableReceipt {
   items: ReceiptItemDraft[];
   vatRate?: number;
   isConsignment?: boolean;
+  /** «Заберём сами»: поставка встаёт в очередь перевозок («забор груза»). */
+  needsTransport?: boolean;
+  /** Желаемая дата забора (подсказка диспетчеру). */
+  transportPlannedDate?: string | null;
 }
 
 function todayIso(): string {
@@ -201,6 +205,14 @@ export function ReceiptForm({
   );
   const [noPayment, setNoPayment] = useState(initialNoPayment);
   const [isConsignment, setIsConsignment] = useState(Boolean(initialReceipt?.isConsignment));
+  // «Заберём сами»: товар забирает наша машина — поставка попадает
+  // в очередь перевозок («Доставки») и едет в путевом листе как забор груза.
+  const [needsTransport, setNeedsTransport] = useState(
+    Boolean(initialReceipt?.needsTransport)
+  );
+  const [transportPlannedDate, setTransportPlannedDate] = useState(
+    initialReceipt?.transportPlannedDate || ""
+  );
   const [paymentCount, setPaymentCount] = useState(
     initialReceipt && existingUnpaid.length > 1 ? existingUnpaid.length : 1
   );
@@ -255,6 +267,8 @@ export function ReceiptForm({
     setSelectedDeals(initialReceipt?.linkedDealIds || []);
     setSelectedPayments([]);
     setNoPayment(initialNoPayment);
+    setNeedsTransport(Boolean(initialReceipt?.needsTransport));
+    setTransportPlannedDate(initialReceipt?.transportPlannedDate || "");
     setPaymentCount(1);
     setSplitAmounts([""]);
     setSplitTouched(false);
@@ -456,6 +470,8 @@ export function ReceiptForm({
           linkedPaymentIds: noPayment ? [] : selectedPayments,
           noPayment,
           isConsignment,
+          needsTransport,
+          transportPlannedDate: needsTransport ? transportPlannedDate || null : null,
           paymentSplits: buildPaymentSplits(),
         }),
       });
@@ -559,6 +575,51 @@ export function ReceiptForm({
                   <div className="admin-field"><label className="admin-label">Адрес</label><input className="admin-input" value={address} onChange={(e) => setAddress(e.target.value)} /></div>
                 </div>
               </details>
+
+              {/* Перевозка: «Заберём сами» — та же логика, что у макулатуры.
+                  Поставка встаёт в очередь раздела «Доставки», водитель
+                  забирает товар у поставщика (в путевом листе — забор груза),
+                  а при завершении рейса поставка принимается на склад. */}
+              <div className="deal-delivery-block">
+                <div className="deal-delivery-block__head">
+                  <Truck size={14} />
+                  <span>Перевозка</span>
+                  <label className="deal-delivery-block__toggle">
+                    <input
+                      type="checkbox"
+                      checked={needsTransport}
+                      onChange={(e) => setNeedsTransport(e.target.checked)}
+                    />
+                    Заберём сами
+                  </label>
+                </div>
+
+                {needsTransport ? (
+                  <div className="deal-delivery-block__body">
+                    <div className="admin-field" style={{ maxWidth: 220 }}>
+                      <label className="admin-label">Забрать не позже</label>
+                      <input
+                        type="date"
+                        className="admin-input"
+                        value={transportPlannedDate}
+                        onChange={(e) => setTransportPlannedDate(e.target.value)}
+                      />
+                    </div>
+                    <p className="deal-delivery-block__empty" style={{ marginTop: 0 }}>
+                      Поставка встанет в очередь перевозок («Доставки» → «Ожидают
+                      формирования»): водитель заберёт товар по адресу поставщика
+                      (поле «Адрес» в реквизитах выше). При завершении рейса
+                      поставка принимается на склад — фактическое количество
+                      укажете там же, остаток останется в поставке.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="deal-delivery-block__empty">
+                    Самопривоз: поставщик привезёт товар сам. Включите, если за
+                    грузом нужно отправить нашу машину.
+                  </p>
+                )}
+              </div>
 
               <div className="admin-field">
                 <label className="admin-label">Товары</label>
@@ -857,11 +918,20 @@ export function ReceiptCard({
 
   return (
     <div id={`receipt-${r.id}`} className="admin-order">
-      <button
-        type="button"
+      {/* Шапка — div[role=button]: внутри неё живёт ещё одна кнопка
+          («Заберём сами»), а вложенные <button> недопустимы. */}
+      <div
         className="receipt-head"
-        onClick={() => setExpanded((v) => !v)}
+        role="button"
+        tabIndex={0}
         aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
       >
         <span className="admin-order__id">ПО-{r.number}</span>
         <span
@@ -903,10 +973,13 @@ export function ReceiptCard({
         <span className="receipt-head__supplier">{r.supplier || "—"}</span>
         <span className="receipt-head__date">{fmtDate(r.date)}</span>
         <span className="receipt-head__total">{fmt(r.total)} ₽</span>
+        {/* Кнопка «Заберём сами» — как «В перевозку» в макулатуре:
+            поставка встаёт в очередь раздела «Доставки». */}
+        {r.status !== "posted" && <ReceiptTransportToggle receipt={r} />}
         <span className="receipt-head__chevron">
           {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </span>
-      </button>
+      </div>
 
       {expanded && (
         <div className="admin-order__row" style={{ paddingTop: 14 }}>
@@ -1038,6 +1111,8 @@ export function ReceiptCard({
                   })),
                   vatRate: r.vatRate,
                   isConsignment: r.isConsignment,
+                  needsTransport: r.needsTransport,
+                  transportPlannedDate: r.transportPlannedDate,
                   linkedDealIds: r.linkedDealIds,
                 }}
               />
@@ -1051,6 +1126,67 @@ export function ReceiptCard({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Пометка «Заберём сами» прямо в карточке поставки: поставка встаёт
+ * в очередь раздела «Доставки» (в путевом листе — «забор груза»), а при
+ * завершении рейса принимается на склад. Работает и для частично
+ * принятой поставки, где обычное редактирование запрещено.
+ */
+function ReceiptTransportToggle({ receipt }: { receipt: WarehouseReceipt }) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const on = Boolean(receipt.needsTransport);
+
+  async function toggle(event: React.MouseEvent) {
+    // Клик по кнопке не должен сворачивать/раскрывать карточку.
+    event.stopPropagation();
+    if (!on && !String(receipt.address || "").trim()) {
+      alert(
+        "Укажите адрес забора в карточке поставки (реквизиты поставщика) — без него водитель не знает, куда ехать."
+      );
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/warehouse/receipts/${receipt.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "transport", needsTransport: !on }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Не удалось обновить перевозку");
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Ошибка сети");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <button
+      type="button"
+      className={on ? "admin-badge admin-badge--blue" : "admin-btn admin-btn--ghost admin-btn--sm"}
+      style={on ? { border: 0, cursor: "pointer" } : undefined}
+      onClick={toggle}
+      disabled={saving}
+      title={
+        on
+          ? "В очереди перевозок (забор груза). Нажмите, чтобы снять."
+          : "Забрать товар нашим транспортом — поставка попадёт в «Доставки»"
+      }
+    >
+      {saving ? (
+        <Loader2 size={11} className="animate-spin" />
+      ) : (
+        <Truck size={on ? 11 : 13} style={on ? { verticalAlign: "-1px", marginRight: 3 } : undefined} />
+      )}{" "}
+      {on
+        ? `Забор${receipt.transportPlannedDate ? ` · ${fmtDate(receipt.transportPlannedDate)}` : ""}`
+        : "Заберём сами"}
+    </button>
   );
 }
 

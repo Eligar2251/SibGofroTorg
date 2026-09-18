@@ -21,6 +21,7 @@ import {
   dealAvailableFor,
   emptyCustomStop,
   stopFromDeal,
+  stopFromReceipt,
   stopFromWpDoc,
   stopTotalQty,
   stopsFromTransportItems,
@@ -29,12 +30,18 @@ import {
   validateStops,
   type TripStop,
   type TripStopDeal,
+  type TripStopLine,
+  type TripStopReceipt,
   type TripType,
 } from "@/lib/trip-stops";
 import {
   wpQueueDocLabel,
   type WpTransportQueueDoc,
 } from "@/lib/wastepaper-account-shared";
+import {
+  receiptQueueDocLabel,
+  type ReceiptTransportQueueDoc,
+} from "@/lib/warehouse-shared";
 
 // Совместимость: типы и подписи tripType раньше жили здесь.
 export type { TripType } from "@/lib/trip-stops";
@@ -62,6 +69,9 @@ export interface TransportRow {
     wpDocId?: string | null;
     wpDocKind?: "intake" | "shipment" | null;
     wpDocNumber?: number | null;
+    /** Привязка к поставке — приходному ордеру (точки ПО-). */
+    receiptId?: string | null;
+    receiptNumber?: number | null;
     customerName: string;
     contactName?: string | null;
     address: string | null;
@@ -104,6 +114,7 @@ export function TransportManager({
   transports: initialTransports,
   pendingDeals,
   pendingWpDocs = [],
+  pendingReceipts = [],
   drivers,
   companyPhone,
   companyAddress,
@@ -118,6 +129,12 @@ export function TransportManager({
    * листе вместе с заказами учёта.
    */
   pendingWpDocs?: WpTransportQueueDoc[];
+  /**
+   * Поставки с пометкой «Заберём сами» — едем забирать товар у поставщика
+   * (точки ПО-, «забор груза»). При завершении рейса поставка принимается
+   * на склад (остаток остаётся в поставке).
+   */
+  pendingReceipts?: ReceiptTransportQueueDoc[];
   drivers: DriverOption[];
   companyPhone?: string;
   companyAddress?: string;
@@ -135,6 +152,11 @@ export function TransportManager({
   const [tripData, setTripData] = useState<TripSheetData | null>(null);
   // Черновик порядка/пометок для уже созданной перевозки: {id: stops}
   const [stopDraft, setStopDraft] = useState<Record<string, TripStop[]>>({});
+  // Завершение с приёмкой поставок: спрашиваем фактические количества
+  const [completeTarget, setCompleteTarget] = useState<{
+    transport: TransportRow;
+    stops: TripStop[];
+  } | null>(null);
 
   useEffect(() => {
     if (!focusTransportId) return;
@@ -166,8 +188,8 @@ export function TransportManager({
     active: initialTransports.filter((t) => t.status === "draft" || t.status === "active").length,
     completed: initialTransports.filter((t) => t.status === "completed").length,
     archived: initialTransports.filter((t) => t.status === "archived").length,
-    pending: pendingDeals.length + pendingWpDocs.length,
-  }), [initialTransports, pendingDeals, pendingWpDocs]);
+    pending: pendingDeals.length + pendingWpDocs.length + pendingReceipts.length,
+  }), [initialTransports, pendingDeals, pendingWpDocs, pendingReceipts]);
 
   async function apiCall(url: string, method: string, body?: any) {
     setSaving(true);
@@ -194,13 +216,36 @@ export function TransportManager({
     await apiCall(`/api/admin/transports/${id}`, "DELETE");
   }
 
-  async function handleComplete(t: TransportRow, stops: TripStop[]) {
+  /**
+   * Завершение рейса. Если в перевозке есть поставки (ПО-), сначала
+   * спрашиваем фактические количества — «приняли меньше» возможно:
+   * остаток останется в поставке («остаток по приёмке»).
+   */
+  function handleComplete(t: TransportRow, stops: TripStop[]) {
+    const receiptStops = stops.filter((s) => s.receiptId && !s.wpDocId);
+    if (receiptStops.length > 0) {
+      setCompleteTarget({ transport: t, stops });
+      setError("");
+      return;
+    }
     const hasWp = stops.some((s) => s.wpDocId);
     const msg = hasWp
-      ? "Завершить перевозку? Товары спишутся со склада, а приёмы/сдачи макулатуры снимутся с очереди перевозок."
+      ? "Завершить перевозку? Товары спишутся со склада, а макулатура получит пометку «приёмка выполнена · ожидание взвешивания» (вес впишете в приёме)."
       : "Завершить перевозку? Товары будут списаны со склада.";
     if (!confirm(msg)) return;
-    await apiCall(`/api/admin/transports/${t.id}`, "PATCH", { action: "complete" });
+    void apiCall(`/api/admin/transports/${t.id}`, "PATCH", { action: "complete" });
+  }
+
+  /** Финальное подтверждение с фактическими количествами по поставкам. */
+  async function completeWithReceipts(
+    target: { transport: TransportRow; stops: TripStop[] },
+    receipts: { receiptId: string; items: { productId: string; quantity: number }[] }[]
+  ) {
+    await apiCall(`/api/admin/transports/${target.transport.id}`, "PATCH", {
+      action: "complete",
+      receipts,
+    });
+    setCompleteTarget(null);
   }
 
   async function handleArchive(id: string) {
@@ -245,6 +290,7 @@ export function TransportManager({
           dealNumber: stop.dealNumber ?? 0,
           wpDocKind: stop.wpDocKind,
           wpDocNumber: stop.wpDocNumber,
+          receiptNumber: stop.receiptNumber ?? null,
           customerName: stop.customerName,
           contactName: stop.contactName,
           address: stop.address,
@@ -279,6 +325,15 @@ export function TransportManager({
     <div className="deliv-page">
       {printData && <TransportPrintSheet data={printData} onDone={() => setPrintData(null)} />}
       {tripData && <TransportTripSheet data={tripData} onDone={() => setTripData(null)} />}
+      {completeTarget && (
+        <CompleteTransportModal
+          transport={completeTarget.transport}
+          stops={completeTarget.stops}
+          saving={saving}
+          onClose={() => setCompleteTarget(null)}
+          onConfirm={(receipts) => completeWithReceipts(completeTarget, receipts)}
+        />
+      )}
 
       {/* ── Шапка ── */}
       <div className="admin-page-head">
@@ -464,6 +519,7 @@ export function TransportManager({
         <CreateTransportModal
           deals={pendingDeals}
           wpDocs={pendingWpDocs}
+          receipts={pendingReceipts}
           drivers={drivers}
           products={products}
           companyPhone={companyPhone}
@@ -488,6 +544,7 @@ export function TransportManager({
 function CreateTransportModal({
   deals,
   wpDocs = [],
+  receipts = [],
   drivers,
   products,
   companyPhone,
@@ -498,6 +555,8 @@ function CreateTransportModal({
   deals: TransportDeal[];
   /** Очередь макулатуры: приёмы (забор) и сдачи (на предприятие). */
   wpDocs?: WpTransportQueueDoc[];
+  /** Очередь поставок «Заберём сами» — забор товара у поставщика (ПО-). */
+  receipts?: ReceiptTransportQueueDoc[];
   drivers: DriverOption[];
   products?: PickerProduct[];
   companyPhone?: string;
@@ -546,6 +605,57 @@ function CreateTransportModal({
 
   const wpIntakes = useMemo(() => wpDocs.filter((d) => d.kind === "intake"), [wpDocs]);
   const wpShipments = useMemo(() => wpDocs.filter((d) => d.kind === "shipment"), [wpDocs]);
+
+  /** Поставка («Заберём сами») → точка маршрута: забор товара у поставщика. */
+  function toggleReceipt(doc: ReceiptTransportQueueDoc) {
+    const existing = stops.find(
+      (s) => s.receiptId && String(s.receiptId) === String(doc.id)
+    );
+    if (existing) {
+      setStops((prev) => prev.filter((s) => s.key !== existing.key));
+      return;
+    }
+    setStops((prev) => [...prev, stopFromReceipt(doc)]);
+  }
+
+  /** Сколько единиц товара забираем с поставки (подпись в очереди). */
+  function receiptStopSummary(doc: ReceiptTransportQueueDoc) {
+    const stop = stops.find((s) => s.receiptId && String(s.receiptId) === String(doc.id));
+    if (!stop) {
+      return { qty: doc.lines.reduce((sum, l) => sum + (Number(l.qty) || 0), 0), picked: false };
+    }
+    return { qty: stopTotalQty(stop), picked: true };
+  }
+
+  /** Найти точку выбранного документа — чтобы править её строки прямо в списке. */
+  function stopForDeal(deal: TransportDeal) {
+    return stops.find((s) => s.kind === "deal" && String(s.dealId) === String(deal.id)) || null;
+  }
+  function stopForWp(doc: WpTransportQueueDoc) {
+    return (
+      stops.find(
+        (s) => s.wpDocKind === doc.kind && s.wpDocId && String(s.wpDocId) === String(doc.id)
+      ) || null
+    );
+  }
+  function stopForReceipt(doc: ReceiptTransportQueueDoc) {
+    return stops.find((s) => s.receiptId && String(s.receiptId) === String(doc.id)) || null;
+  }
+
+  /**
+   * Правка количества по конкретному товару прямо в списке «Что везём»
+   * (шаг выбора контрагента): диспетчер вписывает фактическое количество
+   * руками, не переходя в карточку точки.
+   */
+  function patchStopLine(stopKeyArg: string, lineIndex: number, patch: Partial<TripStopLine>) {
+    setStops((prev) =>
+      prev.map((s) =>
+        s.key === stopKeyArg
+          ? { ...s, lines: s.lines.map((l, i) => (i === lineIndex ? { ...l, ...patch } : l)) }
+          : s
+      )
+    );
+  }
 
   function addCustomStop() {
     setStops((prev) => [...prev, emptyCustomStop()]);
@@ -672,7 +782,8 @@ function CreateTransportModal({
               onClick={() => setPanel("deals")}
             >
               1. Что везём (заказы: {deals.length}
-              {wpDocs.length > 0 ? ` · макулатура: ${wpDocs.length}` : ""})
+              {wpDocs.length > 0 ? ` · макулатура: ${wpDocs.length}` : ""}
+              {receipts.length > 0 ? ` · поставки: ${receipts.length}` : ""})
             </button>
             <button
               type="button"
@@ -688,8 +799,8 @@ function CreateTransportModal({
           {panel === "deals" ? (
             <>
               <div className="transport-modal__orders" style={{ maxHeight: "42vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
-                {deals.length === 0 && wpDocs.length === 0 ? (
-                  <div className="admin-empty" style={{ padding: 20 }}>Очередь пуста: нет ни заказов, ни макулатуры в перевозку — добавьте свою точку</div>
+                {deals.length === 0 && wpDocs.length === 0 && receipts.length === 0 ? (
+                  <div className="admin-empty" style={{ padding: 20 }}>Очередь пуста: нет ни заказов, ни макулатуры, ни поставок в перевозку — добавьте свою точку</div>
                 ) : (
                   <>
                   {deals.length > 0 && (
@@ -699,6 +810,7 @@ function CreateTransportModal({
                   )}
                   {deals.map((deal) => {
                     const summary = dealStopSummary(deal);
+                    const stop = stopForDeal(deal);
                     return (
                       <div
                         key={deal.id}
@@ -718,6 +830,13 @@ function CreateTransportModal({
                             </span>
                           )}
                         </label>
+                        {stop && stop.lines.length > 0 && (
+                          <PickLinesEditor
+                            stop={stop}
+                            unit="ед."
+                            onPatchLine={(index, patch) => patchStopLine(stop.key, index, patch)}
+                          />
+                        )}
                       </div>
                     );
                   })}
@@ -756,6 +875,17 @@ function CreateTransportModal({
                             </span>
                           )}
                         </label>
+                        {(() => {
+                          const stop = stopForWp(doc);
+                          if (!stop || stop.lines.length === 0) return null;
+                          return (
+                            <PickLinesEditor
+                              stop={stop}
+                              unit="кг"
+                              onPatchLine={(index, patch) => patchStopLine(stop.key, index, patch)}
+                            />
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -794,6 +924,68 @@ function CreateTransportModal({
                             </span>
                           )}
                         </label>
+                        {(() => {
+                          const stop = stopForWp(doc);
+                          if (!stop || stop.lines.length === 0) return null;
+                          return (
+                            <PickLinesEditor
+                              stop={stop}
+                              unit="кг"
+                              onPatchLine={(index, patch) => patchStopLine(stop.key, index, patch)}
+                            />
+                          );
+                        })()}
+                      </div>
+                    );
+                  })}
+                  {/* Поставки «Заберём сами» — едем за товаром к поставщику. */}
+                  {receipts.length > 0 && (
+                    <div className="wp-pick__group wp-pick__group--pickup">
+                      ⭡ Забор поставок — ПО ({receipts.length})
+                    </div>
+                  )}
+                  {receipts.map((doc) => {
+                    const summary = receiptStopSummary(doc);
+                    return (
+                      <div
+                        key={`receipt-${doc.id}`}
+                        className={`wp-pick${summary.picked ? " wp-pick--on" : ""}`}
+                      >
+                        <label className="transport-modal__order-label wp-pick__label">
+                          <input
+                            type="checkbox"
+                            checked={summary.picked}
+                            onChange={() => toggleReceipt(doc)}
+                          />
+                          <strong className="wp-pick__num">{receiptQueueDocLabel(doc)}</strong>
+                          <span className="wp-pick__client">{doc.supplierName}</span>
+                          <span className="admin-badge admin-badge--muted">
+                            {summary.picked
+                              ? `в маршруте ${summary.qty} ед.`
+                              : `к приёмке ${summary.qty} ед.`}
+                          </span>
+                          {doc.plannedDate && (
+                            <span className="admin-badge admin-badge--indigo" title="Желаемая дата забора">
+                              к {fmtDate(doc.plannedDate)}
+                            </span>
+                          )}
+                          {doc.address && (
+                            <span className="transport-modal__address wp-pick__addr">
+                              <MapPin size={10} /> <span>{doc.address}</span>
+                            </span>
+                          )}
+                        </label>
+                        {(() => {
+                          const stop = stopForReceipt(doc);
+                          if (!stop || stop.lines.length === 0) return null;
+                          return (
+                            <PickLinesEditor
+                              stop={stop}
+                              unit="ед."
+                              onPatchLine={(index, patch) => patchStopLine(stop.key, index, patch)}
+                            />
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -802,7 +994,9 @@ function CreateTransportModal({
               </div>
 
               <div className="transport-builder__hint">
-                Количество груза и пометки (забор / доставка) настраиваются на шаге 2 — в карточке точки.
+                Количество груза правится прямо здесь (можно меньше, чем в документе).
+                Пометки «забор / доставка» и порядок точек — на шаге 2.
+                Поставка при завершении рейса принимается на склад: остаток останется в поставке.
               </div>
             </>
           ) : (
@@ -851,6 +1045,225 @@ function CreateTransportModal({
           onDone={() => setTripPreview(null)}
         />
       )}
+    </ModalPortal>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Правка количеств прямо в списке «Что везём» (шаг 1)
+   ───────────────────────────────────────────────────────── */
+
+/**
+ * Компактный редактор строк груза для выбора контрагента: диспетчер
+ * вписывает фактическое количество руками ещё до создания перевозки —
+ * «забираем меньше, чем в документе». Для поставок это же значение потом
+ * принимается на склад при завершении рейса (остаток останется в поставке).
+ */
+function PickLinesEditor({
+  stop,
+  unit,
+  onPatchLine,
+}: {
+  stop: TripStop;
+  unit: string;
+  onPatchLine: (index: number, patch: Partial<TripStopLine>) => void;
+}) {
+  const total = stopTotalQty(stop);
+  return (
+    <div className="pick-lines">
+      <div className="pick-lines__head">
+        <span className="pick-lines__title">Груз: {total} {unit}</span>
+        <span className="pick-lines__hint">количество можно править руками</span>
+      </div>
+      <div className="trip-stop__lines">
+        {stop.lines.map((line, index) => {
+          const max = line.maxQty ?? line.orderedQty ?? null;
+          return (
+            <div className="trip-stop__line" key={`${stop.key}-pick-${index}`}>
+              <span className="trip-stop__line-name">
+                {line.name || "без названия"}
+                {line.orderedQty != null && (
+                  <span className="trip-stop__line-ordered"> (в документе {line.orderedQty})</span>
+                )}
+              </span>
+              <div className="trip-stop__line-qty">
+                <input
+                  className="admin-input"
+                  type="number"
+                  min={0}
+                  max={max ?? undefined}
+                  value={line.qty || ""}
+                  placeholder="0"
+                  title="Фактическое количество в этом рейсе (можно меньше, чем в документе)"
+                  onChange={(e) => {
+                    const raw = Math.max(0, Number(e.target.value) || 0);
+                    onPatchLine(index, { qty: max != null ? Math.min(raw, max) : raw });
+                  }}
+                />
+                <span className="trip-stop__line-unit" aria-hidden>{unit}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Завершение перевозки: фактические количества по поставкам
+   ───────────────────────────────────────────────────────── */
+
+/**
+ * Рейс закрыли — спрашиваем, сколько реально приняли по каждой поставке
+ * (ПО-). Приняли меньше — остаток останется в поставке «остатком по
+ * приёмке», его можно добрать кнопкой «Принять остаток» в самой поставке.
+ */
+function CompleteTransportModal({
+  transport,
+  stops,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  transport: TransportRow;
+  stops: TripStop[];
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: (
+    receipts: { receiptId: string; items: { productId: string; quantity: number }[] }[]
+  ) => void;
+}) {
+  const receiptStops = useMemo(
+    () => stops.filter((s) => !!s.receiptId && !s.wpDocId),
+    [stops]
+  );
+  const otherStops = useMemo(
+    () => stops.filter((s) => !s.receiptId || !!s.wpDocId),
+    [stops]
+  );
+  const [qty, setQty] = useState<Record<string, number[]>>(() => {
+    const init: Record<string, number[]> = {};
+    for (const stop of receiptStops) {
+      if (!stop.receiptId) continue;
+      init[stop.receiptId] = stop.lines.map((line) => Number(line.qty) || 0);
+    }
+    return init;
+  });
+
+  function patchQty(receiptId: string, index: number, value: number, max: number | null) {
+    const next = Math.max(0, value);
+    setQty((prev) => ({
+      ...prev,
+      [receiptId]: (prev[receiptId] || []).map((v, i) =>
+        i === index ? (max != null ? Math.min(next, max) : next) : v
+      ),
+    }));
+  }
+
+  function handleConfirm() {
+    const receipts = receiptStops
+      .filter((s) => !!s.receiptId)
+      .map((s) => ({
+        receiptId: String(s.receiptId),
+        items: s.lines
+          .map((line, index) => ({
+            productId: line.productId ? String(line.productId) : "",
+            quantity: Number((qty[String(s.receiptId)] || [])[index] ?? line.qty) || 0,
+          }))
+          .filter((item) => item.productId && item.quantity >= 0),
+      }));
+    onConfirm(receipts);
+  }
+
+  return (
+    <ModalPortal>
+      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+        <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
+          <div className="admin-modal__head">
+            <h3 className="admin-modal__title">
+              Завершить перевозку ТМ-{transport.number}
+            </h3>
+            <button type="button" className="admin-modal__close" onClick={onClose} aria-label="Закрыть">
+              <X size={14} />
+            </button>
+          </div>
+
+          <div style={{ maxHeight: "58vh", overflowY: "auto" }}>
+            <p className="admin-modal__desc">
+              Впишите, сколько фактически приняли по каждой поставке. Если приняли
+              меньше — остаток останется в поставке («остаток по приёмке»), его
+              можно добрать позже кнопкой «Принять остаток».
+            </p>
+
+            {receiptStops.map((stop) => {
+              const id = String(stop.receiptId);
+              return (
+                <div className="wp-pick wp-pick--on" key={`complete-${id}`} style={{ marginBottom: 10 }}>
+                  <div className="wp-pick__label" style={{ cursor: "default" }}>
+                    <strong className="wp-pick__num">{stop.receiptNumber != null ? `ПО-${stop.receiptNumber}` : "Поставка"}</strong>
+                    <span className="wp-pick__client">{stop.customerName}</span>
+                  </div>
+                  <div className="trip-stop__lines">
+                    {stop.lines.map((line, index) => {
+                      const max = line.maxQty ?? line.orderedQty ?? null;
+                      const value = (qty[id] || [])[index] ?? (Number(line.qty) || 0);
+                      return (
+                        <div className="trip-stop__line" key={`${id}-${index}`}>
+                          <span className="trip-stop__line-name">
+                            {line.name || "без названия"}
+                            {line.orderedQty != null && (
+                              <span className="trip-stop__line-ordered"> (в поставке {line.orderedQty})</span>
+                            )}
+                          </span>
+                          <div className="trip-stop__line-qty">
+                            <input
+                              className="admin-input"
+                              type="number"
+                              min={0}
+                              max={max ?? undefined}
+                              value={value || ""}
+                              placeholder="0"
+                              onChange={(e) => patchQty(id, index, Number(e.target.value) || 0, max)}
+                            />
+                            <span className="trip-stop__line-unit" aria-hidden>ед.</span>
+                            <button
+                              type="button"
+                              className="admin-btn admin-btn--ghost admin-btn--sm"
+                              title="Принять столько, сколько везли"
+                              onClick={() => patchQty(id, index, Number(line.qty) || 0, null)}
+                            >
+                              Столько
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {otherStops.length > 0 && (
+              <div className="transport-builder__hint">
+                Ещё точек: {otherStops.length}. Товары по заказам спишутся со склада, а
+                макулатура получит пометку «приёмка выполнена · ожидание взвешивания» —
+                вес впишете в приёме руками.
+              </div>
+            )}
+          </div>
+
+          <div className="admin-modal__actions">
+            <button type="button" className="admin-btn admin-btn--ghost" onClick={onClose} disabled={saving}>
+              Отмена
+            </button>
+            <button type="button" className="admin-btn admin-btn--primary" onClick={handleConfirm} disabled={saving}>
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              Завершить и принять на склад
+            </button>
+          </div>
+        </div>
+      </div>
     </ModalPortal>
   );
 }

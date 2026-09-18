@@ -284,7 +284,12 @@ export function TransportTripSheet({
                     {stop.kind === "deal" && stop.dealNumber ? (
                       <span className="tls-strip__deal">ЗК-{stop.dealNumber}</span>
                     ) : null}
-                    {wp ? <span className="tls-strip__deal">{stopTitle(stop)}</span> : null}
+                    {/* Макулатура (ПМ-/СМ-) и забор поставки (ПО-) — номер
+                        документа рядом с контрагентом: водитель и приёмка
+                        говорят об одном документе. */}
+                    {stop.kind !== "deal" && stop.kind !== "custom" ? (
+                      <span className="tls-strip__deal">{stopTitle(stop)}</span>
+                    ) : null}
                     {stop.plannedTime ? (
                       <span className="tls-strip__time">⏱ {opts.showTime && stop.plannedTime}</span>
                     ) : null}

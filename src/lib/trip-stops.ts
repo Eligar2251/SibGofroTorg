@@ -126,9 +126,10 @@ export interface TripStop {
    * "deal" — точка из заказа учёта (ЗК),
    * "wp_intake" — приём макулатуры (ПМ-, забор),
    * "wp_shipment" — сдача макулатуры (СМ-, сдача),
+   * "receipt" — поставка (ПО-, забор товара у поставщика),
    * "custom" — самостоятельная (своя) точка.
    */
-  kind: "deal" | "custom" | "wp_intake" | "wp_shipment";
+  kind: "deal" | "custom" | "wp_intake" | "wp_shipment" | "receipt";
   dealId: string | null;
   dealNumber: number | null;
   /** Привязка к приёму/сдаче макулатуры (для kind wp_*). */
@@ -136,6 +137,9 @@ export interface TripStop {
   /** intake — приём, shipment — сдача. */
   wpDocKind?: "intake" | "shipment" | null;
   wpDocNumber?: number | null;
+  /** Привязка к поставке — приходному ордеру (для kind receipt). */
+  receiptId?: string | null;
+  receiptNumber?: number | null;
   customerName: string;
   contactName: string | null;
   phone: string | null;
@@ -171,6 +175,9 @@ export interface TripStopTransportItem {
   wpDocId?: string | null;
   wpDocKind?: "intake" | "shipment" | null;
   wpDocNumber?: number | null;
+  /** Привязка к поставке — приходному ордеру (warehouse_receipts). */
+  receiptId?: string | null;
+  receiptNumber?: number | null;
   customerName: string;
   contactName?: string | null;
   address: string | null;
@@ -210,9 +217,21 @@ export function stopTitle(stop: TripStop): string {
   if (stop.kind === "deal" && stop.dealNumber) return `ЗК-${stop.dealNumber}`;
   if (stop.kind === "wp_intake" && stop.wpDocNumber != null) return `ПМ-${stop.wpDocNumber}`;
   if (stop.kind === "wp_shipment" && stop.wpDocNumber != null) return `СМ-${stop.wpDocNumber}`;
+  if (stop.kind === "receipt" && stop.receiptNumber != null) return `ПО-${stop.receiptNumber}`;
   if (stop.kind === "wp_intake") return "Приём макулатуры";
   if (stop.kind === "wp_shipment") return "Сдача макулатуры";
+  if (stop.kind === "receipt") return "Поставка";
   return "Своя точка";
+}
+
+/** Точка из поставки (приходного ордера) — забор товара у поставщика. */
+export function isReceiptStop(stop: Pick<TripStop, "kind">): boolean {
+  return stop.kind === "receipt";
+}
+
+/** Точка из документа (заказ, макулатура, поставка), а не своя. */
+export function isDocStop(stop: Pick<TripStop, "kind">): boolean {
+  return stop.kind !== "custom";
 }
 
 /** Точка из макулатуры (приём/сдача), а не из заказа учёта. */
@@ -284,6 +303,50 @@ export function dealAvailableFor(deal: TripStopDeal, productId: string): number 
   return dealAvailableQty(deal, productId).available;
 }
 
+/** Всё, что нужно редактору, чтобы собрать точку из поставки (ПО-). */
+export interface TripStopReceipt {
+  id: string;
+  number: number;
+  supplierName: string;
+  contactName?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  note?: string | null;
+  /** Остаток к приёмке по позициям (заказано − уже принято). */
+  lines: { productId: string; name: string; qty: number; orderedQty?: number | null }[];
+}
+
+/**
+ * Точка из поставки (приходного ордера) — «забор груза» у поставщика.
+ * Груз — остаток по приёмке: количество можно уменьшить руками (приняли
+ * меньше), тогда остаток останется в поставке («остаток по приёмке»).
+ */
+export function stopFromReceipt(doc: TripStopReceipt): TripStop {
+  return {
+    key: `receipt-${doc.id}`,
+    kind: "receipt",
+    dealId: null,
+    dealNumber: null,
+    receiptId: doc.id,
+    receiptNumber: doc.number,
+    customerName: doc.supplierName || "",
+    contactName: doc.contactName ?? null,
+    phone: doc.phone ?? null,
+    address: doc.address ?? null,
+    deliveryNote: doc.note ?? null,
+    plannedTime: null,
+    tripType: "pickup",
+    lines: doc.lines.map((line) => ({
+      productId: line.productId,
+      name: line.name,
+      qty: Number(line.qty) || 0,
+      orderedQty: Number(line.orderedQty ?? line.qty) || 0,
+      maxQty: Number(line.qty) || 0,
+    })),
+    totalSum: null,
+  };
+}
+
 /**
  * Точка из приёма/сдачи макулатуры.
  * Приём — всегда «забор груза» (едем забирать у клиента),
@@ -338,6 +401,8 @@ export function emptyCustomStop(): TripStop {
     wpDocId: null,
     wpDocKind: null,
     wpDocNumber: null,
+    receiptId: null,
+    receiptNumber: null,
     customerName: "",
     contactName: "",
     phone: "",
@@ -361,25 +426,32 @@ export function stopFromTransportItem(
     item.wpDocKind === "intake" || item.wpDocKind === "shipment"
       ? item.wpDocKind
       : null;
+  const receiptId = item.receiptId ? String(item.receiptId) : null;
   const kind: TripStop["kind"] = dealId
     ? "deal"
     : wpDocId && wpDocKind
       ? wpDocKind === "intake"
         ? "wp_intake"
         : "wp_shipment"
-      : "custom";
+      : receiptId
+        ? "receipt"
+        : "custom";
   return {
     key: dealId
       ? `deal-${dealId}`
       : wpDocId && wpDocKind
         ? `wp-${wpDocKind}-${wpDocId}`
-        : `custom-legacy-${index}`,
+        : receiptId
+          ? `receipt-${receiptId}`
+          : `custom-legacy-${index}`,
     kind,
     dealId,
     dealNumber: item.dealNumber ?? null,
     wpDocId,
     wpDocKind,
     wpDocNumber: item.wpDocNumber ?? null,
+    receiptId,
+    receiptNumber: item.receiptNumber ?? null,
     customerName: item.customerName || "",
     contactName: item.contactName ?? null,
     phone: item.phone ?? null,
@@ -392,7 +464,7 @@ export function stopFromTransportItem(
       name: line.name || "",
       qty: Number(line.transportQty) || 0,
       orderedQty: Number(line.orderedQty) || null,
-      maxQty: dealId ? Number(line.orderedQty) || null : null,
+      maxQty: dealId || receiptId ? Number(line.orderedQty) || null : null,
       unit: line.unit ?? (wpDocId ? "кг" : null),
     })),
     totalSum: item.totalSum ?? null,
@@ -422,6 +494,8 @@ export function stopsToTransportItems(stops: TripStop[]): TripStopTransportItem[
         wpDocId: stop.wpDocId,
         wpDocKind: stop.wpDocKind,
         wpDocNumber: stop.wpDocNumber,
+        receiptId: stop.receiptId ?? null,
+        receiptNumber: stop.receiptNumber ?? null,
         customerName: stop.customerName.trim(),
         contactName: stop.contactName?.trim() || null,
         address: stop.address?.trim() || null,

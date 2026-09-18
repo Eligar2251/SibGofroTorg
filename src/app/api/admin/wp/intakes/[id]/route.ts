@@ -62,6 +62,15 @@ export async function PATCH(
         ? { wastepaperType: String(body.wastepaperType) }
         : {}),
       ...(body.weightKg !== undefined ? { weightKg: Number(body.weightKg) } : {}),
+      // Фактический вес: форма приёма присылает его отдельными полями —
+      // «на склад» (принято) и «к оплате». Раньше они терялись по дороге,
+      // и при сохранении карточки вес откатывался к сумме позиций.
+      ...(body.acceptedWeightKg !== undefined
+        ? { acceptedWeightKg: Number(body.acceptedWeightKg) }
+        : {}),
+      ...(body.payableWeightKg !== undefined
+        ? { payableWeightKg: Number(body.payableWeightKg) }
+        : {}),
       ...(body.pricePerKg !== undefined ? { pricePerKg: Number(body.pricePerKg) } : {}),
       ...(body.account !== undefined
         ? { account: body.account === "bank" ? ("bank" as const) : ("cash" as const) }
@@ -73,6 +82,11 @@ export async function PATCH(
         : {}),
       ...(body.transportPlannedDate !== undefined
         ? { transportPlannedDate: body.transportPlannedDate || null }
+        : {}),
+      // Сохранение карточки приёма с весом снимает пометку
+      // «приёмка выполнена · ожидание взвешивания» (форма присылает false).
+      ...(body.awaitingWeight !== undefined
+        ? { awaitingWeight: Boolean(body.awaitingWeight) }
         : {}),
       ...(body.comment !== undefined ? { comment: body.comment } : {}),
     });
