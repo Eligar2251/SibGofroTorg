@@ -1,0 +1,1431 @@
+/* =========================================================
+   FILE: src/app/admin-wastepaper.css
+   СОВРЕМЕННЫЙ СЛОЙ ДЛЯ МАКУЛАТУРЫ И ПЕРЕВОЗОК
+
+   Зачем отдельный файл: это последний стилевой слой админки
+   (подключается после admin.css и admin-mobile.css), поэтому он
+   спокойно «доводит» вид модуля макулатуры и вкладки «Перевозки»,
+   не трогая остальные разделы — все правила завязаны на классы
+   .wp-account / .wp-modal / .deliv-page и .tls-* (путевой лист).
+
+   Оформление — «банковское»: крупные числа, крупные радиусы,
+   мягкие тени, аккуратные пилюли-таблетки вместо квадратных
+   бейджей, честная сетка в модалках (12 колонок, одинаковые
+   отступы 12–14 px, липкая шапка и подвал с кнопками).
+
+   Все цвета берутся из токенов темы (--adm-*), поэтому светлые
+   и тёмные темы админки работают без доработок.
+   ========================================================= */
+
+/* ─────────────────────────────────────────────────────────
+   0. Общие токены модуля
+   ───────────────────────────────────────────────────────── */
+
+:is(.wp-account, .deliv-page, .wp-modal, .tls-root) {
+  --wpx-r-xl: 20px;
+  --wpx-r-lg: 16px;
+  --wpx-r-md: 12px;
+  --wpx-r-sm: 9px;
+  --wpx-gap: 14px;
+  --wpx-line: color-mix(in srgb, var(--adm-border) 78%, transparent);
+  --wpx-line-soft: color-mix(in srgb, var(--adm-border) 48%, transparent);
+  --wpx-surface: var(--adm-card);
+  --wpx-surface-2: color-mix(in srgb, var(--adm-paper) 65%, var(--adm-card));
+  --wpx-shadow-1: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --wpx-shadow-2: 0 10px 28px -18px rgba(16, 24, 40, 0.35), 0 1px 2px rgba(16, 24, 40, 0.05);
+  --wpx-shadow-3: 0 24px 60px -28px rgba(16, 24, 40, 0.45), 0 2px 6px rgba(16, 24, 40, 0.06);
+}
+
+/* Числа в учёте читаются одинаково и не «прыгают» по ширине */
+.wp-num,
+.wp-account .admin-table td,
+.wp-account .admin-stat__value,
+.deliv-page .admin-stat__value,
+.wp-hero__value {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ─────────────────────────────────────────────────────────
+   1. Шапка модуля макулатуры
+   ───────────────────────────────────────────────────────── */
+
+.wp-account .admin-page-head {
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.wp-account .admin-h1 {
+  font-size: 26px;
+  letter-spacing: 0.01em;
+  margin: 0 0 4px;
+}
+
+.wp-account .admin-sub {
+  margin: 0;
+  max-width: 62ch;
+  line-height: 1.5;
+}
+
+/* Кнопка «Открыть общий путевой лист» — мягкая, вторичная */
+.wp-account .admin-page-head .admin-btn {
+  border-radius: 999px;
+  padding: 9px 16px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   2. Hero-плашка баланса: как «счёт» в банковском приложении
+   ───────────────────────────────────────────────────────── */
+
+.wp-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--wpx-r-xl);
+  border: 1px solid var(--wpx-line);
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--adm-kraft-pale) 85%, transparent) 0%, transparent 58%),
+    linear-gradient(180deg, var(--wpx-surface) 0%, var(--wpx-surface-2) 100%);
+  box-shadow: var(--wpx-shadow-2);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.wp-hero__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.wp-hero__top .wp-hero__chip {
+  margin-left: auto;
+  background: color-mix(in srgb, var(--adm-card) 88%, transparent);
+}
+
+.wp-hero__title {
+  font-family: var(--adm-font-head);
+  font-size: 15px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--adm-ink);
+  margin: 0;
+}
+
+.wp-hero__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wp-hero__cell {
+  border-radius: var(--wpx-r-lg);
+  border: 1px solid var(--wpx-line-soft);
+  background: color-mix(in srgb, var(--adm-card) 92%, transparent);
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.wp-hero__cell--accent {
+  border-color: var(--adm-kraft-line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--adm-kraft-pale) 70%, var(--adm-card)) 0%, var(--adm-card) 100%);
+}
+
+.wp-hero__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--adm-sand);
+  margin-bottom: 6px;
+}
+
+.wp-hero__value {
+  font-family: var(--adm-font-head);
+  font-size: 24px;
+  line-height: 1.1;
+  font-weight: 600;
+  color: var(--adm-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wp-hero__value--in { color: var(--adm-pine); }
+.wp-hero__value--out { color: var(--adm-kraft); }
+
+.wp-hero__hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--adm-muted);
+  line-height: 1.4;
+}
+
+.wp-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.wp-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  border: 1px solid var(--wpx-line);
+  background: var(--adm-card);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--adm-ink-soft);
+  box-shadow: var(--wpx-shadow-1);
+}
+
+.wp-hero__chip strong {
+  font-weight: 700;
+  color: var(--adm-ink);
+}
+
+.wp-hero__chip--warn {
+  border-color: var(--adm-kraft-line);
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+  cursor: pointer;
+}
+
+.wp-hero__chip--warn strong { color: inherit; }
+
+.wp-hero__chip--warn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--wpx-shadow-2);
+}
+
+.wp-hero__chip--in,
+.wp-hero__chip--in strong { color: var(--adm-pine); }
+.wp-hero__chip--out,
+.wp-hero__chip--out strong { color: var(--adm-kraft); }
+
+.wp-hero__chip--in,
+.wp-hero__chip--out {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--adm-card) 70%, transparent);
+}
+
+/* Быстрые действия в плашке баланса */
+.wp-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--wpx-line);
+}
+
+.wp-hero__actions .admin-btn {
+  border-radius: 999px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   3. Вкладки: плавающие пилюли с иконками и счётчиками
+   ───────────────────────────────────────────────────────── */
+
+.wp-tabs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 6px;
+  border-radius: 999px;
+  background: var(--wpx-surface-2);
+  border: 1px solid var(--wpx-line);
+  box-shadow: inset 0 1px 2px rgba(16, 24, 40, 0.04);
+  margin-bottom: 16px;
+}
+
+.wp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.wp-tab:hover {
+  background: color-mix(in srgb, var(--adm-card) 85%, transparent);
+  color: var(--adm-ink);
+}
+
+.wp-tab__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--adm-sand) 12%, transparent);
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.wp-tab__count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--adm-sand) 14%, transparent);
+  color: var(--adm-ink-muted);
+}
+
+.wp-tab--active,
+.wp-tab--active:hover {
+  background: linear-gradient(180deg, var(--adm-kraft-mid) 0%, var(--adm-kraft) 100%);
+  color: var(--adm-on-accent, #fff);
+  border-color: color-mix(in srgb, var(--adm-kraft) 65%, transparent);
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--adm-kraft) 75%, transparent);
+}
+
+.wp-tab--active .wp-tab__icon {
+  background: rgba(255, 255, 255, 0.22);
+  color: inherit;
+}
+
+.wp-tab--active .wp-tab__count {
+  background: rgba(255, 255, 255, 0.24);
+  color: inherit;
+}
+
+/* ─────────────────────────────────────────────────────────
+   4. Плитки статистики (крупное число + подпись)
+   ───────────────────────────────────────────────────────── */
+
+.wp-account .admin-stat-grid,
+.deliv-page .admin-stat-grid {
+  gap: 12px;
+}
+
+.wp-account .admin-stat,
+.deliv-page .admin-stat {
+  border-radius: var(--wpx-r-lg);
+  border: 1px solid var(--wpx-line);
+  background: var(--wpx-surface);
+  box-shadow: var(--wpx-shadow-1);
+  padding: 14px 16px;
+  transition: box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.wp-account .admin-stat:hover,
+.deliv-page .admin-stat:hover {
+  box-shadow: var(--wpx-shadow-2);
+  transform: translateY(-1px);
+}
+
+.wp-account .admin-stat.wp-stat--row,
+.deliv-page .admin-stat.deliv-stat--row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.wp-account .admin-stat.wp-stat--row .admin-stat__icon,
+.deliv-page .admin-stat.deliv-stat--row .admin-stat__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wp-account .admin-stat .admin-stat__value,
+.deliv-page .admin-stat .admin-stat__value {
+  font-family: var(--adm-font-head);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.wp-account .admin-stat .admin-stat__label,
+.deliv-page .admin-stat .admin-stat__label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--adm-sand);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   5. Карточки и тулбары
+   ───────────────────────────────────────────────────────── */
+
+.wp-account .admin-card,
+.wp-modal .admin-card,
+.deliv-page .admin-card {
+  border-radius: var(--wpx-r-lg);
+  border: 1px solid var(--wpx-line);
+  background: var(--wpx-surface);
+  box-shadow: var(--wpx-shadow-1);
+  overflow: hidden;
+}
+
+.wp-account .admin-card__head,
+.wp-modal .admin-card__head,
+.deliv-page .admin-card__head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--wpx-line-soft);
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  background: color-mix(in srgb, var(--adm-paper) 45%, var(--adm-card));
+}
+
+.wp-account .admin-card__title,
+.wp-modal .admin-card__title,
+.deliv-page .admin-card__title {
+  font-family: var(--adm-font-head);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--adm-ink);
+}
+
+.wp-account .admin-card__pad,
+.wp-modal .admin-card__pad,
+.deliv-page .admin-card__pad {
+  padding: 16px;
+}
+
+/* Панель фильтров/поиска/действий над таблицей */
+.wp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: var(--wpx-r-lg);
+  border: 1px solid var(--wpx-line);
+  background: var(--wpx-surface);
+  box-shadow: var(--wpx-shadow-1);
+  margin-bottom: 14px;
+}
+
+.wp-toolbar__search {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.wp-toolbar__search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--adm-muted);
+  pointer-events: none;
+}
+
+.wp-toolbar__search .admin-input {
+  padding-left: 34px;
+  width: 100%;
+}
+
+.wp-toolbar__spacer {
+  flex: 1 1 auto;
+}
+
+.wp-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.wp-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 2px 12px;
+  font-size: 12.5px;
+  color: var(--adm-muted);
+}
+
+.wp-summary strong {
+  color: var(--adm-ink);
+  font-weight: 700;
+}
+
+.wp-summary__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--adm-sand) 10%, transparent);
+  font-weight: 600;
+  color: var(--adm-ink-soft);
+}
+
+/* ─────────────────────────────────────────────────────────
+   6. Таблицы: чистые строки, липкая шапка, крупные суммы
+   ───────────────────────────────────────────────────────── */
+
+.wp-account .admin-table-wrap,
+.deliv-page .admin-table-wrap {
+  border-radius: var(--wpx-r-lg);
+  border: 1px solid var(--wpx-line);
+  background: var(--wpx-surface);
+  box-shadow: var(--wpx-shadow-1);
+  overflow: auto;
+}
+
+.wp-account .admin-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.wp-account .admin-table thead th,
+.deliv-page .admin-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--adm-paper) 72%, var(--adm-card));
+  backdrop-filter: blur(4px);
+  border-bottom: 1px solid var(--wpx-line);
+  padding: 11px 14px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--adm-sand);
+  white-space: nowrap;
+}
+
+.wp-account .admin-table tbody td,
+.deliv-page .admin-table tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--wpx-line-soft);
+  vertical-align: middle;
+}
+
+.wp-account .admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.wp-account .admin-table tbody tr {
+  transition: background 0.12s ease;
+}
+
+.wp-account .admin-table tbody tr:hover {
+  background: color-mix(in srgb, var(--adm-kraft-pale) 35%, transparent);
+}
+
+/* Номер документа — «чипом», как номер операции в банке */
+.wp-account .admin-table tbody td:first-child {
+  font-weight: 700;
+  color: var(--adm-ink);
+  letter-spacing: 0.01em;
+}
+
+/* Действия в строке — аккуратной группой */
+.wp-account .admin-table td .admin-btn + .admin-btn {
+  margin-left: 4px;
+}
+
+.wp-account .admin-table tbody td:last-child {
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ─────────────────────────────────────────────────────────
+   7. Кнопки, поля, бейджи — единый «банковский» вид
+   ───────────────────────────────────────────────────────── */
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-btn {
+  border-radius: var(--wpx-r-md);
+  padding: 9px 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: transform 0.12s ease, box-shadow 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-btn--sm {
+  border-radius: var(--wpx-r-sm);
+  padding: 7px 11px;
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--wpx-shadow-1);
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-btn--primary {
+  background: linear-gradient(180deg, var(--adm-kraft-mid) 0%, var(--adm-kraft) 100%);
+  border-color: transparent;
+  color: var(--adm-on-accent, #fff);
+  box-shadow: 0 8px 20px -12px color-mix(in srgb, var(--adm-kraft) 85%, transparent);
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-btn--navy {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--adm-steel) 82%, white) 0%, var(--adm-steel) 100%);
+  border-color: transparent;
+  color: var(--adm-on-steel, #fff);
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-input,
+:is(.wp-account, .deliv-page, .wp-modal) .admin-select {
+  border-radius: var(--wpx-r-md);
+  min-height: 40px;
+  padding: 9px 12px;
+  border-color: var(--wpx-line);
+  background: var(--adm-card);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-input:focus,
+:is(.wp-account, .deliv-page, .wp-modal) .admin-select:focus {
+  border-color: var(--adm-kraft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--adm-kraft) 22%, transparent);
+  outline: none;
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--adm-sand);
+  margin-bottom: 5px;
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-field {
+  gap: 0;
+  min-width: 0;
+}
+
+:is(.wp-account, .deliv-page, .wp-modal) .admin-hint {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Бейджи — пилюли без аптечной резкости */
+:is(.wp-account, .deliv-page) .admin-badge {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-weight: 700;
+}
+
+.wp-account .admin-badge[title],
+.wp-account button.admin-badge {
+  cursor: pointer;
+}
+
+/* ─────────────────────────────────────────────────────────
+   8. Сегментированные переключатели (нал/безнал, периоды)
+   ───────────────────────────────────────────────────────── */
+
+:is(.wp-account, .deliv-page) .admin-filters {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--adm-sand) 10%, transparent);
+  border: 1px solid transparent;
+  margin-bottom: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+:is(.wp-account, .deliv-page) .admin-filters::-webkit-scrollbar {
+  display: none;
+}
+
+:is(.wp-account, .deliv-page) .admin-filter {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 7px 14px;
+  font-weight: 600;
+  color: var(--adm-ink-muted);
+  white-space: nowrap;
+}
+
+:is(.wp-account, .deliv-page) .admin-filter:hover {
+  background: color-mix(in srgb, var(--adm-card) 80%, transparent);
+  color: var(--adm-ink);
+}
+
+:is(.wp-account, .deliv-page) .admin-filter--active,
+:is(.wp-account, .deliv-page) .admin-filter--active:hover {
+  background: var(--adm-card);
+  color: var(--adm-ink);
+  border-color: var(--wpx-line);
+  box-shadow: var(--wpx-shadow-1);
+}
+
+/* ─────────────────────────────────────────────────────────
+   8.1. Утилитарные сетки: ровные колонки вместо «flex на глазок»
+   ───────────────────────────────────────────────────────── */
+
+.wp-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--wpx-gap);
+  align-items: start;
+}
+
+.wp-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--wpx-gap);
+  align-items: start;
+}
+
+.wp-grid--end {
+  align-items: end;
+}
+
+/* ─────────────────────────────────────────────────────────
+   9. Позиции документа (табличная часть «как в 1С», но по сетке)
+   ───────────────────────────────────────────────────────── */
+
+.wp-items {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.wp-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) 110px 110px 120px 40px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--wpx-r-md);
+  border: 1px dashed var(--wpx-line);
+  background: color-mix(in srgb, var(--adm-paper) 40%, var(--adm-card));
+}
+
+.wp-item-row__sum {
+  font-weight: 700;
+  color: var(--adm-pine);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.wp-item-row__del {
+  justify-self: end;
+}
+
+.wp-items__foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.wp-items__total {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--adm-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────────────────────────────────────────────────
+   10. Модалки макулатуры: шире, по сетке, липкие шапка и подвал
+   ───────────────────────────────────────────────────────── */
+
+.wp-modal {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 52rem;
+  border-radius: var(--wpx-r-xl);
+  border: 1px solid var(--wpx-line);
+  box-shadow: var(--wpx-shadow-3);
+  background: var(--adm-card);
+}
+
+.wp-modal--wide { max-width: 64rem; }
+.wp-modal--slim { max-width: 40rem; }
+
+.wp-modal .admin-modal__head {
+  margin: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--wpx-line-soft);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--adm-paper) 55%, var(--adm-card)) 0%, var(--adm-card) 100%);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.wp-modal .admin-modal__title {
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  line-height: 1.25;
+}
+
+.wp-modal .admin-modal__close {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--adm-sand) 10%, transparent);
+}
+
+.wp-modal .admin-modal__close:hover {
+  background: color-mix(in srgb, var(--adm-sand) 20%, transparent);
+  color: var(--adm-ink);
+}
+
+.wp-modal .admin-modal__desc {
+  margin: 0;
+  padding: 14px 20px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--adm-muted);
+}
+
+/* Прокручивается только тело: шапка и подвал всегда на виду.
+   Тело — либо явная обёртка .wp-modal__body, либо сама <form>, как
+   свёрстаны эти модалки. */
+.wp-modal > form,
+.wp-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wpx-gap);
+}
+
+.wp-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  margin: 4px -20px 0;
+  border-top: 1px solid var(--wpx-line-soft);
+  background: linear-gradient(0deg, color-mix(in srgb, var(--adm-paper) 60%, var(--adm-card)) 0%, var(--adm-card) 100%);
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+}
+
+.wp-modal__actions .wp-modal__spacer {
+  flex: 1 1 auto;
+}
+
+/* Форма документа: одна сетка на 12 колонок => ровные отступы */
+.wp-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--wpx-gap);
+  align-items: start;
+}
+
+.wp-col-3 { grid-column: span 3; }
+.wp-col-4 { grid-column: span 4; }
+.wp-col-5 { grid-column: span 5; }
+.wp-col-6 { grid-column: span 6; }
+.wp-col-7 { grid-column: span 7; }
+.wp-col-8 { grid-column: span 8; }
+.wp-col-9 { grid-column: span 9; }
+.wp-col-12 { grid-column: 1 / -1; }
+
+/* Обёртка формы: тот же ритм отступов, что и в сетке */
+.wp-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wpx-gap);
+}
+
+.wp-modal-form > .deal-delivery-block {
+  margin: 0;
+}
+
+.wp-modal-stack {
+  display: grid;
+  gap: var(--wpx-gap);
+}
+
+/* Блок «перевозка» в форме документа */
+.wp-modal .deal-delivery-block,
+:is(.wp-account) .deal-delivery-block {
+  border-radius: var(--wpx-r-lg);
+  border: 1px solid var(--wpx-line);
+  background: color-mix(in srgb, var(--adm-paper) 45%, var(--adm-card));
+  padding: 14px 16px;
+}
+
+.wp-modal .deal-delivery-block__head,
+:is(.wp-account) .deal-delivery-block__head {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wp-modal .deal-delivery-block__toggle,
+:is(.wp-account) .deal-delivery-block__toggle {
+  border-radius: 999px;
+  border: 1px solid var(--wpx-line);
+  background: var(--adm-card);
+  padding: 6px 12px 6px 10px;
+  cursor: pointer;
+}
+
+.wp-modal .deal-delivery-block__body,
+:is(.wp-account) .deal-delivery-block__body {
+  margin-top: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   11. Вкладка «Перевозки» (она же «Доставки» в учёте)
+   ───────────────────────────────────────────────────────── */
+
+.deliv-page .admin-page-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.deliv-page .admin-h1 {
+  font-size: 26px;
+  margin: 0 0 4px;
+}
+
+.deliv-page .admin-sub {
+  margin: 0;
+  max-width: 70ch;
+  line-height: 1.5;
+}
+
+.deliv-page .admin-filters {
+  margin-bottom: 16px;
+}
+
+/* Список рейсов: карточки вместо «полосок» */
+.deliv-page .admin-card > .deliv-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.deliv-page .deliv-item {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border: 1px solid var(--wpx-line);
+  border-radius: var(--wpx-r-lg);
+  background: var(--wpx-surface);
+  box-shadow: var(--wpx-shadow-1);
+  transition: box-shadow 0.16s ease, transform 0.16s ease, border-color 0.16s ease;
+}
+
+.deliv-page .deliv-item:last-child { border-bottom: 1px solid var(--wpx-line); }
+
+.deliv-page .deliv-item:hover {
+  box-shadow: var(--wpx-shadow-2);
+  transform: translateY(-1px);
+  border-color: var(--adm-kraft-line);
+}
+
+.deliv-page .deliv-item--released {
+  background: color-mix(in srgb, var(--adm-paper) 55%, var(--adm-card));
+}
+
+.deliv-page .deliv-item__top {
+  gap: 8px;
+}
+
+.deliv-page .deliv-item__top .admin-order__id {
+  font-family: var(--adm-font-head);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Панель действий внутри раскрытого рейса */
+.deliv-page .transport-modal__trip-types {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--wpx-line);
+}
+
+.deliv-page .transport-card__stops {
+  margin-bottom: 4px;
+}
+
+/* Модалка конструктора рейса */
+.deliv-modal {
+  padding: 0;
+  max-width: 58rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--wpx-r-xl);
+  border: 1px solid var(--wpx-line);
+  box-shadow: var(--wpx-shadow-3);
+}
+
+.deliv-modal .admin-modal__head {
+  margin: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--wpx-line-soft);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--adm-paper) 55%, var(--adm-card)) 0%, var(--adm-card) 100%);
+}
+
+.deliv-modal > form,
+.deliv-modal > .wh-form-grid,
+.deliv-modal > .transport-builder__tabs,
+.deliv-modal > .transport-modal__orders,
+.deliv-modal > .transport-builder__stops,
+.deliv-modal > .transport-builder__hint,
+.deliv-modal > .admin-error,
+.deliv-modal > .admin-modal__actions {
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.deliv-modal > .transport-modal__orders {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+/* Шаги конструктора — сегментированный контрол */
+.deliv-page .transport-builder__tabs,
+.deliv-modal .transport-builder__tabs {
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--adm-sand) 10%, transparent);
+  margin-bottom: 14px;
+}
+
+.deliv-page .transport-builder__tabs .admin-filter,
+.deliv-modal .transport-builder__tabs .admin-filter {
+  flex: 1 1 auto;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 9px 14px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Карточки очереди (заказы и макулатура): один клик — одна строка */
+.wp-pick {
+  display: block;
+  border: 1px solid var(--wpx-line);
+  border-radius: var(--wpx-r-md);
+  background: var(--wpx-surface);
+  box-shadow: var(--wpx-shadow-1);
+  padding: 11px 13px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.wp-pick:hover {
+  border-color: var(--adm-kraft-line);
+  box-shadow: var(--wpx-shadow-2);
+  transform: translateY(-1px);
+}
+
+.wp-pick--on,
+.wp-pick--on:hover {
+  border-color: var(--adm-kraft);
+  background: linear-gradient(180deg, var(--adm-kraft-pale) 0%, var(--wpx-surface) 100%);
+}
+
+.wp-pick__label,
+.transport-modal__order-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  cursor: pointer;
+}
+
+.wp-pick__label input[type="checkbox"],
+.transport-modal__order input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  accent-color: var(--adm-kraft);
+  flex-shrink: 0;
+}
+
+.wp-pick__num {
+  font-family: var(--adm-font-head);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--adm-ink);
+  white-space: nowrap;
+}
+
+.wp-pick__client {
+  font-size: 13px;
+  color: var(--adm-ink-soft);
+  min-width: 0;
+}
+
+.wp-pick__addr,
+.transport-modal__address {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 11.5px;
+  color: var(--adm-sand);
+}
+
+.wp-pick__addr > span,
+.transport-modal__address > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Подписи групп внутри очереди */
+.wp-pick__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--adm-sand);
+}
+
+.wp-pick__group--pickup { color: #1d4ed8; }
+.wp-pick__group--handover { color: #6d28d9; }
+
+/* Подвал конструктора */
+.deliv-modal .transport-builder__footer,
+.deliv-modal .admin-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-top: 1px solid var(--wpx-line-soft);
+  background: linear-gradient(0deg, color-mix(in srgb, var(--adm-paper) 60%, var(--adm-card)) 0%, var(--adm-card) 100%);
+  margin: 0;
+}
+
+.deliv-modal .transport-builder__totals {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--adm-sand);
+  font-variant-numeric: tabular-nums;
+}
+
+.deliv-modal .transport-builder__hint {
+  font-size: 12px;
+  color: var(--adm-muted);
+  margin-bottom: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   11.1. Редактор точек маршрута — в едином стиле модуля
+   ───────────────────────────────────────────────────────── */
+
+:is(.deliv-page, .deliv-modal, .wp-modal) .trip-stops-block__title {
+  font-family: var(--adm-font-head);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--adm-ink);
+}
+
+:is(.deliv-page, .deliv-modal, .wp-modal) .trip-stops-block__count {
+  background: color-mix(in srgb, var(--adm-sand) 10%, transparent);
+  border-color: transparent;
+}
+
+:is(.deliv-page, .deliv-modal, .wp-modal) .trip-stops-block__sort .admin-btn {
+  border-radius: 999px;
+}
+
+:is(.deliv-page, .deliv-modal, .wp-modal) .trip-stop {
+  border-radius: var(--wpx-r-md);
+  border-left-width: 4px;
+  box-shadow: var(--wpx-shadow-1);
+}
+
+:is(.deliv-page, .deliv-modal, .wp-modal) .trip-stop:hover {
+  box-shadow: var(--wpx-shadow-2);
+}
+
+:is(.deliv-page, .deliv-modal, .wp-modal) .trip-stop--dragging {
+  box-shadow: var(--wpx-shadow-3);
+  transform: rotate(-0.3deg);
+}
+
+:is(.deliv-page, .deliv-modal, .wp-modal) .trip-stop__grip {
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--adm-paper) 0%, var(--adm-card) 100%);
+  min-width: 34px;
+  justify-content: center;
+}
+
+:is(.deliv-page, .deliv-modal, .wp-modal) .trip-stop__grip-num {
+  font-family: var(--adm-font-head);
+  font-size: 13px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   12. Путевой лист: только панель настроек и «вес уточним»
+   ───────────────────────────────────────────────────────── */
+
+.tls-root .tls-toolbar {
+  border-radius: 0 0 var(--wpx-r-lg) var(--wpx-r-lg);
+  box-shadow: 0 16px 40px -30px rgba(16, 24, 40, 0.6);
+}
+
+.tls-root .tls-toolbar button {
+  border-radius: 999px;
+}
+
+.tls-strip__cargo-hint {
+  font-size: 12px;
+  color: var(--adm-muted);
+  font-style: italic;
+}
+
+/* ─────────────────────────────────────────────────────────
+   13. Пустые состояния
+   ───────────────────────────────────────────────────────── */
+
+:is(.wp-account, .deliv-page) .admin-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 34px 20px;
+  color: var(--adm-muted);
+  text-align: center;
+}
+
+:is(.wp-account, .deliv-page) .admin-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   14. Мобильные и узкие экраны
+   ───────────────────────────────────────────────────────── */
+
+@media (max-width: 1023px) {
+  .wp-hero {
+    padding: 14px;
+  }
+
+  .wp-hero__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .wp-hero__cell {
+    padding: 10px 12px;
+  }
+
+  .wp-hero__value {
+    font-size: 18px;
+  }
+
+  .wp-hero__label {
+    font-size: 10px;
+  }
+
+  .wp-tabs {
+    border-radius: var(--wpx-r-lg);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .wp-tabs::-webkit-scrollbar { display: none; }
+
+  .wp-tab {
+    padding: 8px 12px;
+    font-size: 12.5px;
+  }
+
+  /* Модалки макулатуры — почти во весь экран, подвал липнет снизу */
+  .wp-modal,
+  .deliv-modal {
+    max-width: 100%;
+    border-radius: var(--wpx-r-lg);
+    max-height: calc(100dvh - 96px);
+  }
+
+  .wp-modal .admin-modal__head,
+  .deliv-modal .admin-modal__head {
+    padding: 12px 14px;
+  }
+
+  /* На мобильном модалка — полноэкранный лист: свои отступы уже дал
+     admin-mobile.css, поэтому тело не добавляет вторых. */
+  .wp-modal__body,
+  .wp-modal > form {
+    padding: 0;
+    gap: 12px;
+  }
+
+  .wp-modal .admin-modal__desc {
+    padding: 0 0 4px;
+  }
+
+  .wp-modal__actions,
+  .deliv-modal .admin-modal__actions {
+    padding: 10px 0;
+  }
+
+  .deliv-modal > form,
+  .deliv-modal > .wh-form-grid,
+  .deliv-modal > .transport-builder__tabs,
+  .deliv-modal > .transport-modal__orders,
+  .deliv-modal > .transport-builder__stops,
+  .deliv-modal > .transport-builder__hint,
+  .deliv-modal > .admin-error,
+  .deliv-modal > .admin-modal__actions {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+
+  /* Сетка формы — в одну колонку */
+  .wp-form-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .wp-col-3,
+  .wp-col-4,
+  .wp-col-5,
+  .wp-col-6,
+  .wp-col-7,
+  .wp-col-8,
+  .wp-col-12 {
+    grid-column: 1 / -1;
+  }
+
+  /* Кнопки в подвале — во всю ширину, крупные для пальца */
+  .wp-modal__actions .admin-btn,
+  .deliv-modal .admin-modal__actions .admin-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .wp-modal__actions .wp-modal__spacer {
+    display: none;
+  }
+
+  .wp-item-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px;
+    gap: 8px;
+  }
+
+  .wp-item-row__sum {
+    grid-column: 2 / 3;
+    text-align: left;
+  }
+
+  .wp-toolbar {
+    padding: 10px;
+  }
+
+  .wp-toolbar__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .wp-toolbar__actions .admin-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .wp-account .admin-h1,
+  .deliv-page .admin-h1 {
+    font-size: 22px;
+  }
+
+  .wp-hero__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wp-hero__cell--total {
+    grid-column: 1 / -1;
+  }
+
+  .deliv-page .deliv-item {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .deliv-page .deliv-item > div:last-child {
+    grid-column: 2 / 3;
+    text-align: left;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   15. Печать: современные слои не должны попадать в бланк
+   ───────────────────────────────────────────────────────── */
+
+@media print {
+  .wp-tabs,
+  .wp-hero,
+  .wp-toolbar {
+    display: none !important;
+  }
+}

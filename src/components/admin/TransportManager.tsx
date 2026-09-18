@@ -276,7 +276,7 @@ export function TransportManager({
   }
 
   return (
-    <div>
+    <div className="deliv-page">
       {printData && <TransportPrintSheet data={printData} onDone={() => setPrintData(null)} />}
       {tripData && <TransportTripSheet data={tripData} onDone={() => setTripData(null)} />}
 
@@ -304,7 +304,7 @@ export function TransportManager({
           { label: "Завершённые", value: stats.completed, icon: <CheckCircle2 size={18} />, color: "var(--adm-pine)", bg: "var(--adm-pine-pale)" },
           { label: "В архиве", value: stats.archived, icon: <Archive size={18} />, color: "var(--adm-sand)", bg: "var(--adm-sand-pale)" },
         ].map((s) => (
-          <div key={s.label} className="admin-stat" style={{ cursor: "default" }}>
+          <div key={s.label} className="admin-stat deliv-stat--row" style={{ cursor: "default" }}>
             <div className="admin-stat__icon" style={{ background: s.bg, color: s.color }}>{s.icon}</div>
             <div className="admin-stat__value">{s.value}</div>
             <div className="admin-stat__label">{s.label}</div>
@@ -639,13 +639,13 @@ function CreateTransportModal({
   return (
     <ModalPortal>
       <div className="admin-modal-overlay" data-admin="true">
-        <div className="admin-modal wh-modal transport-modal transport-modal--builder" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal wp-modal deliv-modal transport-modal transport-modal--builder" onClick={(e) => e.stopPropagation()}>
           <div className="admin-modal__head">
             <h3 className="admin-modal__title">Новая перевозка · путевой лист</h3>
             <button type="button" onClick={onClose} className="admin-modal__close"><X size={14} /></button>
           </div>
 
-          <div className="wh-form-grid" style={{ marginBottom: 12 }}>
+          <div className="wp-form-grid" style={{ marginBottom: 14 }}>
             <div className="admin-field">
               <label className="admin-label">Дата</label>
               <input type="date" className="admin-input" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -657,7 +657,7 @@ function CreateTransportModal({
                 {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}{d.phone ? ` · ${d.phone}` : ""}</option>)}
               </select>
             </div>
-            <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+            <div className="admin-field wp-col-12">
               <label className="admin-label">Заметка к перевозке (в шапке бланка)</label>
               <input className="admin-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Напр.: после 17:00 не звонить, ключи у охранника" />
             </div>
@@ -693,8 +693,8 @@ function CreateTransportModal({
                 ) : (
                   <>
                   {deals.length > 0 && (
-                    <div className="admin-label" style={{ marginTop: 2 }}>
-                      Заказы учёта — доставка ({deals.length})
+                    <div className="wp-pick__group">
+                      <Truck size={12} /> Заказы учёта — доставка ({deals.length})
                     </div>
                   )}
                   {deals.map((deal) => {
@@ -703,25 +703,18 @@ function CreateTransportModal({
                       <div
                         key={deal.id}
                         id={`transport-deal-${deal.id}`}
-                        className="transport-modal__order"
-                        style={{
-                          border: `1px solid ${summary.picked ? "var(--adm-kraft)" : "var(--adm-border)"}`,
-                          borderRadius: 8,
-                          padding: 10,
-                          background: summary.picked ? "var(--adm-kraft-pale)" : "var(--adm-card)",
-                          transition: "all 0.12s",
-                        }}
+                        className={`wp-pick${summary.picked ? " wp-pick--on" : ""}`}
                       >
-                        <label className="transport-modal__order-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flexWrap: "wrap" }}>
+                        <label className="transport-modal__order-label wp-pick__label">
                           <input type="checkbox" checked={summary.picked} onChange={() => toggleDeal(deal)} />
-                          <strong style={{ fontSize: 13 }}>ЗК-{deal.number}</strong>
-                          <span style={{ fontSize: 13 }}>{deal.customerName}</span>
-                          <span className="admin-badge admin-badge--muted" style={{ fontSize: 11 }}>
+                          <strong className="wp-pick__num">ЗК-{deal.number}</strong>
+                          <span className="wp-pick__client">{deal.customerName}</span>
+                          <span className="admin-badge admin-badge--muted">
                             {summary.picked ? `в маршруте ${summary.qty} ед.` : `можно ${summary.qty} ед.`}
                           </span>
                           {deal.deliveryAddress && (
-                            <span className="transport-modal__address" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
-                              <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.deliveryAddress}</span>
+                            <span className="transport-modal__address wp-pick__addr">
+                              <MapPin size={10} /> <span>{deal.deliveryAddress}</span>
                             </span>
                           )}
                         </label>
@@ -730,7 +723,7 @@ function CreateTransportModal({
                   })}
                   {/* Очередь макулатуры: приёмы едут как «забор груза»… */}
                   {wpIntakes.length > 0 && (
-                    <div className="admin-label" style={{ marginTop: 6 }}>
+                    <div className="wp-pick__group wp-pick__group--pickup">
                       ⭡ Забор макулатуры — приёмы ({wpIntakes.length})
                     </div>
                   )}
@@ -739,30 +732,27 @@ function CreateTransportModal({
                     return (
                       <div
                         key={`wp-${doc.kind}-${doc.id}`}
-                        className="transport-modal__order"
-                        style={{
-                          border: `1px solid ${summary.picked ? "var(--adm-kraft)" : "var(--adm-border)"}`,
-                          borderRadius: 8,
-                          padding: 10,
-                          background: summary.picked ? "var(--adm-kraft-pale)" : "var(--adm-card)",
-                          transition: "all 0.12s",
-                        }}
+                        className={`wp-pick${summary.picked ? " wp-pick--on" : ""}`}
                       >
-                        <label className="transport-modal__order-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flexWrap: "wrap" }}>
+                        <label className="transport-modal__order-label wp-pick__label">
                           <input type="checkbox" checked={summary.picked} onChange={() => toggleWpDoc(doc)} />
-                          <strong style={{ fontSize: 13 }}>{wpQueueDocLabel(doc)}</strong>
-                          <span style={{ fontSize: 13 }}>{doc.customerName}</span>
-                          <span className="admin-badge admin-badge--muted" style={{ fontSize: 11 }}>
-                            {summary.picked ? `в маршруте ${summary.qty} кг` : `можно ${summary.qty} кг`}
+                          <strong className="wp-pick__num">{wpQueueDocLabel(doc)}</strong>
+                          <span className="wp-pick__client">{doc.customerName}</span>
+                          <span className="admin-badge admin-badge--muted">
+                            {summary.qty > 0
+                              ? summary.picked
+                                ? `в маршруте ${summary.qty} кг`
+                                : `можно ${summary.qty} кг`
+                              : "вес уточним"}
                           </span>
                           {doc.plannedDate && (
-                            <span className="admin-badge admin-badge--indigo" style={{ fontSize: 11 }} title="Желаемая дата вывоза">
+                            <span className="admin-badge admin-badge--indigo" title="Желаемая дата вывоза">
                               к {fmtDate(doc.plannedDate)}
                             </span>
                           )}
                           {doc.address && (
-                            <span className="transport-modal__address" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
-                              <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.address}</span>
+                            <span className="transport-modal__address wp-pick__addr">
+                              <MapPin size={10} /> <span>{doc.address}</span>
                             </span>
                           )}
                         </label>
@@ -771,7 +761,7 @@ function CreateTransportModal({
                   })}
                   {/* …а сдачи — как «сдача груза» на предприятие. */}
                   {wpShipments.length > 0 && (
-                    <div className="admin-label" style={{ marginTop: 6 }}>
+                    <div className="wp-pick__group wp-pick__group--handover">
                       ⭣ Сдача макулатуры — на предприятие ({wpShipments.length})
                     </div>
                   )}
@@ -780,30 +770,27 @@ function CreateTransportModal({
                     return (
                       <div
                         key={`wp-${doc.kind}-${doc.id}`}
-                        className="transport-modal__order"
-                        style={{
-                          border: `1px solid ${summary.picked ? "var(--adm-kraft)" : "var(--adm-border)"}`,
-                          borderRadius: 8,
-                          padding: 10,
-                          background: summary.picked ? "var(--adm-kraft-pale)" : "var(--adm-card)",
-                          transition: "all 0.12s",
-                        }}
+                        className={`wp-pick${summary.picked ? " wp-pick--on" : ""}`}
                       >
-                        <label className="transport-modal__order-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flexWrap: "wrap" }}>
+                        <label className="transport-modal__order-label wp-pick__label">
                           <input type="checkbox" checked={summary.picked} onChange={() => toggleWpDoc(doc)} />
-                          <strong style={{ fontSize: 13 }}>{wpQueueDocLabel(doc)}</strong>
-                          <span style={{ fontSize: 13 }}>{doc.customerName}</span>
-                          <span className="admin-badge admin-badge--muted" style={{ fontSize: 11 }}>
-                            {summary.picked ? `в маршруте ${summary.qty} кг` : `можно ${summary.qty} кг`}
+                          <strong className="wp-pick__num">{wpQueueDocLabel(doc)}</strong>
+                          <span className="wp-pick__client">{doc.customerName}</span>
+                          <span className="admin-badge admin-badge--muted">
+                            {summary.qty > 0
+                              ? summary.picked
+                                ? `в маршруте ${summary.qty} кг`
+                                : `можно ${summary.qty} кг`
+                              : "вес уточним"}
                           </span>
                           {doc.plannedDate && (
-                            <span className="admin-badge admin-badge--indigo" style={{ fontSize: 11 }} title="Желаемая дата вывоза">
+                            <span className="admin-badge admin-badge--indigo" title="Желаемая дата вывоза">
                               к {fmtDate(doc.plannedDate)}
                             </span>
                           )}
                           {doc.address && (
-                            <span className="transport-modal__address" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-sand)", marginLeft: "auto", minWidth: 0, overflow: "hidden" }}>
-                              <MapPin size={10} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.address}</span>
+                            <span className="transport-modal__address wp-pick__addr">
+                              <MapPin size={10} /> <span>{doc.address}</span>
                             </span>
                           )}
                         </label>

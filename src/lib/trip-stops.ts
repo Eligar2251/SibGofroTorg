@@ -222,7 +222,13 @@ export function isWpStop(stop: Pick<TripStop, "kind">): boolean {
 
 /** Краткая сводка грузов одной строкой — для компактных карточек и бланка. */
 export function stopLinesSummary(stop: TripStop, separator = "; "): string {
-  return stopLoadedLines(stop)
+  const loaded = stopLoadedLines(stop);
+  // Приём/сдачу макулатуры везут и без веса: его узнают на месте,
+  // поэтому пустая сводка читалась бы как «груза нет».
+  if (loaded.length === 0 && isWpStop(stop) && stop.lines.length > 0) {
+    return "вес уточним при взвешивании";
+  }
+  return loaded
     .map((line) => `${line.name.trim() || "без названия"} — ${line.qty}`)
     .join(separator);
 }
