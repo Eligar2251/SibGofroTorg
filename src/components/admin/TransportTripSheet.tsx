@@ -263,8 +263,14 @@ export function TransportTripSheet({
                   <span className="tls-strip__num-big">{index + 1}</span>
                   <span className="tls-strip__num-total">из {stops.length}</span>
                   <span className="tls-strip__num-qty">
-                    {qty}
-                    <span className="tls-strip__num-qty-unit">{wp ? "кг" : "ед."}</span>
+                    {wp && qty === 0 ? (
+                      <span className="tls-strip__num-qty-hint">вес уточним</span>
+                    ) : (
+                      <>
+                        {qty}
+                        <span className="tls-strip__num-qty-unit">{wp ? "кг" : "ед."}</span>
+                      </>
+                    )}
                   </span>
                 </div>
 
@@ -311,9 +317,10 @@ export function TransportTripSheet({
                       {opts.goods === "short" ? (
                         <span className="tls-strip__cargo-line">
                           {stop.lines
-                            .map(
-                              (l) =>
-                                `${l.name || "без названия"} — ${l.qty}${wp ? " кг" : ""}`
+                            .map((l) =>
+                              wp && l.qty === 0
+                                ? `${l.name || "без названия"} — вес уточним`
+                                : `${l.name || "без названия"} — ${l.qty}${wp ? " кг" : ""}`
                             )
                             .join(" · ")}
                         </span>
@@ -323,10 +330,18 @@ export function TransportTripSheet({
                             <span className="tls-strip__cargo-item" key={i}>
                               <span className="tls-strip__cargo-name">{l.name || "без названия"}</span>
                               <span className="tls-strip__cargo-qty">
-                                {l.qty}{" "}
-                                <span className="tls-strip__cargo-unit">
-                                  {l.unit || (wp ? "кг" : "ед.")}
-                                </span>
+                                {wp && l.qty === 0 ? (
+                                  <span className="tls-strip__cargo-hint">
+                                    вес уточним на месте
+                                  </span>
+                                ) : (
+                                  <>
+                                    {l.qty}{" "}
+                                    <span className="tls-strip__cargo-unit">
+                                      {l.unit || (wp ? "кг" : "ед.")}
+                                    </span>
+                                  </>
+                                )}
                               </span>
                               {l.orderedQty != null && l.orderedQty !== l.qty ? (
                                 <span className="tls-strip__cargo-ordered">
@@ -527,6 +542,8 @@ const PRINT_CSS = `
 .tls-strip__cargo-item { display: flex; align-items: baseline; gap: 1.5mm; font-size: 10px; padding: 0.25mm 0; }
 .tls-strip__cargo-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .tls-strip__cargo-qty { font-weight: 800; white-space: nowrap; }
+.tls-strip__cargo-hint { font-weight: 700; font-style: italic; white-space: nowrap; }
+.tls-strip__num-qty-hint { font-size: 8px; font-weight: 700; font-style: italic; }
 .tls-strip__cargo-unit { font-size: 7.5px; color: #8c857a; font-weight: 600; }
 .tls-strip__cargo-ordered { font-size: 8px; color: #b83a1e; white-space: nowrap; }
 .tls-strip__cargo-line { font-size: 10px; font-weight: 600; overflow-wrap: anywhere; }

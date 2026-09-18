@@ -39,6 +39,12 @@ import {
   Building2,
   Phone,
   UserRound,
+  Wallet,
+  Users,
+  HandCoins,
+  Recycle,
+  Warehouse,
+  CalendarClock,
 } from "lucide-react";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
 import { useBodyLock } from "@/hooks/use-body-lock";
@@ -83,16 +89,21 @@ import {
 
 /* ── Константы и хелперы ───────────────────────────────── */
 
+/**
+ * Вкладки модуля. Иконка — для «банковского» пилюльного переключателя,
+ * счётчик (badge) показываем только там, где число реально помогает:
+ * приёмы, продажи, перевозки и долги.
+ */
 const TABS = [
-  { key: "days", label: "Дни и финансы" },
-  { key: "payments", label: "Платежи" },
-  { key: "intakes", label: "Приём" },
-  { key: "shipments", label: "Продажи" },
-  { key: "stock", label: "Склад" },
-  { key: "transports", label: "Перевозки" },
-  { key: "counterparties", label: "Контрагенты" },
-  { key: "debts", label: "Мы должны" },
-  { key: "products", label: "Виды макулатуры" },
+  { key: "days", label: "Дни и финансы", icon: Wallet },
+  { key: "payments", label: "Платежи", icon: CreditCard },
+  { key: "intakes", label: "Приём", icon: ArrowDownLeft },
+  { key: "shipments", label: "Продажи", icon: ArrowUpRight },
+  { key: "stock", label: "Склад", icon: PackageOpen },
+  { key: "transports", label: "Перевозки", icon: Truck },
+  { key: "counterparties", label: "Контрагенты", icon: Users },
+  { key: "debts", label: "Мы должны", icon: HandCoins },
+  { key: "products", label: "Виды макулатуры", icon: Recycle },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -224,8 +235,8 @@ function AddressField({
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <div className="admin-field" style={{ flex: "1 1 150px" }}>
+      <div className="wp-grid-2">
+        <div className="admin-field">
           <label className="admin-label">
             <Phone size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
             Телефон точки
@@ -237,7 +248,7 @@ function AddressField({
             placeholder="+7…"
           />
         </div>
-        <div className="admin-field" style={{ flex: "1 1 170px" }}>
+        <div className="admin-field">
           <label className="admin-label">
             <UserRound size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
             Контактное лицо
@@ -316,14 +327,9 @@ function ItemsEditor({
       )}
       <div style={{ display: "grid", gap: 10 }}>
         {items.map((it) => (
-          <div
-            key={it.id}
-            className="admin-card"
-            style={{ padding: "8px 10px", borderStyle: "dashed", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
-          >
+          <div key={it.id} className="wp-item-row">
             <select
               className="admin-select"
-              style={{ flex: "2 1 160px" }}
               value={it.wastepaperType}
               onChange={(e) => setItem(it.id, { wastepaperType: e.target.value })}
             >
@@ -338,7 +344,6 @@ function ItemsEditor({
             </select>
             <input
               className="admin-input"
-              style={{ flex: "1 1 90px" }}
               type="number"
               min="0"
               step="0.1"
@@ -348,7 +353,6 @@ function ItemsEditor({
             />
             <input
               className="admin-input"
-              style={{ flex: "1 1 90px" }}
               type="number"
               min="0"
               step="0.01"
@@ -356,15 +360,10 @@ function ItemsEditor({
               value={it.pricePerKg || ""}
               onChange={(e) => setItem(it.id, { pricePerKg: parseNum(e.target.value) })}
             />
-            <div
-              className="admin-hint"
-              style={{ flex: "1 1 100px", fontWeight: 700, color: "var(--adm-pine)", whiteSpace: "nowrap" }}
-            >
-              {fmtMoney(it.total)}
-            </div>
+            <div className="wp-item-row__sum">{fmtMoney(it.total)}</div>
             <button
               type="button"
-              className="admin-btn admin-btn--ghost admin-btn--sm"
+              className="admin-btn admin-btn--ghost admin-btn--sm wp-item-row__del"
               onClick={() => removeItem(it.id)}
               title="Удалить позицию"
             >
@@ -522,6 +521,29 @@ export function WastepaperAccountManager(props: Props) {
   const forecast = useMemo(() => getWpForecast(events), [events]);
   const stock = useMemo(() => getWpStock(intakes, shipments), [intakes, shipments]);
 
+  /** Суммарный остаток макулатуры на складе — для плашки баланса. */
+  const stockTotalKg = useMemo(
+    () => stock.reduce((s, r) => s + (Number(r.stockKg) || 0), 0),
+    [stock]
+  );
+  /** Приёмы, по которым ещё не рассчитались с клиентом. */
+  const unpaidIntakes = useMemo(
+    () => intakes.filter((i) => i.status === "active" && !i.isPaid).length,
+    [intakes]
+  );
+  /** Счётчики на вкладках — только там, где число помогает в работе. */
+  const tabCounts = useMemo(
+    () => ({
+      intakes: intakes.filter((i) => i.status !== "cancelled").length,
+      shipments: shipments.filter((s) => s.status !== "cancelled").length,
+      transports: props.unifiedTransports.filter(
+        (t) => t.status === "draft" || t.status === "active"
+      ).length,
+      debts: intakes.filter((i) => i.status === "active" && !i.isPaid).length,
+    }),
+    [intakes, shipments, props.unifiedTransports]
+  );
+
   const suppliers = useMemo(
     () => counterparties.filter((c) => c.roles.includes("supplier")),
     [counterparties]
@@ -646,23 +668,58 @@ export function WastepaperAccountManager(props: Props) {
         </Link>
       </div>
 
+      {/* Баланс: крупная плашка «счёта» — на всех вкладках */}
+      <WpHero
+        balance={balance}
+        forecast={forecast}
+        stockKg={stockTotalKg}
+        pendingTransport={props.pendingWpDocs.length}
+        unpaidIntakes={unpaidIntakes}
+        today={today}
+        onOpenTransports={() => {
+          setTab("transports");
+          setActionError("");
+          setNotice("");
+        }}
+        onQuickIntake={() => {
+          setFormError("");
+          setIntakeModal({ mode: "create" });
+        }}
+        onQuickShipment={() => {
+          setFormError("");
+          setShipmentModal({ mode: "create" });
+        }}
+      />
+
       {/* Вкладки */}
-      <div className="admin-filters" style={{ marginBottom: 16 }}>
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className={`admin-filter${tab === t.key ? " admin-filter--active" : ""}`}
-            onClick={() => {
-              setTab(t.key);
-              setActionError("");
-              setNotice("");
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <nav className="wp-tabs" role="tablist" aria-label="Разделы учёта макулатуры">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const count = tabCounts[t.key as keyof typeof tabCounts];
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              className={`wp-tab${tab === t.key ? " wp-tab--active" : ""}`}
+              onClick={() => {
+                setTab(t.key);
+                setActionError("");
+                setNotice("");
+              }}
+            >
+              <span className="wp-tab__icon" aria-hidden="true">
+                <Icon size={13} />
+              </span>
+              {t.label}
+              {typeof count === "number" && count > 0 && (
+                <span className="wp-tab__count">{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
 
       {notice && (
         <p
@@ -681,8 +738,6 @@ export function WastepaperAccountManager(props: Props) {
       {tab === "days" && (
         <DaysTab
           events={events}
-          balance={balance}
-          forecastCash={forecast}
           today={today}
           onTogglePaid={toggleEventPaid}
           onEdit={openEventEdit}
@@ -1020,20 +1075,120 @@ export function WastepaperAccountManager(props: Props) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   ПЛАШКА БАЛАНСА — «счёт» в банковском приложении.
+   Одна на весь модуль: видно, сколько денег и что требует
+   внимания (склад, долги, очередь перевозок).
+   ═══════════════════════════════════════════════════════ */
+
+function WpHero({
+  balance,
+  forecast,
+  stockKg,
+  pendingTransport,
+  unpaidIntakes,
+  today,
+  onOpenTransports,
+  onQuickIntake,
+  onQuickShipment,
+}: {
+  balance: { cash: number; bank: number; total: number };
+  forecast: ReturnType<typeof getWpForecast>;
+  stockKg: number;
+  pendingTransport: number;
+  unpaidIntakes: number;
+  today: string;
+  onOpenTransports: () => void;
+  onQuickIntake: () => void;
+  onQuickShipment: () => void;
+}) {
+  return (
+    <section className="wp-hero" aria-label="Баланс макулатуры">
+      <div className="wp-hero__top">
+        <h2 className="wp-hero__title">Деньги макулатуры</h2>
+        <span className="wp-hero__chip">
+          <CalendarClock size={13} /> {fmtDate(today)}
+        </span>
+      </div>
+
+      <div className="wp-hero__grid">
+        <div className="wp-hero__cell">
+          <div className="wp-hero__label">
+            <Banknote size={13} /> Наличка сейчас
+          </div>
+          <div className="wp-hero__value">{fmtMoney(balance.cash)}</div>
+        </div>
+        <div className="wp-hero__cell">
+          <div className="wp-hero__label">
+            <CreditCard size={13} /> Безнал сейчас
+          </div>
+          <div className="wp-hero__value">{fmtMoney(balance.bank)}</div>
+        </div>
+        <div className="wp-hero__cell wp-hero__cell--total wp-hero__cell--accent">
+          <div className="wp-hero__label">
+            <Scale size={13} /> Итого
+          </div>
+          <div className="wp-hero__value">{fmtMoney(balance.total)}</div>
+        </div>
+      </div>
+
+      <div className="wp-hero__chips">
+        <span className="wp-hero__chip">
+          <Warehouse size={13} /> На складе: <strong>{fmtKg(stockKg)}</strong>
+        </span>
+        <span className="wp-hero__chip">
+          <HandCoins size={13} /> К оплате приёмов: <strong>{unpaidIntakes}</strong>
+        </span>
+        <span className="wp-hero__chip wp-hero__chip--in">
+          <ArrowDownLeft size={13} /> Прогноз прихода:{" "}
+          <strong>+{fmtMoney(forecast.inTotal)}</strong>
+        </span>
+        <span className="wp-hero__chip wp-hero__chip--out">
+          <ArrowUpRight size={13} /> Прогноз расхода:{" "}
+          <strong>−{fmtMoney(forecast.outTotal)}</strong>
+        </span>
+        {pendingTransport > 0 ? (
+          <button
+            type="button"
+            className="wp-hero__chip wp-hero__chip--warn"
+            onClick={onOpenTransports}
+            title="Открыть вкладку перевозок"
+          >
+            <Truck size={13} /> Ждут перевозку: <strong>{pendingTransport}</strong>
+          </button>
+        ) : (
+          <span className="wp-hero__chip">
+            <Truck size={13} /> Очередь перевозок пуста
+          </span>
+        )}
+      </div>
+
+      {/* Быстрые действия — как кнопки операций в мобильном банке */}
+      <div className="wp-hero__actions">
+        <button type="button" className="admin-btn admin-btn--primary" onClick={onQuickIntake}>
+          <Plus size={15} /> Принять макулатуру
+        </button>
+        <button type="button" className="admin-btn admin-btn--outline" onClick={onQuickShipment}>
+          <Plus size={15} /> Сдать на предприятие
+        </button>
+        <button type="button" className="admin-btn admin-btn--ghost" onClick={onOpenTransports}>
+          <Truck size={15} /> Перевозки
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
    ВКЛАДКА «ДНИ И ФИНАНСЫ»
    ═══════════════════════════════════════════════════════ */
 
 function DaysTab({
   events,
-  balance,
-  forecastCash,
   today,
   onTogglePaid,
   onEdit,
 }: {
   events: WpMoneyEvent[];
-  balance: { cash: number; bank: number; total: number };
-  forecastCash: ReturnType<typeof getWpForecast>;
   today: string;
   onTogglePaid: (e: WpMoneyEvent) => void;
   onEdit: (e: WpMoneyEvent) => void;
@@ -1091,86 +1246,6 @@ function DaysTab({
 
   return (
     <div>
-      {/* Баланс сейчас. Карточки в строку: иконка слева, сумма и подпись
-          справа (wp-stat--row) — только в этом модуле. */}
-      <div className="admin-stat-grid" style={{ marginBottom: 18 }}>
-        <div className="admin-stat wp-stat--row">
-          <div
-            className="admin-stat__icon"
-            style={{ background: "var(--adm-teal-pale)", color: "var(--adm-teal)" }}
-            aria-hidden="true"
-          >
-            <Banknote size={18} />
-          </div>
-          <div className="wp-stat__body">
-            <div className="admin-stat__value">{fmtMoney(balance.cash)}</div>
-            <div className="admin-stat__label">Наличка сейчас</div>
-          </div>
-        </div>
-        <div className="admin-stat wp-stat--row">
-          <div
-            className="admin-stat__icon"
-            style={{ background: "var(--adm-indigo-pale)", color: "var(--adm-indigo)" }}
-            aria-hidden="true"
-          >
-            <CreditCard size={18} />
-          </div>
-          <div className="wp-stat__body">
-            <div className="admin-stat__value">{fmtMoney(balance.bank)}</div>
-            <div className="admin-stat__label">Безнал сейчас</div>
-          </div>
-        </div>
-        <div className="admin-stat wp-stat--row">
-          <div
-            className="admin-stat__icon"
-            style={{ background: "var(--adm-steel-pale)", color: "var(--adm-steel)" }}
-            aria-hidden="true"
-          >
-            <Scale size={18} />
-          </div>
-          <div className="wp-stat__body">
-            <div className="admin-stat__value">{fmtMoney(balance.total)}</div>
-            <div className="admin-stat__label">Итого (нал + безнал)</div>
-          </div>
-        </div>
-        <div className="admin-stat wp-stat--row">
-          <div
-            className="admin-stat__icon"
-            style={{ background: "var(--adm-pine-pale)", color: "var(--adm-pine)" }}
-            aria-hidden="true"
-          >
-            <ArrowDownLeft size={18} />
-          </div>
-          <div className="wp-stat__body">
-            <div className="admin-stat__value" style={{ fontSize: "1.25rem" }}>
-              +{fmtMoney(forecastCash.inTotal)}
-            </div>
-            <div className="admin-stat__label">
-              Прогноз прихода · нал {fmtMoney(forecastCash.inCash)} · безнал{" "}
-              {fmtMoney(forecastCash.inBank)}
-            </div>
-          </div>
-        </div>
-        <div className="admin-stat wp-stat--row">
-          <div
-            className="admin-stat__icon"
-            style={{ background: "var(--adm-kraft-pale)", color: "var(--adm-kraft)" }}
-            aria-hidden="true"
-          >
-            <ArrowUpRight size={18} />
-          </div>
-          <div className="wp-stat__body">
-            <div className="admin-stat__value" style={{ fontSize: "1.25rem" }}>
-              −{fmtMoney(forecastCash.outTotal)}
-            </div>
-            <div className="admin-stat__label">
-              Прогноз расхода · нал {fmtMoney(forecastCash.outCash)} · безнал{" "}
-              {fmtMoney(forecastCash.outBank)}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Отчёт по дням */}
       <div className="admin-card" style={{ marginBottom: 18 }}>
         <div className="admin-card__head">
@@ -1514,25 +1589,11 @@ function PaymentsTab({
 
   return (
     <div>
-      <div
-        className="admin-card"
-        style={{ padding: "12px 16px", marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}
-      >
-        <div style={{ flex: "1 1 220px", position: "relative" }}>
-          <Search
-            size={14}
-            style={{
-              position: "absolute",
-              left: 10,
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--adm-muted)",
-              pointerEvents: "none",
-            }}
-          />
+      <div className="wp-toolbar">
+        <div className="wp-toolbar__search">
+          <Search size={14} />
           <input
             className="admin-input"
-            style={{ paddingLeft: 30, width: "100%" }}
             placeholder="Поиск по документу, контрагенту, комментарию…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -1597,10 +1658,14 @@ function PaymentsTab({
         </button>
       </div>
 
-      <p className="admin-hint" style={{ marginTop: -4, marginBottom: 10 }}>
-        Показано операций: {filtered.length}. По оплаченным: приход{" "}
-        <b style={{ color: "var(--adm-pine)" }}>+{fmtMoney(totals.inSum)}</b>, расход{" "}
-        <b style={{ color: "var(--adm-kraft)" }}>−{fmtMoney(totals.outSum)}</b>.
+      <p className="wp-summary">
+        Показано операций: <strong>{filtered.length}</strong>
+        <span className="wp-summary__chip" style={{ color: "var(--adm-pine)" }}>
+          +{fmtMoney(totals.inSum)}
+        </span>
+        <span className="wp-summary__chip" style={{ color: "var(--adm-kraft)" }}>
+          −{fmtMoney(totals.outSum)}
+        </span>
       </p>
 
       {filtered.length === 0 ? (
@@ -1737,18 +1802,11 @@ function IntakesTab({
 
   return (
     <div>
-      <div
-        className="admin-card"
-        style={{ padding: "12px 16px", marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}
-      >
-        <div style={{ flex: "1 1 220px", position: "relative" }}>
-          <Search
-            size={14}
-            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--adm-muted)", pointerEvents: "none" }}
-          />
+      <div className="wp-toolbar">
+        <div className="wp-toolbar__search">
+          <Search size={14} />
           <input
             className="admin-input"
-            style={{ paddingLeft: 30, width: "100%" }}
             placeholder="Поиск по контрагенту, адресу, №…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -1785,8 +1843,10 @@ function IntakesTab({
         </button>
       </div>
 
-      <p className="admin-hint" style={{ marginTop: -4, marginBottom: 10 }}>
-        Показано приёмов: {filtered.length} · {fmtKg(totals.kg)} на {fmtMoney(totals.sum)}.
+      <p className="wp-summary">
+        Показано приёмов: <strong>{filtered.length}</strong>
+        <span className="wp-summary__chip">{fmtKg(totals.kg)}</span>
+        <span className="wp-summary__chip">{fmtMoney(totals.sum)}</span>
       </p>
 
       {filtered.length === 0 ? (
@@ -1847,7 +1907,15 @@ function IntakesTab({
                       ? wpItemsSummary(i.items, WP_TYPE_LABELS)
                       : WP_TYPE_LABELS[i.wastepaperType] || i.wastepaperType}
                   </td>
-                  <td style={{ whiteSpace: "nowrap" }}>{fmtKg(i.weightKg)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {i.weightKg > 0 ? (
+                      fmtKg(i.weightKg)
+                    ) : (
+                      <span className="admin-hint" title="Вес узнаем после взвешивания на площадке">
+                        вес уточним
+                      </span>
+                    )}
+                  </td>
                   <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{fmtMoney(i.total)}</td>
                   <td>
                     <span className={ACCOUNT_BADGE[i.account]}>
@@ -2002,18 +2070,11 @@ function ShipmentsTab({
         </div>
       )}
 
-      <div
-        className="admin-card"
-        style={{ padding: "12px 16px", marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}
-      >
-        <div style={{ flex: "1 1 220px", position: "relative" }}>
-          <Search
-            size={14}
-            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--adm-muted)", pointerEvents: "none" }}
-          />
+      <div className="wp-toolbar">
+        <div className="wp-toolbar__search">
+          <Search size={14} />
           <input
             className="admin-input"
-            style={{ paddingLeft: 30, width: "100%" }}
             placeholder="Поиск по предприятию, №…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -2091,7 +2152,15 @@ function ShipmentsTab({
                       ? wpItemsSummary(s.items, WP_TYPE_LABELS)
                       : WP_TYPE_LABELS[s.wastepaperType] || s.wastepaperType}
                   </td>
-                  <td style={{ whiteSpace: "nowrap" }}>{fmtKg(s.weightKg)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {s.weightKg > 0 ? (
+                      fmtKg(s.weightKg)
+                    ) : (
+                      <span className="admin-hint" title="Вес узнаем после взвешивания на предприятии">
+                        вес уточним
+                      </span>
+                    )}
+                  </td>
                   <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{fmtMoney(s.total)}</td>
                   <td>
                     <span className={ACCOUNT_BADGE[s.account]}>
@@ -2215,18 +2284,11 @@ function CounterpartiesTab({
 
   return (
     <div>
-      <div
-        className="admin-card"
-        style={{ padding: "12px 16px", marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}
-      >
-        <div style={{ flex: "1 1 220px", position: "relative" }}>
-          <Search
-            size={14}
-            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--adm-muted)", pointerEvents: "none" }}
-          />
+      <div className="wp-toolbar">
+        <div className="wp-toolbar__search">
+          <Search size={14} />
           <input
             className="admin-input"
-            style={{ paddingLeft: 30, width: "100%" }}
             placeholder="Поиск по названию, адресу, телефону, ИНН…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -2466,8 +2528,7 @@ function IntakeModal({
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
       <div
-        className="admin-modal"
-        style={{ maxWidth: "40rem" }}
+        className="admin-modal wp-modal"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-modal__head">
@@ -2520,7 +2581,7 @@ function IntakeModal({
             });
           }}
         >
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="wp-grid-2">
             <div className="admin-field" style={{ flex: "1 1 150px" }}>
               <label className="admin-label">Дата *</label>
               <input
@@ -2612,7 +2673,7 @@ function IntakeModal({
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="wp-grid-2">
             <div className="admin-field"><label className="admin-label">Фактически принято, кг (на склад)</label><input className="admin-input" type="number" min="0" step="0.1" value={form.acceptedWeightKg || ""} onChange={(e) => set("acceptedWeightKg", parseNum(e.target.value))} placeholder="После взвешивания" /></div>
             <div className="admin-field"><label className="admin-label">Вес к оплате, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.payableWeightKg || ""} onChange={(e) => set("payableWeightKg", parseNum(e.target.value))} placeholder="Можно меньше принятого" /></div>
           </div>
@@ -2622,7 +2683,7 @@ function IntakeModal({
             onChange={(items) => set("items", items)}
           />
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div className="wp-grid-3 wp-grid--end">
             <div className="admin-field" style={{ flex: "1 1 200px" }}>
               <label className="admin-label">Счёт</label>
               <select
@@ -2667,7 +2728,7 @@ function IntakeModal({
             </p>
           )}
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div className="wp-modal__actions" style={{ justifyContent: "space-between" }}>
             <div style={{ display: "flex", gap: 8 }}>
               {isEdit && (
                 <>
@@ -2833,8 +2894,7 @@ function ShipmentModal({
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
       <div
-        className="admin-modal"
-        style={{ maxWidth: "40rem" }}
+        className="admin-modal wp-modal"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-modal__head">
@@ -2888,7 +2948,7 @@ function ShipmentModal({
             });
           }}
         >
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="wp-grid-2">
             <div className="admin-field" style={{ flex: "1 1 150px" }}>
               <label className="admin-label">Дата *</label>
               <input
@@ -2980,7 +3040,7 @@ function ShipmentModal({
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="wp-grid-3">
             <div className="admin-field"><label className="admin-label">Отгружено по нашим весам, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.shippedWeightKg || ""} onChange={(e) => set("shippedWeightKg", parseNum(e.target.value))} /></div>
             <div className="admin-field"><label className="admin-label">Принято предприятием, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.acceptedWeightKg || ""} onChange={(e) => set("acceptedWeightKg", parseNum(e.target.value))} /></div>
             <div className="admin-field"><label className="admin-label">Поступление денег, ₽</label><input className="admin-input" type="number" min="0" step="0.01" value={form.receivedAmount || ""} onChange={(e) => set("receivedAmount", parseNum(e.target.value))} /></div>
@@ -2991,7 +3051,7 @@ function ShipmentModal({
             onChange={(items) => set("items", items)}
           />
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div className="wp-grid-3 wp-grid--end">
             <div className="admin-field" style={{ flex: "1 1 200px" }}>
               <label className="admin-label">Куда придут деньги</label>
               <select
@@ -3036,7 +3096,7 @@ function ShipmentModal({
             </p>
           )}
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div className="wp-modal__actions" style={{ justifyContent: "space-between" }}>
             <div style={{ display: "flex", gap: 8 }}>
               {isEdit && (
                 <>
@@ -3153,8 +3213,7 @@ function PaymentModal({
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
       <div
-        className="admin-modal"
-        style={{ maxWidth: "30rem" }}
+        className="admin-modal wp-modal wp-modal--slim"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-modal__head">
@@ -3194,8 +3253,8 @@ function PaymentModal({
             });
           }}
         >
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "1 1 140px" }}>
+          <div className="wp-grid-3">
+            <div className="admin-field">
               <label className="admin-label">Дата *</label>
               <input
                 className="admin-input"
@@ -3205,7 +3264,7 @@ function PaymentModal({
                 required
               />
             </div>
-            <div className="admin-field" style={{ flex: "1 1 140px" }}>
+            <div className="admin-field">
               <label className="admin-label">Направление</label>
               <select
                 className="admin-select"
@@ -3216,7 +3275,7 @@ function PaymentModal({
                 <option value="outgoing">Расход</option>
               </select>
             </div>
-            <div className="admin-field" style={{ flex: "1 1 140px" }}>
+            <div className="admin-field">
               <label className="admin-label">Счёт</label>
               <select
                 className="admin-select"
@@ -3229,8 +3288,8 @@ function PaymentModal({
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "2 1 200px" }}>
+          <div className="wp-grid-3">
+            <div className="admin-field" style={{ gridColumn: "span 2" }}>
               <label className="admin-label">Контрагент</label>
               <input
                 className="admin-input"
@@ -3245,7 +3304,7 @@ function PaymentModal({
                 ))}
               </datalist>
             </div>
-            <div className="admin-field" style={{ flex: "1 1 140px" }}>
+            <div className="admin-field">
               <label className="admin-label">Сумма, ₽ *</label>
               <input
                 className="admin-input"
@@ -3285,7 +3344,7 @@ function PaymentModal({
             </p>
           )}
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div className="wp-modal__actions" style={{ justifyContent: "space-between" }}>
             <div>
               {mode === "edit" && (
                 <button
@@ -3431,8 +3490,7 @@ function CounterpartyModal({
   return (
     <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
       <div
-        className="admin-modal"
-        style={{ maxWidth: "40rem" }}
+        className="admin-modal wp-modal"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-modal__head">
@@ -3543,17 +3601,15 @@ function CounterpartyModal({
                       placeholder="Адрес * (где забирать / куда везти)"
                     />
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div className="wp-grid-2">
                     <input
                       className="admin-input"
-                      style={{ flex: "1 1 160px" }}
                       value={b.contactPerson}
                       onChange={(e) => setBranch(b.id, { contactPerson: e.target.value })}
                       placeholder="Контактное лицо (ФИО)"
                     />
                     <input
                       className="admin-input"
-                      style={{ flex: "1 1 150px" }}
                       value={b.phone}
                       onChange={(e) => setBranch(b.id, { phone: e.target.value })}
                       placeholder="Телефон +7…"
@@ -3576,8 +3632,8 @@ function CounterpartyModal({
             <textarea className="admin-input" rows={2} value={form.paymentDetails} onChange={(e) => set("paymentDetails", e.target.value)} placeholder="Карта, СБП, расчётный счёт, банк…" />
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="admin-field" style={{ flex: "1 1 160px" }}>
+          <div className="wp-grid-3">
+            <div className="admin-field">
               <label className="admin-label">ИНН</label>
               <input
                 className="admin-input"
@@ -3585,7 +3641,7 @@ function CounterpartyModal({
                 onChange={(e) => set("inn", e.target.value)}
               />
             </div>
-            <div className="admin-field" style={{ flex: "2 1 220px" }}>
+            <div className="admin-field" style={{ gridColumn: "span 2" }}>
               <label className="admin-label">Комментарий</label>
               <input
                 className="admin-input"
@@ -3601,7 +3657,7 @@ function CounterpartyModal({
             </p>
           )}
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div className="wp-modal__actions" style={{ justifyContent: "space-between" }}>
             <div>
               {mode === "edit" && (
                 <button

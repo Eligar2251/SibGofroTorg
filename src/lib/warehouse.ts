@@ -4706,10 +4706,20 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
   }
 
   // Точки макулатуры: подтягиваем статус документов, чтобы из активных
-  // рейсов исчезали отменённые и снятые с перевозки приёмы/сдачи.
-  // Запрос обёрнут: если миграция связи ещё не применена — показываем
-  // точки как есть (как свои), а не роняем страницу перевозок.
+  // рейсов исчезали ТОЛЬКО отменённые и удалённые приёмы/сдачи.
+  //
+  // Раньше «живым» считался ещё и документ с needs_transport = true.
+  // Из-за этого макулатура таинственно пропадала из путевого листа:
+  // достаточно было снять/переставить галочку «забрать нашим транспортом»
+  // (или закрыть рейс) — и точка исчезала из уже собранной перевозки,
+  // хотя из transports её ничто не удаляло. Теперь снятие с перевозки —
+  // это явное действие (removeWpDocFromActiveTransports), а чтение
+  // показывает ровно то, что лежит в рейсе.
   const wpAlive = new Map<string, boolean>();
+  // true — статусы удалось прочитать, можно фильтровать отменённые.
+  // Если запрос не удался, показываем точки как есть: пустой список
+  // из-за ошибки не должен «съедать» макулатуру из путевого листа.
+  let wpStatusOk = false;
   try {
     const wpIntakeIds = [
       ...new Set(
@@ -4738,10 +4748,7 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
         .in("id", wpIntakeIds);
       if (error) throw error;
       for (const r of rows || []) {
-        wpAlive.set(
-          `intake:${r.id}`,
-          r.status !== "cancelled" && r.needs_transport === true
-        );
+        wpAlive.set(`intake:${r.id}`, r.status !== "cancelled");
       }
     }
     if (wpShipmentIds.length > 0) {
@@ -4751,12 +4758,10 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
         .in("id", wpShipmentIds);
       if (error) throw error;
       for (const r of rows || []) {
-        wpAlive.set(
-          `shipment:${r.id}`,
-          r.status !== "cancelled" && r.needs_transport === true
-        );
+        wpAlive.set(`shipment:${r.id}`, r.status !== "cancelled");
       }
     }
+    wpStatusOk = true;
   } catch (e) {
     console.error("enrichTransportItems: wp-статусы недоступны:", e);
   }
@@ -4773,14 +4778,14 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
         contactName: i.contactName ?? deal?.contact_name ?? null,
         deliveryNote: i.deliveryNote ?? deal?.delivery_note ?? null,
       };
-      // Точка макулатуры: в активном рейсе показываем, только пока
-      // документ ждёт перевозки (иначе отменённый приём висел бы
-      // в путевом листе). В завершённых — история, не трогаем.
+      // Точка макулатуры: в активном рейсе скрываем только отменённый
+      // (или уже удалённый) документ — иначе в путевом листе висел бы
+      // приём, которого больше нет. Помеченный «в перевозку» документ
+      // показываем, пока он лежит точкой в рейсе: снятие с перевозки
+      // удаляет точку явно, а не «на чтении».
       if (!i.dealId && i.wpDocId && i.wpDocKind) {
-        if (isActive && wpAlive.size > 0) {
+        if (isActive && wpStatusOk) {
           const alive = wpAlive.get(`${i.wpDocKind}:${i.wpDocId}`);
-          // Документ удалён (нет в выборке) или снят с перевозки —
-          // точку из активного рейса убираем.
           if (alive !== true) continue;
         }
         items.push(enriched);
@@ -4838,15 +4843,34 @@ export async function getTransportById(id: string): Promise<Transport | null> {
   return transport;
 }
 
+/**
+ * Оставляет в рейсе только реально загруженный груз.
+ *
+ * ИСКЛЮЧЕНИЕ — точки макулатуры (ПМ-/СМ-): вес приёма часто неизвестен до
+ * взвешивания на площадке, поэтому строка с нулём — не «пустая», а
+ * «вес уточним на месте». Раньше такие точки выкидывались при сохранении:
+ * макулатура пропадала из только что созданного путевого листа (а если
+ * кроме неё в рейсе ничего не было — перевозка не создавалась вовсе).
+ */
 function onlyLoadedTransportItems(items: TransportItem[]): TransportItem[] {
   return (Array.isArray(items) ? items : [])
-    .map((item) => ({
-      ...item,
-      items: (Array.isArray(item.items) ? item.items : []).filter(
-        (line) => Number(line.transportQty) > 0
-      ),
-    }))
+    .map((item) => {
+      const lines = Array.isArray(item.items) ? item.items : [];
+      const loaded = lines.filter((line) => Number(line.transportQty) > 0);
+      if (loaded.length > 0) return { ...item, items: loaded };
+      if (isWpTransportItem(item) && lines.length > 0) {
+        return { ...item, items: [lines[0]] };
+      }
+      return { ...item, items: [] };
+    })
     .filter((item) => item.items.length > 0);
+}
+
+/** Точка привязана к приёму/сдаче макулатуры (wp_intakes / wp_shipments). */
+function isWpTransportItem(item: TransportItem): boolean {
+  const wpDocId = (item as { wpDocId?: string | null }).wpDocId;
+  const wpDocKind = (item as { wpDocKind?: string | null }).wpDocKind;
+  return Boolean(wpDocId) && (wpDocKind === "intake" || wpDocKind === "shipment");
 }
 
 export async function createTransport(data: {
@@ -4933,7 +4957,16 @@ export async function completeTransport(id: string): Promise<void> {
     // перевозки строку сохраняем — иначе она исчезала из завершённого бланка.
     if (!ti.dealId) {
       const loaded = (ti.items || []).filter((line) => (Number(line.transportQty) || 0) > 0);
-      if (loaded.length > 0) postedItems.push({ ...ti, items: loaded });
+      // Точка макулатуры без веса («взвесим на площадке») остаётся в
+      // документе даже с нулевой строкой — иначе забор пропадал из
+      // завершённого путевого листа и из истории рейса.
+      const keepLines =
+        loaded.length > 0
+          ? loaded
+          : isWpTransportItem(ti) && (ti.items || []).length > 0
+            ? [(ti.items || [])[0]]
+            : [];
+      if (keepLines.length > 0) postedItems.push({ ...ti, items: keepLines });
       // Точка макулатуры: рейс выполнен — приём/сдача больше не ждёт
       // перевозки и уходит из очереди «Ожидают формирования».
       // Финансовый документ при этом не меняется (оплата — отдельно).

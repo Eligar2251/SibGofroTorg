@@ -19,6 +19,10 @@ import "../admin-cabinet.css";
 // Единый финальный слой для телефонов/вертикальных планшетов. Он должен
 // идти последним, чтобы старые локальные media-правила не ломали сетку.
 import "../admin-mobile.css";
+// Современный слой макулатуры и «Доставок»: пилюльные вкладки, крупные
+// числа, сетка модалок. Все правила завязаны на .wp-account / .wp-modal /
+// .deliv-page, поэтому другие разделы админки он не задевает.
+import "../admin-wastepaper.css";
 import { AdminThemeProvider } from "@/components/admin/AdminTheme";
 
 // Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому
