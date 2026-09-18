@@ -143,8 +143,138 @@ export interface WarehouseReceipt extends CounterpartyDetails {
   vatAmount: number;
   linkedDealIds?: string[];
   linkedDealNumbers?: number[];
+  /**
+   * TRUE — товар по поставке забираем нашим транспортом («Заберём сами»):
+   * поставка встаёт в очередь перевозок учёта и едет в путевом листе как
+   * «забор груза». FALSE — самопривоз поставщика.
+   */
+  needsTransport?: boolean;
+  /** Желаемая дата забора (подсказка диспетчеру, необязательно). */
+  transportPlannedDate?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+/* ── Поставки в перевозках («Заберём сами») ───────────────
+   Поставка (приходный ордер) с needs_transport попадает в ту же очередь
+   «Ожидают формирования», что заказы ЗК и макулатура: забор груза у
+   поставщика. Груз точки — остаток по приёмке (заказано − уже принято). */
+
+/** Остаток по позиции поставки: сколько ещё не принято на склад. */
+export function receiptRemainingQty(
+  receipt: Pick<WarehouseReceipt, "items" | "receivedItems" | "status">,
+  productId: string
+): number {
+  const ordered = (receipt.items || [])
+    .filter((item) => String(item.productId) === String(productId))
+    .reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0), 0);
+  const received = (receipt.receivedItems || [])
+    .filter((item) => String(item.productId) === String(productId))
+    .reduce((sum, item) => sum + Math.max(0, Number(item.receivedQty) || 0), 0);
+  return Math.max(0, ordered - received);
+}
+
+/** Позиции поставки с остатком к приёмке — груз для точки маршрута. */
+export function receiptRemainingLines(
+  receipt: Pick<WarehouseReceipt, "items" | "receivedItems" | "status">
+): { productId: string; name: string; qty: number; orderedQty: number }[] {
+  const seen = new Set<string>();
+  const out: { productId: string; name: string; qty: number; orderedQty: number }[] = [];
+  for (const item of receipt.items || []) {
+    const productId = String(item.productId || "");
+    if (!productId || seen.has(productId)) continue;
+    seen.add(productId);
+    const remaining = receiptRemainingQty(receipt, productId);
+    if (remaining <= 0.0009) continue;
+    out.push({
+      productId,
+      name: String(item.name || ""),
+      qty: remaining,
+      orderedQty: remaining,
+    });
+  }
+  return out;
+}
+
+/** Поставка ждёт перевозки: помечена «Заберём сами» и не принята полностью. */
+export function receiptNeedsTransport(
+  receipt: Pick<WarehouseReceipt, "needsTransport" | "status">
+): boolean {
+  return Boolean(receipt.needsTransport) && receipt.status !== "posted";
+}
+
+/** Документ поставки, ожидающий перевозки (для конструктора рейса). */
+export interface ReceiptTransportQueueDoc {
+  id: string;
+  number: number;
+  supplierName: string;
+  contactName: string | null;
+  phone: string | null;
+  address: string | null;
+  /** Комментарий документа — водителю как заметка на точке. */
+  note: string | null;
+  date: string;
+  /** Желаемая дата забора (если указана). */
+  plannedDate: string | null;
+  lines: { productId: string; name: string; qty: number; orderedQty: number }[];
+}
+
+/** Подпись поставки в очереди и в путевом листе: «ПО-12». */
+export function receiptQueueDocLabel(doc: Pick<ReceiptTransportQueueDoc, "number">): string {
+  return `ПО-${doc.number}`;
+}
+
+/** Поставки, уже лежащие точками в активных (черновик/в пути) перевозках. */
+export function receiptTakenIdsFromTransports(
+  transports:
+    | {
+        status: string;
+        items?: { receiptId?: string | null }[] | null;
+      }[]
+    | null
+    | undefined
+): Set<string> {
+  const taken = new Set<string>();
+  for (const t of transports || []) {
+    if (t.status !== "draft" && t.status !== "active") continue;
+    for (const it of t.items || []) {
+      if (it?.receiptId) taken.add(String(it.receiptId));
+    }
+  }
+  return taken;
+}
+
+/**
+ * Очередь «ожидают формирования» по поставкам: помечены «Заберём сами»,
+ * ещё не приняты полностью и не взяты в активный рейс. Сортировка —
+ * сначала с желаемой датой забора (раньше — выше), затем по номеру.
+ */
+export function buildReceiptTransportQueue(args: {
+  receipts: WarehouseReceipt[];
+  takenIds: Set<string>;
+}): ReceiptTransportQueueDoc[] {
+  const out: ReceiptTransportQueueDoc[] = [];
+  for (const r of args.receipts) {
+    if (!receiptNeedsTransport(r)) continue;
+    if (args.takenIds.has(String(r.id))) continue;
+    const lines = receiptRemainingLines(r);
+    if (lines.length === 0) continue;
+    out.push({
+      id: String(r.id),
+      number: Number(r.number) || 0,
+      supplierName: r.supplier || "Без имени",
+      contactName: r.contactName ?? null,
+      phone: r.phone ?? null,
+      address: r.address ?? null,
+      note: r.comment ?? null,
+      date: String(r.date || "").slice(0, 10),
+      plannedDate: r.transportPlannedDate ? String(r.transportPlannedDate).slice(0, 10) : null,
+      lines,
+    });
+  }
+  const rank = (d: ReceiptTransportQueueDoc) => d.plannedDate || `~${d.date}`;
+  out.sort((a, b) => rank(a).localeCompare(rank(b)) || a.number - b.number);
+  return out;
 }
 
 export type DealStatus = "new" | "completed" | "cancelled";

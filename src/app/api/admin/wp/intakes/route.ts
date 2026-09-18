@@ -60,6 +60,13 @@ export async function POST(request: NextRequest) {
         items: Array.isArray(body.items) ? body.items : undefined,
         wastepaperType: String(body.wastepaperType || "cardboard"),
         weightKg: Number(body.weightKg) || 0,
+        // Фактический вес из формы приёма: «на склад» и «к оплате».
+        ...(body.acceptedWeightKg !== undefined
+          ? { acceptedWeightKg: Number(body.acceptedWeightKg) }
+          : {}),
+        ...(body.payableWeightKg !== undefined
+          ? { payableWeightKg: Number(body.payableWeightKg) }
+          : {}),
         pricePerKg: Number(body.pricePerKg) || 0,
         account: body.account === "bank" ? "bank" : "cash",
         isPaid: Boolean(body.isPaid),

@@ -52,6 +52,21 @@ export function wpIntakeNeedsTransport(i: Pick<WpIntake, "needsTransport" | "sta
   return Boolean(i.needsTransport) && i.status === "active";
 }
 
+/**
+ * Приёмка выполнена перевозкой, ждём взвешивания.
+ *
+ * Завершение перевозки с приёмом макулатуры ничего не проводит: склад
+ * макулатуры и платёж не двигаются — на приёме появляется только эта
+ * пометка. Дальше макулатурщик открывает приём, вписывает фактический
+ * вес и сохраняет карточку (пометка снимается) — и только тогда приём
+ * уходит на склад и в банк (расход на сумму).
+ */
+export function wpIntakeAwaitingWeight(
+  i: Pick<WpIntake, "awaitingWeight" | "status">
+): boolean {
+  return Boolean(i.awaitingWeight) && i.status === "active";
+}
+
 /** Сдача ждёт перевозки: помечена «в перевозку» и не отменена. */
 export function wpShipmentNeedsTransport(s: Pick<WpShipment, "needsTransport" | "status">): boolean {
   return Boolean(s.needsTransport) && s.status === "active";
@@ -310,6 +325,12 @@ export interface WpIntake {
   needsTransport: boolean;
   /** Желаемая дата забора (подсказка диспетчеру, необязательно). */
   transportPlannedDate: string | null;
+  /**
+   * TRUE — приёмку выполнили перевозкой, ждём взвешивания (склад и
+   * платёж не двигаются, пока не впишут вес). Снимается сохранением
+   * карточки приёма. См. wpIntakeAwaitingWeight().
+   */
+  awaitingWeight?: boolean;
   status: "active" | "cancelled";
   comment: string | null;
   createdBy: string | null;

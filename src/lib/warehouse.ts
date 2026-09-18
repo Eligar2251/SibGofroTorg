@@ -222,6 +222,10 @@ function mapReceiptRow(row: any): WarehouseReceipt {
     vatAmount: Number(row.vat_amount || 0),
     linkedDealIds: Array.isArray(row.linked_deal_ids) ? row.linked_deal_ids : [],
     linkedDealNumbers: Array.isArray(row.linked_deal_numbers) ? row.linked_deal_numbers : [],
+    needsTransport: Boolean(row.needs_transport),
+    transportPlannedDate: row.transport_planned_date
+      ? String(row.transport_planned_date).slice(0, 10)
+      : null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -1113,6 +1117,10 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
   const items = cleanItems(data.items);
   if (!data.supplier?.trim()) throw new Error("Укажите поставщика");
   if (items.length === 0) throw new Error("Добавьте хотя бы одну позицию");
+  // «Заберём сами» — водителю нужен адрес, откуда забирать товар.
+  if (data.needsTransport === true && !String(data.address || "").trim()) {
+    throw new Error("Укажите адрес поставщика — по нему водитель поедет за товаром");
+  }
 
   const total = itemsTotal(items);
   const noPayment = data.noPayment === true;
@@ -1189,6 +1197,12 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
     items, total, bank_adjustment: 0, vat_rate: vatRate, vat_amount: vatAmount,
     linked_deal_ids: linkedDealIds, linked_deal_numbers: linkedDealNumbers,
     is_consignment: data.isConsignment === true,
+    // «Заберём сами» — поставка встаёт в очередь перевозок учёта
+    // («забор груза»); забор возможен только по адресу поставщика.
+    needs_transport: data.needsTransport === true,
+    transport_planned_date: data.needsTransport && data.transportPlannedDate
+      ? String(data.transportPlannedDate).slice(0, 10)
+      : null,
   }).select("id").single();
   if (receiptError) throw receiptError;
   const receiptId = receiptResult.id;
@@ -1375,6 +1389,64 @@ export async function cancelReceipt(id: string): Promise<void> {
   revalidateTag("products", { expire: 0 });
 }
 
+/**
+ * Пометка поставки «Заберём сами» (и дата забора) без правки документа:
+ * работает и для частично принятой поставки, где обычное редактирование
+ * запрещено. Снятие пометки убирает поставку из активных рейсов — та же
+ * логика, что у макулатуры (removeWpDocFromActiveTransports).
+ */
+export async function setReceiptTransport(
+  id: string,
+  data: { needsTransport: boolean; transportPlannedDate?: string | null }
+): Promise<void> {
+  const db = getAdminDb();
+  const { data: existing, error } = await db
+    .from("warehouse_receipts")
+    .select("id, number, status, received_items, address")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !existing) throw new Error("Поставка не найдена");
+  if (existing.status === "posted") {
+    throw new Error("Поставка уже принята полностью — перевозка не нужна");
+  }
+  if (data.needsTransport && !String(existing.address || "").trim()) {
+    throw new Error("Укажите адрес забора в карточке поставки — куда ехать водителю");
+  }
+  const { error: updateError } = await db
+    .from("warehouse_receipts")
+    .update({
+      needs_transport: data.needsTransport === true,
+      transport_planned_date:
+        data.needsTransport === true && data.transportPlannedDate
+          ? String(data.transportPlannedDate).slice(0, 10)
+          : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (updateError) throw updateError;
+  if (!data.needsTransport) await removeReceiptFromActiveTransports(id);
+  revalidateTag("warehouse-receipts", { expire: 0 });
+}
+
+/** Убрать поставку из всех активных перевозок (сняли «Заберём сами»/удалили). */
+async function removeReceiptFromActiveTransports(receiptId: string): Promise<void> {
+  const db = getAdminDb();
+  try {
+    const { data: rows } = await db
+      .from("transports")
+      .select("*")
+      .in("status", ACTIVE_TRANSPORT_STATUSES);
+    for (const row of rows || []) {
+      const items = (Array.isArray(row.items) ? row.items : []) as TransportItem[];
+      const next = items.filter((it) => String(it.receiptId || "") !== String(receiptId));
+      if (next.length === items.length) continue;
+      await writeTransportItems(row, next);
+    }
+  } catch (e) {
+    console.error("removeReceiptFromActiveTransports:", e);
+  }
+}
+
 export async function updateReceipt(id: string, data: any): Promise<void> {
   const db = getAdminDb();
   const { data: existing, error: existErr } = await db.from("warehouse_receipts").select("*").eq("id", id).single();
@@ -1433,6 +1505,9 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
     address: cleanText(data.address, 400),
     contactName: cleanText(data.contactName, 160),
   };
+  if (data.needsTransport === true && !String(details.address || "").trim()) {
+    throw new Error("Укажите адрес поставщика — по нему водитель поедет за товаром");
+  }
 
   // Обновляем поступление
   await db.from("warehouse_receipts").update({
@@ -1446,6 +1521,16 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
     vat_rate: vatRate, vat_amount: includedVat(total, vatRate),
     linked_deal_ids: linkedDealIds, linked_deal_numbers: linkedDealNumbers,
     is_consignment: data.isConsignment === true,
+    // «Заберём сами»: пометку можно ставить/снимать и в карточке поставки.
+    ...(data.needsTransport !== undefined
+      ? {
+          needs_transport: data.needsTransport === true,
+          transport_planned_date:
+            data.needsTransport === true && data.transportPlannedDate
+              ? String(data.transportPlannedDate).slice(0, 10)
+              : null,
+        }
+      : {}),
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
@@ -1639,6 +1724,10 @@ export async function deleteReceipt(id: string): Promise<void> {
   } catch (e) {
     console.error("deleteReceipt: ошибка удаления платежей:", e);
   }
+
+  // Удалённой поставки в рейсах быть не должно: убираем её точки из
+  // активных перевозок, чтобы в путевом листе не висел несуществующий груз.
+  await removeReceiptFromActiveTransports(id);
 
   await db.from("warehouse_receipts").delete().eq("id", id);
   revalidateTag("warehouse-receipts", { expire: 0 });
@@ -4476,6 +4565,13 @@ export interface TransportItem {
   wpDocId?: string | null;
   wpDocKind?: "intake" | "shipment" | null;
   wpDocNumber?: number | null;
+  /**
+   * Привязка к поставке (warehouse_receipts). Едет как «забор груза»:
+   * при завершении рейса поставка принимается на склад с фактическими
+   * количествами (остаток остаётся в поставке).
+   */
+  receiptId?: string | null;
+  receiptNumber?: number | null;
   customerName: string;
   contactName?: string | null;
   address: string | null;
@@ -4694,7 +4790,10 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
   const hasWpItems = transports.some((t) =>
     t.items.some((i) => !i.dealId && i.wpDocId && i.wpDocKind)
   );
-  if (dealIds.length === 0 && !hasWpItems) return;
+  const hasReceiptItems = transports.some((t) =>
+    t.items.some((i) => !i.dealId && !i.wpDocId && i.receiptId)
+  );
+  if (dealIds.length === 0 && !hasWpItems && !hasReceiptItems) return;
   const db = getAdminDb();
   const dealMap = new Map<string, any>();
   if (dealIds.length > 0) {
@@ -4766,6 +4865,35 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
     console.error("enrichTransportItems: wp-статусы недоступны:", e);
   }
 
+  // Поставки («Заберём сами»): документ жив, пока существует, а количества
+  // показываем по остатку к приёмке (заказано − уже принято) — приняли
+  // часть, и в рейсе остаётся только то, чего ещё нет на складе.
+  const receiptIds = [
+    ...new Set(
+      transports
+        .flatMap((t) =>
+          t.items
+            .filter((i) => !i.dealId && !i.wpDocId && i.receiptId)
+            .map((i) => String(i.receiptId))
+        )
+    ),
+  ];
+  const receiptMap = new Map<string, any>();
+  let receiptStatusOk = false;
+  if (receiptIds.length > 0) {
+    try {
+      const { data: rows, error } = await db
+        .from("warehouse_receipts")
+        .select("id, status, items, received_items")
+        .in("id", receiptIds);
+      if (error) throw error;
+      for (const r of rows || []) receiptMap.set(String(r.id), r);
+      receiptStatusOk = true;
+    } catch (e) {
+      console.error("enrichTransportItems: поставки недоступны:", e);
+    }
+  }
+
   for (const t of transports) {
     // Завершённые и архивные перевозки — исторические документы,
     // их состав не пересчитываем.
@@ -4787,6 +4915,33 @@ async function enrichTransportItems(transports: Transport[]): Promise<void> {
         if (isActive && wpStatusOk) {
           const alive = wpAlive.get(`${i.wpDocKind}:${i.wpDocId}`);
           if (alive !== true) continue;
+        }
+        items.push(enriched);
+        continue;
+      }
+      // Точка поставки: живую показываем, удалённую — нет; количества
+      // урезаем по остатку к приёмке (часть уже могли принять).
+      if (!i.dealId && i.receiptId) {
+        if (isActive && receiptStatusOk) {
+          const row = receiptMap.get(String(i.receiptId));
+          if (!row) continue;
+          const remaining = new Map<string, number>();
+          for (const it of Array.isArray(row.items) ? row.items : []) {
+            const pid = String(it?.productId || "");
+            if (!pid) continue;
+            remaining.set(pid, (remaining.get(pid) || 0) + Math.max(0, Number(it?.quantity) || 0));
+          }
+          for (const r of Array.isArray(row.received_items) ? row.received_items : []) {
+            const pid = String(r?.productId || "");
+            if (!pid) continue;
+            remaining.set(
+              pid,
+              Math.max(0, (remaining.get(pid) || 0) - Math.max(0, Number(r?.receivedQty) || 0))
+            );
+          }
+          const capped = capTransportItem(enriched, remaining);
+          if (capped) items.push(capped);
+          continue;
         }
         items.push(enriched);
         continue;
@@ -4939,14 +5094,39 @@ export async function updateTransport(id: string, data: {
   revalidateTag("warehouse-deals", { expire: 0 });
 }
 
-/** Завершить перевозку: списать отгруженные количества, обновить shipped_items заказов */
-export async function completeTransport(id: string): Promise<void> {
+/**
+ * Фактически принятые количества по поставке — диспетчер может указать
+ * их в момент завершения рейса («приняли меньше»). Если не указаны,
+ * берём количества из точек перевозки.
+ */
+export interface ReceiptAcceptanceOverride {
+  receiptId: string;
+  items: { productId: string; quantity: number }[];
+}
+
+/**
+ * Завершить перевозку:
+ *  • заказы ЗК — отпускаем отгруженные количества (shipped_items);
+ *  • поставки ПО- — принимаем товар на склад с фактическими количествами
+ *    (остаток остаётся в поставке как «остаток по приёмке»);
+ *  • макулатура ПМ- — ничего не проводим, только пометка «приёмка
+ *    выполнена · ожидание взвешивания» (вес, склад и платёж — вручную).
+ */
+export async function completeTransport(
+  id: string,
+  opts: { receipts?: ReceiptAcceptanceOverride[] } = {}
+): Promise<void> {
   const db = getAdminDb();
   const { data: transport } = await db.from("transports").select("*").eq("id", id).single();
   if (!transport) throw new Error("Перевозка не найдена");
   if (transport.status === "completed" || transport.status === "archived") throw new Error("Перевозка уже завершена");
 
   const items = (transport.items || []) as TransportItem[];
+  const receiptOverrides = new Map(
+    (opts.receipts || [])
+      .filter((row) => row?.receiptId)
+      .map((row) => [String(row.receiptId), row])
+  );
   // Фактически отгруженный состав (после урезки по остаткам) сохраняем
   // в документ перевозки, чтобы бланк и архив совпадали со складом.
   const postedItems: TransportItem[] = [];
@@ -4967,9 +5147,58 @@ export async function completeTransport(id: string): Promise<void> {
             ? [(ti.items || [])[0]]
             : [];
       if (keepLines.length > 0) postedItems.push({ ...ti, items: keepLines });
+      // Точка поставки: рейс выполнен — принимаем товар на склад с
+      // фактическими количествами (диспетчер мог указать их при
+      // завершении). Непринятый остаток остаётся в поставке — его
+      // добирают кнопкой «Принять остаток» в разделе «Поставки».
+      if (ti.receiptId && !ti.wpDocId) {
+        const override = receiptOverrides.get(String(ti.receiptId));
+        const requested = (
+          override && override.items.length > 0
+            ? override.items
+            : (ti.items || []).map((line) => ({
+                productId: String(line.productId || ""),
+                quantity: Number(line.transportQty) || 0,
+              }))
+        ).filter((line) => line.productId && Number(line.quantity) > 0);
+        let fullyReceived = false;
+        if (requested.length > 0) {
+          try {
+            const posted = await postReceipt(
+              String(ti.receiptId),
+              requested.map((line) => ({
+                productId: line.productId,
+                quantity: Number(line.quantity) || 0,
+              }))
+            );
+            fullyReceived = posted.fullyReceived;
+          } catch (e) {
+            console.error("completeTransport: приёмка поставки:", e);
+          }
+        }
+        // Пометку «Заберём сами» снимаем только у полностью принятой
+        // поставки. Приняли меньше — поставка остаётся в очереди перевозок
+        // с остатком по приёмке (как заказ, отгруженный частично).
+        if (fullyReceived) {
+          try {
+            await db
+              .from("warehouse_receipts")
+              .update({
+                needs_transport: false,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", ti.receiptId);
+          } catch (e) {
+            console.error("completeTransport: снять needs_transport у поставки:", e);
+          }
+        }
+      }
       // Точка макулатуры: рейс выполнен — приём/сдача больше не ждёт
       // перевозки и уходит из очереди «Ожидают формирования».
-      // Финансовый документ при этом не меняется (оплата — отдельно).
+      // Приём при этом НИЧЕГО не проводит: склад макулатуры и платёж не
+      // двигаются, ставим только пометку «приёмка выполнена · ожидание
+      // взвешивания». Вес макулатурщик вписывает руками, и уже
+      // сохранение приёма двигает склад и деньги.
       if (ti.wpDocId && ti.wpDocKind) {
         try {
           const table = ti.wpDocKind === "intake" ? "wp_intakes" : "wp_shipments";
@@ -4977,6 +5206,7 @@ export async function completeTransport(id: string): Promise<void> {
             .from(table)
             .update({
               needs_transport: false,
+              ...(ti.wpDocKind === "intake" ? { awaiting_weight: true } : {}),
               updated_at: new Date().toISOString(),
             })
             .eq("id", ti.wpDocId);

@@ -72,6 +72,7 @@ import {
   getWpStock,
   wpCollectMoneyEvents,
   wpDocTotals,
+  wpIntakeAwaitingWeight,
   wpItemsSummary,
   wpTypeLabel,
   wpUid,
@@ -1915,6 +1916,27 @@ function IntakesTab({
                         вес уточним
                       </span>
                     )}
+                    {/* Пометка после завершения перевозки: приёмку выполнили,
+                        ждём взвешивания. Склад и платёж не двигаются, пока
+                        макулатурщик не впишет вес и не сохранит приём. */}
+                    {wpIntakeAwaitingWeight(i) && (
+                      <button
+                        type="button"
+                        className="admin-badge admin-badge--amber"
+                        style={{
+                          border: 0,
+                          cursor: "pointer",
+                          marginLeft: 6,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                        onClick={() => onEdit(i)}
+                        title="Приёмка выполнена перевозкой · ожидание взвешивания. Откройте приём, впишите фактический вес — после сохранения приём уйдёт на склад и в банк."
+                      >
+                        <Scale size={11} /> Ждёт взвешивания
+                      </button>
+                    )}
                   </td>
                   <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{fmtMoney(i.total)}</td>
                   <td>
@@ -2432,6 +2454,11 @@ interface IntakeFormPayload {
   needsTransport: boolean;
   /** На когда планируем забор (пусто = как можно скорее). */
   transportPlannedDate: string | null;
+  /**
+   * false — сохранение карточки снимает пометку «приёмка выполнена ·
+   * ожидание взвешивания» (вес вписан).
+   */
+  awaitingWeight: boolean;
 }
 
 function IntakeModal({
@@ -2555,6 +2582,24 @@ function IntakeModal({
           макулатуры со своим весом и ценой за кг. Сумма уйдёт в расход счёта.
         </p>
 
+        {/* Пометка после завершения перевозки: приёмку выполнили, ждём
+            взвешивания. Склад макулатуры и платёж не двигаются, пока
+            вес не вписан и карточка не сохранена. */}
+        {isEdit && item?.awaitingWeight && item.status === "active" && (
+          <div className="deal-delivery-block" style={{ marginBottom: 12 }}>
+            <div className="deal-delivery-block__head">
+              <Scale size={14} />
+              <span>Приёмка выполнена · ожидание взвешивания</span>
+            </div>
+            <p className="deal-delivery-block__empty" style={{ marginTop: 8 }}>
+              Груз забрали перевозкой, склад и деньги ещё не двигались. Впишите
+              фактический вес по позициям (и в поля «Фактически принято» /
+              «Вес к оплате») — после сохранения приём уйдёт на склад макулатуры
+              и в банк (расход на сумму), а пометка снимется.
+            </p>
+          </div>
+        )}
+
         <form
           className="wp-modal-form"
           onSubmit={(e) => {
@@ -2578,6 +2623,9 @@ function IntakeModal({
               transportPlannedDate: form.needsTransport
                 ? form.transportPlannedDate || null
                 : null,
+              // Карточку приёма открыли, чтобы вписать вес — сохранение
+              // снимает пометку «приёмка выполнена · ожидание взвешивания».
+              awaitingWeight: false,
             });
           }}
         >
