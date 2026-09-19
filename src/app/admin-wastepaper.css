@@ -41,7 +41,7 @@
 .wp-account .admin-table td,
 .wp-account .admin-stat__value,
 .deliv-page .admin-stat__value,
-.wp-hero__value {
+.wpa-balance__value {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
@@ -78,7 +78,7 @@
    2. Hero-плашка баланса: как «счёт» в банковском приложении
    ───────────────────────────────────────────────────────── */
 
-.wp-hero {
+.wpa-balance {
   position: relative;
   overflow: hidden;
   border-radius: var(--wpx-r-xl);
@@ -91,7 +91,7 @@
   margin-bottom: 16px;
 }
 
-.wp-hero__top {
+.wpa-balance__top {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -99,12 +99,12 @@
   margin-bottom: 14px;
 }
 
-.wp-hero__top .wp-hero__chip {
+.wpa-balance__top .wpa-balance__chip {
   margin-left: auto;
   background: color-mix(in srgb, var(--adm-card) 88%, transparent);
 }
 
-.wp-hero__title {
+.wpa-balance__title {
   font-family: var(--adm-font-head);
   font-size: 15px;
   letter-spacing: 0.05em;
@@ -113,13 +113,13 @@
   margin: 0;
 }
 
-.wp-hero__grid {
+.wpa-balance__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
-.wp-hero__cell {
+.wpa-balance__cell {
   border-radius: var(--wpx-r-lg);
   border: 1px solid var(--wpx-line-soft);
   background: color-mix(in srgb, var(--adm-card) 92%, transparent);
@@ -127,12 +127,12 @@
   min-width: 0;
 }
 
-.wp-hero__cell--accent {
+.wpa-balance__cell--accent {
   border-color: var(--adm-kraft-line);
   background: linear-gradient(180deg, color-mix(in srgb, var(--adm-kraft-pale) 70%, var(--adm-card)) 0%, var(--adm-card) 100%);
 }
 
-.wp-hero__label {
+.wpa-balance__label {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -144,7 +144,7 @@
   margin-bottom: 6px;
 }
 
-.wp-hero__value {
+.wpa-balance__value {
   font-family: var(--adm-font-head);
   font-size: 24px;
   line-height: 1.1;
@@ -155,24 +155,24 @@
   text-overflow: ellipsis;
 }
 
-.wp-hero__value--in { color: var(--adm-pine); }
-.wp-hero__value--out { color: var(--adm-kraft); }
+.wpa-balance__value--in { color: var(--adm-pine); }
+.wpa-balance__value--out { color: var(--adm-kraft); }
 
-.wp-hero__hint {
+.wpa-balance__hint {
   margin-top: 6px;
   font-size: 12px;
   color: var(--adm-muted);
   line-height: 1.4;
 }
 
-.wp-hero__chips {
+.wpa-balance__chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
 }
 
-.wp-hero__chip {
+.wpa-balance__chip {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -186,38 +186,38 @@
   box-shadow: var(--wpx-shadow-1);
 }
 
-.wp-hero__chip strong {
+.wpa-balance__chip strong {
   font-weight: 700;
   color: var(--adm-ink);
 }
 
-.wp-hero__chip--warn {
+.wpa-balance__chip--warn {
   border-color: var(--adm-kraft-line);
   background: var(--adm-kraft-pale);
   color: var(--adm-kraft);
   cursor: pointer;
 }
 
-.wp-hero__chip--warn strong { color: inherit; }
+.wpa-balance__chip--warn strong { color: inherit; }
 
-.wp-hero__chip--warn:hover {
+.wpa-balance__chip--warn:hover {
   transform: translateY(-1px);
   box-shadow: var(--wpx-shadow-2);
 }
 
-.wp-hero__chip--in,
-.wp-hero__chip--in strong { color: var(--adm-pine); }
-.wp-hero__chip--out,
-.wp-hero__chip--out strong { color: var(--adm-kraft); }
+.wpa-balance__chip--in,
+.wpa-balance__chip--in strong { color: var(--adm-pine); }
+.wpa-balance__chip--out,
+.wpa-balance__chip--out strong { color: var(--adm-kraft); }
 
-.wp-hero__chip--in,
-.wp-hero__chip--out {
+.wpa-balance__chip--in,
+.wpa-balance__chip--out {
   border-color: transparent;
   background: color-mix(in srgb, var(--adm-card) 70%, transparent);
 }
 
 /* Быстрые действия в плашке баланса */
-.wp-hero__actions {
+.wpa-balance__actions {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -227,7 +227,7 @@
   border-top: 1px dashed var(--wpx-line);
 }
 
-.wp-hero__actions .admin-btn {
+.wpa-balance__actions .admin-btn {
   border-radius: 999px;
 }
 
@@ -1329,24 +1329,24 @@
    ───────────────────────────────────────────────────────── */
 
 @media (max-width: 1023px) {
-  .wp-hero {
+  .wpa-balance {
     padding: 14px;
   }
 
-  .wp-hero__grid {
+  .wpa-balance__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   }
 
-  .wp-hero__cell {
+  .wpa-balance__cell {
     padding: 10px 12px;
   }
 
-  .wp-hero__value {
+  .wpa-balance__value {
     font-size: 18px;
   }
 
-  .wp-hero__label {
+  .wpa-balance__label {
     font-size: 10px;
   }
 
@@ -1465,11 +1465,11 @@
     font-size: 22px;
   }
 
-  .wp-hero__grid {
+  .wpa-balance__grid {
     grid-template-columns: 1fr 1fr;
   }
 
-  .wp-hero__cell--total {
+  .wpa-balance__cell--total {
     grid-column: 1 / -1;
   }
 
@@ -1489,8 +1489,108 @@
 
 @media print {
   .wp-tabs,
-  .wp-hero,
+  .wpa-balance,
   .wp-toolbar {
     display: none !important;
   }
 }
+
+/* Isolated accounting workspace: never share the public landing hero styles. */
+.wp-account { min-width: 0; }
+.wp-account .admin-page-head { flex-wrap: wrap; gap: 20px; margin-bottom: 24px; }
+.wp-account .admin-page-head > div { flex: 1 1 320px; min-width: 0; }
+.wpa-balance { padding: 24px; margin-bottom: 24px; }
+.wpa-balance__top { margin-bottom: 20px; }
+.wpa-balance__grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; }
+.wpa-balance__cell { padding: 20px; }
+.wpa-balance__value { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.wpa-balance__chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; margin-top: 20px; }
+.wpa-balance__chips .wpa-balance__chip { border-radius: 12px; padding: 12px; flex-wrap: wrap; line-height: 1.5; }
+.wpa-balance svg { flex-shrink: 0; }
+.wpa-balance__actions { padding-top: 20px; margin-top: 20px; gap: 12px; }
+.wp-account .wp-tabs { border-radius: 16px; padding: 8px; gap: 8px; margin-bottom: 24px; }
+.wp-account .wp-tab { border-radius: 10px; min-height: 44px; }
+
+/* Phone-only components, selected in React rather than by hiding desktop DOM. */
+.wpa-mobile { display: grid; gap: 16px; margin-bottom: 24px; min-width: 0; }
+.wpa-mobile__balance { padding: 20px; border: 1px solid var(--wpx-line); border-radius: 20px; background: var(--wpx-surface); }
+.wpa-mobile__caption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--adm-muted); font-size: 13px; }
+.wpa-mobile__caption span { margin-left: auto; }
+.wpa-mobile__total { display: block; font-size: 30px; line-height: 1.3; margin: 16px 0 24px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.wpa-mobile dl { margin: 0; }
+.wpa-mobile dt { color: var(--adm-muted); font-size: 12px; }
+.wpa-mobile dd { margin: 6px 0 0; font-weight: 650; overflow-wrap: anywhere; }
+.wpa-mobile__accounts { display: grid; gap: 16px; }
+.wpa-mobile__accounts > div { border-top: 1px solid var(--wpx-line); padding-top: 12px; }
+.wpa-mobile__accounts dt { display: flex; gap: 8px; align-items: center; }
+.wpa-mobile__actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.wpa-mobile__actions button { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 4px; border-radius: 14px; border: 1px solid var(--wpx-line); background: var(--adm-card); color: var(--adm-ink); font: inherit; font-size: 12px; cursor: pointer; }
+.wpa-mobile__actions svg { color: var(--adm-pine); }
+.wpa-mobile__summary { border: 1px solid var(--wpx-line); border-radius: 16px; background: var(--adm-card); padding: 4px 16px; }
+.wpa-mobile__summary > * { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 0; width: 100%; font: inherit; font-size: 13px; text-align: left; background: none; color: var(--adm-ink); border: 0; }
+.wpa-mobile__summary > * + * { border-top: 1px solid var(--wpx-line); }
+.wpa-mobile__summary strong { overflow-wrap: anywhere; max-width: 120px; }
+.wpa-mobile__forecast { padding: 16px; background: var(--wpx-surface-2); border-radius: 14px; font-size: 13px; }
+.wpa-mobile__forecast summary { cursor: pointer; min-height: 24px; }
+.wpa-mobile__forecast dl { display: grid; gap: 16px; margin-top: 16px; }
+.wpa-mobile-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 24px; }
+.wpa-mobile-nav__item { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid var(--wpx-line); border-radius: 12px; background: var(--adm-card); color: var(--adm-ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.wpa-mobile-nav__item.wp-tab--active { border-color: var(--adm-pine); background: var(--adm-pine-pale, var(--wpx-surface-2)); }
+.wpa-mobile-nav__item .wp-tab__count { margin-left: auto; flex-shrink: 0; }
+.wpa-ledger, .wpa-ledger__list { display: grid; gap: 12px; min-width: 0; }
+.wpa-ledger__card { padding: 16px; border: 1px solid var(--wpx-line); border-radius: 16px; background: var(--adm-card); min-width: 0; }
+.wpa-ledger__card dl { margin: 0; display: grid; gap: 12px; }
+.wpa-ledger__field { min-width: 0; }
+.wpa-ledger__field dt { font-size: 11px; color: var(--adm-muted); margin-bottom: 4px; }
+.wpa-ledger__field dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.wpa-ledger__field dd:empty, .wpa-ledger__field dt:empty { display: none; }
+.wpa-ledger__field .admin-btn { min-height: 44px; }
+.wpa-ledger__expand { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid var(--wpx-line); border-radius: 10px; font: inherit; color: var(--adm-ink); background: var(--wpx-surface-2); cursor: pointer; }
+
+/* The builder owns its spacing and one scroll container. Fields previously
+   occupied one column each in a twelve-column grid. */
+[data-admin="true"] .transport-modal--builder { width: min(1100px, calc(100vw - 48px)); max-width: 1100px; max-height: calc(100dvh - 48px); overflow-y: auto; display: block; padding: 0; }
+.transport-modal--builder .admin-modal__head { padding: 24px; gap: 16px; }
+.transport-builder__fields { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 20px; padding: 24px; }
+.transport-builder__fields .admin-field { min-width: 0; margin: 0; }
+.transport-builder__fields .admin-input, .transport-builder__fields .admin-select { width: 100%; min-width: 0; min-height: 44px; }
+.transport-builder__note { grid-column: 1 / -1; }
+.transport-modal--builder .transport-builder__tabs { margin: 0 24px 20px; flex-wrap: wrap; gap: 12px; }
+.transport-modal--builder .transport-builder__tabs button { white-space: normal; min-height: 44px; line-height: 1.5; text-align: left; }
+[data-admin="true"] .transport-modal--builder .transport-modal__orders { display: flex; flex-direction: column; gap: 12px; margin: 0 24px; max-height: none !important; overflow: visible; }
+.transport-modal--builder .wp-pick { padding: 16px; }
+.transport-modal--builder .wp-pick__label { gap: 12px; line-height: 1.5; }
+.transport-modal--builder .wp-pick__client { flex: 1 1 180px; overflow-wrap: anywhere; }
+.transport-modal--builder .wp-pick__addr { flex-basis: 100%; margin-left: 30px; }
+.transport-modal--builder .wp-pick__addr > span { white-space: normal; overflow-wrap: anywhere; }
+.transport-modal--builder .transport-builder__hint { margin: 20px 24px; line-height: 1.6; }
+.transport-modal--builder .transport-builder__stops { max-height: none; overflow: visible; margin: 0 24px 20px; }
+[data-admin="true"] .transport-modal--builder .transport-builder__footer { position: static; display: flex; flex-wrap: wrap; gap: 12px; padding: 20px 24px; margin: 20px 0 0; }
+.transport-modal--builder .transport-builder__footer .admin-btn { min-height: 44px; white-space: normal; }
+@media (max-width: 768px) {
+  [data-admin="true"] .transport-modal--builder { width: 100%; max-height: 100dvh; }
+  .transport-builder__fields { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 20px 16px; }
+  .transport-modal--builder .admin-modal__head { padding: 20px 16px; }
+  .transport-modal--builder .transport-builder__tabs { margin: 0 16px 16px; }
+  [data-admin="true"] .transport-modal--builder .transport-modal__orders { margin: 0 16px; }
+  .transport-modal--builder .transport-builder__stops, .transport-modal--builder .transport-builder__hint { margin: 16px; }
+  [data-admin="true"] .transport-modal--builder .transport-builder__footer { padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .transport-modal--builder .transport-builder__totals { flex-basis: 100%; margin: 0; }
+}
+.transport-modal--builder .pick-lines { margin-top: 16px; padding-top: 16px; }
+.transport-modal--builder .pick-lines .trip-stop__line { gap: 16px; padding: 8px 0; flex-wrap: wrap; }
+.transport-modal--builder .pick-lines .trip-stop__line-name { flex: 1 1 180px; white-space: normal; overflow-wrap: anywhere; }
+.transport-modal--builder .pick-lines .trip-stop__line-qty .admin-input { width: 100px; min-height: 44px; }
+@media (max-width: 768px) {
+  /* Override the shared fullscreen-modal rules, not just their normal layer. */
+  [data-admin="true"] .admin-modal.transport-modal--builder { padding: 0 !important; max-height: 100dvh !important; overflow-y: auto; }
+  [data-admin="true"] .transport-modal--builder .admin-modal__head { position: static !important; margin: 0 !important; padding: 16px !important; }
+  [data-admin="true"] .admin-modal.transport-modal--builder .transport-builder__footer { position: static !important; display: flex !important; margin: 16px 0 0 !important; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)) !important; gap: 12px !important; }
+}
+.wp-account--mobile .admin-page-head > div { flex-basis: 100%; }
+.wp-account--mobile .admin-page-head .admin-btn { white-space: normal !important; min-height: 44px; }
+.wp-account--mobile .admin-table-wrap:has(.wpa-ledger) { border: 0; background: transparent; overflow: visible; box-shadow: none; }
+.wp-account--mobile .admin-card__head { flex-wrap: wrap; gap: 16px; }
+.wpa-mobile button:focus-visible, .wpa-mobile-nav button:focus-visible, .wpa-ledger button:focus-visible { outline: 2px solid var(--adm-pine); outline-offset: 3px; }
+.wpa-mobile-nav__item > svg { flex-shrink: 0; color: var(--adm-pine); }
+.wpa-mobile-nav__item > span:not(.wp-tab__count) { min-width: 0; }
