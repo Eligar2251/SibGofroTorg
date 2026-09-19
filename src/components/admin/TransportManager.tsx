@@ -755,7 +755,7 @@ function CreateTransportModal({
             <button type="button" onClick={onClose} className="admin-modal__close"><X size={14} /></button>
           </div>
 
-          <div className="wp-form-grid" style={{ marginBottom: 14 }}>
+          <div className="transport-builder__fields">
             <div className="admin-field">
               <label className="admin-label">Дата</label>
               <input type="date" className="admin-input" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -767,7 +767,7 @@ function CreateTransportModal({
                 {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}{d.phone ? ` · ${d.phone}` : ""}</option>)}
               </select>
             </div>
-            <div className="admin-field wp-col-12">
+            <div className="admin-field transport-builder__note">
               <label className="admin-label">Заметка к перевозке (в шапке бланка)</label>
               <input className="admin-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Напр.: после 17:00 не звонить, ключи у охранника" />
             </div>
@@ -798,7 +798,7 @@ function CreateTransportModal({
 
           {panel === "deals" ? (
             <>
-              <div className="transport-modal__orders" style={{ maxHeight: "42vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
+              <div className="transport-modal__orders">
                 {deals.length === 0 && wpDocs.length === 0 && receipts.length === 0 ? (
                   <div className="admin-empty" style={{ padding: 20 }}>Очередь пуста: нет ни заказов, ни макулатуры, ни поставок в перевозку — добавьте свою точку</div>
                 ) : (
@@ -1022,7 +1022,7 @@ function CreateTransportModal({
 
           {error && <div className="admin-error" style={{ marginTop: 10 }}>{error}</div>}
 
-          <div className="admin-modal__actions transport-builder__footer" style={{ gap: 10, marginTop: 14 }}>
+          <div className="admin-modal__actions transport-builder__footer">
             <button type="button" onClick={onClose} className="admin-btn admin-btn--ghost" disabled={saving}>Отмена</button>
             <button type="button" onClick={openTripPreview} className="admin-btn admin-btn--outline" disabled={stops.length === 0}>
               <Printer size={14} /> Предпросмотр
