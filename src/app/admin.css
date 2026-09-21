@@ -2073,8 +2073,11 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  background: rgba(26,26,24,0.5);
-  backdrop-filter: blur(6px);
+  /* Плотная подложка БЕЗ backdrop-filter: blur() — оверлей position:fixed
+     на весь экран, и размытие под ним пересчитывалось каждый кадр
+     прокрутки длинной формы даже на десктопе. Визуально достаточно
+     затемнения (см. README-PERFORMANCE.md). */
+  background: rgba(26, 26, 24, 0.55);
   padding: 16px;
 }
 
@@ -10583,9 +10586,12 @@ body.is-col-resizing * {
   gap: 12px;
 }
 
-/* Кнопки действий в таблицах модуля не слипаются. */
-.wp-account .admin-table td .admin-btn + .admin-btn {
-  margin-left: 6px;
+/* Кнопки действий в таблицах модуля не слипаются.
+   .wpa-ledger__field — мобильные карточки (там нет td, и кнопки
+   копирования/редактирования в них тоже сливались в одну кучу). */
+.wp-account .admin-table td .admin-btn + .admin-btn,
+.wpa-ledger__field .admin-btn + .admin-btn {
+  margin-left: 8px;
 }
 
 @media (max-width: 480px) {
@@ -11632,6 +11638,73 @@ body.is-col-resizing * {
 [data-admin="true"] .admin-order {
   content-visibility: auto;
   contain-intrinsic-size: auto 96px;
+}
+
+/* Повторяющиеся строки-«плитки» по всему модулю учёта: дашборд,
+   банк, аренда — пропускаем рендеринг того, что за экраном. */
+[data-admin="true"] :is(.bank-pay, .rent-row, .dash-finance-row, .dash-delivery-row, .admin-upload-item) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+
+/* Хвост «оконного» списка (use-windowed-list): кнопка-сентинел
+   догружает следующий кусок строк/карточек при прокрутке. */
+.admin-show-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--adm-ink-muted);
+  background: var(--adm-card);
+  border: 1px dashed var(--adm-border-mid);
+  border-radius: var(--adm-r-md);
+  cursor: pointer;
+}
+
+.admin-show-more:hover {
+  color: var(--adm-ink);
+  border-color: var(--adm-ink-muted);
+}
+
+.admin-show-more strong {
+  color: var(--adm-ink);
+}
+
+/* Хвост в десктопной таблице: одна ячейка на всю ширину */
+.admin-table .admin-show-more-cell {
+  padding: 8px;
+  text-align: center;
+  border-bottom: none;
+}
+
+.admin-table .admin-show-more-cell .admin-show-more {
+  width: auto;
+  margin: 0 auto;
+  background: transparent;
+}
+
+.admin-windowed-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--adm-muted);
+}
+
+.admin-windowed-hint button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--adm-kraft);
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 /* Сайдбар уже анимируется transform'ом — подсказываем

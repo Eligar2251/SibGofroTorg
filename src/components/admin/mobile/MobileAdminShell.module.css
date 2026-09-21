@@ -57,9 +57,9 @@
   background: var(--adm-sidebar-bg, #1a1a18);
   border-bottom: 1px solid var(--adm-kraft, #c8860a);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
-  /* Лёгкий blur-контент под шапкой при «резиновой» прокрутке iOS. */
-  -webkit-backdrop-filter: saturate(1.4);
-  backdrop-filter: saturate(1.4);
+  /* Без backdrop-filter: шапка position:fixed, а фильтр под ней
+     пересчитывается каждый кадр прокрутки контента — заметно на
+     слабых телефонах (см. README-PERFORMANCE.md). */
 }
 
 .heading {

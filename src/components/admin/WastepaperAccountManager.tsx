@@ -15,9 +15,10 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useWindowedList } from "@/hooks/use-windowed-list";
 import { WpTable, WpHead, WpBody, WpRow, WpCell, WpHeading } from "./mobile/WastepaperLedger";
 import { useRouter } from "next/navigation";
 import {
@@ -463,6 +464,10 @@ export function WastepaperAccountManager(props: Props) {
   const router = useRouter();
   // Приёмщик на весовой и бухгалтер в кабинете работают с одними и теми же
   // документами — модуль обновляется без перезагрузки страницы.
+  // Мгновенное обновление при правках (Realtime + polling fallback).
+  // ВАЖНО: вызов должен быть ОДИН — раньше хук стоял дважды (60с и 30с),
+  // из-за чего страница держала два SSE-слушателя и два фоновых опроса,
+  // а события приводили к парным router.refresh() и лишним перерисовкам.
   useAdminRealtime({
     tables: [
       "wp_intakes",
@@ -475,7 +480,7 @@ export function WastepaperAccountManager(props: Props) {
       // Зарплаты «с макулатуры» списываются из наличных этого модуля.
       "salaries",
     ],
-    pollIntervalMs: 60_000,
+    pollIntervalMs: 30_000,
   });
   const [tab, setTab] = useState<TabKey>(
     (TABS.some((t) => t.key === props.initialTab)
@@ -512,20 +517,6 @@ export function WastepaperAccountManager(props: Props) {
     { mode: "create" } | { mode: "edit"; item: WpCounterparty } | null
   >(null);
 
-
-  // Мгновенное обновление при правках (Realtime + polling fallback)
-  useAdminRealtime({
-    tables: [
-      "wp_intakes",
-      "wp_shipments",
-      "wp_payments",
-      "wp_transports",
-      "wp_counterparties",
-      "transports",
-      "salaries",
-    ],
-    pollIntervalMs: 30_000,
-  });
 
   // После router.refresh() сервер отдаёт свежие данные
   useEffect(() => setCounterparties(props.counterparties), [props.counterparties]);
@@ -1662,9 +1653,10 @@ function PaymentsTab({
   const [account, setAccount] = useState<"all" | WpAccount>("all");
   const [paidFilter, setPaidFilter] = useState<"all" | "paid" | "unpaid">("all");
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return events
       .filter((e) => {
         if (e.cancelled) return false;
@@ -1680,7 +1672,7 @@ function PaymentsTab({
         );
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.number - a.number);
-  }, [events, direction, account, paidFilter, query]);
+  }, [events, direction, account, paidFilter, deferredQuery]);
 
   const totals = useMemo(() => {
     let inSum = 0;
@@ -1692,6 +1684,11 @@ function PaymentsTab({
     }
     return { inSum, outSum };
   }, [filtered]);
+
+  // Длинный журнал операций — кусками (см. use-windowed-list).
+  const win = useWindowedList(filtered, {
+    resetKey: `${deferredQuery}|${direction}|${account}|${paidFilter}`,
+  });
 
   return (
     <div>
@@ -1795,7 +1792,7 @@ function PaymentsTab({
               </WpRow>
             </WpHead>
             <WpBody>
-              {filtered.map((e) => (
+              {win.visible.map((e) => (
                 <WpRow key={`${e.kind}-${e.id}`}>
                   <WpCell style={{ whiteSpace: "nowrap" }}>{fmtDate(e.date)}</WpCell>
                   <WpCell>
@@ -1867,6 +1864,19 @@ function PaymentsTab({
           </WpTable>
         </div>
       )}
+      {win.hasMore && (
+        <button
+          type="button"
+          className="admin-show-more"
+          style={{ marginTop: 10 }}
+          ref={(node) => {
+            win.sentinelRef(node);
+          }}
+          onClick={win.showAll}
+        >
+          Показано {win.visible.length} из {win.total} · <strong>Показать все</strong>
+        </button>
+      )}
     </div>
   );
 }
@@ -1891,6 +1901,9 @@ function IntakesTab({
   onToggleTransport: (item: WpIntake) => void;
 }) {
   const [query, setQuery] = useState("");
+  // Буквы в поиске появляются сразу, перефильтровка длинного списка —
+  // следом с низким приоритетом (та же схема, что в ProductListClient).
+  const deferredQuery = useDeferredValue(query);
   const [account, setAccount] = useState<"all" | WpAccount>("all");
   const [showCancelled, setShowCancelled] = useState(false);
   // «Текущие» — рабочий список; «Проведённые» — архив: приём оплачен,
@@ -1907,7 +1920,7 @@ function IntakesTab({
   );
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return intakes.filter((i) => {
       const done = wpIntakeCompleted(i);
       if (view === "done") {
@@ -1925,7 +1938,7 @@ function IntakesTab({
         (i.comment || "").toLowerCase().includes(q)
       );
     });
-  }, [intakes, query, account, showCancelled, view]);
+  }, [intakes, deferredQuery, account, showCancelled, view]);
 
   const totals = useMemo(() => {
     const active = filtered.filter((i) => i.status === "active");
@@ -1934,6 +1947,12 @@ function IntakesTab({
       sum: active.reduce((s, i) => s + i.total, 0),
     };
   }, [filtered]);
+
+  // Длинный список приёмов рендерим кусками: на слабых телефонах сотни
+  // строк/карточек роняли FPS при прокрутке (см. use-windowed-list).
+  const win = useWindowedList(filtered, {
+    resetKey: `${deferredQuery}|${account}|${showCancelled}|${view}`,
+  });
 
   return (
     <div>
@@ -2044,7 +2063,7 @@ function IntakesTab({
               </WpRow>
             </WpHead>
             <WpBody>
-              {filtered.map((i) => (
+              {win.visible.map((i) => (
                 <WpRow
                   key={i.id}
                   style={
@@ -2179,6 +2198,20 @@ function IntakesTab({
           </WpTable>
         </div>
       )}
+      {/* Хвост окна списка: подъезд к кнопке догружает следующий кусок */}
+      {win.hasMore && (
+        <button
+          type="button"
+          className="admin-show-more"
+          style={{ marginTop: 10 }}
+          ref={(node) => {
+            win.sentinelRef(node);
+          }}
+          onClick={win.showAll}
+        >
+          Показано {win.visible.length} из {win.total} · <strong>Показать все</strong>
+        </button>
+      )}
     </div>
   );
 }
@@ -2207,10 +2240,11 @@ function ShipmentsTab({
   onPostBank: (item: WpShipment) => void;
 }) {
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [showCancelled, setShowCancelled] = useState(false);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return shipments.filter((s) => {
       if (!showCancelled && s.status === "cancelled") return false;
       if (!q) return true;
@@ -2221,7 +2255,12 @@ function ShipmentsTab({
         (s.comment || "").toLowerCase().includes(q)
       );
     });
-  }, [shipments, query, showCancelled]);
+  }, [shipments, deferredQuery, showCancelled]);
+
+  // Длинный список сдач — кусками (см. use-windowed-list).
+  const win = useWindowedList(filtered, {
+    resetKey: `${deferredQuery}|${showCancelled}`,
+  });
 
   return (
     <div>
@@ -2311,7 +2350,7 @@ function ShipmentsTab({
               </WpRow>
             </WpHead>
             <WpBody>
-              {filtered.map((s) => (
+              {win.visible.map((s) => (
                 <WpRow
                   key={s.id}
                   style={
@@ -2435,6 +2474,19 @@ function ShipmentsTab({
           </WpTable>
         </div>
       )}
+      {win.hasMore && (
+        <button
+          type="button"
+          className="admin-show-more"
+          style={{ marginTop: 10 }}
+          ref={(node) => {
+            win.sentinelRef(node);
+          }}
+          onClick={win.showAll}
+        >
+          Показано {win.visible.length} из {win.total} · <strong>Показать все</strong>
+        </button>
+      )}
     </div>
   );
 }
@@ -2453,9 +2505,10 @@ function CounterpartiesTab({
 }) {
   const [role, setRole] = useState<"all" | "supplier" | "enterprise">("all");
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return counterparties.filter((c) => {
       if (role !== "all" && !c.roles.includes(role)) return false;
       if (!q) return true;
@@ -2469,7 +2522,12 @@ function CounterpartiesTab({
           b.label.toLowerCase().includes(q)
       );
     });
-  }, [counterparties, role, query]);
+  }, [counterparties, role, deferredQuery]);
+
+  // Справочник контрагентов — кусками (см. use-windowed-list).
+  const win = useWindowedList(filtered, {
+    resetKey: `${deferredQuery}|${role}`,
+  });
 
   return (
     <div>
@@ -2529,7 +2587,7 @@ function CounterpartiesTab({
               </WpRow>
             </WpHead>
             <WpBody>
-              {filtered.map((c) => (
+              {win.visible.map((c) => (
                 <WpRow key={c.id}>
                   <WpCell style={{ fontWeight: 600 }}>
                     {c.name}
@@ -2594,6 +2652,19 @@ function CounterpartiesTab({
             </WpBody>
           </WpTable>
         </div>
+      )}
+      {win.hasMore && (
+        <button
+          type="button"
+          className="admin-show-more"
+          style={{ marginTop: 10 }}
+          ref={(node) => {
+            win.sentinelRef(node);
+          }}
+          onClick={win.showAll}
+        >
+          Показано {win.visible.length} из {win.total} · <strong>Показать все</strong>
+        </button>
       )}
     </div>
   );

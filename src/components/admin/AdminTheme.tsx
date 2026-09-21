@@ -32,6 +32,7 @@ import {
   DEFAULT_ADMIN_DENSITY,
   DEFAULT_ADMIN_ANIM,
   DEFAULT_ADMIN_GLASS,
+  defaultAnimForDevice,
 } from "@/lib/admin-theme";
 
 export type AdminThemeId = (typeof ADMIN_THEME_IDS)[number];
@@ -144,6 +145,14 @@ function safeSet(key: string, value: string) {
   }
 }
 
+function safeRemove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* localStorage недоступен — не страшно */
+  }
+}
+
 export function AdminThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const savedTheme = safeGet(THEME_STORAGE_KEY) as AdminThemeId | null;
@@ -178,7 +187,9 @@ export function AdminThemeProvider({ children }: { children: React.ReactNode }) 
     applyAnim(
       savedAnim && (ADMIN_ANIM_IDS as readonly string[]).includes(savedAnim)
         ? savedAnim
-        : DEFAULT_ADMIN_ANIM
+        // Без явного выбора — «reduced» на слабых устройствах (та же
+        // логика, что в adminThemeInitScript — они должны совпадать).
+        : defaultAnimForDevice()
     );
 
     const savedGlass = safeGet(GLASS_STORAGE_KEY) as AdminGlassId | null;
@@ -245,6 +256,7 @@ export function ThemeCustomizer() {
 
     const savedAnim = safeGet(ANIM_STORAGE_KEY) as AdminAnimId | null;
     if (savedAnim && (ADMIN_ANIM_IDS as readonly string[]).includes(savedAnim)) setAnim(savedAnim);
+    else setAnim(defaultAnimForDevice());
 
     const savedGlass = safeGet(GLASS_STORAGE_KEY) as AdminGlassId | null;
     if (savedGlass && (ADMIN_GLASS_IDS as readonly string[]).includes(savedGlass)) setGlass(savedGlass);
@@ -287,23 +299,26 @@ export function ThemeCustomizer() {
   }
 
   function handleReset() {
+    const animDefault = defaultAnimForDevice();
     setTheme(DEFAULT_ADMIN_THEME);
     setLayout(DEFAULT_ADMIN_LAYOUT);
     setStyle(DEFAULT_ADMIN_STYLE);
     setDensity(DEFAULT_ADMIN_DENSITY);
-    setAnim(DEFAULT_ADMIN_ANIM);
+    setAnim(animDefault);
     setGlass(DEFAULT_ADMIN_GLASS);
     safeSet(THEME_STORAGE_KEY, DEFAULT_ADMIN_THEME);
     safeSet(LAYOUT_STORAGE_KEY, DEFAULT_ADMIN_LAYOUT);
     safeSet(STYLE_STORAGE_KEY, DEFAULT_ADMIN_STYLE);
     safeSet(DENSITY_STORAGE_KEY, DEFAULT_ADMIN_DENSITY);
-    safeSet(ANIM_STORAGE_KEY, DEFAULT_ADMIN_ANIM);
+    // Анимации сбрасываем в «авто»: пусть снова выбираются по устройству
+    // (слабое → без движения, быстрое → полные).
+    safeRemove(ANIM_STORAGE_KEY);
     safeSet(GLASS_STORAGE_KEY, DEFAULT_ADMIN_GLASS);
     applyTheme(DEFAULT_ADMIN_THEME);
     applyLayout(DEFAULT_ADMIN_LAYOUT);
     applyStyle(DEFAULT_ADMIN_STYLE);
     applyDensity(DEFAULT_ADMIN_DENSITY);
-    applyAnim(DEFAULT_ADMIN_ANIM);
+    applyAnim(animDefault);
     applyGlass(DEFAULT_ADMIN_GLASS);
   }
 

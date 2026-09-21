@@ -1091,6 +1091,18 @@
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
 }
+/* Режим включается АВТОМАТИЧЕСКИ на слабых устройствах (см.
+   admin-theme.ts → adminThemeInitScript), поэтому он же гасит самые
+   дорогие попиксельные эффекты админки: любые backdrop-filter
+   (включая «стекло» и размытия модалок) — они пересчитываются
+   каждый кадр прокрутки. Заодно пропадают бесконечные пульсации. */
+[data-admin-anim="reduced"] [data-admin="true"] *,
+[data-admin-anim="reduced"] [data-admin="true"] *::before,
+[data-admin-anim="reduced"] [data-admin="true"] *::after,
+[data-admin-anim="reduced"] [data-admin="true"] .admin-modal-overlay {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
 [data-admin-anim="reduced"] html[data-scroll-behavior="smooth"] {
   scroll-behavior: auto;
 }

@@ -114,9 +114,9 @@
   pointer-events: auto;
   padding: 0;
   border: 0;
+  /* Плотная подложка без blur: backdrop-filter пересчитывает фон под
+     фиксированным слоем каждый кадр анимации листа. */
   background: rgba(0, 0, 0, 0.5);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
   animation: fadeIn 0.2s ease-out both;
 }
 
@@ -141,7 +141,9 @@
   border: 1px solid var(--adm-border, #dbd8d0);
   border-bottom: 0;
   box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.28);
-  will-change: transform;
+  /* will-change не держим: лист открывается редко, а постоянный
+     GPU-слой — это лишняя видеопамять на слабых телефонах.
+     Анимация sheetIn и так композится (transform). */
   /* Пружинная кривая «как в iOS»: быстрый разгон, мягкий доезд. */
   animation: sheetIn 0.28s cubic-bezier(0.32, 0.72, 0.16, 1) both;
 }

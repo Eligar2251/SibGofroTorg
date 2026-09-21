@@ -460,17 +460,60 @@
 }
 
 /* Переключатель «Текущие / Проведённые» над списком приёмов.
-   Проведённые — архив: оплачено, вес факт и к оплате указан. */
-.wp-intake-views {
-  margin: 0 0 12px;
+   Проведённые — архив: оплачено, вес факт и к оплате указан.
+
+   Отступы заданы жёстко и с запасом по специфичности: мобильные слои
+   (admin-mobile.css) сбивали gap/margin контейнера своими !important-
+   правилами для .admin-filters, и пилюли «Текущие | Проведённые»
+   слипались друг с другом и с тулбаром выше. */
+[data-admin="true"] .wp-account .admin-filters.wp-intake-views {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  gap: 8px !important;
+  padding: 5px !important;
+  margin: 2px 0 14px !important;
+  border: 1px solid var(--wpx-line);
+  border-radius: 14px;
+  background: var(--wpx-surface-2);
+  box-shadow: var(--wpx-shadow-1);
+  overflow: visible;
 }
 
+[data-admin="true"] .wp-account .wp-intake-views .admin-filter,
 .wp-intake-views .admin-filter {
-  gap: 6px;
+  gap: 7px;
+  padding: 8px 15px;
+  min-height: 36px;
+  font-size: 12px;
+  border-radius: 10px;
 }
 
 .wp-intake-views .wp-tab__count {
-  margin-left: 2px;
+  margin-left: 1px;
+}
+
+/* Телефон: кнопки-переключатели на всю ширину, под палец (44px),
+   между ними гарантированный зазор 8px. Свойства — с !important:
+   admin-mobile.css гасит их у .admin-filter своими !important-правилами. */
+@media (max-width: 768px) {
+  [data-admin="true"] .wp-account .admin-filters.wp-intake-views {
+    width: 100%;
+    gap: 8px !important;
+    padding: 6px !important;
+    margin: 2px 0 14px !important;
+  }
+
+  [data-admin="true"] .wp-account .wp-intake-views .admin-filter {
+    flex: 1 1 0 !important;
+    justify-content: center;
+    min-height: 44px !important;
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+    border-radius: 10px !important;
+  }
 }
 
 .wp-intake-views .admin-filter--active .wp-tab__count {
@@ -528,8 +571,11 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: color-mix(in srgb, var(--adm-paper) 72%, var(--adm-card));
-  backdrop-filter: blur(4px);
+  /* Плотный фон вместо backdrop-filter: blur() — размытие под липкой
+     шапкой пересчитывалось КАЖДЫЙ кадр прокрутки таблицы и роняло FPS
+     на слабых устройствах (см. README-PERFORMANCE.md, правило про
+     backdrop-filter на sticky/fixed-элементах). */
+  background: color-mix(in srgb, var(--adm-paper) 88%, var(--adm-card));
   border-bottom: 1px solid var(--wpx-line);
   padding: 11px 14px;
   font-size: 10.5px;
@@ -1558,6 +1604,10 @@
 .wpa-mobile-nav__item .wp-tab__count { margin-left: auto; flex-shrink: 0; }
 .wpa-ledger, .wpa-ledger__list { display: grid; gap: 12px; min-width: 0; }
 .wpa-ledger__card { padding: 16px; border: 1px solid var(--wpx-line); border-radius: 16px; background: var(--adm-card); min-width: 0; }
+/* Карточки длинного списка: браузер пропускает рендеринг за пределами
+   экрана (как в ProductsMobile.module.css) — на слабых телефонах это
+   держит 60 FPS при прокрутке сотен записей. */
+.wpa-ledger__card { content-visibility: auto; contain-intrinsic-size: auto 200px; }
 .wpa-ledger__card dl { margin: 0; display: grid; gap: 12px; }
 .wpa-ledger__field { min-width: 0; }
 .wpa-ledger__field dt { font-size: 11px; color: var(--adm-muted); margin-bottom: 4px; }

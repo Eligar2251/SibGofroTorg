@@ -19,6 +19,10 @@
   border: 1px solid var(--adm-border, #e5e2da);
   border-radius: 12px;
   box-shadow: var(--adm-sh-xs, none);
+  /* Длинные списки карточек: рендеринг за пределами экрана
+     пропускается — прокрутка держит 60 FPS на слабых телефонах. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
 }
 
 .head {
