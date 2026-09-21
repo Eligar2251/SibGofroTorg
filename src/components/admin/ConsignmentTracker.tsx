@@ -310,7 +310,7 @@ export function ConsignmentTracker({
       </div>
 
       <div className="admin-table-wrap">
-        <table className="admin-table" style={{ minWidth: 1100 }}>
+        <table className="admin-table consignment-table" style={{ minWidth: 1100 }}>
           <thead>
             <tr>
               <th>Поставщик / ПО</th>
@@ -399,7 +399,7 @@ export function ConsignmentTracker({
                 </tr>
               );
             })}
-            <tr style={{ background: "var(--adm-paper)", fontWeight: 700 }}>
+            <tr className="consignment-totals" style={{ background: "var(--adm-paper)", fontWeight: 700 }}>
               <td colSpan={2} style={{ textAlign: "right" }}>ИТОГО:</td>
               <td style={{ textAlign: "right" }}>{totals.supplied}</td>
               <td style={{ textAlign: "right" }}>{totals.sold}</td>

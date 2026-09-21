@@ -59,6 +59,11 @@ export async function POST(request: NextRequest) {
         items: Array.isArray(body.items) ? body.items : undefined,
         wastepaperType: String(body.wastepaperType || "cardboard"),
         weightKg: Number(body.weightKg) || 0,
+        // Фактические веса и деньги из формы сдачи — без них поля
+        // «Отгружено / Принято / Поступление» не сохранялись при создании.
+        shippedWeightKg: Number(body.shippedWeightKg) || 0,
+        acceptedWeightKg: Number(body.acceptedWeightKg) || 0,
+        receivedAmount: Number(body.receivedAmount) || 0,
         pricePerKg: Number(body.pricePerKg) || 0,
         account: body.account === "cash" ? "cash" : "bank",
         isPaid: Boolean(body.isPaid),

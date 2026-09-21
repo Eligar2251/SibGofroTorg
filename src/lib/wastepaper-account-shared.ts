@@ -187,7 +187,8 @@ export function buildWpTransportQueue(args: {
       note: i.comment,
       date: i.date,
       plannedDate: i.transportPlannedDate,
-      weightKg: i.weightKg,
+      // Водителю нужен физический вес груза, а не вес к оплате.
+      weightKg: i.acceptedWeightKg > 0 ? i.acceptedWeightKg : i.weightKg,
       lines: wpQueueLines(i.items, i.wastepaperType, i.weightKg, typeLabels),
     });
   }
@@ -205,7 +206,8 @@ export function buildWpTransportQueue(args: {
       note: s.comment,
       date: s.date,
       plannedDate: s.transportPlannedDate,
-      weightKg: s.weightKg,
+      // Водителю нужен физический вес груза — сколько отгрузили с площадки.
+      weightKg: s.shippedWeightKg > 0 ? s.shippedWeightKg : s.weightKg,
       lines: wpQueueLines(s.items, s.wastepaperType, s.weightKg, typeLabels),
     });
   }
@@ -497,6 +499,100 @@ export function wpItemsSummary(items: WpDocItem[], labels: Record<string, string
 }
 
 /**
+ * Цена за кг для показа в полях ввода: до 4 знаков после запятой,
+ * без хвостовых нулей («8» вместо «8.00», «8.3333» вместо
+ * «8.333333333333334»). Сама цена при этом хранится в полной точности —
+ * иначе вес × цена после округления не сойдётся с введённой суммой.
+ */
+export function fmtWpPrice(value: number): string {
+  const n = Number(value) || 0;
+  if (!(n > 0)) return "";
+  const rounded = Math.round(n * 10000) / 10000;
+  return String(rounded > 0 ? rounded : n);
+}
+
+/**
+ * Раскладывает введённую вручную итоговую сумму по позициям документа.
+ *
+ * Обычный случай (позиция одна или её нет): вес позиции становится равен
+ * расчётному весу (вес к оплате в приёме, принятый вес в сдаче), а цена —
+ * сумма / вес в полной точности. Тогда вес × цена после округления до
+ * копеек всегда даёт ровно введённую сумму — подбирать цену не нужно.
+ *
+ * Несколько позиций: веса не трогаем (это разбивка фактического веса —
+ * она же уходит на склад), сумму делим пропорционально весам; копеечный
+ * остаток от округления кладём в последнюю ненулевую позицию, чтобы сумма
+ * позиций сошлась с введённой копейка в копейку. Если все веса нулевые —
+ * делим расчётный вес и сумму поровну, иначе сумму не к чему привязать.
+ *
+ * Возвращает НОВЫЙ массив; при пустой сумме или нулевом весе возвращает
+ * позиции как есть (тогда итог по-прежнему считается по позициям).
+ */
+export function distributeWpTotal(
+  items: WpDocItem[],
+  total: number,
+  baseWeight: number,
+  fallbackType: string
+): WpDocItem[] {
+  const sum = round2money(Math.max(0, Number(total) || 0));
+  const base = Math.max(0, Number(baseWeight) || 0);
+  if (!(sum > 0) || !(base > 0)) return items;
+  const type = String(fallbackType || "").trim() || "cardboard";
+
+  if (items.length <= 1) {
+    const weight = round2kg(base);
+    if (!(weight > 0)) return items;
+    // Цену считаем от ОКРУГЛЁННОГО веса — иначе вес × цена не сойдётся
+    // с суммой ровно (хватит и тысячных долей кг из старых записей).
+    const price = sum / weight;
+    const prev = items[0];
+    return [
+      {
+        id: prev?.id || wpUid("it"),
+        wastepaperType: prev?.wastepaperType || type,
+        weightKg: weight,
+        pricePerKg: price,
+        total: round2money(weight * price),
+      },
+    ];
+  }
+
+  const weights = items.map((it) => Math.max(0, Number(it.weightKg) || 0));
+  const weightSum = weights.reduce((s, w) => s + w, 0);
+  const effWeights =
+    weightSum > 0
+      ? weights
+      : items.map((_, idx) => {
+          if (idx < items.length - 1) return round2kg(base / items.length);
+          const rest =
+            base - round2kg(base / items.length) * (items.length - 1);
+          return Math.max(0, round2kg(rest));
+        });
+  const effSum = effWeights.reduce((s, w) => s + w, 0);
+  if (!(effSum > 0)) return items;
+
+  // Последняя позиция с ненулевым весом — ей достанется остаток округления.
+  let lastIdx = -1;
+  effWeights.forEach((w, idx) => {
+    if (w > 0) lastIdx = idx;
+  });
+  let assigned = 0;
+  return items.map((it, idx) => {
+    const w = effWeights[idx];
+    if (!(w > 0)) {
+      return { ...it, weightKg: weights[idx], pricePerKg: 0, total: 0 };
+    }
+    if (idx === lastIdx) {
+      const itemTotal = Math.max(0, round2money(sum - assigned));
+      return { ...it, weightKg: w, pricePerKg: itemTotal / w, total: itemTotal };
+    }
+    const itemTotal = round2money((sum * w) / effSum);
+    assigned = round2money(assigned + itemTotal);
+    return { ...it, weightKg: w, pricePerKg: itemTotal / w, total: itemTotal };
+  });
+}
+
+/**
  * Найти точку контрагента по адресу (нечувствительно к регистру/пробелам).
  * Используется, чтобы не дублировать филиалы при автосохранении.
  */
@@ -565,6 +661,20 @@ export function wpEventEffectiveDate(event: WpMoneyEvent): string {
   return paidDate || String(event.date || "").slice(0, 10);
 }
 
+/**
+ * Сумма приёма к выплате: вес к оплате × цена за кг, а если вес к оплате
+ * не указан — сумма позиций. Та же формула используется в форме приёма,
+ * чтобы введённая сумма и деньги в финансах всегда совпадали.
+ */
+export function wpIntakePayableTotal(
+  i: Pick<WpIntake, "payableWeightKg" | "pricePerKg" | "total">
+): number {
+  if (i.payableWeightKg > 0 && i.pricePerKg > 0) {
+    return Math.round(i.payableWeightKg * i.pricePerKg * 100) / 100;
+  }
+  return Number(i.total) || 0;
+}
+
 /** Собирает единую ленту денежных движений из трёх источников. */
 export function wpCollectMoneyEvents(
   intakes: WpIntake[],
@@ -584,7 +694,7 @@ export function wpCollectMoneyEvents(
       direction: "outgoing",
       account: split.account,
       amount: i.payableWeightKg > 0 && i.pricePerKg > 0
-        ? Math.round(i.payableWeightKg * i.pricePerKg * 100) / 100
+        ? wpIntakePayableTotal(i)
         : split.amount,
       isPaid: i.isPaid,
       paidAt: i.paidAt,
@@ -817,7 +927,17 @@ export function getWpStock(intakes: WpIntake[], shipments: WpShipment[]): WpStoc
   }
   for (const s of shipments) {
     if (s.status !== "active") continue;
-    accumulate(shipmentMap, s.items, s.wastepaperType, s.weightKg);
+    // Со склада ушло столько, сколько отгрузили по нашим весам, а не столько,
+    // сколько потом приняло предприятие (разница — засор/усушка в пути).
+    // При нескольких позициях разбивка факта живёт в самих позициях.
+    if (s.shippedWeightKg > 0 && (!s.items || s.items.length <= 1)) {
+      shipmentMap.set(
+        s.wastepaperType,
+        (shipmentMap.get(s.wastepaperType) || 0) + s.shippedWeightKg
+      );
+    } else {
+      accumulate(shipmentMap, s.items, s.wastepaperType, s.weightKg);
+    }
   }
   const types = new Set([...intakeMap.keys(), ...shipmentMap.keys()]);
   return [...types]

@@ -329,7 +329,10 @@ export function BulkProductEditor({
       setDirtyIds(new Set());
       if (step < 4) {
         setStep((step + 1) as Step);
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        // На телефоне страница неподвижна (скроллится .main оболочки).
+        const shellMain = document.querySelector(".mobile-admin-app main");
+        if (shellMain) shellMain.scrollTo({ top: 0, behavior: "smooth" });
+        else window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
         setFinished(true);
       }

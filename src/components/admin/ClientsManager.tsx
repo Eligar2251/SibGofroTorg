@@ -16,6 +16,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 interface ClientOrder {
   id: string;
@@ -412,6 +413,7 @@ export function ClientsManager({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "legal" | "individual">("all");
   const [sort, setSort] = useState<"date" | "orders" | "spent">("date");
+  const isMobile = useIsMobile();
   // Список клиентов длинный — фильтруем по отложенному значению,
   // чтобы ввод в поле не тормозил.
   const deferredSearch = useDeferredValue(search);
@@ -448,7 +450,9 @@ export function ClientsManager({
   ).length;
 
   return (
-    <div className="admin-stack">
+    <div
+      className={`admin-stack clients-page${isMobile ? " wh-mobile" : ""}`}
+    >
       {/* Статистика */}
       <div
         style={{

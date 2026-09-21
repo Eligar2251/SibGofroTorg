@@ -7037,6 +7037,13 @@ body.is-col-resizing * {
   color: var(--adm-sand);
 }
 
+/* Обёртка поля «факт»: на десктопе прозрачна для сетки
+   (input остаётся третьим элементом grid-строки), на телефоне
+   становится ячейкой с подписью (см. admin-mobile.css). */
+.rev-fill-row__fact {
+  display: contents;
+}
+
 .rev-fill-row__input {
   text-align: right;
   padding: 5px 8px;
