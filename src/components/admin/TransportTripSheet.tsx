@@ -12,14 +12,17 @@
 // поэтому карточки плотные и пронумерованы по фактическому маршруту.
 //
 // Настройки печати (груз подробно/кратко/без грузов, отметки,
-// инструкции, «максимально компактно», шапка с реквизитами) запоминаются
-// в localStorage — следующий лист печатается так же.
+// инструкции, «максимально компактно», подвал приём/сдача, шапка
+// с реквизитами) запоминаются в localStorage — следующий лист
+// печатается так же. Пустые поля (телефон, контакт, инструкция)
+// не печатаются вовсе — без прочерков «—».
 // =========================================================
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { SITE_ADDRESS, SITE_HOURS_LABEL, SITE_PHONE } from "@/lib/site-config";
 import { SITE_NAME } from "@/lib/seo";
+import { ModalPortal } from "./ModalPortal";
 import {
   isWpStop,
   stopLoadedLines,
@@ -51,6 +54,7 @@ interface SheetOptions {
   goods: GoodsMode;
   dense: boolean;
   signs: boolean;
+  footSigns: boolean;
   instructions: boolean;
   showTime: boolean;
   contacts: boolean;
@@ -62,6 +66,7 @@ const DEFAULT_OPTIONS: SheetOptions = {
   goods: "full",
   dense: false,
   signs: true,
+  footSigns: true,
   instructions: true,
   showTime: true,
   contacts: true,
@@ -145,7 +150,13 @@ export function TransportTripSheet({
     .filter((stop) => stop.lines.length > 0 || !!stop.address?.trim());
   const totals = summarizeStops(stops);
 
+  // Лист живёт в портале у <body>: при печати прячем всё остальное через
+  // display:none, а сам лист идёт обычным потоком — страницы нумеруются
+  // естественно (1, при переполнении 2, 3), без дублей. Старый подход
+  // (position:fixed + visibility) в хроме печатал fixed-блок на КАЖДОЙ
+  // странице, а скрытый контент админки под ним создавал лишние листы.
   return (
+    <ModalPortal>
     <div className="deliv-print-root tls-root">
       <style>{PRINT_CSS}</style>
 
@@ -175,6 +186,10 @@ export function TransportTripSheet({
           <label className="tls-toolbar__check">
             <input type="checkbox" checked={opts.signs} onChange={(e) => patch({ signs: e.target.checked })} />
             Строки подписи
+          </label>
+          <label className="tls-toolbar__check">
+            <input type="checkbox" checked={opts.footSigns} onChange={(e) => patch({ footSigns: e.target.checked })} />
+            Приём/сдача и выезд в подвале
           </label>
           <label className="tls-toolbar__check">
             <input type="checkbox" checked={opts.showTime} onChange={(e) => patch({ showTime: e.target.checked })} />
@@ -290,8 +305,8 @@ export function TransportTripSheet({
                     {stop.kind !== "deal" && stop.kind !== "custom" ? (
                       <span className="tls-strip__deal">{stopTitle(stop)}</span>
                     ) : null}
-                    {stop.plannedTime ? (
-                      <span className="tls-strip__time">⏱ {opts.showTime && stop.plannedTime}</span>
+                    {opts.showTime && stop.plannedTime ? (
+                      <span className="tls-strip__time">⏱ {stop.plannedTime}</span>
                     ) : null}
                   </div>
 
@@ -301,18 +316,26 @@ export function TransportTripSheet({
                     <span className="tls-strip__addr">{stop.address || "адрес уточнить у диспетчера"}</span>
                   </div>
 
-                  {/* Связь на точке */}
+                  {/* Связь на точке: показываем только то, что есть.
+                      Нет телефона — одно поле «Телефон: ___», чтобы водитель
+                      вписал его рукой; нет контакта — блока «Контакт» нет. */}
                   {opts.contacts && (
                     <div className="tls-strip__row tls-strip__row--contacts">
-                      <span>
-                        <span className="tls-strip__k">Тел.</span>{" "}
-                        <span className="tls-strip__phone">{stop.phone || "—"}</span>
-                      </span>
-                      <span>
-                        <span className="tls-strip__k">Контакт</span>{" "}
-                        <span className="tls-strip__contact">{stop.contactName || "—"}</span>
-                      </span>
-                      {!stop.phone && <span className="tls-strip__duty tls-strip__duty--alert">Телефон: __________________</span>}
+                      {stop.phone?.trim() ? (
+                        <span>
+                          <span className="tls-strip__k">Тел.</span>{" "}
+                          <span className="tls-strip__phone">{stop.phone.trim()}</span>
+                        </span>
+                      ) : null}
+                      {stop.contactName?.trim() ? (
+                        <span>
+                          <span className="tls-strip__k">Контакт</span>{" "}
+                          <span className="tls-strip__contact">{stop.contactName.trim()}</span>
+                        </span>
+                      ) : null}
+                      {!stop.phone?.trim() && (
+                        <span className="tls-strip__duty tls-strip__duty--alert">Телефон: __________________</span>
+                      )}
                     </div>
                   )}
 
@@ -367,13 +390,12 @@ export function TransportTripSheet({
                     </div>
                   )}
 
-                  {/* Инструкция водителю: что написал диспетчер + общее правило операции */}
-                  {opts.instructions && (note || !opts.dense) && (
+                  {/* Инструкция водителю: только если диспетчер что-то написал */}
+                  {opts.instructions && note && (
                     <div className="tls-strip__instr">
                       <span className="tls-strip__instr-k">Инструкция</span>
                       <span className="tls-strip__instr-v">
-                        {note && <span className="tls-strip__instr-custom">{note}</span>}
-                        <span className="tls-strip__instr-default"></span>
+                        <span className="tls-strip__instr-custom">{note}</span>
                       </span>
                     </div>
                   )}
@@ -427,24 +449,27 @@ export function TransportTripSheet({
             </span>
           </div>
 
-          <div className="tls-signs">
-            <div className="tls-sign">
-              <span className="tls-sign__k">Груз по путевому листу принял/сдал</span>
-              <span className="tls-sign__line" />
+          {opts.footSigns && (
+            <div className="tls-signs">
+              <span className="tls-sign">
+                <span className="tls-sign__k">Груз принял/сдал</span>
+                <span className="tls-sign__line" />
+              </span>
+              <span className="tls-sign">
+                <span className="tls-sign__k">Тара и возврат ТМЦ</span>
+                <span className="tls-sign__checks">☐ нет ☐ есть:</span>
+              </span>
+              <span className="tls-sign">
+                <span className="tls-sign__k">Выдал{opts.issuedBy ? ` ${opts.issuedBy}` : ""}</span>
+                <span className="tls-sign__line" />
+              </span>
+              <span className="tls-sign">
+                <span className="tls-sign__k">Выезд</span> ___:___
+                <span className="tls-sign__k"> · заезд</span> ___:___
+                <span className="tls-sign__k"> · пробег</span> ___ км
+              </span>
             </div>
-            <div className="tls-sign">
-              <span className="tls-sign__k">Тара и возврат ТМЦ</span>
-              <span className="tls-sign__line tls-sign__line--checks">☐ нет ☐ есть:</span>
-            </div>
-            <div className="tls-sign">
-              <span className="tls-sign__k">Выдал {opts.issuedBy || ""}</span>
-              <span className="tls-sign__line" />
-            </div>
-            <div className="tls-sign">
-              <span className="tls-sign__k">Выезд ___:___ · заезд ___:___ · пробег ___ км</span>
-              <span className="tls-sign__line" />
-            </div>
-          </div>
+          )}
 
           <div className="tls-legal">
             Водитель отвечает за сохранность груза с момента получения до выдачи получателю.
@@ -454,12 +479,14 @@ export function TransportTripSheet({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 
 const PRINT_CSS = `
 @media screen {
-  .deliv-print-root.tls-root { padding: 76px 24px 24px; }
+  /* Лист — полноэкранный оверлей поверх админки (он в портале у body) */
+  .deliv-print-root.tls-root { position: fixed; inset: 0; z-index: 100000; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #fff; padding: 76px 24px 24px; }
   .tls { max-width: 210mm; margin: 0 auto; background: #fff; padding: 8mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); border-radius: 4px; }
   .tls-toolbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100000; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; background: rgba(26,26,24,0.96); color: #fff; font-family: system-ui, sans-serif; font-size: 12px; }
   .tls-toolbar button, .tls-toolbar select, .tls-toolbar input { font: inherit; }
@@ -473,17 +500,24 @@ const PRINT_CSS = `
 @media print {
   @page { size: A4 portrait; margin: 7mm 8mm; }
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-  .admin-sidebar, .admin-mobile-bar { display: none !important; }
-  .admin-content, .admin-main { visibility: hidden !important; }
-  .deliv-print-root, .deliv-print-root * { visibility: visible !important; }
-  .deliv-print-root.tls-root { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; z-index: 999999 !important; }
+  /* Портал блокирует скролл через body{position:fixed} — в печати это
+     режет и дублирует страницы, поэтому возвращаем обычный поток. */
+  body:has(.tls-root) { position: static !important; top: auto !important; left: auto !important; right: auto !important; width: auto !important; overflow: visible !important; }
+  /* Печатается ТОЛЬКО лист: всё остальное выкидываем из потока.
+     visibility здесь не годится — скрытые блоки оставляют высоту и
+     дают пустые листы, а fixed-блок хром повторяет на каждой странице. */
+  body:has(.tls-root) > :not(#admin-modal-root) { display: none !important; }
+  body:has(.tls-root) #admin-modal-root > :not(.tls-root) { display: none !important; }
+  .deliv-print-root.tls-root { position: static !important; inset: auto !important; width: auto !important; max-width: none !important; background: #fff !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; z-index: auto !important; }
   .tls { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
   .tls-toolbar, .tls-base-button { display: none !important; }
   .tls-base-break { break-before: auto; page-break-inside: avoid; }
-  /* Карточка точки не рвётся между страницами: водителю важна целостность */
+  /* Карточка точки не рвётся между страницами: не влезла — целиком едет
+     на следующий лист. Водителю важна целостность точки. */
   .tls-strip { break-inside: avoid; page-break-inside: avoid; }
-  .tls-foot { break-inside: avoid; }
-  .tls-head { break-after: avoid; }
+  .tls-foot { break-inside: avoid; page-break-inside: avoid; }
+  .tls-head { break-after: avoid; page-break-after: avoid; }
+  .tls-note { break-inside: avoid; page-break-inside: avoid; }
 }
 
 .tls { font-family: Arial, Helvetica, sans-serif; color: #211f1c; font-size: 10px; line-height: 1.25; }
@@ -491,11 +525,13 @@ const PRINT_CSS = `
 
 /* ── Шапка ── */
 .tls-head { display: flex; justify-content: space-between; gap: 4mm; align-items: flex-start; border-bottom: 1.6pt solid #211f1c; padding-bottom: 1.8mm; }
+.tls-head__left { min-width: 0; }
 .tls-doct { font-size: 20px; font-weight: 800; letter-spacing: 0.06em; }
 .tls-doct-sub { font-size: 11px; font-weight: 700; margin-top: 0.5mm; }
 .tls-org { font-size: 8.5px; color: #6d675e; margin-top: 0.5mm; }
 .tls-head__right { flex: 1 1 auto; max-width: 92mm; display: grid; grid-template-columns: 1fr 1fr; gap: 0.3mm 3mm; }
-.tls-line { display: flex; align-items: baseline; gap: 1.5mm; border-bottom: 0.3pt dotted #b9b2a6; }
+.tls-line { display: flex; align-items: baseline; gap: 1.5mm; border-bottom: 0.3pt dotted #b9b2a6; min-width: 0; }
+.tls-line .tls-v { overflow-wrap: anywhere; min-width: 0; }
 .tls-k { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #8c857a; flex-shrink: 0; }
 .tls-v { font-size: 10.5px; font-weight: 700; }
 .tls-note { margin-top: 1.4mm; padding: 1.2mm 2mm; background: #fdf8ec; border-left: 1mm solid #e0b84f; font-size: 9.5px; font-weight: 700; white-space: pre-line; }
@@ -558,9 +594,7 @@ const PRINT_CSS = `
 .tls-strip__instr-k { font-size: 7.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #a97c14; flex-shrink: 0; }
 .tls-strip__instr-v { font-size: 10px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
 .tls-strip__instr-custom { display: block; font-weight: 800; white-space: pre-line; }
-.tls-strip__instr-default { display: block; font-size: 8.5px; color: #6d675e; margin-top: 0.3mm; }
 .tls--dense .tls-strip__instr-v { font-size: 9px; }
-.tls--dense .tls-strip__instr-default { display: none; }
 
 .tls-strip__signs { display: flex; flex-wrap: wrap; gap: 1mm 6mm; border-top: 0.4pt solid #ddd8cd; padding-top: 0.9mm; font-size: 8.5px; color: #6d675e; }
 .tls-strip__sign { display: inline-flex; align-items: baseline; gap: 1.2mm; white-space: nowrap; }
@@ -575,9 +609,13 @@ const PRINT_CSS = `
 /* ── Подвал ── */
 .tls-foot { margin-top: 2.4mm; border-top: 1.2pt solid #211f1c; padding-top: 1.4mm; }
 .tls-totals { display: flex; flex-wrap: wrap; gap: 0.8mm 6mm; font-size: 9.5px; }
-.tls-signs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.6mm 4mm; margin-top: 2.2mm; }
-.tls-sign__k { display: block; font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.03em; color: #8c857a; }
-.tls-sign__line { display: block; border-bottom: 0.5pt solid #6d675e; height: 4.6mm; margin-top: 0.5mm; }
-.tls-sign__line--checks { border: none; height: auto; font-size: 9.5px; font-weight: 700; }
+/* Подвал — одна компактная строка: подпись идёт рядом с полем,
+   а не под ним. Не влезло (длинная фамилия выдавшего) — аккуратно
+   переносится целиком следующим блоком, а не рвётся. */
+.tls-signs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1.5mm 5mm; margin-top: 2mm; }
+.tls-sign { display: inline-flex; align-items: baseline; gap: 2mm; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.tls-sign__k { display: inline; font-size: 7.5px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.03em; color: #8c857a; }
+.tls-sign__line { display: inline-block; min-width: 20mm; border-bottom: 0.5pt solid #6d675e; height: 3.5mm; }
+.tls-sign__checks { font-size: 9.5px; font-weight: 700; white-space: nowrap; }
 .tls-legal { margin-top: 1.6mm; font-size: 7.5px; color: #8c857a; }
 `;

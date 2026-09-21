@@ -1,0 +1,1182 @@
+/* =========================================================
+   FILE: src/app/admin-warehouse-mobile.css
+   Мобильная вёрстка обычного учёта (Учёт → все 12 вкладок).
+
+   Правила включаются классом .wh-mobile на корне WarehouseManager,
+   который ставится только когда useIsMobile() === true. Поэтому
+   медиазапросов в файле НЕТ (как в wpa-mobile* и CSS-модулях):
+   «мобильность» определяет JS-хук, стили работают и на телефоне,
+   и на вертикальном планшете. Десктоп этих правил не видит вообще.
+
+   !important используется только там, где перебиваются инлайн-стили
+   (min-width/max-width таблиц, text-align ячеек) — всё в пределах
+   мобильной области, десктоп затронуть не может.
+
+   Порядок подключения (см. [adminPath]/layout.tsx): этот файл идёт
+   ПОСЛЕ admin-mobile.css, поэтому при равной специфичности побеждает.
+   ========================================================= */
+
+/* ── 0. Корень: страховка от переполнения ─────────────────── */
+.wh-mobile {
+  min-width: 0;
+  /* overflow-wrap наследуется — длинные артикулы, email и суммы
+     переносятся даже в блоках с инлайн-стилями без классов. */
+  overflow-wrap: anywhere;
+}
+
+.wh-mobile .admin-card__head {
+  flex-wrap: wrap;
+}
+
+/* Хинт «↔ таблица прокручивается» базового слоя — только для
+   настоящих прокручиваемых таблиц; карточки не листаются. */
+.wh-mobile .admin-table-wrap::after {
+  display: none !important;
+}
+
+.wh-mobile .admin-stat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wh-mobile .wh-mobile-import {
+  margin-bottom: 10px;
+}
+
+.wh-mobile .wh-mobile-import .admin-btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* ── Поиск с кнопками (склад / поставки / заказы) ─────────── */
+.wh-mobile .wh-search-row {
+  flex-wrap: wrap;
+}
+
+/* У обёртки поля инлайн flex:1 — не трогаем его, вместо этого
+   задаём минимальную ширину: поле не ужмётся кнопками, а кнопки
+   при нехватке места уйдут строкой ниже. */
+.wh-mobile .wh-search-row > div {
+  min-width: min(100%, 240px);
+}
+
+.wh-mobile .wh-search-row .admin-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* =========================================================
+   1. СКЛАД: таблица остатков → карточки товаров
+   Колонки: 1 Товар · 2 Артикул · 3 Остаток · 4 Закуп ·
+   5 Цена продажи · 6 Разница · 7 Сумма.
+   ========================================================= */
+.wh-mobile .wh-stock-table {
+  display: block;
+  width: 100% !important;
+  min-width: 0;
+  position: relative;
+}
+
+/* Шапку прячем визуально, но оставляем для скринридеров. */
+.wh-mobile .wh-stock-table > thead,
+.wh-mobile .supplier-price-table > thead,
+.wh-mobile .consignment-table > thead,
+.wh-mobile .cash-carryover__origins table > thead,
+.wh-mobile .stock-summary__table > thead,
+.wh-mobile .cp-table > thead,
+.wh-mobile .sp-table > thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.wh-mobile .wh-stock-table > tbody {
+  display: block;
+}
+
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 0 0 10px;
+}
+
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  max-width: none !important;
+  border: 0;
+  padding: 0 !important;
+  /* Инлайн text-align:right ячеек в карточке не нужен. */
+  text-align: left !important;
+  font-size: 14px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Название товара — шапка карточки во всю ширину. */
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:first-child {
+  grid-column: 1 / -1;
+  display: block;
+  max-width: none !important;
+}
+
+.wh-mobile .wh-stock-table .wh-stock-product-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.wh-mobile .wh-stock-table .wh-stock-origin-link {
+  margin-top: 4px;
+}
+
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(2)::before,
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(3)::before,
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(4)::before,
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(5)::before,
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(6)::before,
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(7)::before {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  white-space: normal;
+}
+
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(2)::before { content: "Артикул"; }
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(3)::before { content: "Остаток"; }
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(4)::before { content: "Закуп, ₽"; }
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(5)::before { content: "Продажа, ₽"; }
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(6)::before { content: "Разница"; }
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(7)::before { content: "Сумма"; }
+
+.wh-mobile .wh-stock-table > tbody > tr:not(.stock-summary-row) > td:nth-child(7) {
+  font-weight: 800;
+}
+
+/* Инлайн-редакторы: палец попадает, iOS не зумит (16px). */
+.wh-mobile .stock-inline-editor {
+  width: 100%;
+}
+
+/* Строки «в резерве / свободно» — инлайн nowrap, на карточке
+   должны переноситься. */
+.wh-mobile .wh-stock-table > tbody > tr > td > div {
+  white-space: normal !important;
+}
+
+.wh-mobile .stock-inline-editor input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  height: 40px;
+  font-size: 16px;
+}
+
+.wh-mobile .stock-inline-editor button {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+}
+
+/* Раскрытая сводка товара — блок во всю ширину под карточкой. */
+.wh-mobile .stock-summary-row {
+  display: block;
+  margin: 0 0 10px;
+}
+
+.wh-mobile .stock-summary-row > td {
+  display: block;
+  padding: 0 !important;
+  border: 0;
+  max-width: none !important;
+}
+
+.wh-mobile .stock-summary__head {
+  flex-wrap: wrap;
+}
+
+.wh-mobile .stock-summary__stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wh-mobile .stock-summary__stats strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.wh-mobile .stock-summary__section-head {
+  flex-wrap: wrap;
+}
+
+.wh-mobile .stock-summary__section-head > span {
+  max-width: none;
+  text-align: left;
+}
+
+.wh-mobile .stock-summary__table-wrap {
+  max-height: none;
+  overflow: visible;
+}
+
+/* ── Сводка: хронология движения (7 колонок) ──
+   Дата · Документ · Операция/Контрагент · Кол-во · Цена ·
+   Остаток · Маржа. */
+.wh-mobile .stock-summary__table--moves,
+.wh-mobile .stock-summary__table--deals,
+.wh-mobile .stock-summary__table--receipts {
+  display: block;
+  width: 100% !important;
+  min-width: 0;
+}
+
+.wh-mobile .stock-summary__table > tbody {
+  display: block;
+}
+
+.wh-mobile .stock-summary__table > tbody > tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0 0 8px;
+}
+
+.wh-mobile .stock-summary__table > tbody > tr > td {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: none !important;
+  border: 0;
+  padding: 0 !important;
+  text-align: left !important;
+  font-size: 13px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .stock-summary__table > tbody > tr > td:nth-child(1)::before,
+.wh-mobile .stock-summary__table > tbody > tr > td:nth-child(2)::before,
+.wh-mobile .stock-summary__table > tbody > tr > td:nth-child(3)::before,
+.wh-mobile .stock-summary__table > tbody > tr > td:nth-child(4)::before,
+.wh-mobile .stock-summary__table > tbody > tr > td:nth-child(5)::before,
+.wh-mobile .stock-summary__table > tbody > tr > td:nth-child(6)::before,
+.wh-mobile .stock-summary__table > tbody > tr > td:nth-child(7)::before {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  white-space: normal;
+}
+
+/* Хронология: первая ячейка (дата) и операция — во всю ширину. */
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(1) {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 700;
+}
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(1)::before { content: "Дата"; }
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(2)::before { content: "Документ"; }
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(3) { grid-column: 1 / -1; }
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(3)::before { content: "Операция"; }
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(4)::before { content: "Кол-во"; }
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(5)::before { content: "Цена"; }
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(6)::before { content: "Остаток"; }
+.wh-mobile .stock-summary__table--moves > tbody > tr > td:nth-child(7)::before { content: "Маржа"; }
+
+/* Заказы с товаром: заказ и покупатель — во всю ширину. */
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(1) {
+  grid-column: 1 / -1;
+  font-weight: 700;
+}
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(1)::before { content: "Заказ"; }
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(2)::before { content: "Дата"; }
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(3) { grid-column: 1 / -1; }
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(3)::before { content: "Покупатель"; }
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(4)::before { content: "Статус"; }
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(5)::before { content: "Заказано"; }
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(6)::before { content: "Отгружено"; }
+.wh-mobile .stock-summary__table--deals > tbody > tr > td:nth-child(7)::before { content: "Не отгружено"; }
+
+/* Поступления товара: поступление и поставщик — во всю ширину. */
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(1) {
+  grid-column: 1 / -1;
+  font-weight: 700;
+}
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(1)::before { content: "Поступление"; }
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(2)::before { content: "Дата"; }
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(3) { grid-column: 1 / -1; }
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(3)::before { content: "Поставщик"; }
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(4)::before { content: "Статус"; }
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(5)::before { content: "Количество"; }
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(6)::before { content: "Цена за шт."; }
+.wh-mobile .stock-summary__table--receipts > tbody > tr > td:nth-child(7)::before { content: "Сумма"; }
+
+/* ── «Требуют внимания»: карточка столбиком, кнопка во всю ширину. */
+.wh-mobile .attention-card {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.wh-mobile .attention-card > div {
+  min-width: 0;
+}
+
+.wh-mobile .attention-card .admin-btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* =========================================================
+   2. ПОСТАВКИ: прайс поставщика → карточки.
+   Колонки: 1 Товар · 2 Остаток · 3 Порог · 4 Цена поставщика ·
+   5 Статус · 6 Действия.
+   ========================================================= */
+.wh-mobile .supplier-price-wrap {
+  max-height: none !important;
+}
+
+.wh-mobile .supplier-price-table {
+  display: block;
+  width: 100% !important;
+  min-width: 0;
+}
+
+.wh-mobile .supplier-price-table > tbody {
+  display: block;
+}
+
+.wh-mobile .supplier-price-table > tbody > tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 0 0 10px;
+}
+
+.wh-mobile .supplier-price-table > tbody > tr > td {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  max-width: none !important;
+  border: 0;
+  padding: 0 !important;
+  font-size: 14px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .supplier-price-table > tbody > tr > td:first-child,
+.wh-mobile .supplier-price-table > tbody > tr > td:last-child {
+  grid-column: 1 / -1;
+}
+
+.wh-mobile .supplier-price-table > tbody > tr > td:first-child {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.wh-mobile .supplier-price-table > tbody > tr > td:nth-child(2)::before,
+.wh-mobile .supplier-price-table > tbody > tr > td:nth-child(3)::before,
+.wh-mobile .supplier-price-table > tbody > tr > td:nth-child(4)::before,
+.wh-mobile .supplier-price-table > tbody > tr > td:nth-child(5)::before {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  white-space: normal;
+}
+
+.wh-mobile .supplier-price-table > tbody > tr > td:nth-child(2)::before { content: "Остаток"; }
+.wh-mobile .supplier-price-table > tbody > tr > td:nth-child(3)::before { content: "Порог"; }
+.wh-mobile .supplier-price-table > tbody > tr > td:nth-child(4)::before { content: "Цена поставщика, ₽"; }
+.wh-mobile .supplier-price-table > tbody > tr > td:nth-child(5)::before { content: "Статус"; }
+
+.wh-mobile .supplier-price-table .admin-input {
+  width: 100%;
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.wh-mobile .supplier-price-table .admin-btn {
+  min-height: 40px;
+}
+
+/* =========================================================
+   3. РЕАЛИЗАЦИЯ: широкая таблица (12 колонок) → карточки.
+   1 Поставщик/ПО · 2 Товар · 3 Поставлено · 4 Отгр/Вручн/Всего ·
+   5 Остаток · 6 По закупке · 7 Выручка · 8 Прибыль ·
+   9 Оплачено · 10 К оплате · 11 Чистыми · 12 Полный долг.
+   ========================================================= */
+.wh-mobile .consignment-table {
+  display: block;
+  width: 100% !important;
+  /* Инлайн min-width:1100 больше не нужен — карточки в потоке. */
+  min-width: 0 !important;
+}
+
+.wh-mobile .consignment-table > tbody {
+  display: block;
+}
+
+.wh-mobile .consignment-table > tbody > tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 0 0 10px;
+}
+
+.wh-mobile .consignment-table > tbody > tr > td {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  max-width: none !important;
+  border: 0;
+  padding: 0 !important;
+  text-align: left !important;
+  font-size: 14px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(1),
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(2) {
+  grid-column: 1 / -1;
+}
+
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(2)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(3)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(4)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(5)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(6)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(7)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(8)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(9)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(10)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(11)::before,
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(12)::before {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  white-space: normal;
+}
+
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(3)::before { content: "Поставлено"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(4)::before { content: "Отгр / вручн / всего"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(5)::before { content: "Остаток"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(6)::before { content: "Продано по закупке"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(7)::before { content: "Выручка"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(8)::before { content: "Прибыль"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(9)::before { content: "Оплачено"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(10)::before { content: "К оплате"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(11)::before { content: "Чистыми"; }
+.wh-mobile .consignment-table > tbody > tr > td:nth-child(12)::before { content: "Полный долг"; }
+
+/* Ручной ввод «вручную» — крупный, без зума iOS. */
+.wh-mobile .consignment-table input.admin-input {
+  width: 84px !important;
+  min-height: 40px;
+  font-size: 16px;
+}
+
+/* Строка ИТОГО: первая ячейка (colspan=2) — заголовок, остальные
+   сдвинуты на одну позицию относительно обычных строк. */
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:first-child {
+  grid-column: 1 / -1;
+  font-weight: 800;
+  font-size: 15px;
+  text-align: left !important;
+}
+
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(2)::before { content: "Поставлено"; }
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(3)::before { content: "Продано всего"; }
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(5)::before { content: "По закупке"; }
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(6)::before { content: "Выручка"; }
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(7)::before { content: "Прибыль"; }
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(8)::before { content: "Оплачено"; }
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(9)::before { content: "К оплате"; }
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(10)::before { content: "Чистыми"; }
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(11)::before { content: "Полный долг"; }
+
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td:nth-child(4) {
+  display: none;
+}
+
+.wh-mobile .consignment-table > tbody > tr.consignment-totals > td {
+  font-weight: 700;
+}
+
+/* =========================================================
+   4. ЗАКАЗЫ: карточки admin-order собираются в столбец
+   базовым слоем; здесь — точечные фиксы переполнений.
+   ========================================================= */
+.wh-mobile .admin-order__total {
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.wh-mobile .admin-order__meta-val {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wh-mobile .admin-order__item > a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* =========================================================
+   5. ДОСТАВКИ: компактная шапка, удобные строки точек.
+   ========================================================= */
+.wh-mobile .deliv-page > .admin-page-head > div:first-child {
+  display: none;
+}
+
+.wh-mobile .deliv-page > .admin-page-head .admin-page-head__actions {
+  width: 100%;
+}
+
+.wh-mobile .deliv-page > .admin-page-head .admin-btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.wh-mobile .trip-stop__line-qty .admin-input {
+  min-height: 40px;
+  font-size: 16px;
+}
+
+/* =========================================================
+   6. ПЛАНЫ ПОСТАВОК: hero и воркспейс столбиком,
+   позиции плана — двухрядные карточки.
+   ========================================================= */
+.wh-mobile .sp-hero {
+  flex-wrap: wrap;
+}
+
+.wh-mobile .sp-hero__actions {
+  width: 100%;
+}
+
+.wh-mobile .sp-hero__actions .admin-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.wh-mobile .sp-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wh-mobile .sp-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wh-mobile .sp-side {
+  position: static;
+}
+
+.wh-mobile .sp-editor__head {
+  flex-wrap: wrap;
+}
+
+.wh-mobile .sp-editor__title-block {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.wh-mobile .sp-add__draft {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.wh-mobile .sp-add__product {
+  grid-column: 1 / -1;
+}
+
+.wh-mobile .sp-add__draft .admin-input {
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.wh-mobile .sp-add__btn {
+  min-height: 44px;
+  justify-content: center;
+}
+
+.wh-mobile .sp-item {
+  grid-template-columns: 28px minmax(0, 1fr) 40px;
+  grid-template-areas:
+    "index info remove"
+    "qty qty move";
+  row-gap: 8px;
+  align-items: center;
+}
+
+.wh-mobile .sp-item__index { grid-area: index; }
+.wh-mobile .sp-item__info { grid-area: info; }
+.wh-mobile .sp-item__qty { grid-area: qty; }
+.wh-mobile .sp-item__move { grid-area: move; }
+.wh-mobile .sp-item__remove { grid-area: remove; }
+
+.wh-mobile .sp-item__qty .admin-input,
+.wh-mobile .sp-item__move .admin-select {
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.wh-mobile .sp-item__remove {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wh-mobile .sp-items__head {
+  flex-wrap: wrap;
+}
+
+/* =========================================================
+   7. ЗАКУПКИ: hero и форма создания уже стекутся базовым
+   слоем; здесь — тач-размеры полей оплаты.
+   ========================================================= */
+.wh-mobile .purchase-pay__form .admin-input,
+.wh-mobile .purchase-pay__form .admin-select {
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.wh-mobile .purchase-tile__editor-fields .admin-input,
+.wh-mobile .purchase-tile__editor-fields .admin-select {
+  min-height: 40px;
+}
+
+/* =========================================================
+   8. ПЛАН ПРОДАЖ: три таблицы → карточки.
+   Основная: 1 Контрагент · 2 Ожид. заказов · 3 Средний чек ·
+   4 План выручки · 5 Уже оформил · 6 Осталось · 7 Прибыль ·
+   8 Активность.
+   ========================================================= */
+.wh-mobile .sp-table {
+  display: block;
+  width: 100% !important;
+  min-width: 0;
+}
+
+.wh-mobile .sp-table > tbody {
+  display: block;
+}
+
+.wh-mobile .sp-table > tbody > tr,
+.wh-mobile .sp-table--products > tbody > tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 0 0 10px;
+}
+
+.wh-mobile .sp-table > tbody > tr > td {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  max-width: none !important;
+  border: 0;
+  padding: 0 !important;
+  text-align: left;
+  white-space: normal;
+  font-size: 14px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:first-child,
+.wh-mobile .sp-table--products > tbody > tr > td:first-child {
+  grid-column: 1 / -1;
+}
+
+.wh-mobile .sp-table .sp-party {
+  max-width: none;
+}
+
+.wh-mobile .sp-table .sp-party__name {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  font-size: 15px;
+}
+
+.wh-mobile .sp-table > tbody > tr > td:nth-child(2)::before,
+.wh-mobile .sp-table > tbody > tr > td:nth-child(3)::before,
+.wh-mobile .sp-table > tbody > tr > td:nth-child(4)::before,
+.wh-mobile .sp-table > tbody > tr > td:nth-child(5)::before,
+.wh-mobile .sp-table > tbody > tr > td:nth-child(6)::before,
+.wh-mobile .sp-table > tbody > tr > td:nth-child(7)::before,
+.wh-mobile .sp-table > tbody > tr > td:nth-child(8)::before,
+.wh-mobile .sp-table > tbody > tr > td:nth-child(9)::before {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  white-space: normal;
+}
+
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:nth-child(2)::before { content: "Ожид. заказов"; }
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:nth-child(3)::before { content: "Средний чек"; }
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:nth-child(4)::before { content: "План выручки"; }
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:nth-child(5)::before { content: "Уже оформил"; }
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:nth-child(6)::before { content: "Осталось"; }
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:nth-child(7)::before { content: "Прибыль"; }
+
+/* Активность — во всю ширину последней строкой. */
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:nth-child(8) {
+  grid-column: 1 / -1;
+}
+.wh-mobile .sp-table > tbody > tr.sp-cp-row > td:nth-child(8)::before { content: "Активность"; }
+
+/* Раскрытые товары контрагента — вложенная карточка. */
+.wh-mobile .sp-table > tbody > tr.sp-detail {
+  display: block;
+  margin: 0 0 10px;
+}
+
+.wh-mobile .sp-table > tbody > tr.sp-detail > td {
+  display: block;
+  padding: 0;
+  border: 0;
+}
+
+/* Вложенная таблица (5 колонок): Товар · Ожидаем кол-во ·
+   Ожидаемая выручка · Закупка · Прибыль. */
+.wh-mobile .sp-table--nested > tbody > tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0 0 8px;
+}
+
+.wh-mobile .sp-table--nested > tbody > tr > td:first-child {
+  grid-column: 1 / -1;
+  font-weight: 700;
+}
+
+.wh-mobile .sp-table--nested > tbody > tr > td:nth-child(2)::before { content: "Ожидаем кол-во"; }
+.wh-mobile .sp-table--nested > tbody > tr > td:nth-child(3)::before { content: "Ожидаемая выручка"; }
+.wh-mobile .sp-table--nested > tbody > tr > td:nth-child(4)::before { content: "Закупка"; }
+.wh-mobile .sp-table--nested > tbody > tr > td:nth-child(5)::before { content: "Прибыль"; }
+
+/* Итого по контрагентам — карточка-сумма. */
+.wh-mobile .sp-table > tfoot {
+  display: block;
+}
+
+.wh-mobile .sp-table > tfoot > tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 12px;
+  background: var(--adm-paper-warm);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.wh-mobile .sp-table > tfoot > tr > td {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  max-width: none !important;
+  border: 0;
+  padding: 0 !important;
+  text-align: left;
+  white-space: normal;
+  font-size: 14px !important;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .sp-table > tfoot > tr > td:first-child {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wh-mobile .sp-table > tfoot > tr > td:last-child:empty {
+  display: none;
+}
+
+.wh-mobile .sp-table > tfoot > tr > td:nth-child(2)::before { content: "План выручки"; }
+.wh-mobile .sp-table > tfoot > tr > td:nth-child(3)::before { content: "Уже оформили"; }
+.wh-mobile .sp-table > tfoot > tr > td:nth-child(4)::before { content: "Осталось"; }
+.wh-mobile .sp-table > tfoot > tr > td:nth-child(5)::before { content: "Прибыль"; }
+
+.wh-mobile .sp-table > tfoot > tr > td:nth-child(2)::before,
+.wh-mobile .sp-table > tfoot > tr > td:nth-child(3)::before,
+.wh-mobile .sp-table > tfoot > tr > td:nth-child(4)::before,
+.wh-mobile .sp-table > tfoot > tr > td:nth-child(5)::before {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  white-space: normal;
+}
+
+/* Таблица товаров плана (9 колонок): Товар · План на период ·
+   Уже в периоде · Осталось к плану · Выручка · Закупка ·
+   Прибыль · Остаток · Покрытие склада. */
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(2)::before { content: "План на период"; }
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(3)::before { content: "Уже в периоде"; }
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(4)::before { content: "Осталось к плану"; }
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(5)::before { content: "Выручка"; }
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(6)::before { content: "Закупка"; }
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(7)::before { content: "Прибыль"; }
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(8)::before { content: "Остаток"; }
+
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(9) {
+  grid-column: 1 / -1;
+}
+.wh-mobile .sp-table--products > tbody > tr > td:nth-child(9)::before { content: "Покрытие склада"; }
+
+/* Пустая строка «ничего не найдено» — обычный блок. */
+.wh-mobile .sp-table > tbody > tr > td[colspan] {
+  grid-column: 1 / -1;
+}
+
+.wh-mobile .sp-table > tbody > tr > td[colspan]::before {
+  content: none;
+}
+
+/* Навигация по месяцам — крупные кнопки. */
+.wh-mobile .rf-month-nav .admin-btn {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.wh-mobile .rf-month-label {
+  min-width: 0;
+}
+
+/* =========================================================
+   9. БАНК: источники остатка кассы → карточки.
+   Колонки: 1 Откуда поступило · 2 Дата · 3 Плательщик ·
+   4 Было · 5 Осталось в кассе.
+   ========================================================= */
+.wh-mobile .cash-carryover__origins {
+  max-height: none;
+  overflow: visible;
+}
+
+.wh-mobile .cash-carryover__origins table {
+  display: block;
+  width: 100% !important;
+  min-width: 0;
+}
+
+.wh-mobile .cash-carryover__origins table > tbody {
+  display: block;
+}
+
+.wh-mobile .cash-carryover__origins table > tbody > tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 0 0 10px;
+}
+
+.wh-mobile .cash-carryover__origins table > tbody > tr > td {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  max-width: none !important;
+  border: 0;
+  padding: 0 !important;
+  text-align: left !important;
+  font-size: 14px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(1),
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(1) {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(2)::before,
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(4)::before,
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(5)::before {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  white-space: normal;
+}
+
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(2)::before { content: "Дата"; }
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(4)::before { content: "Было"; }
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(5)::before { content: "Осталось в кассе"; }
+
+.wh-mobile .cash-carryover__origins table > tbody > tr > td:nth-child(5) {
+  font-weight: 800;
+  color: var(--adm-pine);
+}
+
+/* ── Кассовые смены: плитки 2 в ряд, строки в две строки. ── */
+.wh-mobile .cs-tiles,
+.wh-mobile .cs-tiles--big {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wh-mobile .cs-line {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.wh-mobile .cs-line__main {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.wh-mobile .cs-line__name {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.wh-mobile .cs-line__val {
+  margin-left: auto;
+}
+
+.wh-mobile .cs-modal__foot {
+  flex-wrap: wrap;
+}
+
+.wh-mobile .cs-modal__foot .admin-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* Чипы периодов банка — крупнее для пальца. */
+.wh-mobile .bank-period-presets button {
+  font-size: 12px;
+  padding: 6px 12px;
+  min-height: 36px;
+}
+
+/* =========================================================
+   10. ЗАРПЛАТЫ: Excel-таблица остаётся таблицей (листается
+   по горизонтали), но липкий блок слева сужается, иначе на
+   телефоне он шире экрана и закрывает дни месяца.
+   ========================================================= */
+.wh-mobile .whsal-table {
+  --whsal-w-name: 132px;
+  --whsal-w-rest: 84px;
+  --whsal-w-day: 34px;
+  font-size: 11px;
+}
+
+.wh-mobile .whsal-name-text strong,
+.wh-mobile .whsal-name-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Липкими остаются только ФИО и итог справа; начисления/долг/
+   получено едут вместе с днями. */
+.wh-mobile .whsal-th--accrued,
+.wh-mobile .whsal-td--accrued,
+.wh-mobile .whsal-th--debt,
+.wh-mobile .whsal-td--debt,
+.wh-mobile .whsal-th--received,
+.wh-mobile .whsal-td--received {
+  position: static;
+  width: auto;
+  min-width: 64px;
+}
+
+/* Ручки перетаскивания колонок пальцем не ухватить — прячем. */
+.wh-mobile .whsal-col-resizer {
+  display: none;
+}
+
+.wh-mobile .whsal-monthnav__btn {
+  width: 40px;
+  height: 40px;
+}
+
+.wh-mobile .whsal-qform__row {
+  flex-wrap: wrap;
+}
+
+.wh-mobile .whsal-hint {
+  flex-basis: 100%;
+}
+
+/* =========================================================
+   11. КОНТРАГЕНТЫ: таблица → карточки.
+   Колонки: 1 Контрагент · 2 Тип · 3 Контакты · 4 ИНН/КПП ·
+   5 Документы · 6 Оборот · 7 Действия.
+   Сортировка по шапке на мобильном недоступна — остаются
+   поиск и фильтр по роли в тулбаре выше.
+   ========================================================= */
+.wh-mobile .cp-table {
+  display: block;
+  width: 100% !important;
+  min-width: 0;
+}
+
+.wh-mobile .cp-table > tbody {
+  display: block;
+}
+
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 12px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 0 0 10px;
+}
+
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  max-width: none !important;
+  border: 0;
+  padding: 0 !important;
+  font-size: 14px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:first-child,
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(3),
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:last-child {
+  grid-column: 1 / -1;
+}
+
+.wh-mobile .cp-table .cp-table__name {
+  min-width: 0;
+  min-height: 44px;
+}
+
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(2)::before,
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(3)::before,
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(4)::before,
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(5)::before,
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(6)::before {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--adm-sand);
+  white-space: normal;
+}
+
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(2)::before { content: "Тип"; }
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(3)::before { content: "Контакты"; }
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(4)::before { content: "ИНН / КПП"; }
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(5)::before { content: "Документов"; }
+.wh-mobile .cp-table > tbody > tr:not(.cp-table__details-row) > td:nth-child(6)::before { content: "Оборот"; }
+
+.wh-mobile .cp-table .cp-table__turnover {
+  font-size: 16px;
+}
+
+.wh-mobile .cp-table .admin-actions {
+  flex-direction: row;
+}
+
+.wh-mobile .cp-table .admin-actions .admin-btn {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
+
+/* Раскрытые подробности — блок под карточкой. */
+.wh-mobile .cp-table__details-row {
+  display: block;
+  margin: -4px 0 10px;
+}
+
+.wh-mobile .cp-table__details-row > td {
+  display: block;
+  padding: 0 !important;
+  border: 0;
+}
+
+.wh-mobile .cp-table__details {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+/* =========================================================
+   12. КЛИЕНТЫ: селект сортировки во всю ширину, остальное
+   уже переносится (flex-wrap в разметке).
+   ========================================================= */
+.wh-mobile.clients-page > div > select.admin-select {
+  width: 100%;
+}
+
+.wh-mobile.clients-page .admin-btn {
+  min-height: 40px;
+}

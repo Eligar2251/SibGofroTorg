@@ -531,18 +531,21 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
                           <span className="rev-fill-row__acc">
                             {r.stockQty.toLocaleString("ru-RU")}
                           </span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            inputMode="numeric"
-                            className="admin-input rev-fill-row__input"
-                            value={raw}
-                            placeholder="—"
-                            onChange={(e) =>
-                              setActual((prev) => ({ ...prev, [r.id]: e.target.value }))
-                            }
-                          />
+                          <label className="rev-fill-row__fact">
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              inputMode="numeric"
+                              className="admin-input rev-fill-row__input"
+                              value={raw}
+                              placeholder="—"
+                              aria-label={`Фактический остаток: ${r.name}`}
+                              onChange={(e) =>
+                                setActual((prev) => ({ ...prev, [r.id]: e.target.value }))
+                              }
+                            />
+                          </label>
                           <span
                             className={`rev-fill-row__diff${
                               diff != null && diff !== 0 ? " rev-fill-row__diff--warn" : ""

@@ -96,5 +96,13 @@
 .main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  /* Единственная прокручиваемая область оболочки. contain гасит
+     «резину» и pull-to-refresh, чтобы не дёргался весь экран. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
   padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 12px);
 }

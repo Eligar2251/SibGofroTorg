@@ -294,7 +294,7 @@ export function ProductStockSummaryPanel({
           </div>
           {chronologicalHistory.length > 0 ? (
             <div className="admin-table-wrap stock-summary__table-wrap">
-              <table className="admin-table stock-summary__table">
+              <table className="admin-table stock-summary__table stock-summary__table--moves">
                 <thead>
                   <tr>
                     <th>Дата</th>
@@ -377,7 +377,7 @@ export function ProductStockSummaryPanel({
           </div>
           {summary.deals.length > 0 ? (
             <div className="admin-table-wrap stock-summary__table-wrap">
-              <table className="admin-table stock-summary__table">
+              <table className="admin-table stock-summary__table stock-summary__table--deals">
                 <thead>
                   <tr>
                     <th>Заказ</th>
@@ -458,7 +458,7 @@ export function ProductStockSummaryPanel({
           </div>
           {summary.receipts.length > 0 ? (
             <div className="admin-table-wrap stock-summary__table-wrap">
-              <table className="admin-table stock-summary__table">
+              <table className="admin-table stock-summary__table stock-summary__table--receipts">
                 <thead>
                   <tr>
                     <th>Поступление</th>

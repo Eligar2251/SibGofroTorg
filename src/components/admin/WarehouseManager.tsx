@@ -38,6 +38,7 @@ import {
   Lightbulb,
   Upload,
   Target,
+  User,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -81,6 +82,13 @@ import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSumma
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { CashSessions } from "@/components/admin/CashSessions";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import {
+  WarehouseMobileHero,
+  WarehouseMobileNav,
+  WarehouseMobileBankDetails,
+  type WarehouseMobileNavItem,
+} from "@/components/admin/mobile/WarehouseMobile";
 import {
   CounterpartiesManager,
   type CounterpartyDocument,
@@ -400,6 +408,10 @@ export function WarehouseManager({
   );
   const router = useRouter();
   const [collecting, setCollecting] = useState(false);
+  // Телефон / вертикальный планшет: вместо десктопных шапки и вкладок
+  // рендерим мобильный hero и сетку разделов (см. WarehouseMobile).
+  // На сервере всегда false — SSR отдаёт десктопную разметку.
+  const isMobile = useIsMobile();
   const [showCollect, setShowCollect] = useState(false);
   const [collectError, setCollectError] = useState("");
 
@@ -1421,6 +1433,165 @@ export function WarehouseManager({
     [receipts, receiptPaidMap]
   );
 
+  // --- Мобильная навигация: все 12 разделов со статистикой и
+  // счётчиками «требует внимания». Всё считается из уже загруженных
+  // данных, новых запросов нет.
+  const mobileNav = useMemo((): WarehouseMobileNavItem[] => {
+    const attentionStock =
+      criticalProducts.outOfStock.length + criticalProducts.lowStock.length;
+    const unpaidReceipts = receipts.filter(
+      (r) => (receiptPaidMap.get(String(r.id)) || 0) < (r.total || 0) - 0.009
+    ).length;
+    const activeDeals = deals.filter(
+      (d) => d.status !== "completed" && d.status !== "cancelled"
+    );
+    const unpaidDeals = activeDeals.filter(
+      (d) => (dealPaidMap.get(String(d.id)) || 0) < (d.total || 0) - 0.009
+    ).length;
+    const activeTransports = transports.filter(
+      (t) => t.status === "draft" || t.status === "active"
+    ).length;
+    const deliveryQueue =
+      pendingDeals.length + pendingWpDocs.length + pendingReceipts.length;
+    const unpaidPayments = payments.filter(
+      (p) => !p.isPaid && !p.excludeFromBalance
+    ).length;
+    const unpaidSalaries = salaries.filter((s) => !s.isPaid);
+    const unpaidSalarySum = unpaidSalaries.reduce(
+      (sum, s) => sum + (Number(s.amount) || 0),
+      0
+    );
+    const debtParties = counterpartiesWithDebt.length;
+    const icon = (node: React.ReactNode) => node;
+    const tabIcon = (key: TabKey) =>
+      icon(TABS.find((t) => t.key === key)?.icon);
+    return [
+      {
+        key: "stock",
+        label: "Склад",
+        icon: tabIcon("stock"),
+        stat: `${stock.length} поз · ${zeroStock} пустых`,
+        badge: attentionStock,
+      },
+      {
+        key: "receipts",
+        label: "Поставки",
+        icon: tabIcon("receipts"),
+        stat: `${receipts.length} док.`,
+        badge: unpaidReceipts,
+      },
+      {
+        key: "plans",
+        label: "Планы поставок",
+        icon: tabIcon("plans"),
+        stat: supplyPlans.length > 0 ? `${supplyPlans.length} план.` : undefined,
+      },
+      {
+        key: "purchases",
+        label: "Закупки",
+        icon: tabIcon("purchases"),
+        stat:
+          activePurchasePlans.length > 0
+            ? `активных: ${activePurchasePlans.length}`
+            : undefined,
+      },
+      {
+        key: "deals",
+        label: "Заказы",
+        icon: tabIcon("deals"),
+        stat: `${activeDeals.length} активных`,
+        badge: unpaidDeals,
+      },
+      { key: "plan", label: "План", icon: tabIcon("plan") },
+      {
+        key: "deliveries",
+        label: "Доставки",
+        icon: tabIcon("deliveries"),
+        stat:
+          activeTransports > 0 || deliveryQueue > 0
+            ? `рейсов: ${activeTransports} · в очереди: ${deliveryQueue}`
+            : undefined,
+        badge: deliveryQueue,
+      },
+      {
+        key: "bank",
+        label: "Банк",
+        icon: tabIcon("bank"),
+        stat: `прогноз ${fmt(Math.round(bankSummary.forecast))} ₽`,
+        badge: unpaidPayments,
+      },
+      {
+        key: "salaries",
+        label: "Зарплаты",
+        icon: tabIcon("salaries"),
+        stat:
+          unpaidSalaries.length > 0
+            ? `к выплате ${fmt(Math.round(unpaidSalarySum))} ₽`
+            : undefined,
+        badge: unpaidSalaries.length,
+      },
+      { key: "reports", label: "Отчёты", icon: tabIcon("reports") },
+      {
+        key: "counterparties",
+        label: "Контрагенты",
+        icon: tabIcon("counterparties"),
+        stat: `${counterpartyRows.length} контр.`,
+        badge: debtParties,
+      },
+      {
+        key: "clients",
+        label: "Клиенты",
+        icon: <User size={13} />,
+        stat: clients.length > 0 ? `${clients.length} чел.` : undefined,
+      },
+    ];
+  }, [
+    criticalProducts,
+    receipts,
+    receiptPaidMap,
+    deals,
+    dealPaidMap,
+    transports,
+    pendingDeals,
+    pendingWpDocs,
+    pendingReceipts,
+    payments,
+    salaries,
+    counterpartiesWithDebt,
+    activePurchasePlans,
+    stock,
+    zeroStock,
+    supplyPlans,
+    bankSummary,
+    counterpartyRows,
+    clients,
+  ]);
+
+  // --- Мобильный hero: долги «нам должны / мы должны» из тех же
+  // остатков, что и списки банка (положительные балансы).
+  const mobileDebts = useMemo(() => {
+    let receivables = 0;
+    let payables = 0;
+    for (const c of allCounterparties) {
+      if (c.balance <= 0.009) continue;
+      if (c.type === "customer") receivables += c.balance;
+      else payables += c.balance;
+    }
+    return {
+      receivables: Math.round(receivables * 100) / 100,
+      payables: Math.round(payables * 100) / 100,
+    };
+  }, [allCounterparties]);
+
+  const mobileDateLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "long",
+      }),
+    []
+  );
+
   const stockById = useMemo(
     () => new Map(stock.map((p) => [p.id, p.stockQty])),
     [stock]
@@ -1700,88 +1871,217 @@ export function WarehouseManager({
   );
 
   return (
-    <div>
+    <div className={isMobile ? "wh-mobile" : undefined}>
       <PaymentDetailsModal
         paymentId={detailPaymentId}
         adminPath={adminPath}
         onClose={() => setDetailPaymentId(null)}
       />
-      <div className="admin-page-head">
-        <div>
-          <h1 className="admin-h1">Учёт</h1>
-          <p className="admin-sub">
-            Склад, заказы покупателей и банк — внутренний учёт, не связан с
-            заявками с сайта.
-          </p>
-        </div>
-      </div>
 
-      <div className="admin-tabs-with-actions">
-        <div className="admin-filters">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => {
-                if (t.key === activeTab) return;
-                router.push(`/${adminPath}/warehouse?tab=${t.key}`);
-              }}
-              className={`admin-filter${activeTab === t.key ? " admin-filter--active" : ""}`}
-            >
-              {t.icon}
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="admin-page-head__actions">
-          {activeTab === "receipts" && receiptSub === "active" && (
-            <ReceiptForm
-              products={pickerProducts}
-              counterparties={counterpartyOptions}
-              deals={deals}
-              payments={payments}
-            />
-          )}
-          {activeTab === "deals" && (
-            <>
-              <Link
-                href={`/${adminPath}/warehouse/import`}
-                className="admin-btn admin-btn--ghost"
-                prefetch={false}
-                title="Массовая загрузка старых проведённых заказов контрагентов"
-              >
-                <Upload size={14} /> Массовая загрузка
-              </Link>
-              <DealForm
-                products={pickerProducts}
-                counterparties={counterpartyOptions}
-                payments={payments}
-                deliveryPrice={deliveryPrice}
-                freeDeliveryThreshold={freeDeliveryThreshold}
-                reservedStockById={reservedTotalById}
-                tierDiscounts={tierDiscounts}
-              />
-            </>
-          )}
-          {activeTab === "plan" && (
-            <Link
-              href={`/${adminPath}/warehouse/import`}
-              className="admin-btn admin-btn--ghost"
-              prefetch={false}
-              title="Массовая загрузка старых проведённых заказов контрагентов"
-            >
-              <Upload size={14} /> Загрузить историю
-            </Link>
-          )}
-          {activeTab === "bank" && (
-            <PaymentForm
-              deals={dealLinkOptions}
-              receipts={receiptLinkOptions}
-              counterparties={counterpartyOptions}
-              purchasePlans={activePurchasePlans}
-            />
-          )}
-        </div>
-      </div>
+      {/* Модалки hero: калькулятор и сводка кассы доступны с любой вкладки. */}
+      {showCollect && (
+        <CashCollectModal
+          cashBalance={bankSummary.cashBalance}
+          adminPath={adminPath}
+          onClose={() => setShowCollect(false)}
+        />
+      )}
+
+      {showCalculator && (
+        <ModalPortal>
+          <div className="admin-modal-overlay" onClick={() => setShowCalculator(false)}>
+            <div className="admin-modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+              <div className="admin-modal__head">
+                <h3 className="admin-modal__title"><Calculator size={14} style={{ marginRight: 6 }} />Калькулятор счёта</h3>
+                <button type="button" className="admin-modal__close" onClick={() => setShowCalculator(false)}><X size={14} /></button>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--adm-muted)", marginBottom: 8 }}>
+                Расчётный счёт: <b>{fmt(bankSummary.bankBalance)} ₽</b> · Касса: <b>{fmt(bankSummary.cashBalance)} ₽</b> · Всего: <b>{fmt(bankSummary.balance)} ₽</b>
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Выражение</label>
+                <input className="admin-input" value={calcExpression} onChange={e => setCalcExpression(e.target.value)} placeholder="напр. 12500+3200*2  или  банк-5000" />
+                <div style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 4 }}>Поддерживаются + − * / ( ) и слова: банк, касса, всего · Enter = посчитать</div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                {[
+                  ["+банк", () => setCalcExpression(v => (v ? v + "+" : "") + String(Math.round(bankSummary.bankBalance)))],
+                  ["+касса", () => setCalcExpression(v => (v ? v + "+" : "") + String(Math.round(bankSummary.cashBalance)))],
+                  ["Очистить", () => { setCalcExpression(""); setCalcResult(""); }],
+                  ["Посчитать", () => {
+                    try {
+                      let expr = calcExpression.replace(/банк/g, String(bankSummary.bankBalance)).replace(/касса/g, String(bankSummary.cashBalance)).replace(/всего/g, String(bankSummary.balance)).replace(/[^0-9+\-*/(). ]/g, "");
+                      if (!expr.trim()) { setCalcResult(""); return; }
+                      // безопасный eval
+                      const res = Function('"use strict";return (' + expr + ')')();
+                      setCalcResult(String(Math.round(Number(res) * 100) / 100));
+                    } catch { setCalcResult("ошибка"); }
+                  }],
+                ].map(([label, fn]: any) => (
+                  <button key={label} type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={fn}>{label}</button>
+                ))}
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
+                {["7","8","9","/","4","5","6","*","1","2","3","-","0",".","(",")"].map(ch => (
+                  <button key={ch} type="button" className="admin-btn admin-btn--ghost" style={{ padding: "8px 0" }} onClick={() => setCalcExpression(v => v + ch)}>{ch}</button>
+                ))}
+                <button type="button" className="admin-btn admin-btn--ghost" style={{ padding: "8px 0" }} onClick={() => setCalcExpression(v => v + "+")}>+</button>
+                <button type="button" className="admin-btn admin-btn--primary" style={{ gridColumn: "span 3" }} onClick={() => {
+                  try {
+                    let expr = calcExpression.replace(/банк/g, String(bankSummary.bankBalance)).replace(/касса/g, String(bankSummary.cashBalance)).replace(/всего/g, String(bankSummary.balance)).replace(/[^0-9+\-*/(). ]/g, "");
+                    if (!expr.trim()) { setCalcResult(""); return; }
+                    const res = Function('"use strict";return (' + expr + ')')();
+                    setCalcResult(String(Math.round(Number(res) * 100) / 100));
+                  } catch { setCalcResult("ошибка"); }
+                }}>=</button>
+              </div>
+              {calcResult && (
+                <div style={{ marginTop: 10, padding: 10, background: "var(--adm-paper)", borderRadius: 8, border: "1px solid var(--adm-border)" }}>
+                  <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>Результат</div>
+                  <div style={{ fontWeight: 800, fontSize: 18 }}>{calcResult} ₽</div>
+                  <div style={{ fontSize: 11, color: "var(--adm-muted)", marginTop: 4 }}>
+                    Баланс + результат: <b>{fmt(Math.round((bankSummary.balance + Number(calcResult || 0)) * 100) / 100)} ₽</b> · Банк + результат: <b>{fmt(Math.round((bankSummary.bankBalance + Number(calcResult || 0)) * 100) / 100)} ₽</b>
+                  </div>
+                </div>
+              )}
+              <p style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 8 }}>Это не просто калькулятор: считает относительно счёта. Вставьте «банк» в выражение, чтобы быстро прикинуть новый остаток.</p>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+      {isMobile ? (
+        <>
+          <WarehouseMobileHero
+            data={{
+              total: bankSummary.balance,
+              bank: bankSummary.bankBalance,
+              cash: bankSummary.cashBalance,
+              cashNegative: bankSummary.cashBalanceNegative,
+              ym: bankSummary.ymCardBalance,
+              forecast: bankSummary.forecast,
+              receivables: mobileDebts.receivables,
+              payables: mobileDebts.payables,
+              dateLabel: mobileDateLabel,
+            }}
+            actions={
+              <>
+                <ReceiptForm
+                  products={pickerProducts}
+                  counterparties={counterpartyOptions}
+                  deals={deals}
+                  payments={payments}
+                />
+                <DealForm
+                  products={pickerProducts}
+                  counterparties={counterpartyOptions}
+                  payments={payments}
+                  deliveryPrice={deliveryPrice}
+                  freeDeliveryThreshold={freeDeliveryThreshold}
+                  reservedStockById={reservedTotalById}
+                  tierDiscounts={tierDiscounts}
+                />
+                <PaymentForm
+                  deals={dealLinkOptions}
+                  receipts={receiptLinkOptions}
+                  counterparties={counterpartyOptions}
+                  purchasePlans={activePurchasePlans}
+                />
+              </>
+            }
+            onOpenBank={() => router.push(`/${adminPath}/warehouse?tab=bank`)}
+            onCalculator={() => setShowCalculator(true)}
+            onCollectCash={handleCollectCash}
+            collecting={collecting}
+          />
+          <WarehouseMobileNav
+            items={mobileNav}
+            activeKey={activeTab}
+            onSelect={(key) => {
+              if (key === activeTab) return;
+              router.push(`/${adminPath}/warehouse?tab=${key}`);
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <div className="admin-page-head">
+            <div>
+              <h1 className="admin-h1">Учёт</h1>
+              <p className="admin-sub">
+                Склад, заказы покупателей и банк — внутренний учёт, не связан с
+                заявками с сайта.
+              </p>
+            </div>
+          </div>
+
+          <div className="admin-tabs-with-actions">
+            <div className="admin-filters">
+              {TABS.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => {
+                    if (t.key === activeTab) return;
+                    router.push(`/${adminPath}/warehouse?tab=${t.key}`);
+                  }}
+                  className={`admin-filter${activeTab === t.key ? " admin-filter--active" : ""}`}
+                >
+                  {t.icon}
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <div className="admin-page-head__actions">
+              {activeTab === "receipts" && receiptSub === "active" && (
+                <ReceiptForm
+                  products={pickerProducts}
+                  counterparties={counterpartyOptions}
+                  deals={deals}
+                  payments={payments}
+                />
+              )}
+              {activeTab === "deals" && (
+                <>
+                  <Link
+                    href={`/${adminPath}/warehouse/import`}
+                    className="admin-btn admin-btn--ghost"
+                    prefetch={false}
+                    title="Массовая загрузка старых проведённых заказов контрагентов"
+                  >
+                    <Upload size={14} /> Массовая загрузка
+                  </Link>
+                  <DealForm
+                    products={pickerProducts}
+                    counterparties={counterpartyOptions}
+                    payments={payments}
+                    deliveryPrice={deliveryPrice}
+                    freeDeliveryThreshold={freeDeliveryThreshold}
+                    reservedStockById={reservedTotalById}
+                    tierDiscounts={tierDiscounts}
+                  />
+                </>
+              )}
+              {activeTab === "plan" && (
+                <Link
+                  href={`/${adminPath}/warehouse/import`}
+                  className="admin-btn admin-btn--ghost"
+                  prefetch={false}
+                  title="Массовая загрузка старых проведённых заказов контрагентов"
+                >
+                  <Upload size={14} /> Загрузить историю
+                </Link>
+              )}
+              {activeTab === "bank" && (
+                <PaymentForm
+                  deals={dealLinkOptions}
+                  receipts={receiptLinkOptions}
+                  counterparties={counterpartyOptions}
+                  purchasePlans={activePurchasePlans}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
 
 
@@ -1826,7 +2126,7 @@ export function WarehouseManager({
 
           {stockSub === "stock" && (
             <>
-              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <div className="wh-search-row" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
                 <div style={{ position: "relative", flex: 1 }}>
                   <Search
                     size={16}
@@ -2042,7 +2342,7 @@ export function WarehouseManager({
                     list = criticalProducts.outOfStock.length > 0 ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         {criticalProducts.outOfStock.map((p) => (
-                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                          <div key={p.id} className="admin-card attention-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                             <div style={{ minWidth: 200, flex: "1 1 auto" }}>
                               <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
                                 {p.name}
@@ -2075,7 +2375,7 @@ export function WarehouseManager({
                     list = criticalProducts.lowStock.length > 0 ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         {criticalProducts.lowStock.map((p) => (
-                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                          <div key={p.id} className="admin-card attention-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                             <div style={{ minWidth: 200, flex: "1 1 auto" }}>
                               <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
                                 {p.name}
@@ -2104,7 +2404,7 @@ export function WarehouseManager({
                     list = criticalProducts.frequentlyOrderedAbsent.length > 0 ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         {criticalProducts.frequentlyOrderedAbsent.map(({ product: p, orderCount }) => (
-                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                          <div key={p.id} className="admin-card attention-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                             <div style={{ minWidth: 200, flex: "1 1 auto" }}>
                               <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
                                 {p.name}
@@ -2133,7 +2433,7 @@ export function WarehouseManager({
                     list = criticalProducts.stagnantStock.length > 0 ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         {criticalProducts.stagnantStock.map(({ product: p, lastSaleDays, lastSaleDate }) => (
-                          <div key={p.id} className="admin-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                          <div key={p.id} className="admin-card attention-card" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                             <div style={{ minWidth: 200, flex: "1 1 auto" }}>
                               <Link href={`/${adminPath}/products/${p.id}`} className="wh-stock-product-name" style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
                                 {p.name}
@@ -2188,7 +2488,7 @@ export function WarehouseManager({
                 <button onClick={() => setReceiptSub("archive")} className={`admin-filter${receiptSub === "archive" ? " admin-filter--active" : ""}`}>Архив</button>
               </div>
 
-              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <div className="wh-search-row" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
                 <div style={{ position: "relative", flex: 1 }}>
                   <Search
                     size={16}
@@ -2295,8 +2595,8 @@ export function WarehouseManager({
                         <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-sand)" }} />
                         <input className="admin-input" value={supplierPriceQuery} onChange={(e) => setSupplierPriceQuery(e.target.value)} placeholder="Найти товар или добавить в прайс..." style={{ paddingLeft: 36 }} />
                       </div>
-                      <div className="admin-table-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
-                        <table className="admin-table">
+                      <div className="admin-table-wrap supplier-price-wrap" style={{ maxHeight: 520, overflow: "auto" }}>
+                        <table className="admin-table supplier-price-table">
                           <thead><tr><th>Товар</th><th>Остаток</th><th>Порог</th><th style={{ width: 170 }}>Цена поставщика</th><th>Статус</th><th style={{ width: 190 }}>Действия</th></tr></thead>
                           <tbody>
                             {supplierPriceProducts.map((product) => {
@@ -2395,7 +2695,7 @@ export function WarehouseManager({
             </button>
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <div className="wh-search-row" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <div style={{ position: "relative", flex: 1 }}>
               <Search
                 size={16}
@@ -2783,7 +3083,21 @@ export function WarehouseManager({
 
       {/* ============ ВКЛАДКА: ПЛАН (прогноз + план + прибыль) ============ */}
       {activeTab === "plan" && (
-        <SalesPlan deals={deals} stock={stock} adminPath={adminPath} />
+        <>
+          {isMobile && (
+            <div className="wh-mobile-import">
+              <Link
+                href={`/${adminPath}/warehouse/import`}
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                prefetch={false}
+                title="Массовая загрузка старых проведённых заказов контрагентов"
+              >
+                <Upload size={14} /> Загрузить историю
+              </Link>
+            </div>
+          )}
+          <SalesPlan deals={deals} stock={stock} adminPath={adminPath} />
+        </>
       )}
 
       {/* ============ ВКЛАДКА: ЗАРПЛАТЫ ============ */}
@@ -2828,6 +3142,34 @@ export function WarehouseManager({
       {/* ============ ВКЛАДКА: БАНК ============ */}
       {activeTab === "bank" && bankSummary && (
         <div className="bank">
+          {isMobile ? (
+            <WarehouseMobileBankDetails
+              data={{
+                bankBalance: bankSummary.bankBalance,
+                bankIn: bankSummary.expectedIn,
+                bankOut: bankSummary.expectedOut,
+                bankForecast: bankSummary.bankForecast,
+                cashBalance: bankSummary.cashBalance,
+                cashNegative: bankSummary.cashBalanceNegative,
+                cashPrevDays: cashCarryover.previousDaysRemaining,
+                cashOpening: cashCarryover.openingBalance,
+                cashTodayNet:
+                  cashCarryover.todayIncoming -
+                  cashCarryover.todayOutgoing -
+                  cashCarryover.todayCardTransfers,
+                ymBalance: bankSummary.ymCardBalance,
+                ymIn: bankSummary.ymExpectedIn,
+                ymOut: bankSummary.ymExpectedOut,
+                ymForecast: bankSummary.ymForecast,
+                rentBalance: (bankSummary as any).rentBalance || 0,
+                rentToPay: (bankSummary as any).rentExpectedOut || 0,
+                totalForecast: bankSummary.forecast,
+                totalForecastWithRent:
+                  (bankSummary as any).forecastWithRent || bankSummary.forecast,
+              }}
+              onOpenYm={() => setBankSub("ym")}
+            />
+          ) : (
           <div className="bank-hero">
             <div className="bank-hero__main">
               <div>
@@ -3014,16 +3356,9 @@ export function WarehouseManager({
               </div>
             </div>
           </div>
+          )}
 
           {collectError && <div className="wh-form-error" style={{ marginBottom: 12 }}>{collectError}</div>}
-
-          {showCollect && (
-            <CashCollectModal
-              cashBalance={bankSummary.cashBalance}
-              adminPath={adminPath}
-              onClose={() => setShowCollect(false)}
-            />
-          )}
 
           {/* Непроведённые исходящие платежи поставщикам/получателям */}
           {bankSub !== "cash" && pendingSupplierPayments.length > 0 && (
@@ -3150,69 +3485,6 @@ export function WarehouseManager({
               </div>
               <button type="button" className="admin-btn admin-btn--ghost" onClick={() => { setSelectedPaymentIds(new Set()); setSelectedPartyKeys(new Set()); }}>Очистить</button>
             </div>
-          )}
-
-          {showCalculator && (
-            <ModalPortal>
-              <div className="admin-modal-overlay" onClick={() => setShowCalculator(false)}>
-                <div className="admin-modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
-                  <div className="admin-modal__head">
-                    <h3 className="admin-modal__title"><Calculator size={14} style={{ marginRight: 6 }} />Калькулятор счёта</h3>
-                    <button type="button" className="admin-modal__close" onClick={() => setShowCalculator(false)}><X size={14} /></button>
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--adm-muted)", marginBottom: 8 }}>
-                    Расчётный счёт: <b>{fmt(bankSummary.bankBalance)} ₽</b> · Касса: <b>{fmt(bankSummary.cashBalance)} ₽</b> · Всего: <b>{fmt(bankSummary.balance)} ₽</b>
-                  </div>
-                  <div className="admin-field">
-                    <label className="admin-label">Выражение</label>
-                    <input className="admin-input" value={calcExpression} onChange={e => setCalcExpression(e.target.value)} placeholder="напр. 12500+3200*2  или  банк-5000" />
-                    <div style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 4 }}>Поддерживаются + − * / ( ) и слова: банк, касса, всего · Enter = посчитать</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                    {[
-                      ["+банк", () => setCalcExpression(v => (v ? v + "+" : "") + String(Math.round(bankSummary.bankBalance)))],
-                      ["+касса", () => setCalcExpression(v => (v ? v + "+" : "") + String(Math.round(bankSummary.cashBalance)))],
-                      ["Очистить", () => { setCalcExpression(""); setCalcResult(""); }],
-                      ["Посчитать", () => {
-                        try {
-                          let expr = calcExpression.replace(/банк/g, String(bankSummary.bankBalance)).replace(/касса/g, String(bankSummary.cashBalance)).replace(/всего/g, String(bankSummary.balance)).replace(/[^0-9+\-*/(). ]/g, "");
-                          if (!expr.trim()) { setCalcResult(""); return; }
-                          // безопасный eval
-                          const res = Function('"use strict";return (' + expr + ')')();
-                          setCalcResult(String(Math.round(Number(res) * 100) / 100));
-                        } catch { setCalcResult("ошибка"); }
-                      }],
-                    ].map(([label, fn]: any) => (
-                      <button key={label} type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={fn}>{label}</button>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
-                    {["7","8","9","/","4","5","6","*","1","2","3","-","0",".","(",")"].map(ch => (
-                      <button key={ch} type="button" className="admin-btn admin-btn--ghost" style={{ padding: "8px 0" }} onClick={() => setCalcExpression(v => v + ch)}>{ch}</button>
-                    ))}
-                    <button type="button" className="admin-btn admin-btn--ghost" style={{ padding: "8px 0" }} onClick={() => setCalcExpression(v => v + "+")}>+</button>
-                    <button type="button" className="admin-btn admin-btn--primary" style={{ gridColumn: "span 3" }} onClick={() => {
-                      try {
-                        let expr = calcExpression.replace(/банк/g, String(bankSummary.bankBalance)).replace(/касса/g, String(bankSummary.cashBalance)).replace(/всего/g, String(bankSummary.balance)).replace(/[^0-9+\-*/(). ]/g, "");
-                        if (!expr.trim()) { setCalcResult(""); return; }
-                        const res = Function('"use strict";return (' + expr + ')')();
-                        setCalcResult(String(Math.round(Number(res) * 100) / 100));
-                      } catch { setCalcResult("ошибка"); }
-                    }}>=</button>
-                  </div>
-                  {calcResult && (
-                    <div style={{ marginTop: 10, padding: 10, background: "var(--adm-paper)", borderRadius: 8, border: "1px solid var(--adm-border)" }}>
-                      <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>Результат</div>
-                      <div style={{ fontWeight: 800, fontSize: 18 }}>{calcResult} ₽</div>
-                      <div style={{ fontSize: 11, color: "var(--adm-muted)", marginTop: 4 }}>
-                        Баланс + результат: <b>{fmt(Math.round((bankSummary.balance + Number(calcResult || 0)) * 100) / 100)} ₽</b> · Банк + результат: <b>{fmt(Math.round((bankSummary.bankBalance + Number(calcResult || 0)) * 100) / 100)} ₽</b>
-                      </div>
-                    </div>
-                  )}
-                  <p style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 8 }}>Это не просто калькулятор: считает относительно счёта. Вставьте «банк» в выражение, чтобы быстро прикинуть новый остаток.</p>
-                </div>
-              </div>
-            </ModalPortal>
           )}
 
           <div className="admin-filters admin-filters--sub" style={{ marginTop: 12 }}>

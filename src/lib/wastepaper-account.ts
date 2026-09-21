@@ -610,6 +610,13 @@ export async function updateWpIntake(
         : (normalizeWpDocItems(existing.items) as WpDocItem[]),
     wastepaperType: data.wastepaperType ?? existing.wastepaper_type,
     weightKg: data.weightKg ?? (Number(existing.weight_kg) || 0),
+    // Фактические веса («на склад» и «к оплате») обязательно пробрасываем:
+    // иначе любое сохранение карточки — и даже простое переключение
+    // «оплачен» / «в перевозку» — откатывало их к сумме позиций / нулю.
+    acceptedWeightKg:
+      data.acceptedWeightKg ?? (Number(existing.accepted_weight_kg) || 0),
+    payableWeightKg:
+      data.payableWeightKg ?? (Number(existing.payable_weight_kg) || 0),
     pricePerKg: data.pricePerKg ?? (Number(existing.price_per_kg) || 0),
     account: (data.account ?? (existing.account === "bank" ? "bank" : "cash")) as WpAccount,
     comment: data.comment !== undefined ? data.comment : existing.comment,
@@ -822,6 +829,11 @@ function cleanShipmentInput(data: WpShipmentInput) {
     items,
     wastepaper_type: first?.wastepaperType || "cardboard",
     weight_kg: totals.weightKg,
+    // Фактические веса и деньги сдачи («отгружено», «принято»,
+    // «поступление») — раньше молча терялись при сохранении.
+    shipped_weight_kg: Math.max(0, Number(data.shippedWeightKg) || 0),
+    accepted_weight_kg: Math.max(0, Number(data.acceptedWeightKg) || 0),
+    received_amount: Math.max(0, Number(data.receivedAmount) || 0),
     price_per_kg: first?.pricePerKg ?? 0,
     total: totals.total,
     account: data.account === "cash" ? "cash" : "bank",

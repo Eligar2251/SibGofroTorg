@@ -64,17 +64,20 @@ import {
   WP_TYPE_LABELS,
   WP_TYPE_OPTIONS,
   buildWpDayReport,
+  distributeWpTotal,
   findWpBranchByAddress,
   findWpBranchMatch,
   fmtDate,
   fmtKg,
   fmtMoney,
+  fmtWpPrice,
   getWpBalance,
   getWpForecast,
   getWpStock,
   wpCollectMoneyEvents,
   wpDocTotals,
   wpIntakeAwaitingWeight,
+  wpIntakePayableTotal,
   wpItemsSummary,
   wpTypeLabel,
   wpUid,
@@ -358,9 +361,9 @@ function ItemsEditor({
               className="admin-input"
               type="number"
               min="0"
-              step="0.01"
+              step="any"
               placeholder="₽/кг"
-              value={it.pricePerKg || ""}
+              value={fmtWpPrice(it.pricePerKg)}
               onChange={(e) => setItem(it.id, { pricePerKg: parseNum(e.target.value) })}
             />
             <div className="wp-item-row__sum">{fmtMoney(it.total)}</div>
@@ -1901,7 +1904,7 @@ function IntakesTab({
           <div className="admin-card__pad">
             <p className="admin-hint">
               Приёмов пока нет. Добавьте первый — укажите, от кого приняли
-              макулатуру, вес и цену за кг.
+              макулатуру, вес и итоговую сумму: цена за кг посчитается сама.
             </p>
           </div>
         </div>
@@ -2166,9 +2169,9 @@ function ShipmentsTab({
           <div className="admin-card__pad">
             <p className="admin-hint">
               Сдач пока нет. Когда везёте накопленную макулатуру на предприятие —
-              оформите сдачу: укажите предприятие, вес и цену; полученные деньги
-              потом отметьте оплатой здесь или внесите платежом во вкладке
-              «Платежи».
+              оформите сдачу: укажите предприятие, принятый вес и итоговую сумму —
+              цена за кг посчитается сама; полученные деньги потом отметьте оплатой
+              здесь или внесите платежом во вкладке «Платежи».
             </p>
           </div>
         </div>
@@ -2589,6 +2592,121 @@ function IntakeModal({
     });
   }
 
+  // ── Расчёт оплаты: сумму вписываем сами, цена считается сама ──
+  // Поле суммы — «умный редактор» позиций: при одной позиции её вес
+  // становится равен весу к оплате, а цена — сумма / вес; при нескольких
+  // сумма делится пропорционально весам (см. distributeWpTotal).
+  // В обратную сторону тоже работает: правите позиции — сумма пересчитывается.
+  const [sumStr, setSumStr] = useState(() => {
+    if (!item) return "";
+    const s = wpIntakePayableTotal(item);
+    return s > 0 ? String(s) : "";
+  });
+
+  /** Пересчитать позиции под расчётный вес (только при ≤1 позиции). */
+  function calcItemsForBase(
+    items: WpDocItem[],
+    base: number
+  ): { items: WpDocItem[]; sum: string | null } {
+    if (!(base > 0) || items.length > 1) return { items, sum: null };
+    const S = parseNum(sumStr);
+    if (S > 0) {
+      return {
+        items: distributeWpTotal(
+          items,
+          S,
+          base,
+          items[0]?.wastepaperType || WP_TYPE_OPTIONS[0].id
+        ),
+        sum: null,
+      };
+    }
+    if (items.length === 1) {
+      // Сумма ещё не вписана — вес тянет за собой сумму по цене позиции.
+      const it = items[0];
+      const total = Math.round(base * (Number(it.pricePerKg) || 0) * 100) / 100;
+      return {
+        items: [{ ...it, weightKg: base, total }],
+        sum: total > 0 ? String(total) : "",
+      };
+    }
+    return { items, sum: null };
+  }
+
+  function onPayableChange(v: number) {
+    const { items, sum } = calcItemsForBase(form.items, v);
+    if (sum !== null) setSumStr(sum);
+    setForm((prev) => ({ ...prev, payableWeightKg: v, items }));
+  }
+
+  function onAcceptedChange(v: number) {
+    // Вес к оплате по умолчанию равен принятому — подставляем его,
+    // пока вес к оплате не правили вручную.
+    if (!(Number(form.payableWeightKg) > 0) && v > 0) {
+      const { items, sum } = calcItemsForBase(form.items, v);
+      if (sum !== null) setSumStr(sum);
+      setForm((prev) => ({
+        ...prev,
+        acceptedWeightKg: v,
+        payableWeightKg: v,
+        items,
+      }));
+    } else {
+      set("acceptedWeightKg", v);
+    }
+  }
+
+  function onSumChange(raw: string) {
+    setSumStr(raw);
+    const S = parseNum(raw);
+    const P = Number(form.payableWeightKg) || 0;
+    if (S > 0 && P > 0) {
+      setForm((prev) => ({
+        ...prev,
+        items: distributeWpTotal(
+          prev.items,
+          S,
+          P,
+          prev.items[0]?.wastepaperType || WP_TYPE_OPTIONS[0].id
+        ),
+      }));
+    }
+  }
+
+  function onSumBlur() {
+    // Сумму стёрли — показываем обратно итог позиций, чтобы поле не врало.
+    if (!(parseNum(sumStr) > 0)) {
+      const t = wpDocTotals(form.items).total;
+      setSumStr(t > 0 ? String(t) : "");
+    }
+  }
+
+  function onItemsChange(next: WpDocItem[]) {
+    const t = wpDocTotals(next).total;
+    setSumStr(t > 0 ? String(t) : "");
+    setForm((prev) => ({
+      ...prev,
+      items: next,
+      // При одной позиции её вес и есть вес к оплате — держим синхронно,
+      // чтобы деньги (вес к оплате × цена) всегда равнялись сумме документа.
+      ...(next.length === 1 ? { payableWeightKg: next[0].weightKg } : {}),
+    }));
+  }
+
+  const payableNum = Number(form.payableWeightKg) || 0;
+  const sumNum = parseNum(sumStr);
+  const autoPrice = sumNum > 0 && payableNum > 0 ? sumNum / payableNum : 0;
+  // Сумма вписана, а вес — нет: цена не определена, старую цену позиции
+  // не показываем, чтобы не вводить в заблуждение.
+  const priceShown =
+    autoPrice > 0
+      ? fmtWpPrice(autoPrice)
+      : sumNum > 0
+        ? ""
+        : form.items.length === 1
+          ? fmtWpPrice(form.items[0].pricePerKg)
+          : "";
+
   const totals = wpDocTotals(form.items);
   const valid =
     form.date !== "" && form.counterpartyName.trim() !== "";
@@ -2624,8 +2742,9 @@ function IntakeModal({
         </div>
         <p className="admin-modal__desc">
           Забор макулатуры у контрагента: выберите филиал (адрес, телефон,
-          контактное лицо подставятся) и добавьте позиции — разные профили
-          макулатуры со своим весом и ценой за кг. Сумма уйдёт в расход счёта.
+          контактное лицо подставятся), впишите вес к оплате и итоговую сумму —
+          цена за кг посчитается сама. Несколько профилей макулатуры добавьте
+          позициями ниже. Сумма уйдёт в расход счёта.
         </p>
 
         {/* Пометка после завершения перевозки: приёмку выполнили, ждём
@@ -2767,14 +2886,57 @@ function IntakeModal({
             )}
           </div>
 
-          <div className="wp-grid-2">
-            <div className="admin-field"><label className="admin-label">Фактически принято, кг (на склад)</label><input className="admin-input" type="number" min="0" step="0.1" value={form.acceptedWeightKg || ""} onChange={(e) => set("acceptedWeightKg", parseNum(e.target.value))} placeholder="После взвешивания" /></div>
-            <div className="admin-field"><label className="admin-label">Вес к оплате, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.payableWeightKg || ""} onChange={(e) => set("payableWeightKg", parseNum(e.target.value))} placeholder="Можно меньше принятого" /></div>
+          <div className="admin-field">
+            <label className="admin-label">
+              <Banknote size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              Расчёт оплаты — впишите сумму, цена за кг посчитается сама
+            </label>
+            <div className="wp-grid-2">
+              <div className="admin-field"><label className="admin-label">Фактически принято, кг (на склад)</label><input className="admin-input" type="number" min="0" step="0.1" value={form.acceptedWeightKg || ""} onChange={(e) => onAcceptedChange(parseNum(e.target.value))} placeholder="После взвешивания" /></div>
+              <div className="admin-field"><label className="admin-label">Вес к оплате, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.payableWeightKg || ""} onChange={(e) => onPayableChange(parseNum(e.target.value))} placeholder="Можно меньше принятого" /></div>
+            </div>
+            <div className="wp-grid-2">
+              <div className="admin-field">
+                <label className="admin-label">Итоговая сумма к оплате, ₽</label>
+                <input
+                  className="admin-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={sumStr}
+                  onChange={(e) => onSumChange(e.target.value)}
+                  onBlur={onSumBlur}
+                  placeholder="Например, 5000"
+                />
+                {sumNum > 0 && !(payableNum > 0) && (
+                  <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
+                    Впишите вес к оплате — тогда цена за кг посчитается сама.
+                  </span>
+                )}
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Цена за кг, ₽ (авто)</label>
+                <input className="admin-input" value={priceShown} readOnly placeholder="—" />
+                <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
+                  {autoPrice > 0
+                    ? "Посчитана сама: сумма ÷ вес к оплате."
+                    : priceShown
+                      ? "Сейчас — цена из позиции ниже."
+                      : "Появится, когда впишете вес и сумму."}
+                </span>
+              </div>
+            </div>
+            {form.items.length > 1 && (
+              <p className="admin-hint" style={{ fontSize: "0.75rem", marginTop: 0 }}>
+                Позиций несколько: сумма делится между ними пропорционально весу.
+                Цену каждой позиции можно поправить в строках ниже — сумма пересчитается.
+              </p>
+            )}
           </div>
           <ItemsEditor
             items={form.items}
             rates={rates}
-            onChange={(items) => set("items", items)}
+            onChange={onItemsChange}
           />
 
           <div className="wp-grid-3 wp-grid--end">
@@ -2976,6 +3138,127 @@ function ShipmentModal({
     });
   }
 
+  // ── Расчёт: сумму вписываем сами, цена считается сама ──
+  // Та же логика, что в приёме: при одной позиции её вес становится равен
+  // принятому весу, а цена — сумма / вес; при нескольких сумма делится
+  // пропорционально весам. Правите позиции — сумма пересчитывается.
+  const [sumStr, setSumStr] = useState(() => {
+    if (!item) return "";
+    const t = wpDocTotals(item.items).total;
+    return t > 0 ? String(t) : "";
+  });
+
+  /** Расчётный вес для цены: принятый, а пока его нет — отгруженный. */
+  const baseWeight =
+    (Number(form.acceptedWeightKg) || 0) > 0
+      ? Number(form.acceptedWeightKg)
+      : Number(form.shippedWeightKg) || 0;
+  const baseIsAccepted = (Number(form.acceptedWeightKg) || 0) > 0;
+
+  function calcItemsForBase(
+    items: WpDocItem[],
+    base: number
+  ): { items: WpDocItem[]; sum: string | null } {
+    if (!(base > 0) || items.length > 1) return { items, sum: null };
+    const S = parseNum(sumStr);
+    if (S > 0) {
+      return {
+        items: distributeWpTotal(
+          items,
+          S,
+          base,
+          items[0]?.wastepaperType || WP_TYPE_OPTIONS[0].id
+        ),
+        sum: null,
+      };
+    }
+    if (items.length === 1) {
+      const it = items[0];
+      const total = Math.round(base * (Number(it.pricePerKg) || 0) * 100) / 100;
+      return {
+        items: [{ ...it, weightKg: base, total }],
+        sum: total > 0 ? String(total) : "",
+      };
+    }
+    return { items, sum: null };
+  }
+
+  function onAcceptedChange(v: number) {
+    const base = v > 0 ? v : Number(form.shippedWeightKg) || 0;
+    const { items, sum } = calcItemsForBase(form.items, base);
+    if (sum !== null) setSumStr(sum);
+    setForm((prev) => ({ ...prev, acceptedWeightKg: v, items }));
+  }
+
+  function onShippedChange(v: number) {
+    // Принятый вес по умолчанию равен отгруженному — подставляем его,
+    // пока принятый вес не правили вручную.
+    if (!(Number(form.acceptedWeightKg) > 0) && v > 0) {
+      const { items, sum } = calcItemsForBase(form.items, v);
+      if (sum !== null) setSumStr(sum);
+      setForm((prev) => ({
+        ...prev,
+        shippedWeightKg: v,
+        acceptedWeightKg: v,
+        items,
+      }));
+    } else {
+      set("shippedWeightKg", v);
+    }
+  }
+
+  function onSumChange(raw: string) {
+    setSumStr(raw);
+    const S = parseNum(raw);
+    if (S > 0 && baseWeight > 0) {
+      setForm((prev) => ({
+        ...prev,
+        items: distributeWpTotal(
+          prev.items,
+          S,
+          baseWeight,
+          prev.items[0]?.wastepaperType || WP_TYPE_OPTIONS[0].id
+        ),
+      }));
+    }
+  }
+
+  function onSumBlur() {
+    if (!(parseNum(sumStr) > 0)) {
+      const t = wpDocTotals(form.items).total;
+      setSumStr(t > 0 ? String(t) : "");
+    }
+  }
+
+  function onItemsChange(next: WpDocItem[]) {
+    const t = wpDocTotals(next).total;
+    setSumStr(t > 0 ? String(t) : "");
+    setForm((prev) => ({
+      ...prev,
+      items: next,
+      // При одной позиции её вес зеркалит расчётный вес (принятый, а пока
+      // его нет — отгруженный), чтобы сумма документа не расходилась с суммой.
+      ...(next.length === 1
+        ? (Number(prev.acceptedWeightKg) || 0) > 0
+          ? { acceptedWeightKg: next[0].weightKg }
+          : { shippedWeightKg: next[0].weightKg }
+        : {}),
+    }));
+  }
+
+  const sumNum = parseNum(sumStr);
+  const autoPrice = sumNum > 0 && baseWeight > 0 ? sumNum / baseWeight : 0;
+  // Сумма вписана, а вес — нет: цена не определена, старую цену позиции
+  // не показываем, чтобы не вводить в заблуждение.
+  const priceShown =
+    autoPrice > 0
+      ? fmtWpPrice(autoPrice)
+      : sumNum > 0
+        ? ""
+        : form.items.length === 1
+          ? fmtWpPrice(form.items[0].pricePerKg)
+          : "";
+
   const totals = wpDocTotals(form.items);
   const valid =
     form.date !== "" && form.enterpriseName.trim() !== "";
@@ -3011,8 +3294,9 @@ function ShipmentModal({
         </div>
         <p className="admin-modal__desc">
           Везём накопленную макулатуру на переработку: выберите предприятие и его
-          точку (адрес, телефон, контакт подставятся), добавьте позиции. Сумма
-          придёт в выбранный счёт; когда деньги получены — отметьте оплату.
+          точку (адрес, телефон, контакт подставятся), впишите принятый вес и
+          итоговую сумму по акту — цена за кг посчитается сама. Сумма придёт в
+          выбранный счёт; когда деньги получены — отметьте оплату.
         </p>
 
         <form
@@ -3134,15 +3418,66 @@ function ShipmentModal({
             )}
           </div>
 
-          <div className="wp-grid-3">
-            <div className="admin-field"><label className="admin-label">Отгружено по нашим весам, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.shippedWeightKg || ""} onChange={(e) => set("shippedWeightKg", parseNum(e.target.value))} /></div>
-            <div className="admin-field"><label className="admin-label">Принято предприятием, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.acceptedWeightKg || ""} onChange={(e) => set("acceptedWeightKg", parseNum(e.target.value))} /></div>
-            <div className="admin-field"><label className="admin-label">Поступление денег, ₽</label><input className="admin-input" type="number" min="0" step="0.01" value={form.receivedAmount || ""} onChange={(e) => set("receivedAmount", parseNum(e.target.value))} /></div>
+          <div className="admin-field">
+            <label className="admin-label">
+              <Banknote size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              Расчёт по акту — впишите сумму, цена за кг посчитается сама
+            </label>
+            <div className="wp-grid-2">
+              <div className="admin-field"><label className="admin-label">Отгружено по нашим весам, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.shippedWeightKg || ""} onChange={(e) => onShippedChange(parseNum(e.target.value))} /></div>
+              <div className="admin-field"><label className="admin-label">Принято предприятием, кг</label><input className="admin-input" type="number" min="0" step="0.1" value={form.acceptedWeightKg || ""} onChange={(e) => onAcceptedChange(parseNum(e.target.value))} /></div>
+            </div>
+            <div className="wp-grid-2">
+              <div className="admin-field">
+                <label className="admin-label">Итоговая сумма, ₽ (по акту)</label>
+                <input
+                  className="admin-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={sumStr}
+                  onChange={(e) => onSumChange(e.target.value)}
+                  onBlur={onSumBlur}
+                  placeholder="Например, 12000"
+                />
+                {sumNum > 0 && !(baseWeight > 0) && (
+                  <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
+                    Впишите принятый вес — тогда цена за кг посчитается сама.
+                  </span>
+                )}
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Цена за кг, ₽ (авто)</label>
+                <input className="admin-input" value={priceShown} readOnly placeholder="—" />
+                <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
+                  {autoPrice > 0
+                    ? baseIsAccepted
+                      ? "Посчитана сама: сумма ÷ принятый вес."
+                      : "Посчитана сама: сумма ÷ отгруженный вес."
+                    : priceShown
+                      ? "Сейчас — цена из позиции ниже."
+                      : "Появится, когда впишете вес и сумму."}
+                </span>
+              </div>
+            </div>
+            {form.items.length > 1 && (
+              <p className="admin-hint" style={{ fontSize: "0.75rem", marginTop: 0 }}>
+                Позиций несколько: сумма делится между ними пропорционально весу.
+                Цену каждой позиции можно поправить в строках ниже — сумма пересчитается.
+              </p>
+            )}
+            <div className="admin-field" style={{ marginBottom: 0 }}>
+              <label className="admin-label">Поступление денег, ₽ (факт)</label>
+              <input className="admin-input" type="number" min="0" step="0.01" value={form.receivedAmount || ""} onChange={(e) => set("receivedAmount", parseNum(e.target.value))} placeholder="Сколько реально пришло" />
+              <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
+                Если реально пришло столько же, сколько по акту, — оставьте пустым.
+              </span>
+            </div>
           </div>
           <ItemsEditor
             items={form.items}
             rates={rates}
-            onChange={(items) => set("items", items)}
+            onChange={onItemsChange}
           />
 
           <div className="wp-grid-3 wp-grid--end">

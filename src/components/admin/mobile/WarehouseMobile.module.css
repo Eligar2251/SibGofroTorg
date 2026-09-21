@@ -1,0 +1,370 @@
+/* Мобильный «банк» учёта. Компонент рендерится только на телефоне/
+ * вертикальном планшете (useIsMobile), поэтому медиазапросов нет.
+ * Правила качества: сетки — minmax(0, 1fr), деньги — tabular-nums,
+ * длинные строки — overflow-wrap, кнопки — от 44px. */
+
+/* ── Hero: карточка баланса ─────────────────────────────── */
+.hero {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+
+.balance {
+  padding: 16px;
+  border: 1px solid var(--adm-border);
+  border-radius: 18px;
+  background: var(--adm-card);
+  min-width: 0;
+}
+
+.caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--adm-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.caption svg {
+  flex-shrink: 0;
+}
+
+.date {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.calcBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  background: var(--adm-card);
+  color: var(--adm-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.calcBtn:active {
+  transform: scale(0.94);
+}
+
+.totalLabel {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--adm-muted);
+}
+
+.total {
+  display: block;
+  margin-top: 2px;
+  font-size: 30px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--adm-muted);
+  overflow-wrap: anywhere;
+}
+
+.forecast b {
+  color: var(--adm-pine);
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+
+.accounts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--adm-sand-pale);
+  padding-top: 10px;
+  min-width: 0;
+}
+
+.accounts dt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--adm-muted);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.accounts dd {
+  margin: 0;
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.negative {
+  color: var(--adm-rust);
+}
+
+/* ── Полоса долгов: ведёт на вкладку «Банк» ─────────────── */
+.debts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--adm-pine-line);
+  border-radius: 14px;
+  background: var(--adm-pine-pale);
+  color: var(--adm-ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.debts:active {
+  transform: scale(0.98);
+}
+
+.debts > svg {
+  flex-shrink: 0;
+  color: var(--adm-pine);
+}
+
+.debtsText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.debtsText b {
+  font-variant-numeric: tabular-nums;
+}
+
+.debtsSep {
+  color: var(--adm-muted);
+  flex-shrink: 0;
+}
+
+/* ── Быстрые действия: триггеры форм + сводка кассы ─────── */
+.actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* Триггеры ReceiptForm/DealForm/PaymentForm — обычные admin-btn:
+ * растягиваем на ячейку и держим высоту тапа. */
+.actions > button {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+  font-size: 13px;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+/* ── Детали банка: замена bank-hero на вкладке «Банк» ────── */
+.bank {
+  display: grid;
+  gap: 0;
+  margin-bottom: 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: 16px;
+  background: var(--adm-card);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.bankRow {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--adm-sand-pale);
+  min-width: 0;
+}
+
+.bankRow:last-of-type {
+  border-bottom: 0;
+}
+
+.bankTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bankName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--adm-muted);
+  min-width: 0;
+}
+
+.bankName svg {
+  flex-shrink: 0;
+}
+
+.bankValue {
+  font-size: 17px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bankSub {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--adm-muted);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.bankSub b {
+  color: var(--adm-ink);
+}
+
+.pos {
+  color: var(--adm-pine);
+}
+
+.neg {
+  color: var(--adm-rust);
+}
+
+.bankLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--adm-steel);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bankFoot {
+  padding: 12px 14px;
+  background: var(--adm-pine-pale);
+  font-size: 13px;
+  color: var(--adm-ink);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Сетка вкладок ──────────────────────────────────────── */
+.nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tile,
+.tileActive {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-width: 0;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  background: var(--adm-card);
+  color: var(--adm-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tileActive {
+  border-color: var(--adm-pine);
+  background: var(--adm-pine-pale);
+}
+
+.tile:active,
+.tileActive:active {
+  transform: scale(0.97);
+}
+
+.tileTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tileIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--adm-pine);
+}
+
+.tileActive .tileIcon {
+  color: var(--adm-pine);
+}
+
+.tileLabel {
+  font-size: 13px;
+  font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--adm-rust);
+  color: var(--adm-on-rust);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileStat {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--adm-muted);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}

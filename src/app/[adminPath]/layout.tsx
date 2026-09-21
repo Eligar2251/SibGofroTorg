@@ -23,6 +23,11 @@ import "../admin-mobile.css";
 // числа, сетка модалок. Все правила завязаны на .wp-account / .wp-modal /
 // .deliv-page, поэтому другие разделы админки он не задевает.
 import "../admin-wastepaper.css";
+// Мобильная вёрстка обычного учёта (все вкладки → карточки). Правила
+// завязаны на .wh-mobile (ставится только при useIsMobile), поэтому
+// десктоп не задевают. Идёт последним: при равной специфичности
+// мобильные правила побеждают старые телефонные переопределения.
+import "../admin-warehouse-mobile.css";
 import { AdminThemeProvider } from "@/components/admin/AdminTheme";
 
 // Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому

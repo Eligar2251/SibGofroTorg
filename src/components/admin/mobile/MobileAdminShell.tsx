@@ -28,7 +28,7 @@
 
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useIsPhone } from "@/hooks/use-is-mobile";
 import type { AdminRole } from "@/lib/admin-rbac";
@@ -80,8 +80,17 @@ export function MobileAdminShell({
 
   const roleLabel = role ? ROLE_LABELS[role] : "";
 
+  // Контент скроллится ВНУТРИ оболочки (см. .main), а не страницей:
+  // так Safari не прячет/показывает адресную строку при прокрутке.
+  // При смене раздела возвращаем внутренний скролл наверх — Next
+  // сам мотает только window, который у нас неподвижен.
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [pathname]);
+
   return (
-    <div className={styles.app} data-admin="true">
+    <div className={`${styles.app} mobile-admin-app`} data-admin="true">
       <header className={styles.header}>
         <div className={styles.heading}>
           <h1 className={styles.title}>{current?.label ?? "Управление"}</h1>
@@ -111,7 +120,7 @@ export function MobileAdminShell({
       {/* admin-main сохранён нарочно: страницы (склад, аренда, …)
           уже имеют мобильные стили под этот класс, и вся типографика
           (admin-h1, admin-card, …) продолжает работать. */}
-      <main className={`admin-main ${styles.main}`}>{children}</main>
+      <main ref={mainRef} className={`admin-main ${styles.main}`}>{children}</main>
 
       <MobileTabBar items={items} pathname={pathname} adminPath={adminPath} />
     </div>
