@@ -256,9 +256,13 @@ const REVISION_PRINT_CSS = `
   /* Изоляция печати бланка ревизии.
      ВАЖНО: display:none, а не visibility:hidden — скрытый по visibility
      элемент сохраняет место и давал пустые первые страницы.
-     Модалка ревизии — соседний узел в <body> (оба через портал), поэтому
-     её нужно скрыть явно, иначе печаталась именно она. */
-  body > *:not(.rev-print-root) { display: none !important; }
+     rev-print-root рендерится внутри #admin-modal-root (ModalPortal,
+     display:contents), поэтому прячем body-детей кроме портала,
+     а внутри портала — всё кроме самого бланка. Без этого #admin-modal-root
+     скрывал бы и бланк тоже → белый экран при печати. */
+  body > *:not(.rev-print-root):not(#admin-modal-root) { display: none !important; }
+  #admin-modal-root { display: block !important; }
+  #admin-modal-root > *:not(.rev-print-root) { display: none !important; }
   .admin-shell, .admin-sidebar, .admin-mobile-bar, .admin-content,
   .admin-main, .admin-modal-overlay { display: none !important; }
 

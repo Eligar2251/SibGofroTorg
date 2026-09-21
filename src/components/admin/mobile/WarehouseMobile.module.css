@@ -3,7 +3,7 @@
  * Правила качества: сетки — minmax(0, 1fr), деньги — tabular-nums,
  * длинные строки — overflow-wrap, кнопки — от 44px. */
 
-/* ── Hero: карточка баланса ─────────────────────────────── */
+/* ── Hero: простые быстрые действия (приложенческий стиль) ── */
 .hero {
   display: grid;
   gap: 10px;
@@ -11,25 +11,31 @@
   min-width: 0;
 }
 
-.balance {
-  padding: 16px;
+/* Компактная шапка приложения: без крупных балансов, только дата и калькулятор */
+.simpleHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
   border: 1px solid var(--adm-border);
-  border-radius: 18px;
+  border-radius: 14px;
   background: var(--adm-card);
   min-width: 0;
 }
 
-.caption {
-  display: flex;
+.simpleTitle {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--adm-muted);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--adm-ink);
+  font-size: 14px;
+  font-weight: 700;
+  min-width: 0;
 }
 
-.caption svg {
+.simpleTitle svg {
   flex-shrink: 0;
+  color: var(--adm-pine);
 }
 
 .date {
@@ -37,6 +43,7 @@
   font-weight: 400;
   font-size: 12px;
   white-space: nowrap;
+  color: var(--adm-muted);
 }
 
 .calcBtn {
@@ -59,113 +66,8 @@
   transform: scale(0.94);
 }
 
-.totalLabel {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--adm-muted);
-}
-
-.total {
-  display: block;
-  margin-top: 2px;
-  font-size: 30px;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
-}
-
-.forecast {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--adm-muted);
-  overflow-wrap: anywhere;
-}
-
-.forecast b {
-  color: var(--adm-pine);
-  font-variant-numeric: tabular-nums;
-}
-
-.accounts {
-  display: grid;
-  gap: 10px;
-  margin: 14px 0 0;
-}
-
-.accounts > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-top: 1px solid var(--adm-sand-pale);
-  padding-top: 10px;
-  min-width: 0;
-}
-
-.accounts dt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--adm-muted);
-  font-size: 13px;
-  min-width: 0;
-}
-
-.accounts dd {
-  margin: 0;
-  font-weight: 700;
-  font-size: 15px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
 .negative {
   color: var(--adm-rust);
-}
-
-/* ── Полоса долгов: ведёт на вкладку «Банк» ─────────────── */
-.debts {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 48px;
-  padding: 10px 12px;
-  border: 1px solid var(--adm-pine-line);
-  border-radius: 14px;
-  background: var(--adm-pine-pale);
-  color: var(--adm-ink);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.debts:active {
-  transform: scale(0.98);
-}
-
-.debts > svg {
-  flex-shrink: 0;
-  color: var(--adm-pine);
-}
-
-.debtsText {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.debtsText b {
-  font-variant-numeric: tabular-nums;
-}
-
-.debtsSep {
-  color: var(--adm-muted);
-  flex-shrink: 0;
 }
 
 /* ── Быстрые действия: триггеры форм + сводка кассы ─────── */
