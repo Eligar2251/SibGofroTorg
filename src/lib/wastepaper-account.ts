@@ -11,6 +11,8 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/supabase";
 import { requireAdminApi, type AdminSession } from "@/lib/auth";
 import { getWastepaperRates } from "@/lib/supabase-queries";
+import { getSalaries } from "@/lib/warehouse";
+import { isWastepaperSalary, type Salary } from "@/lib/warehouse-shared";
 import type {
   WpAccount,
   WpBranch,
@@ -1429,6 +1431,25 @@ export async function createWpIntakesFromTransport(
   return { created, items };
 }
 
+// ── Зарплаты из кассы макулатуры ─────────────────────────
+
+/**
+ * Зарплаты с пометкой [Макулатура] (source=wastepaper): выплачены или
+ * запланированы наличными из кассы макулатуры. Сама запись ведётся в
+ * разделе «Зарплаты» учёта, здесь она только читается — как расход
+ * «Наличка» в финансах модуля. При сбое (нет таблицы, нет прав) отдаём
+ * пустой список: финансы макулатуры не должны падать из-за зарплат.
+ */
+export async function getWpSalaries(): Promise<Salary[]> {
+  try {
+    const all = await getSalaries();
+    return all.filter((s) => isWastepaperSalary(s));
+  } catch (error) {
+    console.error("wastepaper-account: зарплаты из кассы макулатуры недоступны:", error);
+    return [];
+  }
+}
+
 // ── Сводка для дашборда ──────────────────────────────────
 
 export interface WpDashboardData {
@@ -1437,20 +1458,23 @@ export interface WpDashboardData {
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
   products: WpProduct[];
+  /** Зарплаты, выплаченные/запланированные наличными из кассы макулатуры. */
+  salaries: Salary[];
 }
 
 export async function getWpDashboardData(): Promise<WpDashboardData> {
-  const [counterparties, intakes, shipments, manualPayments, products] =
+  const [counterparties, intakes, shipments, manualPayments, products, salaries] =
     await Promise.all([
       getWpCounterparties(),
       getWpIntakes(500),
       getWpShipments(300),
       getWpManualPayments(500),
       getWpProducts(),
+      getWpSalaries(),
     ]);
   // Отдельных перевозок макулатуры (ТМ-...) в интерфейсе больше нет:
   // вкладка «Перевозки» показывает единые перевозки учёта (ПЕР-...).
-  return { counterparties, intakes, shipments, manualPayments, products };
+  return { counterparties, intakes, shipments, manualPayments, products, salaries };
 }
 
 /** Облегчённая выборка для финансовой карточки на главном дашборде. */
@@ -1458,11 +1482,13 @@ export async function getWpFinanceData(): Promise<{
   intakes: WpIntake[];
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
+  salaries: Salary[];
 }> {
-  const [intakes, shipments, manualPayments] = await Promise.all([
+  const [intakes, shipments, manualPayments, salaries] = await Promise.all([
     getWpIntakes(500),
     getWpShipments(300),
     getWpManualPayments(500),
+    getWpSalaries(),
   ]);
-  return { intakes, shipments, manualPayments };
+  return { intakes, shipments, manualPayments, salaries };
 }

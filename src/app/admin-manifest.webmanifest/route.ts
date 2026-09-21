@@ -35,7 +35,7 @@ export function GET() {
       shortcuts: [
         { name: "Панель", url: `/${adminPath}`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
         { name: "Товары", url: `/${adminPath}/products`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
-        { name: "Учёт", url: `/${adminPath}/warehouse`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+        { name: "Учёт СГТ", url: `/${adminPath}/warehouse`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
       ],
     },
     {

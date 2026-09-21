@@ -540,9 +540,94 @@
 }
 
 /* =========================================================
-   4. ЗАКАЗЫ: карточки admin-order собираются в столбец
-   базовым слоем; здесь — точечные фиксы переполнений.
+   4. ЗАКАЗЫ И ПОСТАВКИ: шапка карточки (.receipt-head) в две
+   строки вместо столбика.
+
+   Базовый слой (admin-mobile.css) раскладывает шапку flex-wrap'ом
+   и даёт имени, дате и сумме width:100% — каждая карточка
+   растягивается на 6–7 строк. Здесь шапка собирается заново
+   через flex + order (порядок в DOM не меняется):
+     ряд 1: номер · дата ……………… сумма ▾
+     ряд 2: контрагент (на всю ширину)
+     ряд 3: бейджи статуса / оплаты / резерва (переносятся)
+   !important — потому что базовый слой ставит свои значения
+   с !important и при равной специфичности побеждает поздний.
+   Одна и та же разметка у заказов (WarehouseManager) и поставок
+   (WarehouseReceipts), поэтому правило общее.
    ========================================================= */
+.wh-mobile .receipt-head {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 6px 8px !important;
+  padding: 12px 14px !important;
+  overflow: visible !important;
+  min-width: 0;
+}
+
+.wh-mobile .receipt-head > * {
+  min-width: 0;
+}
+
+.wh-mobile .receipt-head .admin-order__id {
+  order: 0;
+  flex: 0 0 auto;
+}
+
+.wh-mobile .receipt-head__date {
+  order: 1;
+  display: inline !important;
+  width: auto !important;
+  flex: 0 0 auto !important;
+  font-size: 12px !important;
+  color: var(--adm-muted);
+  white-space: nowrap !important;
+}
+
+.wh-mobile .receipt-head__total {
+  order: 2;
+  width: auto !important;
+  flex: 0 0 auto !important;
+  margin-left: auto !important;
+  font-size: 16px !important;
+  font-weight: 800;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .receipt-head__chevron {
+  order: 3;
+  flex: 0 0 auto;
+  margin-left: 0 !important;
+  font-size: 11px;
+  color: var(--adm-muted);
+}
+
+.wh-mobile .receipt-head__supplier {
+  order: 4;
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  font-size: 14px !important;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--adm-ink);
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+/* Бейджи и кнопка «Заберём сами» — последним рядом, переносятся. */
+.wh-mobile .receipt-head .admin-badge,
+.wh-mobile .receipt-head > .admin-btn {
+  order: 5;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.wh-mobile .receipt-head > .admin-btn {
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
 .wh-mobile .admin-order__total {
   flex-wrap: wrap;
   gap: 6px 12px;
@@ -1014,6 +1099,275 @@
   font-size: 12px;
   padding: 6px 12px;
   min-height: 36px;
+}
+
+/* ── Карточка платежа (.bank-pay) ─────────────────────────
+   Базовый слой ставит карточку столбиком: иконка, текст, а под
+   ними .bank-pay__side с суммой и четырьмя кнопками во всю ширину —
+   каждый платёж занимает пол-экрана. Здесь карточка собирается
+   сеткой, а .bank-pay__side раскрывается (display: contents), чтобы
+   сумма встала в правый верхний угол, а кнопки — рядом 2×2 внизу:
+     [иконка] контрагент · номер · бейджи        12 000 ₽
+              заказы · дата · комментарий
+     [ Провести ] [ Изменить ] [ Копировать ] [ Удалить ]
+   ───────────────────────────────────────────────────────── */
+.wh-mobile .bank .bank-pay {
+  display: grid !important;
+  grid-template-columns: 30px minmax(0, 1fr) auto !important;
+  grid-template-areas:
+    "icon main amount"
+    "controls controls controls" !important;
+  column-gap: 10px !important;
+  row-gap: 8px !important;
+  align-items: start !important;
+  padding: 12px 12px 10px !important;
+  border-radius: 14px !important;
+  min-width: 0;
+}
+
+.wh-mobile .bank .bank-pay__icon {
+  grid-area: icon;
+  width: 30px !important;
+  height: 30px !important;
+  margin: 0 !important;
+}
+
+.wh-mobile .bank .bank-pay__main {
+  grid-area: main;
+  min-width: 0;
+  width: auto !important;
+}
+
+.wh-mobile .bank .bank-pay__row1,
+.wh-mobile .bank .bank-pay__row2 {
+  flex-wrap: wrap !important;
+  gap: 3px 6px !important;
+  min-width: 0;
+}
+
+.wh-mobile .bank .bank-pay__counterparty {
+  font-size: 13.5px !important;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+.wh-mobile .bank .bank-pay__num {
+  font-size: 11px !important;
+}
+
+.wh-mobile .bank .bank-pay__row2 {
+  font-size: 11.5px !important;
+  line-height: 1.4;
+}
+
+.wh-mobile .bank .bank-pay__side {
+  display: contents !important;
+}
+
+.wh-mobile .bank .bank-pay__amount {
+  grid-area: amount;
+  align-self: start;
+  justify-self: end;
+  margin: 0 !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Действия: 2×2, компактные, одинаковые. У зарплат вместо
+   контролов — одна кнопка «Открыть ЗП»: тоже вниз, на всю ширину. */
+.wh-mobile .bank .bank-pay .wh-pay-controls,
+.wh-mobile .bank .bank-pay__side > .admin-btn {
+  grid-area: controls;
+  margin: 0 !important;
+  padding-top: 8px !important;
+  border-top: 1px dashed var(--adm-border) !important;
+  min-width: 0;
+}
+
+.wh-mobile .bank .bank-pay .wh-pay-controls {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  width: 100% !important;
+  justify-content: stretch !important;
+}
+
+.wh-mobile .bank .bank-pay .wh-pay-controls .admin-status__btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 38px !important;
+  margin: 0 !important;
+  padding: 6px 8px !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  border-radius: 10px !important;
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wh-mobile .bank .bank-pay .wh-pay-controls .admin-status__btn svg {
+  flex-shrink: 0;
+}
+
+/* Бейдж «вне баланса» внутри контролов — на всю строку. */
+.wh-mobile .bank .bank-pay .wh-pay-controls > .admin-badge {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.wh-mobile .bank .bank-pay__side > .admin-btn {
+  width: 100% !important;
+  justify-content: center !important;
+  min-height: 40px !important;
+}
+
+/* ── Панель поиска/фильтров банка: два столбца ───────────
+   Базовый слой складывает всё в один столбец во всю ширину.
+   Поиск и тип — на всю ширину, даты «от / до» — рядом,
+   сортировка и сброс — рядом. Иконка поиска перестаёт наезжать
+   на плейсхолдер (инлайн paddingLeft перебивался базовым слоем). */
+.wh-mobile .bank .bank-toolbar {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  align-items: end !important;
+  min-width: 0;
+}
+
+.wh-mobile .bank .bank-toolbar > * {
+  min-width: 0;
+  width: auto !important;
+  max-width: none !important;
+}
+
+.wh-mobile .bank .bank-toolbar__search,
+.wh-mobile .bank .bank-toolbar > .admin-select,
+.wh-mobile .bank .bank-toolbar > select {
+  grid-column: 1 / -1;
+}
+
+.wh-mobile .bank .bank-toolbar__search .admin-input,
+.wh-mobile .bank-toolbar__search input {
+  padding-left: 36px !important;
+  min-height: 44px !important;
+}
+
+.wh-mobile .bank .bank-toolbar .admin-input,
+.wh-mobile .bank .bank-toolbar .admin-select,
+.wh-mobile .bank .bank-toolbar .admin-btn {
+  min-height: 44px !important;
+  width: 100% !important;
+}
+
+.wh-mobile .bank .bank-toolbar .admin-btn {
+  justify-content: center !important;
+}
+
+/* Кнопка сортировки без «Сбросить» рядом — на всю строку. */
+.wh-mobile .bank .bank-toolbar > .admin-btn:nth-child(5):last-child {
+  grid-column: 1 / -1;
+}
+
+/* Поиск по заказам/поставкам — та же иконка слева. */
+.wh-mobile .wh-search-row .admin-input,
+.wh-mobile .wh-search-row input[type="search"],
+.wh-mobile .wh-search-row input[type="text"] {
+  padding-left: 36px !important;
+}
+
+/* ── «Должны нам / Мы должны»: имя и сумма в одну строку,
+   стрелка раскрытия — слева от имени, а не отдельным рядом. ── */
+.wh-mobile .bank .bank-due__group {
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+}
+
+.wh-mobile .bank .bank-due__row {
+  display: grid !important;
+  grid-template-columns: 22px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  column-gap: 8px !important;
+  row-gap: 0 !important;
+  padding: 8px 0 !important;
+}
+
+.wh-mobile .bank .bank-due__name {
+  flex: none !important;
+  min-width: 0;
+  font-size: 13px !important;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.wh-mobile .bank .bank-due__meta {
+  font-size: 10.5px !important;
+  line-height: 1.35;
+  width: auto !important;
+}
+
+.wh-mobile .bank .bank-due__sum {
+  width: auto !important;
+  margin-left: 0 !important;
+  text-align: right !important;
+  font-size: 15px !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-mobile .bank .bank-due__pays {
+  padding-left: 30px !important;
+}
+
+/* Подсказка «ЛКМ / ПКМ» под долгами — про мышь, на телефоне
+   только занимает место. Кнопки «Сбросить выделение» / «Вернуть
+   всех» из той же строки остаются; без них прячется вся строка,
+   чтобы не оставлять пустой отступ. */
+.wh-mobile .bank .bank-due-hints > span:first-child {
+  display: none;
+}
+
+.wh-mobile .bank .bank-due-hints:not(:has(button)) {
+  display: none;
+}
+
+/* Главные подвкладки банка (Ожидают · История · ЮМ · Касса · Сводка)
+   на телефоне — плитки в мобильной карточке банка
+   (WarehouseMobileBankDetails), десктопная строка кнопок скрыта.
+   Вложенные переключатели (период сводки) остаются — в две строки. */
+.wh-mobile .bank > .admin-filters.admin-filters--sub {
+  display: none !important;
+}
+
+.wh-mobile .bank .admin-filters--sub {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  gap: 6px !important;
+  margin-top: 12px !important;
+}
+
+.wh-mobile .bank .admin-filters--sub .admin-filter {
+  flex: 1 1 auto !important;
+  justify-content: center !important;
+  min-height: 36px !important;
+  white-space: nowrap !important;
+}
+
+/* Заголовок месяца и итоги — мельче, но читаемо. */
+.wh-mobile .bank .bank-month__label {
+  font-size: 11px !important;
+  letter-spacing: 0.05em;
 }
 
 /* =========================================================

@@ -66,6 +66,7 @@ export default async function WastepaperAccountPage({
       shipments: [],
       manualPayments: [],
       products: [],
+      salaries: [],
     };
   }
   const rates = await getWastepaperRates().catch(() => null);
@@ -114,6 +115,8 @@ export default async function WastepaperAccountPage({
       intakes={data.intakes}
       shipments={data.shipments}
       manualPayments={data.manualPayments}
+      salaries={data.salaries}
+      canEditSalaries={session.role === "admin"}
       products={data.products}
       rates={rates}
       unifiedTransports={unifiedTransports}

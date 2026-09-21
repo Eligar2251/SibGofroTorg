@@ -517,8 +517,16 @@ export interface Employee {
   createdAt?: string | null;
 }
 
-/** Счёт, с которого выплачивается зарплата */
-export type SalarySource = "cash" | "bank" | "ym_card";
+/**
+ * Счёт, с которого выплачивается зарплата.
+ *  · cash — наличная касса учёта;
+ *  · bank — р/с (фактически «Аренда → карта», см. isRentSalaryComment);
+ *  · ym_card — карта ЮМ (в БД source=bank + тег [Карта ЮМ]);
+ *  · wastepaper — наличка макулатуры (в БД source=cash + тег [Макулатура]).
+ *    Такая выплата НЕ трогает кассу учёта: деньги уходят из наличной
+ *    кассы отдельного модуля «Учёт макулатуры» и отражаются там расходом.
+ */
+export type SalarySource = "cash" | "bank" | "ym_card" | "wastepaper";
 
 /** Начисление/выплата зарплаты сотруднику */
 export interface Salary {
@@ -544,10 +552,14 @@ export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
 export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
 export const SALARY_YM_CARD_TAG = "[Карта ЮМ]";
 export const SALARY_YM_CARD_TAG_SHORT = "[ЮМ]";
+/** Выплата наличными из кассы макулатуры (отдельный модуль учёта). */
+export const SALARY_WASTEPAPER_TAG = "[Макулатура]";
 /** Расчётный месяц хранится служебной пометкой — миграция БД не нужна. */
 export const SALARY_PERIOD_TAG_PREFIX = "Период:";
 const SALARY_PERIOD_TAG_RE = /\[Период:(\d{4}-\d{2})\]/g;
-const SALARY_COLOR_TAG_RE = /\[Цвет:#([0-9a-fA-F]{3,8})\]/g;
+// composeSalaryComment пишет тег без «#» ([Цвет:2563eb]), поэтому «#» в
+// разборе необязателен — иначе цвет не читался, а тег оставался в тексте.
+const SALARY_COLOR_TAG_RE = /\[Цвет:#?([0-9a-fA-F]{3,8})\]/g;
 
 function salaryHasTag(comment: string | null | undefined, tag: string): boolean {
   return (comment || "").includes(tag);
@@ -558,6 +570,22 @@ export function isRentSalaryComment(comment: string | null | undefined, source?:
   if (salaryHasTag(comment, SALARY_RENT_TAG)) return true;
   if (source === "bank" && !isYmCardSalaryComment(comment)) return true;
   return false;
+}
+
+/**
+ * Выплата наличными из кассы макулатуры. В БД такая запись хранится как
+ * source="cash" + тег [Макулатура]: наличную кассу учёта она не уменьшает,
+ * зато попадает расходом «Наличка» в финансы модуля «Учёт макулатуры».
+ */
+export function isWastepaperSalaryComment(comment: string | null | undefined): boolean {
+  return salaryHasTag(comment, SALARY_WASTEPAPER_TAG);
+}
+
+/** Выплата из кассы макулатуры — по виртуальному source или по тегу. */
+export function isWastepaperSalary(
+  salary: Pick<Salary, "comment"> & { source?: string | null }
+): boolean {
+  return salary.source === "wastepaper" || isWastepaperSalaryComment(salary.comment);
 }
 
 /** Историческая выплата: показывается в ЗП, но не влияет на текущий баланс. */
@@ -585,7 +613,7 @@ export function getSalaryPeriodMonth(
 
 /** Кастомный цвет плитки зарплаты из комментария (без миграции БД). */
 export function getSalaryColor(comment: string | null | undefined): string | null {
-  const match = String(comment || "").match(/\[Цвет:#([0-9a-fA-F]{3,8})\]/);
+  const match = String(comment || "").match(/\[Цвет:#?([0-9a-fA-F]{3,8})\]/);
   return match?.[1]
     ? `#${match[1].toLowerCase()}`
     : null;
@@ -599,6 +627,7 @@ export function stripSalaryMetaTags(comment: string | null | undefined): string 
     .replaceAll(SALARY_DEBT_PAYMENT_TAG, "")
     .replaceAll(SALARY_YM_CARD_TAG, "")
     .replaceAll(SALARY_YM_CARD_TAG_SHORT, "")
+    .replaceAll(SALARY_WASTEPAPER_TAG, "")
     .replace(SALARY_PERIOD_TAG_RE, "")
     .replace(SALARY_COLOR_TAG_RE, "")
     .replace(/\s+/g, " ")
@@ -612,14 +641,19 @@ export function composeSalaryComment(options: {
   excludeFromBalance?: boolean;
   debtPayment?: boolean;
   ymCard?: boolean;
+  /** Наличными из кассы макулатуры (отдельный модуль учёта). */
+  wastepaper?: boolean;
   /** Расчётный месяц YYYY-MM: например, выплата в июле за июнь. */
   periodMonth?: string | null;
   /** Кастомный HEX-цвет плитки. */
   color?: string | null;
 }): string | null {
   const tags: string[] = [];
+  // Счёт выплаты — ровно один тег: карта ЮМ, касса макулатуры или аренда.
   if (options.ymCard) {
     tags.push(SALARY_YM_CARD_TAG);
+  } else if (options.wastepaper) {
+    tags.push(SALARY_WASTEPAPER_TAG);
   } else if (options.rent) {
     tags.push(SALARY_RENT_TAG);
   }
@@ -1055,7 +1089,10 @@ export function getCashCarryoverSummary(
       salary.source !== "cash" ||
       salary.amount <= 0 ||
       isSalaryExcludedFromBalance(salary.comment) ||
-      isRentSalaryComment(salary.comment)
+      isRentSalaryComment(salary.comment) ||
+      // Наличка макулатуры — отдельная касса: её расход учитывается в
+      // модуле «Учёт макулатуры», а не в кассе учёта.
+      isWastepaperSalaryComment(salary.comment)
     ) {
       continue;
     }
@@ -1295,6 +1332,9 @@ export function getBankSummary(
   for (const s of salaries) {
     const bypassBalance = isSalaryExcludedFromBalance(s.comment);
     if (bypassBalance) continue;
+    // Выплата из кассы макулатуры — деньги отдельного модуля: не трогает
+    // ни кассу, ни р/с, ни карту ЮМ, ни аренду (см. getWpBalance).
+    if (isWastepaperSalary(s)) continue;
     const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
     if (isYm) {
       // карта ЮМ — перевод / выплата с карты

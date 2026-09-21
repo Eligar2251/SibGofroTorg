@@ -67,6 +67,29 @@ export function wpIntakeAwaitingWeight(
   return Boolean(i.awaitingWeight) && i.status === "active";
 }
 
+/**
+ * Приём «проведён» — уходит в архив вкладки «Проведённые».
+ *
+ * Условия (все сразу): документ не отменён и не ждёт взвешивания, вес
+ * указан — и фактически принятый, и вес к оплате, — и оплата прошла.
+ * Попадание в архив автоматическое: как только приём оплачен и оба
+ * веса вписаны, он пропадает из рабочего списка. Старые приёмы без
+ * веса к оплате остаются в рабочем списке, пока вес не впишут.
+ */
+export function wpIntakeCompleted(
+  i: Pick<
+    WpIntake,
+    "status" | "isPaid" | "acceptedWeightKg" | "payableWeightKg" | "awaitingWeight"
+  >
+): boolean {
+  if (i.status !== "active" || !i.isPaid) return false;
+  if (wpIntakeAwaitingWeight(i)) return false;
+  return (
+    (Number(i.acceptedWeightKg) || 0) > 0 &&
+    (Number(i.payableWeightKg) || 0) > 0
+  );
+}
+
 /** Сдача ждёт перевозки: помечена «в перевозку» и не отменена. */
 export function wpShipmentNeedsTransport(s: Pick<WpShipment, "needsTransport" | "status">): boolean {
   return Boolean(s.needsTransport) && s.status === "active";
@@ -635,7 +658,12 @@ export function wpUid(prefix: string): string {
 
 // ── Денежные события (единая лента для финансов) ─────────
 
-export type WpMoneyEventKind = "intake" | "shipment" | "manual";
+/**
+ * Вид движения денег. «salary» — зарплата сотрудника, выплаченная наличными
+ * из кассы макулатуры: сама запись живёт в разделе «Зарплаты» учёта
+ * (тег [Макулатура]), а здесь показывается расходом по счёту «Наличка».
+ */
+export type WpMoneyEventKind = "intake" | "shipment" | "manual" | "salary";
 
 export interface WpMoneyEvent {
   kind: WpMoneyEventKind;
@@ -653,6 +681,81 @@ export interface WpMoneyEvent {
   title: string;
   comment: string | null;
   cancelled: boolean;
+}
+
+/**
+ * Минимум полей зарплаты, нужный финансам макулатуры. Структурный тип,
+ * чтобы модуль не тянул типы товарного учёта (warehouse-shared).
+ */
+export interface WpSalaryLike {
+  id: string;
+  employeeName: string;
+  amount: number;
+  date: string;
+  /** Расчётный месяц YYYY-MM (за какой месяц зарплата). */
+  periodMonth?: string | null;
+  source?: string | null;
+  isPaid: boolean;
+  paidAt?: string | null;
+  comment?: string | null;
+}
+
+/** Тег зарплаты «выплачено из кассы макулатуры» (см. warehouse-shared). */
+export const WP_SALARY_TAG = "[Макулатура]";
+
+/** Зарплата выплачена (или запланирована) наличными из кассы макулатуры. */
+export function isWpSalary(s: Pick<WpSalaryLike, "source" | "comment">): boolean {
+  return s.source === "wastepaper" || String(s.comment || "").includes(WP_SALARY_TAG);
+}
+
+/** Комментарий зарплаты без служебных тегов — для ленты финансов. */
+function wpSalaryCleanComment(comment: string | null | undefined): string | null {
+  const clean = String(comment || "")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean || null;
+}
+
+/** «за август 2026» по ключу YYYY-MM; пустая строка, если ключа нет. */
+function wpSalaryPeriodLabel(periodMonth: string | null | undefined): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(periodMonth || ""));
+  if (!match) return "";
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, 1);
+  if (Number.isNaN(date.getTime())) return "";
+  return `за ${date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" }).replace(/\s*г\.$/, "")}`;
+}
+
+/**
+ * Зарплаты из кассы макулатуры → денежные события модуля.
+ * Всегда расход по счёту «Наличка» (наличный расчёт): проведённая выплата
+ * уменьшает остаток наличных на дату выплаты, запланированная — попадает в
+ * прогноз «Нужно выплатить». Записи «вне баланса» пропускаем.
+ */
+export function wpSalaryMoneyEvents(salaries: WpSalaryLike[]): WpMoneyEvent[] {
+  const events: WpMoneyEvent[] = [];
+  for (const s of salaries) {
+    if (!isWpSalary(s)) continue;
+    if (String(s.comment || "").includes("[Вне баланса]")) continue;
+    const amount = Math.max(0, Number(s.amount) || 0);
+    if (amount <= 0) continue;
+    events.push({
+      kind: "salary",
+      id: s.id,
+      number: 0,
+      date: String(s.date || "").slice(0, 10),
+      direction: "outgoing",
+      account: "cash",
+      amount,
+      isPaid: Boolean(s.isPaid),
+      paidAt: s.isPaid ? String(s.paidAt || s.date || "").slice(0, 10) || null : null,
+      counterpartyName: s.employeeName || "Сотрудник",
+      title: ["Выплата ЗП", wpSalaryPeriodLabel(s.periodMonth)].filter(Boolean).join(" "),
+      comment: wpSalaryCleanComment(s.comment),
+      cancelled: false,
+    });
+  }
+  return events;
 }
 
 /** Фактическая дата для баланса: день оплаты (paidAt) или дата документа. */
@@ -675,11 +778,15 @@ export function wpIntakePayableTotal(
   return Number(i.total) || 0;
 }
 
-/** Собирает единую ленту денежных движений из трёх источников. */
+/**
+ * Собирает единую ленту денежных движений: приёмы, сдачи, ручные платежи
+ * и (если переданы) зарплаты, выплаченные наличными из кассы макулатуры.
+ */
 export function wpCollectMoneyEvents(
   intakes: WpIntake[],
   shipments: WpShipment[],
-  manualPayments: WpManualPayment[]
+  manualPayments: WpManualPayment[],
+  salaries: WpSalaryLike[] = []
 ): WpMoneyEvent[] {
   const events: WpMoneyEvent[] = [];
   for (const i of intakes) {
@@ -738,6 +845,8 @@ export function wpCollectMoneyEvents(
       cancelled: false,
     });
   }
+  // Зарплаты «с макулатуры» — расход наличных, запись ведётся в «Зарплатах».
+  events.push(...wpSalaryMoneyEvents(salaries));
   return events;
 }
 

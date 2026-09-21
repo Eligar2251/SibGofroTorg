@@ -459,6 +459,25 @@
   margin-left: auto;
 }
 
+/* Переключатель «Текущие / Проведённые» над списком приёмов.
+   Проведённые — архив: оплачено, вес факт и к оплате указан. */
+.wp-intake-views {
+  margin: 0 0 12px;
+}
+
+.wp-intake-views .admin-filter {
+  gap: 6px;
+}
+
+.wp-intake-views .wp-tab__count {
+  margin-left: 2px;
+}
+
+.wp-intake-views .admin-filter--active .wp-tab__count {
+  background: rgba(255, 255, 255, 0.24);
+  color: inherit;
+}
+
 .wp-summary {
   display: flex;
   align-items: center;

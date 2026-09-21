@@ -56,6 +56,7 @@ import {
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
   isYmCardSalaryComment,
+  isWastepaperSalaryComment,
   isImmediateYmPayment,
   isRentSalaryComment,
   getSalaryPeriodMonth,
@@ -402,7 +403,13 @@ function mapSalaryRow(row: any): Salary {
     amount: Number(row.amount || 0),
     date: row.date,
     periodMonth: getSalaryPeriodMonth(row.comment, row.date),
-    source: isYmCardSalaryComment(row.comment) ? "ym_card" : row.source,
+    // Виртуальные счета живут в теге комментария (миграция БД не нужна):
+    // [Карта ЮМ] → ym_card, [Макулатура] → wastepaper (наличка макулатуры).
+    source: isYmCardSalaryComment(row.comment)
+      ? "ym_card"
+      : isWastepaperSalaryComment(row.comment)
+        ? "wastepaper"
+        : row.source,
     isPaid: row.is_paid ?? false,
     paidAt: row.paid_at ?? null,
     comment: row.comment ?? null,
@@ -2920,10 +2927,15 @@ export async function deleteEmployee(id: string): Promise<void> {
 export async function createSalary(data: { employeeId?: string | null; employeeName: string; amount: number; date: string; source: SalarySource; isPaid?: boolean; comment?: string | null }): Promise<{ id: string }> {
   const db = getAdminDb();
   const rawSource = String(data.source || "");
-  const dbSource = rawSource === "cash" ? "cash" : "bank";
+  // Наличка макулатуры — наличный расчёт: в БД source=cash + тег
+  // [Макулатура], по которому выплата уходит из кассы учёта в финансы
+  // модуля макулатуры.
+  const dbSource = rawSource === "cash" || rawSource === "wastepaper" ? "cash" : "bank";
   let dbComment = data.comment || "";
   if (rawSource === "ym_card" && !dbComment.includes("[Карта ЮМ]") && !dbComment.includes("[ЮМ]")) {
     dbComment = `[Карта ЮМ] ${dbComment}`.trim();
+  } else if (rawSource === "wastepaper" && !dbComment.includes("[Макулатура]")) {
+    dbComment = `[Макулатура] ${dbComment}`.trim();
   } else if (rawSource === "rent" && !dbComment.includes("[Аренда]")) {
     dbComment = `[Аренда] ${dbComment}`.trim();
   }
@@ -2956,11 +2968,13 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   }
   if (data.source) {
     const rawSource = String(data.source);
-    payload.source = rawSource === "cash" ? "cash" : "bank";
+    payload.source = rawSource === "cash" || rawSource === "wastepaper" ? "cash" : "bank";
     const commentStr = String(data.comment || "");
     let nextComment = data.comment;
     if (rawSource === "ym_card" && nextComment !== undefined && !commentStr.includes("[Карта ЮМ]") && !commentStr.includes("[ЮМ]")) {
       nextComment = `[Карта ЮМ] ${commentStr}`.trim();
+    } else if (rawSource === "wastepaper" && nextComment !== undefined && !commentStr.includes("[Макулатура]")) {
+      nextComment = `[Макулатура] ${commentStr}`.trim();
     } else if (rawSource === "rent" && nextComment !== undefined && !commentStr.includes("[Аренда]")) {
       nextComment = `[Аренда] ${commentStr}`.trim();
     }
@@ -3339,6 +3353,8 @@ function listCashExpenses(
     if (!s.isPaid || s.amount <= 0) continue;
     if (isSalaryExcludedFromBalance(s.comment)) continue;
     if (isRentSalaryComment(s.comment, s.source)) continue;
+    // Наличка макулатуры — не касса смены: расход виден в модуле макулатуры.
+    if (s.source === "wastepaper" || isWastepaperSalaryComment(s.comment)) continue;
     const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
     if (s.source !== "cash" && !isYm) continue;
     rows.push({
