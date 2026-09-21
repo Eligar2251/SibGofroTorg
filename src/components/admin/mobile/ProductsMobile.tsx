@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { useBodyLock } from "@/hooks/use-body-lock";
+import { useWindowedList } from "@/hooks/use-windowed-list";
 import { normalizeProductLabelColor } from "@/lib/product-fields";
 import styles from "./ProductsMobile.module.css";
 
@@ -88,6 +89,12 @@ export function ProductsMobile({
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   useBodyLock(filtersOpen);
+
+  // Карточки рендерим кусками при прокрутке — на слабых телефонах
+  // DOM из сотен карточек с фото ронял FPS (см. use-windowed-list).
+  const win = useWindowedList(products, {
+    resetKey: `${search}|${category}|${stock}|${visibility}`,
+  });
 
   const activeFilters =
     (category !== "all" ? 1 : 0) +
@@ -160,9 +167,23 @@ export function ProductsMobile({
         </div>
       ) : (
         <div className={styles.list}>
-          {products.map((product) => (
+          {win.visible.map((product) => (
             <ProductCard key={product.id} product={product} adminPath={adminPath} />
           ))}
+          {win.hasMore && (
+            <button
+              type="button"
+              className="admin-show-more"
+              ref={(node) => {
+                win.sentinelRef(node);
+              }}
+              onClick={win.showAll}
+              style={{ gridColumn: "1 / -1" }}
+            >
+              Показано {win.visible.length} из {win.total} ·{" "}
+              <strong>Показать все</strong>
+            </button>
+          )}
         </div>
       )}
 

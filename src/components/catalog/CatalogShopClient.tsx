@@ -359,7 +359,7 @@ export function CatalogShopClient({
 
             {/* Постоянная кнопка подбора коробки — вне категорий */}
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-              <a
+              <Link
                 href="/podbor-korobki"
                 className="btn btn-primary btn-sm"
                 style={{
@@ -371,7 +371,7 @@ export function CatalogShopClient({
               >
                 <GlyphIcon value="box" size={15} />
                 Подобрать коробку по размеру
-              </a>
+              </Link>
             </div>
           </aside>
 

@@ -17,6 +17,7 @@ import {
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { normalizeProductLabelColor } from "@/lib/product-fields";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useWindowedList } from "@/hooks/use-windowed-list";
 import { ProductsMobile } from "./mobile/ProductsMobile";
 
 interface ProductItem {
@@ -100,6 +101,13 @@ export function ProductListClient({
       );
     });
   }, [products, deferredSearch, selectedCategory, selectedStock, selectedVisibility]);
+
+  // Длинный каталог рендерим кусками (use-windowed-list): на слабых
+  // машинах DOM из сотен строк с фото — главная причина рывков при
+  // прокрутке. Списки короче 40 позиций не меняются вообще.
+  const win = useWindowedList(filtered, {
+    resetKey: `${deferredSearch}|${selectedCategory}|${selectedStock}|${selectedVisibility}`,
+  });
 
   // «Обновить штрихкоды»: дозаписывает коды только товарам без кода
   // или с битым/дублирующимся. У товаров с валидным кодом ничего не
@@ -352,7 +360,7 @@ export function ProductListClient({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((product) => {
+              {win.visible.map((product) => {
                 const isSelected = selectedIds.has(product.id);
                 return (
                   <tr
@@ -533,8 +541,35 @@ export function ProductListClient({
                   </tr>
                 );
               })}
+              {/* Хвост окна списка: подъезд к кнопке догружает ещё строки */}
+              {win.hasMore && (
+                <tr>
+                  <td colSpan={8} className="admin-show-more-cell">
+                    <button
+                      type="button"
+                      className="admin-show-more"
+                      ref={(node) => {
+                        win.sentinelRef(node);
+                      }}
+                    >
+                      Показано {win.visible.length} из {win.total} · ещё{" "}
+                      {Math.min(40, win.hidden)}
+                    </button>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+          {win.total > 0 && win.hasMore && (
+            <div className="admin-windowed-hint" style={{ padding: "6px 12px 10px" }}>
+              <span>
+                Показано {win.visible.length} из {win.total}
+              </span>
+              <button type="button" onClick={win.showAll}>
+                Показать все
+              </button>
+            </div>
+          )}
           {filtered.length === 0 && (
             <div className="admin-table__empty">
               {search || selectedCategory !== "all" || selectedStock !== "all"
