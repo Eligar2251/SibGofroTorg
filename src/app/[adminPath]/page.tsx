@@ -58,6 +58,7 @@ import {
   dealRemainingItems,
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
+  isRentSalaryComment,
   stripSalaryMetaTags,
   type BankPayment,
   type Salary,
@@ -261,7 +262,10 @@ export default async function AdminDashboard() {
     ? wpCollectMoneyEvents(
         wpFinance.intakes,
         wpFinance.shipments,
-        wpFinance.manualPayments
+        wpFinance.manualPayments,
+        // Зарплаты, выплаченные наличными из кассы макулатуры, — расход
+        // этой кассы (в основную кассу учёта они не входят).
+        wpFinance.salaries
       )
     : [];
   const wpBalance = getWpBalance(wpEvents, dashboardDate);
@@ -343,9 +347,16 @@ export default async function AdminDashboard() {
       })),
     }));
 
+  // Зарплаты «с аренды на карту» — вне баланса СГТ: они не списывают
+  // р/с и кассу и в расходы учёта не входят (у аренды свой модуль и
+  // свой банк). Поэтому в ленте финансов их нет — иначе они попадали
+  // бы в «расход р/с» и портили итог.
   const salaryFinanceRows: DashboardFinanceRow[] = salaries
     .filter(
-      (salary) => salary.isPaid && !isSalaryExcludedFromBalance(salary.comment)
+      (salary) =>
+        salary.isPaid &&
+        !isSalaryExcludedFromBalance(salary.comment) &&
+        !isRentSalaryComment(salary.comment, salary.source)
     )
     .map((salary) => ({
       id: `salary-${salary.id}`,

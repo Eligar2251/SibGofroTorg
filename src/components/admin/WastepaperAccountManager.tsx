@@ -8,7 +8,9 @@
 // приёмы и сдачи с пометкой «в перевозку» едут в общем путевом
 // листе как «забор груза» и «сдача груза».
 // Деньги модуля (приём, сдачи, платежи) с сайтом и товарным
-// учётом не связаны.
+// учётом не связаны. Единственное исключение — зарплаты с пометкой
+// «Макулатура» из раздела «Зарплаты»: они выплачиваются наличными из
+// кассы макулатуры и показываются здесь расходом «Наличка» (в минус).
 // =========================================================
 
 "use client";
@@ -50,6 +52,7 @@ import {
 } from "lucide-react";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
 import { useBodyLock } from "@/hooks/use-body-lock";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 import type { WastepaperRates } from "@/lib/wastepaper";
 import {
   TransportManager,
@@ -77,6 +80,7 @@ import {
   wpCollectMoneyEvents,
   wpDocTotals,
   wpIntakeAwaitingWeight,
+  wpIntakeCompleted,
   wpIntakePayableTotal,
   wpItemsSummary,
   wpTypeLabel,
@@ -88,6 +92,7 @@ import {
   type WpIntake,
   type WpManualPayment,
   type WpMoneyEvent,
+  type WpSalaryLike,
   type WpShipment,
   type WpProduct,
   type WpTransportQueueDoc,
@@ -124,6 +129,9 @@ function todayStr(): string {
 
 function fmtPaidAt(iso: string | null): string {
   if (!iso) return "";
+  // У зарплат дата выплаты хранится без времени (YYYY-MM-DD) — не
+  // превращаем её в «07:00» через часовой пояс, показываем только день.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return fmtDate(iso);
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return `${d.toLocaleDateString("ru-RU", {
@@ -148,13 +156,22 @@ const KIND_BADGE: Record<WpMoneyEvent["kind"], { cls: string; label: string }> =
   intake: { cls: "admin-badge admin-badge--amber", label: "Приём" },
   shipment: { cls: "admin-badge admin-badge--teal", label: "Сдача" },
   manual: { cls: "admin-badge admin-badge--blue", label: "Платёж" },
+  salary: { cls: "admin-badge admin-badge--indigo", label: "Зарплата" },
 };
 
-/** Конец API по виду денежного события. */
-function apiBaseForEvent(e: WpMoneyEvent): string {
-  if (e.kind === "intake") return "intakes";
-  if (e.kind === "shipment") return "shipments";
-  return "payments";
+/** Подсказка для событий-зарплат: их ведут в разделе «Зарплаты» учёта. */
+const SALARY_EVENT_HINT =
+  "Зарплата выплачена наличными из кассы макулатуры. Изменить или отменить её можно в разделе «Зарплаты» учёта.";
+
+/**
+ * Конец API по виду денежного события. Зарплата — документ учёта
+ * (/api/admin/warehouse/salaries), поэтому её путь абсолютный.
+ */
+function apiUrlForEvent(e: WpMoneyEvent): string {
+  if (e.kind === "salary") return `/api/admin/warehouse/salaries/${e.id}`;
+  if (e.kind === "intake") return `/api/admin/wp/intakes/${e.id}`;
+  if (e.kind === "shipment") return `/api/admin/wp/shipments/${e.id}`;
+  return `/api/admin/wp/payments/${e.id}`;
 }
 
 /** Цена по виду из тарифов настроек (если есть). */
@@ -415,6 +432,17 @@ interface Props {
   intakes: WpIntake[];
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
+  /**
+   * Зарплаты, выплаченные/запланированные наличными из кассы макулатуры
+   * (пометка «Макулатура» в разделе «Зарплаты»). Здесь — только расход
+   * «Наличка»; сами записи редактируются в учёте.
+   */
+  salaries?: WpSalaryLike[];
+  /**
+   * Может ли пользователь проводить/открывать зарплаты (API и раздел
+   * «Зарплаты» доступны администратору; макулатурщику — только просмотр).
+   */
+  canEditSalaries?: boolean;
   products: WpProduct[];
   rates: WastepaperRates | null;
   /**
@@ -444,6 +472,8 @@ export function WastepaperAccountManager(props: Props) {
       "wp_counterparties",
       // Единые перевозки — вкладка «Перевозки» обновляется вместе с учётом.
       "transports",
+      // Зарплаты «с макулатуры» списываются из наличных этого модуля.
+      "salaries",
     ],
     pollIntervalMs: 60_000,
   });
@@ -457,6 +487,7 @@ export function WastepaperAccountManager(props: Props) {
   const [intakes, setIntakes] = useState(props.intakes);
   const [shipments, setShipments] = useState(props.shipments);
   const [manualPayments, setManualPayments] = useState(props.manualPayments);
+  const [salaries, setSalaries] = useState<WpSalaryLike[]>(props.salaries ?? []);
   const [products, setProducts] = useState(props.products);
 
   const [saving, setSaving] = useState(false);
@@ -491,6 +522,7 @@ export function WastepaperAccountManager(props: Props) {
       "wp_transports",
       "wp_counterparties",
       "transports",
+      "salaries",
     ],
     pollIntervalMs: 30_000,
   });
@@ -500,6 +532,7 @@ export function WastepaperAccountManager(props: Props) {
   useEffect(() => setIntakes(props.intakes), [props.intakes]);
   useEffect(() => setShipments(props.shipments), [props.shipments]);
   useEffect(() => setManualPayments(props.manualPayments), [props.manualPayments]);
+  useEffect(() => setSalaries(props.salaries ?? []), [props.salaries]);
   useEffect(() => setProducts(props.products), [props.products]);
 
   // Сохраняем вкладку в URL (?tab=...), чтобы ссылки с дашборда и
@@ -519,8 +552,8 @@ export function WastepaperAccountManager(props: Props) {
   /* ── Производные данные ── */
 
   const events = useMemo(
-    () => wpCollectMoneyEvents(intakes, shipments, manualPayments),
-    [intakes, shipments, manualPayments]
+    () => wpCollectMoneyEvents(intakes, shipments, manualPayments, salaries),
+    [intakes, shipments, manualPayments, salaries]
   );
   const today = todayStr();
   const balance = useMemo(() => getWpBalance(events, today), [events, today]);
@@ -585,14 +618,26 @@ export function WastepaperAccountManager(props: Props) {
   }
 
   async function toggleEventPaid(e: WpMoneyEvent) {
+    // Зарплата — документ учёта: проводим через API зарплат (доступно
+    // администратору; макулатурщику это API закрыто — только подсказка).
+    if (e.kind === "salary" && !props.canEditSalaries) {
+      setActionError("");
+      setNotice(SALARY_EVENT_HINT);
+      return;
+    }
     const ok = await callApi(
       () =>
-        fetch(`/api/admin/wp/${apiBaseForEvent(e)}/${e.id}`, {
+        fetch(apiUrlForEvent(e), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isPaid: !e.isPaid }),
+          body: JSON.stringify(
+            e.kind === "salary"
+              ? // Как в «Зарплатах»: дата выплаты — день проведения.
+                { isPaid: !e.isPaid, paidAt: !e.isPaid ? todayStr() : null }
+              : { isPaid: !e.isPaid }
+          ),
         }),
-      "Не удалось обновить оплату"
+      e.kind === "salary" ? SALARY_EVENT_HINT : "Не удалось обновить оплату"
     );
     if (ok) setNotice(e.isPaid ? "Помечено как неоплаченное" : "Проведено: оплачено");
   }
@@ -640,6 +685,16 @@ export function WastepaperAccountManager(props: Props) {
   }
 
   function openEventEdit(e: WpMoneyEvent) {
+    if (e.kind === "salary") {
+      // Запись зарплаты редактируется только в учёте — администратора
+      // ведём туда, макулатурщику (раздел закрыт) показываем подсказку.
+      setActionError("");
+      setNotice(SALARY_EVENT_HINT);
+      if (props.canEditSalaries) {
+        router.push(`/${props.adminPath}/warehouse?tab=salaries`);
+      }
+      return;
+    }
     if (e.kind === "intake") {
       const item = intakes.find((i) => i.id === e.id);
       if (item) setIntakeModal({ mode: "edit", item });
@@ -1565,7 +1620,7 @@ function ForecastCard({
                 type="button"
                 className="admin-btn admin-btn--ghost admin-btn--sm"
                 onClick={() => onTogglePaid(e)}
-                title="Отметить оплаченным"
+                title={e.kind === "salary" ? SALARY_EVENT_HINT : "Отметить оплаченным"}
               >
                 <Check size={13} /> Оплачено
               </button>
@@ -1573,6 +1628,7 @@ function ForecastCard({
                 type="button"
                 className="admin-btn admin-btn--ghost admin-btn--sm"
                 onClick={() => onEdit(e)}
+                title={e.kind === "salary" ? "Открыть раздел «Зарплаты»" : "Открыть документ"}
               >
                 <Pencil size={13} />
               </button>
@@ -1750,6 +1806,11 @@ function PaymentsTab({
                         {e.comment}
                       </div>
                     )}
+                    {e.kind === "salary" && (
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.78rem", marginTop: 3 }}>
+                        наличными из кассы макулатуры · ведётся в разделе «Зарплаты»
+                      </div>
+                    )}
                   </WpCell>
                   <WpCell>{e.counterpartyName || "—"}</WpCell>
                   <WpCell
@@ -1781,7 +1842,13 @@ function PaymentsTab({
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
                       onClick={() => onTogglePaid(e)}
-                      title={e.isPaid ? "Снять отметку об оплате" : "Отметить оплаченным"}
+                      title={
+                        e.kind === "salary"
+                          ? SALARY_EVENT_HINT
+                          : e.isPaid
+                            ? "Снять отметку об оплате"
+                            : "Отметить оплаченным"
+                      }
                     >
                       {e.isPaid ? <RotateCcw size={13} /> : <Check size={13} />}
                     </button>
@@ -1789,7 +1856,7 @@ function PaymentsTab({
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
                       onClick={() => onEdit(e)}
-                      title="Открыть документ"
+                      title={e.kind === "salary" ? "Открыть раздел «Зарплаты»" : "Открыть документ"}
                     >
                       <Pencil size={13} />
                     </button>
@@ -1826,11 +1893,29 @@ function IntakesTab({
   const [query, setQuery] = useState("");
   const [account, setAccount] = useState<"all" | WpAccount>("all");
   const [showCancelled, setShowCancelled] = useState(false);
+  // «Текущие» — рабочий список; «Проведённые» — архив: приём оплачен,
+  // оба веса (факт и к оплате) указаны. Попадает туда автоматически,
+  // см. wpIntakeCompleted().
+  const [view, setView] = useState<"current" | "done">("current");
+  const doneCount = useMemo(
+    () => intakes.filter((i) => wpIntakeCompleted(i)).length,
+    [intakes]
+  );
+  const currentCount = useMemo(
+    () => intakes.filter((i) => i.status === "active" && !wpIntakeCompleted(i)).length,
+    [intakes]
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return intakes.filter((i) => {
-      if (!showCancelled && i.status === "cancelled") return false;
+      const done = wpIntakeCompleted(i);
+      if (view === "done") {
+        if (!done) return false;
+      } else {
+        if (done) return false;
+        if (!showCancelled && i.status === "cancelled") return false;
+      }
       if (account !== "all" && i.account !== account) return false;
       if (!q) return true;
       return (
@@ -1840,7 +1925,7 @@ function IntakesTab({
         (i.comment || "").toLowerCase().includes(q)
       );
     });
-  }, [intakes, query, account, showCancelled]);
+  }, [intakes, query, account, showCancelled, view]);
 
   const totals = useMemo(() => {
     const active = filtered.filter((i) => i.status === "active");
@@ -1880,31 +1965,64 @@ function IntakesTab({
             </button>
           ))}
         </div>
-        <label className="admin-hint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={showCancelled}
-            onChange={(e) => setShowCancelled(e.target.checked)}
-          />
-          отменённые
-        </label>
+        {view === "current" && (
+          <label className="admin-hint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showCancelled}
+              onChange={(e) => setShowCancelled(e.target.checked)}
+            />
+            отменённые
+          </label>
+        )}
         <button type="button" className="admin-btn admin-btn--navy" onClick={onNew}>
           <Plus size={15} /> Приём
         </button>
       </div>
 
+      {/* Рабочий список / архив проведённых */}
+      <div className="admin-filters admin-filters--sub wp-intake-views" role="tablist" aria-label="Список приёмов">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "current"}
+          className={`admin-filter${view === "current" ? " admin-filter--active" : ""}`}
+          onClick={() => setView("current")}
+        >
+          <HandCoins size={12} /> Текущие
+          <span className="wp-tab__count">{currentCount}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "done"}
+          className={`admin-filter${view === "done" ? " admin-filter--active" : ""}`}
+          onClick={() => setView("done")}
+          title="Оплаченные приёмы с указанным весом (факт и к оплате) — попадают сюда автоматически"
+        >
+          <Check size={12} /> Проведённые
+          <span className="wp-tab__count">{doneCount}</span>
+        </button>
+      </div>
+
       <p className="wp-summary">
-        Показано приёмов: <strong>{filtered.length}</strong>
+        {view === "done" ? "Проведённых приёмов" : "Показано приёмов"}: <strong>{filtered.length}</strong>
         <span className="wp-summary__chip">{fmtKg(totals.kg)}</span>
         <span className="wp-summary__chip">{fmtMoney(totals.sum)}</span>
+        {view === "done" && (
+          <span className="admin-hint" style={{ marginLeft: 6 }}>
+            оплачены, вес факт и к оплате указан · попадают сюда автоматически
+          </span>
+        )}
       </p>
 
       {filtered.length === 0 ? (
         <div className="admin-card">
           <div className="admin-card__pad">
             <p className="admin-hint">
-              Приёмов пока нет. Добавьте первый — укажите, от кого приняли
-              макулатуру, вес и итоговую сумму: цена за кг посчитается сама.
+              {view === "done"
+                ? "Проведённых приёмов пока нет. Приём попадает сюда сам, когда он оплачен и в карточке указаны фактический вес и вес к оплате."
+                : "Приёмов пока нет. Добавьте первый — укажите, от кого приняли макулатуру, вес и итоговую сумму: цена за кг посчитается сама."}
             </p>
           </div>
         </div>
@@ -2535,6 +2653,10 @@ function IntakeModal({
 }) {
   // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
+  // Закрытие только крестиком и Escape: клик по подложке модалку не
+  // закрывает — иначе выделение текста мышью с отпусканием за окном
+  // сбрасывало всю заполненную форму.
+  useEscapeClose(onClose, !saving);
   const isEdit = mode === "edit";
   const isCopy = mode === "copy";
   // Копия как в 1С: всё переносится, но дата — сегодня, оплата сброшена,
@@ -2717,7 +2839,7 @@ function IntakeModal({
       : "";
 
   return (
-    <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
+    <div className="admin-modal-overlay">
       <div
         className="admin-modal wp-modal"
         onClick={(e) => e.stopPropagation()}
@@ -3083,6 +3205,10 @@ function ShipmentModal({
 }) {
   // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
+  // Закрытие только крестиком и Escape: клик по подложке модалку не
+  // закрывает — иначе выделение текста мышью с отпусканием за окном
+  // сбрасывало всю заполненную форму.
+  useEscapeClose(onClose, !saving);
   const isEdit = mode === "edit";
   const isCopy = mode === "copy";
   const [form, setForm] = useState(() => ({
@@ -3269,7 +3395,7 @@ function ShipmentModal({
       : "";
 
   return (
-    <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
+    <div className="admin-modal-overlay">
       <div
         className="admin-modal wp-modal"
         onClick={(e) => e.stopPropagation()}
@@ -3610,6 +3736,10 @@ function PaymentModal({
 }) {
   // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
+  // Закрытие только крестиком и Escape: клик по подложке модалку не
+  // закрывает — иначе выделение текста мышью с отпусканием за окном
+  // сбрасывало всю заполненную форму.
+  useEscapeClose(onClose, !saving);
   const [form, setForm] = useState({
     date: item?.date || todayStr(),
     direction: (item?.direction || "incoming") as "incoming" | "outgoing",
@@ -3640,7 +3770,7 @@ function PaymentModal({
   const valid = form.date !== "" && amount > 0;
 
   return (
-    <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
+    <div className="admin-modal-overlay">
       <div
         className="admin-modal wp-modal wp-modal--slim"
         onClick={(e) => e.stopPropagation()}
@@ -3861,6 +3991,10 @@ function CounterpartyModal({
 }) {
   // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
+  // Закрытие только крестиком и Escape: клик по подложке модалку не
+  // закрывает — иначе выделение текста мышью с отпусканием за окном
+  // сбрасывало всю заполненную форму.
+  useEscapeClose(onClose, !saving);
   const [form, setForm] = useState(() => ({
     name: item?.name || "",
     roles: item?.roles || (["supplier"] as string[]),
@@ -3917,7 +4051,7 @@ function CounterpartyModal({
     .filter((b) => b.address || b.phone || b.contactPerson);
 
   return (
-    <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
+    <div className="admin-modal-overlay">
       <div
         className="admin-modal wp-modal"
         onClick={(e) => e.stopPropagation()}

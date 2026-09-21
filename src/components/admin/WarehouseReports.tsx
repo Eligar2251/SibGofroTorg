@@ -27,6 +27,7 @@ import {
   getCashCollectionExpenseBreakdown,
   isSalaryExcludedFromBalance,
   isRentSalaryComment,
+  isWastepaperSalary,
   isDebtSalaryComment,
   stripSalaryMetaTags,
   type BankPayment,
@@ -385,11 +386,26 @@ export function WarehouseReports({
         href: `/${adminPath}/warehouse?tab=bank&payment=${payment.id}`,
       };
     });
-    const salaryRowsLocal = salaries.map((salary) => {
-      const isRent = isRentSalaryComment(salary.comment, salary.source);
+    // Зарплаты «с аренды» — вне баланса СГТ: не расход р/с и не расход
+    // учёта (у аренды свой модуль). В движение денег они не входят —
+    // остаются только в отчёте «Зарплаты» и на вкладке зарплат.
+    const salaryRowsLocal = salaries
+      .filter((salary) => isWastepaperSalary(salary) || !isRentSalaryComment(salary.comment, salary.source))
+      .map((salary) => {
+      const isWastepaper = isWastepaperSalary(salary);
+      const isRent = !isWastepaper && isRentSalaryComment(salary.comment, salary.source);
       const isYm = salary.source === "ym_card" || (salary.comment && salary.comment.includes("[Карта ЮМ]"));
-      const accountLabel = isRent ? "Аренда (отд. счёт)" : isYm ? "Карта ЮМ" : salary.source === "cash" ? "Касса" : "Аренда (отд. счёт)";
-      const accountKey = salary.source === "cash" ? ("cash" as const) : ("bank" as const);
+      const accountLabel = isWastepaper
+        ? "Макулатура (наличные)"
+        : isRent
+          ? "Аренда (отд. счёт)"
+          : isYm
+            ? "Карта ЮМ"
+            : salary.source === "cash"
+              ? "Касса"
+              : "Аренда (отд. счёт)";
+      // Наличка макулатуры — тоже наличный расчёт, но из кассы другого модуля.
+      const accountKey = salary.source === "cash" || isWastepaper ? ("cash" as const) : ("bank" as const);
       return {
         id: `salary-${salary.id}`,
         sourceId: salary.id,

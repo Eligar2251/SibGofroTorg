@@ -62,6 +62,8 @@ import {
   includedVat,
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
+  isRentSalaryComment,
+  isWastepaperSalaryComment,
   isYmCardSalaryComment,
   stripSalaryMetaTags,
   getWarehouseBusinessDate,
@@ -280,7 +282,7 @@ type BankEntry =
       counterparty: string;
       amount: number;
       isPaid: boolean;
-      source: "cash" | "bank" | "ym_card";
+      source: "cash" | "bank" | "ym_card" | "wastepaper";
       comment?: string | null;
       excludeFromBalance?: boolean;
       createdAt?: string | null;
@@ -1188,21 +1190,26 @@ export function WarehouseManager({
 
   const bankList = useMemo<BankEntry[]>(() => {
     const query = bq.toLowerCase().trim();
-    const salaryEntries: BankEntry[] = salaries.map((salary, idx) => ({
-      entryKind: "salary",
-      id: `salary-${salary.id}`,
-      number: idx + 1,
-      date: salary.paidAt || salary.date,
-      direction: "outgoing",
-      counterparty: salary.employeeName,
-      amount: salary.amount,
-      isPaid: salary.isPaid,
-      source: salary.source,
-      comment: stripSalaryMetaTags(salary.comment),
-      excludeFromBalance: isSalaryExcludedFromBalance(salary.comment),
-      createdAt: salary.createdAt || salary.paidAt || salary.date,
-      salary,
-    }));
+    // Аренда — отдельный модуль со своим банком: выплаты «с аренды на
+    // карту» не трогают р/с, кассу и карту ЮМ учёта, поэтому в банке
+    // учёта их нет (в разделе «Зарплаты» они остаются).
+    const salaryEntries: BankEntry[] = salaries
+      .filter((salary) => !isRentSalaryComment(salary.comment, salary.source))
+      .map((salary, idx) => ({
+        entryKind: "salary",
+        id: `salary-${salary.id}`,
+        number: idx + 1,
+        date: salary.paidAt || salary.date,
+        direction: "outgoing",
+        counterparty: salary.employeeName,
+        amount: salary.amount,
+        isPaid: salary.isPaid,
+        source: salary.source,
+        comment: stripSalaryMetaTags(salary.comment),
+        excludeFromBalance: isSalaryExcludedFromBalance(salary.comment),
+        createdAt: salary.createdAt || salary.paidAt || salary.date,
+        salary,
+      }));
     let list: BankEntry[] = [
       ...payments.map((payment) => ({ ...payment, entryKind: "payment" as const })),
       ...salaryEntries,
@@ -1244,7 +1251,7 @@ export function WarehouseManager({
               ...p.dealNumbers.map((n) => `зк-${n}`),
               ...p.receiptNumbers.map((n) => `по-${n}`),
             ].join(" ").toLowerCase()
-          : ["зп", "зарплата", p.counterparty, p.comment || "", p.source === "cash" ? "касса" : p.source === "ym_card" ? "карта юм" : "банк"].join(" ").toLowerCase();
+          : ["зп", "зарплата", p.counterparty, p.comment || "", p.source === "cash" ? "касса" : p.source === "ym_card" ? "карта юм" : p.source === "wastepaper" ? "макулатура наличные" : "банк"].join(" ").toLowerCase();
         if (!hay.includes(query)) return false;
       }
       return true;
@@ -1590,6 +1597,47 @@ export function WarehouseManager({
         month: "long",
       }),
     []
+  );
+
+  // Платёжки р/с без отметки «оплачено» — счётчик на плитке «Ожидают»
+  // мобильного банка (карта ЮМ — отдельная подвкладка, не считаем).
+  const mobilePendingCount = useMemo(
+    () => payments.filter((p) => !p.isPaid && p.type !== "ym_card").length,
+    [payments]
+  );
+
+  // Баланс по контрагентам (только с долгами). Один и тот же блок:
+  // на десктопе стоит под hero банка, на телефоне раскрывается из
+  // строк «Нам должны / Мы должны» мобильной сводки. Функция, а не
+  // готовый JSX — чтобы не собирать список на других вкладках.
+  const renderBankDueLists = () => (
+    <div className="bank-due">
+      <div className="bank-due__group">
+        <div className="bank-due__title">
+          Покупатели <span style={{ color: '#7dd181' }}>должны нам</span>
+        </div>
+        {counterpartiesWithDebt.filter((c) => c.type === "customer").length === 0 ? (
+          <div className="bank-due__empty">Долгов нет</div>
+        ) : (
+          counterpartiesWithDebt
+            .filter((c) => c.type === "customer")
+            .map((c) => renderDueParty(c, "customer"))
+        )}
+      </div>
+
+      <div className="bank-due__group">
+        <div className="bank-due__title">
+          Поставщики <span style={{ color: '#ef8f76' }}>мы должны</span>
+        </div>
+        {counterpartiesWithDebt.filter((c) => c.type === "supplier").length === 0 ? (
+          <div className="bank-due__empty">Долгов нет</div>
+        ) : (
+          counterpartiesWithDebt
+            .filter((c) => c.type === "supplier")
+            .map((c) => renderDueParty(c, "supplier"))
+        )}
+      </div>
+    </div>
   );
 
   const stockById = useMemo(
@@ -2005,10 +2053,10 @@ export function WarehouseManager({
         <>
           <div className="admin-page-head">
             <div>
-              <h1 className="admin-h1">Учёт</h1>
+              <h1 className="admin-h1">Учёт СГТ</h1>
               <p className="admin-sub">
-                Склад, заказы покупателей и банк — внутренний учёт, не связан с
-                заявками с сайта.
+                СибГофроТорг · гофротара: склад, заказы покупателей и банк —
+                внутренний учёт, не связан с заявками с сайта.
               </p>
             </div>
           </div>
@@ -3160,13 +3208,16 @@ export function WarehouseManager({
                 ymIn: bankSummary.ymExpectedIn,
                 ymOut: bankSummary.ymExpectedOut,
                 ymForecast: bankSummary.ymForecast,
-                rentBalance: (bankSummary as any).rentBalance || 0,
-                rentToPay: (bankSummary as any).rentExpectedOut || 0,
+                totalBalance: bankSummary.balance,
                 totalForecast: bankSummary.forecast,
-                totalForecastWithRent:
-                  (bankSummary as any).forecastWithRent || bankSummary.forecast,
+                receivables: mobileDebts.receivables,
+                payables: mobileDebts.payables,
+                pendingCount: mobilePendingCount,
+                dateLabel: mobileDateLabel,
               }}
-              onOpenYm={() => setBankSub("ym")}
+              sub={bankSub}
+              onOpenSub={(sub) => setBankSub(sub)}
+              debts={renderBankDueLists()}
             />
           ) : (
           <div className="bank-hero">
@@ -3280,8 +3331,8 @@ export function WarehouseManager({
 
               <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, lineHeight: 1.4, color: 'rgba(255,255,255,0.65)' }}>
                 <div>Р/С: {fmt(bankSummary.bankBalance)} ₽ · +{fmt(bankSummary.expectedIn)} −{fmt(bankSummary.expectedOut)} = <b style={{ color: '#fff' }}>{fmt(bankSummary.bankForecast)} ₽</b></div>
-                <div>Касса: {fmt(bankSummary.cashBalance)} ₽ · ЮМ: {fmt(bankSummary.ymCardBalance)} ₽ (прогн. {fmt(bankSummary.ymForecast)} ₽) · Аренда: {fmt((bankSummary as any).rentBalance || 0)} ₽ (к опл. {fmt((bankSummary as any).rentExpectedOut || 0)} ₽)</div>
-                <div>Всего: {fmt(bankSummary.balance)} ₽ · прогноз {fmt(bankSummary.forecast)} ₽ · с арендой {fmt((bankSummary as any).forecastWithRent || bankSummary.forecast)} ₽</div>
+                <div>Касса: {fmt(bankSummary.cashBalance)} ₽ · ЮМ: {fmt(bankSummary.ymCardBalance)} ₽ (прогн. {fmt(bankSummary.ymForecast)} ₽)</div>
+                <div>Всего: {fmt(bankSummary.balance)} ₽ · прогноз {fmt(bankSummary.forecast)} ₽</div>
               </div>
             </div>
 
@@ -3339,12 +3390,6 @@ export function WarehouseManager({
                     <div style={{ fontSize: 10, color: 'rgba(224,180,90,0.8)', fontWeight: 600, letterSpacing: 0.3 }}>БЕЗНАЛ · ПЕРЕВОДЫ</div>
                     <div style={{ fontSize: 12, marginTop: 2 }}>Карта ЮМ факт: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymCardBalance)} ₽</b></div>
                     <div style={{ fontSize: 11 }}>Прогноз ЮМ: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymForecast)} ₽</b></div>
-                  </div>
-                  <div style={{ flex: '1 1 120px', borderLeft: '1px dashed rgba(255,255,255,0.12)', paddingLeft: 12 }}>
-                    <div style={{ fontSize: 10, color: 'rgba(147,197,253,0.85)', fontWeight: 600, letterSpacing: 0.3 }}>АРЕНДА (отдельный счёт)</div>
-                    <div style={{ fontSize: 12, marginTop: 2 }}>Факт: <b style={{ color: '#93c5fd' }}>{fmt((bankSummary as any).rentBalance || 0)} ₽</b></div>
-                    <div style={{ fontSize: 11 }}>К оплате: <b style={{ color: '#93c5fd' }}>{fmt((bankSummary as any).rentExpectedOut || 0)} ₽</b> · Прогноз: <b>{fmt((bankSummary as any).rentForecast || 0)} ₽</b></div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Не списывает р/с, не входит в общий прогноз</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12, marginTop: 4, width: '100%', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
@@ -3436,37 +3481,13 @@ export function WarehouseManager({
             </div>
           )}
 
-          {/* Баланс по контрагентам (только с долгами) */}
-          <div className="bank-due">
-            <div className="bank-due__group">
-              <div className="bank-due__title">
-                Покупатели <span style={{ color: '#7dd181' }}>должны нам</span>
-              </div>
-              {counterpartiesWithDebt.filter((c) => c.type === "customer").length === 0 ? (
-                <div className="bank-due__empty">Долгов нет</div>
-              ) : (
-                counterpartiesWithDebt
-                  .filter((c) => c.type === "customer")
-                  .map((c) => renderDueParty(c, "customer"))
-              )}
-            </div>
-
-            <div className="bank-due__group">
-              <div className="bank-due__title">
-                Поставщики <span style={{ color: '#ef8f76' }}>мы должны</span>
-              </div>
-              {counterpartiesWithDebt.filter((c) => c.type === "supplier").length === 0 ? (
-                <div className="bank-due__empty">Долгов нет</div>
-              ) : (
-                counterpartiesWithDebt
-                  .filter((c) => c.type === "supplier")
-                  .map((c) => renderDueParty(c, "supplier"))
-              )}
-            </div>
-          </div>
+          {/* Баланс по контрагентам (только с долгами). На телефоне эти
+              списки живут внутри мобильной сводки (строки «Нам должны /
+              Мы должны» раскрывают их), поэтому здесь — только десктоп. */}
+          {!isMobile && renderBankDueLists()}
 
           {/* Подсказка про ПКМ и выделенная сумма — отдельно от банка */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8, fontSize: 11, color: "var(--adm-muted)" }}>
+          <div className="bank-due-hints" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8, fontSize: 11, color: "var(--adm-muted)" }}>
             <span>ЛКМ по контрагенту — вычеркнуть целиком · стрелка — раскрыть платежи и вычеркнуть поштучно · ПКМ — выделить для прикидки (приход +, расход −)</span>
             {(selectedPaymentIds.size > 0 || selectedPartyKeys.size > 0) && (
               <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => { setSelectedPaymentIds(new Set()); setSelectedPartyKeys(new Set()); }}>Сбросить выделение</button>
@@ -3565,7 +3586,13 @@ export function WarehouseManager({
             }
 
             for (const s of salaries) {
-              const bypassBalance = isSalaryExcludedFromBalance(s.comment);
+              const bypassBalance =
+                isSalaryExcludedFromBalance(s.comment) ||
+                // Аренда — вне баланса СГТ (свой модуль и банк), макулатура —
+                // наличка отдельного модуля: ни то ни другое не расход учёта.
+                isRentSalaryComment(s.comment, s.source) ||
+                s.source === "wastepaper" ||
+                isWastepaperSalaryComment(s.comment);
               if (s.isPaid && !bypassBalance) {
                 const sDate = String(s.paidAt || s.date || "").slice(0, 10);
                 if (sDate >= periodStartStr && sDate <= todayStr) {
@@ -4137,7 +4164,7 @@ export function WarehouseManager({
                           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-kraft)" }}>
                             {isDebtSalaryComment(p.salary.comment)
                               ? "Выплата в счёт отдельного долга · не входит в факт месяца"
-                              : `Зарплата за ${monthLabel(p.salary.periodMonth || p.salary.date.slice(0, 7))}`} · {p.source === "cash" ? "касса" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
+                              : `Зарплата за ${monthLabel(p.salary.periodMonth || p.salary.date.slice(0, 7))}`} · {p.source === "cash" ? "касса" : p.source === "ym_card" ? "карта ЮМ" : p.source === "wastepaper" ? "макулатура (наличные)" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
                           </div>
                         )}
                         {p.comment && (

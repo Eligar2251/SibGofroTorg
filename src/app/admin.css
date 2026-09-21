@@ -6297,6 +6297,17 @@ body.is-col-resizing * {
   box-shadow: inset 0 0 0 2px var(--adm-steel);
 }
 
+/* Выплачено наличными из кассы макулатуры: деньги отдельного модуля,
+   касса учёта не уменьшается. */
+.whsal-day--wp {
+  background: var(--adm-teal-pale);
+  box-shadow: inset 0 0 0 1px var(--adm-teal-line);
+}
+
+.whsal-day--wp:hover {
+  box-shadow: inset 0 0 0 2px var(--adm-teal);
+}
+
 /* Конкретная запланированная выплата: это реальная запись с суммой и датой,
    но деньги ещё не списаны из кассы/банка. */
 .whsal-day--planned {
@@ -6348,6 +6359,10 @@ body.is-col-resizing * {
 .whsal-day-line--rent,
 .whsal-day-line--scheduled {
   color: var(--adm-steel);
+}
+
+.whsal-day-line--wp {
+  color: var(--adm-teal);
 }
 
 .whsal-day-line--planned {
@@ -6477,6 +6492,8 @@ body.is-col-resizing * {
 .whsal-legend__swatch--planned { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
 .whsal-legend__swatch--weekend { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
 .whsal-legend__swatch--rent    { background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
+/* Выплата наличными из кассы макулатуры (расход в модуле «Учёт макулатуры») */
+.whsal-legend__swatch--wp      { background: var(--adm-teal-pale); border-color: var(--adm-teal-line); }
 
 .whsal-hint {
   font-size: 11.5px;
@@ -6657,6 +6674,26 @@ body.is-col-resizing * {
 .whsal-seg__btn--cash { background: var(--adm-pine-pale); color: var(--adm-pine); }
 .whsal-seg__btn--bank { background: var(--adm-steel-pale); color: var(--adm-steel); }
 .whsal-seg__btn--rent { background: var(--adm-indigo-pale); color: var(--adm-indigo); }
+.whsal-seg__btn--wp   { background: var(--adm-teal-pale); color: var(--adm-teal); }
+
+/* Четыре счёта в узком popover — сетка 2×2 вместо одной тесной строки. */
+.whsal-seg--grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.whsal-seg--grid .whsal-seg__btn {
+  border-right: 1px solid var(--adm-border);
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.whsal-seg--grid .whsal-seg__btn:nth-child(2n) {
+  border-right: none;
+}
+
+.whsal-seg--grid .whsal-seg__btn:nth-last-child(-n + 2) {
+  border-bottom: none;
+}
 
 .whsal-check {
   display: flex;
