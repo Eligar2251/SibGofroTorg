@@ -1988,7 +1988,6 @@ export function WarehouseManager({
                 />
               </>
             }
-            onOpenBank={() => router.push(`/${adminPath}/warehouse?tab=bank`)}
             onCalculator={() => setShowCalculator(true)}
             onCollectCash={handleCollectCash}
             collecting={collecting}

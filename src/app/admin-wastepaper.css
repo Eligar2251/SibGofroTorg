@@ -1594,3 +1594,60 @@
 .wpa-mobile button:focus-visible, .wpa-mobile-nav button:focus-visible, .wpa-ledger button:focus-visible { outline: 2px solid var(--adm-pine); outline-offset: 3px; }
 .wpa-mobile-nav__item > svg { flex-shrink: 0; color: var(--adm-pine); }
 .wpa-mobile-nav__item > span:not(.wp-tab__count) { min-width: 0; }
+
+/* ── Мобильный фикс макулатуры: названия контрагентов не сыпятся по 1-2 буквы ──
+   На телефоне ledger-карточки рендерятся div'ами (не table), и глобальный
+   слой admin-mobile.css ставил overflow-wrap:break-word для *:not(table).
+   Для длинных имён типа «ООО СибГофроТорг» break-word + узкий контейнер
+   давал вертикальную «лапшу» по 1-2 буквы. Делаем карточки полноценной
+   ширины, а переносы — только по словам/пробелам. */
+@media (max-width: 768px) {
+  .wp-account--mobile .wpa-ledger,
+  .wp-account--mobile .wpa-ledger__list {
+    width: 100%;
+    min-width: 0;
+  }
+  .wp-account--mobile .wpa-ledger__card {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .wp-account--mobile .wpa-ledger__card dl {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+  }
+  .wp-account--mobile .wpa-ledger__field {
+    min-width: 0;
+    width: 100%;
+  }
+  .wp-account--mobile .wpa-ledger__field dt {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--adm-sand);
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+    white-space: normal;
+  }
+  .wp-account--mobile .wpa-ledger__field dd {
+    width: 100%;
+    min-width: 0;
+    font-size: 14px;
+    line-height: 1.45;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    white-space: normal;
+  }
+  /* Контрагент + адрес + телефон — стопкой, без сжатия в узкий столбик */
+  .wp-account--mobile .wpa-ledger__field dd > div,
+  .wp-account--mobile .wpa-ledger__field dd > span {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+}

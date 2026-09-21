@@ -31,7 +31,13 @@
   flex-direction: column;
   width: 100%;
   min-width: 0;
-  min-height: 100dvh;
+  /* На телефоне страница неподвижна, скроллится только .main.
+     height фиксирует оболочку в окне, чтобы внутренний скролл работал. */
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
   background: var(--adm-paper, #f5f3ee);
 }
 
@@ -94,7 +100,7 @@
    (safe-top + 56 + зазор), здесь только страхуемся от нулевого
    отступа, если слой отключат. */
 .main {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   /* Единственная прокручиваемая область оболочки. contain гасит
@@ -104,5 +110,7 @@
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
+  /* Растягиваем на оставшуюся высоту окна, а не на контент. */
+  height: 0;
   padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 12px);
 }

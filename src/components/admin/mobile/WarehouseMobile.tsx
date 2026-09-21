@@ -2,12 +2,9 @@
 
 // =========================================================
 // FILE: src/components/admin/mobile/WarehouseMobile.tsx
-// Мобильный «банк» обычного учёта: hero с балансом и сетка вкладок.
-//
+// Мобильный учёт: простая шапка быстрых действий + сетка вкладок.
 // Рендерится ТОЛЬКО когда useIsMobile() === true (ветка в
 // WarehouseManager) — на десктопе этих узлов нет в DOM вообще.
-// Стили — CSS-модуль рядом, медиазапросов нет: «мобильность»
-// определяет JS-хук, как в остальных мобильных компонентах.
 // =========================================================
 
 import type { ReactNode } from "react";
@@ -15,7 +12,6 @@ import {
   Banknote,
   Calculator,
   CreditCard,
-  HandCoins,
   Wallet,
 } from "lucide-react";
 import styles from "./WarehouseMobile.module.css";
@@ -40,7 +36,6 @@ export interface WarehouseMobileHeroData {
 export function WarehouseMobileHero({
   data,
   actions,
-  onOpenBank,
   onCalculator,
   onCollectCash,
   collecting,
@@ -48,74 +43,32 @@ export function WarehouseMobileHero({
   /** Кнопки-триггеры ReceiptForm / DealForm / PaymentForm. */
   actions: ReactNode;
   data: WarehouseMobileHeroData;
-  onOpenBank: () => void;
   onCalculator: () => void;
   onCollectCash: () => void;
   collecting: boolean;
 }) {
+  // Главная учёта — просто стиль мобильного приложения, а не буквальный
+  // банковский дашборд. Балансы (счёт/касса/карта ЮМ) и долги живут
+  // только на отдельной вкладке «Банк» (WarehouseMobileBankDetails).
+  // Здесь — компактная шапка с датой, калькулятором и быстрыми
+  // действиями, без крупных сумм.
   return (
-    <section className={styles.hero} aria-label="Сводка учёта">
-      <div className={styles.balance}>
-        <div className={styles.caption}>
-          <Wallet size={18} aria-hidden />
-          <span>Учёт</span>
-          <span className={styles.date}>{data.dateLabel}</span>
-          <button
-            type="button"
-            className={styles.calcBtn}
-            onClick={onCalculator}
-            title="Калькулятор счёта"
-            aria-label="Калькулятор счёта"
-          >
-            <Calculator size={16} aria-hidden />
-          </button>
-        </div>
-        <div className={styles.totalLabel}>Всего денег</div>
-        <strong className={styles.total}>{fmt(Math.round(data.total))} ₽</strong>
-        <div className={styles.forecast}>
-          Прогноз: <b>{fmt(Math.round(data.forecast))} ₽</b>
-        </div>
-        <dl className={styles.accounts}>
-          <div>
-            <dt>
-              <CreditCard size={16} aria-hidden /> Счёт
-            </dt>
-            <dd>{fmt(Math.round(data.bank))} ₽</dd>
-          </div>
-          <div>
-            <dt>
-              <Banknote size={16} aria-hidden /> Касса
-            </dt>
-            <dd className={data.cashNegative ? styles.negative : undefined}>
-              {fmt(Math.round(data.cash))} ₽
-            </dd>
-          </div>
-          <div>
-            <dt>
-              <CreditCard size={16} aria-hidden /> Карта ЮМ
-            </dt>
-            <dd>{fmt(Math.round(data.ym))} ₽</dd>
-          </div>
-        </dl>
+    <section className={styles.hero} aria-label="Быстрые действия">
+      <div className={styles.simpleHead}>
+        <span className={styles.simpleTitle}>
+          <Wallet size={18} aria-hidden /> Учёт
+        </span>
+        <span className={styles.date}>{data.dateLabel}</span>
+        <button
+          type="button"
+          className={styles.calcBtn}
+          onClick={onCalculator}
+          title="Калькулятор счёта"
+          aria-label="Калькулятор счёта"
+        >
+          <Calculator size={16} aria-hidden />
+        </button>
       </div>
-
-      <button
-        type="button"
-        className={styles.debts}
-        onClick={onOpenBank}
-        aria-label="Открыть банк: долги контрагентов"
-      >
-        <HandCoins size={18} aria-hidden />
-        <span className={styles.debtsText}>
-          Нам должны <b>{fmt(Math.round(data.receivables))} ₽</b>
-        </span>
-        <span className={styles.debtsSep} aria-hidden>
-          ·
-        </span>
-        <span className={styles.debtsText}>
-          Мы должны <b>{fmt(Math.round(data.payables))} ₽</b>
-        </span>
-      </button>
 
       <div className={styles.actions}>
         {actions}
