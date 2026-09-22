@@ -9,7 +9,7 @@
 
 // ── Справочники ──────────────────────────────────────────
 
-export const WP_ACCOUNT_LABELS = { cash: "Наличка", bank: "Безнал" } as const;
+export const WP_ACCOUNT_LABELS = { cash: "Наличка", bank: "Безнал", third_party: "Сторонние пополнения" } as const;
 export type WpAccount = keyof typeof WP_ACCOUNT_LABELS;
 
 export const WP_DIRECTION_LABELS = { incoming: "Приход", outgoing: "Расход" } as const;
@@ -855,6 +855,7 @@ export function wpCollectMoneyEvents(
 export interface WpBalance {
   cash: number;
   bank: number;
+  third_party: number;
   total: number;
 }
 
@@ -866,17 +867,20 @@ function round2(n: number): number {
 export function getWpBalance(events: WpMoneyEvent[], asOfDate: string): WpBalance {
   let cash = 0;
   let bank = 0;
+  let third_party = 0;
   for (const e of events) {
     if (e.cancelled || !e.isPaid) continue;
     const effDate = wpEventEffectiveDate(e);
     if (!effDate || effDate > asOfDate) continue;
     const signed = e.direction === "incoming" ? e.amount : -e.amount;
     if (e.account === "cash") cash += signed;
-    else bank += signed;
+    else if (e.account === "bank") bank += signed;
+    else third_party += signed;
   }
   cash = round2(cash);
   bank = round2(bank);
-  return { cash, bank, total: round2(cash + bank) };
+  third_party = round2(third_party);
+  return { cash, bank, third_party, total: round2(cash + bank + third_party) };
 }
 
 export interface WpForecast {

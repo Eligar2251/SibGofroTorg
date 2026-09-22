@@ -25,7 +25,7 @@ export async function PATCH(
         ? { direction: body.direction === "outgoing" ? ("outgoing" as const) : ("incoming" as const) }
         : {}),
       ...(body.account !== undefined
-        ? { account: body.account === "bank" ? ("bank" as const) : ("cash" as const) }
+        ? { account: body.account === "bank" ? ("bank" as const) : body.account === "third_party" ? ("third_party" as const) : ("cash" as const) }
         : {}),
       ...(body.counterpartyId !== undefined ? { counterpartyId: body.counterpartyId } : {}),
       ...(body.counterpartyName !== undefined

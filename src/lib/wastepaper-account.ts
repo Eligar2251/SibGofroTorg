@@ -1063,7 +1063,7 @@ function cleanManualPaymentInput(data: WpManualPaymentInput) {
   return {
     date,
     direction: data.direction === "outgoing" ? "outgoing" : "incoming",
-    account: data.account === "bank" ? "bank" : "cash",
+    account: data.account === "bank" ? "bank" : data.account === "third_party" ? "third_party" : "cash",
     counterparty_id: data.counterpartyId || null,
     counterparty_name: String(data.counterpartyName || "").trim().slice(0, 200),
     amount,
@@ -1114,7 +1114,9 @@ export async function updateWpManualPayment(
         ? data.account
         : existing.account === "bank"
           ? "bank"
-          : "cash",
+          : existing.account === "third_party"
+            ? "third_party"
+            : "cash",
     counterpartyId:
       data.counterpartyId !== undefined ? data.counterpartyId : existing.counterparty_id,
     counterpartyName:
