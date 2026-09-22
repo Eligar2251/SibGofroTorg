@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   Banknote,
   CreditCard,
+  Wallet,
   ArrowDownLeft,
   ArrowUpRight,
   Truck,
@@ -907,6 +908,10 @@ export default async function AdminDashboard() {
                   <div className="dash-account-card__head"><div className="dash-account-card__icon"><CreditCard size={16} /></div><div className="dash-account-card__copy"><strong>Безнал</strong><span>Прогноз +{money(wpForecast.inBank)} / −{money(wpForecast.outBank)}</span></div></div>
                   <div className="dash-account-card__balance"><span>Сейчас</span><strong>{money(wpBalance.bank)}</strong></div>
                   <div className="dash-account-card__turnover"><span>На площадке <b>{wpStockTotalKg.toFixed(1)} кг</b></span></div>
+                </div>
+                <div className="dash-account-card dash-account-card--third dash-account-card--wide">
+                  <div className="dash-account-card__head"><div className="dash-account-card__icon"><Wallet size={16} /></div><div className="dash-account-card__copy"><strong>Сторонние пополнения</strong><span>Прогноз +{money(wpForecast.inThirdParty)} / −{money(wpForecast.outThirdParty)}</span></div></div>
+                  <div className="dash-account-card__balance"><span>Сейчас</span><strong>{money(wpBalance.third_party)}</strong></div>
                 </div>
               </div>
             </div>

@@ -87,6 +87,7 @@ import {
   wpTypeLabel,
   wpUid,
   type WpAccount,
+  type WpBalance,
   type WpBranch,
   type WpCounterparty,
   type WpDocItem,
@@ -151,6 +152,7 @@ function parseNum(raw: string): number {
 const ACCOUNT_BADGE: Record<WpAccount, string> = {
   cash: "admin-badge admin-badge--teal",
   bank: "admin-badge admin-badge--indigo",
+  third_party: "admin-badge admin-badge--gray",
 };
 
 const KIND_BADGE: Record<WpMoneyEvent["kind"], { cls: string; label: string }> = {
@@ -1159,7 +1161,7 @@ function WpHero({
   onQuickIntake,
   onQuickShipment,
 }: {
-  balance: { cash: number; bank: number; total: number };
+  balance: WpBalance;
   forecast: ReturnType<typeof getWpForecast>;
   stockKg: number;
   pendingTransport: number;
@@ -1322,25 +1324,33 @@ function DaysTab({
       ? r.closingCash
       : accountView === "bank"
         ? r.closingBank
-        : r.closingCash + r.closingBank;
+        : accountView === "third_party"
+          ? r.closingThirdParty
+          : r.closingCash + r.closingBank + r.closingThirdParty;
   const openingValue = (r: (typeof rows)[number]) =>
     accountView === "cash"
       ? r.openingCash
       : accountView === "bank"
         ? r.openingBank
-        : r.openingCash + r.openingBank;
+        : accountView === "third_party"
+          ? r.openingThirdParty
+          : r.openingCash + r.openingBank + r.openingThirdParty;
   const inValue = (r: (typeof rows)[number]) =>
     accountView === "cash"
       ? r.inCash
       : accountView === "bank"
         ? r.inBank
-        : r.inCash + r.inBank;
+        : accountView === "third_party"
+          ? r.inThirdParty
+          : r.inCash + r.inBank + r.inThirdParty;
   const outValue = (r: (typeof rows)[number]) =>
     accountView === "cash"
       ? r.outCash
       : accountView === "bank"
         ? r.outBank
-        : r.outCash + r.outBank;
+        : accountView === "third_party"
+          ? r.outThirdParty
+          : r.outCash + r.outBank + r.outThirdParty;
 
   return (
     <div>
@@ -1357,6 +1367,7 @@ function DaysTab({
                   { key: "all", label: "Всё" },
                   { key: "cash", label: "Наличка" },
                   { key: "bank", label: "Безнал" },
+                  { key: "third_party", label: "Сторонние" },
                 ] as const
               ).map((o) => (
                 <button
@@ -1725,9 +1736,10 @@ function PaymentsTab({
         <div className="admin-filters" style={{ marginBottom: 0 }}>
           {(
             [
-              { key: "all", label: "Нал+безнал" },
+              { key: "all", label: "Все счета" },
               { key: "cash", label: "Наличка" },
               { key: "bank", label: "Безнал" },
+              { key: "third_party", label: "Сторонние" },
             ] as const
           ).map((o) => (
             <button
