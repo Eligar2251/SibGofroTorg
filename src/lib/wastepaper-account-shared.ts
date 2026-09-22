@@ -886,8 +886,10 @@ export function getWpBalance(events: WpMoneyEvent[], asOfDate: string): WpBalanc
 export interface WpForecast {
   inCash: number;
   inBank: number;
+  inThirdParty: number;
   outCash: number;
   outBank: number;
+  outThirdParty: number;
   inTotal: number;
   outTotal: number;
 }
@@ -897,8 +899,10 @@ export function getWpForecast(events: WpMoneyEvent[]): WpForecast {
   const f: WpForecast = {
     inCash: 0,
     inBank: 0,
+    inThirdParty: 0,
     outCash: 0,
     outBank: 0,
+    outThirdParty: 0,
     inTotal: 0,
     outTotal: 0,
   };
@@ -906,18 +910,22 @@ export function getWpForecast(events: WpMoneyEvent[]): WpForecast {
     if (e.cancelled || e.isPaid) continue;
     if (e.direction === "incoming") {
       if (e.account === "cash") f.inCash += e.amount;
-      else f.inBank += e.amount;
+      else if (e.account === "bank") f.inBank += e.amount;
+      else f.inThirdParty += e.amount;
     } else {
       if (e.account === "cash") f.outCash += e.amount;
-      else f.outBank += e.amount;
+      else if (e.account === "bank") f.outBank += e.amount;
+      else f.outThirdParty += e.amount;
     }
   }
   f.inCash = round2(f.inCash);
   f.inBank = round2(f.inBank);
+  f.inThirdParty = round2(f.inThirdParty);
   f.outCash = round2(f.outCash);
   f.outBank = round2(f.outBank);
-  f.inTotal = round2(f.inCash + f.inBank);
-  f.outTotal = round2(f.outCash + f.outBank);
+  f.outThirdParty = round2(f.outThirdParty);
+  f.inTotal = round2(f.inCash + f.inBank + f.inThirdParty);
+  f.outTotal = round2(f.outCash + f.outBank + f.outThirdParty);
   return f;
 }
 
@@ -928,12 +936,16 @@ export interface WpDayRow {
   /** Остаток на начало дня (= остаток предыдущего дня). */
   openingCash: number;
   openingBank: number;
+  openingThirdParty: number;
   inCash: number;
   inBank: number;
+  inThirdParty: number;
   outCash: number;
   outBank: number;
+  outThirdParty: number;
   closingCash: number;
   closingBank: number;
+  closingThirdParty: number;
   /** Оплаченные операции этого дня. */
   events: WpMoneyEvent[];
 }
@@ -973,27 +985,35 @@ export function buildWpDayReport(
 
     let inCash = 0;
     let inBank = 0;
+    let inThirdParty = 0;
     let outCash = 0;
     let outBank = 0;
+    let outThirdParty = 0;
     for (const e of byDay.get(date) || []) {
       if (e.direction === "incoming") {
         if (e.account === "cash") inCash += e.amount;
-        else inBank += e.amount;
+        else if (e.account === "bank") inBank += e.amount;
+        else inThirdParty += e.amount;
       } else {
         if (e.account === "cash") outCash += e.amount;
-        else outBank += e.amount;
+        else if (e.account === "bank") outBank += e.amount;
+        else outThirdParty += e.amount;
       }
     }
     rows.push({
       date,
       openingCash: opening.cash,
       openingBank: opening.bank,
+      openingThirdParty: opening.third_party,
       inCash: round2(inCash),
       inBank: round2(inBank),
+      inThirdParty: round2(inThirdParty),
       outCash: round2(outCash),
       outBank: round2(outBank),
+      outThirdParty: round2(outThirdParty),
       closingCash: round2(opening.cash + inCash - outCash),
       closingBank: round2(opening.bank + inBank - outBank),
+      closingThirdParty: round2(opening.third_party + inThirdParty - outThirdParty),
       events: (byDay.get(date) || []) as WpMoneyEvent[],
     });
   }
