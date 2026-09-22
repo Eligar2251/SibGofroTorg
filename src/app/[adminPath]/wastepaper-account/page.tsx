@@ -13,7 +13,7 @@ import { notFound, redirect } from "next/navigation";
 import { verifySession } from "@/lib/auth";
 import { getWpDashboardData, type WpDashboardData } from "@/lib/wastepaper-account";
 import {
-  WP_TYPE_LABELS,
+  buildWpTypeLabels,
   buildWpTransportQueue,
   wpTakenKeysFromTransports,
 } from "@/lib/wastepaper-account-shared";
@@ -96,10 +96,7 @@ export default async function WastepaperAccountPage({
     priceWholesale: p.priceWholesale,
     stockQty: p.stockQty,
   }));
-  const wpTypeLabels: Record<string, string> = {
-    ...WP_TYPE_LABELS,
-    ...Object.fromEntries(data.products.map((p) => [p.id, p.name])),
-  };
+  const wpTypeLabels = buildWpTypeLabels(data.products);
   const pendingWpDocs = buildWpTransportQueue({
     intakes: data.intakes,
     shipments: data.shipments,
@@ -116,7 +113,7 @@ export default async function WastepaperAccountPage({
       shipments={data.shipments}
       manualPayments={data.manualPayments}
       salaries={data.salaries}
-      canEditSalaries={session.role === "admin"}
+      employees={employees}
       products={data.products}
       rates={rates}
       unifiedTransports={unifiedTransports}

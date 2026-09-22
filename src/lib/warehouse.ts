@@ -57,6 +57,8 @@ import {
   isSalaryExcludedFromBalance,
   isYmCardSalaryComment,
   isWastepaperSalaryComment,
+  isWastepaperThirdPartySalaryComment,
+  salarySourceToDb,
   isImmediateYmPayment,
   isRentSalaryComment,
   getSalaryPeriodMonth,
@@ -404,11 +406,17 @@ function mapSalaryRow(row: any): Salary {
     date: row.date,
     periodMonth: getSalaryPeriodMonth(row.comment, row.date),
     // Виртуальные счета живут в теге комментария (миграция БД не нужна):
-    // [Карта ЮМ] → ym_card, [Макулатура] → wastepaper (наличка макулатуры).
+    // [Карта ЮМ] → ym_card; [Макулатура] → wastepaper (наличка макулатуры,
+    // source=cash) / wastepaper_bank (безнал, source=bank) /
+    // wastepaper_third ([Сторонние:…] — сторонние средства макулатуры).
     source: isYmCardSalaryComment(row.comment)
       ? "ym_card"
       : isWastepaperSalaryComment(row.comment)
-        ? "wastepaper"
+        ? isWastepaperThirdPartySalaryComment(row.comment)
+          ? "wastepaper_third"
+          : row.source === "bank"
+            ? "wastepaper_bank"
+            : "wastepaper"
         : row.source,
     isPaid: row.is_paid ?? false,
     paidAt: row.paid_at ?? null,
@@ -2927,18 +2935,10 @@ export async function deleteEmployee(id: string): Promise<void> {
 export async function createSalary(data: { employeeId?: string | null; employeeName: string; amount: number; date: string; source: SalarySource; isPaid?: boolean; comment?: string | null }): Promise<{ id: string }> {
   const db = getAdminDb();
   const rawSource = String(data.source || "");
-  // Наличка макулатуры — наличный расчёт: в БД source=cash + тег
-  // [Макулатура], по которому выплата уходит из кассы учёта в финансы
-  // модуля макулатуры.
-  const dbSource = rawSource === "cash" || rawSource === "wastepaper" ? "cash" : "bank";
-  let dbComment = data.comment || "";
-  if (rawSource === "ym_card" && !dbComment.includes("[Карта ЮМ]") && !dbComment.includes("[ЮМ]")) {
-    dbComment = `[Карта ЮМ] ${dbComment}`.trim();
-  } else if (rawSource === "wastepaper" && !dbComment.includes("[Макулатура]")) {
-    dbComment = `[Макулатура] ${dbComment}`.trim();
-  } else if (rawSource === "rent" && !dbComment.includes("[Аренда]")) {
-    dbComment = `[Аренда] ${dbComment}`.trim();
-  }
+  // Деньги макулатуры — отдельные счета: в БД source=cash|bank + тег
+  // [Макулатура], по которому выплата уходит из балансов учёта в финансы
+  // модуля макулатуры (см. salarySourceToDb).
+  const { source: dbSource, comment: dbComment } = salarySourceToDb(rawSource, data.comment || "");
   const { data: result, error } = await db.from("salaries").insert({
     employee_id: data.employeeId ?? null, employee_name: data.employeeName,
     amount: data.amount, date: data.date.slice(0, 10), source: dbSource,
@@ -2968,17 +2968,16 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   }
   if (data.source) {
     const rawSource = String(data.source);
-    payload.source = rawSource === "cash" || rawSource === "wastepaper" ? "cash" : "bank";
-    const commentStr = String(data.comment || "");
-    let nextComment = data.comment;
-    if (rawSource === "ym_card" && nextComment !== undefined && !commentStr.includes("[Карта ЮМ]") && !commentStr.includes("[ЮМ]")) {
-      nextComment = `[Карта ЮМ] ${commentStr}`.trim();
-    } else if (rawSource === "wastepaper" && nextComment !== undefined && !commentStr.includes("[Макулатура]")) {
-      nextComment = `[Макулатура] ${commentStr}`.trim();
-    } else if (rawSource === "rent" && nextComment !== undefined && !commentStr.includes("[Аренда]")) {
-      nextComment = `[Аренда] ${commentStr}`.trim();
+    let baseComment = data.comment;
+    // Смена счёта макулатуры без нового комментария: теги живут в
+    // комментарии, поэтому берём текущий текст из БД и переставляем их.
+    if (baseComment === undefined && (rawSource === "wastepaper" || rawSource === "wastepaper_bank" || rawSource === "wastepaper_third")) {
+      const { data: current } = await db.from("salaries").select("comment").eq("id", id).maybeSingle();
+      baseComment = current?.comment ?? "";
     }
-    if (nextComment !== undefined) payload.comment = nextComment;
+    const mapped = salarySourceToDb(rawSource, String(baseComment || ""));
+    payload.source = mapped.source;
+    if (baseComment !== undefined) payload.comment = mapped.comment;
   }
   if (data.isPaid !== undefined) { payload.is_paid = data.isPaid; payload.paid_at = data.isPaid ? (data.paidAt || data.date?.slice(0, 10) || null) : null; }
   if (data.comment !== undefined && !payload.comment) payload.comment = data.comment;
@@ -2988,6 +2987,13 @@ export async function updateSalary(id: string, data: Partial<Salary>): Promise<v
   const { error } = await db.from("salaries").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-salaries", { expire: 0 });
+}
+
+/** Одна зарплата напрямую из БД (без кэша) — для проверок в API модулей. */
+export async function getSalaryById(id: string): Promise<Salary | null> {
+  const { data, error } = await getAdminDb().from("salaries").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? mapSalaryRow(data) : null;
 }
 
 export async function deleteSalary(id: string): Promise<void> {

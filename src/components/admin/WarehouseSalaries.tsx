@@ -21,9 +21,13 @@
 //  · Оплата «с аренды на карту» = запись с source=bank и тегом
 //    [Аренда] в комментарии (подсвечивается синим).
 //  · Оплата «с макулатуры» = наличный расчёт из кассы отдельного модуля
-//    «Учёт макулатуры»: запись с source=cash и тегом [Макулатура]
+//    «Учёт макулатура»: запись с source=cash и тегом [Макулатура]
 //    (подсвечивается бирюзовым). Кассу учёта не уменьшает — расход
 //    уходит в минус по счёту «Наличка» в финансах макулатуры.
+//  · Тот же компонент работает внутри модуля «Учёт макулатура»
+//    (prop scope = WASTEPAPER_SALARY_SCOPE): там доступны только счета
+//    макулатуры — наличка / безнал / сторонние средства (с пометкой
+//    «откуда»), API и ключи настроек — свои (см. lib/salary-scope.ts).
 // Вся прежняя логика (начисления, «Выплатить/Вернуть», список
 // операций, справочник сотрудников) сохранена без изменений.
 // =========================================================
@@ -72,16 +76,53 @@ import {
   type SalarySource,
   composeSalaryComment,
   getSalaryColor,
+  getSalaryThirdPartyOrigin,
   isDebtSalaryComment,
   isRentSalaryComment,
   isYmCardSalaryComment,
   isWastepaperSalary,
+  isWastepaperSalarySource,
   isSalaryExcludedFromBalance,
   getSalaryPeriodMonth,
   stripSalaryMetaTags,
+  wastepaperSalaryAccount,
 } from "@/lib/warehouse-shared";
+import { SGT_SALARY_SCOPE, type SalaryScope } from "@/lib/salary-scope";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+
+/**
+ * Флаги счёта для composeSalaryComment по уже существующей записи —
+ * чтобы перенос/копирование не теряли тег счёта и пометку «откуда»
+ * у сторонних средств макулатуры.
+ */
+function accountFlagsOf(s: Salary) {
+  const wpAccount = wastepaperSalaryAccount(s);
+  return {
+    wastepaper: wpAccount !== null,
+    wastepaperAccount: wpAccount,
+    thirdPartyOrigin: wpAccount === "third_party" ? getSalaryThirdPartyOrigin(s.comment) : null,
+    ymCard: !wpAccount && (s.source === "ym_card" || isYmCardSalaryComment(s.comment)),
+  };
+}
+
+/**
+ * Визуальный тип ячейки/плитки. В учёте СибГофроТорг: оплачено (зелёный),
+ * план, аренда (синий), макулатура (бирюзовый). В модуле макулатуры те же
+ * цвета означают: наличка (зелёный), безнал (синий), сторонние (бирюзовый).
+ */
+type VisualKind = "planned" | "paid" | "rent" | "wp";
+function visualKind(s: Salary, scope: SalaryScope): VisualKind {
+  if (scope.kind === "wastepaper") {
+    const account = wastepaperSalaryAccount(s);
+    if (account === "bank") return "rent";
+    if (account === "third_party") return "wp";
+    return s.isPaid ? "paid" : "planned";
+  }
+  if (isWastepaperSalary(s)) return "wp";
+  if (isRentSalary(s)) return "rent";
+  return s.isPaid ? "paid" : "planned";
+}
 
 /** Оплата «с аренды на карту» или с source="bank" (если это не Карта ЮМ): обычная запись bank + тег в комментарии. ЗП с р/с банка не платится, только аренда. */
 function isRentSalary(s: Salary): boolean {
@@ -195,15 +236,18 @@ function parseDayList(raw: string | undefined, maxDay: number): number[] {
   }
 }
 
-const planSettingKey = (month: string, employeeId: string) =>
-  `salary_plan_${month}_${employeeId}`;
+// Ключи настроек таблицы: `${scope.settingsPrefix}plan_…` — у учёта
+// СибГофроТорг префикс salary_, у модуля макулатуры wp_salary_.
+const planSettingKey = (scope: SalaryScope, month: string, employeeId: string) =>
+  `${scope.settingsPrefix}plan_${month}_${employeeId}`;
 /** Ручной долг/доплата: плюс — компания должна сотруднику (остаток с
  *  прошлого месяца и т.п.), минус — сотрудник должен компании (аванс). */
-const debtSettingKey = (month: string, employeeId: string) =>
-  `salary_debt_${month}_${employeeId}`;
-const calendarSettingKey = (month: string) => `salary_calendar_${month}`;
-const scheduleSettingKey = (month: string, employeeId: string) =>
-  `salary_schedule_${month}_${employeeId}`;
+const debtSettingKey = (scope: SalaryScope, month: string, employeeId: string) =>
+  `${scope.settingsPrefix}debt_${month}_${employeeId}`;
+const calendarSettingKey = (scope: SalaryScope, month: string) =>
+  `${scope.settingsPrefix}calendar_${month}`;
+const scheduleSettingKey = (scope: SalaryScope, month: string, employeeId: string) =>
+  `${scope.settingsPrefix}schedule_${month}_${employeeId}`;
 
 /**
  * Ширины колонок таблицы взаиморасчётов.
@@ -236,17 +280,42 @@ function initialsOf(name: string): string {
     .join("");
 }
 
-type QuickSource = "cash" | "bank" | "rent" | "ym_card" | "wastepaper";
+type QuickSource = "cash" | "bank" | "rent" | "ym_card" | "wastepaper" | "wastepaper_bank" | "wastepaper_third";
 
-function sourceLabel(s: Salary): string {
-  if (isWastepaperSalary(s)) return "Макулатура · наличные";
+/** Кнопки счёта в формах: у учёта СибГофроТорг и у модуля макулатуры свои. */
+const WASTEPAPER_SOURCE_BUTTONS: { source: SalarySource; label: string; title: string; tone: "in" | "out" }[] = [
+  { source: "wastepaper", label: "Наличка", title: "Наличные из кассы макулатуры", tone: "in" },
+  { source: "wastepaper_bank", label: "Безнал", title: "Безналичный счёт макулатуры", tone: "out" },
+  {
+    source: "wastepaper_third",
+    label: "Сторонние платежи",
+    title: "Деньги со стороны (не из кассы и не со счёта макулатуры) — укажите, откуда они пришли",
+    tone: "out",
+  },
+];
+
+function sourceLabel(s: Salary, scope?: SalaryScope): string {
+  const wpAccount = wastepaperSalaryAccount(s);
+  if (wpAccount) {
+    const inWp = scope?.kind === "wastepaper";
+    if (wpAccount === "third_party") {
+      const origin = getSalaryThirdPartyOrigin(s.comment);
+      const base = inWp ? "Сторонние" : "Макулатура · сторонние";
+      return origin ? `${base} · ${origin}` : base;
+    }
+    if (wpAccount === "bank") return inWp ? "Безнал" : "Макулатура · безнал";
+    return inWp ? "Наличка" : "Макулатура · наличные";
+  }
   if (isRentSalary(s)) return "Аренда → карта";
   if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "Карта ЮМ";
   return s.source === "cash" ? "Касса · наличные" : "Аренда → карта";
 }
 
 function sourceBadgeClass(s: Salary): string {
-  if (isWastepaperSalary(s)) return "admin-badge--teal";
+  const wpAccount = wastepaperSalaryAccount(s);
+  if (wpAccount === "bank") return "admin-badge--indigo";
+  if (wpAccount === "third_party") return "admin-badge--gray";
+  if (wpAccount) return "admin-badge--teal";
   if (isRentSalary(s)) return "admin-badge--indigo";
   if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "admin-badge--amber";
   return s.source === "cash" ? "admin-badge--green" : "admin-badge--indigo";
@@ -254,7 +323,10 @@ function sourceBadgeClass(s: Salary): string {
 
 /** Иконка счёта выплаты для списка операций. */
 function SourceIcon({ s, size }: { s: Salary; size: number }) {
-  if (isWastepaperSalary(s)) return <Recycle size={size} />;
+  const wpAccount = wastepaperSalaryAccount(s);
+  if (wpAccount === "bank") return <CreditCard size={size} />;
+  if (wpAccount === "third_party") return <Wallet size={size} />;
+  if (wpAccount) return <Recycle size={size} />;
   if (s.source === "cash") return <Banknote size={size} />;
   return <CreditCard size={size} />;
 }
@@ -266,18 +338,21 @@ function isDebtPaymentSalary(s: Salary): boolean {
 // ─── Форма начисления зарплаты ─────────────────────
 
 function SalaryFormModal({
+  scope,
   employees,
   initial,
   defaultPeriodMonth,
   onClose,
   onSaved,
 }: {
+  scope: SalaryScope;
   employees: Employee[];
   initial: Salary | null;
   defaultPeriodMonth: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const isWpScope = scope.kind === "wastepaper";
   const [employeeName, setEmployeeName] = useState(initial?.employeeName || "");
   const [employeeId, setEmployeeId] = useState<string | null>(
     initial?.employeeId || null
@@ -291,7 +366,18 @@ function SalaryFormModal({
       ? salaryPeriodKey(initial)
       : defaultPeriodMonth || shiftMonth(monthKey(todayIso()), -1)
   );
-  const [source, setSource] = useState<SalarySource>(initial?.source || "cash");
+  const [source, setSource] = useState<SalarySource>(() => {
+    if (initial?.source) {
+      // В модуле макулатуры чужой счёт показать нечем — подставляем наличку.
+      if (isWpScope && !isWastepaperSalarySource(initial.source)) return "wastepaper";
+      return initial.source;
+    }
+    return scope.defaultSource;
+  });
+  // Откуда пришли сторонние деньги (только для счёта «Сторонние» макулатуры).
+  const [thirdPartyOrigin, setThirdPartyOrigin] = useState(
+    initial ? getSalaryThirdPartyOrigin(initial.comment) : ""
+  );
   const [comment, setComment] = useState(stripSalaryMetaTags(initial?.comment));
   const [color, setColor] = useState<string>(
     getSalaryColor(initial?.comment) || "#2563eb"
@@ -327,6 +413,10 @@ function SalaryFormModal({
       setError("Укажите сумму зарплаты");
       return;
     }
+    if (source === "wastepaper_third" && !thirdPartyOrigin.trim()) {
+      setError("Укажите, откуда пришли сторонние деньги");
+      return;
+    }
     setSaving(true);
     try {
       // Если ввели имя существующего сотрудника — переиспользуем его,
@@ -345,14 +435,13 @@ function SalaryFormModal({
       //    тег [Макулатура], сервер проставит его сам по source).
       const isRentForSubmit = source === "bank";
       const isYmCardForSubmit = source === "ym_card";
-      const isWastepaperForSubmit = source === "wastepaper";
-      // API понимает виртуальные счета (ym_card / wastepaper) и сам
-      // приводит их к cash/bank в БД, добавляя нужный тег.
+      const isWastepaperForSubmit = isWastepaperSalarySource(source);
+      const wastepaperAccount = wastepaperSalaryAccount({ source, comment: null });
+      // API понимает виртуальные счета (ym_card / wastepaper*) и сам
+      // приводит их к cash/bank в БД, добавляя нужные теги.
       const finalSource: SalarySource = source;
       const res = await fetch(
-        initial
-          ? `/api/admin/warehouse/salaries/${initial.id}`
-          : "/api/admin/warehouse/salaries",
+        initial ? `${scope.salariesApi}/${initial.id}` : scope.salariesApi,
         {
           method: initial ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -368,6 +457,8 @@ function SalaryFormModal({
               rent: isRentForSubmit && !isYmCardForSubmit && !isWastepaperForSubmit,
               ymCard: isYmCardForSubmit,
               wastepaper: isWastepaperForSubmit,
+              wastepaperAccount,
+              thirdPartyOrigin: source === "wastepaper_third" ? thirdPartyOrigin : null,
               excludeFromBalance,
               debtPayment,
               periodMonth,
@@ -474,6 +565,50 @@ function SalaryFormModal({
               </button>
             </div>
 
+            {isWpScope ? (
+              <div className="admin-field" style={{ marginTop: 12 }}>
+                <label className="admin-label">Откуда платим *</label>
+                <div className="wh-direction" style={{ flexWrap: "wrap" }}>
+                  {WASTEPAPER_SOURCE_BUTTONS.map((b) => (
+                    <button
+                      key={b.source}
+                      type="button"
+                      className={`wh-direction__btn wh-direction__btn--${b.tone}${
+                        source === b.source ? " wh-direction__btn--active" : ""
+                      }`}
+                      onClick={() => setSource(b.source)}
+                      title={b.title}
+                    >
+                      {b.source === "wastepaper" ? (
+                        <Banknote size={14} />
+                      ) : b.source === "wastepaper_bank" ? (
+                        <CreditCard size={14} />
+                      ) : (
+                        <Wallet size={14} />
+                      )}{" "}
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+                {source === "wastepaper_third" && (
+                  <input
+                    type="text"
+                    className="admin-input"
+                    style={{ marginTop: 8 }}
+                    value={thirdPartyOrigin}
+                    onChange={(e) => setThirdPartyOrigin(e.target.value)}
+                    placeholder="Откуда деньги: например, «Иванов И.И., личные» или «займ ООО Ромашка»"
+                    maxLength={120}
+                    required
+                  />
+                )}
+                <span className="admin-hint" style={{ marginTop: 4, display: "block" }}>
+                  Наличка и безнал — счета макулатуры: выплата уменьшит соответствующий остаток на дату выплаты.
+                  Сторонние платежи — деньги, которые в кассу и на счёт не заходили: обязательно отметьте, откуда они пришли.
+                  Балансы учёта СибГофроТорг такие выплаты не трогают.
+                </span>
+              </div>
+            ) : (
             <div className="admin-field" style={{ marginTop: 12 }}>
               <label className="admin-label">Счёт будущей выплаты *</label>
               <div className="wh-direction" style={{ flexWrap: 'wrap' }}>
@@ -501,7 +636,7 @@ function SalaryFormModal({
                     source === "bank" ? " wh-direction__btn--active" : ""
                   }`}
                   onClick={() => setSource("bank")}
-                  title="Аренда — вне баланса СГТ: не списывает р/с и кассу, в расходы учёта не входит. ЗП с р/с не платится, только аренда"
+                  title="Аренда — вне баланса СибГофроТорг: не списывает р/с и кассу, в расходы учёта не входит. ЗП с р/с не платится, только аренда"
                 >
                   <KeyRound size={14} /> Аренда (вне баланса)
                 </button>
@@ -517,9 +652,10 @@ function SalaryFormModal({
                 </button>
               </div>
               <span className="admin-hint" style={{ marginTop: 4, display: 'block' }}>
-                ЗП: касса, карта ЮМ и макулатура (наличные из кассы модуля «Учёт макулатуры» — там выплата отразится расходом). Аренда — вне баланса СГТ: не списывает р/с и кассу и в расходы учёта не входит (списание со счетов аренды БАУ / ИП Пакин появится позже). Для внебаланса других выплат — отметьте ниже.
+                ЗП: касса, карта ЮМ и макулатура (наличные из кассы модуля «Учёт макулатура» — там выплата отразится расходом). Аренда — вне баланса СибГофроТорг: не списывает р/с и кассу и в расходы учёта не входит (списание со счетов аренды БАУ / ИП Пакин появится позже). Для внебаланса других выплат — отметьте ниже.
               </span>
             </div>
+            )}
 
             <div className="admin-field" style={{ marginTop: 12 }}>
               <label className="admin-label">Комментарий</label>
@@ -558,7 +694,11 @@ function SalaryFormModal({
                 checked={excludeFromBalance}
                 onChange={(e) => setExcludeFromBalance(e.target.checked)}
               />
-              <span>В обход баланса: показать в истории ЗП, но не списывать из банка/кассы</span>
+              <span>
+                {isWpScope
+                  ? "В обход баланса: показать в истории ЗП, но не списывать со счетов макулатуры"
+                  : "В обход баланса: показать в истории ЗП, но не списывать из банка/кассы"}
+              </span>
             </label>
             <label className="admin-check" style={{ marginTop: 8 }}>
               <input
@@ -590,10 +730,9 @@ function SalaryFormModal({
               </button>
             </div>
             <p className="wh-form-hint">
-              План создаётся «к выплате» на указанную дату. Когда выдали деньги — нажмите
-              «Выплатить», и сумма спишется с выбранного счёта (касса/банк).
-              Если включён режим «в обход баланса», запись останется в истории,
-              но не повлияет на текущие остатки банка/кассы.
+              {isWpScope
+                ? "План создаётся «к выплате» на указанную дату. Когда выдали деньги — нажмите «Выплатить», и сумма спишется с выбранного счёта макулатуры (наличка/безнал/сторонние) в финансах модуля."
+                : "План создаётся «к выплате» на указанную дату. Когда выдали деньги — нажмите «Выплатить», и сумма спишется с выбранного счёта (касса/банк). Если включён режим «в обход баланса», запись останется в истории, но не повлияет на текущие остатки банка/кассы."}
             </p>
           </form>
         </div>
@@ -605,10 +744,12 @@ function SalaryFormModal({
 // ─── Справочник сотрудников ────────────────────────
 
 function EmployeesModal({
+  scope,
   employees,
   onClose,
   onChanged,
 }: {
+  scope: SalaryScope;
   employees: Employee[];
   onClose: () => void;
   onChanged: () => void;
@@ -645,9 +786,7 @@ function EmployeesModal({
     setSaving(true);
     try {
       const res = await fetch(
-        editingId
-          ? `/api/admin/warehouse/employees/${editingId}`
-          : "/api/admin/warehouse/employees",
+        editingId ? `${scope.employeesApi}/${editingId}` : scope.employeesApi,
         {
           method: editingId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -675,7 +814,7 @@ function EmployeesModal({
   async function handleDelete(e: Employee) {
     if (!confirm(`Удалить сотрудника «${e.name}»? История зарплат сохранится.`))
       return;
-    await fetch(`/api/admin/warehouse/employees/${e.id}`, { method: "DELETE" });
+    await fetch(`${scope.employeesApi}/${e.id}`, { method: "DELETE" });
     onChanged();
   }
 
@@ -799,10 +938,12 @@ function EmployeesModal({
 // ─── Быстрая форма выплаты (в popover ячейки дня) ──
 
 function QuickPayForm({
+  scope,
   autoFocus,
   saving,
   onSubmit,
 }: {
+  scope: SalaryScope;
   autoFocus?: boolean;
   saving: boolean;
   onSubmit: (data: {
@@ -812,10 +953,14 @@ function QuickPayForm({
     excludeFromBalance: boolean;
     debtPayment: boolean;
     comment: string;
+    /** Откуда пришли сторонние деньги (счёт «Сторонние» макулатуры). */
+    thirdPartyOrigin: string;
   }) => void;
 }) {
+  const isWpScope = scope.kind === "wastepaper";
   const [amount, setAmount] = useState("");
-  const [source, setSource] = useState<QuickSource>("cash");
+  const [source, setSource] = useState<QuickSource>(scope.defaultSource);
+  const [thirdPartyOrigin, setThirdPartyOrigin] = useState("");
   const [paid, setPaid] = useState(true);
   const [excludeFromBalance, setExcludeFromBalance] = useState(false);
   const [debtPayment, setDebtPayment] = useState(false);
@@ -825,6 +970,7 @@ function QuickPayForm({
     e.preventDefault();
     const amountNum = Number(amount.replace(",", "."));
     if (!amountNum || amountNum <= 0) return;
+    if (source === "wastepaper_third" && !thirdPartyOrigin.trim()) return;
     onSubmit({
       amount: amountNum,
       source,
@@ -832,6 +978,7 @@ function QuickPayForm({
       excludeFromBalance,
       debtPayment,
       comment: comment.trim(),
+      thirdPartyOrigin: thirdPartyOrigin.trim(),
     });
     setAmount("");
     setExcludeFromBalance(false);
@@ -861,6 +1008,47 @@ function QuickPayForm({
           Добавить
         </button>
       </div>
+      {isWpScope ? (
+        <>
+          <div className="whsal-seg whsal-seg--grid" role="group" aria-label="Откуда платим">
+            <button
+              type="button"
+              className={`whsal-seg__btn${source === "wastepaper" ? " whsal-seg__btn--cash" : ""}`}
+              onClick={() => setSource("wastepaper")}
+              title="Наличные из кассы макулатуры"
+            >
+              <Banknote size={12} /> Наличка
+            </button>
+            <button
+              type="button"
+              className={`whsal-seg__btn${source === "wastepaper_bank" ? " whsal-seg__btn--rent" : ""}`}
+              onClick={() => setSource("wastepaper_bank")}
+              title="Безналичный счёт макулатуры"
+            >
+              <CreditCard size={12} /> Безнал
+            </button>
+            <button
+              type="button"
+              className={`whsal-seg__btn${source === "wastepaper_third" ? " whsal-seg__btn--wp" : ""}`}
+              onClick={() => setSource("wastepaper_third")}
+              title="Деньги со стороны — не из кассы и не со счёта макулатуры; укажите, откуда"
+            >
+              <Wallet size={12} /> Сторонние
+            </button>
+          </div>
+          {source === "wastepaper_third" && (
+            <input
+              type="text"
+              className="admin-input"
+              placeholder="Откуда деньги (обязательно)"
+              value={thirdPartyOrigin}
+              onChange={(e) => setThirdPartyOrigin(e.target.value)}
+              maxLength={120}
+              required
+            />
+          )}
+        </>
+      ) : (
       <div className="whsal-seg whsal-seg--grid" role="group" aria-label="Источник выплаты">
         <button
           type="button"
@@ -882,7 +1070,7 @@ function QuickPayForm({
           type="button"
           className={`whsal-seg__btn${source === "rent" ? " whsal-seg__btn--rent" : ""}`}
           onClick={() => setSource("rent")}
-          title="Аренда — вне баланса СГТ: не списывает р/с и кассу, в расходы учёта не входит"
+          title="Аренда — вне баланса СибГофроТорг: не списывает р/с и кассу, в расходы учёта не входит"
         >
           <KeyRound size={12} /> Аренда (вне баланса)
         </button>
@@ -895,6 +1083,7 @@ function QuickPayForm({
           <Recycle size={12} /> Макулатура
         </button>
       </div>
+      )}
       <label className="whsal-check">
         <input
           type="checkbox"
@@ -1356,11 +1545,18 @@ function ColResizer({
 export function WarehouseSalaries({
   employees: initialEmployees,
   salaries: initialSalaries,
+  scope = SGT_SALARY_SCOPE,
 }: {
   employees: Employee[];
   salaries: Salary[];
+  /**
+   * Область таблицы: учёт СибГофроТорг (по умолчанию) или модуль
+   * «Учёт макулатура» — свои счета выплат, API и ключи настроек.
+   */
+  scope?: SalaryScope;
 }) {
   const router = useRouter();
+  const isWpScope = scope.kind === "wastepaper";
   const [employees, setEmployees] = useState(initialEmployees);
   const [salaries, setSalaries] = useState(initialSalaries);
   const [filter, setFilter] = useState<"all" | "pending" | "paid">("pending");
@@ -1409,7 +1605,7 @@ export function WarehouseSalaries({
   const persistColWidths = useCallback(
     async (key: string, value: string) => {
       try {
-        const res = await fetch("/api/admin/settings", {
+        const res = await fetch(scope.settingsApi, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ [key]: value }),
@@ -1423,7 +1619,7 @@ export function WarehouseSalaries({
         return false;
       }
     },
-    []
+    [scope.settingsApi]
   );
 
   const {
@@ -1449,8 +1645,11 @@ export function WarehouseSalaries({
     );
     keys.add(currentMonth);
 
+    const settingMonthRe = new RegExp(
+      `^${scope.settingsPrefix}(?:plan|debt|calendar|schedule)_(\\d{4}-\\d{2})`
+    );
     for (const key of Object.keys(settingsRaw)) {
-      const match = key.match(/salary_(?:plan|debt|calendar|schedule)_(\d{4}-\d{2})/);
+      const match = key.match(settingMonthRe);
       if (match?.[1]) keys.add(match[1]);
     }
 
@@ -1459,7 +1658,7 @@ export function WarehouseSalaries({
     }
 
     return [...keys].sort((a, b) => b.localeCompare(a));
-  }, [salaries, settingsRaw]);
+  }, [salaries, settingsRaw, scope.settingsPrefix]);
 
   // Синхронизируем локальное состояние после router.refresh()
   useEffect(() => setEmployees(initialEmployees), [initialEmployees]);
@@ -1467,7 +1666,7 @@ export function WarehouseSalaries({
 
   // Загрузка настроек (планы на месяц + календарь выходных)
   const refreshSettings = () => {
-    fetch("/api/admin/settings")
+    fetch(scope.settingsApi)
       .then((r) => (r.ok ? r.json() : {}))
       .then((d) =>
         setSettingsRaw(
@@ -1478,7 +1677,8 @@ export function WarehouseSalaries({
       )
       .catch(() => {});
   };
-  useEffect(refreshSettings, []);
+  // Настройки перечитываем при монтировании (и если сменится область).
+  useEffect(refreshSettings, [scope.settingsApi]);
 
   // Закрытие popover по Escape
   useEffect(() => {
@@ -1545,13 +1745,23 @@ export function WarehouseSalaries({
   const paidYm = paidSalary
     .filter((s) => s.source === "ym_card" || isYmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
+  // Модуль макулатуры: разбивка выплат по счетам модуля.
+  const paidWpCash = paidSalary
+    .filter((s) => wastepaperSalaryAccount(s) === "cash")
+    .reduce((s, x) => s + x.amount, 0);
+  const paidWpBank = paidSalary
+    .filter((s) => wastepaperSalaryAccount(s) === "bank")
+    .reduce((s, x) => s + x.amount, 0);
+  const paidWpThird = paidSalary
+    .filter((s) => wastepaperSalaryAccount(s) === "third_party")
+    .reduce((s, x) => s + x.amount, 0);
 
   // ── Excel-таблица: выходные дни месяца ──
   const weekendDays = useMemo(() => {
-    const raw = settingsRaw[calendarSettingKey(activeMonth)];
+    const raw = settingsRaw[calendarSettingKey(scope, activeMonth)];
     const parsed = parseDayList(raw, daysInMonth(activeMonth));
     return parsed.length > 0 ? parsed : defaultWeekendDays(activeMonth);
-  }, [settingsRaw, activeMonth]);
+  }, [settingsRaw, activeMonth, scope]);
   const weekendSet = useMemo(() => new Set(weekendDays), [weekendDays]);
 
   // ── Excel-таблица: строки по сотрудникам ──
@@ -1569,10 +1779,10 @@ export function WarehouseSalaries({
         const debtPaid = paidDebtRows.reduce((sum, r) => sum + r.amount, 0);
         const salaryRows = rows.filter((r) => !isDebtPaymentSalary(r));
         const accruedRecords = salaryRows.reduce((sum, r) => sum + r.amount, 0);
-        const planRaw = settingsRaw[planSettingKey(activeMonth, employee.id)];
+        const planRaw = settingsRaw[planSettingKey(scope, activeMonth, employee.id)];
         const plan = planRaw !== undefined ? Number(planRaw) || 0 : 0;
         const effectivePlan = plan > 0 ? plan : accruedRecords;
-        const debtRaw = settingsRaw[debtSettingKey(activeMonth, employee.id)];
+        const debtRaw = settingsRaw[debtSettingKey(scope, activeMonth, employee.id)];
         const manualDebt = debtRaw !== undefined ? Number(debtRaw) || 0 : 0;
         // Положительный долг компании сотруднику погашается отдельными
         // выплатами с тегом [Долг]. В зарплату/факт месяца они не попадают.
@@ -1580,7 +1790,7 @@ export function WarehouseSalaries({
           manualDebt > 0 ? Math.max(0, manualDebt - debtPaid) : manualDebt;
         const totalDue = effectivePlan + debtRemaining;
         const scheduledDays = parseDayList(
-          settingsRaw[scheduleSettingKey(activeMonth, employee.id)],
+          settingsRaw[scheduleSettingKey(scope, activeMonth, employee.id)],
           daysInMonth(activeMonth)
         );
         const cells: Record<number, Salary[]> = {};
@@ -1633,7 +1843,7 @@ export function WarehouseSalaries({
           activeEmployee === row.employee.id
       )
       .filter((row) => activeEmployee === "all" || row.employee.id === activeEmployee);
-  }, [employees, monthSalaries, settingsRaw, activeMonth, activeEmployee]);
+  }, [employees, monthSalaries, settingsRaw, activeMonth, activeEmployee, scope]);
 
   const totalPlan = gridRows.reduce((s, r) => s + r.effectivePlan, 0);
   const totalManualDebt = gridRows.reduce((s, r) => s + r.debtRemaining, 0);
@@ -1691,7 +1901,7 @@ export function WarehouseSalaries({
     try {
       for (const item of plans) {
         const date = `${activeMonth}-${String(item.day).padStart(2, "0")}`;
-        const res = await fetch("/api/admin/warehouse/salaries", {
+        const res = await fetch(scope.salariesApi, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1699,9 +1909,13 @@ export function WarehouseSalaries({
             employeeName: item.row.employee.name,
             amount: item.amount,
             date,
-            source: "cash",
+            source: scope.defaultSource,
             isPaid: false,
-            comment: composeSalaryComment({ periodMonth: activeMonth }),
+            comment: composeSalaryComment({
+              periodMonth: activeMonth,
+              wastepaper: isWpScope,
+              wastepaperAccount: isWpScope ? "cash" : null,
+            }),
           }),
         });
         if (!res.ok) throw new Error(`Не удалось создать выплату для ${item.row.employee.name}`);
@@ -1738,7 +1952,7 @@ export function WarehouseSalaries({
     const nextPaid = !s.isPaid;
     const nextPaidAt = nextPaid ? todayIso() : null;
     try {
-      const res = await fetch(`/api/admin/warehouse/salaries/${s.id}`, {
+      const res = await fetch(`${scope.salariesApi}/${s.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPaid: nextPaid, paidAt: nextPaidAt }),
@@ -1770,8 +1984,7 @@ export function WarehouseSalaries({
     const nextComment = composeSalaryComment({
       comment: stripSalaryMetaTags(s.comment),
       rent: isRentSalary(s),
-      ymCard: s.source === "ym_card" || isYmCardSalaryComment(s.comment),
-      wastepaper: isWastepaperSalary(s),
+      ...accountFlagsOf(s),
       excludeFromBalance: isSalaryExcludedFromBalance(s.comment),
       debtPayment: isDebtPaymentSalary(s),
       periodMonth: previousMonth,
@@ -1779,7 +1992,7 @@ export function WarehouseSalaries({
     });
     setBusyId(s.id);
     try {
-      const res = await fetch(`/api/admin/warehouse/salaries/${s.id}`, {
+      const res = await fetch(`${scope.salariesApi}/${s.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comment: nextComment }),
@@ -1810,7 +2023,7 @@ export function WarehouseSalaries({
     if (!confirm(`Удалить начисление для «${s.employeeName}»?`)) return;
     setBusyId(s.id);
     try {
-      const res = await fetch(`/api/admin/warehouse/salaries/${s.id}`, {
+      const res = await fetch(`${scope.salariesApi}/${s.id}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -1837,21 +2050,28 @@ export function WarehouseSalaries({
       excludeFromBalance: boolean;
       debtPayment: boolean;
       comment: string;
+      thirdPartyOrigin: string;
     }
   ) {
     setQuickBusy(true);
     try {
       const date = `${activeMonth}-${String(day).padStart(2, "0")}`;
+      const isWastepaperSource = isWastepaperSalarySource(data.source);
       const finalComment = composeSalaryComment({
         comment: data.comment,
         rent: data.source === "rent",
         ymCard: data.source === "ym_card",
-        wastepaper: data.source === "wastepaper",
+        wastepaper: isWastepaperSource,
+        wastepaperAccount: isWastepaperSource ? wastepaperSalaryAccount({ source: data.source, comment: null }) : null,
+        thirdPartyOrigin: data.source === "wastepaper_third" ? data.thirdPartyOrigin : null,
         excludeFromBalance: data.excludeFromBalance,
         debtPayment: data.debtPayment,
         periodMonth: activeMonth,
       });
-      const res = await fetch("/api/admin/warehouse/salaries", {
+      // Виртуальные счета (макулатура наличка/безнал/сторонние) сервер сам
+      // приводит к cash/bank в БД и проставляет теги; «аренда» = bank + [Аренда].
+      const apiSource: SalarySource = data.source === "rent" ? "bank" : data.source;
+      const res = await fetch(scope.salariesApi, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1859,8 +2079,7 @@ export function WarehouseSalaries({
           employeeName: employee.name,
           amount: data.amount,
           date,
-          // «Макулатура» — наличный расчёт: сервер сохранит cash + тег.
-          source: data.source === "cash" || data.source === "wastepaper" ? data.source : "bank",
+          source: apiSource,
           isPaid: data.paid,
           comment: finalComment,
         }),
@@ -1878,14 +2097,7 @@ export function WarehouseSalaries({
         amount: data.amount,
         date,
         periodMonth: activeMonth,
-        source:
-          data.source === "ym_card"
-            ? "ym_card"
-            : data.source === "rent"
-              ? "bank"
-              : data.source === "wastepaper"
-                ? "wastepaper"
-                : data.source,
+        source: apiSource,
         isPaid: data.paid,
         paidAt: data.paid ? date : null,
         comment: finalComment,
@@ -1925,7 +2137,7 @@ export function WarehouseSalaries({
     flashCell(`${salary.employeeId || salary.employeeName}:${toDay}`);
     setBusyId(salaryId);
     try {
-      const res = await fetch(`/api/admin/warehouse/salaries/${salaryId}`, {
+      const res = await fetch(`${scope.salariesApi}/${salaryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patchBody),
@@ -1950,8 +2162,8 @@ export function WarehouseSalaries({
 
   // ── Планы на месяц (настройки) ──
   async function savePlan(employeeId: string, value: number) {
-    const key = planSettingKey(activeMonth, employeeId);
-    const res = await fetch("/api/admin/settings", {
+    const key = planSettingKey(scope, activeMonth, employeeId);
+    const res = await fetch(scope.settingsApi, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ [key]: String(value) }),
@@ -1965,7 +2177,7 @@ export function WarehouseSalaries({
   }
 
   function copyPlanFromPrevMonth(employeeId: string, currentPlan: number) {
-    const prevKey = planSettingKey(shiftMonth(activeMonth, -1), employeeId);
+    const prevKey = planSettingKey(scope, shiftMonth(activeMonth, -1), employeeId);
     const raw = settingsRaw[prevKey];
     const val = raw !== undefined ? Number(raw) || 0 : 0;
     if (!val) {
@@ -1978,12 +2190,12 @@ export function WarehouseSalaries({
 
   // ── Чтение плана/долга/остатка за произвольный месяц ──
   function planNumFor(month: string, employeeId: string): number {
-    const raw = settingsRaw[planSettingKey(month, employeeId)];
+    const raw = settingsRaw[planSettingKey(scope, month, employeeId)];
     return raw !== undefined ? Number(raw) || 0 : 0;
   }
 
   function debtNumFor(month: string, employeeId: string): number {
-    const raw = settingsRaw[debtSettingKey(month, employeeId)];
+    const raw = settingsRaw[debtSettingKey(scope, month, employeeId)];
     return raw !== undefined ? Number(raw) || 0 : 0;
   }
 
@@ -2012,8 +2224,8 @@ export function WarehouseSalaries({
   }
 
   async function saveDebt(employeeId: string, value: number): Promise<boolean> {
-    const key = debtSettingKey(activeMonth, employeeId);
-    const res = await fetch("/api/admin/settings", {
+    const key = debtSettingKey(scope, activeMonth, employeeId);
+    const res = await fetch(scope.settingsApi, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ [key]: String(value) }),
@@ -2033,14 +2245,14 @@ export function WarehouseSalaries({
     const payload: Record<string, string> = {};
     for (const en of entries) {
       if (en.plan !== null && en.plan >= 0) {
-        payload[planSettingKey(activeMonth, en.employeeId)] = String(en.plan);
+        payload[planSettingKey(scope, activeMonth, en.employeeId)] = String(en.plan);
       }
       if (en.debt !== null) {
-        payload[debtSettingKey(activeMonth, en.employeeId)] = String(en.debt);
+        payload[debtSettingKey(scope, activeMonth, en.employeeId)] = String(en.debt);
       }
     }
     if (!Object.keys(payload).length) return true;
-    const res = await fetch("/api/admin/settings", {
+    const res = await fetch(scope.settingsApi, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -2055,17 +2267,17 @@ export function WarehouseSalaries({
 
   function scheduledDaysFor(employeeId: string): number[] {
     return parseDayList(
-      settingsRaw[scheduleSettingKey(activeMonth, employeeId)],
+      settingsRaw[scheduleSettingKey(scope, activeMonth, employeeId)],
       daysInMonth(activeMonth)
     );
   }
 
   async function saveScheduleDays(employeeId: string, days: number[]): Promise<boolean> {
-    const key = scheduleSettingKey(activeMonth, employeeId);
+    const key = scheduleSettingKey(scope, activeMonth, employeeId);
     const value = JSON.stringify(days.sort((a, b) => a - b));
     setScheduleBusy(true);
     try {
-      const res = await fetch("/api/admin/settings", {
+      const res = await fetch(scope.settingsApi, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [key]: value }),
@@ -2101,9 +2313,9 @@ export function WarehouseSalaries({
   }
 
   async function saveWeekends(days: number[]) {
-    const key = calendarSettingKey(activeMonth);
+    const key = calendarSettingKey(scope, activeMonth);
     const value = JSON.stringify(days);
-    const res = await fetch("/api/admin/settings", {
+    const res = await fetch(scope.settingsApi, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ [key]: value }),
@@ -2192,8 +2404,8 @@ export function WarehouseSalaries({
         const items = row.cells[d] || [];
         const sum = items.reduce((s, x) => s + x.amount, 0);
         const hasPending = items.some((item) => !item.isPaid);
-        const rent = items.some((item) => item.isPaid && isRentSalary(item));
-        const wastepaper = items.some((item) => item.isPaid && isWastepaperSalary(item));
+        const rent = items.some((item) => item.isPaid && visualKind(item, scope) === "rent");
+        const wastepaper = items.some((item) => item.isPaid && visualKind(item, scope) === "wp");
         const scheduled = row.scheduledSet.has(d);
         let style = "border:1px solid #D5D2C9;padding:4px 3px;font-size:10px;text-align:center;";
         if (hasPending) style += "background:#FFF5D9;color:#9A6500;font-weight:bold;";
@@ -2457,10 +2669,20 @@ export function WarehouseSalaries({
             <div className="whsal-progress__bar" style={{ width: `${progressPct}%` }} />
           </div>
           <div className="whsal-card__sub">
-            {progressPct}% от начисленного · касса {fmt(paidCash)}
-            {paidYm > 0 ? ` · карта ЮМ ${fmt(paidYm)}` : ""}
-            {paidRent > 0 ? ` · аренда (вне баланса СГТ) ${fmt(paidRent)}` : ""}
-            {paidWastepaper > 0 ? ` · макулатура (наличные) ${fmt(paidWastepaper)}` : ""}
+            {isWpScope ? (
+              <>
+                {progressPct}% от начисленного · наличка {fmt(paidWpCash)}
+                {paidWpBank > 0 ? ` · безнал ${fmt(paidWpBank)}` : ""}
+                {paidWpThird > 0 ? ` · сторонние ${fmt(paidWpThird)}` : ""}
+              </>
+            ) : (
+              <>
+                {progressPct}% от начисленного · касса {fmt(paidCash)}
+                {paidYm > 0 ? ` · карта ЮМ ${fmt(paidYm)}` : ""}
+                {paidRent > 0 ? ` · аренда (вне баланса СибГофроТорг) ${fmt(paidRent)}` : ""}
+                {paidWastepaper > 0 ? ` · макулатура (наличные) ${fmt(paidWastepaper)}` : ""}
+              </>
+            )}
             {paidDebtTotal > 0 ? ` · в счёт долга ${fmt(paidDebtTotal)} ₽ (не входит в факт месяца)` : ""}
           </div>
         </div>
@@ -2707,8 +2929,8 @@ export function WarehouseSalaries({
                     const items = row.cells[d] || [];
                     const paidItems = items.filter((item) => item.isPaid);
                     const pendingItems = items.filter((item) => !item.isPaid);
-                    const rent = paidItems.some(isRentSalary);
-                    const wastepaper = paidItems.some((item) => isWastepaperSalary(item));
+                    const rent = paidItems.some((item) => visualKind(item, scope) === "rent");
+                    const wastepaper = paidItems.some((item) => visualKind(item, scope) === "wp");
                     const hasPlannedPayment = pendingItems.length > 0;
                     const scheduled = row.scheduledSet.has(d);
                     const cls = [
@@ -2745,7 +2967,9 @@ export function WarehouseSalaries({
                       (items.length
                         ? `\n${itemDates}`
                         : scheduled
-                          ? "\nЗапланирована выплата с аренды"
+                          ? isWpScope
+                            ? "\nЗапланирована выплата по графику"
+                            : "\nЗапланирована выплата с аренды"
                           : "\nКлик — добавить выплату");
                     const plannedAmount = row.scheduledPlanByDay?.[d] || 0;
                     const visibleItems = items.slice(0, 2);
@@ -2807,9 +3031,9 @@ export function WarehouseSalaries({
                               className={`whsal-day-line whsal-day-line--draggable${
                                 !entry.isPaid
                                   ? " whsal-day-line--planned"
-                                  : isRentSalary(entry)
+                                  : visualKind(entry, scope) === "rent"
                                     ? " whsal-day-line--rent"
-                                    : isWastepaperSalary(entry)
+                                    : visualKind(entry, scope) === "wp"
                                       ? " whsal-day-line--wp"
                                       : isDebtPaymentSalary(entry)
                                         ? " whsal-day-line--debt"
@@ -2983,18 +3207,37 @@ export function WarehouseSalaries({
             <span className="whsal-legend__swatch whsal-legend__swatch--weekend" />
             Выходной / праздник
           </span>
-          <span className="whsal-legend__item">
-            <span className="whsal-legend__swatch whsal-legend__swatch--rent" />
-            Оплачено с аренды на карту
-          </span>
-          <span className="whsal-legend__item">
-            <span className="whsal-legend__swatch whsal-legend__swatch--wp" />
-            Оплачено наличными с макулатуры (расход в учёте макулатуры)
-          </span>
-          <span className="whsal-legend__item">
-            <span className="admin-badge admin-badge--muted">вне баланса</span>
-            Историческая выплата — не влияет на банк/кассу
-          </span>
+          {isWpScope ? (
+            <>
+              <span className="whsal-legend__item">
+                <span className="whsal-legend__swatch whsal-legend__swatch--rent" />
+                Оплачено безналом (счёт макулатуры)
+              </span>
+              <span className="whsal-legend__item">
+                <span className="whsal-legend__swatch whsal-legend__swatch--wp" />
+                Оплачено сторонними деньгами (с пометкой, откуда)
+              </span>
+              <span className="whsal-legend__item">
+                <span className="admin-badge admin-badge--muted">вне баланса</span>
+                Историческая выплата — не влияет на остатки макулатуры
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="whsal-legend__item">
+                <span className="whsal-legend__swatch whsal-legend__swatch--rent" />
+                Оплачено с аренды на карту
+              </span>
+              <span className="whsal-legend__item">
+                <span className="whsal-legend__swatch whsal-legend__swatch--wp" />
+                Оплачено наличными с макулатуры (расход в учёте макулатуры)
+              </span>
+              <span className="whsal-legend__item">
+                <span className="admin-badge admin-badge--muted">вне баланса</span>
+                Историческая выплата — не влияет на банк/кассу
+              </span>
+            </>
+          )}
           <span className="whsal-legend__item whsal-hint">
             «Остаток» (к выплате) = «За месяц» + «Долг» − «Получено» · зелёный —
             выплачено полностью
@@ -3049,7 +3292,9 @@ export function WarehouseSalaries({
             <p>Здесь пока пусто</p>
             <p className="admin-empty__hint">
               Запланируйте зарплату сотруднику на дату и укажите расчётный месяц.
-              При выплате сумма спишется с кассы, карты ЮМ, аренды или наличных макулатуры.
+              {isWpScope
+                ? " При выплате сумма спишется с наличных или безнала макулатуры либо пройдёт сторонними деньгами с пометкой, откуда они."
+                : " При выплате сумма спишется с кассы, карты ЮМ, аренды или наличных макулатуры."}
             </p>
           </div>
         </div>
@@ -3078,7 +3323,7 @@ export function WarehouseSalaries({
                 <div className="bank-pay__row1">
                   <span className="bank-pay__counterparty">{s.employeeName}</span>
                   <span className={`admin-badge ${sourceBadgeClass(s)}`}>
-                    {sourceLabel(s)}
+                    {sourceLabel(s, scope)}
                   </span>
                   <span
                     className="admin-badge admin-badge--blue"
@@ -3239,7 +3484,7 @@ export function WarehouseSalaries({
                           за {monthLabel(salaryPeriodKey(s)).toLowerCase()}
                         </span>
                         <span className={`admin-badge ${sourceBadgeClass(s)}`}>
-                          {sourceLabel(s)}
+                          {sourceLabel(s, scope)}
                         </span>
                         <span className="whsal-pop__date">
                           {s.isPaid
@@ -3311,6 +3556,7 @@ export function WarehouseSalaries({
                     {popItems.length ? "Добавить ещё выплату" : "Записать выплату"}
                   </div>
                   <QuickPayForm
+                    scope={scope}
                     autoFocus
                     saving={quickBusy}
                     onSubmit={async (data) => {
@@ -3328,7 +3574,13 @@ export function WarehouseSalaries({
                         flashCell(`${popRow.employee.id}:schedule`);
                       }}
                     >
-                      {popRow.scheduledSet.has(popover.day) ? "Убрать план аренды" : "Запланировать аренду на этот день"}
+                      {isWpScope
+                        ? popRow.scheduledSet.has(popover.day)
+                          ? "Убрать плановую дату"
+                          : "Запланировать выплату на этот день"
+                        : popRow.scheduledSet.has(popover.day)
+                          ? "Убрать план аренды"
+                          : "Запланировать аренду на этот день"}
                     </button>
                   </div>
                 </>
@@ -3377,9 +3629,13 @@ export function WarehouseSalaries({
                     </button>
                   </form>
                   <div className="whsal-pop__sep" />
-                  <div className="whsal-pop__subtitle">Плановые даты выплат с аренды</div>
+                  <div className="whsal-pop__subtitle">
+                    {isWpScope ? "Плановые даты выплат" : "Плановые даты выплат с аренды"}
+                  </div>
                   <div className="whsal-pop__comment" style={{ marginTop: 0 }}>
-                    Синие пометки можно расставить заранее — например, каждую неделю для сотрудников, которым платите с аренды.
+                    {isWpScope
+                      ? "Синие пометки можно расставить заранее — например, каждую неделю; кнопка «Создать выплаты по графику» превратит их в плановые записи."
+                      : "Синие пометки можно расставить заранее — например, каждую неделю для сотрудников, которым платите с аренды."}
                   </div>
                   <div className="whsal-qform">
                     <div className="whsal-qform__row">
@@ -3628,6 +3884,7 @@ export function WarehouseSalaries({
 
       {formOpen && (
         <SalaryFormModal
+          scope={scope}
           employees={employees}
           initial={editing}
           defaultPeriodMonth={shiftMonth(activeMonth, -1)}
@@ -3641,6 +3898,7 @@ export function WarehouseSalaries({
 
       {empOpen && (
         <EmployeesModal
+          scope={scope}
           employees={employees}
           onClose={() => setEmpOpen(false)}
           onChanged={reload}

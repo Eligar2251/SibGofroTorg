@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateSalary, deleteSalary } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
+import { isWastepaperSalarySource } from "@/lib/warehouse-shared";
 
 export async function PATCH(
   request: NextRequest,
@@ -13,7 +14,7 @@ export async function PATCH(
     const body = await request.json();
     const src = body.source ? String(body.source) : undefined;
     const safeSource =
-      src === "cash" || src === "bank" || src === "ym_card" || src === "rent" || src === "wastepaper"
+      src === "cash" || src === "bank" || src === "ym_card" || src === "rent" || isWastepaperSalarySource(src)
         ? src
         : undefined;
     await updateSalary(id, {

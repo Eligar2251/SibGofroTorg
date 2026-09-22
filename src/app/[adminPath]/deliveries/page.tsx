@@ -13,7 +13,7 @@ import {
 } from "@/lib/warehouse-shared";
 import { getWpIntakes, getWpProducts, getWpShipments } from "@/lib/wastepaper-account";
 import {
-  WP_TYPE_LABELS,
+  buildWpTypeLabels,
   buildWpTransportQueue,
   wpTakenKeysFromTransports,
 } from "@/lib/wastepaper-account-shared";
@@ -139,10 +139,7 @@ export default async function AdminDeliveriesPage({
 
   // Приёмы/сдачи с пометкой «в перевозку», ещё не взятые в активный рейс.
   // Подписи видов: справочник видов + базовые (картон, бумага…).
-  const wpTypeLabels: Record<string, string> = {
-    ...WP_TYPE_LABELS,
-    ...Object.fromEntries(wpProducts.map((p) => [p.id, p.name])),
-  };
+  const wpTypeLabels = buildWpTypeLabels(wpProducts);
   const pendingWpDocs = buildWpTransportQueue({
     intakes: wpIntakes,
     shipments: wpShipments,

@@ -31,6 +31,7 @@ import {
   normalizeWpBranches,
   normalizeWpDocItems,
   wpDocTotals,
+  wpProductTypeKey,
   wpUid,
   type WpTransportStatus,
 } from "@/lib/wastepaper-account-shared";
@@ -38,32 +39,129 @@ import {
 export const WP_TAG = "wastepaper-account";
 
 function mapWpProduct(row: any): WpProduct {
-  return { id: row.id, name: String(row.name || ""), pricePerKg: Number(row.price_per_kg) || 0, isActive: row.is_active !== false, createdAt: toIso(row.created_at), updatedAt: toIso(row.updated_at) };
+  return {
+    id: row.id,
+    name: String(row.name || ""),
+    pricePerKg: Number(row.price_per_kg) || 0,
+    isActive: row.is_active !== false,
+    code: row.code ? String(row.code) : null,
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+  };
 }
 
+/** Все виды справочника, включая скрытые (нужны для подписей старых документов). */
 export async function getWpProducts(): Promise<WpProduct[]> {
   const { data, error } = await getAdminDb().from("wp_products").select("*").order("name");
   if (error) throw error;
   return (data || []).map(mapWpProduct);
 }
 
-export async function upsertWpProduct(data: { id?: string; name: string; pricePerKg: number; isActive?: boolean }): Promise<WpProduct> {
-  const name = String(data.name || "").trim().slice(0, 200);
-  if (!name) throw new Error("Укажите вид макулатуры");
-  const payload = { name, price_per_kg: Math.max(0, Number(data.pricePerKg) || 0), is_active: data.isActive !== false, updated_at: new Date().toISOString() };
-  const db = getAdminDb();
-  const result = data.id
-    ? await db.from("wp_products").update(payload).eq("id", data.id).select("*").single()
-    : await db.from("wp_products").insert(payload).select("*").single();
-  if (result.error) throw result.error;
-  bumpWpCaches();
-  return mapWpProduct(result.data);
+function isUniqueViolation(error: any): boolean {
+  return String(error?.code || "") === "23505" || /duplicate key|unique/i.test(String(error?.message || ""));
 }
 
-export async function deleteWpProduct(id: string): Promise<void> {
-  const { error } = await getAdminDb().from("wp_products").update({ is_active: false, updated_at: new Date().toISOString() }).eq("id", id);
-  if (error) throw error;
+export async function upsertWpProduct(data: { id?: string; name: string; pricePerKg: number; isActive?: boolean }): Promise<WpProduct> {
+  const name = String(data.name || "").trim().slice(0, 200);
+  if (!name) throw new Error("Укажите название вида макулатуры");
+  const db = getAdminDb();
+  const now = new Date().toISOString();
+  const pricePerKg = Math.max(0, Number(data.pricePerKg) || 0);
+
+  if (data.id) {
+    const payload: Record<string, unknown> = { name, price_per_kg: pricePerKg, updated_at: now };
+    if (data.isActive !== undefined) payload.is_active = data.isActive !== false;
+    const result = await db.from("wp_products").update(payload).eq("id", data.id).select("*").maybeSingle();
+    if (result.error) {
+      if (isUniqueViolation(result.error)) throw new Error(`Вид «${name}» уже есть в справочнике`);
+      throw result.error;
+    }
+    if (!result.data) throw new Error("Вид макулатуры не найден");
+    bumpWpCaches();
+    return mapWpProduct(result.data);
+  }
+
+  // Название уникально: если такой вид уже есть (в т.ч. скрытый) —
+  // не падаем на ограничении, а возвращаем/восстанавливаем его.
+  const existing = await db.from("wp_products").select("*").eq("name", name).maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) {
+    if (existing.data.is_active !== false) throw new Error(`Вид «${name}» уже есть в справочнике`);
+    const restored = await db
+      .from("wp_products")
+      .update({ is_active: true, price_per_kg: pricePerKg, updated_at: now })
+      .eq("id", existing.data.id)
+      .select("*")
+      .single();
+    if (restored.error) throw restored.error;
+    bumpWpCaches();
+    return mapWpProduct(restored.data);
+  }
+
+  const inserted = await db
+    .from("wp_products")
+    .insert({ name, price_per_kg: pricePerKg, is_active: data.isActive !== false, updated_at: now })
+    .select("*")
+    .single();
+  if (inserted.error) {
+    if (isUniqueViolation(inserted.error)) throw new Error(`Вид «${name}» уже есть в справочнике`);
+    throw inserted.error;
+  }
   bumpWpCaches();
+  return mapWpProduct(inserted.data);
+}
+
+/** Есть ли документы (приёмки/отгрузки) с этим видом — по ключу документа. */
+async function wpProductInUse(typeKey: string): Promise<boolean> {
+  const db = getAdminDb();
+  for (const table of ["wp_intakes", "wp_shipments"] as const) {
+    const byColumn = await db.from(table).select("id", { count: "exact", head: true }).eq("wastepaper_type", typeKey);
+    if (byColumn.error) throw byColumn.error;
+    if ((byColumn.count || 0) > 0) return true;
+    const byItems = await db
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .contains("items", [{ wastepaperType: typeKey }]);
+    // Старые БД без колонки items — считаем, что ссылок нет.
+    if (!byItems.error && (byItems.count || 0) > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Удаление вида: если по нему нет ни одного документа — строка удаляется
+ * совсем, иначе вид скрывается (is_active = false), чтобы прежние
+ * приёмки/отгрузки не потеряли название. Возвращает, что произошло.
+ */
+export async function deleteWpProduct(id: string): Promise<{ mode: "deleted" | "hidden"; product: WpProduct | null }> {
+  const db = getAdminDb();
+  const found = await db.from("wp_products").select("*").eq("id", id).maybeSingle();
+  if (found.error) throw found.error;
+  if (!found.data) throw new Error("Вид макулатуры не найден");
+  const product = mapWpProduct(found.data);
+  const keys = new Set<string>([product.id, wpProductTypeKey(product)]);
+  let inUse = false;
+  for (const key of keys) {
+    if (await wpProductInUse(key)) {
+      inUse = true;
+      break;
+    }
+  }
+  if (!inUse) {
+    const removed = await db.from("wp_products").delete().eq("id", id);
+    if (removed.error) throw removed.error;
+    bumpWpCaches();
+    return { mode: "deleted", product: null };
+  }
+  const hidden = await db
+    .from("wp_products")
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (hidden.error) throw hidden.error;
+  bumpWpCaches();
+  return { mode: "hidden", product: mapWpProduct(hidden.data) };
 }
 
 // ── Доступ к модулю ──────────────────────────────────────
@@ -1471,7 +1569,13 @@ export async function getWpDashboardData(): Promise<WpDashboardData> {
       getWpIntakes(500),
       getWpShipments(300),
       getWpManualPayments(500),
-      getWpProducts(),
+      // Справочник видов — отдельная таблица (миграция
+      // migration_wastepaper_products_payments.sql); без неё модуль
+      // должен открываться с четырьмя исходными видами.
+      getWpProducts().catch((error) => {
+        console.error("[wastepaper-account] wp_products недоступна:", error);
+        return [] as WpProduct[];
+      }),
       getWpSalaries(),
     ]);
   // Отдельных перевозок макулатуры (ТМ-...) в интерфейсе больше нет:

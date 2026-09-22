@@ -41,6 +41,7 @@ export type EntityType =
   | "wp-payment"
   | "wp-transport"
   | "wp-counterparty"
+  | "wp-product"
   | "rent-org"
   | "rent-tenant"
   | "rent-invoice"

@@ -525,8 +525,40 @@ export interface Employee {
  *  · wastepaper — наличка макулатуры (в БД source=cash + тег [Макулатура]).
  *    Такая выплата НЕ трогает кассу учёта: деньги уходят из наличной
  *    кассы отдельного модуля «Учёт макулатуры» и отражаются там расходом.
+ *  · wastepaper_bank — безнал макулатуры (в БД source=bank + тег
+ *    [Макулатура]): расход безналичного счёта модуля макулатуры.
+ *  · wastepaper_third — сторонние деньги макулатуры (в БД source=bank +
+ *    теги [Макулатура] [Сторонние:откуда]): выплата из средств, которые
+ *    в кассу/на счёт модуля не попадали; «откуда» — пометка источника.
+ * Все три wastepaper_* — счета модуля «Учёт макулатура», балансы СГТ они
+ * не трогают (см. isWastepaperSalary).
  */
-export type SalarySource = "cash" | "bank" | "ym_card" | "wastepaper";
+export type SalarySource =
+  | "cash"
+  | "bank"
+  | "ym_card"
+  | "wastepaper"
+  | "wastepaper_bank"
+  | "wastepaper_third";
+
+/** Счёт модуля макулатуры, с которого идёт зарплата wastepaper_*. */
+export type WastepaperSalaryAccount = "cash" | "bank" | "third_party";
+
+/** Источники зарплат модуля «Учёт макулатура» (в порядке кнопок формы). */
+export const WASTEPAPER_SALARY_SOURCES: readonly SalarySource[] = [
+  "wastepaper",
+  "wastepaper_bank",
+  "wastepaper_third",
+];
+
+export function isWastepaperSalarySource(source: unknown): source is "wastepaper" | "wastepaper_bank" | "wastepaper_third" {
+  return source === "wastepaper" || source === "wastepaper_bank" || source === "wastepaper_third";
+}
+
+/** Источник зарплаты макулатуры по счёту модуля (и обратно — см. wastepaperSalaryAccount). */
+export function wastepaperSalarySourceFor(account: WastepaperSalaryAccount): SalarySource {
+  return account === "bank" ? "wastepaper_bank" : account === "third_party" ? "wastepaper_third" : "wastepaper";
+}
 
 /** Начисление/выплата зарплаты сотруднику */
 export interface Salary {
@@ -552,8 +584,15 @@ export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
 export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
 export const SALARY_YM_CARD_TAG = "[Карта ЮМ]";
 export const SALARY_YM_CARD_TAG_SHORT = "[ЮМ]";
-/** Выплата наличными из кассы макулатуры (отдельный модуль учёта). */
+/** Выплата из денег макулатуры (отдельный модуль учёта). */
 export const SALARY_WASTEPAPER_TAG = "[Макулатура]";
+/**
+ * Зарплата макулатуры из сторонних средств: [Сторонние:откуда] (или просто
+ * [Сторонние], если источник не указан). Пишется только вместе с
+ * [Макулатура]; в БД такая запись хранится с source="bank".
+ */
+export const SALARY_WASTEPAPER_THIRD_TAG_PREFIX = "Сторонние";
+const SALARY_WASTEPAPER_THIRD_TAG_RE = /\[Сторонние(?::([^\]]*))?\]/g;
 /** Расчётный месяц хранится служебной пометкой — миграция БД не нужна. */
 export const SALARY_PERIOD_TAG_PREFIX = "Период:";
 const SALARY_PERIOD_TAG_RE = /\[Период:(\d{4}-\d{2})\]/g;
@@ -581,11 +620,62 @@ export function isWastepaperSalaryComment(comment: string | null | undefined): b
   return salaryHasTag(comment, SALARY_WASTEPAPER_TAG);
 }
 
-/** Выплата из кассы макулатуры — по виртуальному source или по тегу. */
+/** Выплата из денег макулатуры (любой её счёт) — по виртуальному source или по тегу. */
 export function isWastepaperSalary(
   salary: Pick<Salary, "comment"> & { source?: string | null }
 ): boolean {
-  return salary.source === "wastepaper" || isWastepaperSalaryComment(salary.comment);
+  return isWastepaperSalarySource(salary.source) || isWastepaperSalaryComment(salary.comment);
+}
+
+/** Есть ли в комментарии пометка «сторонние средства» ([Сторонние…]). */
+export function isWastepaperThirdPartySalaryComment(comment: string | null | undefined): boolean {
+  return new RegExp(SALARY_WASTEPAPER_THIRD_TAG_RE.source).test(String(comment || ""));
+}
+
+/** Снимает тег [Сторонние…] (смена счёта макулатуры со «сторонних» на другой). */
+export function stripSalaryThirdPartyTag(comment: string | null | undefined): string {
+  return String(comment || "").replace(SALARY_WASTEPAPER_THIRD_TAG_RE, "").replace(/\s+/g, " ").trim();
+}
+
+/** Откуда пришли сторонние деньги (текст из тега [Сторонние:…]), иначе "". */
+export function getSalaryThirdPartyOrigin(comment: string | null | undefined): string {
+  const match = String(comment || "").match(new RegExp(SALARY_WASTEPAPER_THIRD_TAG_RE.source));
+  return String(match?.[1] || "").trim();
+}
+
+/**
+ * Счёт модуля макулатуры, с которого идёт зарплата: по виртуальному
+ * source (наличка / безнал / сторонние), для «сырых» записей из БД — по
+ * тегам и source БД. null — зарплата не из макулатуры.
+ */
+export function wastepaperSalaryAccount(
+  salary: Pick<Salary, "comment"> & { source?: string | null }
+): WastepaperSalaryAccount | null {
+  if (salary.source === "wastepaper_third") return "third_party";
+  if (salary.source === "wastepaper_bank") return "bank";
+  if (salary.source === "wastepaper") return "cash";
+  if (!isWastepaperSalaryComment(salary.comment)) return null;
+  if (isWastepaperThirdPartySalaryComment(salary.comment)) return "third_party";
+  return salary.source === "bank" ? "bank" : "cash";
+}
+
+/** Подпись счёта макулатуры: «наличные» / «безнал» / «сторонние». */
+export function wastepaperSalaryAccountLabel(account: WastepaperSalaryAccount | null): string {
+  return account === "bank" ? "безнал" : account === "third_party" ? "сторонние" : "наличные";
+}
+
+/**
+ * Короткая подпись источника зарплаты для списков учёта:
+ * «касса», «карта ЮМ», «банк», «макулатура (наличные/безнал/сторонние)».
+ */
+export function salarySourceShortLabel(
+  salary: Pick<Salary, "comment"> & { source?: string | null }
+): string {
+  const wpAccount = wastepaperSalaryAccount(salary);
+  if (wpAccount) return `макулатура (${wastepaperSalaryAccountLabel(wpAccount)})`;
+  if (salary.source === "cash") return "касса";
+  if (salary.source === "ym_card") return "карта ЮМ";
+  return "банк";
 }
 
 /** Историческая выплата: показывается в ЗП, но не влияет на текущий баланс. */
@@ -628,6 +718,7 @@ export function stripSalaryMetaTags(comment: string | null | undefined): string 
     .replaceAll(SALARY_YM_CARD_TAG, "")
     .replaceAll(SALARY_YM_CARD_TAG_SHORT, "")
     .replaceAll(SALARY_WASTEPAPER_TAG, "")
+    .replace(SALARY_WASTEPAPER_THIRD_TAG_RE, "")
     .replace(SALARY_PERIOD_TAG_RE, "")
     .replace(SALARY_COLOR_TAG_RE, "")
     .replace(/\s+/g, " ")
@@ -641,19 +732,34 @@ export function composeSalaryComment(options: {
   excludeFromBalance?: boolean;
   debtPayment?: boolean;
   ymCard?: boolean;
-  /** Наличными из кассы макулатуры (отдельный модуль учёта). */
+  /** Из денег макулатуры (отдельный модуль учёта). */
   wastepaper?: boolean;
+  /**
+   * Счёт макулатуры: наличка (по умолчанию), безнал или сторонние средства.
+   * Для third_party добавляется тег [Сторонние:откуда].
+   */
+  wastepaperAccount?: WastepaperSalaryAccount | null;
+  /** Откуда пришли сторонние деньги (пометка к [Сторонние:…]). */
+  thirdPartyOrigin?: string | null;
   /** Расчётный месяц YYYY-MM: например, выплата в июле за июнь. */
   periodMonth?: string | null;
   /** Кастомный HEX-цвет плитки. */
   color?: string | null;
 }): string | null {
   const tags: string[] = [];
-  // Счёт выплаты — ровно один тег: карта ЮМ, касса макулатуры или аренда.
+  // Счёт выплаты — ровно один тег: карта ЮМ, деньги макулатуры или аренда.
   if (options.ymCard) {
     tags.push(SALARY_YM_CARD_TAG);
   } else if (options.wastepaper) {
     tags.push(SALARY_WASTEPAPER_TAG);
+    if (options.wastepaperAccount === "third_party") {
+      const origin = String(options.thirdPartyOrigin || "")
+        .replace(/[\[\]]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 120);
+      tags.push(origin ? `[${SALARY_WASTEPAPER_THIRD_TAG_PREFIX}:${origin}]` : `[${SALARY_WASTEPAPER_THIRD_TAG_PREFIX}]`);
+    }
   } else if (options.rent) {
     tags.push(SALARY_RENT_TAG);
   }
@@ -669,6 +775,40 @@ export function composeSalaryComment(options: {
   const clean = stripSalaryMetaTags(options.comment);
   const joined = [...tags, clean].filter(Boolean).join(" ").trim();
   return joined || null;
+}
+
+/**
+ * Виртуальный источник зарплаты → представление в БД: source (cash|bank,
+ * CHECK-ограничение таблицы) + служебные теги комментария.
+ *  · ym_card → bank + [Карта ЮМ];
+ *  · rent → bank + [Аренда];
+ *  · wastepaper → cash + [Макулатура] (наличка макулатуры);
+ *  · wastepaper_bank → bank + [Макулатура] (безнал макулатуры);
+ *  · wastepaper_third → bank + [Макулатура] [Сторонние:откуда].
+ * Для источников макулатуры тег [Сторонние…] переставляется/снимается
+ * в зависимости от выбранного счёта, чтобы смена счёта в форме работала.
+ */
+export function salarySourceToDb(rawSource: string, comment: string): { source: "cash" | "bank"; comment: string } {
+  let c = String(comment || "");
+  if (rawSource === "ym_card") {
+    if (!c.includes("[Карта ЮМ]") && !c.includes("[ЮМ]")) c = `[Карта ЮМ] ${c}`.trim();
+    return { source: "bank", comment: c };
+  }
+  if (rawSource === "rent") {
+    if (!c.includes("[Аренда]")) c = `[Аренда] ${c}`.trim();
+    return { source: "bank", comment: c };
+  }
+  if (rawSource === "wastepaper" || rawSource === "wastepaper_bank" || rawSource === "wastepaper_third") {
+    const origin = getSalaryThirdPartyOrigin(c);
+    c = stripSalaryThirdPartyTag(c);
+    if (!c.includes("[Макулатура]")) c = `[Макулатура] ${c}`.trim();
+    if (rawSource === "wastepaper_third") {
+      const thirdTag = origin ? `[Сторонние:${origin}]` : "[Сторонние]";
+      c = c.replace("[Макулатура]", `[Макулатура] ${thirdTag}`);
+    }
+    return { source: rawSource === "wastepaper" ? "cash" : "bank", comment: c };
+  }
+  return { source: rawSource === "cash" ? "cash" : "bank", comment: c };
 }
 
 /**

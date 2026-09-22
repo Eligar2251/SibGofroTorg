@@ -35,15 +35,22 @@ const PRIMARY_PATHS = [
   "", // Панель
   "/orders", // Заявки
   "/products", // Товары
-  "/warehouse", // Учёт СГТ
+  "/warehouse", // Учёт СибГофроТорг
 ];
 
 /** Длительность анимаций листа, мс — синхронизирована с CSS. */
 const SHEET_MS = 280;
 
+/** Короткие подписи для нижней панели (ширина плитки ~70 px, одна строка). */
+const SHORT_LABELS: Record<string, string> = {
+  "Учёт СибГофроТорг": "Учёт",
+  "Учёт макулатура": "Макулатура",
+};
+
 function shortLabel(label: string): string {
-  // «Товары и категории» → «Товары», «Макулатура (учёт)» → «Макулатура»,
-  // но «Учёт СГТ» остаётся целиком: аббревиатура и есть имя раздела.
+  // «Товары и категории» → «Товары», «Учёт макулатура» → «Макулатура»,
+  // «Учёт СибГофроТорг» → «Учёт» (полное имя в плитку не помещается).
+  if (SHORT_LABELS[label]) return SHORT_LABELS[label];
   const parts = label.split(/[\s(·—-]+/).filter(Boolean);
   if (parts.length === 2 && /^[А-ЯЁA-Z]{2,4}$/.test(parts[1])) return label;
   return parts[0] || label;

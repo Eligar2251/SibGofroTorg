@@ -35,8 +35,15 @@ const PRIMARY_PATHS = [
   "/warehouse",
 ];
 
+/** Короткие подписи для нижней панели (одна строка на плитку). */
+const SHORT_LABELS: Record<string, string> = {
+  "Учёт СибГофроТорг": "Учёт",
+  "Учёт макулатура": "Макулатура",
+};
+
 function shortLabel(label: string): string {
-  // «Товары и категории» → «Товары», «Макулатура (учёт)» → «Макулатура».
+  // «Товары и категории» → «Товары», «Учёт макулатура» → «Макулатура».
+  if (SHORT_LABELS[label]) return SHORT_LABELS[label];
   return label.split(/[\s(·—-]/)[0] || label;
 }
 

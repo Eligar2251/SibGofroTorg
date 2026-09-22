@@ -204,7 +204,7 @@ export function AdminShell({
       href: `/${adminPath}/warehouse`,
       // Учёт СибГофроТорг (гофротара): склад, заказы, банк. Не путать
       // с учётом аренды и макулатуры — у них свои разделы ниже.
-      label: "Учёт СГТ",
+      label: "Учёт СибГофроТорг",
       icon: <Boxes size={18} />,
     },
     {
@@ -218,7 +218,7 @@ export function AdminShell({
       // Отдельный учёт макулатуры: виден admin и макулатурщику
       // (остальным пункт скроет canAccessAdminPage).
       href: `/${adminPath}/wastepaper-account`,
-      label: "Макулатура (учёт)",
+      label: "Учёт макулатура",
       icon: <Recycle size={18} />,
     },
     {
