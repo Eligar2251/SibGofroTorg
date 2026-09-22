@@ -1178,6 +1178,7 @@ function WpHero({
         <dl className="wpa-mobile__accounts">
           <div><dt><Banknote size={16} /> Наличные</dt><dd>{fmtMoney(balance.cash)}</dd></div>
           <div><dt><CreditCard size={16} /> Безналичные</dt><dd>{fmtMoney(balance.bank)}</dd></div>
+          <div><dt><Wallet size={16} /> Сторонние пополнения</dt><dd>{fmtMoney(balance.third_party)}</dd></div>
         </dl>
       </div>
       <div className="wpa-mobile__actions">
@@ -1218,6 +1219,7 @@ function WpHero({
             <CreditCard size={13} /> Безнал сейчас
           </div>
           <div className="wpa-balance__value">{fmtMoney(balance.bank)}</div>
+          <div className="wpa-balance__item"><div className="wpa-balance__label"><Wallet size={13} /> Сторонние пополнения</div><div className="wpa-balance__value">{fmtMoney(balance.third_party)}</div></div>
         </div>
         <div className="wpa-balance__cell wpa-balance__cell--total wpa-balance__cell--accent">
           <div className="wpa-balance__label">
@@ -3914,6 +3916,7 @@ function PaymentModal({
               >
                 <option value="cash">Наличка</option>
                 <option value="bank">Безнал</option>
+                <option value="third_party">Сторонние пополнения</option>
               </select>
             </div>
           </div>

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       {
         date: String(body.date || ""),
         direction: body.direction === "outgoing" ? "outgoing" : "incoming",
-        account: body.account === "bank" ? "bank" : "cash",
+        account: body.account === "bank" ? "bank" : body.account === "third_party" ? "third_party" : "cash",
         counterpartyId: body.counterpartyId || null,
         counterpartyName: String(body.counterpartyName || ""),
         amount: Number(body.amount) || 0,
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       item.id,
       `Платёж макулатуры №${item.number}: ${
         item.direction === "incoming" ? "приход" : "расход"
-      } ${item.amount} ₽ (${item.account === "cash" ? "наличка" : "безнал"})`,
+      } ${item.amount} ₽ (${item.account === "cash" ? "наличка" : item.account === "third_party" ? "стороннее пополнение" : "безнал"})`,
       { direction: item.direction, amount: item.amount, account: item.account }
     );
     return NextResponse.json({ success: true, item });
