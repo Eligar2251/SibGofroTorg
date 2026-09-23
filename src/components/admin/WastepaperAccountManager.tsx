@@ -1539,11 +1539,15 @@ function DaysTab({
         )}
       </div>
 
-      {/* Прогноз: запланированные, но ещё не оплаченные операции */}
+      {/* Прогноз: запланированные, но ещё не оплаченные операции.
+          Колонка не уже 440px: внутри карточки платежей формата «Банк»
+          (иконка · контрагент · сумма + кнопки), в узкой колонке они
+          не помещаются. На телефоне admin-mobile.css делает одну колонку. */}
       <div
+        className="wpa-forecast-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 440px), 1fr))",
           gap: 14,
         }}
       >
@@ -1667,64 +1671,93 @@ function ForecastCard({
   onEdit: (e: WpMoneyEvent) => void;
 }) {
   const total = events.reduce((s, e) => s + e.amount, 0);
+  const sign = tone === "in" ? "+" : "−";
   return (
-    <div className="admin-card">
+    <div className={`admin-card wpa-forecast wpa-forecast--${tone}`}>
       <div className="admin-card__head">
         <span className="admin-card__title">{title}</span>
-        <strong style={{ color: tone === "in" ? "var(--adm-pine)" : "var(--adm-kraft)" }}>
-          {tone === "in" ? "+" : "−"}
+        <span className={`admin-badge ${tone === "in" ? "admin-badge--green" : "admin-badge--red"}`}>
+          {sign}
           {fmtMoney(total)}
-        </strong>
+        </span>
       </div>
       {events.length === 0 ? (
         <div className="admin-card__pad">
           <p className="admin-hint">Незапланированных ожиданий нет.</p>
         </div>
       ) : (
-        <div className="admin-card__pad" style={{ display: "grid", gap: 10 }}>
-          {events.slice(0, 20).map((e) => (
-            <div
-              key={`${e.kind}-${e.id}`}
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <span style={{ color: "var(--adm-muted)", whiteSpace: "nowrap" }}>
-                {fmtDate(e.date)}
-              </span>
-              <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>
-              <span style={{ flex: 1, minWidth: 120 }}>
-                {e.title}
-                {e.counterpartyName ? ` · ${e.counterpartyName}` : ""}
-              </span>
-              <span className={ACCOUNT_BADGE[e.account]}>
-                {WP_ACCOUNT_LABELS[e.account]}
-              </span>
-              <strong>{fmtMoney(e.amount)}</strong>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost admin-btn--sm"
-                onClick={() => onTogglePaid(e)}
-                title={e.kind === "salary" ? SALARY_EVENT_HINT : "Отметить оплаченным"}
-              >
-                <Check size={13} /> Оплачено
-              </button>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost admin-btn--sm"
-                onClick={() => onEdit(e)}
-                title={e.kind === "salary" ? "Открыть вкладку «Зарплаты»" : "Открыть документ"}
-              >
-                <Pencil size={13} />
-              </button>
-            </div>
-          ))}
-          {events.length > 20 && (
-            <p className="admin-hint">…и ещё {events.length - 20} (см. вкладку «Платежи»)</p>
-          )}
+        <div className="admin-card__pad">
+          {/* Карточки платежей — та же разметка, что в журнале «Банк» учёта
+              СибГофроТорг (.bank-pay): иконка · контрагент + бейджи · дата
+              и комментарий · сумма с кнопками. На телефоне admin-mobile.css
+              раскладывает её в колонку, имя контрагента идёт целой строкой. */}
+          <div className="bank-month__list wpa-forecast__list">
+            {events.slice(0, 20).map((e) => (
+              <div key={`${e.kind}-${e.id}`} className="bank-pay bank-pay--pending">
+                <div
+                  className={`bank-pay__icon ${
+                    tone === "in" ? "bank-pay__icon--in" : "bank-pay__icon--out"
+                  }`}
+                >
+                  {tone === "in" ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}
+                </div>
+                <div className="bank-pay__main">
+                  <div className="bank-pay__row1">
+                    <span className="bank-pay__counterparty">
+                      {e.counterpartyName || e.title}
+                    </span>
+                    {e.counterpartyName ? (
+                      <span className="bank-pay__num">{e.title}</span>
+                    ) : null}
+                    <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>
+                    <span className={ACCOUNT_BADGE[e.account]}>
+                      {WP_ACCOUNT_LABELS[e.account]}
+                    </span>
+                    <span className="bank-pay__wait">ожидается</span>
+                  </div>
+                  <div className="bank-pay__row2">
+                    <span className="bank-pay__date">{fmtDate(e.date)}</span>
+                    {e.comment ? (
+                      <span className="bank-pay__comment" title={e.comment}>
+                        {e.comment}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="bank-pay__side">
+                  <span
+                    className={`bank-pay__amount${tone === "out" ? " bank-pay__amount--out" : ""}`}
+                  >
+                    {sign}
+                    {fmtMoney(e.amount)}
+                  </span>
+                  <div className="wh-pay-controls">
+                    <button
+                      type="button"
+                      className="admin-status__btn admin-status__btn--primary"
+                      onClick={() => onTogglePaid(e)}
+                      title={e.kind === "salary" ? SALARY_EVENT_HINT : "Отметить оплаченным"}
+                    >
+                      <Check size={14} />
+                      Оплачено
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-status__btn admin-status__btn--edit"
+                      onClick={() => onEdit(e)}
+                      title={e.kind === "salary" ? "Открыть вкладку «Зарплаты»" : "Открыть документ"}
+                    >
+                      <Pencil size={14} />
+                      {e.kind === "salary" ? "Зарплаты" : "Открыть"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {events.length > 20 && (
+              <p className="admin-hint">…и ещё {events.length - 20} (см. вкладку «Платежи»)</p>
+            )}
+          </div>
         </div>
       )}
     </div>
