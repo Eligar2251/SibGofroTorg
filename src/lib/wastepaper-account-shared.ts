@@ -361,13 +361,37 @@ export interface WpBranch {
   phone: string;
 }
 
-/** Позиция табличной части документа (приём/сдача): вид + вес + цена. */
+/**
+ * Позиция табличной части документа (приём/сдача): вид + веса + сумма.
+ *
+ * Каждую позицию заполняют отдельно: сначала фактический вес (что
+ * реально взвесили), потом расчётный вес (за что платим / что приняли
+ * по акту) и сумму. Все три поля необязательные — документ добивают
+ * частями: сегодня взвешивание, завтра расчёт. Цена за кг нигде не
+ * вводится вручную: это подсказка из справочника видов, а когда вписана
+ * сумма — сумма / расчётный вес.
+ */
 export interface WpDocItem {
   id: string;
   wastepaperType: string;
+  /**
+   * Фактический вес позиции, кг: в приёме — сколько реально принято на
+   * склад, в сдаче — сколько отгружено с площадки по нашим весам.
+   * Именно он двигает склад и виден водителю в перевозке.
+   */
   weightKg: number;
+  /**
+   * Расчётный вес позиции, кг: в приёме — вес к оплате клиенту, в сдаче —
+   * вес, принятый предприятием по акту. 0 — пока не указан.
+   */
+  payableWeightKg: number;
+  /**
+   * Цена за кг: подсказка из справочника, а когда вписана сумма —
+   * пересчитывается как сумма / расчётный вес. Итогом документа всегда
+   * считается сумма позиций, а не вес × цена (цены позиций различаются).
+   */
   pricePerKg: number;
-  /** weightKg * pricePerKg (округлённо до копеек). */
+  /** Сумма позиции, ₽ — вводится вручную по каждой строке. */
   total: number;
 }
 
@@ -567,16 +591,27 @@ export function normalizeWpDocItems(raw: unknown): WpDocItem[] {
   return raw
     .map((it: any, idx: number) => {
       const weightKg = Math.max(0, Number(it?.weightKg) || 0);
+      const payableWeightKg = Math.max(0, Number(it?.payableWeightKg) || 0);
       const pricePerKg = Math.max(0, Number(it?.pricePerKg) || 0);
+      // Сумму храним как ввели: при разной цене позиций она НЕ равна
+      // вес × цена. У старых строк без суммы считаем по весу и цене.
+      const totalRaw = it?.total;
+      const total =
+        totalRaw === undefined || totalRaw === null || totalRaw === ""
+          ? round2money(weightKg * pricePerKg)
+          : round2money(Math.max(0, Number(totalRaw) || 0));
       return {
         id: String(it?.id || `it-${idx + 1}`),
         wastepaperType: String(it?.wastepaperType || "cardboard").slice(0, 120),
         weightKg,
+        payableWeightKg,
         pricePerKg,
-        total: round2money(weightKg * pricePerKg),
+        total,
       };
     })
-    .filter((it) => it.weightKg > 0 || it.pricePerKg > 0);
+    // Строка с одной ценой-подсказкой (пустая строка новой формы) —
+    // не позиция, её не храним.
+    .filter((it) => it.weightKg > 0 || it.payableWeightKg > 0 || it.total > 0);
 }
 
 /** Итоги документа по позициям: суммарный вес и сумма. */
@@ -588,6 +623,87 @@ export function wpDocTotals(items: WpDocItem[]): { weightKg: number; total: numb
     total += Number(it.total) || 0;
   }
   return { weightKg: round2kg(weightKg), total: round2money(total) };
+}
+
+/**
+ * Подробные итоги документа по позициям: Σ фактического веса (движение
+ * склада), Σ расчётного веса (к оплате / принятый) и Σ сумм. Шапка
+ * документа (принято / к оплате / сумма) всегда повторяет эти итоги —
+ * их не вписывают отдельно, они считаются из строк.
+ */
+export function wpDocDetailedTotals(items: WpDocItem[]): {
+  acceptedKg: number;
+  payableKg: number;
+  total: number;
+} {
+  let acceptedKg = 0;
+  let payableKg = 0;
+  let total = 0;
+  for (const it of items) {
+    acceptedKg += Number(it.weightKg) || 0;
+    payableKg += Number(it.payableWeightKg) || 0;
+    total += Number(it.total) || 0;
+  }
+  return {
+    acceptedKg: round2kg(acceptedKg),
+    payableKg: round2kg(payableKg),
+    total: round2money(total),
+  };
+}
+
+/**
+ * Перевод старых позиций в формат «факт + к оплате + сумма».
+ *
+ * Раньше у строки был один вес (расчётный: вес к оплате в приёме,
+ * принятый вес в сдаче), а фактический жил только в шапке документа.
+ * Теперь оба веса живут в строке. Правило простое: если расчётный вес
+ * в строках уже есть — это новый формат, ничего не трогаем. Иначе одна
+ * строка получает факт из шапки (factTotal), а расчётный — свой прежний
+ * вес; несколько строк: чей вес они хранят, определяем сравнением суммы
+ * строк с шапкой, недостающий вес раскладываем пропорционально.
+ * Суммы строк не трогаем — они и раньше хранились построчно.
+ *
+ * Для приёма: factTotal = принято на склад, calcTotal = вес к оплате.
+ * Для сдачи: factTotal = отгружено с площадки, calcTotal = принято.
+ */
+export function migrateWpDocItems(
+  items: WpDocItem[],
+  factTotal: number,
+  calcTotal: number
+): WpDocItem[] {
+  if (!items || items.length === 0) return items || [];
+  if (items.some((it) => (Number(it.payableWeightKg) || 0) > 0)) return items;
+  const fact = Math.max(0, Number(factTotal) || 0);
+  const calc = Math.max(0, Number(calcTotal) || 0);
+  if (!(calc > 0)) return items;
+  const sumW = items.reduce((s, it) => s + (Number(it.weightKg) || 0), 0);
+  if (!(sumW > 0)) return items;
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  if (items.length === 1) {
+    // Одна строка старого документа всегда повторяла расчётный вес шапки.
+    const it = items[0];
+    return [
+      {
+        ...it,
+        weightKg: fact > 0 ? round1(fact) : it.weightKg,
+        payableWeightKg: round1(calc),
+      },
+    ];
+  }
+  // Несколько строк: вес строк — это либо факт, либо расчётный вес.
+  const rowsAreCalc =
+    Math.abs(sumW - calc) < 0.051 && Math.abs(sumW - fact) >= 0.051;
+  if (rowsAreCalc && fact > 0) {
+    return items.map((it) => ({
+      ...it,
+      weightKg: round1((fact * (Number(it.weightKg) || 0)) / sumW),
+      payableWeightKg: round1(Number(it.weightKg) || 0),
+    }));
+  }
+  return items.map((it) => ({
+    ...it,
+    payableWeightKg: round1((calc * (Number(it.weightKg) || 0)) / sumW),
+  }));
 }
 
 /** Краткая подпись позиций: «Гофрокартон 500 кг; Белая бумага 120 кг». */
@@ -650,6 +766,7 @@ export function distributeWpTotal(
         id: prev?.id || wpUid("it"),
         wastepaperType: prev?.wastepaperType || type,
         weightKg: weight,
+        payableWeightKg: prev?.payableWeightKg ?? 0,
         pricePerKg: price,
         total: round2money(weight * price),
       },
@@ -875,16 +992,11 @@ export function wpEventEffectiveDate(event: WpMoneyEvent): string {
 }
 
 /**
- * Сумма приёма к выплате: вес к оплате × цена за кг, а если вес к оплате
- * не указан — сумма позиций. Та же формула используется в форме приёма,
- * чтобы введённая сумма и деньги в финансах всегда совпадали.
+ * Сумма приёма к выплате = сумма позиций. Цены за кг у позиций разные
+ * (картон дешевле архива), поэтому вес × цена шапки здесь не считаем —
+ * каждая строка хранит свою введённую сумму, итог = их сумма.
  */
-export function wpIntakePayableTotal(
-  i: Pick<WpIntake, "payableWeightKg" | "pricePerKg" | "total">
-): number {
-  if (i.payableWeightKg > 0 && i.pricePerKg > 0) {
-    return Math.round(i.payableWeightKg * i.pricePerKg * 100) / 100;
-  }
+export function wpIntakePayableTotal(i: Pick<WpIntake, "total">): number {
   return Number(i.total) || 0;
 }
 
@@ -902,7 +1014,7 @@ export function wpCollectMoneyEvents(
   for (const i of intakes) {
     const splits = i.cashAmount > 0 && i.bankAmount > 0
       ? ([{ account: "cash" as WpAccount, amount: i.cashAmount }, { account: "bank" as WpAccount, amount: i.bankAmount }])
-      : [{ account: i.account, amount: i.total }];
+      : [{ account: i.account, amount: wpIntakePayableTotal(i) }];
     for (const split of splits) events.push({
       kind: "intake",
       id: i.id,
@@ -910,9 +1022,10 @@ export function wpCollectMoneyEvents(
       date: i.date,
       direction: "outgoing",
       account: split.account,
-      amount: i.payableWeightKg > 0 && i.pricePerKg > 0
-        ? wpIntakePayableTotal(i)
-        : split.amount,
+      // Каждое событие несёт свою сумму: в обычном случае это итог
+      // позиций, при раздельной оплате — часть по своему счёту
+      // (раньше обе части несли полный итог и расход удваивался).
+      amount: split.amount,
       isPaid: i.isPaid,
       paidAt: i.paidAt,
       counterpartyName: i.counterpartyName,

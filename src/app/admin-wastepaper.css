@@ -158,6 +158,14 @@
 .wpa-balance__value--in { color: var(--adm-pine); }
 .wpa-balance__value--out { color: var(--adm-kraft); }
 
+/* «Сторонние пополнения» живут внутри ячейки безнала — отделяем чертой,
+   чтобы два значения не слипались. */
+.wpa-balance__item {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--wpx-line);
+}
+
 .wpa-balance__hint {
   margin-top: 6px;
   font-size: 12px;
@@ -774,6 +782,15 @@
   align-items: end;
 }
 
+/* Прямые дети сеток не распирают колонки: в сетках лежат не только
+   .admin-field (у них min-width уже есть), но и голые инпуты
+   (точки контрагента) — без этого они вылезают за модалку. */
+.wp-grid-2 > *,
+.wp-grid-3 > *,
+.wp-modal-stack > * {
+  min-width: 0;
+}
+
 /* ─────────────────────────────────────────────────────────
    9. Позиции документа (табличная часть «как в 1С», но по сетке)
    ───────────────────────────────────────────────────────── */
@@ -784,9 +801,26 @@
   margin-top: 4px;
 }
 
+/* Шапка колонок позиций — только десктоп (на телефоне скрыта,
+   у полей есть плейсхолдеры). Колонки повторяют сетку строки. */
+.wp-items__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 104px 104px 128px 84px 36px;
+  gap: 10px;
+  padding: 0 12px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--adm-sand);
+}
+
+/* Строка позиции: вид · факт · к оплате/принято · сумма · цена · ×.
+   Все ячейки с min-width: 0 — иначе инпуты (у них свой min-content
+   ~150px) распирают фиксированные колонки и строка вылезает за модалку. */
 .wp-item-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) 110px 110px 120px 40px;
+  grid-template-columns: minmax(0, 1.5fr) 104px 104px 128px 84px 36px;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -795,11 +829,22 @@
   background: color-mix(in srgb, var(--adm-paper) 40%, var(--adm-card));
 }
 
-.wp-item-row__sum {
+.wp-item-row > * {
+  min-width: 0;
+}
+
+.wp-item-row .admin-input,
+.wp-item-row .admin-select {
+  min-width: 0;
+  width: 100%;
+}
+
+/* Цена за кг — авто-поле: выглядит спокойнее обычных инпутов. */
+.wp-item-row__price {
   font-weight: 700;
-  color: var(--adm-pine);
   text-align: right;
-  white-space: nowrap;
+  color: var(--adm-pine);
+  cursor: default;
 }
 
 .wp-item-row__del {
@@ -1429,7 +1474,11 @@
     font-size: 12.5px;
   }
 
-  /* Модалки макулатуры — почти во весь экран, подвал липнет снизу */
+  /* Модалки макулатуры — почти во весь экран, подвал липнет снизу.
+     Планшет (769–1023px) показывает десктопную разметку, поэтому
+     внутренние отступы формы и подвала здесь НЕ трогаем — нулевые
+     отступы и кнопки во всю ширину живут только в блоке ≤768px ниже
+     (там модалка — полноэкранный лист admin-mobile.css). */
   .wp-modal,
   .deliv-modal {
     max-width: 100%;
@@ -1440,23 +1489,6 @@
   .wp-modal .admin-modal__head,
   .deliv-modal .admin-modal__head {
     padding: 12px 14px;
-  }
-
-  /* На мобильном модалка — полноэкранный лист: свои отступы уже дал
-     admin-mobile.css, поэтому тело не добавляет вторых. */
-  .wp-modal__body,
-  .wp-modal > form {
-    padding: 0;
-    gap: 12px;
-  }
-
-  .wp-modal .admin-modal__desc {
-    padding: 0 0 4px;
-  }
-
-  .wp-modal__actions,
-  .deliv-modal .admin-modal__actions {
-    padding: 10px 0;
   }
 
   .deliv-modal > form,
@@ -1487,26 +1519,26 @@
     grid-column: 1 / -1;
   }
 
-  /* Кнопки в подвале — во всю ширину, крупные для пальца */
-  .wp-modal__actions .admin-btn,
-  .deliv-modal .admin-modal__actions .admin-btn {
-    flex: 1 1 auto;
-    justify-content: center;
-    min-height: 44px;
-  }
-
-  .wp-modal__actions .wp-modal__spacer {
+  /* Строка позиции — карточкой 2 × 2: вид на всю ширину, дальше
+     факт/к оплате и сумма/цена парами, удаление — во всю ширину.
+     Шапка колонок скрыта (у полей есть плейсхолдеры). */
+  .wp-items__head {
     display: none;
   }
 
   .wp-item-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 8px;
   }
 
-  .wp-item-row__sum {
-    grid-column: 2 / 3;
-    text-align: left;
+  .wp-item-row > select {
+    grid-column: 1 / -1;
+  }
+
+  .wp-item-row__del {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    min-height: 44px;
   }
 
   .wp-toolbar {
@@ -1521,6 +1553,51 @@
   .wp-toolbar__actions .admin-btn {
     flex: 1 1 auto;
     justify-content: center;
+  }
+}
+
+/* ── Телефон (≤768px): модалка — полноэкранный лист ──
+   Отступы по бокам уже дала сама модалка (admin-mobile.css, 12px),
+   поэтому форма их не дублирует. Подвал тянется на всю ширину листа:
+   десктопные отрицательные отступы подвала (-20px под паддинги формы)
+   здесь сбрасываем — иначе он вылезал за края модалки. */
+@media (max-width: 768px) {
+  .wp-modal__body,
+  .wp-modal > form {
+    padding: 0;
+    gap: 12px;
+  }
+
+  .wp-modal .admin-modal__desc {
+    padding: 0 0 4px;
+  }
+
+  .wp-modal__actions {
+    margin: 14px -12px calc(-1 * (var(--adm-mobile-safe-bottom, 0px) + 14px));
+    padding: 10px 12px calc(10px + var(--adm-mobile-safe-bottom, 0px));
+  }
+
+  /* Кнопки подвала — крупными рядами на всю ширину, под палец.
+     Кнопки лежат во внутренних группах, поэтому тянем и группы. */
+  .wp-modal__actions > div {
+    display: flex;
+    gap: 8px;
+    flex: 1 1 100%;
+  }
+
+  .wp-modal__actions > div:empty {
+    display: none;
+  }
+
+  .wp-modal__actions .admin-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .deliv-modal .admin-modal__actions {
+    padding: 10px 0;
   }
 }
 
@@ -1560,21 +1637,14 @@
   }
 }
 
-/* Isolated accounting workspace: never share the public landing hero styles. */
+/* Десктоп модуля — «банковский» дизайн из слоёв выше (плашка-счёт из
+   трёх ячеек, пилюльные вкладки, чипы-пилюли): его не переопределяем.
+   Мобильный редизайн «как в учёте СибГофроТорг» затрагивает только
+   телефонные компоненты ниже (.wpa-mobile*, .wpa-mobile-nav, .wpa-ledger),
+   которые десктоп вообще не рендерит. Здесь — лишь защита от переполнения. */
 .wp-account { min-width: 0; }
-.wp-account .admin-page-head { flex-wrap: wrap; gap: 20px; margin-bottom: 24px; }
-.wp-account .admin-page-head > div { flex: 1 1 320px; min-width: 0; }
-.wpa-balance { padding: 24px; margin-bottom: 24px; }
-.wpa-balance__top { margin-bottom: 20px; }
-.wpa-balance__grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; }
-.wpa-balance__cell { padding: 20px; }
-.wpa-balance__value { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
-.wpa-balance__chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; margin-top: 20px; }
-.wpa-balance__chips .wpa-balance__chip { border-radius: 12px; padding: 12px; flex-wrap: wrap; line-height: 1.5; }
+.wp-account .admin-page-head > * { min-width: 0; }
 .wpa-balance svg { flex-shrink: 0; }
-.wpa-balance__actions { padding-top: 20px; margin-top: 20px; gap: 12px; }
-.wp-account .wp-tabs { border-radius: 16px; padding: 8px; gap: 8px; margin-bottom: 24px; }
-.wp-account .wp-tab { border-radius: 10px; min-height: 44px; }
 
 /* Phone-only components, selected in React rather than by hiding desktop DOM. */
 .wpa-mobile { display: grid; gap: 16px; margin-bottom: 24px; min-width: 0; }
