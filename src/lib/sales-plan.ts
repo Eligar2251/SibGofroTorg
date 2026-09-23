@@ -423,16 +423,16 @@ export function computeSalesPlan(
 // и сразу с прибылью по каждому контрагенту.
 //
 // Методика:
-//  1. Окно анализа — windowMonths (6) полных месяцев,
-//     предшествующих НАЧАЛУ периода. Средние считаются по
-//     всем месяцам окна (пустые — нулями), поэтому контрагент,
-//     берущий раз в квартал, даёт втрое меньший план — честнее,
-//     чем «среднее только по активным месяцам».
+//  1. Окно анализа выбирается в интерфейсе: вся доступная история
+//     (по умолчанию), 6 или 12 полных месяцев до НАЧАЛА периода.
+//     Средние считаются по всем календарным месяцам окна (пустые — нулями),
+//     поэтому редкие заказы тоже корректно влияют на прогноз.
 //  2. Средний чек контрагента = сумма заказов окна ÷ число заказов.
 //     Плановая выручка на период = среднемесячный объём × число
 //     месяцев периода (+ уже оформленное в периоде, если больше).
 //  3. Себестоимость = плановое количество товара × закупочная цена
-//     из карточки товара. Прибыль = выручка − себестоимость.
+//     из карточки товара/склада. Неизвестная закупка не считается нулём:
+//     подтверждённая прибыль суммируется только по товарам с ценой.
 //  4. «Уже оформил» — заказы с датой внутри периода (не отменённые).
 // =========================================================
 
@@ -448,8 +448,10 @@ export interface ProfitPlanCounterparty {
   revenue: number;
   /** Себестоимость (закупка) по его позициям за период, ₽. */
   cost: number;
-  /** Прибыль за период = выручка − себестоимость, ₽. */
+  /** Прибыль только по товарам с указанной закупочной ценой. */
   profit: number;
+  /** Не все товары контрагента имеют известную закупочную цену. */
+  hasCompleteCost: boolean;
   /** Уже оформлено в периоде, ₽. */
   knownRevenue: number;
   /** Осталось ожидать за период, ₽. */
@@ -464,6 +466,7 @@ export interface ProfitPlanCounterparty {
     revenue: number;
     cost: number;
     profit: number;
+    hasPurchasePrice: boolean;
   }[];
 }
 
@@ -533,17 +536,30 @@ function periodLabelOf(startKey: string, endKey: string, monthCount: number): st
 /**
  * План на период [startKey … endKey] (ключи YYYY-MM, включительно)
  * по контрагентам и товарам, с выручкой, себестоимостью и прибылью.
+ * windowMonths=0 означает всю доступную историю до начала планового периода.
  */
 export function computeProfitPlan(
   deals: CustomerDeal[],
   stock: SalesPlanStockRow[],
   startKey: string,
   endKey: string,
-  windowMonths = 6
+  windowMonths = 0
 ): ProfitPlan {
   // Защита от «от» после «до»: обмениваем.
   if (startKey > endKey) [startKey, endKey] = [endKey, startKey];
   const monthCount = Math.max(1, monthDiff(startKey, endKey) + 1);
+  const priorOrderMonths = deals
+    .filter((deal) => deal && deal.status !== "cancelled" && deal.date && Number(deal.total) > 0)
+    .map((deal) => monthKeyOf(deal.date))
+    .filter((month) => month < startKey);
+  const firstHistoryMonth = priorOrderMonths.sort()[0] || null;
+  const previousMonthDate = new Date(Number(startKey.slice(0, 4)), Number(startKey.slice(5, 7)) - 2, 1);
+  const previousMonthKey = `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, "0")}`;
+  const analysisWindowMonths = windowMonths === 0
+    ? firstHistoryMonth
+      ? Math.max(1, monthDiff(firstHistoryMonth, previousMonthKey) + 1)
+      : 1
+    : Math.max(1, Math.floor(windowMonths));
 
   // Ключи месяцев периода — напрямую от startKey (надёжнее, чем сдвиги).
   const startParts = startKey.split("-").map(Number);
@@ -555,12 +571,13 @@ export function computeProfitPlan(
   const periodSet = new Set(periodKeys);
 
   const windowKeys: string[] = [];
-  for (let i = 1; i <= windowMonths; i++) {
+  for (let i = 1; i <= analysisWindowMonths; i++) {
     const d = new Date(startParts[0], startParts[1] - 1 - i, 1);
     windowKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
   const windowSet = new Set(windowKeys);
-  const prevKey = windowKeys[windowMonths - 1]; // месяц перед началом периода
+  const prevKey = windowKeys[0]; // непосредственно предыдущий месяц
+  const recentCutoffKey = windowKeys[Math.min(2, windowKeys.length - 1)] || prevKey;
 
   const stockById = new Map(
     stock.map((p) => [
@@ -665,10 +682,13 @@ export function computeProfitPlan(
     let status: ProfitPlanCounterparty["status"] = "sleeping";
     if (lastKey === prevKey || (lastKey && periodSet.has(lastKey))) {
       status = "active";
-    } else if (lastKey && windowSet.has(lastKey) && lastKey >= windowKeys[2]) {
+    } else if (lastKey && windowSet.has(lastKey) && lastKey >= recentCutoffKey) {
       status = "recent";
     }
-    if (status === "sleeping" && acc.knownRevenue <= 0) continue;
+    // В режиме всей истории показываем и давно неактивных контрагентов:
+    // их средний месячный спрос важен для плана. В ограниченном окне
+    // не выводим тех, у кого за выбранный период и текущий план нет заказов.
+    if (status === "sleeping" && acc.knownRevenue <= 0 && windowMonths !== 0) continue;
 
     const merged = new Map<string, ProdAcc>();
     for (const [pid, prod] of acc.windowProducts) merged.set(pid, { ...prod });
@@ -685,8 +705,8 @@ export function computeProfitPlan(
       const knownQty = known?.qty || 0;
       const knownRevenue = known?.revenue || 0;
       // План на период = среднемесячный объём окна × месяцев + уже оформленное
-      const planQty = roundQty((prod.qty / windowMonths) * monthCount + knownQty);
-      const prodRevenue = round2((prod.revenue / windowMonths) * monthCount + knownRevenue);
+      const planQty = roundQty((prod.qty / analysisWindowMonths) * monthCount + knownQty);
+      const prodRevenue = round2((prod.revenue / analysisWindowMonths) * monthCount + knownRevenue);
       const meta = stockById.get(prod.productId);
       const hasPrice = Boolean(meta?.purchasePrice && meta.purchasePrice > 0);
       const lineCost = hasPrice ? round2(planQty * (meta?.purchasePrice || 0)) : 0;
@@ -696,7 +716,8 @@ export function computeProfitPlan(
         planQty,
         revenue: prodRevenue,
         cost: lineCost,
-        profit: round2(prodRevenue - lineCost),
+        profit: hasPrice ? round2(prodRevenue - lineCost) : 0,
+        hasPurchasePrice: hasPrice,
       });
       revenue = round2(revenue + prodRevenue);
       cost = round2(cost + lineCost);
@@ -709,7 +730,7 @@ export function computeProfitPlan(
     const avgCheck = acc.windowOrders > 0 ? round2(acc.windowSum / acc.windowOrders) : 0;
     const expectedOrders =
       acc.windowOrders > 0
-        ? Math.round((acc.windowOrders / windowMonths) * monthCount * 10) / 10
+        ? Math.round((acc.windowOrders / analysisWindowMonths) * monthCount * 10) / 10
         : 0;
 
     counterparties.push({
@@ -719,7 +740,8 @@ export function computeProfitPlan(
       avgCheck,
       revenue,
       cost,
-      profit: round2(revenue - cost),
+      profit: round2(productLines.reduce((sum, line) => sum + line.profit, 0)),
+      hasCompleteCost: productLines.every((line) => line.hasPurchasePrice),
       knownRevenue: acc.knownRevenue,
       remainingRevenue: round2(Math.max(0, revenue - acc.knownRevenue)),
       status,
@@ -771,7 +793,7 @@ export function computeProfitPlan(
       if (known) row.knownQty = roundQty(row.knownQty + known.qty);
     }
     row.remainingQty = roundQty(Math.max(0, row.planQty - row.knownQty));
-    row.profit = round2(row.revenue - row.cost);
+    row.profit = row.hasPurchasePrice ? round2(row.revenue - row.cost) : 0;
     if (row.stockQty != null) {
       row.shortageQty = roundQty(Math.max(0, row.remainingQty - row.stockQty));
       row.shortageCost = row.hasPurchasePrice
@@ -793,12 +815,14 @@ export function computeProfitPlan(
     endKey,
     monthCount,
     periodLabel: periodLabelOf(startKey, endKey, monthCount),
-    windowMonths,
+    windowMonths: analysisWindowMonths,
     counterparties,
     products,
     totalRevenue,
     totalCost,
-    totalProfit: round2(totalRevenue - totalCost),
+    // Не превращаем неизвестную себестоимость в фиктивную прибыль:
+    // прибыль суммируется только по позициям с заполненной закупочной ценой.
+    totalProfit: round2(products.reduce((sum, product) => sum + (product.hasPurchasePrice ? product.profit : 0), 0)),
     totalShortageCost,
     shortageProductsCount,
     activeCounterparties: counterparties.filter((c) => c.status !== "sleeping").length,

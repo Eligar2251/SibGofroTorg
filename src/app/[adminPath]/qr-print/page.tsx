@@ -12,7 +12,9 @@
 
 import Link from "next/link";
 import { Printer, ArrowLeft, QrCode, Filter } from "lucide-react";
-import { getAllCategories, getProducts } from "@/lib/supabase-queries";
+import { getAllCategories, getProducts, getSettings } from "@/lib/supabase-queries";
+import { SITE_ADDRESS } from "@/lib/site-config";
+import QRCode from "qrcode";
 import { formatBarcode, computeBarcode, computeQrSlug } from "@/lib/qr";
 import { PrintLabelsClient } from "@/components/admin/PrintLabelsClient";
 
@@ -31,10 +33,20 @@ export default async function QrPrintPage({
   }>;
 }) {
   const params = await searchParams;
-  const [allProducts, categories] = await Promise.all([
+  const [allProducts, categories, settings] = await Promise.all([
     getProducts({ includeHidden: true }),
     getAllCategories(),
+    getSettings().catch(() => ({} as Record<string, string>)),
   ]);
+  const brandQrSvg = await QRCode.toString("https://sibgofrotorg.ru", {
+    type: "svg",
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 360,
+    color: { dark: "#111111", light: "#ffffff" },
+  });
+  const brandQrDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(brandQrSvg)}`;
+  const companyAddress = (settings.address || SITE_ADDRESS).trim();
 
   // Обогащаем товары кодами (если не из кеша) + размерами для этикеток
   const products = allProducts.map((p) => ({
@@ -76,6 +88,8 @@ export default async function QrPrintPage({
         selectedCategory={params.cat || ""}
         query={params.q || ""}
         adminPath={ADMIN_PATH}
+        companyAddress={companyAddress}
+        brandQrDataUrl={brandQrDataUrl}
       />
     </div>
   );
