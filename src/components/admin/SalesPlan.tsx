@@ -13,7 +13,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Target,
@@ -29,6 +29,7 @@ import {
   Search,
 } from "lucide-react";
 import type { CustomerDeal, WarehouseStockRow } from "@/lib/warehouse-shared";
+import { StockPriceEditor } from "@/components/admin/StockPriceEditor";
 import {
   computeProfitPlan,
   type ProfitPlanCounterparty,
@@ -112,13 +113,17 @@ export function SalesPlan({
   const [endOffset, setEndOffset] = useState(0);
   const [query, setQuery] = useState("");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [analysisWindow, setAnalysisWindow] = useState(0);
+  const [planStock, setPlanStock] = useState(stock);
+
+  useEffect(() => setPlanStock(stock), [stock]);
 
   const startKey = monthKeyOffset(Math.min(startOffset, endOffset));
   const endKey = monthKeyOffset(Math.max(startOffset, endOffset));
 
   const plan = useMemo(
-    () => computeProfitPlan(deals, stock, startKey, endKey, 6),
-    [deals, stock, startKey, endKey]
+    () => computeProfitPlan(deals, planStock, startKey, endKey, analysisWindow),
+    [deals, planStock, startKey, endKey, analysisWindow]
   );
 
   const rows = useMemo(() => {
@@ -145,6 +150,8 @@ export function SalesPlan({
   }
 
   const hasShortage = plan.shortageProductsCount > 0;
+  const missingCostProducts = plan.products.filter((product) => !product.hasPurchasePrice);
+  const uncostedRevenue = missingCostProducts.reduce((sum, product) => sum + product.revenue, 0);
   const moveStart = (delta: number) =>
     setStartOffset((v) => Math.max(-23, Math.min(endOffset, v + delta)));
   const moveEnd = (delta: number) =>
@@ -218,6 +225,21 @@ export function SalesPlan({
             </button>
           ))}
         </div>
+        <div className="sp-period__presets" role="group" aria-label="Период истории заказов для среднего">
+          <span className="sp-period__label">История:</span>
+          {[{ label: "Все", months: 0 }, { label: "6 мес", months: 6 }, { label: "12 мес", months: 12 }].map((option) => (
+            <button
+              key={option.months}
+              type="button"
+              className={`admin-btn admin-btn--ghost admin-btn--sm${analysisWindow === option.months ? " sp-preset--on" : ""}`}
+              onClick={() => setAnalysisWindow(option.months)}
+              title={option.months === 0 ? "Учитывать все сохранённые заказы до начала планового периода" : `Считать среднее по последним ${option.months} полным месяцам`}
+              aria-pressed={analysisWindow === option.months}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <div style={{ position: "relative", flex: 1, maxWidth: 280, marginLeft: "auto" }}>
           <Search
             size={15}
@@ -251,11 +273,11 @@ export function SalesPlan({
       {/* ── Сводка: прибыль за период — главная цифра ── */}
       <div className="sp-summary">
         <div className="sp-summary__main">
-          <span className="sp-summary__label">План на период · {plan.periodLabel}</span>
+          <span className="sp-summary__label">Подтверждённая прибыль · {plan.periodLabel}</span>
           <strong className="sp-summary__value sp-profit">{fmtMoney(plan.totalProfit)}</strong>
           <span className="sp-summary__hint">
-            ожидаемая прибыль · выручка <b>{fmtMoney(plan.totalRevenue)}</b> −
-            закупка <b>{fmtMoney(plan.totalCost)}</b>
+            только товары с указанной закупочной ценой · известная себестоимость{" "}
+            <b>{fmtMoney(plan.totalCost)}</b>
           </span>
         </div>
         <div className="sp-summary__stats">
@@ -267,7 +289,7 @@ export function SalesPlan({
           <div className="rf-stat">
             <span className="rf-stat__icon" style={{ color: "var(--adm-rust)" }}><Package size={15} /></span>
             <span className="rf-stat__val">{fmtMoney(plan.totalCost)}</span>
-            <span className="rf-stat__label">себестоимость</span>
+            <span className="rf-stat__label">себестоимость по указанным закупкам</span>
           </div>
           <div className="rf-stat">
             <span className="rf-stat__icon" style={{ color: "var(--adm-steel)" }}><UsersRound size={15} /></span>
@@ -281,6 +303,19 @@ export function SalesPlan({
           </div>
         </div>
       </div>
+
+      {missingCostProducts.length > 0 && (
+        <div className="sp-shortage" style={{ borderColor: "var(--adm-rust-line, #d8b4a0)" }}>
+          <AlertTriangle size={15} />
+          <span>
+            Для точной прибыли укажите закупочную цену ещё у{" "}
+            <b>{missingCostProducts.length}</b> товаров. Эти позиции дают{" "}
+            <b>{fmtMoney(uncostedRevenue)}</b> выручки, поэтому их нельзя
+            считать прибылью до заполнения себестоимости. Введите цену прямо
+            в колонке «Закупка» ниже — она сохранится в карточку товара/склад.
+          </span>
+        </div>
+      )}
 
       {hasShortage && (
         <div className="sp-shortage">
@@ -312,7 +347,7 @@ export function SalesPlan({
                 <th className="sp-num">План выручки</th>
                 <th className="sp-num">Уже оформил</th>
                 <th className="sp-num">Осталось</th>
-                <th className="sp-num">Прибыль</th>
+                <th className="sp-num" title="Сумма по позициям с заполненной закупочной ценой">Прибыль*</th>
                 <th>Активность</th>
               </tr>
             </thead>
@@ -412,7 +447,28 @@ export function SalesPlan({
                     <td className="sp-num">{p.remainingQty > 0.004 ? remainLabel : "—"}</td>
                     <td className="sp-num sp-revenue">{fmtMoney(p.revenue)}</td>
                     <td className="sp-num">
-                      {p.hasPurchasePrice ? fmtMoney(p.cost) : <span title="Не указана закупочная цена в карточке товара">—</span>}
+                      {p.productId.startsWith("name:") ? (
+                        <span title="У этой импортированной позиции нет связи с карточкой товара">нет карточки</span>
+                      ) : (
+                        <>
+                          <StockPriceEditor
+                            productId={p.productId}
+                            field="purchasePrice"
+                            initialValue={planStock.find((item) => item.id === p.productId)?.purchasePrice ?? null}
+                            variant="purchase"
+                            onSaved={(value) => {
+                              setPlanStock((current) => current.map((item) =>
+                                item.id === p.productId ? { ...item, purchasePrice: value } : item
+                              ));
+                            }}
+                          />
+                          {!p.hasPurchasePrice && (
+                            <small style={{ display: "block", color: "var(--adm-rust)", fontSize: 10, marginTop: 3 }}>
+                              укажите закупку
+                            </small>
+                          )}
+                        </>
+                      )}
                     </td>
                     <td className={`sp-num ${p.profit >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
                       {p.hasPurchasePrice ? fmtMoney(p.profit) : "—"}
@@ -466,14 +522,17 @@ export function SalesPlan({
       <div className="rf-note">
         <Info size={13} />
         <span>
-          <b>Методика плана:</b> для каждого контрагента берём его заказы за
-          последние {plan.windowMonths} месяцев до начала периода (скользящее
-          среднее, месяцы без заказов считаются нулями) и считаем <b>средний чек</b>.
-          План на период = средний чек × ожидаемое число заказов за выбранные
-          месяцы (+ уже оформленное в периоде). Прибыль = выручка − закупка
-          (закупочная цена из карточки товара). «Закупка» у товара без закупочной
-          цены не считается. Архивные заказы из массовой загрузки участвуют в
-          расчёте наравне с обычными.
+          <b>Методика плана:</b> для каждого контрагента берём заказы за{" "}
+          {analysisWindow === 0
+            ? `всю доступную историю до начала периода (${plan.windowMonths} мес.)`
+            : `последние ${analysisWindow} месяцев до начала периода`}. Средний
+          месячный объём учитывает месяцы без заказов; выручка рассчитывается по
+          фактическим ценам строк его заказов (у разных контрагентов могут быть
+          разные цены), а уже оформленные заказы добавляются к прогнозу. Себестоимость
+          = количество × закупочная цена из карточки товара/склада. Прибыль
+          показывается только по позициям, где закупочная цена заполнена;
+          неизвестная себестоимость не считается нулевой. Укажите её быстрым
+          редактором в колонке «Закупка». Архивные заказы тоже участвуют.
         </span>
       </div>
     </div>
@@ -525,8 +584,11 @@ function PlanCounterpartyRow({
         <td className="sp-num sp-revenue">
           {cp.remainingRevenue > 0 ? fmtMoney(cp.remainingRevenue) : "—"}
         </td>
-        <td className={`sp-num ${cp.profit >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
-          {fmtMoney(cp.profit)}
+        <td
+          className={`sp-num ${cp.profit >= 0 ? "sp-margin" : "sp-margin--neg"}`}
+          title={cp.hasCompleteCost ? "Прибыль по всем товарам контрагента" : "Частичная прибыль: не у всех товаров указана закупочная цена"}
+        >
+          {fmtMoney(cp.profit)}{!cp.hasCompleteCost && "*"}
         </td>
         <td>
           <span className={status.className} title={status.title} style={{ whiteSpace: "nowrap" }}>
@@ -553,9 +615,9 @@ function PlanCounterpartyRow({
                     <td>{line.name}</td>
                     <td className="sp-num">{fmtQty(line.planQty)}</td>
                     <td className="sp-num sp-revenue">{fmtMoney(line.revenue)}</td>
-                    <td className="sp-num">{line.cost > 0 ? fmtMoney(line.cost) : "—"}</td>
+                    <td className="sp-num">{line.hasPurchasePrice ? fmtMoney(line.cost) : "—"}</td>
                     <td className={`sp-num ${line.profit >= 0 ? "sp-margin" : "sp-margin--neg"}`}>
-                      {fmtMoney(line.profit)}
+                      {line.hasPurchasePrice ? fmtMoney(line.profit) : "—"}
                     </td>
                   </tr>
                 ))}

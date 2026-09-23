@@ -8973,13 +8973,16 @@ body.is-col-resizing * {
   body.qrprint-mode .qrprint__tape,
   body.qrprint-mode .qrprint__tape *,
   body.qrprint-mode .qrprint__single,
-  body.qrprint-mode .qrprint__single * {
+  body.qrprint-mode .qrprint__single *,
+  body.qrprint-mode .qrprint__brand,
+  body.qrprint-mode .qrprint__brand * {
     visibility: visible !important;
     opacity: 1 !important;
   }
   body.qrprint-mode .qrprint__sheet,
   body.qrprint-mode .qrprint__tape,
-  body.qrprint-mode .qrprint__single {
+  body.qrprint-mode .qrprint__single,
+  body.qrprint-mode .qrprint__brand {
     position: absolute !important;
     inset: 0 auto auto 0 !important;
   }
@@ -14542,5 +14545,147 @@ a.client-card__contact:hover {
   .transport-builder__totals {
     margin-left: 0;
     width: 100%;
+  }
+}
+
+/* ── Фирменная термоэтикетка СибГофроТорг, вертикальная 40×60 мм ── */
+.qrprint__brand {
+  width: 40mm;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px dashed var(--adm-border-mid);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.qrprint__brand-label {
+  box-sizing: border-box;
+  width: 40mm;
+  height: 60mm;
+  padding: 2mm 2mm 1.5mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7mm;
+  overflow: hidden;
+  text-align: center;
+  background: #fff;
+  color: #111;
+  border-bottom: 1px dashed #b0b0b0;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.qrprint__brand-mark {
+  width: 7mm;
+  height: 7mm;
+  margin-bottom: 0.3mm;
+  display: grid;
+  place-items: center;
+  border: 1.2px solid #111;
+  border-radius: 1.2mm;
+  font-size: 6pt;
+  font-weight: 900;
+  letter-spacing: -0.4pt;
+}
+
+.qrprint__brand-name {
+  width: 100%;
+  font-size: 9pt;
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: -0.2pt;
+  white-space: nowrap;
+}
+
+.qrprint__brand-subtitle {
+  font-size: 5.2pt;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: 0.55pt;
+}
+
+.qrprint__brand-rule {
+  width: 23mm;
+  height: 0;
+  border-top: 0.35mm solid #111;
+  margin: 0.8mm 0 0.3mm;
+}
+
+.qrprint__brand-address {
+  width: 100%;
+  min-height: 5mm;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 5.5pt;
+  line-height: 1.2;
+  font-weight: 500;
+}
+
+.qrprint__brand-qr {
+  display: block;
+  width: 25mm;
+  height: 25mm;
+  object-fit: contain;
+  image-rendering: pixelated;
+  margin: 0.6mm 0 0.3mm;
+}
+
+.qrprint__brand-domain {
+  font-size: 7pt;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.2pt;
+}
+
+.qrprint__brand-caption {
+  font-size: 4.7pt;
+  line-height: 1;
+  letter-spacing: 0.55pt;
+  font-weight: 700;
+}
+
+.qrprint__brand-copies {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+}
+
+.qrprint__brand-copies input {
+  width: 76px;
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  background: #fff;
+  color: var(--adm-ink);
+  font: inherit;
+}
+
+@media print {
+  body.qrprint-mode .qrprint__brand {
+    display: block !important;
+    width: 40mm !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  body.qrprint-mode .qrprint__brand-label {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: always;
+    break-after: page;
+    border: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body.qrprint-mode .qrprint__brand-label:last-child {
+    page-break-after: auto;
+    break-after: auto;
   }
 }

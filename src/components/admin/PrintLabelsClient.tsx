@@ -77,10 +77,12 @@ interface Props {
   selectedCategory: string;
   query: string;
   adminPath: string;
+  companyAddress: string;
+  brandQrDataUrl: string;
 }
 
 /** Режим печати. */
-type PrintMode = "sheet" | "tape" | "single";
+type PrintMode = "sheet" | "tape" | "single" | "brand";
 /** Высота «одиночной» этикетки-полоски, мм (5–7 см). */
 type SingleHeight = 50 | 60 | 70;
 /** Размер этикетки на листе A4 (квадратные). */
@@ -158,9 +160,9 @@ const BATCH_PRESETS = [1, 1000, 2000, 3, 4, 5];
 //   tape  → страница = ровно одна этикетка 60×40 мм, поля 0,
 //           а разрывы страниц гарантируют 1 QR на 1 этикетку.
 function pageCss(mode: PrintMode): string {
-  return mode === "tape"
-    ? "@media print { @page { size: 60mm 40mm; margin: 0; } }"
-    : "@media print { @page { size: A4; margin: 8mm; } }";
+  if (mode === "tape") return "@media print { @page { size: 60mm 40mm; margin: 0; } }";
+  if (mode === "brand") return "@media print { @page { size: 40mm 60mm; margin: 0; } }";
+  return "@media print { @page { size: A4; margin: 8mm; } }";
   // «single» печатается на обычном листе A4 (как sheet) — одна
   // полоска на страницу, разрывы страниц по CSS (.qrprint__single).
 }
@@ -170,6 +172,8 @@ export function PrintLabelsClient({
   categories,
   selectedCategory: initialCat,
   query: initialQ,
+  companyAddress,
+  brandQrDataUrl,
 }: Props) {
   const [cat, setCat] = useState<string>(initialCat);
   const [q, setQ] = useState<string>(initialQ);
@@ -198,6 +202,7 @@ export function PrintLabelsClient({
   // и 3 / 4 / 5 — плюс своё число. null = строка не печатается.
   const [batch, setBatch] = useState<number | null>(null);
   const [batchCustom, setBatchCustom] = useState("");
+  const [brandCopies, setBrandCopies] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(() => {
     // По умолчанию отмечены все видимые и в наличии
     return new Set(
@@ -247,7 +252,7 @@ export function PrintLabelsClient({
   }, []);
 
   async function handlePrint() {
-    if (printPreparing || selectedProducts.length === 0) return;
+    if (printPreparing || (mode === "brand" ? brandCopies < 1 : selectedProducts.length === 0)) return;
     setPrintPreparing(true);
     try {
       // Диалог печати иногда открывался раньше, чем браузер успевал получить
@@ -255,7 +260,13 @@ export function PrintLabelsClient({
       // Ждём шрифты и все изображения именно из печатной области.
       if (document.fonts?.ready) await document.fonts.ready;
       const root = document.querySelector<HTMLElement>(
-        mode === "tape" ? ".qrprint__tape" : mode === "single" ? ".qrprint__single" : ".qrprint__sheet"
+        mode === "tape"
+          ? ".qrprint__tape"
+          : mode === "brand"
+            ? ".qrprint__brand"
+            : mode === "single"
+              ? ".qrprint__single"
+              : ".qrprint__sheet"
       );
       const images = Array.from(root?.querySelectorAll("img") || []);
       await Promise.all(
@@ -292,7 +303,7 @@ export function PrintLabelsClient({
           поэтому инъектируем отсюда. */}
       <style>{pageCss(mode)}</style>
       <div className="qrprint__filters no-print">
-        <div className="qrprint__filter-row">
+          <div className="qrprint__filter-row" style={{ display: mode === "brand" ? "none" : undefined }}>
           <div className="qrprint__filter">
             <Filter size={14} />
             <select
@@ -324,11 +335,15 @@ export function PrintLabelsClient({
           </div>
         </div>
         <div className="qrprint__toolbar">
-          <div className="qrprint__counts">
-            <strong>{filtered.length}</strong> найдено · выбрано{" "}
-            <strong>{selectedProducts.length}</strong>
-          </div>
+          {mode !== "brand" && (
+            <div className="qrprint__counts">
+              <strong>{filtered.length}</strong> найдено · выбрано{" "}
+              <strong>{selectedProducts.length}</strong>
+            </div>
+          )}
           <div className="qrprint__seg">
+            {mode !== "brand" && (
+              <>
             <button
               type="button"
               onClick={() => toggleAll(true)}
@@ -344,6 +359,8 @@ export function PrintLabelsClient({
               Снять
             </button>
             <span className="qrprint__seg-divider" />
+              </>
+            )}
             {/* ── Переключатель режима печати: лист / лента ── */}
             <span className="qrprint__seg-label">Режим:</span>
             <button
@@ -368,6 +385,16 @@ export function PrintLabelsClient({
             </button>
             <button
               type="button"
+              onClick={() => setMode("brand")}
+              className={`qrprint__seg-btn${
+                mode === "brand" ? " qrprint__seg-btn--active" : ""
+              }`}
+              title="Фирменная термоэтикетка 40×60 мм: СибГофроТорг, адрес и QR-код сайта"
+            >
+              <QrCode size={12} /> Фирменная 40×60
+            </button>
+            <button
+              type="button"
               onClick={() => setMode("single")}
               className={`qrprint__seg-btn${
                 mode === "single" ? " qrprint__seg-btn--active" : ""
@@ -377,6 +404,8 @@ export function PrintLabelsClient({
               <Ruler size={12} /> Одна на лист
             </button>
             <span className="qrprint__seg-divider" />
+            {mode !== "brand" && (
+              <>
             {/* ── Какой код печатать: обычный штрихкод (EAN-13,
                  по умолчанию — сканируется надёжнее) или QR ── */}
             <span className="qrprint__seg-label">Код:</span>
@@ -437,10 +466,13 @@ export function PrintLabelsClient({
                 ))}
               </>
             )}
+              </>
+            )}
           </div>
           {/* ── Состав этикетки: что печатать ПОМИМО QR ──
               Три независимых тумблера. Работают для обоих режимов
               (лист A4 и термоэтикетка 40×60). */}
+          {mode !== "brand" && (
           <div className="qrprint__seg" role="group" aria-label="Что печатать помимо QR-кода">
             <span className="qrprint__seg-label">На этикетке:</span>
             <button
@@ -488,9 +520,11 @@ export function PrintLabelsClient({
               </button>
             )}
           </div>
+          )}
           {/* ── Партия от N шт: строка «Партия от N шт» на каждой
               этикетке. Пресеты под типовые ценники + своё число.
               Работает в обоих режимах (лист A4 и термоэтикетка). */}
+          {mode !== "brand" && (
           <div className="qrprint__seg" role="group" aria-label="Партия от скольких штук">
             <span className="qrprint__seg-label">
               <Boxes size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
@@ -538,16 +572,43 @@ export function PrintLabelsClient({
               </button>
             )}
           </div>
+          )}
+          {mode === "brand" && (
+            <label className="qrprint__brand-copies">
+              Количество этикеток
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={brandCopies}
+                onChange={(event) => {
+                  const value = Math.floor(Number(event.target.value));
+                  setBrandCopies(Number.isFinite(value) ? Math.max(1, Math.min(500, value)) : 1);
+                }}
+              />
+            </label>
+          )}
           <button
             type="button"
             onClick={handlePrint}
             className="qrprint__print-btn"
-            disabled={selectedProducts.length === 0 || printPreparing}
+            disabled={(mode === "brand" ? brandCopies < 1 : selectedProducts.length === 0) || printPreparing}
           >
             {printPreparing ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
-            {printPreparing ? "Подготавливаем коды…" : `Печатать ${selectedProducts.length} шт`}
+            {printPreparing
+              ? "Подготавливаем коды…"
+              : `Печатать ${mode === "brand" ? brandCopies : selectedProducts.length} шт`}
           </button>
         </div>
+        {mode === "brand" && (
+          <div className="qrprint__hint">
+            <strong>Фирменная термоэтикетка 40×60 мм, вертикальная.</strong>{" "}
+            На каждой странице печатаются название компании, адрес и QR-код,
+            ведущий на <b>sibgofrotorg.ru</b>. В драйвере выберите размер
+            бумаги <b>40×60 мм</b>, поля «Нет», масштаб 100% и отключите
+            колонтитулы.
+          </div>
+        )}
         {mode === "tape" && (
           <div className="qrprint__hint">
             <strong>
@@ -588,7 +649,7 @@ export function PrintLabelsClient({
         )}
       </div>
 
-      <div className="qrprint__list no-print">
+      <div className="qrprint__list no-print" style={{ display: mode === "brand" ? "none" : undefined }}>
         {filtered.length === 0 && (
           <div className="qrprint__empty">Ничего не найдено по фильтру</div>
         )}
@@ -792,6 +853,30 @@ export function PrintLabelsClient({
             </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Фирменная вертикальная этикетка для термопринтера, 40×60 мм. */}
+      {mode === "brand" && (
+        <div className="qrprint__brand">
+          {Array.from({ length: brandCopies }, (_, index) => (
+            <article className="qrprint__brand-label" key={index}>
+              <div className="qrprint__brand-mark" aria-hidden="true">СГТ</div>
+              <div className="qrprint__brand-name">СибГофроТорг</div>
+              <div className="qrprint__brand-subtitle">ГОФРОТАРА · УПАКОВКА</div>
+              <div className="qrprint__brand-rule" />
+              <div className="qrprint__brand-address">{companyAddress}</div>
+              <img
+                className="qrprint__brand-qr"
+                src={brandQrDataUrl}
+                alt="QR-код сайта sibgofrotorg.ru"
+                width={320}
+                height={320}
+              />
+              <div className="qrprint__brand-domain">sibgofrotorg.ru</div>
+              <div className="qrprint__brand-caption">НАВЕДИТЕ КАМЕРУ</div>
+            </article>
+          ))}
         </div>
       )}
 
