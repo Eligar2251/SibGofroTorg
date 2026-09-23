@@ -392,6 +392,13 @@ export function WarehouseManager({
   const [suppliesSub, setSuppliesSub] = useState<SuppliesSub>("receipts");
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
+  // ── Архив заказов: период, «только касса», направление сортировки ──
+  // Действуют только во вкладке «Архив» (released), активные заказы идут
+  // как раньше. Сортировка в архиве всегда видимая, по умолчанию — новее сверху.
+  const [dealDateFrom, setDealDateFrom] = useState("");
+  const [dealDateTo, setDealDateTo] = useState("");
+  const [dealsCashOnly, setDealsCashOnly] = useState(false);
+  const [dealSortDir, setDealSortDir] = useState<"desc" | "asc">("desc");
   const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
   const [busyId, setBusyId] = useState<string | null>(null);
   /** Раскрытые расширенные сводки в таблице склада. */
@@ -798,6 +805,32 @@ export function WarehouseManager({
     }
     return map;
   }, [payments]);
+
+  // Контрагенты с галочкой «за наличку»: id + нормализованные имена.
+  // Заказ привязываем и по counterpartyId, и по имени покупателя — старые
+  // заказы создавались до привязки по id и знают только имя.
+  const cashCounterpartyKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const c of counterpartyRows) {
+      if (!c.isCash) continue;
+      keys.add(c.id);
+      const nameKey = c.normalizedName || normalizeName(c.name || "");
+      if (nameKey) keys.add(nameKey);
+    }
+    return keys;
+  }, [counterpartyRows]);
+
+  /**
+   * Заказ «через кассу»: у контрагента стоит галочка «за наличку» ИЛИ заказ
+   * оплачен наличным платежом. Второе условие нужно для старых заказов —
+   * галочек тогда ещё не было, но такие заказы тоже шли через кассу.
+   */
+  function isCashDeal(deal: CustomerDeal): boolean {
+    if (deal.counterpartyId && cashCounterpartyKeys.has(deal.counterpartyId)) return true;
+    const nameKey = normalizeName(deal.customerName || "");
+    if (nameKey && cashCounterpartyKeys.has(nameKey)) return true;
+    return dealPaymentMethod.get(deal.id) === "cash";
+  }
   const bankSummary = useMemo(
     // Заказы нужны, чтобы ожидаемый приход по заказу автоматически
     // уменьшался на уже пришедшие частичные оплаты другими платежами.
@@ -1189,6 +1222,53 @@ export function WarehouseManager({
       );
     });
   }, [deals, dealsSub, deferredQ, dealPaidMap]);
+
+  // Архив: поверх вкладки и поиска действуют период, «только касса» и
+  // сортировка по дате (по умолчанию — новее сверху). Активные заказы идут
+  // как раньше, в порядке сервера. Проверку «через кассу» дублируем из
+  // isCashDeal инлайном, чтобы не тащить функцию в зависимости memo.
+  const visibleDeals = useMemo(() => {
+    if (dealsSub !== "released") return filteredDeals;
+    const rows = filteredDeals.filter((d) => {
+      const day = String(d.date || "").slice(0, 10);
+      if (dealDateFrom && day < dealDateFrom) return false;
+      if (dealDateTo && day > dealDateTo) return false;
+      if (dealsCashOnly) {
+        const nameKey = normalizeName(d.customerName || "");
+        const marked =
+          (d.counterpartyId && cashCounterpartyKeys.has(d.counterpartyId)) ||
+          (nameKey && cashCounterpartyKeys.has(nameKey));
+        if (!marked && dealPaymentMethod.get(d.id) !== "cash") return false;
+      }
+      return true;
+    });
+    rows.sort((a, b) => {
+      const byDate = String(a.date || "").localeCompare(String(b.date || ""));
+      if (byDate !== 0) return dealSortDir === "desc" ? -byDate : byDate;
+      return dealSortDir === "desc" ? b.number - a.number : a.number - b.number;
+    });
+    return rows;
+  }, [
+    filteredDeals,
+    dealsSub,
+    dealDateFrom,
+    dealDateTo,
+    dealsCashOnly,
+    dealSortDir,
+    cashCounterpartyKeys,
+    dealPaymentMethod,
+  ]);
+
+  // Счётчики под тулбаром архива: сколько показано из скольки и на сумму.
+  const archiveStats = useMemo(() => {
+    let sum = 0;
+    for (const d of visibleDeals) sum += Number(d.total) || 0;
+    return {
+      shown: visibleDeals.length,
+      total: filteredDeals.length,
+      sum: Math.round(sum * 100) / 100,
+    };
+  }, [visibleDeals, filteredDeals]);
 
   const bankList = useMemo<BankEntry[]>(() => {
     const query = bq.toLowerCase().trim();
@@ -2766,9 +2846,120 @@ export function WarehouseManager({
               />
             </div>
           </div>
+          {dealsSub === "released" && (
+            <>
+              <div className="bank-toolbar">
+                <label className="bank-toolbar__date">
+                  <span>Дата от</span>
+                  <input
+                    type="date"
+                    className="admin-input"
+                    value={dealDateFrom}
+                    max={dealDateTo || undefined}
+                    onChange={(e) => setDealDateFrom(e.target.value)}
+                  />
+                </label>
+                <label className="bank-toolbar__date">
+                  <span>Дата до</span>
+                  <input
+                    type="date"
+                    className="admin-input"
+                    value={dealDateTo}
+                    min={dealDateFrom || undefined}
+                    onChange={(e) => setDealDateTo(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setDealsCashOnly((v) => !v)}
+                  className={`admin-btn ${dealsCashOnly ? "admin-btn--primary" : "admin-btn--ghost"}`}
+                  title="Показать только заказы за наличку (у контрагента галочка «за наличку» или заказ оплачен наличными)"
+                  aria-pressed={dealsCashOnly}
+                >
+                  <Banknote size={14} /> Касса
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDealSortDir((v) => (v === "desc" ? "asc" : "desc"))}
+                  className="admin-btn admin-btn--ghost"
+                  title={dealSortDir === "desc" ? "Сначала новые (нажмите — сначала старые)" : "Сначала старые (нажмите — сначала новые)"}
+                >
+                  {dealSortDir === "desc" ? (
+                    <ArrowDownWideNarrow size={14} />
+                  ) : (
+                    <ArrowUpNarrowWide size={14} />
+                  )}
+                </button>
+                {(dealDateFrom || dealDateTo || dealsCashOnly || dealSortDir !== "desc") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDealDateFrom("");
+                      setDealDateTo("");
+                      setDealsCashOnly(false);
+                      setDealSortDir("desc");
+                    }}
+                    className="admin-btn admin-btn--ghost"
+                    title="Сбросить фильтры архива"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <div className="bank-period-presets">
+                <span>Быстрый период:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = localDateIso();
+                    setDealDateFrom(today);
+                    setDealDateTo(today);
+                  }}
+                >
+                  Сегодня
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const range = calendarMonthRange();
+                    setDealDateFrom(range.from);
+                    setDealDateTo(localDateIso());
+                  }}
+                >
+                  Этот месяц
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const range = calendarMonthRange(-1);
+                    setDealDateFrom(range.from);
+                    setDealDateTo(range.to);
+                  }}
+                >
+                  Прошлый месяц
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDealDateFrom("");
+                    setDealDateTo("");
+                  }}
+                >
+                  Весь период
+                </button>
+              </div>
+
+              <div className="bank-totalbar" style={{ marginBottom: 10 }}>
+                Показано: <strong>{archiveStats.shown}</strong> из <strong>{archiveStats.total}</strong>
+                <span className="bank-totalbar__sep" />
+                На сумму: <strong>{fmt(archiveStats.sum)} ₽</strong>
+              </div>
+            </>
+          )}
           <div className="admin-card">
-            {filteredDeals.length > 0 ? (
-              filteredDeals.map((d) => {
+            {visibleDeals.length > 0 ? (
+              visibleDeals.map((d) => {
                 const paid = dealPaidMap.get(d.id) || 0;
                 const isFullyPaid = d.isInternal || (d.total > 0 && paid + 0.009 >= d.total);
                 // Резерв по другим заказам (кроме текущего)
@@ -2833,6 +3024,14 @@ export function WarehouseManager({
                       )}
                       {!d.isArchive && !d.isInternal && !isFullyPaid && paid > 0 && (
                         <span className="admin-badge admin-badge--blue">Оплачено {fmt(paid)} из {fmt(d.total)} ₽</span>
+                      )}
+                      {isCashDeal(d) && (
+                        <span
+                          className="admin-badge admin-badge--green"
+                          title="Заказ за наличку: у контрагента галочка «за наличку» или заказ оплачен наличным платежом"
+                        >
+                          <Banknote size={10} /> Наличные
+                        </span>
                       )}
                       {d.isReserved ? (
                         <span
@@ -3124,7 +3323,13 @@ export function WarehouseManager({
                 );
               })
             ) : (
-              <div className="admin-empty"><p>В этом списке пока пусто</p></div>
+              <div className="admin-empty">
+                <p>
+                  {dealsSub === "released" && (dealDateFrom || dealDateTo || dealsCashOnly)
+                    ? "По заданным фильтрам в архиве ничего не найдено"
+                    : "В этом списке пока пусто"}
+                </p>
+              </div>
             )}
           </div>
         </>

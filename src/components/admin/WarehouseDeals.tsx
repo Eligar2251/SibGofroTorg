@@ -444,7 +444,24 @@ export function DealForm({
     if (addr) {
       setDeliveryAddress(addr);
     }
+    // Контрагент с галочкой «за наличку» — способ оплаты сразу «Наличные».
+    // Выбор остаётся ручным: можно переключить обратно любой кнопкой.
+    if (found.isCash === true) setPaymentMethod("cash");
   }
+
+  // Выбранный покупатель с галочкой «за наличку» (тот же поиск по имени,
+  // что и в selectCustomer) — для подсказки под способом оплаты.
+  const selectedCustomerIsCash = useMemo(() => {
+    const name = customerName.trim().toLocaleLowerCase("ru-RU");
+    if (!name) return false;
+    return (
+      counterparties.find(
+        (item) =>
+          item.roles.includes("customer") &&
+          item.name.toLocaleLowerCase("ru-RU") === name
+      )?.isCash === true
+    );
+  }, [counterparties, customerName]);
 
   /** Скидка ценового уровня покупателя по имени (0 — обычный уровень). */
   function discountPercentForName(name: string): number {
@@ -1115,6 +1132,11 @@ export function DealForm({
                 {paymentMethod !== 'regular' && (
                   <p className="wh-form-hint" style={{ margin: 0 }}>
                     Платёж сразу помечается оплаченным и попадает {paymentMethod === 'cash' ? 'в наличную кассу' : 'на карту ЮМ'}.
+                  </p>
+                )}
+                {paymentMethod === "cash" && selectedCustomerIsCash && (
+                  <p className="wh-form-hint" style={{ margin: "6px 0 0" }}>
+                    💵 Контрагент помечен «за наличку» — способ подставлен автоматически, можно изменить.
                   </p>
                 )}
               </div>

@@ -166,6 +166,9 @@ function mapCounterpartyRow(row: any): Counterparty {
       ? Object.fromEntries(Object.entries(row.supplier_prices).map(([id, price]) => [id, Math.max(0, Number(price) || 0)]))
       : {},
     priceTier: normalizePriceTier(row.price_tier),
+    // Если миграция migration_counterparty_cash.sql ещё не применена,
+    // колонки нет — считаем всех обычными (безналичными).
+    isCash: row.is_cash === true,
     phone: row.phone ?? null,
     email: row.email ?? null,
     inn: row.inn ?? null,
@@ -670,6 +673,7 @@ export async function saveCounterparty(data: {
   contactName?: string | null;
   comment?: string | null;
   priceTier?: PriceTier | null;
+  isCash?: boolean | null;
 }): Promise<{ id: string }> {
   const db = getAdminDb();
   const name = sanitizeCounterpartyName(data.name);
@@ -687,6 +691,7 @@ export async function saveCounterparty(data: {
     address: data.address ?? null, contact_name: data.contactName ?? null,
     comment: data.comment ?? null,
     price_tier: normalizePriceTier(data.priceTier),
+    is_cash: data.isCash === true,
   };
 
   const { error } = await db.from("counterparties").upsert(payload);
