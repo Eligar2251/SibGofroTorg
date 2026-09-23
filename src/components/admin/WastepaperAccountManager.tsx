@@ -159,7 +159,7 @@ function fmtPaidAt(iso: string | null): string {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-  })} ${d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+  })}\u00A0${d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 /** Разбор числа из инпута: «1 234,5» / «1234.5» → 1234.5 */
@@ -1626,11 +1626,11 @@ function DaysTab({
             <WpTable className="admin-table">
               <WpHead>
                 <WpRow>
-                  <WpHeading>Дата</WpHeading>
-                  <WpHeading>Остаток на начало</WpHeading>
-                  <WpHeading>Приход</WpHeading>
-                  <WpHeading>Расход</WpHeading>
-                  <WpHeading>Остаток на конец</WpHeading>
+                  <WpHeading className="wp-cell--date">Дата</WpHeading>
+                  <WpHeading className="wp-cell--num">Остаток на начало</WpHeading>
+                  <WpHeading className="wp-cell--num">Приход</WpHeading>
+                  <WpHeading className="wp-cell--num">Расход</WpHeading>
+                  <WpHeading className="wp-cell--num">Остаток на конец</WpHeading>
                 </WpRow>
               </WpHead>
               <WpBody>
@@ -1712,7 +1712,7 @@ function DayRowFragment({
         style={{ cursor: "pointer" }}
         title="Показать операции дня"
       >
-        <WpCell style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
+        <WpCell className="wp-cell--date" style={{ fontWeight: 600 }}>
           {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}{" "}
           {fmtDate(row.date)}
           {isToday && (
@@ -1721,14 +1721,14 @@ function DayRowFragment({
             </span>
           )}
         </WpCell>
-        <WpCell>{fmtMoney(opening)}</WpCell>
-        <WpCell style={{ color: "var(--adm-pine)", fontWeight: 600 }}>
+        <WpCell className="wp-cell--num">{fmtMoney(opening)}</WpCell>
+        <WpCell className="wp-cell--num" style={{ color: "var(--adm-pine)", fontWeight: 600 }}>
           {incoming > 0 ? `+${fmtMoney(incoming)}` : "—"}
         </WpCell>
-        <WpCell style={{ color: "var(--adm-kraft)", fontWeight: 600 }}>
+        <WpCell className="wp-cell--num" style={{ color: "var(--adm-kraft)", fontWeight: 600 }}>
           {outgoing > 0 ? `−${fmtMoney(outgoing)}` : "—"}
         </WpCell>
-        <WpCell style={{ fontWeight: 700 }}>{fmtMoney(closing)}</WpCell>
+        <WpCell className="wp-cell--num" style={{ fontWeight: 700 }}>{fmtMoney(closing)}</WpCell>
       </WpRow>
       {expanded && (
         <WpRow>
@@ -2029,10 +2029,10 @@ function PaymentsTab({
           <WpTable className="admin-table">
             <WpHead>
               <WpRow>
-                <WpHeading>Дата</WpHeading>
+                <WpHeading className="wp-cell--date">Дата</WpHeading>
                 <WpHeading>Документ</WpHeading>
                 <WpHeading>Контрагент</WpHeading>
-                <WpHeading>Сумма</WpHeading>
+                <WpHeading className="wp-cell--num">Сумма</WpHeading>
                 <WpHeading>Счёт</WpHeading>
                 <WpHeading>Оплата</WpHeading>
                 <WpHeading></WpHeading>
@@ -2041,7 +2041,7 @@ function PaymentsTab({
             <WpBody>
               {win.visible.map((e) => (
                 <WpRow key={`${e.kind}-${e.id}`}>
-                  <WpCell style={{ whiteSpace: "nowrap" }}>{fmtDate(e.date)}</WpCell>
+                  <WpCell className="wp-cell--date">{fmtDate(e.date)}</WpCell>
                   <WpCell>
                     <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>{" "}
                     {e.title}
@@ -2063,8 +2063,8 @@ function PaymentsTab({
                   </WpCell>
                   <WpCell>{e.counterpartyName || "—"}</WpCell>
                   <WpCell
+                    className="wp-cell--num"
                     style={{
-                      whiteSpace: "nowrap",
                       fontWeight: 700,
                       color: e.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-kraft)",
                     }}
@@ -2304,12 +2304,12 @@ function IntakesTab({
           <WpTable className="admin-table">
             <WpHead>
               <WpRow>
-                <WpHeading>№</WpHeading>
-                <WpHeading>Дата</WpHeading>
+                <WpHeading className="wp-cell--id">№</WpHeading>
+                <WpHeading className="wp-cell--date">Дата</WpHeading>
                 <WpHeading>От кого / адрес</WpHeading>
                 <WpHeading>Позиции</WpHeading>
-                <WpHeading>Вес</WpHeading>
-                <WpHeading>Сумма</WpHeading>
+                <WpHeading className="wp-cell--num">Вес</WpHeading>
+                <WpHeading className="wp-cell--num">Сумма</WpHeading>
                 <WpHeading>Счёт</WpHeading>
                 <WpHeading>Оплата</WpHeading>
                 <WpHeading>Перевозка</WpHeading>
@@ -2326,8 +2326,8 @@ function IntakesTab({
                       : undefined
                   }
                 >
-                  <WpCell style={{ whiteSpace: "nowrap" }}>ПМ-{i.number}</WpCell>
-                  <WpCell style={{ whiteSpace: "nowrap" }}>{fmtDate(i.date)}</WpCell>
+                  <WpCell className="wp-cell--id">ПМ-{i.number}</WpCell>
+                  <WpCell className="wp-cell--date">{fmtDate(i.date)}</WpCell>
                   <WpCell>
                     {i.counterpartyName}
                     {i.address && (
@@ -2348,7 +2348,7 @@ function IntakesTab({
                       ? wpItemsSummary(i.items, typeLabels)
                       : wpTypeLabel(i.wastepaperType, typeLabels)}
                   </WpCell>
-                  <WpCell style={{ whiteSpace: "nowrap" }}>
+                  <WpCell className="wp-cell--num">
                     {i.acceptedWeightKg > 0 || i.weightKg > 0 ? (
                       fmtKg(i.acceptedWeightKg > 0 ? i.acceptedWeightKg : i.weightKg)
                     ) : (
@@ -2383,7 +2383,7 @@ function IntakesTab({
                       </button>
                     )}
                   </WpCell>
-                  <WpCell style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{fmtMoney(i.total)}</WpCell>
+                  <WpCell className="wp-cell--num" style={{ fontWeight: 700 }}>{fmtMoney(i.total)}</WpCell>
                   <WpCell>
                     <span className={ACCOUNT_BADGE[i.account]}>
                       {WP_ACCOUNT_LABELS[i.account]}
@@ -2598,12 +2598,12 @@ function ShipmentsTab({
           <WpTable className="admin-table">
             <WpHead>
               <WpRow>
-                <WpHeading>№</WpHeading>
-                <WpHeading>Дата</WpHeading>
+                <WpHeading className="wp-cell--id">№</WpHeading>
+                <WpHeading className="wp-cell--date">Дата</WpHeading>
                 <WpHeading>Предприятие / адрес</WpHeading>
                 <WpHeading>Позиции</WpHeading>
-                <WpHeading>Вес</WpHeading>
-                <WpHeading>Сумма</WpHeading>
+                <WpHeading className="wp-cell--num">Вес</WpHeading>
+                <WpHeading className="wp-cell--num">Сумма</WpHeading>
                 <WpHeading>Счёт</WpHeading>
                 <WpHeading>Оплата</WpHeading>
                 <WpHeading>Перевозка</WpHeading>
@@ -2620,8 +2620,8 @@ function ShipmentsTab({
                       : undefined
                   }
                 >
-                  <WpCell style={{ whiteSpace: "nowrap" }}>СМ-{s.number}</WpCell>
-                  <WpCell style={{ whiteSpace: "nowrap" }}>{fmtDate(s.date)}</WpCell>
+                  <WpCell className="wp-cell--id">СМ-{s.number}</WpCell>
+                  <WpCell className="wp-cell--date">{fmtDate(s.date)}</WpCell>
                   <WpCell>
                     {s.enterpriseName}
                     {s.address && (
@@ -2641,7 +2641,7 @@ function ShipmentsTab({
                       ? wpItemsSummary(s.items, typeLabels)
                       : wpTypeLabel(s.wastepaperType, typeLabels)}
                   </WpCell>
-                  <WpCell style={{ whiteSpace: "nowrap" }}>
+                  <WpCell className="wp-cell--num">
                     {s.shippedWeightKg > 0 || s.weightKg > 0 ? (
                       fmtKg(s.shippedWeightKg > 0 ? s.shippedWeightKg : s.weightKg)
                     ) : (
@@ -2655,7 +2655,7 @@ function ShipmentsTab({
                       </div>
                     )}
                   </WpCell>
-                  <WpCell style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{fmtMoney(s.total)}</WpCell>
+                  <WpCell className="wp-cell--num" style={{ fontWeight: 700 }}>{fmtMoney(s.total)}</WpCell>
                   <WpCell>
                     <span className={ACCOUNT_BADGE[s.account]}>
                       {WP_ACCOUNT_LABELS[s.account]}
@@ -2848,7 +2848,7 @@ function CounterpartiesTab({
                 <WpHeading>Название</WpHeading>
                 <WpHeading>Роль</WpHeading>
                 <WpHeading>Точки / филиалы</WpHeading>
-                <WpHeading>ИНН</WpHeading>
+                <WpHeading className="wp-cell--id">ИНН</WpHeading>
                 <WpHeading></WpHeading>
               </WpRow>
             </WpHead>
@@ -2903,7 +2903,7 @@ function CounterpartiesTab({
                       <span style={{ color: "var(--adm-muted)" }}>—</span>
                     )}
                   </WpCell>
-                  <WpCell>{c.inn || "—"}</WpCell>
+                  <WpCell className="wp-cell--id">{c.inn || "—"}</WpCell>
                   <WpCell>
                     <button
                       type="button"
@@ -4380,11 +4380,11 @@ function DebtsTab({ intakes, counterparties, onEditCounterparty }: { intakes: Wp
   const total = rows.reduce((sum, r) => sum + r.total, 0);
   return <div>
     <div className="admin-card" style={{ marginBottom: 14 }}><div className="admin-card__head"><span className="admin-card__title">Мы должны за приём макулатуры</span><strong>{fmtMoney(total)}</strong></div><div className="admin-card__pad"><p className="admin-hint">Показываются активные приёмы, которые ещё не отмечены оплаченными.</p></div></div>
-    {rows.length === 0 ? <div className="admin-card"><div className="admin-card__pad"><p className="admin-hint">Долгов за приём макулатуры нет.</p></div></div> : <div className="admin-table-wrap"><WpTable className="admin-table"><WpHead><WpRow><WpHeading>Кому</WpHeading><WpHeading>Документы</WpHeading><WpHeading>Куда переводить</WpHeading><WpHeading>Сумма</WpHeading><WpHeading></WpHeading></WpRow></WpHead><WpBody>{rows.map(({c,docs,total}) => <WpRow key={c.id}><WpCell>{c.name}</WpCell><WpCell>{docs.map(d => `ПМ-${d.number}`).join(", ")}</WpCell><WpCell>{c.paymentDetails || <span className="admin-hint">Не указано</span>}</WpCell><WpCell style={{fontWeight:700}}>{fmtMoney(total)}</WpCell><WpCell><button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => onEditCounterparty(c)}><Pencil size={13}/> Реквизиты</button></WpCell></WpRow>)}</WpBody></WpTable></div>}
+    {rows.length === 0 ? <div className="admin-card"><div className="admin-card__pad"><p className="admin-hint">Долгов за приём макулатуры нет.</p></div></div> : <div className="admin-table-wrap"><WpTable className="admin-table"><WpHead><WpRow><WpHeading>Кому</WpHeading><WpHeading>Документы</WpHeading><WpHeading>Куда переводить</WpHeading><WpHeading className="wp-cell--num">Сумма</WpHeading><WpHeading></WpHeading></WpRow></WpHead><WpBody>{rows.map(({c,docs,total}) => <WpRow key={c.id}><WpCell>{c.name}</WpCell><WpCell>{docs.map(d => `ПМ-${d.number}`).join(", ")}</WpCell><WpCell>{c.paymentDetails || <span className="admin-hint">Не указано</span>}</WpCell><WpCell className="wp-cell--num" style={{fontWeight:700}}>{fmtMoney(total)}</WpCell><WpCell><button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => onEditCounterparty(c)}><Pencil size={13}/> Реквизиты</button></WpCell></WpRow>)}</WpBody></WpTable></div>}
   </div>;
 }
 
 function StockTab({ stock, typeLabels }: { stock: ReturnType<typeof getWpStock>; typeLabels: Record<string, string> }) {
   const total = stock.reduce((sum, row) => sum + Math.max(0, row.stockKg), 0);
-  return <div><div className="admin-card" style={{ marginBottom: 14 }}><div className="admin-card__head"><span className="admin-card__title">Фактический склад макулатуры</span><strong>{fmtKg(total)}</strong></div><div className="admin-card__pad"><p className="admin-hint">На склад попадает фактически принятое количество, а не вес к оплате.</p></div></div><div className="admin-table-wrap"><WpTable className="admin-table"><WpHead><WpRow><WpHeading>Вид макулатуры</WpHeading><WpHeading>Принято фактически</WpHeading><WpHeading>Продано / отгружено</WpHeading><WpHeading>Остаток</WpHeading></WpRow></WpHead><WpBody>{stock.map((row) => <WpRow key={row.wastepaperType}><WpCell>{wpTypeLabel(row.wastepaperType, typeLabels)}</WpCell><WpCell>{fmtKg(row.intakeKg)}</WpCell><WpCell>{fmtKg(row.shipmentKg)}</WpCell><WpCell style={{fontWeight:700}}>{fmtKg(Math.max(0,row.stockKg))}</WpCell></WpRow>)}</WpBody></WpTable></div></div>;
+  return <div><div className="admin-card" style={{ marginBottom: 14 }}><div className="admin-card__head"><span className="admin-card__title">Фактический склад макулатуры</span><strong>{fmtKg(total)}</strong></div><div className="admin-card__pad"><p className="admin-hint">На склад попадает фактически принятое количество, а не вес к оплате.</p></div></div><div className="admin-table-wrap"><WpTable className="admin-table"><WpHead><WpRow><WpHeading>Вид макулатуры</WpHeading><WpHeading className="wp-cell--num">Принято фактически</WpHeading><WpHeading className="wp-cell--num">Продано / отгружено</WpHeading><WpHeading className="wp-cell--num">Остаток</WpHeading></WpRow></WpHead><WpBody>{stock.map((row) => <WpRow key={row.wastepaperType}><WpCell>{wpTypeLabel(row.wastepaperType, typeLabels)}</WpCell><WpCell className="wp-cell--num">{fmtKg(row.intakeKg)}</WpCell><WpCell className="wp-cell--num">{fmtKg(row.shipmentKg)}</WpCell><WpCell className="wp-cell--num" style={{fontWeight:700}}>{fmtKg(Math.max(0,row.stockKg))}</WpCell></WpRow>)}</WpBody></WpTable></div></div>;
 }

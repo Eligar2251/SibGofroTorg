@@ -630,6 +630,51 @@
   text-align: right;
 }
 
+/* ── Сетка таблиц: числа — вправо и одной строкой, даты/номера — nowrap ──
+   Классы вешаются и на th, и на td, чтобы шапка повторяла выравнивание
+   колонки. Текстовые колонки (контрагент, позиции) переносятся только
+   по словам — разбиения по буквам здесь нет. */
+.wp-account .admin-table .wp-cell--num {
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wp-account .admin-table thead .wp-cell--num {
+  text-align: right;
+}
+
+.wp-account .admin-table .wp-cell--date,
+.wp-account .admin-table .wp-cell--id {
+  white-space: nowrap;
+}
+
+/* ── Бейджи и кнопки модуля — всегда одной строкой ──
+   Мобильный слой (admin-mobile.css) гасит nowrap у .admin-badge
+   (white-space: normal + overflow-wrap: anywhere), из-за чего
+   «Сторонние пополнения» и «Ждёт взвешивания» сыпались в столбик
+   по 1–2 буквы. Возвращаем nowrap с запасом по специфичности.
+   Исключение одно — широкая кнопка «Открыть общий путевой лист»
+   в шапке телефона (у неё свой normal !important ниже). */
+[data-admin="true"] .wp-account .admin-badge,
+[data-admin="true"] .wp-modal .admin-badge {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+:is(.wp-account, .wp-modal) .admin-btn,
+.wpa-forecast .admin-status__btn {
+  white-space: nowrap;
+}
+
+/* Чипы сводок и баланса держат число целиком: переносятся чипы
+   целиком (контейнеры — flex-wrap), а не текст внутри чипа. */
+.wp-summary__chip,
+.wpa-balance__chip {
+  white-space: nowrap;
+}
+
 /* ─────────────────────────────────────────────────────────
    7. Кнопки, поля, бейджи — единый «банковский» вид
    ───────────────────────────────────────────────────────── */
@@ -1664,7 +1709,11 @@
 .wpa-mobile__summary { border: 1px solid var(--wpx-line); border-radius: 16px; background: var(--adm-card); padding: 4px 16px; }
 .wpa-mobile__summary > * { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 0; width: 100%; font: inherit; font-size: 13px; text-align: left; background: none; color: var(--adm-ink); border: 0; }
 .wpa-mobile__summary > * + * { border-top: 1px solid var(--wpx-line); }
-.wpa-mobile__summary strong { overflow-wrap: anywhere; max-width: 120px; }
+/* Строка сводки — всегда в одну линию: подпись режется многоточием,
+   значение (вес/счётчик) — целиком. Раньше у значения был max-width
+   120px + anywhere, и «12 500 кг» сыпалось в столбик. */
+.wpa-mobile__summary > * > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wpa-mobile__summary strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .wpa-mobile__forecast { padding: 16px; background: var(--wpx-surface-2); border-radius: 14px; font-size: 13px; }
 .wpa-mobile__forecast summary { cursor: pointer; min-height: 24px; }
 .wpa-mobile__forecast dl { display: grid; gap: 16px; margin-top: 16px; }

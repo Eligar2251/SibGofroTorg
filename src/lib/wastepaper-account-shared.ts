@@ -1308,11 +1308,14 @@ export function getWpStock(intakes: WpIntake[], shipments: WpShipment[]): WpStoc
 // ── Форматтеры ───────────────────────────────────────────
 
 export function fmtMoney(value: number): string {
-  return `${round2(value).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽`;
+  // Неразрывный пробел перед ₽: сумма («12 500 ₽») никогда не рвётся
+  // между числом и валютой ни в таблице, ни в карточке телефона.
+  return `${round2(value).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}\u00A0₽`;
 }
 
 export function fmtKg(value: number): string {
-  return `${(Math.round(value * 10) / 10).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} кг`;
+  // Неразрывный пробел перед кг — вес не рвётся пополам.
+  return `${(Math.round(value * 10) / 10).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}\u00A0кг`;
 }
 
 export function fmtDate(date: string): string {
