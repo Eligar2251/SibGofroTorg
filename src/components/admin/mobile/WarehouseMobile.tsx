@@ -62,7 +62,7 @@ export function WarehouseMobileHero({
     <section className={styles.hero} aria-label="Быстрые действия">
       <div className={styles.simpleHead}>
         <span className={styles.simpleTitle} title="СибГофроТорг · гофротара">
-          <Wallet size={18} aria-hidden /> Учёт СГТ
+          <Wallet size={18} aria-hidden /> Учёт СибГофроТорг
         </span>
         <span className={styles.date}>{data.dateLabel}</span>
         <button
@@ -258,7 +258,7 @@ export function WarehouseMobileBankDetails({
       <div className={styles.bankHero}>
         <div className={styles.bankHeroHead}>
           <span className={styles.bankHeroTitle}>
-            <Wallet size={16} aria-hidden /> Деньги СГТ
+            <Wallet size={16} aria-hidden /> Деньги СибГофроТорг
           </span>
           <span className={styles.bankHeroDate}>{data.dateLabel}</span>
         </div>

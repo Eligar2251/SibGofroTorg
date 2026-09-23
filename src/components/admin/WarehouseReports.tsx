@@ -30,6 +30,8 @@ import {
   isWastepaperSalary,
   isDebtSalaryComment,
   stripSalaryMetaTags,
+  wastepaperSalaryAccount,
+  wastepaperSalaryAccountLabel,
   type BankPayment,
   type CashCollection,
   type CustomerDeal,
@@ -393,10 +395,11 @@ export function WarehouseReports({
       .filter((salary) => isWastepaperSalary(salary) || !isRentSalaryComment(salary.comment, salary.source))
       .map((salary) => {
       const isWastepaper = isWastepaperSalary(salary);
+      const wpAccount = isWastepaper ? wastepaperSalaryAccount(salary) : null;
       const isRent = !isWastepaper && isRentSalaryComment(salary.comment, salary.source);
       const isYm = salary.source === "ym_card" || (salary.comment && salary.comment.includes("[Карта ЮМ]"));
       const accountLabel = isWastepaper
-        ? "Макулатура (наличные)"
+        ? `Макулатура (${wastepaperSalaryAccountLabel(wpAccount)})`
         : isRent
           ? "Аренда (отд. счёт)"
           : isYm
@@ -404,8 +407,10 @@ export function WarehouseReports({
             : salary.source === "cash"
               ? "Касса"
               : "Аренда (отд. счёт)";
-      // Наличка макулатуры — тоже наличный расчёт, но из кассы другого модуля.
-      const accountKey = salary.source === "cash" || isWastepaper ? ("cash" as const) : ("bank" as const);
+      // Наличка макулатуры — тоже наличный расчёт, но из кассы другого модуля;
+      // безнал и сторонние средства макулатуры — безналичные.
+      const accountKey =
+        salary.source === "cash" || (isWastepaper && wpAccount === "cash") ? ("cash" as const) : ("bank" as const);
       return {
         id: `salary-${salary.id}`,
         sourceId: salary.id,

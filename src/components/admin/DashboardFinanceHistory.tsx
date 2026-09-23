@@ -10,7 +10,15 @@ export type DashboardFinanceRow = {
   date: string;
   direction: "incoming" | "outgoing";
   /** wastepaper — наличка макулатуры (зарплата из кассы отдельного модуля). */
-  account: "bank" | "cash" | "ym_card" | "rent" | "wastepaper" | string;
+  account:
+    | "bank"
+    | "cash"
+    | "ym_card"
+    | "rent"
+    | "wastepaper"
+    | "wastepaper_bank"
+    | "wastepaper_third"
+    | string;
   category: string;
   counterparty: string;
   amount: number;
@@ -82,7 +90,11 @@ export function DashboardFinanceHistory({
               ? "карта юм"
               : row.account === "wastepaper"
                 ? "макулатура наличные"
-                : "расчетный счет банк аренда",
+                : row.account === "wastepaper_bank"
+                  ? "макулатура безнал"
+                  : row.account === "wastepaper_third"
+                    ? "макулатура сторонние"
+                    : "расчетный счет банк аренда",
           ...(row.dealLinks || []).map((deal) => `зк-${deal.number}`),
           ...(row.receiptLinks || []).map((receipt) => `по-${receipt.number}`),
         ]
@@ -267,7 +279,11 @@ export function DashboardFinanceHistory({
                         ? "карта ЮМ"
                         : row.account === "wastepaper"
                           ? "макулатура · наличные"
-                          : "расчётный счёт"}
+                          : row.account === "wastepaper_bank"
+                            ? "макулатура · безнал"
+                            : row.account === "wastepaper_third"
+                              ? "макулатура · сторонние"
+                              : "расчётный счёт"}
                   </span>
                   <span className="admin-badge admin-badge--blue">
                     {row.category}

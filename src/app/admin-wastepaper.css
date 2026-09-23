@@ -1720,3 +1720,67 @@
     word-break: break-word;
   }
 }
+
+/* ── Прогноз «Ожидаем приход / Нужно выплатить» ──
+   Строки — карточки платежей формата «Банк → Платежи» учёта СибГофроТорг
+   (.bank-pay из admin.css, мобильная раскладка — из admin-mobile.css).
+   Здесь только то, что нужно для двух колонок на десктопе: строкам
+   разрешён перенос по словам (глобально .bank-pay__row1/2 — nowrap под
+   широкий журнал банка), комментарий обрезается многоточием, список без
+   лишнего отступа внизу карточки. Сумму и иконку не приглушаем: в прогнозе
+   все строки «ожидаются», приглушать нечего. */
+.wpa-forecast__list {
+  margin-bottom: 0;
+}
+.wpa-forecast .bank-pay--pending .bank-pay__icon,
+.wpa-forecast .bank-pay--pending .bank-pay__amount {
+  opacity: 1;
+}
+.wpa-forecast .bank-pay__row1,
+.wpa-forecast .bank-pay__row2 {
+  flex-wrap: wrap;
+  white-space: normal;
+  min-width: 0;
+}
+.wpa-forecast .bank-pay__counterparty {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
+.wpa-forecast .bank-pay__comment {
+  max-width: 100%;
+}
+.wpa-forecast .bank-pay__side,
+.wpa-forecast .bank-pay__side .wh-pay-controls {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  /* Телефон: одна колонка, карточка на всю ширину, имя контрагента —
+     целой строкой (не по букве в столбик), бейджи одной строкой, сумма и
+     кнопки в ряд снизу — ровно как в платежах банка СибГофроТорг. */
+  .wpa-forecast-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .wpa-forecast,
+  .wpa-forecast .admin-card__pad,
+  .wpa-forecast__list,
+  .wpa-forecast .bank-pay,
+  .wpa-forecast .bank-pay__main {
+    width: 100%;
+    min-width: 0;
+  }
+  .wpa-forecast .bank-pay__counterparty {
+    width: 100%;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+  .wpa-forecast .bank-pay__row1 .admin-badge,
+  .wpa-forecast .bank-pay__num,
+  .wpa-forecast .bank-pay__wait {
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+}

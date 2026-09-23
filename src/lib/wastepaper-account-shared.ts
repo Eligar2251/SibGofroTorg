@@ -262,8 +262,84 @@ export interface WpProduct {
   name: string;
   pricePerKg: number;
   isActive: boolean;
+  /**
+   * Старый код вида (cardboard / office_paper / books / mix) у четырёх
+   * исходных видов — под ним они записаны в прежних документах и в
+   * тарифах калькулятора сайта. У новых видов кода нет: документ хранит
+   * UUID строки справочника (см. wpProductTypeKey).
+   */
+  code: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+/** Вариант вида макулатуры для селектов документов. */
+export interface WpTypeOption {
+  /** Ключ, который хранится в документе (код исходного вида или UUID). */
+  id: string;
+  label: string;
+  /** Закупочная цена из справочника, 0 — не задана. */
+  pricePerKg: number;
+}
+
+/**
+ * Ключ вида в документах: код исходного вида (если есть) либо UUID.
+ * Если миграция с колонкой code ещё не применена, исходные виды
+ * распознаём по неизменённому названию — тогда прежние документы
+ * («cardboard» и т.п.) остаются связаны со строкой справочника.
+ */
+export function wpProductTypeKey(p: Pick<WpProduct, "id" | "name" | "code">): string {
+  if (p.code) return p.code;
+  const legacy = WP_TYPE_OPTIONS.find((o) => o.label === p.name.trim());
+  return legacy ? legacy.id : p.id;
+}
+
+/**
+ * Подписи видов по ключу документа: старые коды → названия из
+ * справочника (если вид переименован, документы покажут новое имя),
+ * UUID → название, плюс скрытые виды — старые документы не теряют подпись.
+ */
+export function buildWpTypeLabels(products: readonly WpProduct[]): Record<string, string> {
+  const labels: Record<string, string> = { ...WP_TYPE_LABELS };
+  for (const p of products) {
+    const name = p.name.trim();
+    if (!name) continue;
+    labels[wpProductTypeKey(p)] = name;
+    labels[p.id] = name;
+  }
+  return labels;
+}
+
+/**
+ * Варианты для селектов документов: активные виды справочника (пока
+ * справочник пуст — четыре исходных вида). `extraKeys` — ключи, уже
+ * записанные в редактируемом документе: скрытый вид не должен
+ * «выпадать» из формы при открытии старого документа.
+ */
+export function buildWpTypeOptions(
+  products: readonly WpProduct[],
+  extraKeys: readonly string[] = []
+): WpTypeOption[] {
+  const out: WpTypeOption[] = [];
+  const seen = new Set<string>();
+  const push = (o: WpTypeOption) => {
+    if (seen.has(o.id)) return;
+    seen.add(o.id);
+    out.push(o);
+  };
+  for (const p of products) {
+    if (!p.isActive || !p.name.trim()) continue;
+    push({ id: wpProductTypeKey(p), label: p.name.trim(), pricePerKg: p.pricePerKg || 0 });
+  }
+  if (out.length === 0 && products.length === 0) {
+    for (const o of WP_TYPE_OPTIONS) push({ id: o.id, label: o.label, pricePerKg: 0 });
+  }
+  const labels = buildWpTypeLabels(products);
+  for (const key of extraKeys) {
+    if (!key || seen.has(key)) continue;
+    push({ id: key, label: labels[key] || key, pricePerKg: 0 });
+  }
+  return out;
 }
 
 // ── Типы данных (сериализованные для клиента) ────────────
@@ -700,12 +776,39 @@ export interface WpSalaryLike {
   comment?: string | null;
 }
 
-/** Тег зарплаты «выплачено из кассы макулатуры» (см. warehouse-shared). */
+/** Тег зарплаты «выплачено из денег макулатуры» (см. warehouse-shared). */
 export const WP_SALARY_TAG = "[Макулатура]";
+/** Тег «сторонние средства» с пометкой источника: [Сторонние:откуда]. */
+const WP_SALARY_THIRD_TAG_RE = /\[Сторонние(?::([^\]]*))?\]/;
 
-/** Зарплата выплачена (или запланирована) наличными из кассы макулатуры. */
+/** Зарплата выплачена (или запланирована) из денег макулатуры (любой счёт). */
 export function isWpSalary(s: Pick<WpSalaryLike, "source" | "comment">): boolean {
-  return s.source === "wastepaper" || String(s.comment || "").includes(WP_SALARY_TAG);
+  return (
+    s.source === "wastepaper" ||
+    s.source === "wastepaper_bank" ||
+    s.source === "wastepaper_third" ||
+    String(s.comment || "").includes(WP_SALARY_TAG)
+  );
+}
+
+/**
+ * Счёт модуля, с которого идёт зарплата: виртуальный source из учёта
+ * (wastepaper → наличка, wastepaper_bank → безнал, wastepaper_third →
+ * сторонние), для «сырых» записей — по тегам комментария.
+ */
+export function wpSalaryAccount(s: Pick<WpSalaryLike, "source" | "comment">): WpAccount {
+  if (s.source === "wastepaper_third") return "third_party";
+  if (s.source === "wastepaper_bank") return "bank";
+  if (s.source === "wastepaper") return "cash";
+  const comment = String(s.comment || "");
+  if (WP_SALARY_THIRD_TAG_RE.test(comment)) return "third_party";
+  return s.source === "bank" ? "bank" : "cash";
+}
+
+/** Откуда пришли сторонние деньги на зарплату (пометка тега [Сторонние:…]). */
+export function wpSalaryThirdPartyOrigin(comment: string | null | undefined): string {
+  const match = WP_SALARY_THIRD_TAG_RE.exec(String(comment || ""));
+  return String(match?.[1] || "").trim();
 }
 
 /** Комментарий зарплаты без служебных тегов — для ленты финансов. */
@@ -727,10 +830,12 @@ function wpSalaryPeriodLabel(periodMonth: string | null | undefined): string {
 }
 
 /**
- * Зарплаты из кассы макулатуры → денежные события модуля.
- * Всегда расход по счёту «Наличка» (наличный расчёт): проведённая выплата
- * уменьшает остаток наличных на дату выплаты, запланированная — попадает в
- * прогноз «Нужно выплатить». Записи «вне баланса» пропускаем.
+ * Зарплаты из денег макулатуры → денежные события модуля.
+ * Расход по счёту выплаты — «Наличка», «Безнал» или «Сторонние»:
+ * проведённая выплата уменьшает остаток счёта на дату выплаты,
+ * запланированная — попадает в прогноз «Нужно выплатить». Для сторонних
+ * средств в комментарий события добавляется пометка «откуда». Записи
+ * «вне баланса» пропускаем.
  */
 export function wpSalaryMoneyEvents(salaries: WpSalaryLike[]): WpMoneyEvent[] {
   const events: WpMoneyEvent[] = [];
@@ -739,19 +844,24 @@ export function wpSalaryMoneyEvents(salaries: WpSalaryLike[]): WpMoneyEvent[] {
     if (String(s.comment || "").includes("[Вне баланса]")) continue;
     const amount = Math.max(0, Number(s.amount) || 0);
     if (amount <= 0) continue;
+    const account = wpSalaryAccount(s);
+    const origin = account === "third_party" ? wpSalaryThirdPartyOrigin(s.comment) : "";
+    const comment = [origin ? `Откуда: ${origin}` : "", wpSalaryCleanComment(s.comment)]
+      .filter(Boolean)
+      .join(" · ");
     events.push({
       kind: "salary",
       id: s.id,
       number: 0,
       date: String(s.date || "").slice(0, 10),
       direction: "outgoing",
-      account: "cash",
+      account,
       amount,
       isPaid: Boolean(s.isPaid),
       paidAt: s.isPaid ? String(s.paidAt || s.date || "").slice(0, 10) || null : null,
       counterpartyName: s.employeeName || "Сотрудник",
       title: ["Выплата ЗП", wpSalaryPeriodLabel(s.periodMonth)].filter(Boolean).join(" "),
-      comment: wpSalaryCleanComment(s.comment),
+      comment: comment || null,
       cancelled: false,
     });
   }

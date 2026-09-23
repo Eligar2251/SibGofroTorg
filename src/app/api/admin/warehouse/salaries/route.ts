@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSalary, saveEmployee } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
+import { isWastepaperSalarySource } from "@/lib/warehouse-shared";
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdminApi();
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     const src = String(body.source || "");
     const safeSource =
-      src === "cash" || src === "ym_card" || src === "rent" || src === "bank" || src === "wastepaper"
+      src === "cash" || src === "ym_card" || src === "rent" || src === "bank" || isWastepaperSalarySource(src)
         ? src
         : "bank";
     const result = await createSalary({

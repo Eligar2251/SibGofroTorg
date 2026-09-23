@@ -74,6 +74,15 @@ export function hasAdminPermission(
   ].includes(permission);
 }
 
+/**
+ * Настройки зарплат модуля «Учёт макулатура» (планы, долги, календарь,
+ * график) и общая ширина колонок таблицы зарплат — их читает/пишет
+ * /api/admin/wp/settings для администратора и роли «макулатура».
+ */
+export function isWastepaperSalarySettingKey(key: string): boolean {
+  return /^wp_salary_(?:plan|debt|calendar|schedule)_/.test(key) || key === "salary_table_col_widths";
+}
+
 /** Настройки рабочих модулей, не являющиеся настройками самого сайта. */
 export function isOperationalSettingKey(key: string): boolean {
   return (
@@ -82,7 +91,8 @@ export function isOperationalSettingKey(key: string): boolean {
     /^salary_(?:plan|debt|calendar|schedule)_/.test(key) ||
     // Ширины колонок таблицы зарплат — настройка интерфейса, а не сайта:
     // менеджеру она нужна, ведь именно он и работает в этой таблице.
-    key === "salary_table_col_widths"
+    key === "salary_table_col_widths" ||
+    isWastepaperSalarySettingKey(key)
   );
 }
 

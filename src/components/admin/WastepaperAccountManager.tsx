@@ -61,12 +61,31 @@ import {
   type TransportRow,
 } from "@/components/admin/TransportManager";
 import { WpProductsTab } from "@/components/admin/WpProductsTab";
+import { WASTEPAPER_SALARY_SCOPE } from "@/lib/salary-scope";
+import type { Employee, Salary } from "@/lib/warehouse-shared";
+import dynamic from "next/dynamic";
+
+// Таблица зарплат общая с учётом СибГофроТорг (scope = макулатура);
+// грузим её только при открытии вкладки — модуль остаётся лёгким.
+const WarehouseSalaries = dynamic(
+  () => import("@/components/admin/WarehouseSalaries").then((m) => m.WarehouseSalaries),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="admin-empty" style={{ padding: 32 }}>
+        <Loader2 size={22} className="animate-spin" />
+        <p>Загружаем зарплаты…</p>
+      </div>
+    ),
+  }
+);
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import {
   WP_ACCOUNT_LABELS,
   WP_COUNTERPARTY_ROLE_LABELS,
-  WP_TYPE_LABELS,
   WP_TYPE_OPTIONS,
+  buildWpTypeLabels,
+  buildWpTypeOptions,
   buildWpDayReport,
   distributeWpTotal,
   findWpBranchByAddress,
@@ -94,10 +113,10 @@ import {
   type WpIntake,
   type WpManualPayment,
   type WpMoneyEvent,
-  type WpSalaryLike,
   type WpShipment,
   type WpProduct,
   type WpTransportQueueDoc,
+  type WpTypeOption,
 } from "@/lib/wastepaper-account-shared";
 
 /* ── Константы и хелперы ───────────────────────────────── */
@@ -116,6 +135,7 @@ const TABS = [
   { key: "transports", label: "Перевозки", icon: Truck },
   { key: "counterparties", label: "Контрагенты", icon: Users },
   { key: "debts", label: "Мы должны", icon: HandCoins },
+  { key: "salaries", label: "Зарплаты", icon: Banknote },
   { key: "products", label: "Виды макулатуры", icon: Recycle },
 ] as const;
 
@@ -162,16 +182,17 @@ const KIND_BADGE: Record<WpMoneyEvent["kind"], { cls: string; label: string }> =
   salary: { cls: "admin-badge admin-badge--indigo", label: "Зарплата" },
 };
 
-/** Подсказка для событий-зарплат: их ведут в разделе «Зарплаты» учёта. */
+/** Подсказка для событий-зарплат: их ведут на вкладке «Зарплаты» модуля. */
 const SALARY_EVENT_HINT =
-  "Зарплата выплачена наличными из кассы макулатуры. Изменить или отменить её можно в разделе «Зарплаты» учёта.";
+  "Зарплата из денег макулатуры. Изменить или отменить её можно на вкладке «Зарплаты» этого модуля.";
 
 /**
- * Конец API по виду денежного события. Зарплата — документ учёта
- * (/api/admin/warehouse/salaries), поэтому её путь абсолютный.
+ * Конец API по виду денежного события. Зарплата — общая таблица учёта,
+ * но у модуля свой маршрут (/api/admin/wp/salaries), который работает
+ * только с записями макулатуры.
  */
 function apiUrlForEvent(e: WpMoneyEvent): string {
-  if (e.kind === "salary") return `/api/admin/warehouse/salaries/${e.id}`;
+  if (e.kind === "salary") return `/api/admin/wp/salaries/${e.id}`;
   if (e.kind === "intake") return `/api/admin/wp/intakes/${e.id}`;
   if (e.kind === "shipment") return `/api/admin/wp/shipments/${e.id}`;
   return `/api/admin/wp/payments/${e.id}`;
@@ -182,6 +203,31 @@ function rateFor(rates: WastepaperRates | null, type: string): number | null {
   if (!rates) return null;
   const v = (rates as Record<string, number>)[type];
   return v == null ? null : Number(v);
+}
+
+/**
+ * Виды макулатуры для форм и подписей: справочник «Виды макулатуры»
+ * (вкладка модуля) + подписи исходных кодов для старых документов.
+ */
+interface WpTypeCatalog {
+  /** Активные виды для селектов (ключ документа → подпись, цена). */
+  options: WpTypeOption[];
+  /** Подписи по любому ключу, включая скрытые виды и старые коды. */
+  labels: Record<string, string>;
+  /** Тарифы калькулятора сайта — запасная цена для исходных видов. */
+  rates: WastepaperRates | null;
+}
+
+/** Цена по умолчанию: из справочника видов, иначе тариф сайта для исходных видов. */
+function defaultPriceFor(catalog: WpTypeCatalog, type: string): number | null {
+  const opt = catalog.options.find((o) => o.id === type);
+  if (opt && opt.pricePerKg > 0) return opt.pricePerKg;
+  return rateFor(catalog.rates, type);
+}
+
+/** Вид «по умолчанию» для новой позиции — первый активный вид справочника. */
+function defaultTypeKey(catalog: WpTypeCatalog): string {
+  return catalog.options[0]?.id || WP_TYPE_OPTIONS[0].id;
 }
 
 /* ── Поле «адрес точки» (филиалы контрагента) ────────────
@@ -298,21 +344,26 @@ function AddressField({
 function ItemsEditor({
   items,
   onChange,
-  rates,
+  catalog,
 }: {
   items: WpDocItem[];
   onChange: (items: WpDocItem[]) => void;
-  rates: WastepaperRates | null;
+  catalog: WpTypeCatalog;
 }) {
   function setItem(id: string, patch: Partial<WpDocItem>) {
     onChange(
       items.map((it) => {
         if (it.id !== id) return it;
         const next = { ...it, ...patch };
-        // При смене вида подставляем тариф, если цена ещё не задана вручную.
-        if (patch.wastepaperType && !patch.pricePerKg && !it.pricePerKg) {
-          const r = rateFor(rates, next.wastepaperType);
-          if (r != null) next.pricePerKg = r;
+        // При смене вида подставляем цену справочника/тариф, если цена
+        // ещё не задана вручную или совпадала с ценой прежнего вида.
+        if (patch.wastepaperType && !patch.pricePerKg) {
+          const prevDefault = defaultPriceFor(catalog, it.wastepaperType);
+          const untouched = !it.pricePerKg || (prevDefault != null && Number(it.pricePerKg) === prevDefault);
+          if (untouched) {
+            const r = defaultPriceFor(catalog, next.wastepaperType);
+            if (r != null) next.pricePerKg = r;
+          }
         }
         next.total = Math.round((Number(next.weightKg) || 0) * (Number(next.pricePerKg) || 0) * 100) / 100;
         return next;
@@ -321,14 +372,14 @@ function ItemsEditor({
   }
 
   function addItem() {
-    const first = WP_TYPE_OPTIONS[0].id;
+    const first = defaultTypeKey(catalog);
     onChange([
       ...items,
       {
         id: wpUid("it"),
         wastepaperType: first,
         weightKg: 0,
-        pricePerKg: rateFor(rates, first) ?? 0,
+        pricePerKg: defaultPriceFor(catalog, first) ?? 0,
         total: 0,
       },
     ]);
@@ -359,13 +410,13 @@ function ItemsEditor({
               value={it.wastepaperType}
               onChange={(e) => setItem(it.id, { wastepaperType: e.target.value })}
             >
-              {WP_TYPE_OPTIONS.map((o) => (
+              {catalog.options.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
                 </option>
               ))}
-              {!WP_TYPE_OPTIONS.some((o) => o.id === it.wastepaperType) && (
-                <option value={it.wastepaperType}>{wpTypeLabel(it.wastepaperType, WP_TYPE_LABELS)}</option>
+              {!catalog.options.some((o) => o.id === it.wastepaperType) && (
+                <option value={it.wastepaperType}>{wpTypeLabel(it.wastepaperType, catalog.labels)}</option>
               )}
             </select>
             <input
@@ -411,13 +462,13 @@ function ItemsEditor({
 }
 
 /** Пустая позиция документа (для новых приёмов/сдач). */
-function emptyDocItem(rates: WastepaperRates | null): WpDocItem {
-  const first = WP_TYPE_OPTIONS[0].id;
+function emptyDocItem(catalog: WpTypeCatalog): WpDocItem {
+  const first = defaultTypeKey(catalog);
   return {
     id: wpUid("it"),
     wastepaperType: first,
     weightKg: 0,
-    pricePerKg: rateFor(rates, first) ?? 0,
+    pricePerKg: defaultPriceFor(catalog, first) ?? 0,
     total: 0,
   };
 }
@@ -436,14 +487,17 @@ interface Props {
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
   /**
-   * Зарплаты, выплаченные/запланированные наличными из кассы макулатуры
-   * (пометка «Макулатура» в разделе «Зарплаты»). Здесь — только расход
-   * «Наличка»; сами записи редактируются в учёте.
+   * Зарплаты из денег макулатуры (тег «Макулатура»): наличка, безнал или
+   * сторонние средства. Ведутся на вкладке «Зарплаты» модуля и попадают
+   * расходом в финансы по своему счёту.
    */
-  salaries?: WpSalaryLike[];
+  salaries?: Salary[];
+  /** Сотрудники (общий справочник) — для вкладки «Зарплаты». */
+  employees?: Employee[];
   /**
-   * Может ли пользователь проводить/открывать зарплаты (API и раздел
-   * «Зарплаты» доступны администратору; макулатурщику — только просмотр).
+   * Может ли пользователь проводить/открывать зарплаты. По умолчанию —
+   * да: вкладка «Зарплаты» и /api/admin/wp/salaries доступны и
+   * администратору, и роли «макулатура».
    */
   canEditSalaries?: boolean;
   products: WpProduct[];
@@ -494,8 +548,20 @@ export function WastepaperAccountManager(props: Props) {
   const [intakes, setIntakes] = useState(props.intakes);
   const [shipments, setShipments] = useState(props.shipments);
   const [manualPayments, setManualPayments] = useState(props.manualPayments);
-  const [salaries, setSalaries] = useState<WpSalaryLike[]>(props.salaries ?? []);
+  const [salaries, setSalaries] = useState<Salary[]>(props.salaries ?? []);
+  const canEditSalaries = props.canEditSalaries !== false;
   const [products, setProducts] = useState(props.products);
+
+  // Виды макулатуры для форм и подписей — из справочника модуля.
+  const typeCatalog = useMemo<WpTypeCatalog>(
+    () => ({
+      options: buildWpTypeOptions(products),
+      labels: buildWpTypeLabels(products),
+      rates: props.rates,
+    }),
+    [products, props.rates]
+  );
+  const typeLabels = typeCatalog.labels;
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -572,8 +638,10 @@ export function WastepaperAccountManager(props: Props) {
         (t) => t.status === "draft" || t.status === "active"
       ).length,
       debts: intakes.filter((i) => i.status === "active" && !i.isPaid).length,
+      // Зарплаты «к выплате» — запланированные, но ещё не выданные.
+      salaries: salaries.filter((s) => !s.isPaid).length,
     }),
-    [intakes, shipments, props.unifiedTransports]
+    [intakes, shipments, props.unifiedTransports, salaries]
   );
 
   const suppliers = useMemo(
@@ -611,9 +679,8 @@ export function WastepaperAccountManager(props: Props) {
   }
 
   async function toggleEventPaid(e: WpMoneyEvent) {
-    // Зарплата — документ учёта: проводим через API зарплат (доступно
-    // администратору; макулатурщику это API закрыто — только подсказка).
-    if (e.kind === "salary" && !props.canEditSalaries) {
+    // Зарплата проводится через API зарплат модуля (/api/admin/wp/salaries).
+    if (e.kind === "salary" && !canEditSalaries) {
       setActionError("");
       setNotice(SALARY_EVENT_HINT);
       return;
@@ -679,13 +746,14 @@ export function WastepaperAccountManager(props: Props) {
 
   function openEventEdit(e: WpMoneyEvent) {
     if (e.kind === "salary") {
-      // Запись зарплаты редактируется только в учёте — администратора
-      // ведём туда, макулатурщику (раздел закрыт) показываем подсказку.
+      // Запись зарплаты редактируется на вкладке «Зарплаты» модуля.
       setActionError("");
-      setNotice(SALARY_EVENT_HINT);
-      if (props.canEditSalaries) {
-        router.push(`/${props.adminPath}/warehouse?tab=salaries`);
+      if (!canEditSalaries) {
+        setNotice(SALARY_EVENT_HINT);
+        return;
       }
+      setNotice("");
+      setTab("salaries");
       return;
     }
     if (e.kind === "intake") {
@@ -708,7 +776,7 @@ export function WastepaperAccountManager(props: Props) {
     <div className={`wp-account${isMobile ? " wp-account--mobile" : ""}`}>
       <div className="admin-page-head">
         <div>
-          <h1 className="admin-h1">Учёт макулатуры</h1>
+          <h1 className="admin-h1">Учёт макулатура</h1>
           <p className="admin-sub">
             {isMobile ? "Приём, сдача и финансы" : "Приём и сдача макулатуры, остатки и движение денег. Перевозки — в общем путевом листе с заказами."}
           </p>
@@ -829,6 +897,7 @@ export function WastepaperAccountManager(props: Props) {
       {tab === "intakes" && (
         <IntakesTab
           intakes={intakes}
+          typeLabels={typeLabels}
           onNew={() => {
             setFormError("");
             setIntakeModal({ mode: "create" });
@@ -850,12 +919,13 @@ export function WastepaperAccountManager(props: Props) {
         />
       )}
 
-      {tab === "stock" && <StockTab stock={stock} />}
+      {tab === "stock" && <StockTab stock={stock} typeLabels={typeLabels} />}
 
       {tab === "shipments" && (
         <ShipmentsTab
           shipments={shipments}
           stock={stock}
+          typeLabels={typeLabels}
           onNew={() => {
             setFormError("");
             setShipmentModal({ mode: "create" });
@@ -908,8 +978,22 @@ export function WastepaperAccountManager(props: Props) {
         />
       )}
 
+      {tab === "salaries" && (
+        <>
+          <p className="admin-hint" style={{ marginTop: -4, marginBottom: 12 }}>
+            Зарплаты из денег макулатуры: наличка и безнал списываются со счетов модуля, сторонние
+            платежи проходят с пометкой, откуда пришли деньги. Учёт СибГофроТорг эти выплаты не трогают.
+          </p>
+          <WarehouseSalaries
+            employees={props.employees ?? []}
+            salaries={salaries}
+            scope={WASTEPAPER_SALARY_SCOPE}
+          />
+        </>
+      )}
+
       {tab === "products" && (
-        <WpProductsTab products={products} onSaved={() => router.refresh()} />
+        <WpProductsTab products={products} onChange={setProducts} onSaved={() => router.refresh()} />
       )}
 
       {/* ── Модалки ── */}
@@ -918,7 +1002,7 @@ export function WastepaperAccountManager(props: Props) {
           mode={intakeModal.mode}
           item={intakeModal.mode === "create" ? null : intakeModal.item}
           suppliers={suppliers}
-          rates={props.rates}
+          catalog={typeCatalog}
           saving={saving}
           error={formError}
           onClose={() => setIntakeModal(null)}
@@ -983,7 +1067,7 @@ export function WastepaperAccountManager(props: Props) {
           mode={shipmentModal.mode}
           item={shipmentModal.mode === "create" ? null : shipmentModal.item}
           enterprises={enterprises}
-          rates={props.rates}
+          catalog={typeCatalog}
           saving={saving}
           error={formError}
           onClose={() => setShipmentModal(null)}
@@ -1455,11 +1539,15 @@ function DaysTab({
         )}
       </div>
 
-      {/* Прогноз: запланированные, но ещё не оплаченные операции */}
+      {/* Прогноз: запланированные, но ещё не оплаченные операции.
+          Колонка не уже 440px: внутри карточки платежей формата «Банк»
+          (иконка · контрагент · сумма + кнопки), в узкой колонке они
+          не помещаются. На телефоне admin-mobile.css делает одну колонку. */}
       <div
+        className="wpa-forecast-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 440px), 1fr))",
           gap: 14,
         }}
       >
@@ -1583,64 +1671,93 @@ function ForecastCard({
   onEdit: (e: WpMoneyEvent) => void;
 }) {
   const total = events.reduce((s, e) => s + e.amount, 0);
+  const sign = tone === "in" ? "+" : "−";
   return (
-    <div className="admin-card">
+    <div className={`admin-card wpa-forecast wpa-forecast--${tone}`}>
       <div className="admin-card__head">
         <span className="admin-card__title">{title}</span>
-        <strong style={{ color: tone === "in" ? "var(--adm-pine)" : "var(--adm-kraft)" }}>
-          {tone === "in" ? "+" : "−"}
+        <span className={`admin-badge ${tone === "in" ? "admin-badge--green" : "admin-badge--red"}`}>
+          {sign}
           {fmtMoney(total)}
-        </strong>
+        </span>
       </div>
       {events.length === 0 ? (
         <div className="admin-card__pad">
           <p className="admin-hint">Незапланированных ожиданий нет.</p>
         </div>
       ) : (
-        <div className="admin-card__pad" style={{ display: "grid", gap: 10 }}>
-          {events.slice(0, 20).map((e) => (
-            <div
-              key={`${e.kind}-${e.id}`}
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <span style={{ color: "var(--adm-muted)", whiteSpace: "nowrap" }}>
-                {fmtDate(e.date)}
-              </span>
-              <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>
-              <span style={{ flex: 1, minWidth: 120 }}>
-                {e.title}
-                {e.counterpartyName ? ` · ${e.counterpartyName}` : ""}
-              </span>
-              <span className={ACCOUNT_BADGE[e.account]}>
-                {WP_ACCOUNT_LABELS[e.account]}
-              </span>
-              <strong>{fmtMoney(e.amount)}</strong>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost admin-btn--sm"
-                onClick={() => onTogglePaid(e)}
-                title={e.kind === "salary" ? SALARY_EVENT_HINT : "Отметить оплаченным"}
-              >
-                <Check size={13} /> Оплачено
-              </button>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost admin-btn--sm"
-                onClick={() => onEdit(e)}
-                title={e.kind === "salary" ? "Открыть раздел «Зарплаты»" : "Открыть документ"}
-              >
-                <Pencil size={13} />
-              </button>
-            </div>
-          ))}
-          {events.length > 20 && (
-            <p className="admin-hint">…и ещё {events.length - 20} (см. вкладку «Платежи»)</p>
-          )}
+        <div className="admin-card__pad">
+          {/* Карточки платежей — та же разметка, что в журнале «Банк» учёта
+              СибГофроТорг (.bank-pay): иконка · контрагент + бейджи · дата
+              и комментарий · сумма с кнопками. На телефоне admin-mobile.css
+              раскладывает её в колонку, имя контрагента идёт целой строкой. */}
+          <div className="bank-month__list wpa-forecast__list">
+            {events.slice(0, 20).map((e) => (
+              <div key={`${e.kind}-${e.id}`} className="bank-pay bank-pay--pending">
+                <div
+                  className={`bank-pay__icon ${
+                    tone === "in" ? "bank-pay__icon--in" : "bank-pay__icon--out"
+                  }`}
+                >
+                  {tone === "in" ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}
+                </div>
+                <div className="bank-pay__main">
+                  <div className="bank-pay__row1">
+                    <span className="bank-pay__counterparty">
+                      {e.counterpartyName || e.title}
+                    </span>
+                    {e.counterpartyName ? (
+                      <span className="bank-pay__num">{e.title}</span>
+                    ) : null}
+                    <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>
+                    <span className={ACCOUNT_BADGE[e.account]}>
+                      {WP_ACCOUNT_LABELS[e.account]}
+                    </span>
+                    <span className="bank-pay__wait">ожидается</span>
+                  </div>
+                  <div className="bank-pay__row2">
+                    <span className="bank-pay__date">{fmtDate(e.date)}</span>
+                    {e.comment ? (
+                      <span className="bank-pay__comment" title={e.comment}>
+                        {e.comment}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="bank-pay__side">
+                  <span
+                    className={`bank-pay__amount${tone === "out" ? " bank-pay__amount--out" : ""}`}
+                  >
+                    {sign}
+                    {fmtMoney(e.amount)}
+                  </span>
+                  <div className="wh-pay-controls">
+                    <button
+                      type="button"
+                      className="admin-status__btn admin-status__btn--primary"
+                      onClick={() => onTogglePaid(e)}
+                      title={e.kind === "salary" ? SALARY_EVENT_HINT : "Отметить оплаченным"}
+                    >
+                      <Check size={14} />
+                      Оплачено
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-status__btn admin-status__btn--edit"
+                      onClick={() => onEdit(e)}
+                      title={e.kind === "salary" ? "Открыть вкладку «Зарплаты»" : "Открыть документ"}
+                    >
+                      <Pencil size={14} />
+                      {e.kind === "salary" ? "Зарплаты" : "Открыть"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {events.length > 20 && (
+              <p className="admin-hint">…и ещё {events.length - 20} (см. вкладку «Платежи»)</p>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1819,7 +1936,12 @@ function PaymentsTab({
                     )}
                     {e.kind === "salary" && (
                       <div style={{ color: "var(--adm-muted)", fontSize: "0.78rem", marginTop: 3 }}>
-                        наличными из кассы макулатуры · ведётся в разделе «Зарплаты»
+                        {e.account === "third_party"
+                          ? "сторонними деньгами"
+                          : e.account === "bank"
+                            ? "с безнала макулатуры"
+                            : "наличными из кассы макулатуры"}{" "}
+                        · ведётся на вкладке «Зарплаты»
                       </div>
                     )}
                   </WpCell>
@@ -1867,7 +1989,7 @@ function PaymentsTab({
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
                       onClick={() => onEdit(e)}
-                      title={e.kind === "salary" ? "Открыть раздел «Зарплаты»" : "Открыть документ"}
+                      title={e.kind === "salary" ? "Открыть вкладку «Зарплаты»" : "Открыть документ"}
                     >
                       <Pencil size={13} />
                     </button>
@@ -1901,6 +2023,7 @@ function PaymentsTab({
 
 function IntakesTab({
   intakes,
+  typeLabels,
   onNew,
   onEdit,
   onCopy,
@@ -1908,6 +2031,7 @@ function IntakesTab({
   onToggleTransport,
 }: {
   intakes: WpIntake[];
+  typeLabels: Record<string, string>;
   onNew: () => void;
   onEdit: (item: WpIntake) => void;
   onCopy: (item: WpIntake) => void;
@@ -2105,8 +2229,8 @@ function IntakesTab({
                   </WpCell>
                   <WpCell style={{ minWidth: 180 }}>
                     {i.items.length > 0
-                      ? wpItemsSummary(i.items, WP_TYPE_LABELS)
-                      : WP_TYPE_LABELS[i.wastepaperType] || i.wastepaperType}
+                      ? wpItemsSummary(i.items, typeLabels)
+                      : wpTypeLabel(i.wastepaperType, typeLabels)}
                   </WpCell>
                   <WpCell style={{ whiteSpace: "nowrap" }}>
                     {i.weightKg > 0 ? (
@@ -2237,6 +2361,7 @@ function IntakesTab({
 function ShipmentsTab({
   shipments,
   stock,
+  typeLabels,
   onNew,
   onEdit,
   onCopy,
@@ -2246,6 +2371,7 @@ function ShipmentsTab({
 }: {
   shipments: WpShipment[];
   stock: ReturnType<typeof getWpStock>;
+  typeLabels: Record<string, string>;
   onNew: () => void;
   onEdit: (item: WpShipment) => void;
   onCopy: (item: WpShipment) => void;
@@ -2292,7 +2418,7 @@ function ShipmentsTab({
             {stock.map((row) => (
               <div key={row.wastepaperType} style={{ minWidth: 170, display: "grid", gap: 3 }}>
                 <div style={{ fontWeight: 700 }}>
-                  {wpTypeLabel(row.wastepaperType, WP_TYPE_LABELS)}
+                  {wpTypeLabel(row.wastepaperType, typeLabels)}
                 </div>
                 <div className="admin-hint">
                   принято {fmtKg(row.intakeKg)} · сдано {fmtKg(row.shipmentKg)}
@@ -2391,8 +2517,8 @@ function ShipmentsTab({
                   </WpCell>
                   <WpCell style={{ minWidth: 180 }}>
                     {s.items.length > 0
-                      ? wpItemsSummary(s.items, WP_TYPE_LABELS)
-                      : WP_TYPE_LABELS[s.wastepaperType] || s.wastepaperType}
+                      ? wpItemsSummary(s.items, typeLabels)
+                      : wpTypeLabel(s.wastepaperType, typeLabels)}
                   </WpCell>
                   <WpCell style={{ whiteSpace: "nowrap" }}>
                     {s.weightKg > 0 ? (
@@ -2717,7 +2843,7 @@ function IntakeModal({
   mode,
   item,
   suppliers,
-  rates,
+  catalog,
   saving,
   error,
   onClose,
@@ -2728,7 +2854,7 @@ function IntakeModal({
   mode: "create" | "edit" | "copy";
   item: WpIntake | null;
   suppliers: WpCounterparty[];
-  rates: WastepaperRates | null;
+  catalog: WpTypeCatalog;
   saving: boolean;
   error: string;
   onClose: () => void;
@@ -2757,7 +2883,7 @@ function IntakeModal({
       ? isCopy
         ? cloneDocItems(item.items)
         : item.items
-      : [emptyDocItem(rates)],
+      : [emptyDocItem(catalog)],
     acceptedWeightKg: item?.acceptedWeightKg || 0,
     payableWeightKg: item?.payableWeightKg || 0,
     account: (item?.account || "cash") as WpAccount,
@@ -2823,7 +2949,7 @@ function IntakeModal({
           items,
           S,
           base,
-          items[0]?.wastepaperType || WP_TYPE_OPTIONS[0].id
+          items[0]?.wastepaperType || defaultTypeKey(catalog)
         ),
         sum: null,
       };
@@ -2874,7 +3000,7 @@ function IntakeModal({
           prev.items,
           S,
           P,
-          prev.items[0]?.wastepaperType || WP_TYPE_OPTIONS[0].id
+          prev.items[0]?.wastepaperType || defaultTypeKey(catalog)
         ),
       }));
     }
@@ -3142,7 +3268,7 @@ function IntakeModal({
           </div>
           <ItemsEditor
             items={form.items}
-            rates={rates}
+            catalog={catalog}
             onChange={onItemsChange}
           />
 
@@ -3269,7 +3395,7 @@ function ShipmentModal({
   mode,
   item,
   enterprises,
-  rates,
+  catalog,
   saving,
   error,
   onClose,
@@ -3280,7 +3406,7 @@ function ShipmentModal({
   mode: "create" | "edit" | "copy";
   item: WpShipment | null;
   enterprises: WpCounterparty[];
-  rates: WastepaperRates | null;
+  catalog: WpTypeCatalog;
   saving: boolean;
   error: string;
   onClose: () => void;
@@ -3307,7 +3433,7 @@ function ShipmentModal({
       ? isCopy
         ? cloneDocItems(item.items)
         : item.items
-      : [emptyDocItem(rates)],
+      : [emptyDocItem(catalog)],
     shippedWeightKg: item?.shippedWeightKg || 0,
     acceptedWeightKg: item?.acceptedWeightKg || 0,
     receivedAmount: item?.receivedAmount || 0,
@@ -3378,7 +3504,7 @@ function ShipmentModal({
           items,
           S,
           base,
-          items[0]?.wastepaperType || WP_TYPE_OPTIONS[0].id
+          items[0]?.wastepaperType || defaultTypeKey(catalog)
         ),
         sum: null,
       };
@@ -3428,7 +3554,7 @@ function ShipmentModal({
           prev.items,
           S,
           baseWeight,
-          prev.items[0]?.wastepaperType || WP_TYPE_OPTIONS[0].id
+          prev.items[0]?.wastepaperType || defaultTypeKey(catalog)
         ),
       }));
     }
@@ -3687,7 +3813,7 @@ function ShipmentModal({
           </div>
           <ItemsEditor
             items={form.items}
-            rates={rates}
+            catalog={catalog}
             onChange={onItemsChange}
           />
 
@@ -4356,7 +4482,7 @@ function DebtsTab({ intakes, counterparties, onEditCounterparty }: { intakes: Wp
   </div>;
 }
 
-function StockTab({ stock }: { stock: ReturnType<typeof getWpStock> }) {
+function StockTab({ stock, typeLabels }: { stock: ReturnType<typeof getWpStock>; typeLabels: Record<string, string> }) {
   const total = stock.reduce((sum, row) => sum + Math.max(0, row.stockKg), 0);
-  return <div><div className="admin-card" style={{ marginBottom: 14 }}><div className="admin-card__head"><span className="admin-card__title">Фактический склад макулатуры</span><strong>{fmtKg(total)}</strong></div><div className="admin-card__pad"><p className="admin-hint">На склад попадает фактически принятое количество, а не вес к оплате.</p></div></div><div className="admin-table-wrap"><WpTable className="admin-table"><WpHead><WpRow><WpHeading>Вид макулатуры</WpHeading><WpHeading>Принято фактически</WpHeading><WpHeading>Продано / отгружено</WpHeading><WpHeading>Остаток</WpHeading></WpRow></WpHead><WpBody>{stock.map((row) => <WpRow key={row.wastepaperType}><WpCell>{wpTypeLabel(row.wastepaperType, WP_TYPE_LABELS)}</WpCell><WpCell>{fmtKg(row.intakeKg)}</WpCell><WpCell>{fmtKg(row.shipmentKg)}</WpCell><WpCell style={{fontWeight:700}}>{fmtKg(Math.max(0,row.stockKg))}</WpCell></WpRow>)}</WpBody></WpTable></div></div>;
+  return <div><div className="admin-card" style={{ marginBottom: 14 }}><div className="admin-card__head"><span className="admin-card__title">Фактический склад макулатуры</span><strong>{fmtKg(total)}</strong></div><div className="admin-card__pad"><p className="admin-hint">На склад попадает фактически принятое количество, а не вес к оплате.</p></div></div><div className="admin-table-wrap"><WpTable className="admin-table"><WpHead><WpRow><WpHeading>Вид макулатуры</WpHeading><WpHeading>Принято фактически</WpHeading><WpHeading>Продано / отгружено</WpHeading><WpHeading>Остаток</WpHeading></WpRow></WpHead><WpBody>{stock.map((row) => <WpRow key={row.wastepaperType}><WpCell>{wpTypeLabel(row.wastepaperType, typeLabels)}</WpCell><WpCell>{fmtKg(row.intakeKg)}</WpCell><WpCell>{fmtKg(row.shipmentKg)}</WpCell><WpCell style={{fontWeight:700}}>{fmtKg(Math.max(0,row.stockKg))}</WpCell></WpRow>)}</WpBody></WpTable></div></div>;
 }

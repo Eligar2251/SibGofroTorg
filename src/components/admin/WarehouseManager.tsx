@@ -58,6 +58,7 @@ import {
   type Counterparty,
   type Employee,
   type Salary,
+  type SalarySource,
   type CashCollection,
   includedVat,
   isSalaryExcludedFromBalance,
@@ -65,6 +66,7 @@ import {
   isRentSalaryComment,
   isWastepaperSalaryComment,
   isYmCardSalaryComment,
+  salarySourceShortLabel,
   stripSalaryMetaTags,
   getWarehouseBusinessDate,
   type ConsignmentManualSale,
@@ -282,7 +284,7 @@ type BankEntry =
       counterparty: string;
       amount: number;
       isPaid: boolean;
-      source: "cash" | "bank" | "ym_card" | "wastepaper";
+      source: SalarySource;
       comment?: string | null;
       excludeFromBalance?: boolean;
       createdAt?: string | null;
@@ -1251,7 +1253,7 @@ export function WarehouseManager({
               ...p.dealNumbers.map((n) => `зк-${n}`),
               ...p.receiptNumbers.map((n) => `по-${n}`),
             ].join(" ").toLowerCase()
-          : ["зп", "зарплата", p.counterparty, p.comment || "", p.source === "cash" ? "касса" : p.source === "ym_card" ? "карта юм" : p.source === "wastepaper" ? "макулатура наличные" : "банк"].join(" ").toLowerCase();
+          : ["зп", "зарплата", p.counterparty, p.comment || "", salarySourceShortLabel(p.salary)].join(" ").toLowerCase();
         if (!hay.includes(query)) return false;
       }
       return true;
@@ -2053,7 +2055,7 @@ export function WarehouseManager({
         <>
           <div className="admin-page-head">
             <div>
-              <h1 className="admin-h1">Учёт СГТ</h1>
+              <h1 className="admin-h1">Учёт СибГофроТорг</h1>
               <p className="admin-sub">
                 СибГофроТорг · гофротара: склад, заказы покупателей и банк —
                 внутренний учёт, не связан с заявками с сайта.
@@ -4164,7 +4166,7 @@ export function WarehouseManager({
                           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-kraft)" }}>
                             {isDebtSalaryComment(p.salary.comment)
                               ? "Выплата в счёт отдельного долга · не входит в факт месяца"
-                              : `Зарплата за ${monthLabel(p.salary.periodMonth || p.salary.date.slice(0, 7))}`} · {p.source === "cash" ? "касса" : p.source === "ym_card" ? "карта ЮМ" : p.source === "wastepaper" ? "макулатура (наличные)" : "банк"} · {p.isPaid ? "архив" : "к выплате"}
+                              : `Зарплата за ${monthLabel(p.salary.periodMonth || p.salary.date.slice(0, 7))}`} · {salarySourceShortLabel(p.salary)} · {p.isPaid ? "архив" : "к выплате"}
                           </div>
                         )}
                         {p.comment && (
