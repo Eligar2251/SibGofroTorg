@@ -24,6 +24,8 @@ export interface CounterpartyOption {
   supplierPrices?: Record<string, number>;
   /** Вариант цены (обычная / спец / эксклюзив) — скидка при оформлении заказа. */
   priceTier?: PriceTier;
+  /** Рассчитывается наличными: заказы выводятся кнопкой «Касса» в архиве. */
+  isCash?: boolean;
   phone?: string | null;
   email?: string | null;
   inn?: string | null;
@@ -73,6 +75,7 @@ interface FormState {
   contactName: string;
   comment: string;
   priceTier: PriceTier;
+  isCash: boolean;
 }
 
 const EMPTY: FormState = {
@@ -96,6 +99,7 @@ const EMPTY: FormState = {
   contactName: "",
   comment: "",
   priceTier: "regular",
+  isCash: false,
 };
 
 const fmt = (value: number) => value.toLocaleString("ru-RU");
@@ -126,7 +130,7 @@ export function CounterpartiesManager({
   const router = useRouter();
   const [items, setItems] = useState(() => uniqueById(initialCounterparties));
   const [search, setSearch] = useState("");
-  const [role, setRole] = useState<"all" | CounterpartyRole>("all");
+  const [role, setRole] = useState<"all" | CounterpartyRole | "cash">("all");
   const [sort, setSort] = useState<"name" | "documents" | "turnover">("name");
   const [descending, setDescending] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -138,7 +142,13 @@ export function CounterpartiesManager({
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("ru-RU");
     const rows = items.filter((item) => {
-      if (role !== "all" && !item.roles.includes(role)) return false;
+      // «За наличку» — не роль, а отдельная пометка: показываем только
+      // помеченных, чтобы было видно, кого уже отметили галочкой.
+      if (role === "cash") {
+        if (!item.isCash) return false;
+      } else if (role !== "all" && !item.roles.includes(role)) {
+        return false;
+      }
       if (!query) return true;
       return [item.name, item.inn, item.phone, item.email, item.contactName]
         .filter(Boolean)
@@ -189,6 +199,7 @@ export function CounterpartiesManager({
       contactName: item.contactName || "",
       comment: item.comment || "",
       priceTier: normalizePriceTier(item.priceTier),
+      isCash: item.isCash === true,
     });
     setError("");
   }
@@ -229,6 +240,7 @@ export function CounterpartiesManager({
         supplierPrices:
           items.find((item) => item.id === editingId)?.supplierPrices || {},
         priceTier: normalizePriceTier(form.priceTier),
+        isCash: form.isCash,
         phone: form.phone || null,
         email: form.email || null,
         inn: form.inn || null,
@@ -288,6 +300,8 @@ export function CounterpartiesManager({
           <option value="all">Все контрагенты</option>
           <option value="supplier">Поставщики</option>
           <option value="customer">Покупатели</option>
+          <option value="cash">💵 За наличку</option>
+          <option value="cash">💵 За наличку</option>
         </select>
         <button className="admin-btn admin-btn--primary" onClick={beginCreate}>
           <Plus size={15} /> Добавить
@@ -345,6 +359,9 @@ export function CounterpartiesManager({
                           {item.priceTier === "exclusive" && (
                             <span className="admin-badge admin-badge--indigo" title={`Эксклюзивная цена: скидка ${tierDiscounts.exclusive}% при заказе`}>эксклюзив −{tierDiscounts.exclusive}%</span>
                           )}
+                          {item.isCash && (
+                            <span className="admin-badge admin-badge--green" title="Рассчитывается наличными: заказы выводятся кнопкой «Касса» в архиве заказов">💵 за наличку</span>
+                          )}
                           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
                       </td>
@@ -398,6 +415,7 @@ export function CounterpartiesManager({
                                 <div><dt>Корр. счёт</dt><dd>{item.correspondentAccount || "—"}</dd></div>
                                 <div><dt>Цен поставщика</dt><dd>{Object.keys(item.supplierPrices || {}).length}</dd></div>
                                 <div><dt>Вариант цены</dt><dd>{item.priceTier === "special" ? `Спеццена −${tierDiscounts.special}%` : item.priceTier === "exclusive" ? `Эксклюзив −${tierDiscounts.exclusive}%` : "Обычная"}</dd></div>
+                                <div><dt>Оплата</dt><dd>{item.isCash ? "💵 За наличку" : "Обычная"}</dd></div>
                               </dl>
                               {item.comment && <p>{item.comment}</p>}
                             </div>
@@ -463,6 +481,12 @@ export function CounterpartiesManager({
                   <option value="special">Спеццена — скидка {tierDiscounts.special}% при заказе</option>
                   <option value="exclusive">Эксклюзивная — скидка {tierDiscounts.exclusive}% при заказе</option>
                 </select>
+              </div>
+              <div className="cp-role-checks">
+                <label className="admin-check" title="Заказы контрагента выводятся кнопкой «Касса» в архиве заказов, а способ оплаты в новом заказе подставляется «Наличные»">
+                  <input type="checkbox" checked={form.isCash} onChange={(e) => patch("isCash", e.target.checked)} />
+                  <span>💵 За наличку <span className="admin-hint">— заказы отдельно в кассе архива</span></span>
+                </label>
               </div>
               <div className="admin-grid-2">
                 <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={form.contactName} onChange={(e) => patch("contactName", e.target.value)} /></div>

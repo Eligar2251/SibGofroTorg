@@ -61,6 +61,12 @@ export interface Counterparty extends CounterpartyDetails {
   supplierPrices?: Record<string, number>;
   /** Вариант цены контрагента: обычный / спец (скидка) / эксклюзив (скидка больше). */
   priceTier?: PriceTier;
+  /**
+   * Контрагент рассчитывается наличными (галочка «за наличку» в карточке).
+   * Его заказы отдельно выводятся кнопкой «Касса» в архиве заказов, а в
+   * новом заказе способ оплаты подставляется «Наличные» автоматически.
+   */
+  isCash?: boolean;
   comment?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;

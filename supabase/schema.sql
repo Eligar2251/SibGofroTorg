@@ -485,6 +485,7 @@ CREATE TABLE IF NOT EXISTS counterparties (
   address TEXT,
   contact_name TEXT,
   comment TEXT,
+  is_cash BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

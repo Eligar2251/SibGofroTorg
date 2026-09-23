@@ -239,6 +239,10 @@ export default async function AdminWarehousePage({
       address: item.address ?? null,
       contactName: item.contactName ?? null,
       comment: item.comment ?? null,
+      // Без priceTier/isCash карточка контрагента их не видела и молча
+      // сбрасывала в значения по умолчанию при каждом сохранении.
+      priceTier: item.priceTier ?? "regular",
+      isCash: item.isCash ?? false,
     })
   );
 
