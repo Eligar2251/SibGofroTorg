@@ -150,7 +150,7 @@ export function PriceInquiryButton({
   }
 
   const modal = (
-    <div className="pi-overlay" onClick={close}>
+    <div className="pi-overlay">
       <div
         className="pi-modal"
         role="dialog"

@@ -47,6 +47,10 @@ export const REALTIME_TABLES = [
   "wp_payments",
   "wp_transports",
   "wp_counterparties",
+  // Ручные правки остатка макулатуры (migration_wp_stock_manual.sql).
+  "wp_stock_adjustments",
+  // Переводы между счетами макулатуры (migration_wp_account_transfers.sql).
+  "wp_account_transfers",
 ] as const;
 
 export type RealtimeTable = (typeof REALTIME_TABLES)[number];
@@ -75,6 +79,10 @@ const ROLE_TABLES: Record<string, readonly string[] | "all"> = {
     "wp_payments",
     "wp_transports",
     "wp_counterparties",
+    // Вкладка «Склад»: правки остатка видны сразу у всех, кто в модуле.
+    "wp_stock_adjustments",
+    // Переводы между счетами — журнал «Банк» обновляется сразу.
+    "wp_account_transfers",
     // Единые перевозки учёта — общее рабочее место с разделом «Доставки».
     "transports",
     // Зарплаты «с макулатуры» списываются из наличных модуля: событие

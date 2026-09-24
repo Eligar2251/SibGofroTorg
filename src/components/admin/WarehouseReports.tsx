@@ -24,6 +24,7 @@ import {
   getReceiptPaidMap,
   getCashCarryoverSummary,
   getCashCollectionIncomeBreakdown,
+  cashItemCardAmounts,
   getCashCollectionExpenseBreakdown,
   isSalaryExcludedFromBalance,
   isRentSalaryComment,
@@ -34,6 +35,7 @@ import {
   wastepaperSalaryAccountLabel,
   type BankPayment,
   type CashCollection,
+  type CashCollectionItem,
   type CustomerDeal,
   type Salary,
   type WarehouseReceipt,
@@ -140,27 +142,28 @@ const REPORTS: {
 const fmt = (value: number) => value.toLocaleString("ru-RU");
 const money = (value: number) => `${fmt(Math.round(value * 100) / 100)} ₽`;
 
-function collectionItemKind(item: {
-  amount?: number;
-  kind?: "cash" | "card";
-  cardAmount?: number;
-}): { label: string; className: "cash" | "card" } {
+function collectionItemKind(item: CashCollectionItem): {
+  label: string;
+  className: "cash" | "card";
+} {
   const amount = Math.max(0, Number(item.amount) || 0);
-  const card = Math.max(
-    0,
-    Number(
-      item.cardAmount != null
-        ? item.cardAmount
-        : item.kind === "card"
-          ? amount
-          : 0
-    ) || 0
-  );
-  const hasCard = card > 0.009;
-  const hasCash = amount - card > 0.009;
+  const parts = cashItemCardAmounts(item);
+  const hasYm = parts.ym > 0.009;
+  const hasVm = parts.vm > 0.009;
+  const hasCash = amount - parts.ym - parts.vm > 0.009;
+  const pieces = [
+    hasCash ? "Нал" : "",
+    hasYm ? "ЮМ" : "",
+    hasVm ? "В.М." : "",
+  ].filter(Boolean);
   return {
-    label: hasCard && hasCash ? "Нал + ЮМ" : hasCard ? "Карта ЮМ" : "Наличные",
-    className: hasCard && !hasCash ? "card" : "cash",
+    label:
+      pieces.length === 0
+        ? "Наличные"
+        : pieces.length === 1 && !hasCash
+          ? `Карта ${pieces[0]}`
+          : pieces.join(" + "),
+    className: hasYm || hasVm ? "card" : "cash",
   };
 }
 
@@ -398,15 +401,18 @@ export function WarehouseReports({
       const wpAccount = isWastepaper ? wastepaperSalaryAccount(salary) : null;
       const isRent = !isWastepaper && isRentSalaryComment(salary.comment, salary.source);
       const isYm = salary.source === "ym_card" || (salary.comment && salary.comment.includes("[Карта ЮМ]"));
+      const isVm = salary.source === "vm_card" || (salary.comment && salary.comment.includes("[Карта В.М.]"));
       const accountLabel = isWastepaper
         ? `Макулатура (${wastepaperSalaryAccountLabel(wpAccount)})`
         : isRent
           ? "Аренда (отд. счёт)"
           : isYm
             ? "Карта ЮМ"
-            : salary.source === "cash"
-              ? "Касса"
-              : "Аренда (отд. счёт)";
+            : isVm
+              ? "Карта В.М."
+              : salary.source === "cash"
+                ? "Касса"
+                : "Аренда (отд. счёт)";
       // Наличка макулатуры — тоже наличный расчёт, но из кассы другого модуля;
       // безнал и сторонние средства макулатуры — безналичные.
       const accountKey =
@@ -639,7 +645,7 @@ export function WarehouseReports({
     }
     if (filters.kind === "cash") {
       return [
-        ["Дата", "Перенос с прошлого дня (не прибыль)", "Всего поступило", "Наличными", "На карту ЮМ", "Расходы всего", "Расходы наличными", "Расходы с ЮМ", "Остаток наличных", "Комментарий"],
+        ["Дата", "Перенос с прошлого дня (не прибыль)", "Всего поступило", "Наличными", "На карту ЮМ", "На карту В.М.", "Расходы всего", "Расходы наличными", "Расходы с ЮМ", "Расходы с В.М.", "Остаток наличных", "Комментарий"],
         ...cashRows.map((collection) => {
           const income = getCashCollectionIncomeBreakdown(collection);
           const expenses = getCashCollectionExpenseBreakdown(collection);
@@ -649,9 +655,11 @@ export function WarehouseReports({
             income.total,
             income.cash,
             income.card,
+            income.vmCard,
             expenses.total,
             expenses.cash,
             expenses.card,
+            expenses.vmCard,
             collection.cashAmount || 0,
             collection.note || "",
           ];
@@ -965,8 +973,10 @@ export function WarehouseReports({
               <div><ClipboardList size={15} /><span>Смен</span><strong>{cashRows.length}</strong></div>
               <div><ArrowDownLeft size={15} /><span>Всего поступило</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionIncomeBreakdown(row).total, 0))}</strong></div>
               <div><CreditCard size={15} /><span>На карту ЮМ</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionIncomeBreakdown(row).card, 0))}</strong></div>
+              <div><CreditCard size={15} /><span>На карту В.М.</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionIncomeBreakdown(row).vmCard, 0))}</strong></div>
               <div><ArrowUpRight size={15} /><span>Расходы всего</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionExpenseBreakdown(row).total, 0))}</strong></div>
               <div><CreditCard size={15} /><span>Расходы с ЮМ</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionExpenseBreakdown(row).card, 0))}</strong></div>
+              <div><CreditCard size={15} /><span>Расходы с В.М.</span><strong>{money(cashRows.reduce((sum, row) => sum + getCashCollectionExpenseBreakdown(row).vmCard, 0))}</strong></div>
               <div><Banknote size={15} /><span>Последний остаток наличных</span><strong>{money(cashRows[0]?.cashAmount || 0)}</strong></div>
             </div>
             <ReportTable headers={["Дата", "Платежи", "Расшифровка", "Перенос (не прибыль)", "Поступления за день", "Расходы за день", "Остаток наличных", "Комментарий"]} empty={cashRows.length === 0}>
@@ -1019,7 +1029,8 @@ export function WarehouseReports({
                         <>
                           +{money(income.total)}
                           <small className="admin-muted" style={{ display: "block" }}>
-                            нал {money(income.cash)} · ЮМ {money(income.card)}
+                            нал {money(income.cash)} · ЮМ {money(income.card)} · В.М.{" "}
+                            {money(income.vmCard)}
                           </small>
                         </>
                       );
@@ -1032,7 +1043,8 @@ export function WarehouseReports({
                         <>
                           −{money(expenses.total)}
                           <small className="admin-muted" style={{ display: "block" }}>
-                            нал {money(expenses.cash)} · ЮМ {money(expenses.card)}
+                            нал {money(expenses.cash)} · ЮМ {money(expenses.card)} · В.М.{" "}
+                            {money(expenses.vmCard)}
                           </small>
                         </>
                       );

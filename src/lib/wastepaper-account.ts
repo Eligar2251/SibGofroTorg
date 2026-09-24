@@ -15,12 +15,14 @@ import { getSalaries } from "@/lib/warehouse";
 import { isWastepaperSalary, type Salary } from "@/lib/warehouse-shared";
 import type {
   WpAccount,
+  WpAccountTransfer,
   WpBranch,
   WpCounterparty,
   WpDocItem,
   WpIntake,
   WpManualPayment,
   WpShipment,
+  WpStockAdjustment,
   WpTransport,
   WpTransportItem,
   WpProduct,
@@ -28,6 +30,7 @@ import type {
 import {
   WP_TRANSPORT_STATUS_LABELS,
   findWpBranchByAddress,
+  getWpStock,
   normalizeWpBranches,
   normalizeWpDocItems,
   wpDocTotals,
@@ -546,6 +549,7 @@ function mapIntake(row: any): WpIntake {
       ? String(row.transport_planned_date).slice(0, 10)
       : null,
     awaitingWeight: Boolean(row.awaiting_weight),
+    transportDone: Boolean(row.transport_done),
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
     createdBy: row.created_by || null,
@@ -597,6 +601,11 @@ export interface WpIntakeInput {
    * карточки приёма с фактическим весом снимает её (false).
    */
   awaitingWeight?: boolean;
+  /**
+   * Перевозка выполнена (груз вывезли). Ставится вручную или автоматически
+   * при завершении рейса; приём с пометкой уходит из очереди перевозок.
+   */
+  transportDone?: boolean;
   comment?: string | null;
 }
 
@@ -677,6 +686,7 @@ export async function createWpIntake(
       paid_at: isPaid ? data.paidAt || new Date().toISOString() : null,
       transport_id: data.transportId || null,
       transport_item_id: data.transportItemId || null,
+      transport_done: data.transportDone === true,
       status: "active",
       created_by: createdBy || null,
     })
@@ -739,6 +749,13 @@ export async function updateWpIntake(
     data.awaitingWeight !== undefined
       ? data.awaitingWeight === true
       : Boolean(existing.awaiting_weight);
+  // «Перевозка выполнена» — наоборот, сохранение карточки не снимает: это
+  // отметка о свершившемся факте (груз вывезли), а не временное состояние.
+  // Меняется только явной правкой поля.
+  const transportDone =
+    data.transportDone !== undefined
+      ? data.transportDone === true
+      : Boolean(existing.transport_done);
   const { data: row, error } = await db
     .from("wp_intakes")
     .update({
@@ -746,6 +763,7 @@ export async function updateWpIntake(
       is_paid: isPaid,
       paid_at: isPaid ? existing.paid_at || new Date().toISOString() : null,
       awaiting_weight: awaitingWeight,
+      transport_done: transportDone,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -843,6 +861,7 @@ function mapShipment(row: any): WpShipment {
     transportPlannedDate: row.transport_planned_date
       ? String(row.transport_planned_date).slice(0, 10)
       : null,
+    skipStock: Boolean(row.skip_stock),
     status: row.status === "cancelled" ? "cancelled" : "active",
     comment: row.comment || null,
     createdBy: row.created_by || null,
@@ -886,6 +905,8 @@ export interface WpShipmentInput {
   needsTransport?: boolean;
   /** Желаемая дата вывоза (подсказка диспетчеру). */
   transportPlannedDate?: string | null;
+  /** TRUE — деньги проводим, остаток макулатуры на площадке не уменьшаем. */
+  skipStock?: boolean;
   comment?: string | null;
 }
 
@@ -944,6 +965,8 @@ function cleanShipmentInput(data: WpShipmentInput) {
     transport_planned_date: data.transportPlannedDate
       ? String(data.transportPlannedDate).slice(0, 10)
       : null,
+    // Продажа «без списания»: сумма проходит в деньги, склад не двигаем.
+    skip_stock: data.skipStock === true,
     comment: String(data.comment || "").trim().slice(0, 500) || null,
   };
 }
@@ -1017,6 +1040,12 @@ export async function updateWpShipment(
       data.transportPlannedDate !== undefined
         ? data.transportPlannedDate
         : existing.transport_planned_date || null,
+    // Пометку «не списывать со склада» сохраняем: без явного значения в
+    // запросе остаётся прежняя (иначе PATCH оплаты сбрасывал бы её).
+    skipStock:
+      data.skipStock !== undefined
+        ? data.skipStock
+        : Boolean(existing.skip_stock),
   });
   const isPaid = data.isPaid !== undefined ? Boolean(data.isPaid) : Boolean(existing.is_paid);
   const { data: row, error } = await db
@@ -1059,6 +1088,117 @@ export async function deleteWpShipment(id: string): Promise<void> {
   const db = getAdminDb();
   await removeWpDocFromActiveTransports("shipment", id);
   const { error } = await db.from("wp_shipments").delete().eq("id", id);
+  if (error) throw error;
+  bumpWpCaches();
+}
+
+// ── Ручная правка остатка макулатуры на складе ───────────
+
+/**
+ * Ручные корректировки остатка по видам макулатуры.
+ * Храним разницу с расчётом «принято − продано», поэтому правка живёт
+ * дальше: новые приёмы и продажи двигают остаток поверх неё.
+ */
+function mapWpStockAdjustment(row: any): WpStockAdjustment {
+  return {
+    id: row.id,
+    wastepaperType: String(row.wastepaper_type || ""),
+    deltaKg: Number(row.delta_kg) || 0,
+    note: row.note ? String(row.note) : null,
+    updatedBy: row.updated_by || row.created_by || null,
+    updatedAt: toIso(row.updated_at) || toIso(row.created_at),
+  };
+}
+
+export async function getWpStockAdjustments(): Promise<WpStockAdjustment[]> {
+  const { data, error } = await getAdminDb()
+    .from("wp_stock_adjustments")
+    .select("*")
+    .order("wastepaper_type", { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapWpStockAdjustment);
+}
+
+export interface WpStockAdjustmentInput {
+  wastepaperType: string;
+  /** Разница с расчётным остатком, кг — основной способ правки. */
+  deltaKg?: number;
+  /**
+   * Альтернатива: фактический остаток, который вписали руками. Разницу с
+   * расчётом посчитаем сами — так правка не «затирает» будущие документы.
+   */
+  stockKg?: number;
+  note?: string | null;
+}
+
+/**
+ * Сохранить ручную правку остатка по виду. Если разница получилась нулевой
+ * (вписали ровно расчётное количество) — строку убираем: правки нет.
+ * Возвращает null, когда правка снята.
+ */
+export async function setWpStockAdjustment(
+  input: WpStockAdjustmentInput,
+  updatedBy: string
+): Promise<WpStockAdjustment | null> {
+  const db = getAdminDb();
+  const type = String(input.wastepaperType || "").trim().slice(0, 120);
+  if (!type) throw new Error("Не указан вид макулатуры");
+
+  let deltaKg: number;
+  if (input.deltaKg !== undefined) {
+    deltaKg = Number(input.deltaKg) || 0;
+  } else if (input.stockKg !== undefined) {
+    const factKg = Number(input.stockKg) || 0;
+    // Расчёт по действующим документам — без прежней ручной правки.
+    const [intakes, shipments] = await Promise.all([
+      getWpIntakes(1000),
+      getWpShipments(1000),
+    ]);
+    const docKg =
+      getWpStock(intakes, shipments).find((r) => r.wastepaperType === type)?.docKg ?? 0;
+    deltaKg = factKg - docKg;
+  } else {
+    throw new Error("Укажите количество макулатуры");
+  }
+
+  const rounded = Math.round(deltaKg * 1000) / 1000;
+  const note = String(input.note ?? "").trim().slice(0, 500) || null;
+
+  if (Math.abs(rounded) < 0.05) {
+    const { error } = await db.from("wp_stock_adjustments").delete().eq("wastepaper_type", type);
+    if (error) throw error;
+    bumpWpCaches();
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("wp_stock_adjustments")
+    .upsert(
+      {
+        wastepaper_type: type,
+        delta_kg: rounded,
+        note,
+        updated_by: updatedBy || null,
+        updated_at: now,
+      },
+      { onConflict: "wastepaper_type" }
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  bumpWpCaches();
+  return mapWpStockAdjustment(data);
+}
+
+/** Снять ручную правку: остаток снова считается только по документам. */
+export async function deleteWpStockAdjustment(wastepaperType: string): Promise<void> {
+  const type = String(wastepaperType || "").trim();
+  if (!type) throw new Error("Не указан вид макулатуры");
+  const { error } = await getAdminDb()
+    .from("wp_stock_adjustments")
+    .delete()
+    .eq("wastepaper_type", type);
   if (error) throw error;
   bumpWpCaches();
 }
@@ -1245,6 +1385,136 @@ export async function updateWpManualPayment(
 export async function deleteWpManualPayment(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("wp_payments").delete().eq("id", id);
+  if (error) throw error;
+  bumpWpCaches();
+}
+
+// ── Переводы между счетами модуля ────────────────────────
+
+function wpAccountFromRaw(raw: any, fallback: WpAccount): WpAccount {
+  if (raw === "cash") return "cash";
+  if (raw === "bank") return "bank";
+  if (raw === "third_party") return "third_party";
+  return fallback;
+}
+
+function mapAccountTransfer(row: any): WpAccountTransfer {
+  return {
+    id: row.id,
+    number: Number(row.number) || 0,
+    date: toDateStr(row.date),
+    fromAccount: wpAccountFromRaw(row.from_account, "bank"),
+    toAccount: wpAccountFromRaw(row.to_account, "cash"),
+    amount: Number(row.amount) || 0,
+    comment: row.comment || null,
+    createdBy: row.created_by || null,
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+export async function getWpAccountTransfers(limit = 500): Promise<WpAccountTransfer[]> {
+  const { data, error } = await getAdminDb()
+    .from("wp_account_transfers")
+    .select("*")
+    .order("date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data || []).map(mapAccountTransfer);
+}
+
+/**
+ * Правки остатка и переводы не должны ронять модуль: пока миграция
+ * migration_wp_account_transfers.sql не применена, переводов просто нет.
+ */
+export async function getWpAccountTransfersSafe(): Promise<WpAccountTransfer[]> {
+  try {
+    return await getWpAccountTransfers();
+  } catch (error) {
+    console.error(
+      "wastepaper-account: wp_account_transfers недоступна (применена ли миграция migration_wp_account_transfers.sql?):",
+      error
+    );
+    return [];
+  }
+}
+
+export interface WpAccountTransferInput {
+  date: string;
+  fromAccount: WpAccount;
+  toAccount: WpAccount;
+  amount: number;
+  comment?: string | null;
+}
+
+function cleanAccountTransferInput(data: WpAccountTransferInput) {
+  const date = toDateStr(data.date);
+  if (!date) throw new Error("Укажите дату перевода");
+  const amount = Math.max(0, Number(data.amount) || 0);
+  if (amount <= 0) throw new Error("Укажите сумму перевода");
+  const fromAccount = wpAccountFromRaw(data.fromAccount, "bank");
+  const toAccount = wpAccountFromRaw(data.toAccount, "cash");
+  if (fromAccount === toAccount) {
+    throw new Error("Счёта «откуда» и «куда» должны различаться");
+  }
+  return {
+    date,
+    from_account: fromAccount,
+    to_account: toAccount,
+    amount,
+    comment: String(data.comment || "").trim().slice(0, 500) || null,
+  };
+}
+
+export async function createWpAccountTransfer(
+  data: WpAccountTransferInput,
+  createdBy: string
+): Promise<WpAccountTransfer> {
+  const db = getAdminDb();
+  const fields = cleanAccountTransferInput(data);
+  const number = await nextNumber("wp_account_transfer");
+  const { data: row, error } = await db
+    .from("wp_account_transfers")
+    .insert({ ...fields, number, created_by: createdBy || null })
+    .select("*")
+    .single();
+  if (error) throw error;
+  bumpWpCaches();
+  return mapAccountTransfer(row);
+}
+
+export async function updateWpAccountTransfer(
+  id: string,
+  data: Partial<WpAccountTransferInput>
+): Promise<WpAccountTransfer> {
+  const db = getAdminDb();
+  const { data: existing, error: existErr } = await db
+    .from("wp_account_transfers")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (existErr || !existing) throw new Error("Перевод не найден");
+  const merged = cleanAccountTransferInput({
+    date: data.date ?? toDateStr(existing.date),
+    fromAccount: data.fromAccount ?? wpAccountFromRaw(existing.from_account, "bank"),
+    toAccount: data.toAccount ?? wpAccountFromRaw(existing.to_account, "cash"),
+    amount: data.amount !== undefined ? Number(data.amount) : Number(existing.amount) || 0,
+    comment: data.comment !== undefined ? data.comment : existing.comment,
+  });
+  const { data: row, error } = await db
+    .from("wp_account_transfers")
+    .update({ ...merged, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  bumpWpCaches();
+  return mapAccountTransfer(row);
+}
+
+export async function deleteWpAccountTransfer(id: string): Promise<void> {
+  const { error } = await getAdminDb().from("wp_account_transfers").delete().eq("id", id);
   if (error) throw error;
   bumpWpCaches();
 }
@@ -1563,27 +1833,66 @@ export interface WpDashboardData {
   products: WpProduct[];
   /** Зарплаты, выплаченные/запланированные наличными из кассы макулатуры. */
   salaries: Salary[];
+  /** Ручные правки остатка на складе (вкладка «Склад»). */
+  stockAdjustments: WpStockAdjustment[];
+  /** Переводы между счетами модуля (безнал ↔ наличка). */
+  accountTransfers: WpAccountTransfer[];
+}
+
+/**
+ * Правки остатка не должны ронять модуль: пока миграция
+ * migration_wp_stock_manual.sql не применена, считаем, что правок нет.
+ */
+async function getWpStockAdjustmentsSafe(): Promise<WpStockAdjustment[]> {
+  try {
+    return await getWpStockAdjustments();
+  } catch (error) {
+    console.error(
+      "wastepaper-account: wp_stock_adjustments недоступна (применена ли миграция migration_wp_stock_manual.sql?):",
+      error
+    );
+    return [];
+  }
 }
 
 export async function getWpDashboardData(): Promise<WpDashboardData> {
-  const [counterparties, intakes, shipments, manualPayments, products, salaries] =
-    await Promise.all([
-      getWpCounterparties(),
-      getWpIntakes(500),
-      getWpShipments(300),
-      getWpManualPayments(500),
-      // Справочник видов — отдельная таблица (миграция
-      // migration_wastepaper_products_payments.sql); без неё модуль
-      // должен открываться с четырьмя исходными видами.
-      getWpProducts().catch((error) => {
-        console.error("[wastepaper-account] wp_products недоступна:", error);
-        return [] as WpProduct[];
-      }),
-      getWpSalaries(),
-    ]);
+  const [
+    counterparties,
+    intakes,
+    shipments,
+    manualPayments,
+    products,
+    salaries,
+    stockAdjustments,
+    accountTransfers,
+  ] = await Promise.all([
+    getWpCounterparties(),
+    getWpIntakes(500),
+    getWpShipments(300),
+    getWpManualPayments(500),
+    // Справочник видов — отдельная таблица (миграция
+    // migration_wastepaper_products_payments.sql); без неё модуль
+    // должен открываться с четырьмя исходными видами.
+    getWpProducts().catch((error) => {
+      console.error("[wastepaper-account] wp_products недоступна:", error);
+      return [] as WpProduct[];
+    }),
+    getWpSalaries(),
+    getWpStockAdjustmentsSafe(),
+    getWpAccountTransfersSafe(),
+  ]);
   // Отдельных перевозок макулатуры (ТМ-...) в интерфейсе больше нет:
   // вкладка «Перевозки» показывает единые перевозки учёта (ПЕР-...).
-  return { counterparties, intakes, shipments, manualPayments, products, salaries };
+  return {
+    counterparties,
+    intakes,
+    shipments,
+    manualPayments,
+    products,
+    salaries,
+    stockAdjustments,
+    accountTransfers,
+  };
 }
 
 /** Облегчённая выборка для финансовой карточки на главном дашборде. */
@@ -1592,12 +1901,24 @@ export async function getWpFinanceData(): Promise<{
   shipments: WpShipment[];
   manualPayments: WpManualPayment[];
   salaries: Salary[];
+  stockAdjustments: WpStockAdjustment[];
+  accountTransfers: WpAccountTransfer[];
 }> {
-  const [intakes, shipments, manualPayments, salaries] = await Promise.all([
-    getWpIntakes(500),
-    getWpShipments(300),
-    getWpManualPayments(500),
-    getWpSalaries(),
-  ]);
-  return { intakes, shipments, manualPayments, salaries };
+  const [intakes, shipments, manualPayments, salaries, stockAdjustments, accountTransfers] =
+    await Promise.all([
+      getWpIntakes(500),
+      getWpShipments(300),
+      getWpManualPayments(500),
+      getWpSalaries(),
+      getWpStockAdjustmentsSafe(),
+      getWpAccountTransfersSafe(),
+    ]);
+  return {
+    intakes,
+    shipments,
+    manualPayments,
+    salaries,
+    stockAdjustments,
+    accountTransfers,
+  };
 }

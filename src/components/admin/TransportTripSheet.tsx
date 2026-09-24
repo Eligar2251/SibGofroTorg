@@ -26,6 +26,7 @@ import { ModalPortal } from "./ModalPortal";
 import {
   isWpStop,
   stopLoadedLines,
+  stopOperation,
   stopTitle,
   stopTotalQty,
   summarizeStops,
@@ -266,6 +267,10 @@ export function TransportTripSheet({
         <div className="tls-stops">
           {stops.map((stop, index) => {
             const type = tripTypeDef(stop.tripType);
+            // Пометка с предметом операции: «ЗАБОР МАКУЛАТУРЫ»,
+            // «ЗАБОР ТОВАРА», «ДОСТАВКА ЗАКАЗА» — водитель видит,
+            // что именно он делает в этой точке.
+            const op = stopOperation(stop);
             const qty = stopTotalQty(stop);
             const note = stop.deliveryNote?.trim() || null;
             const isLast = index === stops.length - 1;
@@ -293,7 +298,7 @@ export function TransportTripSheet({
                   {/* Кем и зачем приехали */}
                   <div className="tls-strip__row tls-strip__row--head">
                     <span className={`tls-mark tls-mark--${type.id}`}>
-                      {type.icon} {type.mark}
+                      {op.icon} {op.mark}
                     </span>
                     <span className="tls-strip__client">{stop.customerName || "без названия"}</span>
                     {stop.kind === "deal" && stop.dealNumber ? (

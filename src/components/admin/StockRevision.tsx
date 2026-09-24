@@ -23,6 +23,7 @@ import {
 } from "@/components/admin/StockRevisionSheet";
 import type { WarehouseStockRow } from "@/lib/warehouse-shared";
 import type { ProductVariant } from "@/lib/types";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 /** Черновик ревизии хранится локально: закрыл вкладку — данные не потерялись. */
 const DRAFT_KEY = "sgt:stock-revision-draft:v1";
@@ -213,6 +214,9 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
     () => sheetRows.filter((r) => r.actualQty != null && r.actualQty !== r.stockQty),
     [sheetRows]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setOpen(false), open);
   const filledCount = sheetRows.filter((r) => r.actualQty != null).length;
 
   function toggle(id: string) {
@@ -359,9 +363,7 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
         <ModalPortal>
           <div
             className="admin-modal-overlay"
-            data-admin="true"
-            onClick={() => setOpen(false)}
-          >
+            data-admin="true">
             <div
               className="admin-modal wh-modal rev-modal"
               onClick={(e) => e.stopPropagation()}

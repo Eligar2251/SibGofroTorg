@@ -34,6 +34,7 @@ import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPayment, WarehouseReceipt } from "@/lib/warehouse-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 interface ReceiptItemDraft {
   productId: string;
@@ -224,6 +225,9 @@ export function ReceiptForm({
     () => items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0),
     [items]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setOpen(false), open);
 
   // Пересчитываем части при изменении итога, если суммы ещё не правили
   // вручную. Без этого выбор «2 платежа» до ввода позиций (или изменение
@@ -507,7 +511,7 @@ export function ReceiptForm({
 
       {open && (
         <ModalPortal>
-        <div className="admin-modal-overlay" onClick={() => setOpen(false)}>
+        <div className="admin-modal-overlay">
           <div
             className="admin-modal wh-modal"
             onClick={(e) => e.stopPropagation()}
@@ -1202,6 +1206,9 @@ export function ReceiptPostButton({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setOpen(false), open && !saving);
   const received = receivedQtyMap(receipt);
   const remainingRows = receipt.items
     .map((item) => ({
@@ -1295,7 +1302,7 @@ export function ReceiptPostButton({
 
       {open && (
         <ModalPortal>
-          <div className="admin-modal-overlay" data-admin="true" onClick={() => !saving && setOpen(false)}>
+          <div className="admin-modal-overlay" data-admin="true">
             <div
               className="admin-modal receipt-post-modal"
               style={{ maxWidth: 680 }}

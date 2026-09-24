@@ -106,7 +106,12 @@ export interface WarehouseMobileBankData {
   ymIn: number;
   ymOut: number;
   ymForecast: number;
-  /** Все деньги сейчас: р/с + касса + карта ЮМ. */
+  /** Вторая карта — В.М.: свой баланс и свой прогноз. */
+  vmBalance: number;
+  vmIn: number;
+  vmOut: number;
+  vmForecast: number;
+  /** Все деньги сейчас: р/с + касса + карты ЮМ и В.М. */
   totalBalance: number;
   /** Общий прогноз после всех ожидаемых оплат. */
   totalForecast: number;
@@ -126,7 +131,8 @@ export type WarehouseMobileBankSub =
   | "pending"
   | "history"
   | "cash"
-  | "ym";
+  | "ym"
+  | "vm";
 
 const r0 = (n: number) => fmt(Math.round(n));
 
@@ -148,7 +154,7 @@ function BankChip({
   return <span className={cls}>{children}</span>;
 }
 
-type AccountTone = "bank" | "cash" | "ym";
+type AccountTone = "bank" | "cash" | "ym" | "vm";
 
 function BankAccount({
   icon,
@@ -176,12 +182,16 @@ function BankAccount({
       ? `${styles.accIcon} ${styles.accIconBank}`
       : tone === "ym"
         ? `${styles.accIcon} ${styles.accIconYm}`
-        : `${styles.accIcon} ${styles.accIconCash}`;
+        : tone === "vm"
+          ? `${styles.accIcon} ${styles.accIconVm}`
+          : `${styles.accIcon} ${styles.accIconCash}`;
   const valueCls = negative
     ? `${styles.accValue} ${styles.accValueNeg}`
     : tone === "ym"
       ? `${styles.accValue} ${styles.accValueYm}`
-      : styles.accValue;
+      : tone === "vm"
+        ? `${styles.accValue} ${styles.accValueVm}`
+        : styles.accValue;
   return (
     <button
       type="button"
@@ -204,11 +214,12 @@ const BANK_SUBS: {
   key: WarehouseMobileBankSub;
   label: string;
   icon: ReactNode;
-  tone: "kraft" | "steel" | "ym" | "pine" | "indigo";
+  tone: "kraft" | "steel" | "ym" | "vm" | "pine" | "indigo";
 }[] = [
   { key: "pending", label: "Ожидают", icon: <Wallet size={20} />, tone: "kraft" },
   { key: "history", label: "История", icon: <History size={20} />, tone: "steel" },
   { key: "ym", label: "Карта ЮМ", icon: <CreditCard size={20} />, tone: "ym" },
+  { key: "vm", label: "Карта В.М.", icon: <CreditCard size={20} />, tone: "vm" },
   { key: "cash", label: "Касса", icon: <Banknote size={20} />, tone: "pine" },
   { key: "summary", label: "Сводка", icon: <BarChart3 size={20} />, tone: "indigo" },
 ];
@@ -217,6 +228,7 @@ const SUB_TONE_CLASS: Record<(typeof BANK_SUBS)[number]["tone"], string> = {
   kraft: styles.subIconKraft,
   steel: styles.subIconSteel,
   ym: styles.subIconYm,
+  vm: styles.subIconVm,
   pine: styles.subIconPine,
   indigo: styles.subIconIndigo,
 };
@@ -312,6 +324,19 @@ export function WarehouseMobileBankDetails({
             <BankChip tone="pos">+{r0(data.ymIn)} ожидаем</BankChip>
             <BankChip tone="neg">−{r0(data.ymOut)} к оплате</BankChip>
             <BankChip tone="gold">→ {r0(data.ymForecast)} ₽</BankChip>
+          </BankAccount>
+
+          <BankAccount
+            icon={<CreditCard size={17} />}
+            name="Карта В.М."
+            value={data.vmBalance}
+            tone="vm"
+            hint="Открыть карту В.М."
+            onOpen={() => onOpenSub("vm")}
+          >
+            <BankChip tone="pos">+{r0(data.vmIn)} ожидаем</BankChip>
+            <BankChip tone="neg">−{r0(data.vmOut)} к оплате</BankChip>
+            <BankChip tone="gold">→ {r0(data.vmForecast)} ₽</BankChip>
           </BankAccount>
         </div>
       </div>

@@ -80,6 +80,7 @@ import {
   isDebtSalaryComment,
   isRentSalaryComment,
   isYmCardSalaryComment,
+  isVmCardSalaryComment,
   isWastepaperSalary,
   isWastepaperSalarySource,
   isSalaryExcludedFromBalance,
@@ -88,6 +89,7 @@ import {
   wastepaperSalaryAccount,
 } from "@/lib/warehouse-shared";
 import { SGT_SALARY_SCOPE, type SalaryScope } from "@/lib/salary-scope";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -103,6 +105,7 @@ function accountFlagsOf(s: Salary) {
     wastepaperAccount: wpAccount,
     thirdPartyOrigin: wpAccount === "third_party" ? getSalaryThirdPartyOrigin(s.comment) : null,
     ymCard: !wpAccount && (s.source === "ym_card" || isYmCardSalaryComment(s.comment)),
+    vmCard: !wpAccount && (s.source === "vm_card" || isVmCardSalaryComment(s.comment)),
   };
 }
 
@@ -280,7 +283,7 @@ function initialsOf(name: string): string {
     .join("");
 }
 
-type QuickSource = "cash" | "bank" | "rent" | "ym_card" | "wastepaper" | "wastepaper_bank" | "wastepaper_third";
+type QuickSource = "cash" | "bank" | "rent" | "ym_card" | "vm_card" | "wastepaper" | "wastepaper_bank" | "wastepaper_third";
 
 /** Кнопки счёта в формах: у учёта СибГофроТорг и у модуля макулатуры свои. */
 const WASTEPAPER_SOURCE_BUTTONS: { source: SalarySource; label: string; title: string; tone: "in" | "out" }[] = [
@@ -308,6 +311,7 @@ function sourceLabel(s: Salary, scope?: SalaryScope): string {
   }
   if (isRentSalary(s)) return "Аренда → карта";
   if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "Карта ЮМ";
+  if (s.source === "vm_card" || isVmCardSalaryComment(s.comment)) return "Карта В.М.";
   return s.source === "cash" ? "Касса · наличные" : "Аренда → карта";
 }
 
@@ -318,6 +322,7 @@ function sourceBadgeClass(s: Salary): string {
   if (wpAccount) return "admin-badge--teal";
   if (isRentSalary(s)) return "admin-badge--indigo";
   if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "admin-badge--amber";
+  if (s.source === "vm_card" || isVmCardSalaryComment(s.comment)) return "admin-badge--sky";
   return s.source === "cash" ? "admin-badge--green" : "admin-badge--indigo";
 }
 
@@ -400,6 +405,9 @@ function SalaryFormModal({
       })),
     [employees]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -435,6 +443,7 @@ function SalaryFormModal({
       //    тег [Макулатура], сервер проставит его сам по source).
       const isRentForSubmit = source === "bank";
       const isYmCardForSubmit = source === "ym_card";
+      const isVmCardForSubmit = source === "vm_card";
       const isWastepaperForSubmit = isWastepaperSalarySource(source);
       const wastepaperAccount = wastepaperSalaryAccount({ source, comment: null });
       // API понимает виртуальные счета (ym_card / wastepaper*) и сам
@@ -454,8 +463,9 @@ function SalaryFormModal({
             periodMonth,
             comment: composeSalaryComment({
               comment,
-              rent: isRentForSubmit && !isYmCardForSubmit && !isWastepaperForSubmit,
+              rent: isRentForSubmit && !isYmCardForSubmit && !isVmCardForSubmit && !isWastepaperForSubmit,
               ymCard: isYmCardForSubmit,
+              vmCard: isVmCardForSubmit,
               wastepaper: isWastepaperForSubmit,
               wastepaperAccount,
               thirdPartyOrigin: source === "wastepaper_third" ? thirdPartyOrigin : null,
@@ -482,7 +492,7 @@ function SalaryFormModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal wh-modal"
           style={{ maxWidth: 460 }}
@@ -633,6 +643,16 @@ function SalaryFormModal({
                 <button
                   type="button"
                   className={`wh-direction__btn wh-direction__btn--out${
+                    source === "vm_card" ? " wh-direction__btn--active" : ""
+                  }`}
+                  onClick={() => setSource("vm_card")}
+                  title="Вторая карта — свой счёт: списывает только карту В.М."
+                >
+                  <CreditCard size={14} /> Карта В.М. (перевод)
+                </button>
+                <button
+                  type="button"
+                  className={`wh-direction__btn wh-direction__btn--out${
                     source === "bank" ? " wh-direction__btn--active" : ""
                   }`}
                   onClick={() => setSource("bank")}
@@ -760,6 +780,9 @@ function EmployeesModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   function resetForm() {
     setName("");
@@ -820,7 +843,7 @@ function EmployeesModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal wh-modal"
           style={{ maxWidth: 520 }}
@@ -1068,6 +1091,14 @@ function QuickPayForm({
         </button>
         <button
           type="button"
+          className={`whsal-seg__btn${source === "vm_card" ? " whsal-seg__btn--bank" : ""}`}
+          onClick={() => setSource("vm_card")}
+          title="С карты В.М. (перевод)"
+        >
+          <CreditCard size={12} /> Карта В.М.
+        </button>
+        <button
+          type="button"
           className={`whsal-seg__btn${source === "rent" ? " whsal-seg__btn--rent" : ""}`}
           onClick={() => setSource("rent")}
           title="Аренда — вне баланса СибГофроТорг: не списывает р/с и кассу, в расходы учёта не входит"
@@ -1137,6 +1168,9 @@ function MonthDaysModal({
     () => new Set(initialDays)
   );
   const [saving, setSaving] = useState(false);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   function toggle(day: number) {
     setSelected((prev) => {
@@ -1163,7 +1197,7 @@ function MonthDaysModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal wh-modal"
           style={{ maxWidth: 420 }}
@@ -1284,6 +1318,9 @@ function SalariesSetupModal({
     return init;
   });
   const [saving, setSaving] = useState(false);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
   const prevShort = monthLabel(prevMonth).split(" ")[0].toLowerCase();
 
   function parseNum(raw: string | undefined): number | null {
@@ -1321,7 +1358,7 @@ function SalariesSetupModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal wh-modal"
           style={{ maxWidth: 640 }}
@@ -1737,13 +1774,22 @@ export function WarehouseSalaries({
     .filter((s) => isWastepaperSalary(s))
     .reduce((s, x) => s + x.amount, 0);
   const paidBank = paidSalary
-    .filter((s) => s.source === "bank" && !isRentSalary(s) && !isYmCardSalaryComment(s.comment))
+    .filter(
+      (s) =>
+        s.source === "bank" &&
+        !isRentSalary(s) &&
+        !isYmCardSalaryComment(s.comment) &&
+        !isVmCardSalaryComment(s.comment)
+    )
     .reduce((s, x) => s + x.amount, 0);
   const paidRent = paidSalary
     .filter((s) => isRentSalary(s))
     .reduce((s, x) => s + x.amount, 0);
   const paidYm = paidSalary
     .filter((s) => s.source === "ym_card" || isYmCardSalaryComment(s.comment))
+    .reduce((s, x) => s + x.amount, 0);
+  const paidVm = paidSalary
+    .filter((s) => s.source === "vm_card" || isVmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
   // Модуль макулатуры: разбивка выплат по счетам модуля.
   const paidWpCash = paidSalary
@@ -2061,6 +2107,7 @@ export function WarehouseSalaries({
         comment: data.comment,
         rent: data.source === "rent",
         ymCard: data.source === "ym_card",
+        vmCard: data.source === "vm_card",
         wastepaper: isWastepaperSource,
         wastepaperAccount: isWastepaperSource ? wastepaperSalaryAccount({ source: data.source, comment: null }) : null,
         thirdPartyOrigin: data.source === "wastepaper_third" ? data.thirdPartyOrigin : null,
@@ -2679,6 +2726,7 @@ export function WarehouseSalaries({
               <>
                 {progressPct}% от начисленного · касса {fmt(paidCash)}
                 {paidYm > 0 ? ` · карта ЮМ ${fmt(paidYm)}` : ""}
+                {paidVm > 0 ? ` · карта В.М. ${fmt(paidVm)}` : ""}
                 {paidRent > 0 ? ` · аренда (вне баланса СибГофроТорг) ${fmt(paidRent)}` : ""}
                 {paidWastepaper > 0 ? ` · макулатура (наличные) ${fmt(paidWastepaper)}` : ""}
               </>

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 interface PendingCashPayment {
   paymentId: string;
@@ -28,7 +29,8 @@ interface PendingCashPayment {
   date: string;
   counterparty: string;
   amount: number;
-  kind?: "cash" | "card";
+  /** Куда поступили деньги смены: наличные, карта ЮМ или карта В.М. */
+  kind?: "cash" | "card" | "vm_card";
   comment: string | null;
 }
 
@@ -38,7 +40,7 @@ interface CashExpense {
   date: string;
   title: string;
   amount: number;
-  sourceKind?: "cash" | "card";
+  sourceKind?: "cash" | "card" | "vm_card";
   comment: string | null;
 }
 
@@ -48,12 +50,18 @@ interface DailyCashSummary {
   todayIncoming: number;
   /** Переводы на ЮМ, ещё не вошедшие в сохранённую сводку. */
   todayCardIncoming: number;
+  /** Переводы на вторую карту (В.М.), ещё не вошедшие в сводку. */
+  todayVmIncoming: number;
   /** Общие расходы двух касс. */
   todayOutgoing: number;
   todayCashOutgoing: number;
   todayCardOutgoing: number;
+  /** Расходы со второй карты (В.М.). */
+  todayVmOutgoing: number;
   closingBalance: number;
   closingCardBalance: number;
+  /** Остаток второй карты (В.М.). */
+  closingVmBalance: number;
 }
 
 const fmt = (value: number) => value.toLocaleString("ru-RU", {
@@ -174,7 +182,7 @@ export function CashCollectModal({
     () =>
       round2(
         dayItems
-          .filter((payment) => payment.kind !== "card")
+          .filter((payment) => payment.kind !== "card" && payment.kind !== "vm_card")
           .reduce((sum, payment) => sum + payment.amount, 0)
       ),
     [dayItems]
@@ -188,11 +196,20 @@ export function CashCollectModal({
       ),
     [dayItems]
   );
+  const listedVmIncome = useMemo(
+    () =>
+      round2(
+        dayItems
+          .filter((payment) => payment.kind === "vm_card")
+          .reduce((sum, payment) => sum + payment.amount, 0)
+      ),
+    [dayItems]
+  );
   const listedCashExpenses = useMemo(
     () =>
       round2(
         dayExpenses
-          .filter((expense) => expense.sourceKind !== "card")
+          .filter((expense) => expense.sourceKind !== "card" && expense.sourceKind !== "vm_card")
           .reduce((sum, expense) => sum + expense.amount, 0)
       ),
     [dayExpenses]
@@ -206,7 +223,21 @@ export function CashCollectModal({
       ),
     [dayExpenses]
   );
-  const listedExpenses = round2(listedCashExpenses + listedCardExpenses);
+  const listedVmExpenses = useMemo(
+    () =>
+      round2(
+        dayExpenses
+          .filter((expense) => expense.sourceKind === "vm_card")
+          .reduce((sum, expense) => sum + expense.amount, 0)
+      ),
+    [dayExpenses]
+  );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
+  const listedExpenses = round2(
+    listedCashExpenses + listedCardExpenses + listedVmExpenses
+  );
 
   const rawDaySummary = dailySummaries[activeDate];
   const daySummary: DailyCashSummary = rawDaySummary
@@ -216,23 +247,29 @@ export function CashCollectModal({
         // сохранённых сводок намеренно не возвращаются в итог.
         todayIncoming: listedCashIncome,
         todayCardIncoming: listedCardIncome,
+        todayVmIncoming: listedVmIncome,
         todayOutgoing: listedExpenses,
         todayCashOutgoing: listedCashExpenses,
         todayCardOutgoing: listedCardExpenses,
+        todayVmOutgoing: listedVmExpenses,
         closingBalance: Number(rawDaySummary.closingBalance) || 0,
         closingCardBalance: Number(rawDaySummary.closingCardBalance) || 0,
+        closingVmBalance: Number(rawDaySummary.closingVmBalance) || 0,
       }
     : {
         openingBalance: round2(cashBalance),
         todayIncoming: listedCashIncome,
         todayCardIncoming: listedCardIncome,
+        todayVmIncoming: listedVmIncome,
         todayOutgoing: listedExpenses,
         todayCashOutgoing: listedCashExpenses,
         todayCardOutgoing: listedCardExpenses,
+        todayVmOutgoing: listedVmExpenses,
         closingBalance: round2(cashBalance),
         closingCardBalance: 0,
+        closingVmBalance: 0,
       };
-  const totalDayIncome = round2(listedCashIncome + listedCardIncome);
+  const totalDayIncome = round2(listedCashIncome + listedCardIncome + listedVmIncome);
 
   function pickDate(date: string) {
     setActiveDate(date);
@@ -280,12 +317,14 @@ export function CashCollectModal({
       `Новых платежей к сдаче: +${fmt(totalDayIncome)} ₽\n` +
       `Наличными: +${fmt(daySummary.todayIncoming)} ₽\n` +
       `На карту ЮМ: +${fmt(daySummary.todayCardIncoming)} ₽\n` +
+      `На карту В.М.: +${fmt(daySummary.todayVmIncoming)} ₽\n` +
       `Перенос наличных: ${fmt(daySummary.openingBalance)} ₽\n` +
       `Расходы всего: −${fmt(daySummary.todayOutgoing)} ₽\n` +
       `Из наличной кассы: −${fmt(daySummary.todayCashOutgoing)} ₽\n` +
       `С карты ЮМ: −${fmt(daySummary.todayCardOutgoing)} ₽\n` +
       `Остаток наличных: ${fmt(daySummary.closingBalance)} ₽\n` +
-      `Остаток на ЮМ: ${fmt(daySummary.closingCardBalance)} ₽\n\n` +
+      `Остаток на ЮМ: ${fmt(daySummary.closingCardBalance)} ₽\n` +
+      `Остаток на В.М.: ${fmt(daySummary.closingVmBalance)} ₽\n\n` +
       "Сводка только пометит операции: она ничего не переводит и не списывает.";
     if (!confirm(message)) return;
 
@@ -317,7 +356,7 @@ export function CashCollectModal({
   return (
     <>
       <ModalPortal>
-        <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+        <div className="admin-modal-overlay" data-admin="true">
           <div
             className="admin-modal wh-modal cashc-modal"
             style={{ maxWidth: 900, width: "95%" }}
@@ -335,7 +374,8 @@ export function CashCollectModal({
             <div className="cashc-info">
               <Banknote size={17} />
               <span>
-                Наличная касса и карта ЮМ учитываются как <b>две отдельные кассы</b>.
+                Наличная касса и карты (ЮМ, В.М.) учитываются как <b>отдельные кассы</b>:
+                у каждой свой баланс, деньги не смешиваются.
                 Здесь показаны их новые поступления и расходы; сохранение ничего не списывает.
               </span>
             </div>
@@ -402,6 +442,11 @@ export function CashCollectModal({
                     <strong>+{fmt(daySummary.todayCardIncoming)} ₽</strong>
                     <small>Без уже сохранённых платежей</small>
                   </div>
+                  <div className="cashc-fact cashc-fact--card">
+                    <span><CreditCard size={15} /> В.М. к сдаче</span>
+                    <strong>+{fmt(daySummary.todayVmIncoming)} ₽</strong>
+                    <small>Вторая карта — свой счёт</small>
+                  </div>
                   <div className="cashc-fact cashc-fact--expense">
                     <span><ArrowUpRight size={15} /> Расходы всего</span>
                     <strong>−{fmt(daySummary.todayOutgoing)} ₽</strong>
@@ -425,7 +470,12 @@ export function CashCollectModal({
                   <div className="cashc-fact cashc-fact--card">
                     <span><CreditCard size={15} /> Остаток на ЮМ</span>
                     <strong>{fmt(daySummary.closingCardBalance)} ₽</strong>
-                    <small>Факт во второй кассе</small>
+                    <small>Факт на карте ЮМ</small>
+                  </div>
+                  <div className="cashc-fact cashc-fact--card">
+                    <span><CreditCard size={15} /> Остаток на В.М.</span>
+                    <strong>{fmt(daySummary.closingVmBalance)} ₽</strong>
+                    <small>Факт на второй карте</small>
                   </div>
                 </div>
 
@@ -441,7 +491,8 @@ export function CashCollectModal({
                           Новых поступлений для отметки нет
                         </div>
                       ) : dayItems.map((payment) => {
-                        const isCard = payment.kind === "card";
+                        const isVm = payment.kind === "vm_card";
+                        const isCard = payment.kind === "card" || isVm;
                         return (
                           <button
                             key={payment.paymentId}
@@ -453,7 +504,7 @@ export function CashCollectModal({
                               <span><b>ПЛ-{payment.number}</b> · {payment.counterparty}</span>
                               <em className={`cashc-kind cashc-kind--${isCard ? "card" : "cash"}`}>
                                 {isCard ? <CreditCard size={10} /> : <Banknote size={10} />}
-                                {isCard ? "Карта ЮМ" : "Наличные"}
+                                {isVm ? "Карта В.М." : isCard ? "Карта ЮМ" : "Наличные"}
                               </em>
                             </span>
                             <strong className={isCard ? "cashc-ledger__card" : undefined}>
@@ -474,14 +525,15 @@ export function CashCollectModal({
                       {dayExpenses.length === 0 ? (
                         <div className="cashc-ledger__empty">Расходов из двух касс не было</div>
                       ) : dayExpenses.map((expense) => {
-                        const isCard = expense.sourceKind === "card";
+                        const isVmExpense = expense.sourceKind === "vm_card";
+                        const isCard = expense.sourceKind === "card" || isVmExpense;
                         return (
                           <div key={`${expense.kind}-${expense.id}`} className="cashc-ledger__row">
                             <span className="cashc-ledger__payment">
                               <span><b>{expense.title}</b>{expense.comment ? ` · ${expense.comment}` : ""}</span>
                               <em className={`cashc-kind cashc-kind--${isCard ? "card" : "cash"}`}>
                                 {isCard ? <CreditCard size={10} /> : <Banknote size={10} />}
-                                {isCard ? "Карта ЮМ" : "Наличные"}
+                                {isVmExpense ? "Карта В.М." : isCard ? "Карта ЮМ" : "Наличные"}
                               </em>
                             </span>
                             <strong className={isCard ? "cashc-ledger__card-expense" : "cashc-ledger__expense"}>
@@ -499,6 +551,8 @@ export function CashCollectModal({
                   <span>{fmt(daySummary.todayIncoming)} ₽ наличными</span>
                   <b>+</b>
                   <span>{fmt(daySummary.todayCardIncoming)} ₽ на ЮМ</span>
+                  <b>+</b>
+                  <span>{fmt(daySummary.todayVmIncoming)} ₽ на В.М.</span>
                   <span className="cashc-equation__sep" aria-hidden="true" />
                   <strong>−{fmt(daySummary.todayOutgoing)} ₽ расходов:</strong>
                   <span>{fmt(daySummary.todayCashOutgoing)} ₽ наличными</span>
@@ -508,6 +562,7 @@ export function CashCollectModal({
                   <span>Остатки:</span>
                   <strong>{fmt(daySummary.closingBalance)} ₽ наличными</strong>
                   <strong>{fmt(daySummary.closingCardBalance)} ₽ на ЮМ</strong>
+                  <strong>{fmt(daySummary.closingVmBalance)} ₽ на В.М.</strong>
                   <span>сводка их не изменит</span>
                 </div>
 

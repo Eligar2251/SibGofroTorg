@@ -35,7 +35,9 @@ function round2(value: unknown): number {
 }
 
 function normalizeAccount(value: unknown): PurchaseAccount {
-  return value === "cash" || value === "ym_card" ? value : "bank";
+  return value === "cash" || value === "ym_card" || value === "vm_card"
+    ? value
+    : "bank";
 }
 
 function safeOzonUrl(value: unknown): string | null {
@@ -156,6 +158,7 @@ function migrationError(error: { code?: string; message?: string }): Error {
 function paymentAccount(type: unknown): PurchaseAccount {
   if (type === "cash") return "cash";
   if (type === "ym_card") return "ym_card";
+  if (type === "vm_card") return "vm_card";
   return "bank";
 }
 
@@ -163,6 +166,7 @@ function paymentAccount(type: unknown): PurchaseAccount {
 function accountPaymentType(account: PurchaseAccount): string {
   if (account === "cash") return "cash";
   if (account === "ym_card") return "ym_card";
+  if (account === "vm_card") return "vm_card";
   return "regular";
 }
 

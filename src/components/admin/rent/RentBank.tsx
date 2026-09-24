@@ -38,6 +38,7 @@ import {
   type RentPayment,
   type RentTenant,
 } from "@/lib/rent-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 export function RentBank({
   adminPath,
@@ -506,6 +507,9 @@ export function PaymentFormModal({
       ),
     [invoices, tenantId, payment]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   function pickTenant(id: string) {
     setTenantId(id);
@@ -583,7 +587,7 @@ export function PaymentFormModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+      <div className="admin-modal-overlay" data-admin="true">
       <div className="admin-modal" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
         <div className="admin-modal__head">
           <h3 className="admin-modal__title">

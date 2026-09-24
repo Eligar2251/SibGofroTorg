@@ -27,6 +27,7 @@ import { GlyphIcon } from "@/components/ui/Glyph";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
 import { useBodyLock } from "@/hooks/use-body-lock";
 import type { ClientRequest } from "@/lib/supabase-queries";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 /* ── Справочники ─────────────────────────────────────────── */
 
@@ -127,6 +128,9 @@ function RequestFormModal({
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState>(initial);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(onClose, !saving);
   const set = (key: keyof FormState) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -134,7 +138,7 @@ function RequestFormModal({
   const valid = form.customerName.trim() && form.subject.trim();
 
   return (
-    <div className="admin-modal-overlay" onClick={() => !saving && onClose()}>
+    <div className="admin-modal-overlay">
       <div
         className="admin-modal"
         style={{ maxWidth: "30rem" }}
@@ -338,6 +342,10 @@ export function ClientRequestsManager({
     }
     return c;
   }, [items]);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setClosing(null), Boolean(closing) && !saving);
+  useEscapeClose(() => setDeleting(null), Boolean(deleting) && !saving);
 
   async function callApi(
     fn: () => Promise<Response>,
@@ -782,9 +790,7 @@ export function ClientRequestsManager({
       {/* Модалка закрытия (Обработана / Отменена) */}
       {closing && (
         <div
-          className="admin-modal-overlay"
-          onClick={() => !saving && setClosing(null)}
-        >
+          className="admin-modal-overlay">
           <div
             className="admin-modal"
             onClick={(e) => e.stopPropagation()}
@@ -862,9 +868,7 @@ export function ClientRequestsManager({
       {/* Модалка удаления */}
       {deleting && (
         <div
-          className="admin-modal-overlay"
-          onClick={() => !saving && setDeleting(null)}
-        >
+          className="admin-modal-overlay">
           <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
             <div className="admin-modal__head">
               <h3 className="admin-modal__title">Удалить заявку?</h3>

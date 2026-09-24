@@ -37,6 +37,7 @@ import {
 import { TenantCardModal } from "./RentTenantCard";
 import { InvoiceFormModal } from "./RentInvoices";
 import { PaymentFormModal } from "./RentBank";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 const PERIOD_CHOICES = [1, 3, 6, 12];
 
@@ -429,6 +430,9 @@ export function TenantFormModal({
     inn: tenant?.inn || "",
     comment: tenant?.comment || "",
   }));
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   const set = (key: string, value: any) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -471,7 +475,7 @@ export function TenantFormModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+      <div className="admin-modal-overlay" data-admin="true">
       <div className="admin-modal" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
         <div className="admin-modal__head">
           <h3 className="admin-modal__title">

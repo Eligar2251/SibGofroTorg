@@ -15,7 +15,7 @@
 
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useWindowedList } from "@/hooks/use-windowed-list";
@@ -50,6 +50,9 @@ import {
   Recycle,
   Warehouse,
   CalendarClock,
+  Save,
+  Landmark,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
 import { useBodyLock } from "@/hooks/use-body-lock";
@@ -99,12 +102,16 @@ import {
   migrateWpDocItems,
   wpCollectMoneyEvents,
   wpDocDetailedTotals,
+  wpEventEffectiveDate,
   wpIntakeAwaitingWeight,
   wpIntakeCompleted,
+  WP_COMMON_ACCOUNT_LABEL,
+  wpIntakeTransportDone,
   wpItemsSummary,
   wpTypeLabel,
   wpUid,
   type WpAccount,
+  type WpAccountTransfer,
   type WpBalance,
   type WpBranch,
   type WpCounterparty,
@@ -113,6 +120,8 @@ import {
   type WpManualPayment,
   type WpMoneyEvent,
   type WpShipment,
+  type WpStockAdjustment,
+  type WpStockRow,
   type WpProduct,
   type WpTransportQueueDoc,
   type WpTypeOption,
@@ -128,6 +137,7 @@ import {
 const TABS = [
   { key: "days", label: "Дни и финансы", icon: Wallet },
   { key: "payments", label: "Платежи", icon: CreditCard },
+  { key: "bank", label: "Банк", icon: Landmark },
   { key: "intakes", label: "Приём", icon: ArrowDownLeft },
   { key: "shipments", label: "Продажи", icon: ArrowUpRight },
   { key: "stock", label: "Склад", icon: PackageOpen },
@@ -179,7 +189,15 @@ const KIND_BADGE: Record<WpMoneyEvent["kind"], { cls: string; label: string }> =
   shipment: { cls: "admin-badge admin-badge--teal", label: "Сдача" },
   manual: { cls: "admin-badge admin-badge--blue", label: "Платёж" },
   salary: { cls: "admin-badge admin-badge--indigo", label: "Зарплата" },
+  transfer: { cls: "admin-badge admin-badge--gray", label: "Перевод" },
 };
+
+/**
+ * Перевод между своими счетами проводится сразу: отметки «оплачено»
+ * у него нет, правится и удаляется он во вкладке «Банк».
+ */
+const TRANSFER_EVENT_HINT =
+  "Перевод между счетами макулатуры. Изменить или удалить его можно на вкладке «Банк» этого модуля.";
 
 /** Подсказка для событий-зарплат: их ведут на вкладке «Зарплаты» модуля. */
 const SALARY_EVENT_HINT =
@@ -191,6 +209,7 @@ const SALARY_EVENT_HINT =
  * только с записями макулатуры.
  */
 function apiUrlForEvent(e: WpMoneyEvent): string {
+  if (e.kind === "transfer") return `/api/admin/wp/account-transfers/${e.transferId}`;
   if (e.kind === "salary") return `/api/admin/wp/salaries/${e.id}`;
   if (e.kind === "intake") return `/api/admin/wp/intakes/${e.id}`;
   if (e.kind === "shipment") return `/api/admin/wp/shipments/${e.id}`;
@@ -630,6 +649,17 @@ interface Props {
   companyAddress?: string;
   /** Товары склада — выбор груза для своих точек маршрута. */
   stockProducts?: PickerProduct[];
+  /**
+   * Ручные правки остатка макулатуры (вкладка «Склад»): разница с расчётом
+   * «принято − продано». Приёмы и продажи продолжают двигать остаток
+   * поверх правки.
+   */
+  stockAdjustments?: WpStockAdjustment[];
+  /**
+   * Переводы денег между счетами модуля (безнал ↔ наличка): внутреннее
+   * движение, в журнале «Банк» и в отчёте по дням видно обе стороны.
+   */
+  accountTransfers?: WpAccountTransfer[];
 }
 
 export function WastepaperAccountManager(props: Props) {
@@ -651,6 +681,10 @@ export function WastepaperAccountManager(props: Props) {
       "transports",
       // Зарплаты «с макулатуры» списываются из наличных этого модуля.
       "salaries",
+      // Ручные правки остатка — вкладка «Склад» у всех открыта актуальной.
+      "wp_stock_adjustments",
+      // Переводы между счетами — журнал «Банк» обновляется сразу.
+      "wp_account_transfers",
     ],
     pollIntervalMs: 30_000,
   });
@@ -667,6 +701,12 @@ export function WastepaperAccountManager(props: Props) {
   const [salaries, setSalaries] = useState<Salary[]>(props.salaries ?? []);
   const canEditSalaries = props.canEditSalaries !== false;
   const [products, setProducts] = useState(props.products);
+  const [stockAdjustments, setStockAdjustments] = useState<WpStockAdjustment[]>(
+    props.stockAdjustments ?? []
+  );
+  const [accountTransfers, setAccountTransfers] = useState<WpAccountTransfer[]>(
+    props.accountTransfers ?? []
+  );
 
   // Виды макулатуры для форм и подписей — из справочника модуля.
   const typeCatalog = useMemo<WpTypeCatalog>(
@@ -700,6 +740,9 @@ export function WastepaperAccountManager(props: Props) {
   const [counterpartyModal, setCounterpartyModal] = useState<
     { mode: "create" } | { mode: "edit"; item: WpCounterparty } | null
   >(null);
+  const [transferModal, setTransferModal] = useState<
+    { mode: "create" } | { mode: "edit"; item: WpAccountTransfer } | null
+  >(null);
 
 
   // После router.refresh() сервер отдаёт свежие данные
@@ -709,6 +752,14 @@ export function WastepaperAccountManager(props: Props) {
   useEffect(() => setManualPayments(props.manualPayments), [props.manualPayments]);
   useEffect(() => setSalaries(props.salaries ?? []), [props.salaries]);
   useEffect(() => setProducts(props.products), [props.products]);
+  useEffect(
+    () => setStockAdjustments(props.stockAdjustments ?? []),
+    [props.stockAdjustments]
+  );
+  useEffect(
+    () => setAccountTransfers(props.accountTransfers ?? []),
+    [props.accountTransfers]
+  );
 
   // Сохраняем вкладку в URL (?tab=...), чтобы ссылки с дашборда и
   // обновление страницы не сбрасывали рабочее место.
@@ -727,13 +778,23 @@ export function WastepaperAccountManager(props: Props) {
   /* ── Производные данные ── */
 
   const events = useMemo(
-    () => wpCollectMoneyEvents(intakes, shipments, manualPayments, salaries),
-    [intakes, shipments, manualPayments, salaries]
+    () =>
+      wpCollectMoneyEvents(
+        intakes,
+        shipments,
+        manualPayments,
+        salaries,
+        accountTransfers
+      ),
+    [intakes, shipments, manualPayments, salaries, accountTransfers]
   );
   const today = todayStr();
   const balance = useMemo(() => getWpBalance(events, today), [events, today]);
   const forecast = useMemo(() => getWpForecast(events), [events]);
-  const stock = useMemo(() => getWpStock(intakes, shipments), [intakes, shipments]);
+  const stock = useMemo(
+    () => getWpStock(intakes, shipments, stockAdjustments),
+    [intakes, shipments, stockAdjustments]
+  );
 
   /** Суммарный остаток макулатуры на складе — для плашки баланса. */
   const stockTotalKg = useMemo(
@@ -795,6 +856,13 @@ export function WastepaperAccountManager(props: Props) {
   }
 
   async function toggleEventPaid(e: WpMoneyEvent) {
+    // Перевод между счетами проводится в момент записи: отметки об оплате
+    // у него нет, менять нужно сам перевод (вкладка «Банк»).
+    if (e.kind === "transfer") {
+      setActionError("");
+      setNotice(TRANSFER_EVENT_HINT);
+      return;
+    }
     // Зарплата проводится через API зарплат модуля (/api/admin/wp/salaries).
     if (e.kind === "salary" && !canEditSalaries) {
       setActionError("");
@@ -860,7 +928,46 @@ export function WastepaperAccountManager(props: Props) {
     }
   }
 
+  /**
+   * Пометка «перевозка выполнена» — груз вывезли.
+   *
+   * Обычно ставится сама: завершили рейс с точкой приёма — пометка на
+   * месте. Вручную нужна, когда груз уехал вне рейса (своя машина,
+   * самовывоз) или когда пометку надо снять. Приём с пометкой уходит из
+   * доставок и очереди перевозок, дальше по нему только вес и оплата.
+   */
+  async function toggleIntakeTransportDone(item: WpIntake) {
+    const to = !wpIntakeTransportDone(item);
+    const ok = await callApi(
+      () =>
+        fetch(`/api/admin/wp/intakes/${item.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transportDone: to }),
+        }),
+      "Не удалось обновить пометку о перевозке"
+    );
+    if (ok) {
+      setNotice(
+        to
+          ? `Приём ПМ-${item.number}: перевозка выполнена — приём убран из доставок.`
+          : `Приём ПМ-${item.number}: пометка снята, приём снова в очереди перевозок.`
+      );
+    }
+  }
+
   function openEventEdit(e: WpMoneyEvent) {
+    if (e.kind === "transfer") {
+      // Обе стороны перевода ведут к одной записи — открываем её.
+      const item = accountTransfers.find((t) => t.id === e.transferId);
+      if (item) {
+        setFormError("");
+        setTransferModal({ mode: "edit", item });
+      } else {
+        setNotice(TRANSFER_EVENT_HINT);
+      }
+      return;
+    }
     if (e.kind === "salary") {
       // Запись зарплаты редактируется на вкладке «Зарплаты» модуля.
       setActionError("");
@@ -1010,6 +1117,23 @@ export function WastepaperAccountManager(props: Props) {
         />
       )}
 
+      {tab === "bank" && (
+        <BankTab
+          events={events}
+          balance={balance}
+          transfers={accountTransfers}
+          onNewTransfer={() => {
+            setFormError("");
+            setTransferModal({ mode: "create" });
+          }}
+          onEditTransfer={(item) => {
+            setFormError("");
+            setTransferModal({ mode: "edit", item });
+          }}
+          onEditEvent={openEventEdit}
+        />
+      )}
+
       {tab === "intakes" && (
         <IntakesTab
           intakes={intakes}
@@ -1032,10 +1156,23 @@ export function WastepaperAccountManager(props: Props) {
             })
           }
           onToggleTransport={(item) => toggleDocTransport("intakes", item)}
+          onToggleTransportDone={toggleIntakeTransportDone}
         />
       )}
 
-      {tab === "stock" && <StockTab stock={stock} typeLabels={typeLabels} />}
+      {tab === "stock" && (
+        <StockTab
+          stock={stock}
+          typeLabels={typeLabels}
+          catalog={typeCatalog}
+          adjustments={stockAdjustments}
+          onSaved={(items) => {
+            setStockAdjustments(items);
+            setNotice("Остаток на складе сохранён");
+          }}
+          onFailed={(message) => setActionError(message)}
+        />
+      )}
 
       {tab === "shipments" && (
         <ShipmentsTab
@@ -1243,6 +1380,53 @@ export function WastepaperAccountManager(props: Props) {
         />
       )}
 
+      {transferModal && (
+        <TransferModal
+          mode={transferModal.mode}
+          item={transferModal.mode === "edit" ? transferModal.item : null}
+          balance={balance}
+          saving={saving}
+          error={formError}
+          onClose={() => setTransferModal(null)}
+          onSubmit={async (form) => {
+            const isEdit = transferModal.mode === "edit";
+            const ok = await callApi(
+              () =>
+                fetch(
+                  isEdit
+                    ? `/api/admin/wp/account-transfers/${transferModal.item.id}`
+                    : "/api/admin/wp/account-transfers",
+                  {
+                    method: isEdit ? "PATCH" : "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(form),
+                  }
+                ),
+              isEdit ? "Не удалось сохранить перевод" : "Не удалось создать перевод"
+            );
+            if (ok) {
+              setTransferModal(null);
+              setNotice(isEdit ? "Перевод сохранён" : "Перевод проведён");
+            }
+          }}
+          onDelete={async () => {
+            if (transferModal.mode !== "edit") return;
+            if (!confirm(`Удалить перевод №${transferModal.item.number} безвозвратно?`)) return;
+            const ok = await callApi(
+              () =>
+                fetch(`/api/admin/wp/account-transfers/${transferModal.item.id}`, {
+                  method: "DELETE",
+                }),
+              "Не удалось удалить перевод"
+            );
+            if (ok) {
+              setTransferModal(null);
+              setNotice("Перевод удалён");
+            }
+          }}
+        />
+      )}
+
       {paymentModal && (
         <PaymentModal
           mode={paymentModal.mode}
@@ -1378,9 +1562,10 @@ function WpHero({
         <div className="wpa-mobile__caption"><Wallet size={18} /> Общий баланс <span>{fmtDate(today)}</span></div>
         <strong className="wpa-mobile__total">{fmtMoney(balance.total)}</strong>
         <dl className="wpa-mobile__accounts">
-          <div><dt><Banknote size={16} /> Наличные</dt><dd>{fmtMoney(balance.cash)}</dd></div>
-          <div><dt><CreditCard size={16} /> Безналичные</dt><dd>{fmtMoney(balance.bank)}</dd></div>
-          <div><dt><Wallet size={16} /> Сторонние пополнения</dt><dd>{fmtMoney(balance.third_party)}</dd></div>
+          <div><dt><Wallet size={16} /> {WP_COMMON_ACCOUNT_LABEL}</dt><dd>{fmtMoney(balance.common)}</dd></div>
+          <div><dt><Banknote size={16} /> · Наличка</dt><dd>{fmtMoney(balance.cash)}</dd></div>
+          <div><dt><CreditCard size={16} /> · Безнал</dt><dd>{fmtMoney(balance.bank)}</dd></div>
+          <div><dt><HandCoins size={16} /> Сторонние пополнения</dt><dd>{fmtMoney(balance.third_party)}</dd></div>
         </dl>
       </div>
       <div className="wpa-mobile__actions">
@@ -1410,18 +1595,31 @@ function WpHero({
       </div>
 
       <div className="wpa-balance__grid">
+        {/* Наличка и безнал — один денежный счёт макулатуры: показываем
+            общим остатком, а ниже расшифровка, чем он наполнен. */}
         <div className="wpa-balance__cell">
           <div className="wpa-balance__label">
-            <Banknote size={13} /> Наличка сейчас
+            <Wallet size={13} /> {WP_COMMON_ACCOUNT_LABEL}
           </div>
-          <div className="wpa-balance__value">{fmtMoney(balance.cash)}</div>
+          <div className="wpa-balance__value">{fmtMoney(balance.common)}</div>
+          <div className="wpa-balance__item">
+            <div className="wpa-balance__label">
+              <Banknote size={13} /> Наличка
+            </div>
+            <div className="wpa-balance__value">{fmtMoney(balance.cash)}</div>
+          </div>
+          <div className="wpa-balance__item">
+            <div className="wpa-balance__label">
+              <CreditCard size={13} /> Безнал
+            </div>
+            <div className="wpa-balance__value">{fmtMoney(balance.bank)}</div>
+          </div>
         </div>
         <div className="wpa-balance__cell">
           <div className="wpa-balance__label">
-            <CreditCard size={13} /> Безнал сейчас
+            <HandCoins size={13} /> Сторонние пополнения
           </div>
-          <div className="wpa-balance__value">{fmtMoney(balance.bank)}</div>
-          <div className="wpa-balance__item"><div className="wpa-balance__label"><Wallet size={13} /> Сторонние пополнения</div><div className="wpa-balance__value">{fmtMoney(balance.third_party)}</div></div>
+          <div className="wpa-balance__value">{fmtMoney(balance.third_party)}</div>
         </div>
         <div className="wpa-balance__cell wpa-balance__cell--total wpa-balance__cell--accent">
           <div className="wpa-balance__label">
@@ -1925,6 +2123,8 @@ function PaymentsTab({
     let outSum = 0;
     for (const e of filtered) {
       if (!e.isPaid) continue;
+      // Перевод между своими счетами — не внешний приход и не расход.
+      if (e.internal) continue;
       if (e.direction === "incoming") inSum += e.amount;
       else outSum += e.amount;
     }
@@ -2087,20 +2287,29 @@ function PaymentsTab({
                     )}
                   </WpCell>
                   <WpCell style={{ whiteSpace: "nowrap" }}>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--ghost admin-btn--sm"
-                      onClick={() => onTogglePaid(e)}
-                      title={
-                        e.kind === "salary"
-                          ? SALARY_EVENT_HINT
-                          : e.isPaid
-                            ? "Снять отметку об оплате"
-                            : "Отметить оплаченным"
-                      }
-                    >
-                      {e.isPaid ? <RotateCcw size={13} /> : <Check size={13} />}
-                    </button>
+                    {e.kind === "transfer" ? (
+                      <span
+                        className="admin-badge admin-badge--gray"
+                        title={TRANSFER_EVENT_HINT}
+                      >
+                        проведён
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        onClick={() => onTogglePaid(e)}
+                        title={
+                          e.kind === "salary"
+                            ? SALARY_EVENT_HINT
+                            : e.isPaid
+                              ? "Снять отметку об оплате"
+                              : "Отметить оплаченным"
+                        }
+                      >
+                        {e.isPaid ? <RotateCcw size={13} /> : <Check size={13} />}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
@@ -2145,6 +2354,7 @@ function IntakesTab({
   onCopy,
   onTogglePaid,
   onToggleTransport,
+  onToggleTransportDone,
 }: {
   intakes: WpIntake[];
   typeLabels: Record<string, string>;
@@ -2153,6 +2363,7 @@ function IntakesTab({
   onCopy: (item: WpIntake) => void;
   onTogglePaid: (item: WpIntake) => void;
   onToggleTransport: (item: WpIntake) => void;
+  onToggleTransportDone: (item: WpIntake) => void;
 }) {
   const [query, setQuery] = useState("");
   // Буквы в поиске появляются сразу, перефильтровка длинного списка —
@@ -2411,26 +2622,56 @@ function IntakesTab({
                   <WpCell style={{ whiteSpace: "nowrap" }}>
                     {i.status === "cancelled" ? (
                       <span className="admin-hint">—</span>
-                    ) : i.needsTransport ? (
+                    ) : wpIntakeTransportDone(i) ? (
+                      // Груз вывезли: приём больше не показывается в
+                      // доставках и очереди перевозок, дальше — вес и оплата.
                       <button
                         type="button"
-                        className="admin-badge admin-badge--blue"
+                        className="admin-badge admin-badge--green"
                         style={{ border: 0, cursor: "pointer" }}
-                        onClick={() => onToggleTransport(i)}
-                        title="В очереди перевозок (забор груза). Нажмите, чтобы снять."
+                        onClick={() => onToggleTransportDone(i)}
+                        title="Перевозка выполнена — груз вывезли, приём не показывается в доставках. Нажмите, чтобы снять пометку."
                       >
-                        <Truck size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />{" "}
-                        Забор{i.transportPlannedDate ? ` · ${fmtDate(i.transportPlannedDate)}` : ""}
+                        <Check size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
+                        Перевозка выполнена
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--ghost admin-btn--sm"
-                        onClick={() => onToggleTransport(i)}
-                        title="Отметить: забрать нашим транспортом"
-                      >
-                        <Truck size={13} /> В перевозку
-                      </button>
+                      <>
+                        {i.needsTransport ? (
+                          <button
+                            type="button"
+                            className="admin-badge admin-badge--blue"
+                            style={{ border: 0, cursor: "pointer" }}
+                            onClick={() => onToggleTransport(i)}
+                            title="В очереди перевозок (забор груза). Нажмите, чтобы снять."
+                          >
+                            <Truck size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />{" "}
+                            Забор
+                            {i.transportPlannedDate ? ` · ${fmtDate(i.transportPlannedDate)}` : ""}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--ghost admin-btn--sm"
+                            onClick={() => onToggleTransport(i)}
+                            title="Отметить: забрать нашим транспортом"
+                          >
+                            <Truck size={13} /> В перевозку
+                          </button>
+                        )}
+                        {/* Ручная пометка «груз вывезли» — когда приём уехал
+                            вне рейса или рейс завершили без пометки. */}
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost admin-btn--sm"
+                          style={{ marginLeft: 4 }}
+                          onClick={() => onToggleTransportDone(i)}
+                          aria-label={`ПМ-${i.number}: отметить «перевозка выполнена»`}
+                          title="Груз вывезли — отметить «перевозка выполнена». Приём уйдёт из доставок, останется работа по весу и оплате."
+                        >
+                          <Check size={13} />
+                        </button>
+                      </>
                     )}
                   </WpCell>
                   <WpCell style={{ whiteSpace: "nowrap" }}>
@@ -2530,7 +2771,10 @@ function ShipmentsTab({
         <div className="admin-card" style={{ marginBottom: 14 }}>
           <div className="admin-card__head">
             <span className="admin-card__title">Остаток на площадке</span>
-            <span className="admin-hint">принято − сдано, по действующим документам</span>
+            <span className="admin-hint">
+              принято − сдано, по действующим документам; продажи «без списания»
+              не вычитаем, ручные правки — на вкладке «Склад»
+            </span>
           </div>
           <div
             className="admin-card__pad"
@@ -2652,6 +2896,16 @@ function ShipmentsTab({
                     {s.acceptedWeightKg > 0 && (
                       <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                         принято {fmtKg(s.acceptedWeightKg)}
+                      </div>
+                    )}
+                    {s.skipStock && s.status !== "cancelled" && (
+                      <div style={{ marginTop: 4 }}>
+                        <span
+                          className="admin-badge admin-badge--muted"
+                          title="Деньги проводим, остаток макулатуры на площадке не уменьшаем"
+                        >
+                          Без списания
+                        </span>
                       </div>
                     )}
                   </WpCell>
@@ -2964,6 +3218,11 @@ interface IntakeFormPayload {
    * ожидание взвешивания» (вес вписан).
    */
   awaitingWeight: boolean;
+  /**
+   * Перевозка выполнена: груз вывезли, приём не показывается в доставках
+   * и очереди перевозок. Сохранение карточки её не снимает.
+   */
+  transportDone: boolean;
 }
 
 function IntakeModal({
@@ -3021,6 +3280,8 @@ function IntakeModal({
     saveCounterparty: true,
     needsTransport: isCopy ? false : item?.needsTransport || false,
     transportPlannedDate: isCopy ? "" : item?.transportPlannedDate || "",
+    // Копия приёма — новый документ, по нему ещё ничего не возили.
+    transportDone: isCopy ? false : item?.transportDone === true,
   }));
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -3152,6 +3413,8 @@ function IntakeModal({
               // Карточку приёма открыли, чтобы вписать вес — сохранение
               // снимает пометку «приёмка выполнена · ожидание взвешивания».
               awaitingWeight: false,
+              // «Перевозка выполнена» — наоборот, переживает сохранение.
+              transportDone: form.transportDone,
             });
           }}
         >
@@ -3218,7 +3481,26 @@ function IntakeModal({
                 />
                 Забрать нашим транспортом
               </label>
+              <label
+                className="deal-delivery-block__toggle"
+                title="Груз вывезли — приём не показывается в доставках и очереди перевозок"
+              >
+                <input
+                  type="checkbox"
+                  checked={form.transportDone}
+                  onChange={(e) => set("transportDone", e.target.checked)}
+                />
+                Перевозка выполнена
+              </label>
             </div>
+
+            {form.transportDone && (
+              <p className="deal-delivery-block__empty" style={{ marginTop: 8 }}>
+                Перевозка выполнена: приём не показывается в доставках и очереди
+                перевозок, дальше по нему только вес и оплата. Обычно пометка
+                ставится сама — когда завершают рейс с этим приёмом.
+              </p>
+            )}
 
             {form.needsTransport ? (
               <div className="deal-delivery-block__body">
@@ -3405,6 +3687,8 @@ interface ShipmentFormPayload {
   needsTransport: boolean;
   /** На когда планируем отвоз (пусто = как можно скорее). */
   transportPlannedDate: string | null;
+  /** TRUE — деньги проводим, а остаток макулатуры на складе не уменьшаем. */
+  skipStock: boolean;
 }
 
 function ShipmentModal({
@@ -3461,6 +3745,9 @@ function ShipmentModal({
     saveCounterparty: true,
     needsTransport: isCopy ? false : item?.needsTransport || false,
     transportPlannedDate: isCopy ? "" : item?.transportPlannedDate || "",
+    // Пометку наследуем при правке; в копии сбрасываем: новая сдача
+    // обычно уже с нашей площадки.
+    skipStock: isCopy ? false : item?.skipStock || false,
   }));
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -3575,6 +3862,7 @@ function ShipmentModal({
               transportPlannedDate: form.needsTransport
                 ? form.transportPlannedDate || null
                 : null,
+              skipStock: form.skipStock,
             });
           }}
         >
@@ -3676,6 +3964,34 @@ function ShipmentModal({
             mode="shipment"
             onChange={onItemsChange}
           />
+
+          <div className="deal-delivery-block">
+            <div className="deal-delivery-block__head">
+              <PackageOpen size={14} />
+              <span>Склад макулатуры</span>
+              <label className="deal-delivery-block__toggle">
+                <input
+                  type="checkbox"
+                  checked={form.skipStock}
+                  onChange={(e) => set("skipStock", e.target.checked)}
+                />
+                Не списывать со склада
+              </label>
+            </div>
+            {form.skipStock ? (
+              <p className="deal-delivery-block__empty" style={{ marginTop: 0 }}>
+                Деньги по сдаче проводим как обычно, а остаток макулатуры на
+                площадке НЕ уменьшаем — груз ушёл не с нашей площадки (перегруз,
+                чужой склад). Вес останется в графе «Продано» с пометкой
+                «без списания» на вкладке «Склад».
+              </p>
+            ) : (
+              <p className="deal-delivery-block__empty">
+                Обычно: отгруженный вес уходит с остатка на площадке. Включите,
+                если этот объём на нашем складе не числился.
+              </p>
+            )}
+          </div>
 
           <div className="admin-field">
             <label className="admin-label">
@@ -3863,6 +4179,9 @@ function PaymentModal({
     isPaid: item ? item.isPaid : true,
     comment: item?.comment || "",
   });
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(onClose, !saving);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -4384,7 +4703,1008 @@ function DebtsTab({ intakes, counterparties, onEditCounterparty }: { intakes: Wp
   </div>;
 }
 
-function StockTab({ stock, typeLabels }: { stock: ReturnType<typeof getWpStock>; typeLabels: Record<string, string> }) {
+/* ═══════════════════════════════════════════════════════
+   ВКЛАДКА «СКЛАД»: остаток макулатуры и его ручная правка
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Инлайн-правка остатка по виду — так же, как остаток товара в товарном
+ * учёте: вписал фактическое количество, нажал «Сохранить».
+ *
+ * Сохраняем не абсолют, а разницу с расчётом по документам (сервер
+ * считает её сам от свежих приёмов/продаж) — поэтому правка не
+ * «замораживает» склад: следующие приёмы и продажи двигают остаток
+ * поверх неё.
+ */
+function WpStockQtyEditor({
+  row,
+  onSaved,
+  onFailed,
+}: {
+  row: WpStockRow;
+  onSaved: (items: WpStockAdjustment[]) => void;
+  onFailed: (message: string) => void;
+}) {
+  const [value, setValue] = useState(String(row.stockKg));
+  const [savedValue, setSavedValue] = useState(row.stockKg);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  // Пока курсор в поле — внешние обновления (Realtime) его не затирают.
+  const typingRef = useRef(false);
+
+  const parsed = value.trim() === "" ? NaN : Number(value.replace(",", "."));
+  const dirty = Number.isFinite(parsed) && Math.abs(parsed - savedValue) > 0.049;
+
+  useEffect(() => {
+    if (typingRef.current) return;
+    setValue(String(row.stockKg));
+    setSavedValue(row.stockKg);
+  }, [row.stockKg]);
+
+  async function save() {
+    if (!dirty || saving) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      const res = await fetch("/api/admin/wp/stock", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wastepaperType: row.wastepaperType,
+          stockKg: Math.round(parsed * 1000) / 1000,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        onFailed(body.error || "Не удалось сохранить остаток");
+        return;
+      }
+      setValue(String(Math.round(parsed * 1000) / 1000));
+      setSavedValue(parsed);
+      setSaved(true);
+      onSaved(Array.isArray(body.items) ? body.items : []);
+      window.setTimeout(() => setSaved(false), 1400);
+    } catch {
+      onFailed("Не удалось сохранить остаток");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Снять правку — остаток снова считается только по документам. */
+  async function reset() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/wp/stock", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wastepaperType: row.wastepaperType }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        onFailed(body.error || "Не удалось снять правку остатка");
+        return;
+      }
+      onSaved(Array.isArray(body.items) ? body.items : []);
+    } catch {
+      onFailed("Не удалось снять правку остатка");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "grid", justifyItems: "end", gap: 4 }}>
+      <div className="stock-inline-editor">
+        <input
+          type="number"
+          step="0.1"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onFocus={() => {
+            typingRef.current = true;
+          }}
+          onBlur={() => {
+            typingRef.current = false;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void save();
+            }
+          }}
+          aria-label={`Фактический остаток: ${row.wastepaperType}`}
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving || !dirty}
+          title="Сохранить остаток"
+        >
+          {saving ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : saved ? (
+            <Check size={13} />
+          ) : (
+            <Save size={13} />
+          )}
+        </button>
+      </div>
+      {row.adjustmentKg !== 0 && (
+        <button
+          type="button"
+          className="admin-btn admin-btn--ghost admin-btn--sm"
+          onClick={reset}
+          disabled={saving}
+          title="Убрать ручную правку — остаток снова считается по документам"
+        >
+          <RotateCcw size={12} /> Снять правку
+        </button>
+      )}
+    </div>
+  );
+}
+
+function StockTab({
+  stock,
+  typeLabels,
+  catalog,
+  adjustments,
+  onSaved,
+  onFailed,
+}: {
+  stock: WpStockRow[];
+  typeLabels: Record<string, string>;
+  catalog: WpTypeCatalog;
+  adjustments: WpStockAdjustment[];
+  onSaved: (items: WpStockAdjustment[]) => void;
+  onFailed: (message: string) => void;
+}) {
   const total = stock.reduce((sum, row) => sum + Math.max(0, row.stockKg), 0);
-  return <div><div className="admin-card" style={{ marginBottom: 14 }}><div className="admin-card__head"><span className="admin-card__title">Фактический склад макулатуры</span><strong>{fmtKg(total)}</strong></div><div className="admin-card__pad"><p className="admin-hint">На склад попадает фактически принятое количество, а не вес к оплате.</p></div></div><div className="admin-table-wrap"><WpTable className="admin-table"><WpHead><WpRow><WpHeading>Вид макулатуры</WpHeading><WpHeading className="wp-cell--num">Принято фактически</WpHeading><WpHeading className="wp-cell--num">Продано / отгружено</WpHeading><WpHeading className="wp-cell--num">Остаток</WpHeading></WpRow></WpHead><WpBody>{stock.map((row) => <WpRow key={row.wastepaperType}><WpCell>{wpTypeLabel(row.wastepaperType, typeLabels)}</WpCell><WpCell className="wp-cell--num">{fmtKg(row.intakeKg)}</WpCell><WpCell className="wp-cell--num">{fmtKg(row.shipmentKg)}</WpCell><WpCell className="wp-cell--num" style={{fontWeight:700}}>{fmtKg(Math.max(0,row.stockKg))}</WpCell></WpRow>)}</WpBody></WpTable></div></div>;
+  const adjByType = useMemo(
+    () => new Map(adjustments.map((a) => [a.wastepaperType, a])),
+    [adjustments]
+  );
+  // Виды справочника, по которым документов ещё не было: правку по ним
+  // можно внести отдельно (строка появится в таблице после сохранения).
+  const missingOptions = catalog.options.filter(
+    (o) => !stock.some((row) => row.wastepaperType === o.id)
+  );
+  const [addType, setAddType] = useState(missingOptions[0]?.id || "");
+  const [addValue, setAddValue] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
+
+  // Вид после сохранения попал в таблицу — выбираем следующий свободный.
+  useEffect(() => {
+    if (missingOptions.length === 0) return;
+    if (!missingOptions.some((o) => o.id === addType)) setAddType(missingOptions[0].id);
+  }, [missingOptions, addType]);
+
+  const addParsed =
+    addValue.trim() === "" ? NaN : Number(addValue.replace(",", "."));
+  const addValid = addType !== "" && Number.isFinite(addParsed) && addParsed >= 0;
+
+  async function addAdjustment() {
+    if (!addValid || addSaving) return;
+    setAddSaving(true);
+    try {
+      const res = await fetch("/api/admin/wp/stock", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wastepaperType: addType,
+          stockKg: Math.round(addParsed * 1000) / 1000,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        onFailed(body.error || "Не удалось сохранить остаток");
+        return;
+      }
+      setAddValue("");
+      onSaved(Array.isArray(body.items) ? body.items : []);
+    } catch {
+      onFailed("Не удалось сохранить остаток");
+    } finally {
+      setAddSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="admin-card" style={{ marginBottom: 14 }}>
+        <div className="admin-card__head">
+          <span className="admin-card__title">Фактический склад макулатуры</span>
+          <strong>{fmtKg(total)}</strong>
+        </div>
+        <div className="admin-card__pad" style={{ display: "grid", gap: 6 }}>
+          <p className="admin-hint" style={{ margin: 0 }}>
+            На склад попадает фактически принятое количество, а не вес к оплате.
+            Продажи с пометкой «Не списывать со склада» остаток не уменьшают —
+            такой вес виден в графе «Продано» отдельной строкой.
+          </p>
+          <p className="admin-hint" style={{ margin: 0 }}>
+            Остаток можно поправить руками: впишите фактическое количество в
+            последнем столбце и нажмите <strong>Сохранить</strong>. Запомнится
+            разница с расчётом — новые приёмы и продажи будут считаться поверх
+            правки, а не вместо неё.
+          </p>
+        </div>
+      </div>
+
+      <div className="admin-table-wrap">
+        <WpTable className="admin-table">
+          <WpHead>
+            <WpRow>
+              <WpHeading>Вид макулатуры</WpHeading>
+              <WpHeading className="wp-cell--num">Принято фактически</WpHeading>
+              <WpHeading className="wp-cell--num">Продано / отгружено</WpHeading>
+              <WpHeading className="wp-cell--num">Ручная правка</WpHeading>
+              <WpHeading className="wp-cell--num">Остаток</WpHeading>
+              <WpHeading className="wp-cell--num">Фактический остаток, кг</WpHeading>
+            </WpRow>
+          </WpHead>
+          <WpBody>
+            {stock.map((row) => {
+              const adj = adjByType.get(row.wastepaperType);
+              return (
+                <WpRow key={row.wastepaperType}>
+                  <WpCell>{wpTypeLabel(row.wastepaperType, typeLabels)}</WpCell>
+                  <WpCell className="wp-cell--num">{fmtKg(row.intakeKg)}</WpCell>
+                  <WpCell className="wp-cell--num">
+                    {fmtKg(row.shipmentKg)}
+                    {row.skippedShipmentKg > 0 && (
+                      <div
+                        style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}
+                        title="Продажи с пометкой «Не списывать со склада»: деньги прошли, остаток не двигали"
+                      >
+                        без списания {fmtKg(row.skippedShipmentKg)}
+                      </div>
+                    )}
+                  </WpCell>
+                  <WpCell className="wp-cell--num">
+                    {row.adjustmentKg === 0 ? (
+                      <span className="admin-hint">—</span>
+                    ) : (
+                      <span
+                        style={{ fontWeight: 700 }}
+                        title={
+                          adj
+                            ? `${adj.updatedBy ? `${adj.updatedBy} · ` : ""}${
+                                adj.updatedAt ? fmtDate(adj.updatedAt.slice(0, 10)) : ""
+                              }${adj.note ? ` · ${adj.note}` : ""}`
+                            : undefined
+                        }
+                      >
+                        {row.adjustmentKg > 0 ? "+" : "−"}
+                        {fmtKg(Math.abs(row.adjustmentKg))}
+                      </span>
+                    )}
+                  </WpCell>
+                  <WpCell className="wp-cell--num" style={{ fontWeight: 700 }}>
+                    {fmtKg(Math.max(0, row.stockKg))}
+                    {row.stockKg < 0 && (
+                      <div style={{ color: "var(--adm-rust)", fontSize: "0.8rem", marginTop: 3 }}>
+                        минус: продано больше, чем принято
+                      </div>
+                    )}
+                  </WpCell>
+                  <WpCell className="wp-cell--num">
+                    <WpStockQtyEditor row={row} onSaved={onSaved} onFailed={onFailed} />
+                  </WpCell>
+                </WpRow>
+              );
+            })}
+          </WpBody>
+        </WpTable>
+      </div>
+
+      {missingOptions.length > 0 && (
+        <div className="admin-card" style={{ marginTop: 14 }}>
+          <div className="admin-card__head">
+            <span className="admin-card__title">Вписать остаток по другому виду</span>
+          </div>
+          <div className="admin-card__pad">
+            <p className="admin-hint" style={{ marginTop: 0 }}>
+              По этому виду документов ещё не было — укажите, сколько его лежит
+              на площадке, и он появится в таблице выше.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div className="admin-field" style={{ minWidth: 220, marginBottom: 0 }}>
+                <label className="admin-label">Вид макулатуры</label>
+                <select
+                  className="admin-select"
+                  value={addType}
+                  onChange={(e) => setAddType(e.target.value)}
+                >
+                  {missingOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="admin-field" style={{ width: 150, marginBottom: 0 }}>
+                <label className="admin-label">Количество, кг</label>
+                <input
+                  className="admin-input"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={addValue}
+                  onChange={(e) => setAddValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void addAdjustment();
+                    }
+                  }}
+                  placeholder="0"
+                />
+              </div>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                onClick={addAdjustment}
+                disabled={!addValid || addSaving}
+              >
+                {addSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}{" "}
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   ВКЛАДКА «БАНК»: журнал всех движений по счетам
+   ═══════════════════════════════════════════════════════ */
+
+/** Строка журнала: движение + остаток после него. */
+interface BankJournalRow {
+  event: WpMoneyEvent;
+  effDate: string;
+  /** Остаток счёта операции после её проведения. */
+  accountAfter: number | null;
+  /** Общий остаток денег модуля после её проведения. */
+  totalAfter: number | null;
+}
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function BankTab({
+  events,
+  balance,
+  transfers,
+  onNewTransfer,
+  onEditTransfer,
+  onEditEvent,
+}: {
+  events: WpMoneyEvent[];
+  balance: WpBalance;
+  transfers: WpAccountTransfer[];
+  onNewTransfer: () => void;
+  onEditTransfer: (item: WpAccountTransfer) => void;
+  onEditEvent: (e: WpMoneyEvent) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [account, setAccount] = useState<"all" | WpAccount>("all");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [onlyTransfers, setOnlyTransfers] = useState(false);
+
+  /**
+   * Хронология движений с нарастающим остатком. Остаток считаем по ВСЕМ
+   * проведённым операциям, а не по отфильтрованным: фильтр по счёту или
+   * периоду меняет список строк, но не остаток в них.
+   */
+  const journal = useMemo<BankJournalRow[]>(() => {
+    const sorted = events
+      .filter((e) => !e.cancelled)
+      .map((e) => ({ e, effDate: wpEventEffectiveDate(e) }))
+      .filter((r) => r.effDate)
+      .sort(
+        (a, b) =>
+          a.effDate.localeCompare(b.effDate) ||
+          a.e.number - b.e.number ||
+          a.e.id.localeCompare(b.e.id)
+      );
+    const acc: Record<WpAccount, number> = { cash: 0, bank: 0, third_party: 0 };
+    const rows = sorted.map(({ e, effDate }) => {
+      let accountAfter: number | null = null;
+      let totalAfter: number | null = null;
+      if (e.isPaid) {
+        acc[e.account] += e.direction === "incoming" ? e.amount : -e.amount;
+        accountAfter = roundMoney(acc[e.account]);
+        totalAfter = roundMoney(acc.cash + acc.bank + acc.third_party);
+      }
+      return { event: e, effDate, accountAfter, totalAfter };
+    });
+    // Свежие сверху — как в банковской выписке.
+    rows.reverse();
+    return rows;
+  }, [events]);
+
+  const filtered = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    return journal.filter(({ event: e, effDate }) => {
+      if (account !== "all" && e.account !== account) return false;
+      if (from && effDate < from) return false;
+      if (to && effDate > to) return false;
+      if (onlyTransfers && e.kind !== "transfer") return false;
+      if (!q) return true;
+      return (
+        e.title.toLowerCase().includes(q) ||
+        e.counterpartyName.toLowerCase().includes(q) ||
+        (e.comment || "").toLowerCase().includes(q)
+      );
+    });
+  }, [journal, account, from, to, onlyTransfers, deferredQuery]);
+
+  /** Приход/расход за выбранный период по каждому счёту (без фильтров вида). */
+  const periodByAccount = useMemo(() => {
+    const acc: Record<WpAccount, { incoming: number; outgoing: number }> = {
+      cash: { incoming: 0, outgoing: 0 },
+      bank: { incoming: 0, outgoing: 0 },
+      third_party: { incoming: 0, outgoing: 0 },
+    };
+    for (const { event: e, effDate } of journal) {
+      if (!e.isPaid) continue;
+      if (from && effDate < from) continue;
+      if (to && effDate > to) continue;
+      if (e.direction === "incoming") acc[e.account].incoming += e.amount;
+      else acc[e.account].outgoing += e.amount;
+    }
+    return acc;
+  }, [journal, from, to]);
+
+  /** Итоги по показанным строкам: перевод считаем один раз (по расходу). */
+  const totals = useMemo(() => {
+    let incoming = 0;
+    let outgoing = 0;
+    let transferSum = 0;
+    let transferCount = 0;
+    for (const { event: e } of filtered) {
+      if (!e.isPaid) continue;
+      if (e.kind === "transfer") {
+        if (e.direction === "outgoing") {
+          transferSum += e.amount;
+          transferCount += 1;
+        }
+        continue;
+      }
+      if (e.direction === "incoming") incoming += e.amount;
+      else outgoing += e.amount;
+    }
+    return {
+      incoming: roundMoney(incoming),
+      outgoing: roundMoney(outgoing),
+      transferSum: roundMoney(transferSum),
+      transferCount,
+    };
+  }, [filtered]);
+
+  // Длинная выписка — кусками (см. use-windowed-list).
+  const win = useWindowedList(filtered, {
+    resetKey: `${deferredQuery}|${account}|${from}|${to}|${onlyTransfers}`,
+  });
+
+
+  return (
+    <div>
+      {/* Остатки счетов и обороты за выбранный период */}
+      <div
+        className="admin-card"
+        style={{ marginBottom: 14 }}
+      >
+        <div className="admin-card__head">
+          <span className="admin-card__title">Счета макулатуры</span>
+          <span className="admin-hint">
+            {from || to
+              ? `обороты за ${from ? fmtDate(from) : "начало"} — ${to ? fmtDate(to) : "сегодня"}`
+              : "обороты за всё время"}
+          </span>
+        </div>
+        <div
+          className="admin-card__pad"
+          style={{ display: "flex", gap: 18, flexWrap: "wrap" }}
+        >
+          {/* Общий счёт = наличка + безнал: по факту это один денежный счёт
+              макулатуры, а чем он наполнен — видно расшифровкой ниже. */}
+          <div style={{ minWidth: 230, display: "grid", gap: 4 }}>
+            <span className="admin-badge admin-badge--blue">{WP_COMMON_ACCOUNT_LABEL}</span>
+            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.common)}</strong>
+            <span className="admin-hint">
+              Наличка {fmtMoney(balance.cash)} · Безнал {fmtMoney(balance.bank)}
+            </span>
+            <span className="admin-hint">
+              приход{" "}
+              {fmtMoney(
+                periodByAccount.cash.incoming + periodByAccount.bank.incoming
+              )}{" "}
+              · расход{" "}
+              {fmtMoney(
+                periodByAccount.cash.outgoing + periodByAccount.bank.outgoing
+              )}
+            </span>
+          </div>
+          <div style={{ minWidth: 190, display: "grid", gap: 4 }}>
+            <span className={ACCOUNT_BADGE.third_party}>Сторонние пополнения</span>
+            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.third_party)}</strong>
+            <span className="admin-hint">
+              приход {fmtMoney(periodByAccount.third_party.incoming)} · расход{" "}
+              {fmtMoney(periodByAccount.third_party.outgoing)}
+            </span>
+          </div>
+          <div style={{ minWidth: 190, display: "grid", gap: 4 }}>
+            <span className="admin-badge admin-badge--muted">Всего с учётом сторонних</span>
+            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.total)}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="wp-toolbar">
+        <div className="wp-toolbar__search">
+          <Search size={14} />
+          <input
+            className="admin-input"
+            placeholder="Поиск по документу, контрагенту, комментарию…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="admin-field" style={{ minWidth: 140, marginBottom: 0 }}>
+          <label className="admin-label">Период с</label>
+          <input
+            className="admin-input"
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+        </div>
+        <div className="admin-field" style={{ minWidth: 140, marginBottom: 0 }}>
+          <label className="admin-label">по</label>
+          <input
+            className="admin-input"
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </div>
+        <div className="admin-filters" style={{ marginBottom: 0 }}>
+          {(
+            [
+              { key: "all", label: "Все счета" },
+              { key: "cash", label: "Наличка" },
+              { key: "bank", label: "Безнал" },
+              { key: "third_party", label: "Сторонние" },
+            ] as const
+          ).map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              className={`admin-filter${account === o.key ? " admin-filter--active" : ""}`}
+              onClick={() => setAccount(o.key)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <label className="admin-hint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={onlyTransfers}
+            onChange={(e) => setOnlyTransfers(e.target.checked)}
+          />
+          только переводы
+        </label>
+        <button type="button" className="admin-btn admin-btn--navy" onClick={onNewTransfer}>
+          <ArrowLeftRight size={15} /> Перевод
+        </button>
+      </div>
+
+      <p className="wp-summary">
+        Показано движений: <strong>{filtered.length}</strong>
+        <span className="wp-summary__chip" style={{ color: "var(--adm-pine)" }}>
+          приход +{fmtMoney(totals.incoming)}
+        </span>
+        <span className="wp-summary__chip" style={{ color: "var(--adm-kraft)" }}>
+          расход −{fmtMoney(totals.outgoing)}
+        </span>
+        <span className="wp-summary__chip">
+          переводов: {totals.transferCount} на {fmtMoney(totals.transferSum)}
+        </span>
+      </p>
+
+      {filtered.length === 0 ? (
+        <div className="admin-card">
+          <div className="admin-card__pad">
+            <p className="admin-hint">
+              Движений по фильтрам нет. Здесь видны все деньги модуля: приёмы,
+              сдачи, платежи, зарплаты и переводы между счетами — с остатком
+              после каждой операции.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="admin-table-wrap">
+          <WpTable className="admin-table">
+            <WpHead>
+              <WpRow>
+                <WpHeading className="wp-cell--date">Дата</WpHeading>
+                <WpHeading>Документ</WpHeading>
+                <WpHeading className="wp-cell--num">Приход</WpHeading>
+                <WpHeading className="wp-cell--num">Расход</WpHeading>
+                <WpHeading>Счёт</WpHeading>
+                <WpHeading className="wp-cell--num">
+                  {account === "all" ? "Остаток денег после" : "Остаток счёта после"}
+                </WpHeading>
+                <WpHeading></WpHeading>
+              </WpRow>
+            </WpHead>
+            <WpBody>
+              {win.visible.map(({ event: e, accountAfter, totalAfter }) => (
+                <WpRow
+                  key={`${e.kind}-${e.id}`}
+                  style={e.isPaid ? undefined : { opacity: 0.65 }}
+                >
+                  <WpCell className="wp-cell--date">{fmtDate(e.date)}</WpCell>
+                  <WpCell>
+                    <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>{" "}
+                    {e.title}
+                    <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
+                      {e.counterpartyName || "—"}
+                      {e.comment ? ` · ${e.comment}` : ""}
+                    </div>
+                    {!e.isPaid && (
+                      <div style={{ fontSize: "0.78rem", marginTop: 3 }}>
+                        <span className="admin-badge admin-badge--amber">ожидает оплаты</span>
+                      </div>
+                    )}
+                  </WpCell>
+                  <WpCell
+                    className="wp-cell--num"
+                    style={{
+                      color: "var(--adm-pine)",
+                      fontWeight: e.direction === "incoming" ? 700 : 400,
+                    }}
+                  >
+                    {e.direction === "incoming" && e.isPaid ? `+${fmtMoney(e.amount)}` : "—"}
+                  </WpCell>
+                  <WpCell
+                    className="wp-cell--num"
+                    style={{
+                      color: "var(--adm-kraft)",
+                      fontWeight: e.direction === "outgoing" ? 700 : 400,
+                    }}
+                  >
+                    {e.direction === "outgoing" && e.isPaid ? `−${fmtMoney(e.amount)}` : "—"}
+                  </WpCell>
+                  <WpCell>
+                    <span className={ACCOUNT_BADGE[e.account]}>
+                      {WP_ACCOUNT_LABELS[e.account]}
+                    </span>
+                    {e.kind === "transfer" && e.counterAccount && (
+                      <div style={{ color: "var(--adm-muted)", fontSize: "0.78rem", marginTop: 3 }}>
+                        {e.direction === "outgoing" ? "куда: " : "откуда: "}
+                        {WP_ACCOUNT_LABELS[e.counterAccount]}
+                      </div>
+                    )}
+                  </WpCell>
+                  <WpCell className="wp-cell--num" style={{ fontWeight: 600 }}>
+                    {accountAfter === null ? (
+                      <span className="admin-hint">—</span>
+                    ) : account === "all" ? (
+                      <>
+                        {fmtMoney(totalAfter ?? 0)}
+                        <div style={{ color: "var(--adm-muted)", fontSize: "0.78rem", marginTop: 3 }}>
+                          {WP_ACCOUNT_LABELS[e.account]}: {fmtMoney(accountAfter)}
+                        </div>
+                      </>
+                    ) : (
+                      fmtMoney(accountAfter)
+                    )}
+                  </WpCell>
+                  <WpCell style={{ whiteSpace: "nowrap" }}>
+                    {e.kind === "transfer" ? (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        onClick={() => {
+                          const item = transfers.find((t) => t.id === e.transferId);
+                          if (item) onEditTransfer(item);
+                        }}
+                        title="Открыть перевод"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        onClick={() => onEditEvent(e)}
+                        title="Открыть документ"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    )}
+                  </WpCell>
+                </WpRow>
+              ))}
+            </WpBody>
+          </WpTable>
+        </div>
+      )}
+      {win.hasMore && (
+        <button
+          type="button"
+          className="admin-show-more"
+          style={{ marginTop: 10 }}
+          ref={(node) => {
+            win.sentinelRef(node);
+          }}
+          onClick={win.showAll}
+        >
+          Показано {win.visible.length} из {win.total} · <strong>Показать все</strong>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   МОДАЛКА: ПЕРЕВОД МЕЖДУ СЧЕТАМИ
+   ═══════════════════════════════════════════════════════ */
+
+interface TransferFormPayload {
+  date: string;
+  fromAccount: WpAccount;
+  toAccount: WpAccount;
+  amount: number;
+  comment: string | null;
+}
+
+function TransferModal({
+  mode,
+  item,
+  balance,
+  saving,
+  error,
+  onClose,
+  onSubmit,
+  onDelete,
+}: {
+  mode: "create" | "edit";
+  item: WpAccountTransfer | null;
+  balance: WpBalance;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onSubmit: (form: TransferFormPayload) => void;
+  onDelete: () => void;
+}) {
+  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
+  useBodyLock(true);
+  useEscapeClose(onClose, !saving);
+  const isEdit = mode === "edit";
+  const [form, setForm] = useState({
+    date: item?.date || todayStr(),
+    fromAccount: (item?.fromAccount || "bank") as WpAccount,
+    toAccount: (item?.toAccount || "cash") as WpAccount,
+    amount: item?.amount || 0,
+    comment: item?.comment || "",
+  });
+
+  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  const amountValid = Number.isFinite(form.amount) && form.amount > 0;
+  const sameAccounts = form.fromAccount === form.toAccount;
+  const sourceBalance = balance[form.fromAccount];
+  const notEnough = amountValid && form.amount > sourceBalance;
+  const valid = form.date !== "" && amountValid && !sameAccounts;
+
+  const accounts: WpAccount[] = ["cash", "bank", "third_party"];
+  const sourceAfter = roundMoney(sourceBalance - (amountValid ? form.amount : 0));
+  const targetAfter = roundMoney(
+    balance[form.toAccount] + (amountValid ? form.amount : 0)
+  );
+
+  return (
+    <div className="admin-modal-overlay">
+      <div className="admin-modal wp-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal__head">
+          <h3 className="admin-modal__title">
+            {isEdit ? `Перевод №${item?.number}` : "Перевод между счетами"}
+          </h3>
+          <button
+            type="button"
+            className="admin-modal__close"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Закрыть"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <p className="admin-modal__desc">
+          Деньги перекладываются из одного счёта модуля в другой: например,
+          сняли с безнала в кассу. Внешнего прихода или расхода не возникает —
+          остаток счёта-источника уменьшается, остаток счёта-получателя
+          увеличивается на ту же сумму. Перевод попадёт в журнал «Банк» и в
+          отчёт по дням двумя строками: расход по одному счёту и приход по
+          другому.
+        </p>
+
+        <form
+          className="wp-modal-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!valid) return;
+            onSubmit({
+              date: form.date,
+              fromAccount: form.fromAccount,
+              toAccount: form.toAccount,
+              amount: roundMoney(form.amount),
+              comment: form.comment.trim() || null,
+            });
+          }}
+        >
+          <div className="wp-grid-2">
+            <div className="admin-field">
+              <label className="admin-label">Дата *</label>
+              <input
+                className="admin-input"
+                type="date"
+                value={form.date}
+                onChange={(e) => set("date", e.target.value)}
+                autoFocus={mode === "create"}
+                required
+              />
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Сумма, ₽ *</label>
+              <input
+                className="admin-input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.amount || ""}
+                onChange={(e) => set("amount", parseNum(e.target.value))}
+                placeholder="Сколько переводим"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="wp-grid-2">
+            <div className="admin-field">
+              <label className="admin-label">Откуда (списываем) *</label>
+              <select
+                className="admin-select"
+                value={form.fromAccount}
+                onChange={(e) => set("fromAccount", e.target.value as WpAccount)}
+              >
+                {accounts.map((a) => (
+                  <option key={a} value={a}>
+                    {WP_ACCOUNT_LABELS[a]} — {fmtMoney(balance[a])}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Куда (зачисляем) *</label>
+              <select
+                className="admin-select"
+                value={form.toAccount}
+                onChange={(e) => set("toAccount", e.target.value as WpAccount)}
+              >
+                {accounts.map((a) => (
+                  <option key={a} value={a}>
+                    {WP_ACCOUNT_LABELS[a]} — {fmtMoney(balance[a])}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {sameAccounts && (
+            <p className="admin-error" style={{ marginTop: -4 }}>
+              Выберите разные счета: «откуда» и «куда» не могут совпадать.
+            </p>
+          )}
+
+          {/* Что станет с остатками после перевода */}
+          <div
+            className="admin-card"
+            style={{ background: "var(--adm-paper)", marginBottom: 0 }}
+          >
+            <div className="admin-card__pad" style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span className={ACCOUNT_BADGE[form.fromAccount]}>
+                  {WP_ACCOUNT_LABELS[form.fromAccount]}
+                </span>
+                <ArrowLeftRight size={13} />
+                <span className={ACCOUNT_BADGE[form.toAccount]}>
+                  {WP_ACCOUNT_LABELS[form.toAccount]}
+                </span>
+                <strong>{amountValid ? fmtMoney(form.amount) : "—"}</strong>
+              </div>
+              <span className="admin-hint">
+                {WP_ACCOUNT_LABELS[form.fromAccount]}: {fmtMoney(sourceBalance)} →{" "}
+                <strong style={{ color: "var(--adm-kraft)" }}>{fmtMoney(sourceAfter)}</strong>
+                {" · "}
+                {WP_ACCOUNT_LABELS[form.toAccount]}: {fmtMoney(balance[form.toAccount])} →{" "}
+                <strong style={{ color: "var(--adm-pine)" }}>{fmtMoney(targetAfter)}</strong>
+              </span>
+              {notEnough && (
+                <span className="admin-hint" style={{ color: "var(--adm-rust)" }}>
+                  На счёте «{WP_ACCOUNT_LABELS[form.fromAccount]}» меньше денег, чем
+                  переводите: остаток уйдёт в минус. Так можно, если часть денег
+                  ещё не внесена в учёт.
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="admin-field">
+            <label className="admin-label">Комментарий</label>
+            <input
+              className="admin-input"
+              value={form.comment}
+              onChange={(e) => set("comment", e.target.value)}
+              placeholder="Например: сняли в банкомате на зарплату…"
+            />
+          </div>
+
+          {error && (
+            <p className="admin-error" style={{ marginTop: -4 }}>
+              {error}
+            </p>
+          )}
+
+          <div className="wp-modal__actions" style={{ justifyContent: "space-between" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {isEdit && (
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--danger-ghost admin-btn--sm"
+                  onClick={onDelete}
+                  disabled={saving}
+                >
+                  <Trash2 size={13} /> Удалить
+                </button>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={onClose}
+                disabled={saving}
+              >
+                Закрыть
+              </button>
+              <button
+                type="submit"
+                className="admin-btn admin-btn--primary"
+                disabled={saving || !valid}
+              >
+                {saving && <Loader2 size={14} className="animate-spin" />}{" "}
+                {isEdit ? "Сохранить" : "Перевести"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }

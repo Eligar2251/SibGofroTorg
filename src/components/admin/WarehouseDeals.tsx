@@ -42,6 +42,7 @@ import {
   normalizePriceTier,
 } from "@/lib/warehouse-shared";
 import type { BankPayment } from "@/lib/warehouse-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 /** Округление до копеек */
 function roundKopeck(n: number): number {
@@ -126,7 +127,7 @@ export interface EditableDeal {
   deliveryContact?: string | null;
   deliveryPhone?: string | null;
   /** Способ оплаты: расчётный счёт, наличная касса или карта ЮМ. */
-  paymentMethod?: "regular" | "cash" | "ym_card" | null;
+  paymentMethod?: "regular" | "cash" | "ym_card" | "vm_card" | null;
   /** Заказ зарезервирован (выставлен счёт) — товар не уходит другим клиентам. */
   isReserved?: boolean;
   isInternal?: boolean;
@@ -170,10 +171,12 @@ function baseQtyForSale(qty: number, unit: 'roll'|'meter', mpr: number | null | 
   return qty;
 }
 
-type DealPaymentMethod = "regular" | "cash" | "ym_card";
+type DealPaymentMethod = "regular" | "cash" | "ym_card" | "vm_card";
 
 function normalizeDealPaymentMethod(value: unknown): DealPaymentMethod {
-  return value === "cash" || value === "ym_card" ? value : "regular";
+  return value === "cash" || value === "ym_card" || value === "vm_card"
+    ? value
+    : "regular";
 }
 
 export function DealForm({
@@ -294,6 +297,13 @@ export function DealForm({
   const [paymentCount, setPaymentCount] = useState(initialPaymentCount);
   const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
   const [splitTouched, setSplitTouched] = useState(false);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => {
+    setOpen(false);
+    setCopyOpen(false);
+    resetForm();
+  }, open || copyOpen);
 
   const itemsTotal = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
@@ -561,7 +571,7 @@ export function DealForm({
       availablePayments.map((p) => ({
         id: p.id,
         title: `ПЛ-${p.number} · ${fmt(p.amount)} ₽`,
-        meta: `${fmtDate(p.date)} · ${p.type === "cash" ? "Наличные" : p.type === "ym_card" ? "Карта ЮМ" : "Расчётный счёт"}`,
+        meta: `${fmtDate(p.date)} · ${p.type === "cash" ? "Наличные" : p.type === "ym_card" ? "Карта ЮМ" : p.type === "vm_card" ? "Карта В.М." : "Расчётный счёт"}`,
         right: `${fmt(p.amount)} ₽`,
       })),
     [availablePayments]
@@ -689,13 +699,7 @@ export function DealForm({
             (в т.ч. кастомный чекбокс доставки) в модалке не применялись. */}
         <div
           className="admin-modal-overlay"
-          data-admin="true"
-          onClick={() => {
-            setOpen(false);
-            setCopyOpen(false);
-            resetForm();
-          }}
-        >
+          data-admin="true">
           <div
             className="admin-modal wh-modal"
             onClick={(e) => e.stopPropagation()}
@@ -1128,10 +1132,24 @@ export function DealForm({
                   >
                     <CreditCard size={14} /> Карта ЮМ
                   </button>
+                  <button
+                    type="button"
+                    className={`admin-btn ${paymentMethod === 'vm_card' ? 'admin-btn--primary' : 'admin-btn--ghost'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => setPaymentMethod('vm_card')}
+                    title="Вторая карта — свой счёт"
+                  >
+                    <CreditCard size={14} /> Карта В.М.
+                  </button>
                 </div>
                 {paymentMethod !== 'regular' && (
                   <p className="wh-form-hint" style={{ margin: 0 }}>
-                    Платёж сразу помечается оплаченным и попадает {paymentMethod === 'cash' ? 'в наличную кассу' : 'на карту ЮМ'}.
+                    Платёж сразу помечается оплаченным и попадает{" "}
+                    {paymentMethod === 'cash'
+                      ? 'в наличную кассу'
+                      : paymentMethod === 'vm_card'
+                        ? 'на карту В.М.'
+                        : 'на карту ЮМ'}.
                   </p>
                 )}
                 {paymentMethod === "cash" && selectedCustomerIsCash && (
@@ -1347,6 +1365,10 @@ export function DealActions({
   const [customReason, setCustomReason] = useState("");
   // Количества для частичной отгрузки (productId → qty)
   const [shipQtys, setShipQtys] = useState<Record<string, number>>({});
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setShowShipModal(false), showShipModal);
+  useEscapeClose(() => setShowCancelModal(false), showCancelModal);
 
   const hasPartialShip = shippedItems.some((s) => s.shippedQty > 0);
 

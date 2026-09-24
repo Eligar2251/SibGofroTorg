@@ -266,14 +266,22 @@ export default async function AdminDashboard() {
         wpFinance.manualPayments,
         // Зарплаты, выплаченные наличными из кассы макулатуры, — расход
         // этой кассы (в основную кассу учёта они не входят).
-        wpFinance.salaries
+        wpFinance.salaries,
+        // Переводы безнал ↔ наличка: двигают счета, но не внешний оборот.
+        wpFinance.accountTransfers
       )
     : [];
   const wpBalance = getWpBalance(wpEvents, dashboardDate);
   const wpForecast = getWpForecast(wpEvents);
   const wpMonthKeys = dashboardDate.slice(0, 7);
+  // Переводы между своими счетами (internal) во внешние обороты месяца
+  // не попадают: это перекладывание денег внутри модуля, а не приход/расход.
   const wpMonthPaid = wpEvents.filter(
-    (e) => !e.cancelled && e.isPaid && wpEventEffectiveDate(e).startsWith(wpMonthKeys)
+    (e) =>
+      !e.cancelled &&
+      !e.internal &&
+      e.isPaid &&
+      wpEventEffectiveDate(e).startsWith(wpMonthKeys)
   );
   const wpMonthIncoming = wpMonthPaid
     .filter((e) => e.direction === "incoming")
@@ -282,10 +290,11 @@ export default async function AdminDashboard() {
     .filter((e) => e.direction === "outgoing")
     .reduce((sum, e) => sum + e.amount, 0);
   const wpStockTotalKg = wpFinance
-    ? getWpStock(wpFinance.intakes, wpFinance.shipments).reduce(
-        (sum, row) => sum + Math.max(0, row.stockKg),
-        0
-      )
+    ? getWpStock(
+        wpFinance.intakes,
+        wpFinance.shipments,
+        wpFinance.stockAdjustments
+      ).reduce((sum, row) => sum + Math.max(0, row.stockKg), 0)
     : 0;
   const dealPaidMap = getDealPaidMap(payments);
   const receiptPaidMap = getReceiptPaidMap(payments);

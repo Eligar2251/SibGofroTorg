@@ -96,6 +96,77 @@ export const TRIP_TYPE_MARK: Record<TripType, string> = {
   handover: "СДАЧА",
 };
 
+/**
+ * Операция на точке С УЧЁТОМ ТОГО, ЧТО ЗА ГРУЗ.
+ *
+ * Водителю в бланке важно не только «забор/доставка/сдача», но и что
+ * именно он делает: забирает макулатуру у клиента, забирает товар у
+ * поставщика или везёт заказ покупателю. Поэтому к пометке операции
+ * добавляется предмет: «ЗАБОР МАКУЛАТУРЫ», «ЗАБОР ТОВАРА»,
+ * «ДОСТАВКА ЗАКАЗА», «СДАЧА МАКУЛАТУРЫ».
+ * Свои точки (без документа) остаются с общей пометкой — что именно
+ * там грузят, диспетчер пишет в названии/заметке.
+ */
+export interface StopOperation {
+  /** Операция точки (что водитель делает). */
+  type: TripType;
+  /** Компактная пометка капсом — печатается в бланк водителю. */
+  mark: string;
+  /** Полная подпись — шапка бланка, интерфейс. */
+  label: string;
+  /** Короткая подпись — бейджи в списках. */
+  short: string;
+  icon: string;
+}
+
+/** Операция по умолчанию для документа точки (как в редакторе маршрута). */
+const DEFAULT_TYPE_BY_KIND: Record<TripStop["kind"], TripType> = {
+  deal: "delivery",
+  wp_intake: "pickup",
+  receipt: "pickup",
+  wp_shipment: "handover",
+  custom: "delivery",
+};
+
+const OPERATION_VERB: Record<TripType, { mark: string; label: string }> = {
+  pickup: { mark: "ЗАБОР", label: "Забор" },
+  delivery: { mark: "ДОСТАВКА", label: "Доставка" },
+  handover: { mark: "СДАЧА", label: "Сдача" },
+};
+
+export function stopOperation(stop: {
+  kind: TripStop["kind"];
+  tripType?: TripType | null;
+}): StopOperation {
+  // Без явной пометки берём тип по документу точки, а не «доставку по
+  // умолчанию»: у старых точек макулатуры (ПМ) и заборов поставки (ПО)
+  // tripType мог не сохраниться, и бланк не должен печатать «Доставка
+  // макулатуры» там, где всегда был забор.
+  const type =
+    stop.tripType == null ? DEFAULT_TYPE_BY_KIND[stop.kind] : normalizeTripType(stop.tripType);
+  const def = TRIP_TYPE_MAP.get(type)!;
+  const verb = OPERATION_VERB[type];
+  // Предмет операции: макулатура, товар поставки или заказ клиента.
+  // У заказа предмет добавляем только к доставке («Доставка заказа»);
+  // забор/сдача по заказу — это уже не типовой случай, оставляем общую
+  // пометку, чтобы не плодить странных подписей.
+  const subject =
+    stop.kind === "wp_intake" || stop.kind === "wp_shipment"
+      ? { mark: "МАКУЛАТУРЫ", label: "макулатуры" }
+      : stop.kind === "receipt"
+        ? { mark: "ТОВАРА", label: "товара" }
+        : stop.kind === "deal" && type === "delivery"
+          ? { mark: "ЗАКАЗА", label: "заказа" }
+          : null;
+  return {
+    type,
+    icon: def.icon,
+    mark: subject ? `${verb.mark} ${subject.mark}` : verb.mark,
+    label: subject ? `${verb.label} ${subject.label}` : def.label,
+    short: subject ? `${verb.label} ${subject.label}` : def.short,
+  };
+}
+
 /** Значение по умолчанию: строка без явной пометки — это доставка. */
 export function normalizeTripType(value: unknown): TripType {
   return value === "pickup" || value === "handover" ? value : "delivery";

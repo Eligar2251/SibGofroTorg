@@ -1,4 +1,4 @@
-export type PurchaseAccount = "cash" | "bank" | "ym_card";
+export type PurchaseAccount = "cash" | "bank" | "ym_card" | "vm_card";
 export type PurchasePlanStatus = "active" | "completed";
 /** Куда уходит списание: исходящий платёж в банке или выплата в ЗП. */
 export type PurchaseSpendMode = "bank" | "salary";
@@ -82,6 +82,7 @@ export const PURCHASE_ACCOUNT_LABEL: Record<PurchaseAccount, string> = {
   cash: "Наличная касса",
   bank: "Расчётный счёт",
   ym_card: "Карта ЮМ",
+  vm_card: "Карта В.М.",
 };
 
 export const PURCHASE_SPEND_MODE_LABEL: Record<PurchaseSpendMode, string> = {

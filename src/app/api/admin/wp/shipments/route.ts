@@ -70,6 +70,8 @@ export async function POST(request: NextRequest) {
         paidAt: body.paidAt ?? null,
         needsTransport: body.needsTransport === true,
         transportPlannedDate: body.transportPlannedDate ?? null,
+        // Пометка «не списывать со склада»: деньги проводим, остаток стоит.
+        skipStock: body.skipStock === true,
         comment: body.comment ?? null,
       },
       auth.displayName

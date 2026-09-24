@@ -49,6 +49,7 @@ import {
 } from "./types";
 import { MONTHS_RU, WEEKDAYS_SHORT_RU, daysInMonth } from "./scheduleGenerator";
 import "./DutySchedule.css";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 interface Props {
   initialYear?: number;
@@ -283,6 +284,9 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
   const [showTransfer, setShowTransfer] = useState(false);
   const [rotatingStart, setRotatingStart] = useState<string>("");
   const [transferring, setTransferring] = useState(false);
+  // Закрытие только «Отменой» и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало модалку.
+  useEscapeClose(() => setShowTransfer(false), showTransfer && !transferring);
   const [transferError, setTransferError] = useState("");
 
   // Месяц табеля = период зарплаты (навигация).
@@ -1270,10 +1274,7 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
       )}
 
       {showTransfer && (
-        <div
-          className="ds-modal-overlay"
-          onClick={() => !transferring && setShowTransfer(false)}
-        >
+        <div className="ds-modal-overlay">
           <div
             className="ds-modal ds-modal--transfer"
             onClick={(e) => e.stopPropagation()}
