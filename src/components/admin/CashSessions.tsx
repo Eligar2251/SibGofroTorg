@@ -33,6 +33,7 @@ import {
   getCashCollectionIncomeBreakdown,
   getCashCollectionExpenseBreakdown,
 } from "@/lib/warehouse-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -206,6 +207,9 @@ function CashSessionModal({
   onDelete: () => void;
   adminPath: string;
 }) {
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
   const income = getCashCollectionIncomeBreakdown(collection);
   const expense = getCashCollectionExpenseBreakdown(collection);
   const closing =
@@ -218,7 +222,7 @@ function CashSessionModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal cs-modal"
           style={{ maxWidth: 560 }}

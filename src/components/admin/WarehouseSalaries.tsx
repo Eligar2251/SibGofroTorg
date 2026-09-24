@@ -88,6 +88,7 @@ import {
   wastepaperSalaryAccount,
 } from "@/lib/warehouse-shared";
 import { SGT_SALARY_SCOPE, type SalaryScope } from "@/lib/salary-scope";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
@@ -400,6 +401,9 @@ function SalaryFormModal({
       })),
     [employees]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -482,7 +486,7 @@ function SalaryFormModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal wh-modal"
           style={{ maxWidth: 460 }}
@@ -760,6 +764,9 @@ function EmployeesModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   function resetForm() {
     setName("");
@@ -820,7 +827,7 @@ function EmployeesModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal wh-modal"
           style={{ maxWidth: 520 }}
@@ -1137,6 +1144,9 @@ function MonthDaysModal({
     () => new Set(initialDays)
   );
   const [saving, setSaving] = useState(false);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   function toggle(day: number) {
     setSelected((prev) => {
@@ -1163,7 +1173,7 @@ function MonthDaysModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal wh-modal"
           style={{ maxWidth: 420 }}
@@ -1284,6 +1294,9 @@ function SalariesSetupModal({
     return init;
   });
   const [saving, setSaving] = useState(false);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
   const prevShort = monthLabel(prevMonth).split(" ")[0].toLowerCase();
 
   function parseNum(raw: string | undefined): number | null {
@@ -1321,7 +1334,7 @@ function SalariesSetupModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal-overlay">
         <div
           className="admin-modal wh-modal"
           style={{ maxWidth: 640 }}

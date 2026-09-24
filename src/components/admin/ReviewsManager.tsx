@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Eye, Edit2, Trash2, Check, X, Filter, Star, ShieldCheck, AlertTriangle, Loader2, MessageSquare, Image, Download, ChevronRight, ChevronLeft } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 interface Review {
   id: string;
@@ -77,6 +78,10 @@ export function ReviewsManager() {
     }
     setLoading(false);
   }, [currentPage, filterStatus, searchQuery]);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setModerationData(null), Boolean(moderationData));
+  useEscapeClose(() => setViewingId(null), Boolean(viewingId));
 
   useEffect(() => {
     void fetchReviews();
@@ -235,7 +240,7 @@ export function ReviewsManager() {
       {/* Moderation Modal */}
       {moderationData && (
         <ModalPortal>
-        <div className="admin-modal-overlay" onClick={() => setModerationData(null)}>
+        <div className="admin-modal-overlay">
           <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <h3 className="admin-h2" style={{ marginBottom: 16 }}>
               {moderationData.action === "approve" ? "Одобрить отзыв?" : "Отклонить отзыв?"}
@@ -275,7 +280,7 @@ export function ReviewsManager() {
       {/* View Modal */}
       {viewingId && (
         <ModalPortal>
-        <div className="admin-modal-overlay" onClick={() => setViewingId(null)}>
+        <div className="admin-modal-overlay">
           <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 800, maxHeight: "80dvh", overflow: "auto" }}>
             {(() => {
               const r = reviews.find(x => x.id === viewingId);

@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 type Product = {
   id: string;
@@ -108,6 +109,9 @@ export function BoxLabelsClient({ products, categories }: Props) {
     () => products.filter((p) => selected.has(p.id)),
     [products, selected]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setShowPrintSettings(false), showPrintSettings);
 
   function getLabel(p: Product): LabelData {
     return labels[p.id] || defaultLabel(p);
@@ -310,9 +314,7 @@ export function BoxLabelsClient({ products, categories }: Props) {
         <ModalPortal>
           <div
             className="admin-modal-overlay boxlabel-settings-overlay no-print"
-            data-admin="true"
-            onClick={() => setShowPrintSettings(false)}
-          >
+            data-admin="true">
             <div
               className="admin-modal boxlabel-settings"
               role="dialog"

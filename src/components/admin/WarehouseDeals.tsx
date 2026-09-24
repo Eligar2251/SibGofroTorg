@@ -42,6 +42,7 @@ import {
   normalizePriceTier,
 } from "@/lib/warehouse-shared";
 import type { BankPayment } from "@/lib/warehouse-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 /** Округление до копеек */
 function roundKopeck(n: number): number {
@@ -294,6 +295,13 @@ export function DealForm({
   const [paymentCount, setPaymentCount] = useState(initialPaymentCount);
   const [splitAmounts, setSplitAmounts] = useState<string[]>([""]);
   const [splitTouched, setSplitTouched] = useState(false);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => {
+    setOpen(false);
+    setCopyOpen(false);
+    resetForm();
+  }, open || copyOpen);
 
   const itemsTotal = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0),
@@ -689,13 +697,7 @@ export function DealForm({
             (в т.ч. кастомный чекбокс доставки) в модалке не применялись. */}
         <div
           className="admin-modal-overlay"
-          data-admin="true"
-          onClick={() => {
-            setOpen(false);
-            setCopyOpen(false);
-            resetForm();
-          }}
-        >
+          data-admin="true">
           <div
             className="admin-modal wh-modal"
             onClick={(e) => e.stopPropagation()}
@@ -1347,6 +1349,10 @@ export function DealActions({
   const [customReason, setCustomReason] = useState("");
   // Количества для частичной отгрузки (productId → qty)
   const [shipQtys, setShipQtys] = useState<Record<string, number>>({});
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setShowShipModal(false), showShipModal);
+  useEscapeClose(() => setShowCancelModal(false), showCancelModal);
 
   const hasPartialShip = shippedItems.some((s) => s.shippedQty > 0);
 

@@ -42,6 +42,7 @@ import {
   receiptQueueDocLabel,
   type ReceiptTransportQueueDoc,
 } from "@/lib/warehouse-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 // Совместимость: типы и подписи tripType раньше жили здесь.
 export type { TripType } from "@/lib/trip-stops";
@@ -610,6 +611,9 @@ function CreateTransportModal({
     () => new Set(stops.filter((s) => s.kind === "deal" && s.dealId).map((s) => String(s.dealId))),
     [stops]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
   const totals = summarizeStops(stops);
 
   function toggleDeal(deal: TransportDeal) {
@@ -1200,6 +1204,9 @@ function CompleteTransportModal({
     }
     return init;
   });
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose, !saving);
 
   function patchQty(key: string, index: number, value: number, max: number | null) {
     const next = Math.max(0, value);
@@ -1302,7 +1309,7 @@ function CompleteTransportModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+      <div className="admin-modal-overlay" data-admin="true">
         <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
           <div className="admin-modal__head">
             <h3 className="admin-modal__title">

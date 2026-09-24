@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import type { AdminRole } from "@/lib/admin-rbac";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 type AdminUser = {
   id: string;
@@ -94,6 +95,9 @@ export function AdminUsersManager() {
       setRefreshing(false);
     }
   }, []);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(closeEditor, editing !== undefined);
 
   useEffect(() => {
     loadUsers();
@@ -402,7 +406,7 @@ export function AdminUsersManager() {
 
       {editing !== undefined && (
         <ModalPortal>
-          <div className="admin-modal-overlay" data-admin="true" onClick={closeEditor}>
+          <div className="admin-modal-overlay" data-admin="true">
             <div
               className="admin-modal admin-user-modal"
               onClick={(event) => event.stopPropagation()}

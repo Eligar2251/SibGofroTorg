@@ -8,6 +8,7 @@
 
 import React, { useState } from "react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 import { Employee, FixedRule } from "./types";
 
 interface Props {
@@ -27,6 +28,8 @@ export const EmployeeManagerModal: React.FC<Props> = ({
   onRemove,
   onClose,
 }) => {
+  // Закрытие только кнопкой «Готово» и Escape: клик по подложке не закрывает.
+  useEscapeClose(onClose);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newRate, setNewRate] = useState(115);
@@ -69,7 +72,7 @@ export const EmployeeManagerModal: React.FC<Props> = ({
 
   return (
     <ModalPortal>
-      <div className="ds-modal-overlay" onClick={onClose}>
+      <div className="ds-modal-overlay">
         <div
           className="ds-modal ds-modal--wide"
           onClick={(e) => e.stopPropagation()}

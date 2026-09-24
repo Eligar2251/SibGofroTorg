@@ -4164,6 +4164,9 @@ function PaymentModal({
     isPaid: item ? item.isPaid : true,
     comment: item?.comment || "",
   });
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(onClose, !saving);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));

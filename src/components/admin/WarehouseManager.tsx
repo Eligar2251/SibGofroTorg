@@ -103,6 +103,7 @@ import type { WpTransportQueueDoc } from "@/lib/wastepaper-account-shared";
 import type { ReceiptTransportQueueDoc } from "@/lib/warehouse-shared";
 import type { SupplyPlan } from "@/lib/supply-plans-shared";
 import type { PurchasePlan } from "@/lib/purchase-plans-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 // ── Тяжёлые вкладки грузим по требованию ──────────────────
 // «Учёт» — самая большая страница админки: одним модулем сюда попадали
@@ -736,6 +737,9 @@ export function WarehouseManager({
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<Set<string>>(new Set());
   const [selectedPartyKeys, setSelectedPartyKeys] = useState<Set<string>>(new Set());
   const [showCalculator, setShowCalculator] = useState(false);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setShowCalculator(false), showCalculator);
   const [calcExpression, setCalcExpression] = useState("");
   const [calcResult, setCalcResult] = useState<string>("");
 
@@ -2019,7 +2023,7 @@ export function WarehouseManager({
 
       {showCalculator && (
         <ModalPortal>
-          <div className="admin-modal-overlay" onClick={() => setShowCalculator(false)}>
+          <div className="admin-modal-overlay">
             <div className="admin-modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
               <div className="admin-modal__head">
                 <h3 className="admin-modal__title"><Calculator size={14} style={{ marginRight: 6 }} />Калькулятор счёта</h3>

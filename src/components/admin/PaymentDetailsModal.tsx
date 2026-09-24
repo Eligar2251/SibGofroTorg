@@ -22,6 +22,7 @@ import type {
   CustomerDeal,
   WarehouseReceipt,
 } from "@/lib/warehouse-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 interface PaymentDetailsPayload {
   payment: BankPayment;
@@ -73,6 +74,9 @@ export function PaymentDetailsModal({
   const [data, setData] = useState<PaymentDetailsPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   useEffect(() => {
     if (!paymentId) {
@@ -114,7 +118,7 @@ export function PaymentDetailsModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+      <div className="admin-modal-overlay" data-admin="true">
         <div
           className="admin-modal payment-details-modal"
           onClick={(event) => event.stopPropagation()}

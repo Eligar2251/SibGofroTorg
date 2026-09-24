@@ -37,6 +37,7 @@ import {
   type RentPayment,
   type RentTenant,
 } from "@/lib/rent-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 type StatusFilter = "all" | "unpaid" | "overdue" | "paid" | "cancelled";
 
@@ -436,6 +437,9 @@ function QuickPayModal({
     tenant?.payMethod === "cash" ? "cash" : "bank"
   );
   const [comment, setComment] = useState("");
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   async function save() {
     const sum = Number(amount) || 0;
@@ -479,7 +483,7 @@ function QuickPayModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+      <div className="admin-modal-overlay" data-admin="true">
         <div className="admin-modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
           <div className="admin-modal__head">
             <h3 className="admin-modal__title">Оплата счёта АР-{invoice.number}</h3>
@@ -622,6 +626,9 @@ export function InvoiceFormModal({
       new Date(rentAddMonths(periodStart, tenant.periodMonths).getTime() - 86_400_000)
     );
   }, [tenant, periodStart]);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   const periodEnd = periodEndOverride || (invoice ? invoice.periodEnd : autoPeriodEnd);
 
@@ -669,7 +676,7 @@ export function InvoiceFormModal({
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+      <div className="admin-modal-overlay" data-admin="true">
       <div className="admin-modal" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
         <div className="admin-modal__head">
           <h3 className="admin-modal__title">

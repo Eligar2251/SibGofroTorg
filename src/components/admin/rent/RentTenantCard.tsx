@@ -38,6 +38,7 @@ import {
   type RentPayment,
   type RentTenant,
 } from "@/lib/rent-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 const STATE_BADGE: Record<RentInvoiceState, string> = {
   paid: "admin-badge admin-badge--green",
@@ -100,13 +101,16 @@ export function TenantCardModal({
         .slice(0, 14),
     [payments, tenant.id]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   const org = orgs.find((o) => o.id === tenant.orgId);
   const dueDay = rentDueDay(tenant, orgs);
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+      <div className="admin-modal-overlay" data-admin="true">
         <div
           className="admin-modal"
           style={{ maxWidth: 820 }}

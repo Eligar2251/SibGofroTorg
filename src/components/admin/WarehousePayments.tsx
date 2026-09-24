@@ -36,6 +36,7 @@ import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPaymentType } from "@/lib/warehouse-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 export interface DealLinkOption {
   id: string;
@@ -203,6 +204,9 @@ export function PaymentForm({
       }),
     [activeReceipts]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setOpen(false), open);
 
   function autoAmount(
     dl: string[],
@@ -432,7 +436,7 @@ export function PaymentForm({
 
       {open && (
         <ModalPortal>
-        <div className="admin-modal-overlay" onClick={closeModal}>
+        <div className="admin-modal-overlay">
           <div
             className="admin-modal wh-modal"
             onClick={(e) => e.stopPropagation()}
@@ -821,6 +825,9 @@ export function PaymentControls({
       })),
     [receipts]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setShowEdit(false), showEdit);
 
   async function togglePaid() {
     setSaving(true);
@@ -993,7 +1000,7 @@ export function PaymentControls({
 
       {showEdit && (
         <ModalPortal>
-        <div className="admin-modal-overlay" onClick={() => setShowEdit(false)}>
+        <div className="admin-modal-overlay">
           <div
             className="admin-modal"
             onClick={(e) => e.stopPropagation()}

@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Save, X } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import type { RentOrg } from "@/lib/rent-shared";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 export function RentOrgSettings({
   orgs,
@@ -23,10 +24,13 @@ export function RentOrgSettings({
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
 
   return (
     <ModalPortal>
-      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+      <div className="admin-modal-overlay" data-admin="true">
         <div
           className="admin-modal"
           style={{ maxWidth: 760 }}

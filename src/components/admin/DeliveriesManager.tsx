@@ -26,6 +26,7 @@ import {
   type PrintDeliveryItem,
 } from "@/components/admin/DeliveryPrintSheet";
 import { ModalPortal } from "@/components/admin/ModalPortal";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 type FilterTab = "unreleased" | "planned" | "released" | "all";
 
@@ -151,6 +152,9 @@ export function DeliveriesManager({
     });
     return list;
   }, [orders, tab, dayFilter, driverFilter]);
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
+  useEscapeClose(() => setShowPlanModal(false), showPlanModal);
 
   function toggle(key: string) {
     setSelected((prev) => {

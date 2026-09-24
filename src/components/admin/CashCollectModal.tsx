@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 interface PendingCashPayment {
   paymentId: string;
@@ -206,6 +207,9 @@ export function CashCollectModal({
       ),
     [dayExpenses]
   );
+  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
+  // иначе выделение текста с отпусканием мыши за окном сбрасывало форму.
+  useEscapeClose(onClose);
   const listedExpenses = round2(listedCashExpenses + listedCardExpenses);
 
   const rawDaySummary = dailySummaries[activeDate];
@@ -317,7 +321,7 @@ export function CashCollectModal({
   return (
     <>
       <ModalPortal>
-        <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+        <div className="admin-modal-overlay" data-admin="true">
           <div
             className="admin-modal wh-modal cashc-modal"
             style={{ maxWidth: 900, width: "95%" }}
