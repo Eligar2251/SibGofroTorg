@@ -14,15 +14,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // Фактические количества по поставкам (ПО-): диспетчер может указать
       // их при завершении рейса — «приняли меньше», остаток останется
       // в поставке. Без них принимаем столько, сколько стоит в точках рейса.
-      await completeTransport(id, {
-        receipts: Array.isArray(body.receipts)
-          ? body.receipts.map((row: any) => ({
-              receiptId: String(row?.receiptId || ""),
+      // То же для заказов (ЗК-): списываем ровно вписанное число, недогруз
+      // остаётся в заказе и едет следующим рейсом.
+      const toQtyRows = (rows: any) =>
+        Array.isArray(rows)
+          ? rows.map((row: any) => ({
+              id: String(row?.receiptId || row?.dealId || ""),
               items: (Array.isArray(row?.items) ? row.items : []).map((item: any) => ({
                 productId: String(item?.productId || ""),
                 quantity: Number(item?.quantity) || 0,
               })),
             }))
+          : [];
+      const receiptRows = toQtyRows(body.receipts);
+      const dealRows = toQtyRows(body.deals);
+      await completeTransport(id, {
+        receipts: Array.isArray(body.receipts)
+          ? receiptRows.map((row) => ({ receiptId: row.id, items: row.items }))
+          : undefined,
+        deals: Array.isArray(body.deals)
+          ? dealRows.map((row) => ({ dealId: row.id, items: row.items }))
           : undefined,
       });
     } else if (body.action === "archive") {

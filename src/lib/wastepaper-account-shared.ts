@@ -68,6 +68,23 @@ export function wpIntakeAwaitingWeight(
 }
 
 /**
+ * Перевозка по приёму выполнена — груз вывезли.
+ *
+ * Пометка живёт дольше «ожидания взвешивания»: awaitingWeight снимается
+ * первым же сохранением карточки с весом, а эта держится, пока её не
+ * снимут вручную. Поэтому приём, по которому рейс уже отъездил, не
+ * возвращается в доставки, даже когда вес вписан и оплата проведена.
+ * Приёмы, заведённые до столбца transport_done, считаем выполненными по
+ * awaitingWeight.
+ */
+export function wpIntakeTransportDone(
+  i: Pick<WpIntake, "transportDone" | "awaitingWeight" | "status">
+): boolean {
+  if (i.status !== "active") return false;
+  return Boolean(i.transportDone) || Boolean(i.awaitingWeight);
+}
+
+/**
  * Приём «проведён» — уходит в архив вкладки «Проведённые».
  *
  * Условия (все сразу): документ не отменён и не ждёт взвешивания, вес
@@ -198,6 +215,9 @@ export function buildWpTransportQueue(args: {
   const out: WpTransportQueueDoc[] = [];
   for (const i of intakes) {
     if (!wpIntakeNeedsTransport(i)) continue;
+    // Перевозка выполнена (рейс завершили или пометили вручную) — приём
+    // больше не показываем: по нему остались только вес и оплата.
+    if (wpIntakeTransportDone(i)) continue;
     if (takenKeys.has(wpQueueKey("intake", i.id))) continue;
     out.push({
       id: i.id,
@@ -456,6 +476,14 @@ export interface WpIntake {
    * карточки приёма. См. wpIntakeAwaitingWeight().
    */
   awaitingWeight?: boolean;
+  /**
+   * TRUE — перевозка выполнена: груз вывезли. Ставится автоматически при
+   * завершении рейса с точкой этого приёма и вручную кнопкой «Перевозка
+   * выполнена». Приём уходит из доставок и очереди перевозок; дальше по
+   * нему работают только вес и оплата. Сохранение карточки не снимает
+   * пометку (в отличие от awaitingWeight). См. wpIntakeTransportDone().
+   */
+  transportDone?: boolean;
   status: "active" | "cancelled";
   comment: string | null;
   createdBy: string | null;
@@ -495,6 +523,11 @@ export interface WpShipment {
   needsTransport: boolean;
   /** Желаемая дата вывоза (подсказка диспетчеру, необязательно). */
   transportPlannedDate: string | null;
+  /**
+   * TRUE — деньги по сдаче проводим, а остаток макулатуры на площадке
+   * НЕ уменьшаем (груз ушёл не с нашей площадки: перегруз, чужой склад).
+   */
+  skipStock: boolean;
   status: "active" | "cancelled";
   comment: string | null;
   createdBy: string | null;
@@ -513,6 +546,26 @@ export interface WpManualPayment {
   amount: number;
   isPaid: boolean;
   paidAt: string | null;
+  comment: string | null;
+  createdBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+/**
+ * Перевод денег между счетами модуля (безнал ↔ наличка ↔ сторонние).
+ * Внутреннее движение: с одного счёта уходит, на другой приходит,
+ * внешний приход/расход не создаётся.
+ */
+export interface WpAccountTransfer {
+  id: string;
+  number: number;
+  date: string;
+  /** Счёт, с которого уходят деньги. */
+  fromAccount: WpAccount;
+  /** Счёт, на который приходят деньги. */
+  toAccount: WpAccount;
+  amount: number;
   comment: string | null;
   createdBy: string | null;
   createdAt: string | null;
@@ -856,7 +909,7 @@ export function wpUid(prefix: string): string {
  * из кассы макулатуры: сама запись живёт в разделе «Зарплаты» учёта
  * (тег [Макулатура]), а здесь показывается расходом по счёту «Наличка».
  */
-export type WpMoneyEventKind = "intake" | "shipment" | "manual" | "salary";
+export type WpMoneyEventKind = "intake" | "shipment" | "manual" | "salary" | "transfer";
 
 export interface WpMoneyEvent {
   kind: WpMoneyEventKind;
@@ -874,6 +927,16 @@ export interface WpMoneyEvent {
   title: string;
   comment: string | null;
   cancelled: boolean;
+  /**
+   * TRUE — внутреннее движение между своими счетами (перевод). Такой
+   * оборот не является внешним приходом/расходом: в «деньгах за месяц»
+   * и в итогах журнала он не учитывается, хотя по счетам проходит.
+   */
+  internal?: boolean;
+  /** Для перевода: id записи wp_account_transfers (общий у обеих сторон). */
+  transferId?: string;
+  /** Для перевода: второй счёт операции (куда/откуда пришли деньги). */
+  counterAccount?: WpAccount;
 }
 
 /**
@@ -985,6 +1048,52 @@ export function wpSalaryMoneyEvents(salaries: WpSalaryLike[]): WpMoneyEvent[] {
   return events;
 }
 
+/**
+ * Перевод между счетами → два денежных события: расход по счёту-источнику
+ * и приход по счёту-получателю. Оба помечены internal — внешний
+ * приход/расход модуля при этом не меняется, двигаются только счета.
+ */
+export function wpTransferMoneyEvents(transfers: WpAccountTransfer[]): WpMoneyEvent[] {
+  const events: WpMoneyEvent[] = [];
+  for (const t of transfers) {
+    const amount = Math.max(0, Number(t.amount) || 0);
+    // Перевод «сам себе» и пустые суммы в деньги не попадают.
+    if (amount <= 0 || t.fromAccount === t.toAccount) continue;
+    const title = `Перевод №${t.number}: ${WP_ACCOUNT_LABELS[t.fromAccount]} → ${WP_ACCOUNT_LABELS[t.toAccount]}`;
+    const base = {
+      kind: "transfer" as const,
+      number: t.number,
+      date: t.date,
+      amount,
+      // Перевод проводится сразу: как только записан, он двигает счета.
+      isPaid: true,
+      paidAt: t.date,
+      counterpartyName: "Между счетами макулатуры",
+      comment: t.comment,
+      cancelled: false,
+      internal: true,
+      transferId: t.id,
+    };
+    events.push({
+      ...base,
+      id: `${t.id}:out`,
+      direction: "outgoing",
+      account: t.fromAccount,
+      counterAccount: t.toAccount,
+      title,
+    });
+    events.push({
+      ...base,
+      id: `${t.id}:in`,
+      direction: "incoming",
+      account: t.toAccount,
+      counterAccount: t.fromAccount,
+      title,
+    });
+  }
+  return events;
+}
+
 /** Фактическая дата для баланса: день оплаты (paidAt) или дата документа. */
 export function wpEventEffectiveDate(event: WpMoneyEvent): string {
   const paidDate = String(event.paidAt || "").slice(0, 10);
@@ -1001,14 +1110,15 @@ export function wpIntakePayableTotal(i: Pick<WpIntake, "total">): number {
 }
 
 /**
- * Собирает единую ленту денежных движений: приёмы, сдачи, ручные платежи
- * и (если переданы) зарплаты, выплаченные наличными из кассы макулатуры.
+ * Собирает единую ленту денежных движений: приёмы, сдачи, ручные платежи,
+ * зарплаты из кассы макулатуры и переводы между счетами модуля.
  */
 export function wpCollectMoneyEvents(
   intakes: WpIntake[],
   shipments: WpShipment[],
   manualPayments: WpManualPayment[],
-  salaries: WpSalaryLike[] = []
+  salaries: WpSalaryLike[] = [],
+  accountTransfers: WpAccountTransfer[] = []
 ): WpMoneyEvent[] {
   const events: WpMoneyEvent[] = [];
   for (const i of intakes) {
@@ -1070,6 +1180,8 @@ export function wpCollectMoneyEvents(
   }
   // Зарплаты «с макулатуры» — расход наличных, запись ведётся в «Зарплатах».
   events.push(...wpSalaryMoneyEvents(salaries));
+  // Переводы между своими счетами: расход по одному счёту, приход по другому.
+  events.push(...wpTransferMoneyEvents(accountTransfers));
   return events;
 }
 
@@ -1246,16 +1358,59 @@ export function buildWpDayReport(
 
 // ── Остаток сырья на площадке ────────────────────────────
 
+/**
+ * Ручная правка остатка по виду макулатуры (таблица wp_stock_adjustments).
+ *
+ * Храним НЕ абсолютный остаток, а разницу с расчётом «принято − продано»:
+ * макулатурщик вписывает фактическое количество во вкладке «Склад», мы
+ * запоминаем расхождение — и дальше новые приёмы/продажи продолжают
+ * двигать остаток поверх правки, а не перетирают её.
+ */
+export interface WpStockAdjustment {
+  id: string;
+  /** Ключ вида (как в документах: код/идентификатор из справочника). */
+  wastepaperType: string;
+  /** Разница с расчётным остатком, кг (может быть отрицательной). */
+  deltaKg: number;
+  note: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
 export interface WpStockRow {
   wastepaperType: string;
   intakeKg: number;
   shipmentKg: number;
+  /**
+   * Сколько уехало по продажам с пометкой «не списывать со склада»:
+   * деньги прошли, остаток на площадке не трогали. В shipmentKg не входит.
+   */
+  skippedShipmentKg: number;
+  /** Расчёт по документам: принято − продано, без ручной правки. */
+  docKg: number;
+  /** Ручная корректировка остатка, кг (+/−) — из вкладки «Склад». */
+  adjustmentKg: number;
+  /** docKg + adjustmentKg — то, что показываем как остаток на площадке. */
   stockKg: number;
 }
 
-export function getWpStock(intakes: WpIntake[], shipments: WpShipment[]): WpStockRow[] {
+/**
+ * Остаток макулатуры на площадке.
+ *
+ * Считается по документам: фактически принятое − отгруженное. Две
+ * поправки, которые видно в интерфейсе:
+ *  - сдачи с пометкой «не списывать со склада» (skipStock) склад НЕ
+ *    уменьшают — деньги по ним проходят как обычно;
+ *  - ручная правка остатка (wp_stock_adjustments) добавляется к расчёту.
+ */
+export function getWpStock(
+  intakes: WpIntake[],
+  shipments: WpShipment[],
+  adjustments: WpStockAdjustment[] = []
+): WpStockRow[] {
   const intakeMap = new Map<string, number>();
   const shipmentMap = new Map<string, number>();
+  const skippedMap = new Map<string, number>();
   // Учитываем позиции документа; если позиций нет (старые записи) —
   // берём одиночные вид/вес.
   const accumulate = (
@@ -1283,24 +1438,50 @@ export function getWpStock(intakes: WpIntake[], shipments: WpShipment[]): WpStoc
   }
   for (const s of shipments) {
     if (s.status !== "active") continue;
+    // «Не списывать со склада»: груз ушёл не с нашей площадки, поэтому
+    // склад не двигаем — вес считаем отдельно, чтобы показать в справке.
+    const target = s.skipStock ? skippedMap : shipmentMap;
     // Со склада ушло столько, сколько отгрузили по нашим весам, а не столько,
     // сколько потом приняло предприятие (разница — засор/усушка в пути).
     // При нескольких позициях разбивка факта живёт в самих позициях.
     if (s.shippedWeightKg > 0 && (!s.items || s.items.length <= 1)) {
-      shipmentMap.set(
+      target.set(
         s.wastepaperType,
-        (shipmentMap.get(s.wastepaperType) || 0) + s.shippedWeightKg
+        (target.get(s.wastepaperType) || 0) + s.shippedWeightKg
       );
     } else {
-      accumulate(shipmentMap, s.items, s.wastepaperType, s.weightKg);
+      accumulate(target, s.items, s.wastepaperType, s.weightKg);
     }
   }
-  const types = new Set([...intakeMap.keys(), ...shipmentMap.keys()]);
+  // Ручные правки: один вид — одна строка, но суммируем на случай дублей.
+  const adjustMap = new Map<string, number>();
+  for (const a of adjustments) {
+    const type = String(a?.wastepaperType || "").trim();
+    if (!type) continue;
+    adjustMap.set(type, (adjustMap.get(type) || 0) + (Number(a.deltaKg) || 0));
+  }
+  const types = new Set([
+    ...intakeMap.keys(),
+    ...shipmentMap.keys(),
+    ...skippedMap.keys(),
+    ...adjustMap.keys(),
+  ]);
   return [...types]
     .map((t) => {
       const i = Math.round((intakeMap.get(t) || 0) * 10) / 10;
       const s = Math.round((shipmentMap.get(t) || 0) * 10) / 10;
-      return { wastepaperType: t, intakeKg: i, shipmentKg: s, stockKg: Math.round((i - s) * 10) / 10 };
+      const skipped = Math.round((skippedMap.get(t) || 0) * 10) / 10;
+      const adjustment = Math.round((adjustMap.get(t) || 0) * 10) / 10;
+      const docKg = Math.round((i - s) * 10) / 10;
+      return {
+        wastepaperType: t,
+        intakeKg: i,
+        shipmentKg: s,
+        skippedShipmentKg: skipped,
+        docKg,
+        adjustmentKg: adjustment,
+        stockKg: Math.round((docKg + adjustment) * 10) / 10,
+      };
     })
     .sort((a, b) => b.stockKg - a.stockKg);
 }

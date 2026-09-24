@@ -14,6 +14,7 @@ import {
   SITE_HOURS_LABEL,
 } from "@/lib/site-config";
 import { SITE_NAME } from "@/lib/seo";
+import { stopOperation, type TripStop } from "@/lib/trip-stops";
 
 export interface TransportPrintData {
   transportNumber: number;
@@ -38,12 +39,6 @@ export interface TransportPrintData {
   companyPhone?: string;
   companyAddress?: string;
 }
-
-const TRIP_TYPE_LABEL: Record<string, string> = {
-  delivery: "Доставка клиенту",
-  pickup: "Забор груза",
-  handover: "Сдача груза",
-};
 
 function fmtDate(iso?: string | null): string {
   if (!iso) return "—";
@@ -151,6 +146,18 @@ export function TransportPrintSheet({
               : deal.dealNumber
                 ? `ЗК-${deal.dealNumber}`
                 : "Самостоятельная перевозка";
+          // Пометка операции с предметом: «Забор макулатуры»,
+          // «Забор товара», «Доставка заказа» — та же, что в путевом листе.
+          const opKind: TripStop["kind"] = deal.wpDocKind
+            ? deal.wpDocKind === "intake"
+              ? "wp_intake"
+              : "wp_shipment"
+            : isReceipt
+              ? "receipt"
+              : deal.dealNumber
+                ? "deal"
+                : "custom";
+          const op = stopOperation({ kind: opKind, tripType: deal.tripType ?? null });
           return (
             <Fragment key={`${deal.wpDocKind || ""}${deal.wpDocNumber ?? ""}${deal.receiptNumber ?? ""}${deal.dealNumber || "self"}-${idx}`}>
               <div className="transport-strip">
@@ -161,11 +168,7 @@ export function TransportPrintSheet({
                     <span className="strip-per">
                       ПЕР-{data.transportNumber} · {fmtDate(data.date)}
                     </span>
-                    {deal.tripType && deal.tripType !== "delivery" && (
-                      <span className="strip-trip-type">
-                        {TRIP_TYPE_LABEL[deal.tripType] || "Перевозка"}
-                      </span>
-                    )}
+                    <span className="strip-trip-type">{op.label}</span>
                   </div>
                   <div className="strip-top__right">
                     <span className="strip-boxes">{totalQty}</span>

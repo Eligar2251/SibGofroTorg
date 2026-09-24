@@ -84,6 +84,9 @@ export async function PATCH(
       ...(body.transportPlannedDate !== undefined
         ? { transportPlannedDate: body.transportPlannedDate || null }
         : {}),
+      ...(body.skipStock !== undefined
+        ? { skipStock: body.skipStock === true }
+        : {}),
       ...(body.comment !== undefined ? { comment: body.comment } : {}),
     });
     await logAdminAction(
@@ -97,6 +100,7 @@ export async function PATCH(
         total: item.total,
         account: item.account,
         ...(body.isPaid !== undefined ? { isPaid: item.isPaid } : {}),
+        ...(body.skipStock !== undefined ? { skipStock: item.skipStock } : {}),
       }
     );
     return NextResponse.json({ success: true, item });

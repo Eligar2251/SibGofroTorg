@@ -88,6 +88,12 @@ export async function PATCH(
       ...(body.awaitingWeight !== undefined
         ? { awaitingWeight: Boolean(body.awaitingWeight) }
         : {}),
+      // «Перевозка выполнена» — груз вывезли. Ставится вручную кнопкой в
+      // списке приёмов или автоматически при завершении рейса. В отличие
+      // от awaitingWeight сохранение карточки её не снимает.
+      ...(body.transportDone !== undefined
+        ? { transportDone: Boolean(body.transportDone) }
+        : {}),
       ...(body.comment !== undefined ? { comment: body.comment } : {}),
     });
     await logAdminAction(

@@ -67,6 +67,8 @@ export default async function WastepaperAccountPage({
       manualPayments: [],
       products: [],
       salaries: [],
+      stockAdjustments: [],
+      accountTransfers: [],
     };
   }
   const rates = await getWastepaperRates().catch(() => null);
@@ -122,6 +124,8 @@ export default async function WastepaperAccountPage({
       companyPhone={settings.phone || SITE_PHONE}
       companyAddress={settings.address || SITE_ADDRESS}
       stockProducts={stockProducts}
+      stockAdjustments={data.stockAdjustments}
+      accountTransfers={data.accountTransfers}
     />
   );
 }

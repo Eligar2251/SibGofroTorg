@@ -5132,16 +5132,36 @@ export interface ReceiptAcceptanceOverride {
 }
 
 /**
+ * Сколько фактически везём клиенту по заказу (ЗК).
+ *
+ * Диспетчер правит числа в точке рейса («Сохранить порядок») или прямо в
+ * окне завершения — списываем ровно их, а не весь заказ. Недовезённый
+ * остаток остаётся в заказе, и его можно взять следующим рейсом.
+ */
+export interface DealShipmentOverride {
+  dealId: string;
+  items: { productId: string; quantity: number }[];
+}
+
+/**
  * Завершить перевозку:
- *  • заказы ЗК — отпускаем отгруженные количества (shipped_items);
+ *  • заказы ЗК — отпускаем отгруженные количества (shipped_items). Сколько
+ *    везём — из точки рейса, а если диспетчер поправил при завершении
+ *    (opts.deals) — оттуда. Заказ закрывается («completed» + «проведена»
+ *    заявка на сайте) только когда отгружен полностью: при недогрузе он
+ *    остаётся открытым и снова попадает в список доставок с остатком;
  *  • поставки ПО- — принимаем товар на склад с фактическими количествами
- *    (остаток остаётся в поставке как «остаток по приёмке»);
- *  • макулатура ПМ- — ничего не проводим, только пометка «приёмка
- *    выполнена · ожидание взвешивания» (вес, склад и платёж — вручную).
+ *    (остаток остаётся в поставке как «остаток по приёмке», а сама
+ *    поставка — в очереди перевозок);
+ *  • макулатура ПМ- — ничего не проводим, только пометки «перевозка
+ *    выполнена» и «ожидание взвешивания» (вес, склад и платёж — вручную).
  */
 export async function completeTransport(
   id: string,
-  opts: { receipts?: ReceiptAcceptanceOverride[] } = {}
+  opts: {
+    receipts?: ReceiptAcceptanceOverride[];
+    deals?: DealShipmentOverride[];
+  } = {}
 ): Promise<void> {
   const db = getAdminDb();
   const { data: transport } = await db.from("transports").select("*").eq("id", id).single();
@@ -5153,6 +5173,20 @@ export async function completeTransport(
     (opts.receipts || [])
       .filter((row) => row?.receiptId)
       .map((row) => [String(row.receiptId), row])
+  );
+  // Сколько реально везём по каждому заказу (правка при завершении рейса).
+  const dealOverrides = new Map(
+    (opts.deals || [])
+      .filter((row) => row?.dealId)
+      .map((row) => [
+        String(row.dealId),
+        new Map(
+          (row.items || []).map((line) => [
+            String(line.productId),
+            Math.max(0, Number(line.quantity) || 0),
+          ])
+        ),
+      ])
   );
   // Фактически отгруженный состав (после урезки по остаткам) сохраняем
   // в документ перевозки, чтобы бланк и архив совпадали со складом.
@@ -5223,9 +5257,11 @@ export async function completeTransport(
       // Точка макулатуры: рейс выполнен — приём/сдача больше не ждёт
       // перевозки и уходит из очереди «Ожидают формирования».
       // Приём при этом НИЧЕГО не проводит: склад макулатуры и платёж не
-      // двигаются, ставим только пометку «приёмка выполнена · ожидание
-      // взвешивания». Вес макулатурщик вписывает руками, и уже
-      // сохранение приёма двигает склад и деньги.
+      // двигаются, ставим только пометки «перевозка выполнена» (приём
+      // уходит из доставок до конца работы с ним) и «приёмка выполнена ·
+      // ожидание взвешивания» (снимется, когда впишут вес). Вес
+      // макулатурщик вписывает руками, и уже сохранение приёма двигает
+      // склад и деньги.
       if (ti.wpDocId && ti.wpDocKind) {
         try {
           const table = ti.wpDocKind === "intake" ? "wp_intakes" : "wp_shipments";
@@ -5233,7 +5269,9 @@ export async function completeTransport(
             .from(table)
             .update({
               needs_transport: false,
-              ...(ti.wpDocKind === "intake" ? { awaiting_weight: true } : {}),
+              ...(ti.wpDocKind === "intake"
+                ? { awaiting_weight: true, transport_done: true }
+                : {}),
               updated_at: new Date().toISOString(),
             })
             .eq("id", ti.wpDocId);
@@ -5261,6 +5299,7 @@ export async function completeTransport(
     );
     const shippedMap = shippedQtyMap(deal.shipped_items as any[]);
     const postedLines: TransportItem["items"] = [];
+    const override = dealOverrides.get(String(ti.dealId));
 
     for (const item of ti.items) {
       const pid = item.productId ? String(item.productId) : "";
@@ -5273,7 +5312,12 @@ export async function completeTransport(
         continue;
       }
       const available = remaining.get(pid) ?? 0;
-      const qty = Math.max(0, Math.min(Number(item.transportQty) || 0, available));
+      // Сколько везём: число из точки рейса, а если диспетчер поправил его
+      // в окне завершения — исправленное. Больше остатка заказа не берём.
+      const wanted = override?.has(pid)
+        ? override.get(pid)!
+        : Number(item.transportQty) || 0;
+      const qty = Math.max(0, Math.min(wanted, available));
       if (qty <= 0) continue;
       remaining.set(pid, available - qty);
       shippedMap.set(pid, (shippedMap.get(pid) || 0) + qty);

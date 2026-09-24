@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
         transportItemId: body.transportItemId || null,
         needsTransport: body.needsTransport === true,
         transportPlannedDate: body.transportPlannedDate ?? null,
+        transportDone: body.transportDone === true,
         comment: body.comment ?? null,
       },
       auth.displayName

@@ -217,33 +217,63 @@ export function TransportManager({
   }
 
   /**
-   * Завершение рейса. Если в перевозке есть поставки (ПО-), сначала
-   * спрашиваем фактические количества — «приняли меньше» возможно:
-   * остаток останется в поставке («остаток по приёмке»).
+   * Завершение рейса.
+   *
+   * Сначала сохраняем правки из редактора точек: диспетчер мог поправить
+   * количества «на ходу», и завершать рейс надо ровно теми числами, что
+   * видны на экране (иначе списалось бы старое, а в бланке осталось новое).
+   * Затем — окно с числами, которые пойдут на склад: по заказам сколько
+   * везём клиенту, по поставкам сколько приняли. Их можно поправить и
+   * здесь, в последний момент.
    */
-  function handleComplete(t: TransportRow, stops: TripStop[]) {
-    const receiptStops = stops.filter((s) => s.receiptId && !s.wpDocId);
-    if (receiptStops.length > 0) {
+  async function handleComplete(t: TransportRow, stops: TripStop[], dirty = false) {
+    if (dirty) {
+      const err = validateStops(stops);
+      if (err) {
+        setError(err);
+        return;
+      }
+      const saved = await apiCall(`/api/admin/transports/${t.id}`, "PATCH", {
+        items: stopsToTransportItems(stops),
+      });
+      if (!saved) return;
+      setStopDraft((prev) => {
+        const next = { ...prev };
+        delete next[t.id];
+        return next;
+      });
+    }
+    // Точки, которые двигают склад: заказы (ЗК) и поставки (ПО).
+    const docStops = stops.filter(
+      (s) => (s.kind === "deal" && !!s.dealId) || (!!s.receiptId && !s.wpDocId)
+    );
+    if (docStops.length > 0) {
       setCompleteTarget({ transport: t, stops });
       setError("");
       return;
     }
     const hasWp = stops.some((s) => s.wpDocId);
     const msg = hasWp
-      ? "Завершить перевозку? Товары спишутся со склада, а макулатура получит пометку «приёмка выполнена · ожидание взвешивания» (вес впишете в приёме)."
-      : "Завершить перевозку? Товары будут списаны со склада.";
+      ? "Завершить перевозку? Макулатура получит пометки «перевозка выполнена» и «ожидание взвешивания» (вес впишете в приёме)."
+      : "Завершить перевозку?";
     if (!confirm(msg)) return;
     void apiCall(`/api/admin/transports/${t.id}`, "PATCH", { action: "complete" });
   }
 
-  /** Финальное подтверждение с фактическими количествами по поставкам. */
-  async function completeWithReceipts(
+  /**
+   * Финальное подтверждение: сколько везём по заказам и сколько приняли по
+   * поставкам. Списываем/принимаем ровно эти числа; остаток остаётся в
+   * документе, и он снова появится в доставках.
+   */
+  async function completeWithDocs(
     target: { transport: TransportRow; stops: TripStop[] },
-    receipts: { receiptId: string; items: { productId: string; quantity: number }[] }[]
+    receipts: { receiptId: string; items: { productId: string; quantity: number }[] }[],
+    deals: { dealId: string; items: { productId: string; quantity: number }[] }[]
   ) {
     await apiCall(`/api/admin/transports/${target.transport.id}`, "PATCH", {
       action: "complete",
       receipts,
+      deals,
     });
     setCompleteTarget(null);
   }
@@ -331,7 +361,7 @@ export function TransportManager({
           stops={completeTarget.stops}
           saving={saving}
           onClose={() => setCompleteTarget(null)}
-          onConfirm={(receipts) => completeWithReceipts(completeTarget, receipts)}
+          onConfirm={(receipts, deals) => completeWithDocs(completeTarget, receipts, deals)}
         />
       )}
 
@@ -485,7 +515,7 @@ export function TransportManager({
                             </button>
                           )}
                           {isActive && (
-                            <button className="admin-btn admin-btn--primary admin-btn--sm" disabled={saving} onClick={() => handleComplete(t, stops)}>
+                            <button className="admin-btn admin-btn--primary admin-btn--sm" disabled={saving} onClick={() => handleComplete(t, stops, dirty)}>
                               <CheckCircle2 size={13} /> Завершить перевозку
                             </button>
                           )}
@@ -1009,7 +1039,7 @@ function CreateTransportModal({
                 removable
                 onOpenDeal={() => setPanel("deals")}
                 title="Точки маршрута по порядку"
-                hint="тяните за ⠿ — в бланке будет этот порядок"
+                hint="тяните за ⠿ — в бланке будет этот порядок; числа в грузе — сколько везём/забираем, можно меньше, чем в документе"
                 emptyText="Пока пусто: отметьте заказы или макулатуру на шаге 1 — или добавьте свою точку"
                 actions={
                   <button type="button" className="admin-btn admin-btn--outline admin-btn--sm" onClick={addCustomStop}>
@@ -1111,13 +1141,28 @@ function PickLinesEditor({
 }
 
 /* ─────────────────────────────────────────────────────────
-   Завершение перевозки: фактические количества по поставкам
+   Завершение перевозки: сколько везём / сколько приняли
    ───────────────────────────────────────────────────────── */
 
+/** Строка количества в окне завершения. */
+type QtyLine = { productId: string; quantity: number };
+
+/** Ключ строки количеств: поставки и заказы лежат в одном state. */
+function completeRowKey(stop: TripStop): string {
+  return stop.receiptId ? `r:${stop.receiptId}` : `d:${stop.dealId}`;
+}
+
 /**
- * Рейс закрыли — спрашиваем, сколько реально приняли по каждой поставке
- * (ПО-). Приняли меньше — остаток останется в поставке «остатком по
- * приёмке», его можно добрать кнопкой «Принять остаток» в самой поставке.
+ * Закрываем рейс — показываем, какие числа пойдут на склад, и даём
+ * поправить их в последний момент:
+ *  • заказы (ЗК-) — сколько везём клиенту: ровно столько спишется со склада;
+ *  • поставки (ПО-) — сколько фактически приняли: ровно столько встанет
+ *    на склад.
+ *
+ * Не довезли / приняли не всё — остаток остаётся в документе (в заказе —
+ * неотгруженный остаток, в поставке — «остаток по приёмке»), документ не
+ * закрывается и снова попадает в список доставок: остаток можно взять
+ * следующим рейсом.
  */
 function CompleteTransportModal({
   transport,
@@ -1131,49 +1176,128 @@ function CompleteTransportModal({
   saving: boolean;
   onClose: () => void;
   onConfirm: (
-    receipts: { receiptId: string; items: { productId: string; quantity: number }[] }[]
+    receipts: { receiptId: string; items: QtyLine[] }[],
+    deals: { dealId: string; items: QtyLine[] }[]
   ) => void;
 }) {
   const receiptStops = useMemo(
     () => stops.filter((s) => !!s.receiptId && !s.wpDocId),
     [stops]
   );
-  const otherStops = useMemo(
-    () => stops.filter((s) => !s.receiptId || !!s.wpDocId),
+  const dealStops = useMemo(
+    () => stops.filter((s) => s.kind === "deal" && !!s.dealId && !s.wpDocId),
     [stops]
   );
+  const otherStops = useMemo(
+    () => stops.filter((s) => !s.receiptId && s.kind !== "deal"),
+    [stops]
+  );
+  // По умолчанию — числа из точек рейса (то, что вписал диспетчер).
   const [qty, setQty] = useState<Record<string, number[]>>(() => {
     const init: Record<string, number[]> = {};
-    for (const stop of receiptStops) {
-      if (!stop.receiptId) continue;
-      init[stop.receiptId] = stop.lines.map((line) => Number(line.qty) || 0);
+    for (const stop of [...dealStops, ...receiptStops]) {
+      init[completeRowKey(stop)] = stop.lines.map((line) => Number(line.qty) || 0);
     }
     return init;
   });
 
-  function patchQty(receiptId: string, index: number, value: number, max: number | null) {
+  function patchQty(key: string, index: number, value: number, max: number | null) {
     const next = Math.max(0, value);
     setQty((prev) => ({
       ...prev,
-      [receiptId]: (prev[receiptId] || []).map((v, i) =>
+      [key]: (prev[key] || []).map((v, i) =>
         i === index ? (max != null ? Math.min(next, max) : next) : v
       ),
     }));
   }
 
-  function handleConfirm() {
-    const receipts = receiptStops
-      .filter((s) => !!s.receiptId)
-      .map((s) => ({
-        receiptId: String(s.receiptId),
+  function rowsOf(list: TripStop[]) {
+    return list.map((s) => {
+      const key = completeRowKey(s);
+      return {
+        id: key.slice(2),
         items: s.lines
           .map((line, index) => ({
             productId: line.productId ? String(line.productId) : "",
-            quantity: Number((qty[String(s.receiptId)] || [])[index] ?? line.qty) || 0,
+            quantity: Number((qty[key] || [])[index] ?? line.qty) || 0,
           }))
-          .filter((item) => item.productId && item.quantity >= 0),
-      }));
-    onConfirm(receipts);
+          .filter((item) => item.productId),
+      };
+    });
+  }
+
+  function handleConfirm() {
+    onConfirm(
+      rowsOf(receiptStops).map((row) => ({ receiptId: row.id, items: row.items })),
+      rowsOf(dealStops).map((row) => ({ dealId: row.id, items: row.items }))
+    );
+  }
+
+  function renderStop(stop: TripStop, docLabel: string, unit: string) {
+    const key = completeRowKey(stop);
+    return (
+      <div className="wp-pick wp-pick--on" key={key} style={{ marginBottom: 10 }}>
+        <div className="wp-pick__label" style={{ cursor: "default" }}>
+          <strong className="wp-pick__num">{docLabel}</strong>
+          <span className="wp-pick__client">{stop.customerName}</span>
+        </div>
+        <div className="trip-stop__lines">
+          {stop.lines.map((line, index) => {
+            const max = line.maxQty ?? line.orderedQty ?? null;
+            const value = (qty[key] || [])[index] ?? (Number(line.qty) || 0);
+            return (
+              <div className="trip-stop__line" key={`${key}-${index}`}>
+                <span className="trip-stop__line-name">
+                  {line.name || "без названия"}
+                  {line.orderedQty != null && (
+                    <span className="trip-stop__line-ordered">
+                      {" "}
+                      (в документе {line.orderedQty}
+                      {line.maxQty != null && line.maxQty < line.orderedQty
+                        ? `, можно ${line.maxQty}`
+                        : ""}
+                      )
+                    </span>
+                  )}
+                </span>
+                <div className="trip-stop__line-qty">
+                  <input
+                    className="admin-input"
+                    type="number"
+                    min={0}
+                    max={max ?? undefined}
+                    value={value || ""}
+                    placeholder="0"
+                    onChange={(e) => patchQty(key, index, Number(e.target.value) || 0, max)}
+                  />
+                  <span className="trip-stop__line-unit" aria-hidden>
+                    {unit}
+                  </span>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                    title="Вернуть число из точки рейса"
+                    onClick={() => patchQty(key, index, Number(line.qty) || 0, null)}
+                  >
+                    Столько
+                  </button>
+                  {max != null && max > 0 && (
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      title="Взять весь остаток документа"
+                      onClick={() => patchQty(key, index, max, null)}
+                    >
+                      Всё
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1191,64 +1315,40 @@ function CompleteTransportModal({
 
           <div style={{ maxHeight: "58vh", overflowY: "auto" }}>
             <p className="admin-modal__desc">
-              Впишите, сколько фактически приняли по каждой поставке. Если приняли
-              меньше — остаток останется в поставке («остаток по приёмке»), его
-              можно добрать позже кнопкой «Принять остаток».
+              Проверьте числа — по ним двигается склад. Недовезли или приняли не
+              всё: остаток останется в документе, он не закроется и поедет
+              следующим рейсом.
             </p>
 
-            {receiptStops.map((stop) => {
-              const id = String(stop.receiptId);
-              return (
-                <div className="wp-pick wp-pick--on" key={`complete-${id}`} style={{ marginBottom: 10 }}>
-                  <div className="wp-pick__label" style={{ cursor: "default" }}>
-                    <strong className="wp-pick__num">{stop.receiptNumber != null ? `ПО-${stop.receiptNumber}` : "Поставка"}</strong>
-                    <span className="wp-pick__client">{stop.customerName}</span>
-                  </div>
-                  <div className="trip-stop__lines">
-                    {stop.lines.map((line, index) => {
-                      const max = line.maxQty ?? line.orderedQty ?? null;
-                      const value = (qty[id] || [])[index] ?? (Number(line.qty) || 0);
-                      return (
-                        <div className="trip-stop__line" key={`${id}-${index}`}>
-                          <span className="trip-stop__line-name">
-                            {line.name || "без названия"}
-                            {line.orderedQty != null && (
-                              <span className="trip-stop__line-ordered"> (в поставке {line.orderedQty})</span>
-                            )}
-                          </span>
-                          <div className="trip-stop__line-qty">
-                            <input
-                              className="admin-input"
-                              type="number"
-                              min={0}
-                              max={max ?? undefined}
-                              value={value || ""}
-                              placeholder="0"
-                              onChange={(e) => patchQty(id, index, Number(e.target.value) || 0, max)}
-                            />
-                            <span className="trip-stop__line-unit" aria-hidden>ед.</span>
-                            <button
-                              type="button"
-                              className="admin-btn admin-btn--ghost admin-btn--sm"
-                              title="Принять столько, сколько везли"
-                              onClick={() => patchQty(id, index, Number(line.qty) || 0, null)}
-                            >
-                              Столько
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+            {dealStops.length > 0 && (
+              <>
+                <p className="admin-hint" style={{ margin: "0 0 8px" }}>
+                  Заказы — сколько везём клиенту (столько спишется со склада):
+                </p>
+                {dealStops.map((s) => renderStop(s, `ЗК-${s.dealNumber}`, "ед."))}
+              </>
+            )}
+
+            {receiptStops.length > 0 && (
+              <>
+                <p className="admin-hint" style={{ margin: "0 0 8px" }}>
+                  Поставки — сколько фактически приняли (столько встанет на склад):
+                </p>
+                {receiptStops.map((s) =>
+                  renderStop(
+                    s,
+                    s.receiptNumber != null ? `ПО-${s.receiptNumber}` : "Поставка",
+                    "ед."
+                  )
+                )}
+              </>
+            )}
 
             {otherStops.length > 0 && (
               <div className="transport-builder__hint">
-                Ещё точек: {otherStops.length}. Товары по заказам спишутся со склада, а
-                макулатура получит пометку «приёмка выполнена · ожидание взвешивания» —
-                вес впишете в приёме руками.
+                Ещё точек: {otherStops.length}. Свои точки склад не трогают, а
+                макулатура получит пометки «перевозка выполнена» и «ожидание
+                взвешивания» — вес впишете в приёме руками.
               </div>
             )}
           </div>
@@ -1259,7 +1359,7 @@ function CompleteTransportModal({
             </button>
             <button type="button" className="admin-btn admin-btn--primary" onClick={handleConfirm} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-              Завершить и принять на склад
+              Завершить и провести по складу
             </button>
           </div>
         </div>

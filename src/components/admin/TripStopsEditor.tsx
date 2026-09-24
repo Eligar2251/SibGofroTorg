@@ -42,6 +42,7 @@ import {
   stopLoadedLines,
   stopTotalQty,
   stopTitle,
+  stopOperation,
   tripTypeDef,
   type StopSortMode,
   type TripStop,
@@ -380,6 +381,9 @@ export function TripStopsEditor({
         <div ref={listRef} className={`trip-stops${dragIndex !== null ? " trip-stops--dragging" : ""}`}>
           {stops.map((stop, index) => {
             const type = tripTypeDef(stop.tripType);
+            // Та же пометка, что уходит в печать: с предметом операции
+            // (макулатура / товар поставки / заказ клиента).
+            const op = stopOperation(stop);
             const open = expanded.has(stop.key);
             const loaded = stopLoadedLines(stop);
             const qty = stopTotalQty(stop);
@@ -408,7 +412,7 @@ export function TripStopsEditor({
                   <div className="trip-stop__head">
                     <div className="trip-stop__head-top">
                       <span className={`trip-stop__mark trip-stop__mark--${type.id}`}>
-                        <span aria-hidden>{type.icon}</span> {type.mark}
+                        <span aria-hidden>{op.icon}</span> {op.mark}
                       </span>
                       <span className="trip-stop__title">{stopTitle(stop)}</span>
                       <strong className="trip-stop__customer">
