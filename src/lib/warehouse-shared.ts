@@ -902,6 +902,15 @@ export function bankCardById(id: BankCardId | string | null | undefined): BankCa
  * «Вадим Маркович П.». Понимает и «П. Вадим Маркович», и «Пуртов Вадим
  * Маркович», и уже готовое «Вадим Маркович П.».
  */
+/**
+ * Похоже ли слово на русское отчество (или на patronymic-форму «-ұлы/-кызы»).
+ * Нужно, чтобы «Юлия Марковна» печаталось как есть, а «Вадим Пуртов» —
+ * как «Вадим П.».
+ */
+export function isPatronymic(word: string): boolean {
+  return /(ович|евич|ич|овна|евна|ична|вна|улы|кызы)$/i.test(String(word || ""));
+}
+
 export function formatCardHolderName(value: string | null | undefined): string {
   const parts = String(value || "")
     .trim()
@@ -919,9 +928,12 @@ export function formatCardHolderName(value: string | null | undefined): string {
   }
   if (words.length === 2) {
     // «Имя Отчество» (+ инициал фамилии, если он уже написан)
-    return initials.length > 0
-      ? `${words[0]} ${words[1]} ${initials[0]}`
-      : `${words[0]} ${initialOf(words[1])}`;
+    if (initials.length > 0) return `${words[0]} ${words[1]} ${initials[0]}`;
+    // Второе слово похоже на отчество — значит фамилии в записи нет,
+    // печатаем как есть: «Юлия Марковна».
+    if (isPatronymic(words[1])) return `${words[0]} ${words[1]}`;
+    // Иначе считаем парой «Имя Фамилия»: «Вадим Пуртов» → «Вадим П.»
+    return `${words[0]} ${initialOf(words[1])}`;
   }
   if (words.length === 1) {
     return initials.length > 0 ? `${words[0]} ${initials[0]}` : words[0];
