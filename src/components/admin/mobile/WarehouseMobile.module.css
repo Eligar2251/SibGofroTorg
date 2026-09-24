@@ -336,6 +336,17 @@
   color: #e0b45a;
 }
 
+/* Карта В.М. — вторая карта: свой холодный оттенок, чтобы не путать с ЮМ */
+.accIconVm {
+  background: rgba(46, 121, 168, 0.14);
+  border-color: rgba(46, 121, 168, 0.28);
+  color: #2e79a8;
+}
+
+.accValueVm {
+  color: #2e79a8;
+}
+
 .accValueNeg {
   color: #ef8f76;
 }
@@ -435,6 +446,11 @@
 .subIconYm {
   background: rgba(224, 180, 90, 0.18);
   color: #a56d0c;
+}
+
+.subIconVm {
+  background: rgba(46, 121, 168, 0.16);
+  color: #2e79a8;
 }
 
 .subIconPine {

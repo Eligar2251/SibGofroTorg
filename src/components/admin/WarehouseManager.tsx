@@ -66,6 +66,7 @@ import {
   isRentSalaryComment,
   isWastepaperSalaryComment,
   isYmCardSalaryComment,
+  isVmCardSalaryComment,
   salarySourceShortLabel,
   stripSalaryMetaTags,
   getWarehouseBusinessDate,
@@ -263,6 +264,7 @@ const paymentTypeLabels: Record<string, string> = {
   transfer: "Перевод",
   deposit: "Внесение",
   ym_card: "Карта ЮМ",
+  vm_card: "Карта В.М.",
   advertising: "Реклама",
   website: "Сайт/хостинг",
   monthly: "Ежемесячные платежи",
@@ -273,7 +275,7 @@ type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
-type BankSub = "summary" | "pending" | "history" | "cash" | "ym";
+type BankSub = "summary" | "pending" | "history" | "cash" | "ym" | "vm";
 type BankEntry =
   | (BankPayment & { entryKind: "payment" })
   | {
@@ -797,14 +799,16 @@ export function WarehouseManager({
   const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
   // Способ оплаты заказа берём из входящего ПЛ: наличка, карта ЮМ или счёт.
   const dealPaymentMethod = useMemo(() => {
-    const map = new Map<string, "cash" | "ym_card" | "regular">();
+    const map = new Map<string, "cash" | "ym_card" | "vm_card" | "regular">();
     for (const payment of payments) {
       if (payment.direction !== "incoming") continue;
       const method = payment.type === "cash"
         ? "cash"
-        : payment.type === "ym_card" || payment.cashDestination === "card"
-          ? "ym_card"
-          : "regular";
+        : payment.type === "vm_card"
+          ? "vm_card"
+          : payment.type === "ym_card" || payment.cashDestination === "card"
+            ? "ym_card"
+            : "regular";
       for (const dealId of payment.dealIds || []) map.set(dealId, method);
     }
     return map;
@@ -1303,21 +1307,29 @@ export function WarehouseManager({
       if (bankSub === "cash") return false;
       const isYmPayment = p.entryKind === "payment" && (p as any).type === "ym_card";
       const isYmSalary = p.entryKind === "salary" && (p.source === "ym_card" || isYmCardSalaryComment((p as any).salary?.comment));
+      const isVmPayment = p.entryKind === "payment" && (p as any).type === "vm_card";
+      const isVmSalary = p.entryKind === "salary" && (p.source === "vm_card" || isVmCardSalaryComment((p as any).salary?.comment));
       if (bankSub === "ym") {
         if (!isYmPayment && !isYmSalary) return false;
+      } else if (bankSub === "vm") {
+        // Карта В.М. — вторая карта: своя вкладка со своими операциями
+        if (!isVmPayment && !isVmSalary) return false;
       } else {
-        // В обычных вкладках скрываем операции карты ЮМ — у них отдельная вкладка
-        if (isYmPayment || isYmSalary) return false;
+        // В обычных вкладках скрываем операции обеих карт — у них свои вкладки
+        if (isYmPayment || isYmSalary || isVmPayment || isVmSalary) return false;
         // ЗП ведётся в отдельном разделе «Зарплаты». В «Ожидают оплаты»
         // банка показываем только реальные платёжные поручения, а не
         // начисления сотрудникам.
         if (bankSub === "pending" && p.entryKind === "salary") return false;
       }
-      const matchesTab = bankSub === "pending" || bankSub === "ym" ? !p.isPaid : p.isPaid;
+      const matchesTab =
+        bankSub === "pending" || bankSub === "ym" || bankSub === "vm"
+          ? !p.isPaid
+          : p.isPaid;
       // Для карты ЮМ показываем и ожидающие и проведённые в одном списке? Требование: вкладка с балансом и операциями.
       // Делаем как в банке: pending — неоплаченные, history — оплаченные, ym — показываем все если не фильтруем по paid? Для простоты покажем все в ym, независимо от isPaid, если выбран ym. Если хотим разделить, покажем через paid-фильтр ниже.
       // Сейчас для ym показываем и ожидающие и проведённые — не фильтруем по isPaid, а оставляем оба.
-      if (bankSub !== "ym") {
+      if (bankSub !== "ym" && bankSub !== "vm") {
         if (!matchesTab && bankSub !== "summary") return false;
         if (bankSub === "summary") {
           // в сводке не показываем список — bankList не используется, но для безопасности
@@ -1688,7 +1700,7 @@ export function WarehouseManager({
   // Платёжки р/с без отметки «оплачено» — счётчик на плитке «Ожидают»
   // мобильного банка (карта ЮМ — отдельная подвкладка, не считаем).
   const mobilePendingCount = useMemo(
-    () => payments.filter((p) => !p.isPaid && p.type !== "ym_card").length,
+    () => payments.filter((p) => !p.isPaid && p.type !== "ym_card" && p.type !== "vm_card").length,
     [payments]
   );
 
@@ -3419,6 +3431,10 @@ export function WarehouseManager({
                 ymIn: bankSummary.ymExpectedIn,
                 ymOut: bankSummary.ymExpectedOut,
                 ymForecast: bankSummary.ymForecast,
+                vmBalance: bankSummary.vmCardBalance,
+                vmIn: bankSummary.vmExpectedIn,
+                vmOut: bankSummary.vmExpectedOut,
+                vmForecast: bankSummary.vmForecast,
                 totalBalance: bankSummary.balance,
                 totalForecast: bankSummary.forecast,
                 receivables: mobileDebts.receivables,
@@ -3538,11 +3554,41 @@ export function WarehouseManager({
                     </button>
                   </div>
                 </div>
+
+                {/* Карта В.М. — вторая карта: свой счёт, свой баланс. */}
+                <div style={{ borderLeft: "1px dashed rgba(255,255,255,0.12)", paddingLeft: 16, display: "flex", flexDirection: "column" }} className="bank-hero__ym-card">
+                  <div>
+                    <div className="bank-hero__label">
+                      <CreditCard size={14} /> Карта В.М.
+                    </div>
+                    <div className="bank-hero__value" style={{ color: "#8ec9e8" }}>
+                      {fmt(bankSummary.vmCardBalance)} ₽
+                    </div>
+                    <div className="cash-carryover-hero" style={{ marginTop: 6, flexWrap: "wrap" }}>
+                      <span>Ожидаем +: <b>{fmt(bankSummary.vmExpectedIn)} ₽</b></span>
+                      <span>К оплате −: <b>{fmt(bankSummary.vmExpectedOut)} ₽</b></span>
+                      <span>Прогноз: <b>{fmt(bankSummary.vmForecast)} ₽</b></span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 6, lineHeight: 1.3 }}>
+                      Отдельный счёт: сюда попадают только переводы на карту В.М.
+                    </div>
+                  </div>
+                  <div style={{ marginTop: "auto", paddingTop: 10 }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      style={{ background: "rgba(142,201,232,0.12)", border: "1px solid rgba(142,201,232,0.25)", color: "#8ec9e8" }}
+                      onClick={() => setBankSub("vm")}
+                    >
+                      <CreditCard size={13} /> Открыть карту В.М.
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="bank-hero__note" style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, lineHeight: 1.4, color: 'rgba(255,255,255,0.65)' }}>
                 <div>Р/С: {fmt(bankSummary.bankBalance)} ₽ · +{fmt(bankSummary.expectedIn)} −{fmt(bankSummary.expectedOut)} = <b style={{ color: '#fff' }}>{fmt(bankSummary.bankForecast)} ₽</b></div>
-                <div>Касса: {fmt(bankSummary.cashBalance)} ₽ · ЮМ: {fmt(bankSummary.ymCardBalance)} ₽ (прогн. {fmt(bankSummary.ymForecast)} ₽)</div>
+                <div>Касса: {fmt(bankSummary.cashBalance)} ₽ · ЮМ: {fmt(bankSummary.ymCardBalance)} ₽ (прогн. {fmt(bankSummary.ymForecast)} ₽) · В.М.: {fmt(bankSummary.vmCardBalance)} ₽ (прогн. {fmt(bankSummary.vmForecast)} ₽)</div>
                 <div>Всего: {fmt(bankSummary.balance)} ₽ · прогноз {fmt(bankSummary.forecast)} ₽</div>
               </div>
             </div>
@@ -3601,6 +3647,8 @@ export function WarehouseManager({
                     <div style={{ fontSize: 10, color: 'rgba(224,180,90,0.8)', fontWeight: 600, letterSpacing: 0.3 }}>БЕЗНАЛ · ПЕРЕВОДЫ</div>
                     <div style={{ fontSize: 12, marginTop: 2 }}>Карта ЮМ факт: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymCardBalance)} ₽</b></div>
                     <div style={{ fontSize: 11 }}>Прогноз ЮМ: <b style={{ color: '#e0b45a' }}>{fmt(bankSummary.ymForecast)} ₽</b></div>
+                    <div style={{ fontSize: 12, marginTop: 6 }}>Карта В.М. факт: <b style={{ color: '#8ec9e8' }}>{fmt(bankSummary.vmCardBalance)} ₽</b></div>
+                    <div style={{ fontSize: 11 }}>Прогноз В.М.: <b style={{ color: '#8ec9e8' }}>{fmt(bankSummary.vmForecast)} ₽</b></div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12, marginTop: 4, width: '100%', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
@@ -3739,6 +3787,13 @@ export function WarehouseManager({
             >
               <CreditCard size={12} />
               Карта ЮМ · {fmt(bankSummary.ymCardBalance)} ₽
+            </button>
+            <button
+              onClick={() => setBankSub("vm")}
+              className={`admin-filter${bankSub === "vm" ? " admin-filter--active" : ""}`}
+            >
+              <CreditCard size={12} />
+              Карта В.М. · {fmt(bankSummary.vmCardBalance)} ₽
             </button>
             <button
               onClick={() => setBankSub("cash")}

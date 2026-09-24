@@ -32,6 +32,7 @@ import {
   type CashCollectionExpense,
   getCashCollectionIncomeBreakdown,
   getCashCollectionExpenseBreakdown,
+  cashItemCardAmounts,
 } from "@/lib/warehouse-shared";
 import { useEscapeClose } from "@/hooks/use-escape-close";
 
@@ -55,17 +56,17 @@ function fmtDateFull(raw: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** Чип способа поступления/расхода: наличные / карта ЮМ / оба. */
+/** Чип способа поступления/расхода: наличные / карта ЮМ / карта В.М. */
 function kindChip(item: CashCollectionItem): { label: string; cls: string } {
   const amount = Number(item.amount) || 0;
-  const card = Math.max(
-    0,
-    Number(item.cardAmount != null ? item.cardAmount : item.kind === "card" ? amount : 0) || 0
-  );
-  const hasCard = card > 0.009;
-  const hasCash = amount - card > 0.009;
-  if (hasCard && hasCash) return { label: "Нал + ЮМ", cls: "cs-chip cs-chip--both" };
-  if (hasCard) return { label: "Карта ЮМ", cls: "cs-chip cs-chip--card" };
+  const parts = cashItemCardAmounts(item);
+  const hasYm = parts.ym > 0.009;
+  const hasVm = parts.vm > 0.009;
+  const hasCash = amount - parts.ym - parts.vm > 0.009;
+  const pieces = [hasCash ? "Нал" : "", hasYm ? "ЮМ" : "", hasVm ? "В.М." : ""].filter(Boolean);
+  if (pieces.length > 1) return { label: pieces.join(" + "), cls: "cs-chip cs-chip--both" };
+  if (hasYm) return { label: "Карта ЮМ", cls: "cs-chip cs-chip--card" };
+  if (hasVm) return { label: "Карта В.М.", cls: "cs-chip cs-chip--card" };
   return { label: "Наличные", cls: "cs-chip cs-chip--cash" };
 }
 
@@ -158,6 +159,12 @@ export function CashSessions({
                     <CreditCard size={11} /> ЮМ
                   </span>
                   <b className="cs-ym">{fmt(income.card)} ₽</b>
+                </div>
+                <div className="cs-tile">
+                  <span>
+                    <CreditCard size={11} /> В.М.
+                  </span>
+                  <b className="cs-ym">{fmt(income.vmCard)} ₽</b>
                 </div>
               </div>
               {collection.note && (
@@ -265,14 +272,17 @@ function CashSessionModal({
                   <ArrowDownLeft size={12} /> Поступления за день
                 </span>
                 <b className="cs-in">+{fmt(income.total)} ₽</b>
-                <small>нал {fmt(income.cash)} · ЮМ {fmt(income.card)}</small>
+                <small>нал {fmt(income.cash)} · ЮМ {fmt(income.card)} · В.М. {fmt(income.vmCard)}</small>
               </div>
               <div className="cs-bigtile">
                 <span className="cs-bigtile__label">
                   <ArrowUpRight size={12} /> Расходы за день
                 </span>
                 <b className="cs-out">−{fmt(expense.total)} ₽</b>
-                <small>нал {fmt(expense.cash)} · ЮМ {fmt(expense.card)}</small>
+                <small>
+                  нал {fmt(expense.cash)} · ЮМ {fmt(expense.card)} · В.М.{" "}
+                  {fmt(expense.vmCard)}
+                </small>
               </div>
               <div className={`cs-bigtile${closing < 0 ? " cs-bigtile--neg" : ""}`}>
                 <span className="cs-bigtile__label">
@@ -334,8 +344,18 @@ function CashSessionModal({
                           {row.comment ? <small> · {row.comment}</small> : null}
                         </span>
                       </div>
-                      <span className={`cs-chip ${row.sourceKind === "card" ? "cs-chip--card" : "cs-chip--cash"}`}>
-                        {row.sourceKind === "card" ? "Карта ЮМ" : "Наличные"}
+                      <span
+                        className={`cs-chip ${
+                          row.sourceKind === "card" || row.sourceKind === "vm_card"
+                            ? "cs-chip--card"
+                            : "cs-chip--cash"
+                        }`}
+                      >
+                        {row.sourceKind === "card"
+                          ? "Карта ЮМ"
+                          : row.sourceKind === "vm_card"
+                            ? "Карта В.М."
+                            : "Наличные"}
                       </span>
                       <b className="cs-line__val cs-out">−{fmt(Number(row.amount) || 0)} ₽</b>
                     </div>

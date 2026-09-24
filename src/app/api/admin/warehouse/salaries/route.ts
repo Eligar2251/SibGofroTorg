@@ -29,7 +29,12 @@ export async function POST(request: NextRequest) {
 
     const src = String(body.source || "");
     const safeSource =
-      src === "cash" || src === "ym_card" || src === "rent" || src === "bank" || isWastepaperSalarySource(src)
+      src === "cash" ||
+      src === "ym_card" ||
+      src === "vm_card" ||
+      src === "rent" ||
+      src === "bank" ||
+      isWastepaperSalarySource(src)
         ? src
         : "bank";
     const result = await createSalary({

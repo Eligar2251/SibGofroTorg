@@ -35,7 +35,7 @@ import {
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
-import type { BankPaymentType } from "@/lib/warehouse-shared";
+import type { BankPaymentType, CashKind } from "@/lib/warehouse-shared";
 import { useEscapeClose } from "@/hooks/use-escape-close";
 
 export interface DealLinkOption {
@@ -416,6 +416,7 @@ export function PaymentForm({
     { value: "cash", label: "Наличка (в кассу)", icon: Banknote },
     { value: "transfer", label: "Безнал на карту (в кассу)", icon: CreditCard },
     { value: "ym_card", label: "Карта ЮМ", icon: CreditCard },
+    { value: "vm_card", label: "Карта В.М.", icon: CreditCard },
     { value: "deposit", label: "Внесение", icon: Download },
     { value: "advertising", label: "Реклама", icon: CreditCard },
     { value: "website", label: "Сайт/хостинг", icon: CreditCard },
@@ -721,7 +722,7 @@ export function PaymentControls({
   edit: {
     date: string;
     type?: BankPaymentType;
-    cashDestination?: "cash" | "card" | null;
+    cashDestination?: CashKind | null;
     counterparty: string;
     amount: number;
     invoiceNumber: string | null;
@@ -1027,6 +1028,7 @@ export function PaymentControls({
                     { value: "cash", label: "Наличка (в кассу)", icon: Banknote },
                     { value: "transfer", label: "Безнал на карту (в кассу)", icon: CreditCard },
                     { value: "ym_card", label: "Карта ЮМ", icon: CreditCard },
+    { value: "vm_card", label: "Карта В.М.", icon: CreditCard },
                     { value: "deposit", label: "Внесение", icon: Download },
                     { value: "advertising", label: "Реклама", icon: CreditCard },
                     { value: "website", label: "Сайт/хостинг", icon: CreditCard },

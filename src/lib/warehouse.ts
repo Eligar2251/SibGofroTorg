@@ -56,6 +56,9 @@ import {
   dealNeedsDelivery,
   isSalaryExcludedFromBalance,
   isYmCardSalaryComment,
+  isVmCardSalaryComment,
+  isImmediateVmPayment,
+  cashItemCardAmounts,
   isWastepaperSalaryComment,
   isWastepaperThirdPartySalaryComment,
   salarySourceToDb,
@@ -409,12 +412,15 @@ function mapSalaryRow(row: any): Salary {
     date: row.date,
     periodMonth: getSalaryPeriodMonth(row.comment, row.date),
     // Виртуальные счета живут в теге комментария (миграция БД не нужна):
-    // [Карта ЮМ] → ym_card; [Макулатура] → wastepaper (наличка макулатуры,
+    // [Карта ЮМ] → ym_card; [Карта В.М.] → vm_card;
+    // [Макулатура] → wastepaper (наличка макулатуры,
     // source=cash) / wastepaper_bank (безнал, source=bank) /
     // wastepaper_third ([Сторонние:…] — сторонние средства макулатуры).
     source: isYmCardSalaryComment(row.comment)
       ? "ym_card"
-      : isWastepaperSalaryComment(row.comment)
+      : isVmCardSalaryComment(row.comment)
+        ? "vm_card"
+        : isWastepaperSalaryComment(row.comment)
         ? isWastepaperThirdPartySalaryComment(row.comment)
           ? "wastepaper_third"
           : row.source === "bank"
@@ -1853,12 +1859,15 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
   const payMethod = String(data.paymentMethod || "regular");
   const isCash = payMethod === "cash";
   const isYmCard = payMethod === "ym_card";
-  const isImmediatePayment = isCash || isYmCard;
+  const isVmCard = payMethod === "vm_card";
+  const isImmediatePayment = isCash || isYmCard || isVmCard;
   const paymentType: BankPaymentType = isCash
     ? "cash"
     : isYmCard
       ? "ym_card"
-      : "regular";
+      : isVmCard
+        ? "vm_card"
+        : "regular";
   // paid_at — текстовая дата YYYY-MM-DD (как во всех остальных местах).
   // Раньше сюда писался полный ISO-таймстамп, из-за чего дата оплаты
   // выпадала из общего формата.
@@ -1884,7 +1893,9 @@ export async function createDeal(data: any): Promise<{ id: string; number: numbe
         ? `Оплата наличными по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
         : isYmCard
           ? `Оплата на карту ЮМ по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
-          : `Счёт покупателю по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
+          : isVmCard
+            ? `Оплата на карту В.М. по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
+            : `Счёт покупателю по заказу ЗК-${number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
     });
     if (payError) {
       console.error("createDeal: не удалось создать платёж:", payError);
@@ -2357,18 +2368,24 @@ export async function updateDeal(id: string, data: any): Promise<void> {
   )
     ? "cash"
     : dealPayments.some(
-        (payment: any) =>
-          payment.direction === "incoming" &&
-          (payment.type === "ym_card" || payment.cash_destination === "card")
+        (payment: any) => payment.direction === "incoming" && payment.type === "vm_card"
       )
-      ? "ym_card"
-      : "regular";
+      ? "vm_card"
+      : dealPayments.some(
+          (payment: any) =>
+            payment.direction === "incoming" &&
+            (payment.type === "ym_card" || payment.cash_destination === "card")
+        )
+        ? "ym_card"
+        : "regular";
   const requestedMethod =
     data.paymentMethod !== undefined
       ? String(data.paymentMethod)
       : inheritedMethod;
   const dealPaymentMethod =
-    requestedMethod === "cash" || requestedMethod === "ym_card"
+    requestedMethod === "cash" ||
+    requestedMethod === "ym_card" ||
+    requestedMethod === "vm_card"
       ? requestedMethod
       : "regular";
   const payType: BankPaymentType = dealPaymentMethod;
@@ -2408,8 +2425,10 @@ export async function updateDeal(id: string, data: any): Promise<void> {
           ? `Оплата наличными по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
           : dealPaymentMethod === "ym_card"
             ? `Оплата на карту ЮМ по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
-            : `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
-        // Наличка и ЮМ считаются полученными сразу.
+            : dealPaymentMethod === "vm_card"
+              ? `Оплата на карту В.М. по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
+              : `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
+        // Наличка и карты считаются полученными сразу.
         is_paid: isImmediatePayment,
         paid_at: isImmediatePayment ? payDate : null,
       }).eq("id", unpaidSoloPayments[i].id);
@@ -2437,7 +2456,9 @@ export async function updateDeal(id: string, data: any): Promise<void> {
           ? `Оплата наличными по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
           : dealPaymentMethod === "ym_card"
             ? `Оплата на карту ЮМ по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
-            : `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
+            : dealPaymentMethod === "vm_card"
+              ? `Оплата на карту В.М. по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`
+              : `Счёт покупателю по заказу ЗК-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
       });
     }
   }
@@ -3019,6 +3040,8 @@ export interface CashCollectionRow {
   cashAmount?: number;
   /** Отмеченные поступления на карту ЮМ; сводка сама их не переводит. */
   transferAmount: number;
+  /** Отмеченные поступления на вторую карту — В.М. */
+  vmTransferAmount: number;
   /** Разметка платежей, вошедших в сдачу */
   items: CashCollectionItem[];
   /** Траты дня из наличной кассы и с карты ЮМ. */
@@ -3041,6 +3064,8 @@ async function fetchCashCollections(): Promise<CashCollectionRow[]> {
   return (data || []).map((row: any) => {
     const amount = Number(row.amount) || 0;
     const transferAmount = Number(row.transfer_amount) || 0;
+    // Колонка появилась с картой В.М.: до миграции её нет — считаем нулём.
+    const vmTransferAmount = Number(row.vm_transfer_amount) || 0;
     // undefined отличает старые записи до появления разбивки. Для них
     // баланс сохраняет прежнюю семантику «вся сумма ушла из кассы».
     const cashAmount =
@@ -3051,6 +3076,7 @@ async function fetchCashCollections(): Promise<CashCollectionRow[]> {
       amount,
       cashAmount,
       transferAmount,
+      vmTransferAmount,
       items: (Array.isArray(row.items) ? row.items : []).map((it: any) => ({
         ...it,
         // "transfer" — устаревшее имя для инкассации на карту.
@@ -3153,6 +3179,8 @@ export async function getPendingCashPayments(): Promise<{
       todayIncoming: number;
       /** Ещё не отмеченные поступления на карту ЮМ за день. */
       todayCardIncoming: number;
+      /** Ещё не отмеченные поступления на карту В.М. за день. */
+      todayVmIncoming: number;
       /** Все ещё не отмеченные расходы двух касс за день. */
       todayOutgoing: number;
       todayCashOutgoing: number;
@@ -3161,6 +3189,8 @@ export async function getPendingCashPayments(): Promise<{
       closingBalance: number;
       /** Фактический остаток карты ЮМ. */
       closingCardBalance: number;
+      /** Фактический остаток карты В.М. */
+      closingVmBalance: number;
     }
   >;
 }> {
@@ -3212,11 +3242,13 @@ export async function getPendingCashPayments(): Promise<{
       openingBalance: number;
       todayIncoming: number;
       todayCardIncoming: number;
+      todayVmIncoming: number;
       todayOutgoing: number;
       todayCashOutgoing: number;
       todayCardOutgoing: number;
       closingBalance: number;
       closingCardBalance: number;
+      closingVmBalance: number;
     }
   > = {};
   for (const date of summaryDates) {
@@ -3231,6 +3263,9 @@ export async function getPendingCashPayments(): Promise<{
     const todayCardIncoming = pendingOfDay
       .filter((payment) => getShiftIncomeKind(payment) === "card")
       .reduce((sum, payment) => sum + payment.amount, 0);
+    const todayVmIncoming = pendingOfDay
+      .filter((payment) => getShiftIncomeKind(payment) === "vm_card")
+      .reduce((sum, payment) => sum + payment.amount, 0);
     const expensesOfDay = shiftExpenses.filter((expense) => expense.date === date);
     const todayCashOutgoing = expensesOfDay
       .filter((expense) => expense.sourceKind === "cash")
@@ -3243,11 +3278,13 @@ export async function getPendingCashPayments(): Promise<{
       openingBalance: summary.openingBalance,
       todayIncoming: round2(todayIncoming),
       todayCardIncoming: round2(todayCardIncoming),
+      todayVmIncoming: round2(todayVmIncoming),
       todayOutgoing: round2(todayCashOutgoing + todayCardOutgoing),
       todayCashOutgoing: round2(todayCashOutgoing),
       todayCardOutgoing: round2(todayCardOutgoing),
       closingBalance: summary.currentBalance,
       closingCardBalance: round2(balances.ymCardBalance),
+      closingVmBalance: round2(balances.vmCardBalance),
     };
   }
 
@@ -3297,6 +3334,8 @@ function getShiftIncomeKind(p: BankPayment): CashKind | null {
     return null;
   }
   if (isImmediateYmPayment(p)) return "card";
+  // Вторая карта — своя касса смены: такие поступления не идут в наличные.
+  if (isImmediateVmPayment(p)) return "vm_card";
   if (p.type === "cash") return "cash";
   return null;
 }
@@ -3310,33 +3349,25 @@ function isCashDeskIncome(p: BankPayment): boolean {
 function summarizeCollectionItems(items: CashCollectionItem[]): {
   cash: number;
   card: number;
+  vmCard: number;
   total: number;
 } {
   let cash = 0;
   let card = 0;
+  let vmCard = 0;
   for (const item of items) {
     if (item.noAccounting) continue;
     const amount = Math.max(0, Number(item.amount) || 0);
-    const cardAmount = Math.min(
-      amount,
-      Math.max(
-        0,
-        Number(
-          item.cardAmount != null
-            ? item.cardAmount
-            : item.kind === "card"
-              ? amount
-              : 0
-        ) || 0
-      )
-    );
-    card += cardAmount;
-    cash += Math.max(0, amount - cardAmount);
+    const parts = cashItemCardAmounts(item);
+    card += parts.ym;
+    vmCard += parts.vm;
+    cash += Math.max(0, amount - parts.ym - parts.vm);
   }
   return {
     cash: round2(cash),
     card: round2(card),
-    total: round2(cash + card),
+    vmCard: round2(vmCard),
+    total: round2(cash + card + vmCard),
   };
 }
 
@@ -3348,7 +3379,8 @@ export interface CashExpenseRow {
   title: string;
   amount: number;
   comment: string | null;
-  sourceKind: "cash" | "card";
+  /** Откуда оплачено: наличная касса, карта ЮМ или карта В.М. */
+  sourceKind: "cash" | "card" | "vm_card";
 }
 
 /**
@@ -3366,7 +3398,12 @@ function listCashExpenses(
     if (isRentSalaryComment(s.comment, s.source)) continue;
     // Наличка макулатуры — не касса смены: расход виден в модуле макулатуры.
     if (s.source === "wastepaper" || isWastepaperSalaryComment(s.comment)) continue;
-    const isYm = s.source === "ym_card" || isYmCardSalaryComment(s.comment);
+    const isVmSalaryExpense =
+      s.source === "vm_card" || isVmCardSalaryComment(s.comment);
+    const isYm =
+      s.source === "ym_card" ||
+      isVmSalaryExpense ||
+      isYmCardSalaryComment(s.comment);
     if (s.source !== "cash" && !isYm) continue;
     rows.push({
       kind: "salary",
@@ -3375,7 +3412,7 @@ function listCashExpenses(
       title: `Зарплата — ${s.employeeName || "сотрудник"}`,
       amount: s.amount,
       comment: stripSalaryMetaTags(s.comment) || null,
-      sourceKind: isYm ? "card" : "cash",
+      sourceKind: isVmSalaryExpense ? "vm_card" : isYm ? "card" : "cash",
     });
   }
 
@@ -3388,7 +3425,16 @@ function listCashExpenses(
     ) {
       continue;
     }
-    const isYm = p.type === "ym_card" || p.type === "transfer" || p.cashDestination === "card" || (p.comment && (p.comment.includes("[Карта ЮМ]") || p.comment.includes("[ЮМ]")));
+    const isVmExpense =
+      p.type === "vm_card" ||
+      (p.comment &&
+        (p.comment.includes("[Карта В.М.]") || p.comment.includes("[В.М.]")));
+    const isYm =
+      p.type === "ym_card" ||
+      isVmExpense ||
+      p.type === "transfer" ||
+      p.cashDestination === "card" ||
+      (p.comment && (p.comment.includes("[Карта ЮМ]") || p.comment.includes("[ЮМ]")));
     if (p.type !== "cash" && !isYm) continue;
     rows.push({
       kind: "payment",
@@ -3397,7 +3443,7 @@ function listCashExpenses(
       title: `ПЛ-${p.number} — ${p.counterparty || "расход"}`,
       amount: p.amount,
       comment: p.comment ?? null,
-      sourceKind: isYm ? "card" : "cash",
+      sourceKind: isVmExpense ? "vm_card" : isYm ? "card" : "cash",
     });
   }
 
@@ -3462,6 +3508,8 @@ export async function collectCash(
   cashIncomeAmount: number;
   cashAmount: number;
   transferAmount: number;
+  /** Сколько из отмеченного ушло на вторую карту — В.М. */
+  vmTransferAmount: number;
   date: string;
 }> {
   const db = getAdminDb();
@@ -3577,6 +3625,7 @@ export async function collectCash(
     amount: collectionIncome.total,
     cash_amount: closingBalance,
     transfer_amount: collectionIncome.card,
+    vm_transfer_amount: collectionIncome.vmCard,
     items: allRows,
     expenses: expenseRows,
     income_amount: collectionIncome.total,
@@ -3596,6 +3645,7 @@ export async function collectCash(
     cashIncomeAmount: newlyMarkedIncome.cash,
     cashAmount: closingBalance,
     transferAmount: newlyMarkedIncome.card,
+    vmTransferAmount: newlyMarkedIncome.vmCard,
     date,
   };
 }

@@ -105,6 +105,7 @@ import {
   wpEventEffectiveDate,
   wpIntakeAwaitingWeight,
   wpIntakeCompleted,
+  WP_COMMON_ACCOUNT_LABEL,
   wpIntakeTransportDone,
   wpItemsSummary,
   wpTypeLabel,
@@ -1561,9 +1562,10 @@ function WpHero({
         <div className="wpa-mobile__caption"><Wallet size={18} /> Общий баланс <span>{fmtDate(today)}</span></div>
         <strong className="wpa-mobile__total">{fmtMoney(balance.total)}</strong>
         <dl className="wpa-mobile__accounts">
-          <div><dt><Banknote size={16} /> Наличные</dt><dd>{fmtMoney(balance.cash)}</dd></div>
-          <div><dt><CreditCard size={16} /> Безналичные</dt><dd>{fmtMoney(balance.bank)}</dd></div>
-          <div><dt><Wallet size={16} /> Сторонние пополнения</dt><dd>{fmtMoney(balance.third_party)}</dd></div>
+          <div><dt><Wallet size={16} /> {WP_COMMON_ACCOUNT_LABEL}</dt><dd>{fmtMoney(balance.common)}</dd></div>
+          <div><dt><Banknote size={16} /> · Наличка</dt><dd>{fmtMoney(balance.cash)}</dd></div>
+          <div><dt><CreditCard size={16} /> · Безнал</dt><dd>{fmtMoney(balance.bank)}</dd></div>
+          <div><dt><HandCoins size={16} /> Сторонние пополнения</dt><dd>{fmtMoney(balance.third_party)}</dd></div>
         </dl>
       </div>
       <div className="wpa-mobile__actions">
@@ -1593,18 +1595,31 @@ function WpHero({
       </div>
 
       <div className="wpa-balance__grid">
+        {/* Наличка и безнал — один денежный счёт макулатуры: показываем
+            общим остатком, а ниже расшифровка, чем он наполнен. */}
         <div className="wpa-balance__cell">
           <div className="wpa-balance__label">
-            <Banknote size={13} /> Наличка сейчас
+            <Wallet size={13} /> {WP_COMMON_ACCOUNT_LABEL}
           </div>
-          <div className="wpa-balance__value">{fmtMoney(balance.cash)}</div>
+          <div className="wpa-balance__value">{fmtMoney(balance.common)}</div>
+          <div className="wpa-balance__item">
+            <div className="wpa-balance__label">
+              <Banknote size={13} /> Наличка
+            </div>
+            <div className="wpa-balance__value">{fmtMoney(balance.cash)}</div>
+          </div>
+          <div className="wpa-balance__item">
+            <div className="wpa-balance__label">
+              <CreditCard size={13} /> Безнал
+            </div>
+            <div className="wpa-balance__value">{fmtMoney(balance.bank)}</div>
+          </div>
         </div>
         <div className="wpa-balance__cell">
           <div className="wpa-balance__label">
-            <CreditCard size={13} /> Безнал сейчас
+            <HandCoins size={13} /> Сторонние пополнения
           </div>
-          <div className="wpa-balance__value">{fmtMoney(balance.bank)}</div>
-          <div className="wpa-balance__item"><div className="wpa-balance__label"><Wallet size={13} /> Сторонние пополнения</div><div className="wpa-balance__value">{fmtMoney(balance.third_party)}</div></div>
+          <div className="wpa-balance__value">{fmtMoney(balance.third_party)}</div>
         </div>
         <div className="wpa-balance__cell wpa-balance__cell--total wpa-balance__cell--accent">
           <div className="wpa-balance__label">
@@ -5181,11 +5196,6 @@ function BankTab({
     resetKey: `${deferredQuery}|${account}|${from}|${to}|${onlyTransfers}`,
   });
 
-  const accountCards: Array<{ key: WpAccount; label: string }> = [
-    { key: "cash", label: "Наличка" },
-    { key: "bank", label: "Безнал" },
-    { key: "third_party", label: "Сторонние" },
-  ];
 
   return (
     <div>
@@ -5206,16 +5216,37 @@ function BankTab({
           className="admin-card__pad"
           style={{ display: "flex", gap: 18, flexWrap: "wrap" }}
         >
-          {accountCards.map(({ key, label }) => (
-            <div key={key} style={{ minWidth: 190, display: "grid", gap: 4 }}>
-              <span className={ACCOUNT_BADGE[key]}>{label}</span>
-              <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance[key])}</strong>
-              <span className="admin-hint">
-                приход {fmtMoney(periodByAccount[key].incoming)} · расход{" "}
-                {fmtMoney(periodByAccount[key].outgoing)}
-              </span>
-            </div>
-          ))}
+          {/* Общий счёт = наличка + безнал: по факту это один денежный счёт
+              макулатуры, а чем он наполнен — видно расшифровкой ниже. */}
+          <div style={{ minWidth: 230, display: "grid", gap: 4 }}>
+            <span className="admin-badge admin-badge--blue">{WP_COMMON_ACCOUNT_LABEL}</span>
+            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.common)}</strong>
+            <span className="admin-hint">
+              Наличка {fmtMoney(balance.cash)} · Безнал {fmtMoney(balance.bank)}
+            </span>
+            <span className="admin-hint">
+              приход{" "}
+              {fmtMoney(
+                periodByAccount.cash.incoming + periodByAccount.bank.incoming
+              )}{" "}
+              · расход{" "}
+              {fmtMoney(
+                periodByAccount.cash.outgoing + periodByAccount.bank.outgoing
+              )}
+            </span>
+          </div>
+          <div style={{ minWidth: 190, display: "grid", gap: 4 }}>
+            <span className={ACCOUNT_BADGE.third_party}>Сторонние пополнения</span>
+            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.third_party)}</strong>
+            <span className="admin-hint">
+              приход {fmtMoney(periodByAccount.third_party.incoming)} · расход{" "}
+              {fmtMoney(periodByAccount.third_party.outgoing)}
+            </span>
+          </div>
+          <div style={{ minWidth: 190, display: "grid", gap: 4 }}>
+            <span className="admin-badge admin-badge--muted">Всего с учётом сторонних</span>
+            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.total)}</strong>
+          </div>
         </div>
       </div>
 

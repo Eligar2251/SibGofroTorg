@@ -340,6 +340,7 @@ export type BankPaymentType =
   | "transfer"
   | "deposit"
   | "ym_card"
+  | "vm_card"
   | "advertising"   // Реклама
   | "website"       // Сайт/хостинг
   | "monthly";      // Ежемесячные платежи (коммунальные, подписки)
@@ -528,6 +529,7 @@ export interface Employee {
  *  · cash — наличная касса учёта;
  *  · bank — р/с (фактически «Аренда → карта», см. isRentSalaryComment);
  *  · ym_card — карта ЮМ (в БД source=bank + тег [Карта ЮМ]);
+ *  · vm_card — карта В.М. (в БД source=bank + тег [Карта В.М.]);
  *  · wastepaper — наличка макулатуры (в БД source=cash + тег [Макулатура]).
  *    Такая выплата НЕ трогает кассу учёта: деньги уходят из наличной
  *    кассы отдельного модуля «Учёт макулатуры» и отражаются там расходом.
@@ -543,6 +545,7 @@ export type SalarySource =
   | "cash"
   | "bank"
   | "ym_card"
+  | "vm_card"
   | "wastepaper"
   | "wastepaper_bank"
   | "wastepaper_third";
@@ -590,6 +593,9 @@ export const SALARY_EXCLUDE_BALANCE_TAG = "[Вне баланса]";
 export const SALARY_DEBT_PAYMENT_TAG = "[Долг]";
 export const SALARY_YM_CARD_TAG = "[Карта ЮМ]";
 export const SALARY_YM_CARD_TAG_SHORT = "[ЮМ]";
+/** Вторая карта — «Карта В.М.»: отдельный счёт, как и карта ЮМ. */
+export const SALARY_VM_CARD_TAG = "[Карта В.М.]";
+export const SALARY_VM_CARD_TAG_SHORT = "[В.М.]";
 /** Выплата из денег макулатуры (отдельный модуль учёта). */
 export const SALARY_WASTEPAPER_TAG = "[Макулатура]";
 /**
@@ -613,7 +619,13 @@ function salaryHasTag(comment: string | null | undefined, tag: string): boolean 
 /** Выплата прошла по схеме «с аренды на карту» или с source="bank" (если это не карта ЮМ). ЗП с р/с банка не платится, только аренда. */
 export function isRentSalaryComment(comment: string | null | undefined, source?: string | null): boolean {
   if (salaryHasTag(comment, SALARY_RENT_TAG)) return true;
-  if (source === "bank" && !isYmCardSalaryComment(comment)) return true;
+  if (
+    source === "bank" &&
+    !isYmCardSalaryComment(comment) &&
+    !isVmCardSalaryComment(comment)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -681,6 +693,7 @@ export function salarySourceShortLabel(
   if (wpAccount) return `макулатура (${wastepaperSalaryAccountLabel(wpAccount)})`;
   if (salary.source === "cash") return "касса";
   if (salary.source === "ym_card") return "карта ЮМ";
+  if (salary.source === "vm_card") return "карта В.М.";
   return "банк";
 }
 
@@ -738,6 +751,8 @@ export function composeSalaryComment(options: {
   excludeFromBalance?: boolean;
   debtPayment?: boolean;
   ymCard?: boolean;
+  /** Вторая карта — «Карта В.М.»: свой счёт, как и карта ЮМ. */
+  vmCard?: boolean;
   /** Из денег макулатуры (отдельный модуль учёта). */
   wastepaper?: boolean;
   /**
@@ -753,9 +768,12 @@ export function composeSalaryComment(options: {
   color?: string | null;
 }): string | null {
   const tags: string[] = [];
-  // Счёт выплаты — ровно один тег: карта ЮМ, деньги макулатуры или аренда.
+  // Счёт выплаты — ровно один тег: карта ЮМ, карта В.М., деньги макулатуры
+  // или аренда.
   if (options.ymCard) {
     tags.push(SALARY_YM_CARD_TAG);
+  } else if (options.vmCard) {
+    tags.push(SALARY_VM_CARD_TAG);
   } else if (options.wastepaper) {
     tags.push(SALARY_WASTEPAPER_TAG);
     if (options.wastepaperAccount === "third_party") {
@@ -800,6 +818,12 @@ export function salarySourceToDb(rawSource: string, comment: string): { source: 
     if (!c.includes("[Карта ЮМ]") && !c.includes("[ЮМ]")) c = `[Карта ЮМ] ${c}`.trim();
     return { source: "bank", comment: c };
   }
+  if (rawSource === "vm_card") {
+    if (!c.includes(SALARY_VM_CARD_TAG) && !c.includes(SALARY_VM_CARD_TAG_SHORT)) {
+      c = `${SALARY_VM_CARD_TAG} ${c}`.trim();
+    }
+    return { source: "bank", comment: c };
+  }
   if (rawSource === "rent") {
     if (!c.includes("[Аренда]")) c = `[Аренда] ${c}`.trim();
     return { source: "bank", comment: c };
@@ -822,7 +846,88 @@ export function salarySourceToDb(rawSource: string, comment: string): { source: 
  * сводка смены ничего не распределяет, но тип сохранён для чтения истории.
  * Значение "transfer" — прежний псевдоним "card".
  */
-export type CashKind = "cash" | "card";
+export type CashKind = "cash" | "card" | "vm_card";
+
+/** Идентификатор банковской карты в учёте: ЮМ и вторая карта В.М. */
+export type BankCardId = "ym" | "vm";
+
+/** Описание карты для форм, печати и настроек банка. */
+export interface BankCardMeta {
+  id: BankCardId;
+  /** Полное название счёта. */
+  label: string;
+  /** Короткое название для бейджей и списков. */
+  short: string;
+  /** Ключ настройки с ФИО владельца карты. */
+  holderKey: string;
+  /** Ключ настройки с номером карты. */
+  numberKey: string;
+  /** Ключ настройки с телефоном, привязанным к карте. */
+  phoneKey: string;
+  /** Ключ настройки с названием банка. */
+  bankKey: string;
+}
+
+/**
+ * Две карты учёта: ЮМ и В.М. Это отдельные денежные счета — на каждую
+ * попадают только те деньги, которые переведены именно на неё.
+ */
+export const BANK_CARDS: readonly BankCardMeta[] = [
+  {
+    id: "ym",
+    label: "Карта ЮМ",
+    short: "ЮМ",
+    holderKey: "bank_card_ym_holder",
+    numberKey: "bank_card_ym_number",
+    phoneKey: "bank_card_ym_phone",
+    bankKey: "bank_card_ym_bank",
+  },
+  {
+    id: "vm",
+    label: "Карта В.М.",
+    short: "В.М.",
+    holderKey: "bank_card_vm_holder",
+    numberKey: "bank_card_vm_number",
+    phoneKey: "bank_card_vm_phone",
+    bankKey: "bank_card_vm_bank",
+  },
+];
+
+export function bankCardById(id: BankCardId | string | null | undefined): BankCardMeta {
+  return BANK_CARDS.find((c) => c.id === id) || BANK_CARDS[0];
+}
+
+/**
+ * ФИО для печати карты: имя и отчество полностью, фамилия инициалом —
+ * «Вадим Маркович П.». Понимает и «П. Вадим Маркович», и «Пуртов Вадим
+ * Маркович», и уже готовое «Вадим Маркович П.».
+ */
+export function formatCardHolderName(value: string | null | undefined): string {
+  const parts = String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "";
+  const isInitial = (word: string) => /^[А-ЯЁA-Z]\.?$/.test(word);
+  const initials = parts.filter(isInitial).map((w) => `${w.replace(/\./g, "").toUpperCase()}.`);
+  const words = parts.filter((w) => !isInitial(w));
+  const initialOf = (word: string) => `${word.charAt(0).toUpperCase()}.`;
+  if (words.length >= 3) {
+    // «Фамилия Имя Отчество» → «Имя Отчество Ф.»
+    const [surname, first, middle] = words;
+    return `${first} ${middle} ${initialOf(surname)}`;
+  }
+  if (words.length === 2) {
+    // «Имя Отчество» (+ инициал фамилии, если он уже написан)
+    return initials.length > 0
+      ? `${words[0]} ${words[1]} ${initials[0]}`
+      : `${words[0]} ${initialOf(words[1])}`;
+  }
+  if (words.length === 1) {
+    return initials.length > 0 ? `${words[0]} ${initials[0]}` : words[0];
+  }
+  return parts.join(" ");
+}
 
 /** Ключ настройки с ФИО получателя инкассации на карту. */
 export const CASH_CARD_HOLDER_SETTING_KEY = "cash_collection_card_holder";
@@ -832,6 +937,7 @@ export const DEFAULT_CASH_CARD_HOLDER = "Юлия Марковна";
 
 /** Приводит значение из БД/клиента к актуальному виду направления сдачи. */
 export function normalizeCashKind(raw: unknown): CashKind {
+  if (raw === "vm_card" || raw === "vm") return "vm_card";
   return raw === "card" || raw === "transfer" ? "card" : "cash";
 }
 
@@ -846,8 +952,10 @@ export interface CashCollectionItem {
   kind: CashKind;
   /** Наличная часть поступления. */
   cashAmount?: number;
-  /** Часть, поступившая на ЮМ; в новой сводке это метка без движения денег. */
+  /** Часть, поступившая на карту ЮМ; в новой сводке это метка без движения денег. */
   cardAmount?: number;
+  /** Часть, поступившая на вторую карту — В.М. */
+  vmCardAmount?: number;
   /** Сколько из платежа забрали на расходы (ЗП и прочее) */
   expenseAmount?: number;
   /** Старый платёж скрыт из сдачи без движения по кассе. */
@@ -880,6 +988,8 @@ export interface CashCollection {
   cashAmount?: number;
   /** Поступления смены на карту ЮМ. Это метка, а не новое движение денег. */
   transferAmount?: number;
+  /** Поступления смены на вторую карту — В.М. */
+  vmTransferAmount?: number;
   /** Разметка платежей, вошедших в сдачу */
   items?: CashCollectionItem[];
   /** Снимок трат этого дня из наличной кассы и с карты ЮМ. */
@@ -896,41 +1006,72 @@ export interface CashCollection {
  * Разбивка отмеченных поступлений смены. Для новых записей источником
  * истины служат items; fallback сохраняет читаемость старых документов.
  */
+/**
+ * Разбивка одного поступления смены по кассам: сколько на карту ЮМ и
+ * сколько на карту В.М. Старые записи без разбивки читаются как раньше:
+ * kind="card" целиком уходит на ЮМ.
+ */
+export function cashItemCardAmounts(item: CashCollectionItem): {
+  ym: number;
+  vm: number;
+} {
+  const amount = Math.max(0, Number(item.amount) || 0);
+  const ym = Math.min(
+    amount,
+    Math.max(
+      0,
+      Number(
+        item.cardAmount != null
+          ? item.cardAmount
+          : item.kind === "card"
+            ? amount
+            : 0
+      ) || 0
+    )
+  );
+  const vm = Math.min(
+    Math.max(0, amount - ym),
+    Math.max(
+      0,
+      Number(
+        item.vmCardAmount != null
+          ? item.vmCardAmount
+          : item.kind === "vm_card"
+            ? amount
+            : 0
+      ) || 0
+    )
+  );
+  return { ym, vm };
+}
+
 export function getCashCollectionIncomeBreakdown(collection: CashCollection): {
   cash: number;
   card: number;
+  vmCard: number;
   total: number;
 } {
   let cash = 0;
   let card = 0;
+  let vmCard = 0;
 
   for (const item of collection.items || []) {
     if (item.noAccounting) continue;
     const amount = Math.max(0, Number(item.amount) || 0);
-    const cardAmount = Math.min(
-      amount,
-      Math.max(
-        0,
-        Number(
-          item.cardAmount != null
-            ? item.cardAmount
-            : item.kind === "card"
-              ? amount
-              : 0
-        ) || 0
-      )
-    );
-    card += cardAmount;
+    const parts = cashItemCardAmounts(item);
+    card += parts.ym;
+    vmCard += parts.vm;
     // Приход считается до расходов: expenseAmount не уменьшает сумму,
     // фактически полученную от клиента в этой смене.
-    cash += Math.max(0, amount - cardAmount);
+    cash += Math.max(0, amount - parts.ym - parts.vm);
   }
 
-  const itemTotal = cash + card;
+  const itemTotal = cash + card + vmCard;
   if (itemTotal > 0.009) {
     return {
       cash: Math.round(cash * 100) / 100,
       card: Math.round(card * 100) / 100,
+      vmCard: Math.round(vmCard * 100) / 100,
       total: Math.round(itemTotal * 100) / 100,
     };
   }
@@ -939,13 +1080,18 @@ export function getCashCollectionIncomeBreakdown(collection: CashCollection): {
     0,
     Number(collection.incomeAmount ?? collection.amount) || 0
   );
-  const fallbackCard = Math.min(
+  const fallbackVm = Math.min(
     total,
+    Math.max(0, Number(collection.vmTransferAmount) || 0)
+  );
+  const fallbackCard = Math.min(
+    Math.max(0, total - fallbackVm),
     Math.max(0, Number(collection.transferAmount) || 0)
   );
   return {
-    cash: Math.round((total - fallbackCard) * 100) / 100,
+    cash: Math.round((total - fallbackCard - fallbackVm) * 100) / 100,
     card: Math.round(fallbackCard * 100) / 100,
+    vmCard: Math.round(fallbackVm * 100) / 100,
     total: Math.round(total * 100) / 100,
   };
 }
@@ -954,21 +1100,25 @@ export function getCashCollectionIncomeBreakdown(collection: CashCollection): {
 export function getCashCollectionExpenseBreakdown(collection: CashCollection): {
   cash: number;
   card: number;
+  vmCard: number;
   total: number;
 } {
   let cash = 0;
   let card = 0;
+  let vmCard = 0;
   for (const expense of collection.expenses || []) {
     const amount = Math.max(0, Number(expense.amount) || 0);
     if (expense.sourceKind === "card") card += amount;
+    else if (expense.sourceKind === "vm_card") vmCard += amount;
     else cash += amount;
   }
 
-  const detailedTotal = cash + card;
+  const detailedTotal = cash + card + vmCard;
   if (detailedTotal > 0.009 || (collection.expenses || []).length > 0) {
     return {
       cash: Math.round(cash * 100) / 100,
       card: Math.round(card * 100) / 100,
+      vmCard: Math.round(vmCard * 100) / 100,
       total: Math.round(detailedTotal * 100) / 100,
     };
   }
@@ -978,6 +1128,7 @@ export function getCashCollectionExpenseBreakdown(collection: CashCollection): {
   return {
     cash: Math.round(legacyTotal * 100) / 100,
     card: 0,
+    vmCard: 0,
     total: Math.round(legacyTotal * 100) / 100,
   };
 }
@@ -1144,6 +1295,11 @@ export function isImmediateYmPayment(p: BankPayment | null | undefined): boolean
   return false;
 }
 
+/** Платёж, который уже учтён на карте В.М. самим ПЛ, минуя наличную кассу. */
+export function isImmediateVmPayment(p: BankPayment | null | undefined): boolean {
+  return Boolean(p) && p?.type === "vm_card";
+}
+
 /** Платеж, который считается наличкой в кассе (только регулярная наличка). */
 function isRegularCashForCashDesk(p: BankPayment): boolean {
   if (!p.isPaid || p.excludeFromBalance) return false;
@@ -1250,11 +1406,11 @@ export function getCashCarryoverSummary(
     });
   }
 
-  // Новые фактические сводки могут помечать поступления на ЮМ, но каждый
-  // такой item ссылается на ПЛ, уже учтённый на карте, поэтому ниже он
-  // пропускается и повторного движения не создаёт. Исторические документы
-  // до перехода на новую модель содержат реальные переводы из наличной
-  // кассы в ЮМ — их по-прежнему нельзя забывать.
+  // Новые фактические сводки могут помечать поступления на карту (ЮМ или
+  // В.М.), но каждый такой item ссылается на ПЛ, уже учтённый на карте,
+  // поэтому ниже он пропускается и повторного движения не создаёт.
+  // Исторические документы до перехода на новую модель содержат реальные
+  // переводы из наличной кассы на карту — их по-прежнему нельзя забывать.
   for (const collection of collections) {
     const eligibleCardItems: { paymentId: string; amount: number }[] = [];
     let eligibleCardTotal = 0;
@@ -1262,16 +1418,8 @@ export function getCashCarryoverSummary(
       const paymentId = String(item.paymentId || "");
       if (!paymentId) continue;
       if (paymentId.startsWith("manual:")) {
-        const cardAmount = Math.max(
-          0,
-          Number(
-            item.cardAmount != null
-              ? item.cardAmount
-              : item.kind === "card"
-                ? item.amount
-                : 0
-          ) || 0
-        );
+        const parts = cashItemCardAmounts(item);
+        const cardAmount = parts.ym + parts.vm;
         if (cardAmount > 0) {
           eligibleCardItems.push({ paymentId, amount: cardAmount });
           eligibleCardTotal += cardAmount;
@@ -1279,20 +1427,12 @@ export function getCashCarryoverSummary(
         continue;
       }
       const payment = paymentById.get(paymentId);
-      if (payment && isImmediateYmPayment(payment)) {
-        // Уже учтён самим платежом как прямой перевод в ЮМ.
+      if (payment && (isImmediateYmPayment(payment) || isImmediateVmPayment(payment))) {
+        // Уже учтён самим платежом как прямой перевод на карту.
         continue;
       }
-      const cardAmount = Math.max(
-        0,
-        Number(
-          item.cardAmount != null
-            ? item.cardAmount
-            : item.kind === "card"
-              ? item.amount
-              : 0
-        ) || 0
-      );
+      const parts = cashItemCardAmounts(item);
+      const cardAmount = parts.ym + parts.vm;
       if (cardAmount > 0) {
         eligibleCardItems.push({ paymentId, amount: cardAmount });
         eligibleCardTotal += cardAmount;
@@ -1416,6 +1556,12 @@ export function isYmCardSalaryComment(comment: string | null | undefined): boole
   return c.includes(SALARY_YM_CARD_TAG) || c.includes(SALARY_YM_CARD_TAG_SHORT);
 }
 
+/** Выплата с карты В.М. — второй карты, отдельного счёта денег. */
+export function isVmCardSalaryComment(comment: string | null | undefined): boolean {
+  const c = String(comment || "");
+  return c.includes(SALARY_VM_CARD_TAG) || c.includes(SALARY_VM_CARD_TAG_SHORT);
+}
+
 /** Сводка по банку, кассе и карте ЮМ.
  * ИЗМЕНЕНИЕ 2026: переводы (type=transfer и cash с cashDestination=card)
  * в кассе НЕ учитываются, а сразу отображаются в карте ЮМ. При этом
@@ -1433,11 +1579,15 @@ export function getBankSummary(
   let bankBalance = 0;
   let cashBalance = 0;
   let ymCardBalance = 0;
+  // Карта В.М. — вторая карта: свой баланс, свой прогноз, свои ожидания.
+  let vmCardBalance = 0;
   let rentBalance = 0;
   let expectedIn = 0;
   let expectedOut = 0;
   let ymExpectedIn = 0;
   let ymExpectedOut = 0;
+  let vmExpectedIn = 0;
+  let vmExpectedOut = 0;
   let rentExpectedIn = 0;
   let rentExpectedOut = 0;
   const debtPool = deals ? getDealDebtPool(deals, payments) : null;
@@ -1447,7 +1597,9 @@ export function getBankSummary(
   for (const p of payments) {
     if (p.excludeFromBalance) continue;
     const isYm = p.type === "ym_card";
+    const isVm = p.type === "vm_card";
     const isImmediateYm = isImmediateYmPayment(p);
+    const isImmediateVm = isImmediateVmPayment(p);
     if (p.isPaid) {
       const paymentDate = String(p.date || "").slice(0, 10);
       if (!paymentDate || paymentDate > asOfDate) continue;
@@ -1455,6 +1607,9 @@ export function getBankSummary(
       if (isImmediateYm) {
         // переводы сразу в ЮМ, минуя кассу
         ymCardBalance += amt;
+      } else if (isImmediateVm || isVm) {
+        // переводы и оплаты сразу на карту В.М., минуя кассу
+        vmCardBalance += amt;
       } else if (p.type === "cash") {
         // регулярная наличка — считается отдельно через getCashCarryoverSummary
       } else if (isYm) {
@@ -1468,6 +1623,9 @@ export function getBankSummary(
         else ymExpectedOut += p.amount;
       } else if (p.type === "cash") {
         // наличка ожидаемая не влияет на р/с прогноз (по новому ТЗ)
+      } else if (isVm) {
+        if (p.direction === "incoming") vmExpectedIn += p.amount;
+        else vmExpectedOut += p.amount;
       } else {
         if (p.direction === "incoming") {
           expectedIn += offsetIncomingByDealPayments(p, debtPool);
@@ -1490,6 +1648,18 @@ export function getBankSummary(
         ymCardBalance -= s.amount;
       } else {
         ymExpectedOut += s.amount;
+      }
+      continue;
+    }
+    const isVm = s.source === "vm_card" || isVmCardSalaryComment(s.comment);
+    if (isVm) {
+      // карта В.М. — вторая карта: списывает только её
+      if (s.isPaid) {
+        const salaryDate = String(s.paidAt || s.date || "").slice(0, 10);
+        if (!salaryDate || salaryDate > asOfDate) continue;
+        vmCardBalance -= s.amount;
+      } else {
+        vmExpectedOut += s.amount;
       }
       continue;
     }
@@ -1536,52 +1706,43 @@ export function getBankSummary(
     collectedCash += Number(collection.amount) || 0;
     collectedCashOnly = Number(collection.cashAmount) || collectedCashOnly;
     let eligibleTransfer = 0;
+    let eligibleVmTransfer = 0;
     for (const item of collection.items || []) {
       const paymentId = String(item.paymentId || "");
       if (!paymentId) continue;
       if (paymentId.startsWith("manual:")) {
-        eligibleTransfer += Math.max(
-          0,
-          Number(
-            item.cardAmount != null
-              ? item.cardAmount
-              : item.kind === "card"
-                ? item.amount
-                : 0
-          ) || 0
-        );
+        const parts = cashItemCardAmounts(item);
+        eligibleTransfer += parts.ym;
+        eligibleVmTransfer += parts.vm;
         continue;
       }
       const payment = paymentById.get(paymentId);
-      if (payment && isImmediateYmPayment(payment)) {
+      if (payment && (isImmediateYmPayment(payment) || isImmediateVmPayment(payment))) {
         // Прямой перевод уже учтён самим ПЛ — не начисляем второй раз.
         continue;
       }
-      eligibleTransfer += Math.max(
-        0,
-        Number(
-          item.cardAmount != null
-            ? item.cardAmount
-            : item.kind === "card"
-              ? item.amount
-              : 0
-        ) || 0
-      );
+      const parts = cashItemCardAmounts(item);
+      eligibleTransfer += parts.ym;
+      eligibleVmTransfer += parts.vm;
     }
     collectedTransfer += eligibleTransfer;
     ymCardBalance += eligibleTransfer;
+    vmCardBalance += eligibleVmTransfer;
   }
   const bankForecast = bankBalance + expectedIn - expectedOut;
   const bankIncomeTotal = bankBalance + expectedIn;
   const ymForecast = ymCardBalance + ymExpectedIn - ymExpectedOut;
+  const vmForecast = vmCardBalance + vmExpectedIn - vmExpectedOut;
   const rentForecast = rentBalance + rentExpectedIn - rentExpectedOut;
-  const totalForecast = bankBalance + cashBalance + ymCardBalance + expectedIn - expectedOut + ymExpectedIn - ymExpectedOut;
+  const totalForecast = bankBalance + cashBalance + ymCardBalance + vmCardBalance + expectedIn - expectedOut + ymExpectedIn - ymExpectedOut + vmExpectedIn - vmExpectedOut;
   const totalWithRentForecast = totalForecast + rentBalance + rentExpectedIn - rentExpectedOut;
   return {
-    balance: bankBalance + cashBalance + ymCardBalance,
+    // Итоговый баланс включает обе карты: ЮМ и В.М.
+    balance: bankBalance + cashBalance + ymCardBalance + vmCardBalance,
     bankBalance,
     cashBalance,
     ymCardBalance,
+    vmCardBalance,
     rentBalance,
     cashBalanceNegative: cashBalance < -0.009,
     collectedCash,
@@ -1592,6 +1753,9 @@ export function getBankSummary(
     ymExpectedIn,
     ymExpectedOut,
     ymForecast,
+    vmExpectedIn,
+    vmExpectedOut,
+    vmForecast,
     rentExpectedIn,
     rentExpectedOut,
     rentForecast,
@@ -1601,25 +1765,28 @@ export function getBankSummary(
     forecastCashPlusBank: bankForecast + cashBalance,
     forecastWithYm: totalForecast,
     forecastWithRent: totalWithRentForecast,
-    totalWithoutCash: bankBalance + ymCardBalance,
-    totalWithoutCashForecast: bankForecast + ymForecast,
+    totalWithoutCash: bankBalance + ymCardBalance + vmCardBalance,
+    totalWithoutCashForecast: bankForecast + ymForecast + vmForecast,
   };
 }
 
 export function getCollectedBreakdown(
   collections: CashCollection[] = []
-): { cash: number; transfer: number; total: number } {
+): { cash: number; transfer: number; vmTransfer: number; total: number } {
   let cash = 0;
   let transfer = 0;
+  let vmTransfer = 0;
   for (const collection of collections) {
     const breakdown = getCashCollectionIncomeBreakdown(collection);
     cash += breakdown.cash;
     transfer += breakdown.card;
+    vmTransfer += breakdown.vmCard;
   }
   return {
     cash: Math.round(cash * 100) / 100,
     transfer: Math.round(transfer * 100) / 100,
-    total: Math.round((cash + transfer) * 100) / 100,
+    vmTransfer: Math.round(vmTransfer * 100) / 100,
+    total: Math.round((cash + transfer + vmTransfer) * 100) / 100,
   };
 }
 

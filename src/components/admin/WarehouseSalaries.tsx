@@ -80,6 +80,7 @@ import {
   isDebtSalaryComment,
   isRentSalaryComment,
   isYmCardSalaryComment,
+  isVmCardSalaryComment,
   isWastepaperSalary,
   isWastepaperSalarySource,
   isSalaryExcludedFromBalance,
@@ -104,6 +105,7 @@ function accountFlagsOf(s: Salary) {
     wastepaperAccount: wpAccount,
     thirdPartyOrigin: wpAccount === "third_party" ? getSalaryThirdPartyOrigin(s.comment) : null,
     ymCard: !wpAccount && (s.source === "ym_card" || isYmCardSalaryComment(s.comment)),
+    vmCard: !wpAccount && (s.source === "vm_card" || isVmCardSalaryComment(s.comment)),
   };
 }
 
@@ -281,7 +283,7 @@ function initialsOf(name: string): string {
     .join("");
 }
 
-type QuickSource = "cash" | "bank" | "rent" | "ym_card" | "wastepaper" | "wastepaper_bank" | "wastepaper_third";
+type QuickSource = "cash" | "bank" | "rent" | "ym_card" | "vm_card" | "wastepaper" | "wastepaper_bank" | "wastepaper_third";
 
 /** Кнопки счёта в формах: у учёта СибГофроТорг и у модуля макулатуры свои. */
 const WASTEPAPER_SOURCE_BUTTONS: { source: SalarySource; label: string; title: string; tone: "in" | "out" }[] = [
@@ -309,6 +311,7 @@ function sourceLabel(s: Salary, scope?: SalaryScope): string {
   }
   if (isRentSalary(s)) return "Аренда → карта";
   if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "Карта ЮМ";
+  if (s.source === "vm_card" || isVmCardSalaryComment(s.comment)) return "Карта В.М.";
   return s.source === "cash" ? "Касса · наличные" : "Аренда → карта";
 }
 
@@ -319,6 +322,7 @@ function sourceBadgeClass(s: Salary): string {
   if (wpAccount) return "admin-badge--teal";
   if (isRentSalary(s)) return "admin-badge--indigo";
   if (s.source === "ym_card" || isYmCardSalaryComment(s.comment)) return "admin-badge--amber";
+  if (s.source === "vm_card" || isVmCardSalaryComment(s.comment)) return "admin-badge--sky";
   return s.source === "cash" ? "admin-badge--green" : "admin-badge--indigo";
 }
 
@@ -439,6 +443,7 @@ function SalaryFormModal({
       //    тег [Макулатура], сервер проставит его сам по source).
       const isRentForSubmit = source === "bank";
       const isYmCardForSubmit = source === "ym_card";
+      const isVmCardForSubmit = source === "vm_card";
       const isWastepaperForSubmit = isWastepaperSalarySource(source);
       const wastepaperAccount = wastepaperSalaryAccount({ source, comment: null });
       // API понимает виртуальные счета (ym_card / wastepaper*) и сам
@@ -458,8 +463,9 @@ function SalaryFormModal({
             periodMonth,
             comment: composeSalaryComment({
               comment,
-              rent: isRentForSubmit && !isYmCardForSubmit && !isWastepaperForSubmit,
+              rent: isRentForSubmit && !isYmCardForSubmit && !isVmCardForSubmit && !isWastepaperForSubmit,
               ymCard: isYmCardForSubmit,
+              vmCard: isVmCardForSubmit,
               wastepaper: isWastepaperForSubmit,
               wastepaperAccount,
               thirdPartyOrigin: source === "wastepaper_third" ? thirdPartyOrigin : null,
@@ -633,6 +639,16 @@ function SalaryFormModal({
                   onClick={() => setSource("ym_card")}
                 >
                   <CreditCard size={14} /> Карта ЮМ (перевод)
+                </button>
+                <button
+                  type="button"
+                  className={`wh-direction__btn wh-direction__btn--out${
+                    source === "vm_card" ? " wh-direction__btn--active" : ""
+                  }`}
+                  onClick={() => setSource("vm_card")}
+                  title="Вторая карта — свой счёт: списывает только карту В.М."
+                >
+                  <CreditCard size={14} /> Карта В.М. (перевод)
                 </button>
                 <button
                   type="button"
@@ -1072,6 +1088,14 @@ function QuickPayForm({
           title="С карты ЮМ (перевод)"
         >
           <CreditCard size={12} /> Карта ЮМ
+        </button>
+        <button
+          type="button"
+          className={`whsal-seg__btn${source === "vm_card" ? " whsal-seg__btn--bank" : ""}`}
+          onClick={() => setSource("vm_card")}
+          title="С карты В.М. (перевод)"
+        >
+          <CreditCard size={12} /> Карта В.М.
         </button>
         <button
           type="button"
@@ -1750,13 +1774,22 @@ export function WarehouseSalaries({
     .filter((s) => isWastepaperSalary(s))
     .reduce((s, x) => s + x.amount, 0);
   const paidBank = paidSalary
-    .filter((s) => s.source === "bank" && !isRentSalary(s) && !isYmCardSalaryComment(s.comment))
+    .filter(
+      (s) =>
+        s.source === "bank" &&
+        !isRentSalary(s) &&
+        !isYmCardSalaryComment(s.comment) &&
+        !isVmCardSalaryComment(s.comment)
+    )
     .reduce((s, x) => s + x.amount, 0);
   const paidRent = paidSalary
     .filter((s) => isRentSalary(s))
     .reduce((s, x) => s + x.amount, 0);
   const paidYm = paidSalary
     .filter((s) => s.source === "ym_card" || isYmCardSalaryComment(s.comment))
+    .reduce((s, x) => s + x.amount, 0);
+  const paidVm = paidSalary
+    .filter((s) => s.source === "vm_card" || isVmCardSalaryComment(s.comment))
     .reduce((s, x) => s + x.amount, 0);
   // Модуль макулатуры: разбивка выплат по счетам модуля.
   const paidWpCash = paidSalary
@@ -2074,6 +2107,7 @@ export function WarehouseSalaries({
         comment: data.comment,
         rent: data.source === "rent",
         ymCard: data.source === "ym_card",
+        vmCard: data.source === "vm_card",
         wastepaper: isWastepaperSource,
         wastepaperAccount: isWastepaperSource ? wastepaperSalaryAccount({ source: data.source, comment: null }) : null,
         thirdPartyOrigin: data.source === "wastepaper_third" ? data.thirdPartyOrigin : null,
@@ -2692,6 +2726,7 @@ export function WarehouseSalaries({
               <>
                 {progressPct}% от начисленного · касса {fmt(paidCash)}
                 {paidYm > 0 ? ` · карта ЮМ ${fmt(paidYm)}` : ""}
+                {paidVm > 0 ? ` · карта В.М. ${fmt(paidVm)}` : ""}
                 {paidRent > 0 ? ` · аренда (вне баланса СибГофроТорг) ${fmt(paidRent)}` : ""}
                 {paidWastepaper > 0 ? ` · макулатура (наличные) ${fmt(paidWastepaper)}` : ""}
               </>

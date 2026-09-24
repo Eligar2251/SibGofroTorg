@@ -27,13 +27,19 @@ import {
   Contact,
   Plus,
   Trash2,
+  CreditCard,
+  Landmark,
+  User,
 } from "lucide-react";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { ActivityLogs } from "@/components/admin/ActivityLogs";
 import { BusinessCardPrint } from "@/components/admin/BusinessCardPrint";
+import { BankCardPrint } from "@/components/admin/BankCardPrint";
 import {
   CASH_CARD_HOLDER_SETTING_KEY,
   DEFAULT_CASH_CARD_HOLDER,
+  BANK_CARDS,
+  formatCardHolderName,
 } from "@/lib/warehouse-shared";
 import {
   WASTEPAPER_RATE_IDS,
@@ -165,6 +171,7 @@ type TabId =
   | "delivery"
   | "prices"
   | "cash"
+  | "bank"
   | "messenger"
   | "notifications"
   | "privacy"
@@ -179,6 +186,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "delivery", label: "Доставка", icon: <Truck size={14} /> },
   { id: "prices", label: "Цены и касса", icon: <Tags size={14} /> },
   { id: "cash", label: "Сдача кассы", icon: <Wallet size={14} /> },
+  { id: "bank", label: "Настройки банка", icon: <CreditCard size={14} /> },
   { id: "messenger", label: "Мессенджеры", icon: <MessageCircle size={14} /> },
   { id: "notifications", label: "Уведомления", icon: <Bot size={14} /> },
   { id: "privacy", label: "Политика", icon: <FileText size={14} /> },
@@ -197,6 +205,10 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
       box_badge_enabled: "true",
       box_badge_text: "подобрать коробку под ваши размеры",
       [CASH_CARD_HOLDER_SETTING_KEY]: DEFAULT_CASH_CARD_HOLDER,
+      // Карта ЮМ исторически заполнялась в «Сдаче кассы» — значение то же.
+      bank_card_ym_holder: String(
+        settings[CASH_CARD_HOLDER_SETTING_KEY] || DEFAULT_CASH_CARD_HOLDER
+      ),
     };
     for (const id of WASTEPAPER_RATE_IDS) {
       defaults[wpRateSettingKey(id)] = String(WASTEPAPER_RATE_DEFAULTS[id]);
@@ -793,6 +805,148 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                   В сводке смены наличная касса и карта ЮМ учитываются раздельно:
                   с поступлениями и расходами каждой. Сохранение ничего не списывает.
                 </p>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "bank" && (
+            <div className="admin-card" style={cardStyle}>
+              <div className="admin-card__pad" style={cardPadStyle}>
+                <h2 className="admin-h2" style={{ margin: 0 }}>
+                  <CreditCard size={16} /> Настройки банка
+                </h2>
+                <p className="admin-hint" style={{ margin: 0 }}>
+                  У учёта две карты: <b>Карта ЮМ</b> и <b>Карта В.М.</b> Это
+                  отдельные денежные счета — на каждую попадают только те деньги,
+                  которые переведены именно на неё. Здесь хранятся данные карт для
+                  печати листа A4.
+                </p>
+
+                {BANK_CARDS.map((card) => {
+                  const holder = values[card.holderKey] ?? "";
+                  return (
+                    <div
+                      key={card.id}
+                      className="admin-card"
+                      style={{
+                        border: "1px solid var(--adm-line)",
+                        background: "var(--adm-paper)",
+                      }}
+                    >
+                      <div className="admin-card__pad" style={{ display: "grid", gap: 12 }}>
+                        <h3 className="admin-h3" style={{ margin: 0 }}>
+                          {card.label}
+                        </h3>
+
+                        <div className="admin-field">
+                          <label className="admin-label">
+                            <User size={13} /> Владелец карты (ФИО)
+                          </label>
+                          <input
+                            type="text"
+                            value={holder}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setValues({
+                                ...values,
+                                [card.holderKey]: next,
+                                // Получатель карты ЮМ показывается и в сдаче кассы
+                                ...(card.id === "ym"
+                                  ? { [CASH_CARD_HOLDER_SETTING_KEY]: next }
+                                  : {}),
+                              });
+                            }}
+                            className="admin-input"
+                            placeholder={
+                              card.id === "ym" ? DEFAULT_CASH_CARD_HOLDER : "Вадим Маркович П."
+                            }
+                          />
+                          <span className="admin-hint">
+                            На листе печатается как{" "}
+                            <b>{formatCardHolderName(holder) || "—"}</b>: имя и
+                            отчество полностью, фамилия инициалом.
+                          </span>
+                        </div>
+
+                        <div className="admin-field">
+                          <label className="admin-label">
+                            <CreditCard size={13} /> Номер карты
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={values[card.numberKey] ?? ""}
+                            onChange={(e) =>
+                              setValues({ ...values, [card.numberKey]: e.target.value })
+                            }
+                            className="admin-input"
+                            placeholder="2200 0000 0000 0000"
+                          />
+                        </div>
+
+                        <div className="admin-field">
+                          <label className="admin-label">
+                            <Phone size={13} /> Телефон карты
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="tel"
+                            value={values[card.phoneKey] ?? ""}
+                            onChange={(e) =>
+                              setValues({ ...values, [card.phoneKey]: e.target.value })
+                            }
+                            className="admin-input"
+                            placeholder="+7 900 000-00-00"
+                          />
+                          <span className="admin-hint">
+                            По этому номеру делают перевод на карту.
+                          </span>
+                        </div>
+
+                        <div className="admin-field">
+                          <label className="admin-label">
+                            <Landmark size={13} /> Банк
+                          </label>
+                          <input
+                            type="text"
+                            value={values[card.bankKey] ?? ""}
+                            onChange={(e) =>
+                              setValues({ ...values, [card.bankKey]: e.target.value })
+                            }
+                            className="admin-input"
+                            placeholder="Сбербанк"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <p className="admin-hint" style={{ margin: 0 }}>
+                  Сохраните настройки, затем печатайте лист ниже: он уйдёт на A4
+                  крупным шрифтом — номер карты, владелец, телефон и банк.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "bank" && (
+            <div className="admin-card" style={cardStyle}>
+              <div className="admin-card__pad" style={cardPadStyle}>
+                <h3 className="admin-h3" style={{ margin: 0 }}>
+                  Лист A4 с данными карты
+                </h3>
+                <BankCardPrint
+                  companyName={SITE_NAME}
+                  cards={BANK_CARDS.map((card) => ({
+                    id: card.id,
+                    label: card.label,
+                    holder: values[card.holderKey] ?? "",
+                    number: values[card.numberKey] ?? "",
+                    phone: values[card.phoneKey] ?? "",
+                    bank: values[card.bankKey] ?? "",
+                  }))}
+                />
               </div>
             </div>
           )}

@@ -12,6 +12,24 @@
 export const WP_ACCOUNT_LABELS = { cash: "Наличка", bank: "Безнал", third_party: "Сторонние пополнения" } as const;
 export type WpAccount = keyof typeof WP_ACCOUNT_LABELS;
 
+/**
+ * Счета, которые по сути ОДИН денежный счёт макулатуры: наличка и безнал.
+ *
+ * В документах форму оплаты по-прежнему указываем (нужно, чтобы понимать,
+ * чем платили и откуда уйдёт расход), а в остатках показываем их одной
+ * строкой «Общий счёт макулатуры» с расшифровкой ниже — наличкой и
+ * безналом. «Сторонние пополнения» остаются отдельным счётом.
+ */
+export const WP_COMMON_ACCOUNTS: readonly WpAccount[] = ["cash", "bank"];
+export const WP_COMMON_ACCOUNT_LABEL = "Общий счёт макулатуры";
+
+/** Сумма «общего счёта»: наличка + безнал. */
+export function wpCommonBalance(
+  balance: Pick<WpBalance, "cash" | "bank">
+): number {
+  return Math.round(((Number(balance.cash) || 0) + (Number(balance.bank) || 0)) * 100) / 100;
+}
+
 export const WP_DIRECTION_LABELS = { incoming: "Приход", outgoing: "Расход" } as const;
 export type WpDirection = keyof typeof WP_DIRECTION_LABELS;
 
@@ -1190,6 +1208,8 @@ export function wpCollectMoneyEvents(
 export interface WpBalance {
   cash: number;
   bank: number;
+  /** Наличка + безнал — по факту один денежный счёт макулатуры. */
+  common: number;
   third_party: number;
   total: number;
 }
@@ -1215,7 +1235,13 @@ export function getWpBalance(events: WpMoneyEvent[], asOfDate: string): WpBalanc
   cash = round2(cash);
   bank = round2(bank);
   third_party = round2(third_party);
-  return { cash, bank, third_party, total: round2(cash + bank + third_party) };
+  return {
+    cash,
+    bank,
+    common: round2(cash + bank),
+    third_party,
+    total: round2(cash + bank + third_party),
+  };
 }
 
 export interface WpForecast {
