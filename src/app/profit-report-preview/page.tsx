@@ -60,7 +60,9 @@ export default function ProfitReportPreviewPage() {
   if (process.env.NODE_ENV === "production") notFound();
 
   return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "24px 16px" }}>
+    // <main> — чтобы правила @media print (печатаем только лист отчёта)
+    // не скрывали содержимое страницы предпросмотра.
+    <main style={{ maxWidth: 1280, margin: "0 auto", padding: "24px 16px" }}>
       <div className="no-print" style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>
           Выгода продаж — предпросмотр (демо-данные)
@@ -75,6 +77,6 @@ export default function ProfitReportPreviewPage() {
         storageKey="profit-report-preview-v1"
         demo
       />
-    </div>
+    </main>
   );
 }
