@@ -1224,7 +1224,7 @@ function PrintSheet({
 
   return (
     <div className="pr-sheet">
-      <div className="pr-sheet__head">
+      <div className="pr-sheet__head pr-sheet-extra no-print">
         <div>
           <div className="pr-sheet__company">{meta.company || "ООО «СибГофроТорг»"}</div>
           <h2 className="pr-sheet__title">{meta.title || "План по выгоде продаж"}</h2>
@@ -1239,7 +1239,7 @@ function PrintSheet({
         </div>
       </div>
 
-      {meta.note ? <p className="pr-sheet__note">{meta.note}</p> : null}
+      {meta.note ? <p className="pr-sheet__note pr-sheet-extra no-print">{meta.note}</p> : null}
 
       <table className="pr-sheet-table">
         <colgroup>
@@ -1343,7 +1343,7 @@ function PrintSheet({
       </table>
 
       {/* Итоговые плашки (видны в превью на экране, скрыты при печати через .pr-sheet-summary { display: none !important }) */}
-      <div className="pr-sheet-summary">
+      <div className="pr-sheet-summary pr-sheet-extra no-print">
         <div className="pr-sum-card">
           <div className="pr-sum-card__label">Выручка за период</div>
           <div className="pr-sum-card__value">{fmtMoney(totals.revenue)}</div>
@@ -1370,7 +1370,7 @@ function PrintSheet({
         </div>
       </div>
 
-      <div className="pr-sheet__foot">
+      <div className="pr-sheet__foot pr-sheet-extra no-print">
         <div className="pr-sign">
           <span className="pr-sign__line" />
           <span className="pr-sign__cap">
@@ -1640,7 +1640,8 @@ const PRINT_CSS = `
   .admin-notify,
   .admin-plans-shortcut,
   .admin-requests-shortcut,
-  .realtime-status-pill,
+  .admin-realtime-status,
+  .pr-sheet-extra,
   .mobile-admin-shell > header,
   .mobile-admin-shell > nav,
   .pr-controls,
@@ -1860,6 +1861,29 @@ const PRINT_CSS = `
   .pr-sheet__foot-note {
     font-size: 8px !important;
     color: #94a3b8 !important;
+  }
+
+  /* Финал печати: только таблица.
+     Шапка листа, подпись и плашки выше снова получают display:flex —
+     здесь специфичность выше, поэтому они не возвращаются.
+     Кружок realtime (position:fixed) Chrome печатает на каждом листе,
+     пока элемент не вынут из раскладки через display:none. */
+  .admin-realtime-status,
+  .pr-sheet-extra,
+  .pr-sheet__head,
+  .pr-sheet__note,
+  .pr-sheet__foot,
+  .pr-sheet-summary,
+  .no-print,
+  .admin-shell > *:not(.admin-content),
+  .admin-content > *:not(.admin-main),
+  .mobile-admin-app > *:not(.admin-main),
+  .admin-stack > *:not(.pr-root):not(:has(.pr-print-area)),
+  .pr-root > *:not(.pr-print-wrap),
+  .pr-sheet > *:not(.pr-sheet-table),
+  body > *:not(:has(.pr-print-area)) {
+    display: none !important;
+    visibility: hidden !important;
   }
 }
 `;
