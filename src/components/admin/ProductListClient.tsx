@@ -549,7 +549,7 @@ export function ProductListClient({
                       type="button"
                       className="admin-show-more"
                       ref={(node) => {
-                        win.sentinelRef(node);
+                        win.observeTail(node);
                       }}
                     >
                       Показано {win.visible.length} из {win.total} · ещё{" "}

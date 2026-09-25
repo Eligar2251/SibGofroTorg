@@ -38,13 +38,27 @@
 
 /* Числа в учёте читаются одинаково и не «прыгают» по ширине */
 .wp-num,
+.wp-amt,
 .wp-account .admin-table td,
 .wp-account .admin-stat__value,
 .deliv-page .admin-stat__value,
-.wpa-balance__value {
+.wpa-hero__value,
+.wpa-hero__account-val,
+.wpa-acc-card__value,
+.wpa-op__amount {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
+
+/* Суммы в таблицах и списках — всегда одной строкой, приход зелёным,
+   расход красным (как в банковской выписке). */
+.wp-amt {
+  white-space: nowrap;
+}
+
+.wp-amt--in { color: var(--adm-pine); }
+.wp-amt--out { color: var(--adm-rust); }
+.wp-amt--muted { color: var(--adm-muted); font-weight: 400 !important; }
 
 /* ─────────────────────────────────────────────────────────
    1. Шапка модуля макулатуры
@@ -75,168 +89,605 @@
 }
 
 /* ─────────────────────────────────────────────────────────
-   2. Hero-плашка баланса: как «счёт» в банковском приложении
+   2. Hero-плашка баланса — «счёт» банковского приложения.
+   Тёмная карта с крупным числом (вместе с .bank-hero учёта
+   СибГофроТорг — один «банковский» язык), справа счета,
+   снизу — быстрые действия и статистика.
    ───────────────────────────────────────────────────────── */
 
-.wpa-balance {
+.wpa-hero {
   position: relative;
   overflow: hidden;
   border-radius: var(--wpx-r-xl);
-  border: 1px solid var(--wpx-line);
-  background:
-    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--adm-kraft-pale) 85%, transparent) 0%, transparent 58%),
-    linear-gradient(180deg, var(--wpx-surface) 0%, var(--wpx-surface-2) 100%);
-  box-shadow: var(--wpx-shadow-2);
-  padding: 18px;
+  border: 1px solid rgba(200, 134, 10, 0.25);
+  background: linear-gradient(135deg, #191914 0%, #232318 52%, #1b2a1e 100%);
+  box-shadow: 0 10px 34px rgba(20, 20, 14, 0.28);
+  color: #f5f2ea;
+  padding: 22px;
   margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 
-.wpa-balance__top {
+.wpa-hero svg { flex-shrink: 0; }
+
+.wpa-hero__top {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
-.wpa-balance__top .wpa-balance__chip {
-  margin-left: auto;
-  background: color-mix(in srgb, var(--adm-card) 88%, transparent);
-}
-
-.wpa-balance__title {
-  font-family: var(--adm-font-head);
-  font-size: 15px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--adm-ink);
-  margin: 0;
-}
-
-.wpa-balance__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.wpa-balance__cell {
-  border-radius: var(--wpx-r-lg);
-  border: 1px solid var(--wpx-line-soft);
-  background: color-mix(in srgb, var(--adm-card) 92%, transparent);
-  padding: 14px 16px;
   min-width: 0;
 }
 
-.wpa-balance__cell--accent {
-  border-color: var(--adm-kraft-line);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--adm-kraft-pale) 70%, var(--adm-card)) 0%, var(--adm-card) 100%);
+.wpa-hero__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--adm-font-head);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(245, 242, 234, 0.6);
+  min-width: 0;
 }
 
-.wpa-balance__label {
+.wpa-hero__date {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 242, 234, 0.18);
+  background: rgba(245, 242, 234, 0.08);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(245, 242, 234, 0.85);
+  white-space: nowrap;
+}
+
+.wpa-hero__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 16px 28px;
+  align-items: start;
+  min-width: 0;
+}
+
+.wpa-hero__main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wpa-hero__label {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(245, 242, 234, 0.5);
+  min-width: 0;
+}
+
+.wpa-hero__value {
+  font-family: var(--adm-font-head);
+  font-size: clamp(1.9rem, 3.6vw, 2.7rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: #e8c56a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wpa-hero__note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(245, 242, 234, 0.55);
+}
+
+.wpa-hero__note strong {
+  color: rgba(245, 242, 234, 0.88);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Счета модуля — строки «как счета в приложении банка» */
+.wpa-hero__accounts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+  align-content: start;
+}
+
+.wpa-hero__account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 242, 234, 0.14);
+  background: rgba(245, 242, 234, 0.06);
+  padding: 12px 14px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.wpa-hero__account:hover {
+  background: rgba(245, 242, 234, 0.1);
+  border-color: rgba(245, 242, 234, 0.22);
+}
+
+.wpa-hero__account dt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  color: rgba(245, 242, 234, 0.75);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wpa-hero__account-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: rgba(245, 242, 234, 0.12);
+  color: #e8c56a;
+  flex-shrink: 0;
+}
+
+.wpa-hero__account-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wpa-hero__account-val,
+.wpa-hero__account dd {
+  margin: 0 0 0 auto;
+  font-family: var(--adm-font-head);
+  font-size: 16px;
+  font-weight: 700;
+  color: #f5f2ea;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Быстрые действия — как кнопки операций в мобильном банке */
+.wpa-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.wpa-hero__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(245, 242, 234, 0.2);
+  background: rgba(245, 242, 234, 0.1);
+  color: #f5f2ea;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wpa-hero__btn:hover {
+  background: rgba(245, 242, 234, 0.18);
+  transform: translateY(-1px);
+}
+
+.wpa-hero__btn--primary {
+  background: linear-gradient(180deg, #e8c56a 0%, #c9a24a 100%);
+  border-color: transparent;
+  color: #241d10;
+  box-shadow: 0 8px 20px -12px rgba(232, 197, 106, 0.8);
+}
+
+.wpa-hero__btn--primary:hover {
+  background: linear-gradient(180deg, #f0d283 0%, #d4ad55 100%);
+}
+
+/* Статистика «на заметку» — чипы-пилюли тёмной карты */
+.wpa-hero__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(245, 242, 234, 0.12);
+}
+
+.wpa-hero__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 242, 234, 0.14);
+  background: rgba(245, 242, 234, 0.07);
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(245, 242, 234, 0.8);
+  white-space: nowrap;
+}
+
+.wpa-hero__stat strong {
+  font-weight: 700;
+  color: #f5f2ea;
+  white-space: nowrap;
+}
+
+.wpa-hero__stat--in,
+.wpa-hero__stat--in strong { color: #7dd181; }
+.wpa-hero__stat--out,
+.wpa-hero__stat--out strong { color: #e08a63; }
+
+.wpa-hero__stat--warn {
+  border-color: rgba(232, 197, 106, 0.5);
+  background: rgba(232, 197, 106, 0.14);
+  color: #e8c56a;
+  cursor: pointer;
+}
+
+.wpa-hero__stat--warn,
+.wpa-hero__stat--warn strong { color: inherit; }
+
+.wpa-hero__stat--warn:hover {
+  background: rgba(232, 197, 106, 0.24);
+  transform: translateY(-1px);
+}
+
+/* Телефонный вариант hero: та же тёмная карта, действия — плитками */
+.wpa-hero--phone {
+  padding: 18px 16px;
+  gap: 14px;
+  margin-bottom: 0;
+}
+
+.wpa-hero--phone .wpa-hero__value {
+  font-size: 30px;
+  margin-bottom: 4px;
+}
+
+.wpa-hero--phone .wpa-hero__actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(245, 242, 234, 0.16);
+}
+
+.wpa-hero--phone .wpa-hero__btn {
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 6px;
+  font-size: 12px;
+  border-radius: 14px;
+  min-height: 44px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   2.1. Карточки счетов («Банк») и строки операций («Финансы»)
+   ───────────────────────────────────────────────────────── */
+
+.wpa-acc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.wpa-acc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  border-radius: var(--wpx-r-lg);
+  border: 1px solid var(--wpx-line);
+  background: var(--wpx-surface);
+  box-shadow: var(--wpx-shadow-1);
+  padding: 14px 16px;
+  transition: box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.wpa-acc-card:hover {
+  box-shadow: var(--wpx-shadow-2);
+  transform: translateY(-1px);
+}
+
+.wpa-acc-card--main {
+  border-color: var(--adm-kraft-line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--adm-kraft-pale) 55%, var(--adm-card)) 0%, var(--adm-card) 100%);
+}
+
+.wpa-acc-card--total {
+  background: color-mix(in srgb, var(--adm-paper) 55%, var(--adm-card));
+}
+
+.wpa-acc-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wpa-acc-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--adm-sand) 12%, transparent);
+  color: var(--adm-ink-soft);
+  flex-shrink: 0;
+}
+
+.wpa-acc-card--main .wpa-acc-card__icon {
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+}
+
+.wpa-acc-card__name {
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--adm-sand);
-  margin-bottom: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.wpa-balance__value {
+.wpa-acc-card__value {
   font-family: var(--adm-font-head);
-  font-size: 24px;
+  font-size: 22px;
+  font-weight: 700;
   line-height: 1.1;
-  font-weight: 600;
   color: var(--adm-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.wpa-balance__value--in { color: var(--adm-pine); }
-.wpa-balance__value--out { color: var(--adm-kraft); }
-
-/* «Сторонние пополнения» живут внутри ячейки безнала — отделяем чертой,
-   чтобы два значения не слипались. */
-.wpa-balance__item {
-  margin-top: 12px;
-  padding-top: 12px;
+.wpa-acc-card__parts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-top: 10px;
   border-top: 1px dashed var(--wpx-line);
+  min-width: 0;
 }
 
-.wpa-balance__hint {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--adm-muted);
-  line-height: 1.4;
-}
-
-.wpa-balance__chips {
+.wpa-acc-card__part {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--adm-muted);
 }
 
-.wpa-balance__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border-radius: 999px;
-  border: 1px solid var(--wpx-line);
-  background: var(--adm-card);
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--adm-ink-soft);
-  box-shadow: var(--wpx-shadow-1);
-}
-
-.wpa-balance__chip strong {
+.wpa-acc-card__part dd,
+.wpa-acc-card__part strong {
+  margin: 0 0 0 auto;
   font-weight: 700;
   color: var(--adm-ink);
+  white-space: nowrap;
 }
 
-.wpa-balance__chip--warn {
-  border-color: var(--adm-kraft-line);
-  background: var(--adm-kraft-pale);
-  color: var(--adm-kraft);
-  cursor: pointer;
+.wpa-acc-card__turn {
+  display: flex;
+  align-items: center;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px dashed var(--wpx-line);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
-.wpa-balance__chip--warn strong { color: inherit; }
-
-.wpa-balance__chip--warn:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--wpx-shadow-2);
+.wpa-acc-card__turn-label {
+  color: var(--adm-muted);
+  font-weight: 500;
 }
 
-.wpa-balance__chip--in,
-.wpa-balance__chip--in strong { color: var(--adm-pine); }
-.wpa-balance__chip--out,
-.wpa-balance__chip--out strong { color: var(--adm-kraft); }
-
-.wpa-balance__chip--in,
-.wpa-balance__chip--out {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--adm-card) 70%, transparent);
+/* Строка операции дня (раскрытый день) — карточка «платежа» как в банке */
+.wpa-ops {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
 }
 
-/* Быстрые действия в плашке баланса */
-.wpa-balance__actions {
+.wpa-op {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border-radius: var(--wpx-r-md);
+  border: 1px solid var(--wpx-line-soft);
+  background: var(--adm-card);
+  box-shadow: var(--wpx-shadow-1);
+  padding: 10px 12px;
+}
+
+.wpa-op__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
+.wpa-op__icon--in {
+  background: var(--adm-pine-pale);
+  color: var(--adm-pine);
+  border-color: var(--adm-pine-line);
+}
+
+.wpa-op__icon--out {
+  background: var(--adm-rust-pale);
+  color: var(--adm-rust);
+  border-color: var(--adm-rust-line);
+}
+
+.wpa-op__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wpa-op__row {
+  display: flex;
+  align-items: center;
+  gap: 6px 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.wpa-op__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink);
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.wpa-op__meta {
+  font-size: 12px;
+  color: var(--adm-muted);
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.wpa-op__amount {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--adm-font-head);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Группа «дат» в тулбаре: две даты и тире между ними не разъезжаются */
+.wpa-dates {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.wpa-dates .admin-input {
+  width: 142px;
+  min-width: 0;
+}
+
+.wpa-dates__dash {
+  color: var(--adm-muted);
+  flex-shrink: 0;
+}
+
+/* Превью перевода в модалке: маршрут «откуда → куда» и остатки после */
+.wpa-route {
+  display: grid;
+  gap: 10px;
+  border-radius: var(--wpx-r-lg);
+  border: 1px solid var(--wpx-line);
+  background: color-mix(in srgb, var(--adm-paper) 45%, var(--adm-card));
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.wpa-route__line {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px dashed var(--wpx-line);
+  min-width: 0;
 }
 
-.wpa-balance__actions .admin-btn {
-  border-radius: 999px;
+.wpa-route__arrow {
+  color: var(--adm-muted);
+  flex-shrink: 0;
+}
+
+.wpa-route__amount {
+  margin-left: auto;
+  font-family: var(--adm-font-head);
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--adm-ink);
+}
+
+.wpa-route__after {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--wpx-line);
+  min-width: 0;
+}
+
+.wpa-route__acc {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--adm-muted);
+}
+
+.wpa-route__acc strong {
+  white-space: nowrap;
+}
+
+/* Прогноз: две равные колонки карточек (на телефоне — одна) */
+.wpa-forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 14px;
+  min-width: 0;
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -671,7 +1122,8 @@
 /* Чипы сводок и баланса держат число целиком: переносятся чипы
    целиком (контейнеры — flex-wrap), а не текст внутри чипа. */
 .wp-summary__chip,
-.wpa-balance__chip {
+.wpa-hero__stat,
+.wpa-hero__date {
   white-space: nowrap;
 }
 
@@ -1484,25 +1936,21 @@
    ───────────────────────────────────────────────────────── */
 
 @media (max-width: 1023px) {
-  .wpa-balance {
-    padding: 14px;
+  .wpa-hero {
+    padding: 18px;
   }
 
-  .wpa-balance__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
+  .wpa-hero__body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
   }
 
-  .wpa-balance__cell {
-    padding: 10px 12px;
+  .wpa-hero__accounts {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   }
 
-  .wpa-balance__value {
-    font-size: 18px;
-  }
-
-  .wpa-balance__label {
-    font-size: 10px;
+  .wpa-hero__value {
+    font-size: clamp(1.7rem, 4.5vw, 2.2rem);
   }
 
   .wp-tabs {
@@ -1652,12 +2100,18 @@
     font-size: 22px;
   }
 
-  .wpa-balance__grid {
-    grid-template-columns: 1fr 1fr;
+  .wpa-hero__stats .wpa-hero__stat {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
   }
 
-  .wpa-balance__cell--total {
-    grid-column: 1 / -1;
+  .wpa-op {
+    flex-wrap: wrap;
+  }
+
+  .wpa-op__amount {
+    margin-left: 46px;
   }
 
   .deliv-page .deliv-item {
@@ -1676,7 +2130,8 @@
 
 @media print {
   .wp-tabs,
-  .wpa-balance,
+  .wpa-hero,
+  .wpa-mobile,
   .wp-toolbar {
     display: none !important;
   }
@@ -1689,23 +2144,12 @@
    которые десктоп вообще не рендерит. Здесь — лишь защита от переполнения. */
 .wp-account { min-width: 0; }
 .wp-account .admin-page-head > * { min-width: 0; }
-.wpa-balance svg { flex-shrink: 0; }
 
 /* Phone-only components, selected in React rather than by hiding desktop DOM. */
 .wpa-mobile { display: grid; gap: 16px; margin-bottom: 24px; min-width: 0; }
-.wpa-mobile__balance { padding: 20px; border: 1px solid var(--wpx-line); border-radius: 20px; background: var(--wpx-surface); }
-.wpa-mobile__caption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--adm-muted); font-size: 13px; }
-.wpa-mobile__caption span { margin-left: auto; }
-.wpa-mobile__total { display: block; font-size: 30px; line-height: 1.3; margin: 16px 0 24px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .wpa-mobile dl { margin: 0; }
 .wpa-mobile dt { color: var(--adm-muted); font-size: 12px; }
-.wpa-mobile dd { margin: 6px 0 0; font-weight: 650; overflow-wrap: anywhere; }
-.wpa-mobile__accounts { display: grid; gap: 16px; }
-.wpa-mobile__accounts > div { border-top: 1px solid var(--wpx-line); padding-top: 12px; }
-.wpa-mobile__accounts dt { display: flex; gap: 8px; align-items: center; }
-.wpa-mobile__actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.wpa-mobile__actions button { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 4px; border-radius: 14px; border: 1px solid var(--wpx-line); background: var(--adm-card); color: var(--adm-ink); font: inherit; font-size: 12px; cursor: pointer; }
-.wpa-mobile__actions svg { color: var(--adm-pine); }
+.wpa-mobile dd { margin: 0 0 0 auto; font-weight: 650; overflow-wrap: anywhere; }
 .wpa-mobile__summary { border: 1px solid var(--wpx-line); border-radius: 16px; background: var(--adm-card); padding: 4px 16px; }
 .wpa-mobile__summary > * { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 0; width: 100%; font: inherit; font-size: 13px; text-align: left; background: none; color: var(--adm-ink); border: 0; }
 .wpa-mobile__summary > * + * { border-top: 1px solid var(--wpx-line); }
@@ -1717,16 +2161,22 @@
 .wpa-mobile__forecast { padding: 16px; background: var(--wpx-surface-2); border-radius: 14px; font-size: 13px; }
 .wpa-mobile__forecast summary { cursor: pointer; min-height: 24px; }
 .wpa-mobile__forecast dl { display: grid; gap: 16px; margin-top: 16px; }
+.wpa-mobile__forecast-row { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.wpa-mobile__forecast-row dt { min-width: 0; }
+.wpa-mobile__forecast-row dd { margin-left: auto; white-space: nowrap; }
 .wpa-mobile-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 24px; }
 .wpa-mobile-nav__item { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid var(--wpx-line); border-radius: 12px; background: var(--adm-card); color: var(--adm-ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .wpa-mobile-nav__item.wp-tab--active { border-color: var(--adm-pine); background: var(--adm-pine-pale, var(--wpx-surface-2)); }
 .wpa-mobile-nav__item .wp-tab__count { margin-left: auto; flex-shrink: 0; }
 .wpa-ledger, .wpa-ledger__list { display: grid; gap: 12px; min-width: 0; }
 .wpa-ledger__card { padding: 16px; border: 1px solid var(--wpx-line); border-radius: 16px; background: var(--adm-card); min-width: 0; }
-/* Карточки длинного списка: браузер пропускает рендеринг за пределами
-   экрана (как в ProductsMobile.module.css) — на слабых телефонах это
-   держит 60 FPS при прокрутке сотен записей. */
-.wpa-ledger__card { content-visibility: auto; contain-intrinsic-size: auto 200px; }
+/* Раньше тут стояло `content-visibility: auto` для FPS на слабых
+   телефонах — но браузер меряет пропущенные карточки «на глаз»
+   (contain-intrinsic-size), высоты карточек плавают, и при прокрутке
+   страницу перекидывает вверх (скролл «слетает»). Списки и так оконные
+   (use-windowed-list догружает кусками), поэтому пропуск рендеринга
+   убран: стабильность прокрутки важнее. */
+.wpa-ledger__card { /* без content-visibility — см. комментарий выше */ }
 .wpa-ledger__card dl { margin: 0; display: grid; gap: 12px; }
 .wpa-ledger__field { min-width: 0; }
 .wpa-ledger__field dt { font-size: 11px; color: var(--adm-muted); margin-bottom: 4px; }

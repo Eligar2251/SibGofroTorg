@@ -2,10 +2,14 @@
 // Отдельный учёт макулатуры: сдачи (изменение, оплата, отмена, удаление).
 import { NextRequest, NextResponse } from "next/server";
 import {
+  applyWpDocPayment,
   deleteWpShipment,
   ensureWpBranch,
+  getWpManualPayments,
+  getWpShipments,
   requireWastepaperApi,
   setWpShipmentCancelled,
+  updateWpManualPayment,
   updateWpShipment,
 } from "@/lib/wastepaper-account";
 import { logAdminAction } from "@/lib/activity-log";
@@ -23,6 +27,21 @@ export async function PATCH(
     const body = await request.json();
 
     if (body.action === "postBank") {
+      // «Провести в банк»: если оплата привязана платежом — деньги двигает
+      // платёж, его и перекидываем на безнал и проводим (зеркало документа
+      // синхронизируется само, двойного счёта нет). Без платежа — старый путь.
+      const payments = (await getWpManualPayments(1000)).filter(
+        (p) => p.docType === "shipment" && p.docId === id
+      );
+      if (payments.length > 0) {
+        for (const p of payments) {
+          if (!p.isPaid || p.account !== "bank") {
+            await updateWpManualPayment(p.id, { account: "bank", isPaid: true });
+          }
+        }
+        const item = (await getWpShipments(500)).find((s) => s.id === id) ?? null;
+        return NextResponse.json({ success: true, item });
+      }
       const item = await updateWpShipment(id, {
         isPaid: true,
         account: "bank",
@@ -88,6 +107,18 @@ export async function PATCH(
         ? { skipStock: body.skipStock === true }
         : {}),
       ...(body.comment !== undefined ? { comment: body.comment } : {}),
+    });
+    // Блок «Оплата» из формы: новая/привязанная оплата продажи или «не оплачено».
+    // Поля оплаты сдачи (isPaid, поступление, счёт) синхронизируются с платежами.
+    await applyWpDocPayment("shipment", id, body.payment, {
+      createdBy: auth.displayName,
+      direction: "incoming",
+      counterpartyId: item.enterpriseId,
+      counterpartyName: item.enterpriseName,
+      docNumber: item.number,
+      date: item.date,
+      amount: item.receivedAmount > 0 ? item.receivedAmount : item.total,
+      account: item.account,
     });
     await logAdminAction(
       auth.displayName,

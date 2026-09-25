@@ -553,6 +553,25 @@ export interface WpShipment {
   updatedAt: string | null;
 }
 
+/** Тип документа макулатуры, к которому можно привязать платёж. */
+export type WpDocKind = "intake" | "shipment";
+
+/** Как платёж связан с документом в форме (приём/продажа). */
+export type WpDocPaymentMode = "none" | "create" | "attach" | "keep";
+
+/** Блок «Оплата» из формы документа (приём/продажа). */
+export interface WpDocPaymentSpec {
+  /** none — не оплачено (отвязать всё), create — новая оплата, attach — привязать свободный платёж, keep — обновить привязанный. */
+  mode: WpDocPaymentMode;
+  /** Для attach/keep — id платежа. */
+  paymentId?: string | null;
+  date?: string;
+  account?: WpAccount;
+  amount?: number;
+  isPaid?: boolean;
+  comment?: string | null;
+}
+
 export interface WpManualPayment {
   id: string;
   number: number;
@@ -565,6 +584,9 @@ export interface WpManualPayment {
   isPaid: boolean;
   paidAt: string | null;
   comment: string | null;
+  /** Привязка к документу: платёж = оплата приёма или продажи (сдачи). */
+  docType: WpDocKind | null;
+  docId: string | null;
   createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -955,6 +977,16 @@ export interface WpMoneyEvent {
   transferId?: string;
   /** Для перевода: второй счёт операции (куда/откуда пришли деньги). */
   counterAccount?: WpAccount;
+  /**
+   * Платёж-оплата документа (kind «manual» с привязкой): docType/docId —
+   * приём или продажа (сдача), docNumber — номер документа для заголовка
+   * «Оплата приёма №N». Привязанный платёж — ЕДИНСТВЕННОЕ денежное
+   * движение документа: собственное событие документа при наличии
+   * привязанных платежей не создаётся (анти-двойной счёт).
+   */
+  docType?: WpDocKind | null;
+  docId?: string | null;
+  docNumber?: number | null;
 }
 
 /**
@@ -1139,7 +1171,22 @@ export function wpCollectMoneyEvents(
   accountTransfers: WpAccountTransfer[] = []
 ): WpMoneyEvent[] {
   const events: WpMoneyEvent[] = [];
+  // Номера документов — для заголовков «Оплата приёма №N / Оплата продажи №N».
+  const intakeNumbers = new Map(intakes.map((i) => [i.id, i.number]));
+  const shipmentNumbers = new Map(shipments.map((s) => [s.id, s.number]));
+  // Документ с привязанными платежами: движение уже несёт платёж —
+  // собственное событие документа НЕ создаём, иначе деньги задваиваются.
+  // Документ без платежей работает как раньше (событие по отметке «оплачено»).
+  const coveredDocs = new Set<string>();
+  for (const p of manualPayments) {
+    if (p.docType && p.docId) coveredDocs.add(`${p.docType}:${p.docId}`);
+  }
+  // Отменённый документ гасит и свои платежи: денег по нему нет.
+  const cancelledDocs = new Set<string>();
+  for (const i of intakes) if (i.status === "cancelled") cancelledDocs.add(`intake:${i.id}`);
+  for (const s of shipments) if (s.status === "cancelled") cancelledDocs.add(`shipment:${s.id}`);
   for (const i of intakes) {
+    if (coveredDocs.has(`intake:${i.id}`)) continue;
     const splits = i.cashAmount > 0 && i.bankAmount > 0
       ? ([{ account: "cash" as WpAccount, amount: i.cashAmount }, { account: "bank" as WpAccount, amount: i.bankAmount }])
       : [{ account: i.account, amount: wpIntakePayableTotal(i) }];
@@ -1163,6 +1210,7 @@ export function wpCollectMoneyEvents(
     });
   }
   for (const s of shipments) {
+    if (coveredDocs.has(`shipment:${s.id}`)) continue;
     events.push({
       kind: "shipment",
       id: s.id,
@@ -1180,6 +1228,13 @@ export function wpCollectMoneyEvents(
     });
   }
   for (const p of manualPayments) {
+    // Платёж-оплата документа титулуется по документу: «Оплата приёма №N».
+    const docNumber =
+      p.docType === "intake"
+        ? (intakeNumbers.get(p.docId ?? "") ?? null)
+        : p.docType === "shipment"
+          ? (shipmentNumbers.get(p.docId ?? "") ?? null)
+          : null;
     events.push({
       kind: "manual",
       id: p.id,
@@ -1191,9 +1246,17 @@ export function wpCollectMoneyEvents(
       isPaid: p.isPaid,
       paidAt: p.paidAt,
       counterpartyName: p.counterpartyName,
-      title: `Платёж №${p.number}`,
+      title:
+        p.docType === "intake"
+          ? `Оплата приёма №${docNumber ?? p.number}`
+          : p.docType === "shipment"
+            ? `Оплата продажи №${docNumber ?? p.number}`
+            : `Платёж №${p.number}`,
       comment: p.comment,
-      cancelled: false,
+      cancelled: Boolean(p.docType && p.docId && cancelledDocs.has(`${p.docType}:${p.docId}`)),
+      docType: p.docType ?? null,
+      docId: p.docId ?? null,
+      docNumber,
     });
   }
   // Зарплаты «с макулатуры» — расход наличных, запись ведётся в «Зарплатах».

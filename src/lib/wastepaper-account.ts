@@ -19,6 +19,8 @@ import type {
   WpBranch,
   WpCounterparty,
   WpDocItem,
+  WpDocKind,
+  WpDocPaymentSpec,
   WpIntake,
   WpManualPayment,
   WpShipment,
@@ -797,6 +799,9 @@ export async function setWpIntakeCancelled(id: string, cancelled: boolean): Prom
 
 export async function deleteWpIntake(id: string): Promise<void> {
   const db = getAdminDb();
+  // Платежи-оплаты приёма остаются в «Платежах», но ссылку на удалённый
+  // документ снимаем — иначе «Оплата приёма №N» повиснет в воздухе.
+  await unlinkWpDocPayments("intake", id);
   // Убираем из активных ЕДИНЫХ рейсов (transports учёта).
   await removeWpDocFromActiveTransports("intake", id);
   // Если приём создан перевозкой — отвязываем остановку, чтобы её можно
@@ -1086,6 +1091,9 @@ export async function setWpShipmentCancelled(id: string, cancelled: boolean): Pr
 
 export async function deleteWpShipment(id: string): Promise<void> {
   const db = getAdminDb();
+  // Платежи-оплаты продажи остаются в «Платежах», но ссылку на удалённый
+  // документ снимаем.
+  await unlinkWpDocPayments("shipment", id);
   await removeWpDocFromActiveTransports("shipment", id);
   const { error } = await db.from("wp_shipments").delete().eq("id", id);
   if (error) throw error;
@@ -1259,13 +1267,17 @@ function mapManualPayment(row: any): WpManualPayment {
     number: Number(row.number) || 0,
     date: toDateStr(row.date),
     direction: row.direction === "outgoing" ? "outgoing" : "incoming",
-    account: (row.account === "bank" ? "bank" : "cash") as WpAccount,
+    // Третий счёт модуля («Сторонние пополнения») сохраняется при записи —
+    // читаем его через общий разбор, а не схлопываем в наличку.
+    account: wpAccountFromRaw(row.account, "cash"),
     counterpartyId: row.counterparty_id || null,
     counterpartyName: row.counterparty_name || "",
     amount: Number(row.amount) || 0,
     isPaid: Boolean(row.is_paid),
     paidAt: toIso(row.paid_at),
     comment: row.comment || null,
+    docType: row.doc_type === "intake" || row.doc_type === "shipment" ? row.doc_type : null,
+    docId: row.doc_id || null,
     createdBy: row.created_by || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -1294,6 +1306,9 @@ export interface WpManualPaymentInput {
   isPaid?: boolean;
   paidAt?: string | null;
   comment?: string | null;
+  /** Привязка к документу (оплата приёма/продажи). null — отвязать. */
+  docType?: WpDocKind | null;
+  docId?: string | null;
 }
 
 function cleanManualPaymentInput(data: WpManualPaymentInput) {
@@ -1312,18 +1327,175 @@ function cleanManualPaymentInput(data: WpManualPaymentInput) {
   };
 }
 
+/** Разбор привязки платежа к документу из строки БД. */
+function paymentDocLink(row: any): { docType: WpDocKind | null; docId: string | null } {
+  const docType = row.doc_type === "intake" || row.doc_type === "shipment" ? row.doc_type : null;
+  return { docType, docId: docType ? row.doc_id || null : null };
+}
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Синхронизирует поля оплаты документа (приём/продажа) с его платежами.
+ *
+ * Платёж-оплата документа — его ЕДИНСТВЕННОЕ денежное движение (собственное
+ * событие документа при привязанных платежах не создаётся — см.
+ * wpCollectMoneyEvents). Поэтому «оплаченность» и суммы документа держим
+ * зеркалом платежей: isPaid = есть проведённый платёж, split-суммы и поступление
+ * = суммы проведённых платежей. Без платежей документ снова «не оплачен» —
+ * отвязали оплату, вернулся долг.
+ */
+async function syncWpDocFromPayments(
+  docType: WpDocKind,
+  docId: string
+): Promise<void> {
+  const db = getAdminDb();
+  const { data: rows, error } = await db
+    .from("wp_payments")
+    .select("*")
+    .eq("doc_type", docType)
+    .eq("doc_id", docId);
+  if (error) throw error;
+  const payments = (rows || []).map(mapManualPayment);
+  const paid = payments.filter((p) => p.isPaid);
+  const isPaid = paid.length > 0;
+  const paidAt = paid[0]?.paidAt ?? null;
+  // Счёт документа — по последнему платежу (наличка/безнал; третий счёт
+  // в полях документа не хранится, его движение несёт сам платёж).
+  const accPayments = [...paid, ...payments].filter(
+    (p) => p.account === "cash" || p.account === "bank"
+  );
+  const account = accPayments[0]?.account ?? null;
+  const now = new Date().toISOString();
+  if (docType === "intake") {
+    const patch: Record<string, unknown> = {
+      is_paid: isPaid,
+      paid_at: paidAt,
+      cash_amount: roundMoney(
+        paid.filter((p) => p.account === "cash").reduce((s, p) => s + p.amount, 0)
+      ),
+      bank_amount: roundMoney(
+        paid.filter((p) => p.account === "bank").reduce((s, p) => s + p.amount, 0)
+      ),
+      updated_at: now,
+    };
+    if (account) patch.account = account;
+    const { error: upErr } = await db.from("wp_intakes").update(patch).eq("id", docId);
+    if (upErr) throw upErr;
+  } else {
+    const bankPaid = paid.find((p) => p.account === "bank");
+    const patch: Record<string, unknown> = {
+      is_paid: isPaid,
+      paid_at: paidAt,
+      received_amount: roundMoney(paid.reduce((s, p) => s + p.amount, 0)),
+      bank_posted_at: bankPaid ? bankPaid.paidAt ?? now : null,
+      updated_at: now,
+    };
+    if (account) patch.account = account;
+    const { error: upErr } = await db.from("wp_shipments").update(patch).eq("id", docId);
+    if (upErr) throw upErr;
+  }
+  bumpWpCaches();
+}
+
+/** Отвязать все платежи документа (при удалении документа). */
+async function unlinkWpDocPayments(docType: WpDocKind, docId: string): Promise<void> {
+  const db = getAdminDb();
+  const { error } = await db
+    .from("wp_payments")
+    .update({ doc_type: null, doc_id: null })
+    .eq("doc_type", docType)
+    .eq("doc_id", docId);
+  if (error) throw error;
+}
+
+/** Блок «Оплата» формы документа применяется к платежам здесь же (WpDocPaymentSpec — в shared). */
+
+/**
+ * Применяет блок «Оплата» из формы документа: создаёт/привязывает/обновляет
+ * платёж либо отвязывает всё. Дальше поля документа синхронизируются с
+ * платежами (syncWpDocFromPayments) — правки с любой стороны сходятся
+ * к одному и тому же объекту.
+ */
+export async function applyWpDocPayment(
+  docType: WpDocKind,
+  docId: string,
+  spec: WpDocPaymentSpec | null | undefined,
+  fallback: {
+    createdBy?: string;
+    direction: "incoming" | "outgoing";
+    counterpartyId?: string | null;
+    counterpartyName?: string | null;
+    docNumber: number;
+    date: string;
+    amount?: number;
+    account?: WpAccount;
+  }
+): Promise<void> {
+  if (!spec || !spec.mode) return;
+  if (spec.mode === "none") {
+    await unlinkWpDocPayments(docType, docId);
+    await syncWpDocFromPayments(docType, docId);
+    return;
+  }
+  if (spec.mode === "attach" || spec.mode === "keep") {
+    const paymentId = String(spec.paymentId || "");
+    if (!paymentId) throw new Error("Платёж для привязки не найден");
+    await updateWpManualPayment(paymentId, {
+      ...(spec.mode === "keep"
+        ? {
+            ...(spec.date !== undefined ? { date: spec.date } : {}),
+            ...(spec.account !== undefined ? { account: spec.account } : {}),
+            ...(spec.amount !== undefined ? { amount: spec.amount } : {}),
+            ...(spec.isPaid !== undefined ? { isPaid: spec.isPaid } : {}),
+            ...(spec.comment !== undefined ? { comment: spec.comment } : {}),
+          }
+        : {}),
+      docType,
+      docId,
+    });
+    return;
+  }
+  // mode «create»: новая оплата документа. Сумма 0 — документ просто остаётся
+  // без оплаты (часто вес и суммы вписывают позже).
+  const amount = roundMoney(Math.max(0, Number(spec.amount) || Number(fallback.amount) || 0));
+  if (amount <= 0) return;
+  await createWpManualPayment(
+    {
+      date: spec.date || fallback.date,
+      direction: fallback.direction,
+      account: spec.account || fallback.account || (docType === "intake" ? "cash" : "bank"),
+      counterpartyId: fallback.counterpartyId ?? null,
+      counterpartyName: fallback.counterpartyName ?? "",
+      amount,
+      isPaid: spec.isPaid !== undefined ? Boolean(spec.isPaid) : true,
+      paidAt: null,
+      comment: spec.comment || null,
+      docType,
+      docId,
+    },
+    fallback.createdBy || null
+  );
+}
+
 export async function createWpManualPayment(
   data: WpManualPaymentInput,
-  createdBy: string
+  createdBy: string | null
 ): Promise<WpManualPayment> {
   const db = getAdminDb();
   const fields = cleanManualPaymentInput(data);
   const number = await nextNumber("wp_payment");
   const isPaid = data.isPaid !== undefined ? Boolean(data.isPaid) : true;
+  const link = data.docType
+    ? { doc_type: data.docType, doc_id: data.docId ? String(data.docId) : null }
+    : null;
   const { data: row, error } = await db
     .from("wp_payments")
     .insert({
       ...fields,
+      ...(link || {}),
       number,
       is_paid: isPaid,
       paid_at: isPaid ? data.paidAt || new Date().toISOString() : null,
@@ -1333,7 +1505,9 @@ export async function createWpManualPayment(
     .single();
   if (error) throw error;
   bumpWpCaches();
-  return mapManualPayment(row);
+  const item = mapManualPayment(row);
+  if (item.docType && item.docId) await syncWpDocFromPayments(item.docType, item.docId);
+  return item;
 }
 
 export async function updateWpManualPayment(
@@ -1366,10 +1540,21 @@ export async function updateWpManualPayment(
     comment: data.comment !== undefined ? data.comment : existing.comment,
   });
   const isPaid = data.isPaid !== undefined ? Boolean(data.isPaid) : Boolean(existing.is_paid);
+  // Привязка к документу: если поле прислали — заменяем пару целиком
+  // (null — отвязать), иначе оставляем как было.
+  const prevLink = paymentDocLink(existing);
+  const linkChanged = data.docType !== undefined;
+  const nextLink = linkChanged
+    ? {
+        docType: data.docType ?? null,
+        docId: data.docType ? String(data.docId || "") || null : null,
+      }
+    : prevLink;
   const { data: row, error } = await db
     .from("wp_payments")
     .update({
       ...merged,
+      ...(linkChanged ? { doc_type: nextLink.docType, doc_id: nextLink.docId } : {}),
       is_paid: isPaid,
       paid_at: isPaid ? existing.paid_at || new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
@@ -1379,14 +1564,30 @@ export async function updateWpManualPayment(
     .single();
   if (error) throw error;
   bumpWpCaches();
+  // Зеркало оплаты пересчитываем у старого и нового документа привязки.
+  if (prevLink.docType && prevLink.docId) await syncWpDocFromPayments(prevLink.docType, prevLink.docId);
+  if (
+    nextLink.docType &&
+    nextLink.docId &&
+    !(nextLink.docType === prevLink.docType && nextLink.docId === prevLink.docId)
+  ) {
+    await syncWpDocFromPayments(nextLink.docType, nextLink.docId);
+  }
   return mapManualPayment(row);
 }
 
 export async function deleteWpManualPayment(id: string): Promise<void> {
   const db = getAdminDb();
+  const { data: existing } = await db
+    .from("wp_payments")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
   const { error } = await db.from("wp_payments").delete().eq("id", id);
   if (error) throw error;
   bumpWpCaches();
+  const link = existing ? paymentDocLink(existing) : { docType: null, docId: null };
+  if (link.docType && link.docId) await syncWpDocFromPayments(link.docType, link.docId);
 }
 
 // ── Переводы между счетами модуля ────────────────────────

@@ -35,6 +35,16 @@ export async function PATCH(
       ...(body.isPaid !== undefined ? { isPaid: Boolean(body.isPaid) } : {}),
       ...(body.paidAt !== undefined ? { paidAt: body.paidAt } : {}),
       ...(body.comment !== undefined ? { comment: body.comment } : {}),
+      // Привязка к документу меняется парой docType/docId (null — отвязать).
+      ...(body.docType !== undefined
+        ? {
+            docType:
+              body.docType === "intake" || body.docType === "shipment"
+                ? body.docType
+                : null,
+            docId: body.docId || null,
+          }
+        : {}),
     });
     await logAdminAction(
       auth.displayName,
