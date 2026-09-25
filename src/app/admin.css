@@ -12925,8 +12925,11 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 
 /* ═══════════════════════════════════════════════════════════
    ПЕЧАТЬ ПЛАНА / ОТЧЁТА О ВЫГОДЕ ПРОДАЖ (/admin/profit-report)
-   A4 вертикально (portrait). На бумаге только таблица отчёта:
-   без кружка realtime, кнопок, сайдбара, шапки листа и подписи.
+   Здесь прячем только «обвязку» приложения (шапка сайта, сайдбар,
+   навигация, уведомления, кнопки раздела). Всё, что относится к самому
+   листу отчёта (шапка листа, плашки, таблица, графики, подпись,
+   ориентация @page, компактность), задаётся настройками печати
+   в ProfitReportPrint.tsx — там же и активные стили листа.
    ═══════════════════════════════════════════════════════════ */
 @media print {
   body:has(.pr-print-area),
@@ -12951,14 +12954,14 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   body:has(.pr-print-area) .admin-plans-shortcut,
   body:has(.pr-print-area) .admin-requests-shortcut,
   body:has(.pr-print-area) .admin-realtime-status,
-  body:has(.pr-print-area) .pr-sheet-extra,
-  body:has(.pr-print-area) .no-print,
+  body:has(.pr-print-area) .pr-settings,
+  body:has(.pr-print-area) .pr-settings-bar,
   body:has(.pr-print-area) .pr-controls,
   body:has(.pr-print-area) .pr-actions,
   body:has(.pr-print-area) .pr-edit-table,
   body:has(.pr-print-area) .pr-table-scroll,
   body:has(.pr-print-area) .pr-hint,
-  body:has(.pr-print-area) .pr-sheet-summary,
+  body:has(.pr-print-area) .no-print,
   body:has(.pr-print-area) .admin-card:not(.pr-print-wrap),
   body:has(.pr-print-area) [data-admin="true"] .admin-card:not(.pr-print-wrap),
   body:has(.pr-print-area) [data-admin="true"] .admin-page-head,
@@ -12977,14 +12980,14 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   body.profit-report-mode .admin-plans-shortcut,
   body.profit-report-mode .admin-requests-shortcut,
   body.profit-report-mode .admin-realtime-status,
-  body.profit-report-mode .pr-sheet-extra,
-  body.profit-report-mode .no-print,
+  body.profit-report-mode .pr-settings,
+  body.profit-report-mode .pr-settings-bar,
   body.profit-report-mode .pr-controls,
   body.profit-report-mode .pr-actions,
   body.profit-report-mode .pr-edit-table,
   body.profit-report-mode .pr-table-scroll,
   body.profit-report-mode .pr-hint,
-  body.profit-report-mode .pr-sheet-summary,
+  body.profit-report-mode .no-print,
   body.profit-report-mode .admin-card:not(.pr-print-wrap),
   body.profit-report-mode [data-admin="true"] .admin-card:not(.pr-print-wrap),
   body.profit-report-mode [data-admin="true"] .admin-page-head,
@@ -13008,6 +13011,8 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   body:has(.pr-print-area) .pr-print-wrap,
   body:has(.pr-print-area) .pr-print-wrap .admin-card__pad,
   body:has(.pr-print-area) .pr-a4-stage,
+  body:has(.pr-print-area) .pr-print-area,
+  body:has(.pr-print-area) .pr-a4-sheet,
   body.profit-report-mode .admin-shell,
   body.profit-report-mode .admin-content,
   body.profit-report-mode .admin-main,
@@ -13015,7 +13020,9 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   body.profit-report-mode .pr-root,
   body.profit-report-mode .pr-print-wrap,
   body.profit-report-mode .pr-print-wrap .admin-card__pad,
-  body.profit-report-mode .pr-a4-stage {
+  body.profit-report-mode .pr-a4-stage,
+  body.profit-report-mode .pr-print-area,
+  body.profit-report-mode .pr-a4-sheet {
     display: block !important;
     position: static !important;
     width: 100% !important;
@@ -13030,15 +13037,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
     overflow: visible !important;
   }
 
-  /* После сброса контейнеров: на листе только таблица.
-     Соседи (сайдбар, кружок realtime, колокольчики, шапка листа,
-     подпись) — position:fixed или просто лишние — не печатаются. */
-  body.profit-report-mode .admin-realtime-status,
-  body:has(.pr-print-area) .admin-realtime-status,
-  body.profit-report-mode .pr-sheet-extra,
-  body:has(.pr-print-area) .pr-sheet-extra,
-  body.profit-report-mode .pr-sheet > *:not(.pr-sheet-table),
-  body:has(.pr-print-area) .pr-sheet > *:not(.pr-sheet-table),
+  /* Соседи листа (сайдбар, кружок realtime, колокольчики) — не печатаются. */
   body.profit-report-mode .admin-shell > *:not(.admin-content),
   body:has(.pr-print-area) .admin-shell > *:not(.admin-content),
   body.profit-report-mode .admin-content > *:not(.admin-main),
