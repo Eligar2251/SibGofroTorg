@@ -64,7 +64,7 @@ export function RealtimeStatusIndicator() {
 
   return (
     <div
-      className="admin-realtime-status"
+      className="admin-realtime-status no-print"
       title={meta.title}
       aria-label={`Обновление данных: ${meta.label}`}
       role="status"

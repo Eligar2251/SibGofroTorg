@@ -11936,7 +11936,8 @@ html:has([data-admin="true"])::-webkit-scrollbar-thumb:hover {
 }
 @media print {
   .admin-plans-shortcut,
-  .admin-requests-shortcut { display: none !important; }
+  .admin-requests-shortcut,
+  .admin-realtime-status { display: none !important; }
 }
 
 /* ── Фактическая сводка смены кассы ── */
@@ -12924,9 +12925,8 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 
 /* ═══════════════════════════════════════════════════════════
    ПЕЧАТЬ ПЛАНА / ОТЧЁТА О ВЫГОДЕ ПРОДАЖ (/admin/profit-report)
-   A4 вертикально (portrait). Печатается ТОЛЬКО таблица отчёта.
-   Кнопки, шапка сайта/админки, сайдбар, фильтры и редактор
-   полностью скрываются.
+   A4 вертикально (portrait). На бумаге только таблица отчёта:
+   без кружка realtime, кнопок, сайдбара, шапки листа и подписи.
    ═══════════════════════════════════════════════════════════ */
 @media print {
   body:has(.pr-print-area),
@@ -12950,7 +12950,8 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   body:has(.pr-print-area) .admin-notify,
   body:has(.pr-print-area) .admin-plans-shortcut,
   body:has(.pr-print-area) .admin-requests-shortcut,
-  body:has(.pr-print-area) .realtime-status-pill,
+  body:has(.pr-print-area) .admin-realtime-status,
+  body:has(.pr-print-area) .pr-sheet-extra,
   body:has(.pr-print-area) .no-print,
   body:has(.pr-print-area) .pr-controls,
   body:has(.pr-print-area) .pr-actions,
@@ -12975,7 +12976,8 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   body.profit-report-mode .admin-notify,
   body.profit-report-mode .admin-plans-shortcut,
   body.profit-report-mode .admin-requests-shortcut,
-  body.profit-report-mode .realtime-status-pill,
+  body.profit-report-mode .admin-realtime-status,
+  body.profit-report-mode .pr-sheet-extra,
   body.profit-report-mode .no-print,
   body.profit-report-mode .pr-controls,
   body.profit-report-mode .pr-actions,
@@ -13026,6 +13028,29 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
     border: none !important;
     border-radius: 0 !important;
     overflow: visible !important;
+  }
+
+  /* После сброса контейнеров: на листе только таблица.
+     Соседи (сайдбар, кружок realtime, колокольчики, шапка листа,
+     подпись) — position:fixed или просто лишние — не печатаются. */
+  body.profit-report-mode .admin-realtime-status,
+  body:has(.pr-print-area) .admin-realtime-status,
+  body.profit-report-mode .pr-sheet-extra,
+  body:has(.pr-print-area) .pr-sheet-extra,
+  body.profit-report-mode .pr-sheet > *:not(.pr-sheet-table),
+  body:has(.pr-print-area) .pr-sheet > *:not(.pr-sheet-table),
+  body.profit-report-mode .admin-shell > *:not(.admin-content),
+  body:has(.pr-print-area) .admin-shell > *:not(.admin-content),
+  body.profit-report-mode .admin-content > *:not(.admin-main),
+  body:has(.pr-print-area) .admin-content > *:not(.admin-main),
+  body.profit-report-mode .mobile-admin-app > *:not(.admin-main),
+  body:has(.pr-print-area) .mobile-admin-app > *:not(.admin-main),
+  body.profit-report-mode .admin-stack > *:not(.pr-root):not(:has(.pr-print-area)),
+  body:has(.pr-print-area) .admin-stack > *:not(.pr-root):not(:has(.pr-print-area)),
+  body.profit-report-mode .pr-root > *:not(.pr-print-wrap),
+  body:has(.pr-print-area) .pr-root > *:not(.pr-print-wrap) {
+    display: none !important;
+    visibility: hidden !important;
   }
 }
 
@@ -14794,5 +14819,22 @@ a.client-card__contact:hover {
   body.qrprint-mode .qrprint__brand-label:last-child {
     page-break-after: auto;
     break-after: auto;
+  }
+}
+
+/* Кружок realtime — position:fixed в углу админки. Chrome печатает
+   такие элементы на каждом листе, если их не вынуть из раскладки.
+   visibility:hidden недостаточно: нужен display:none. */
+@media print {
+  .admin-realtime-status {
+    display: none !important;
+    visibility: hidden !important;
+    position: static !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
   }
 }
