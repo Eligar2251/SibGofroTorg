@@ -115,13 +115,13 @@ interface StoredState {
 const STORAGE_KEY = "profit-report-v1";
 
 const DEFAULT_META: ReportMeta = {
-  title: "Отчёт о выгоде продаж",
-  company: "СибГофроТорг",
+  title: "План по выгоде продаж",
+  company: "ООО «СибГофроТорг»",
   periodFrom: "",
   periodTo: "",
   note: "",
   completedOnly: false,
-  showDetails: true,
+  showDetails: false,
   signer: "",
 };
 
@@ -141,7 +141,7 @@ function fmtMoney(n: number): string {
     v.toLocaleString("ru-RU", {
       minimumFractionDigits: v % 1 === 0 ? 0 : 2,
       maximumFractionDigits: 2,
-    }) + " ₽"
+    }) + "\u00A0₽"
   );
 }
 function fmtNum(n: number): string {
@@ -513,7 +513,25 @@ export function ProfitReportClient({
     [positions]
   );
 
+  // Активируем режим печати отчёта на странице для полной изоляции стилей
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.add("profit-report-mode");
+    const onBefore = () => document.body.classList.add("profit-report-mode");
+    const onAfter = () => document.body.classList.add("profit-report-mode");
+    window.addEventListener("beforeprint", onBefore);
+    window.addEventListener("afterprint", onAfter);
+    return () => {
+      window.removeEventListener("beforeprint", onBefore);
+      window.removeEventListener("afterprint", onAfter);
+      document.body.classList.remove("profit-report-mode");
+    };
+  }, []);
+
   function handlePrint() {
+    if (typeof document !== "undefined") {
+      document.body.classList.add("profit-report-mode");
+    }
     window.print();
   }
 
@@ -695,8 +713,9 @@ export function ProfitReportClient({
               className="admin-btn admin-btn--navy"
               onClick={handlePrint}
               disabled={!hasPositions}
+              title="Печать отчёта на формате А4 вертикально"
             >
-              <Printer size={15} /> Печать A4
+              <Printer size={15} /> Печать А4 (вертикально)
             </button>
             <button
               type="button"
@@ -790,6 +809,20 @@ export function ProfitReportClient({
           <div className="admin-card__pad">
             <div className="pr-table-scroll">
               <table className="pr-edit-table">
+                <colgroup>
+                  <col style={{ width: "21%" }} />
+                  <col style={{ width: "6%" }} />
+                  <col style={{ width: "7.5%" }} />
+                  <col style={{ width: "8.5%" }} />
+                  <col style={{ width: "7.5%" }} />
+                  <col style={{ width: "8.5%" }} />
+                  <col style={{ width: "7.5%" }} />
+                  <col style={{ width: "8.5%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "34px" }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th className="pr-col-name">Товар</th>
@@ -1193,8 +1226,8 @@ function PrintSheet({
     <div className="pr-sheet">
       <div className="pr-sheet__head">
         <div>
-          <div className="pr-sheet__company">{meta.company || "\u00A0"}</div>
-          <h2 className="pr-sheet__title">{meta.title}</h2>
+          <div className="pr-sheet__company">{meta.company || "ООО «СибГофроТорг»"}</div>
+          <h2 className="pr-sheet__title">{meta.title || "План по выгоде продаж"}</h2>
         </div>
         <div className="pr-sheet__period">
           <div>
@@ -1209,18 +1242,61 @@ function PrintSheet({
       {meta.note ? <p className="pr-sheet__note">{meta.note}</p> : null}
 
       <table className="pr-sheet-table">
+        <colgroup>
+          <col style={{ width: "22%" }} />
+          <col style={{ width: "6.5%" }} />
+          <col style={{ width: "7.5%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "7.5%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "7.5%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "9.5%" }} />
+          <col style={{ width: "8.5%" }} />
+          <col style={{ width: "4%" }} />
+        </colgroup>
         <thead>
           <tr>
             <th className="pr-sheet-th-name">Товар</th>
-            <th>Кол-во</th>
-            <th>Цена прод.</th>
+            <th>
+              Кол-во,
+              <br />
+              шт
+            </th>
+            <th>
+              Цена
+              <br />
+              прод.
+            </th>
             <th>Выручка</th>
-            <th>С/с 1 шт (Мы)</th>
-            <th>Сумма произв.</th>
-            <th>Конкур. 1 шт</th>
-            <th>Сумма закупки</th>
-            <th>Прибыль (наша)</th>
-            <th>Выгода произв.</th>
+            <th>
+              Мы: с/с
+              <br />1 шт
+            </th>
+            <th>
+              Мы:
+              <br />
+              сумма
+            </th>
+            <th>
+              Конкур.
+              <br />1 шт
+            </th>
+            <th>
+              Конкур.:
+              <br />
+              сумма
+            </th>
+            <th>
+              Прибыль
+              <br />
+              (наша)
+            </th>
+            <th>
+              Выгода
+              <br />
+              произв.
+            </th>
             <th>Маржа</th>
           </tr>
         </thead>
@@ -1240,21 +1316,33 @@ function PrintSheet({
         <tfoot>
           <tr className="pr-sheet-total">
             <td className="pr-sheet-th-name">ИТОГО</td>
-            <td>{fmtNum(totals.qty)}</td>
-            <td>—</td>
-            <td>{fmtMoney(totals.revenue)}</td>
-            <td>—</td>
-            <td>{fmtMoney(totals.ourCost)}</td>
-            <td>—</td>
-            <td>{fmtMoney(totals.competitorCost)}</td>
-            <td className="pr-pos">{fmtMoney(totals.ourProfit)}</td>
-            <td className="pr-pos">{fmtMoney(totals.benefit)}</td>
-            <td>{totals.margin}%</td>
+            <td className="pr-cell-num">{fmtNum(totals.qty)}</td>
+            <td className="pr-cell-num pr-dim">—</td>
+            <td className="pr-cell-num">{fmtMoney(totals.revenue)}</td>
+            <td className="pr-cell-num pr-dim">—</td>
+            <td className="pr-cell-num">{fmtMoney(totals.ourCost)}</td>
+            <td className="pr-cell-num pr-dim">—</td>
+            <td className="pr-cell-num">{fmtMoney(totals.competitorCost)}</td>
+            <td
+              className={`pr-cell-num ${
+                totals.ourProfit >= 0 ? "pr-pos" : "pr-neg"
+              }`}
+            >
+              {fmtMoney(totals.ourProfit)}
+            </td>
+            <td
+              className={`pr-cell-num ${
+                totals.benefit >= 0 ? "pr-ben" : "pr-neg"
+              }`}
+            >
+              {fmtMoney(totals.benefit)}
+            </td>
+            <td className="pr-cell-num">{totals.margin}%</td>
           </tr>
         </tfoot>
       </table>
 
-      {/* Итоговые плашки */}
+      {/* Итоговые плашки (видны в превью на экране, скрыты при печати через .pr-sheet-summary { display: none !important }) */}
       <div className="pr-sheet-summary">
         <div className="pr-sum-card">
           <div className="pr-sum-card__label">Выручка за период</div>
@@ -1310,36 +1398,44 @@ function PrintPositionBlock({
     <>
       <tr className="pr-sheet-pos">
         <td className="pr-sheet-th-name">
-          {p.name || "—"}
-          {p.sku ? <span className="pr-sheet-sku"> · {p.sku}</span> : null}
+          <div className="pr-sheet-prod-name">{p.name || "—"}</div>
+          {p.sku ? <div className="pr-sheet-sku">{p.sku}</div> : null}
         </td>
-        <td>{fmtNum(c.qty)}</td>
-        <td>{fmtMoney(p.salePrice)}</td>
-        <td>{fmtMoney(c.revenue)}</td>
-        <td>{fmtMoney(p.productionCost)}</td>
-        <td>{fmtMoney(c.ourCost)}</td>
-        <td>{fmtMoney(p.competitorPrice)}</td>
-        <td>{fmtMoney(c.competitorCost)}</td>
-        <td className="pr-pos">{fmtMoney(c.ourProfit)}</td>
-        <td className="pr-pos">{fmtMoney(c.benefit)}</td>
-        <td>{c.margin}%</td>
+        <td className="pr-cell-num">{fmtNum(c.qty)}</td>
+        <td className="pr-cell-num">{fmtMoney(p.salePrice)}</td>
+        <td className="pr-cell-num">{fmtMoney(c.revenue)}</td>
+        <td className="pr-cell-num">{fmtMoney(p.productionCost)}</td>
+        <td className="pr-cell-num">{fmtMoney(c.ourCost)}</td>
+        <td className="pr-cell-num">{fmtMoney(p.competitorPrice)}</td>
+        <td className="pr-cell-num">{fmtMoney(c.competitorCost)}</td>
+        <td
+          className={`pr-cell-num ${c.ourProfit >= 0 ? "pr-pos" : "pr-neg"}`}
+        >
+          {fmtMoney(c.ourProfit)}
+        </td>
+        <td
+          className={`pr-cell-num ${c.benefit >= 0 ? "pr-ben" : "pr-neg"}`}
+        >
+          {fmtMoney(c.benefit)}
+        </td>
+        <td className="pr-cell-num">{c.margin}%</td>
       </tr>
       {showDetails && p.sales.length > 0 && (
         <tr className="pr-sheet-detail">
           <td colSpan={11}>
             <div className="pr-sheet-detail__wrap">
               <span className="pr-sheet-detail__title">Продажи:</span>
-              <ul className="pr-sheet-detail__list">
+              <div className="pr-sheet-detail__list">
                 {p.sales.map((s) => (
-                  <li key={s.id}>
+                  <div key={s.id} className="pr-sheet-detail__item">
                     <span className="pr-sd-date">{fmtDate(s.date)}</span>
                     <span className="pr-sd-cust">{s.customer || "—"}</span>
-                    <span className="pr-sd-qty">{fmtNum(s.qty)} шт</span>
-                    <span className="pr-sd-price">× {fmtMoney(s.price)}</span>
-                    <span className="pr-sd-sum">= {fmtMoney(s.qty * s.price)}</span>
-                  </li>
+                    <span className="pr-sd-qty">{fmtNum(s.qty)}&nbsp;шт</span>
+                    <span className="pr-sd-price">×&nbsp;{fmtMoney(s.price)}</span>
+                    <span className="pr-sd-sum">=&nbsp;{fmtMoney(s.qty * s.price)}</span>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           </td>
         </tr>
@@ -1391,10 +1487,10 @@ const PRINT_CSS = `
 .pr-picker__empty { padding: 16px; text-align: center; color: var(--adm-muted, #94a3b8); font-size: 13px; }
 
 /* ── Таблица-редактор ── */
-.pr-table-scroll { overflow-x: auto; }
-.pr-edit-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 1080px; }
-.pr-edit-table th, .pr-edit-table td { border: 1px solid var(--adm-border, #e2e8f0); padding: 4px 6px; text-align: center; vertical-align: middle; }
-.pr-edit-table thead th { background: var(--adm-soft, #f8fafc); font-weight: 600; font-size: 11.5px; color: var(--adm-fg, #334155); position: sticky; top: 0; }
+.pr-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pr-edit-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 1100px; table-layout: fixed; }
+.pr-edit-table th, .pr-edit-table td { border: 1px solid var(--adm-border, #e2e8f0); padding: 4px 5px; text-align: center; vertical-align: middle; box-sizing: border-box; }
+.pr-edit-table thead th { background: var(--adm-soft, #f8fafc); font-weight: 600; font-size: 11px; color: var(--adm-fg, #334155); position: sticky; top: 0; z-index: 2; line-height: 1.2; }
 .pr-th-us { background: rgba(37,99,235,0.08) !important; }
 .pr-th-comp { background: rgba(217,119,6,0.09) !important; }
 .pr-th-profit { background: rgba(22,163,74,0.09) !important; }
@@ -1403,111 +1499,367 @@ const PRINT_CSS = `
 .pr-td-comp { background: rgba(217,119,6,0.04); }
 .pr-td-profit { background: rgba(22,163,74,0.04); }
 .pr-td-benefit { background: rgba(147,51,234,0.05); }
-.pr-col-name { text-align: left !important; min-width: 200px; }
-.pr-col-act { width: 34px; }
+.pr-col-name { text-align: left !important; min-width: 180px; overflow: hidden; }
+.pr-col-act { width: 34px; text-align: center !important; }
 .pr-dim { color: var(--adm-muted, #cbd5e1); }
 
-.pr-name-cell { display: flex; align-items: center; gap: 4px; }
-.pr-name-input { width: 100%; border: none; background: transparent; font-size: 12.5px; font-weight: 500; padding: 2px 4px; border-radius: 4px; }
+.pr-name-cell { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.pr-name-input { width: 100%; min-width: 0; border: none; background: transparent; font-size: 12px; font-weight: 500; padding: 2px 4px; border-radius: 4px; }
 .pr-name-input:focus { outline: 2px solid rgba(59,130,246,0.4); background: #fff; }
-.pr-expand { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: none; background: none; cursor: pointer; color: var(--adm-muted, #64748b); border-radius: 5px; }
+.pr-expand { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: none; background: none; cursor: pointer; color: var(--adm-muted, #64748b); border-radius: 4px; }
 .pr-expand:hover { background: rgba(0,0,0,0.05); }
-.pr-sales-badge { display: inline-block; margin-left: 26px; font-size: 10.5px; color: var(--adm-muted, #94a3b8); }
+.pr-sales-badge { display: inline-block; margin-left: 24px; font-size: 10px; color: var(--adm-muted, #94a3b8); }
 
-.pr-num { width: 100%; min-width: 62px; border: 1px solid transparent; background: transparent; text-align: right; font-size: 12.5px; padding: 3px 5px; border-radius: 5px; font-variant-numeric: tabular-nums; }
+.pr-num { width: 100%; min-width: 0; border: 1px solid transparent; background: transparent; text-align: right; font-size: 12px; padding: 3px 4px; border-radius: 4px; font-variant-numeric: tabular-nums; box-sizing: border-box; }
 .pr-num:hover { border-color: var(--adm-border, #e2e8f0); }
 .pr-num:focus { outline: none; border-color: #3b82f6; background: #fff; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
-.pr-num--narrow { min-width: 52px; }
+.pr-num--narrow { min-width: 0; }
 .pr-num--bold { font-weight: 700; }
 .pr-num--profit { color: #15803d; font-weight: 600; }
 .pr-num--benefit { color: #7c3aed; font-weight: 600; }
 
-.pr-ovcell { display: flex; align-items: center; gap: 2px; }
+.pr-ovcell { display: flex; align-items: center; justify-content: flex-end; gap: 2px; width: 100%; min-width: 0; position: relative; }
+.pr-ovcell .pr-num { flex: 1 1 auto; min-width: 0; }
 .pr-ovcell--ov .pr-num { background: rgba(250,204,21,0.15); border-color: rgba(202,138,4,0.5); }
-.pr-reset { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: none; background: none; color: #ca8a04; cursor: pointer; border-radius: 4px; }
+.pr-reset { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: none; background: none; color: #ca8a04; cursor: pointer; border-radius: 3px; }
 .pr-reset:hover { background: rgba(202,138,4,0.15); }
 
-.pr-row-del { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; background: none; color: #dc2626; cursor: pointer; border-radius: 5px; }
+.pr-row-del { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: none; background: none; color: #dc2626; cursor: pointer; border-radius: 4px; }
 .pr-row-del:hover { background: rgba(220,38,38,0.1); }
 
 .pr-total-row td { background: var(--adm-soft, #f1f5f9); font-weight: 700; }
 
 /* Детали продаж в редакторе */
 .pr-detail-row td { background: #fbfcfe; padding: 0 !important; }
-.pr-detail { padding: 10px 14px 14px 40px; }
+.pr-detail { padding: 10px 14px 14px 36px; }
 .pr-detail__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--adm-muted, #475569); }
 .pr-detail__empty { font-size: 12px; color: var(--adm-muted, #94a3b8); margin: 0; }
 .pr-detail-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pr-detail-table th, .pr-detail-table td { border: 1px solid var(--adm-border, #e2e8f0); padding: 3px 6px; }
 .pr-detail-table th { background: #fff; font-weight: 600; font-size: 11px; color: var(--adm-muted, #64748b); }
-.pr-date { min-width: 120px; text-align: left; }
-.pr-cust { width: 100%; min-width: 140px; border: 1px solid transparent; background: transparent; font-size: 12px; padding: 3px 5px; border-radius: 5px; }
+.pr-date { min-width: 110px; text-align: left; }
+.pr-cust { width: 100%; min-width: 120px; border: 1px solid transparent; background: transparent; font-size: 12px; padding: 3px 5px; border-radius: 5px; }
 .pr-cust:hover { border-color: var(--adm-border, #e2e8f0); }
 .pr-cust:focus { outline: none; border-color: #3b82f6; background: #fff; }
 .pr-detail-sum { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-/* ── A4 превью ── */
-.pr-a4-stage { background: #e9edf3; padding: 24px; border-radius: 10px; display: flex; justify-content: center; overflow-x: auto; }
-.pr-a4-sheet { width: 297mm; max-width: 100%; min-height: 210mm; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,0.12); padding: 12mm 12mm; box-sizing: border-box; }
-.pr-sheet { font-family: Arial, "Segoe UI", sans-serif; color: #1e293b; font-size: 11px; }
-.pr-sheet__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 2px solid #1e293b; padding-bottom: 8px; margin-bottom: 6px; }
-.pr-sheet__company { font-size: 13px; font-weight: 700; letter-spacing: 0.3px; }
-.pr-sheet__title { font-size: 18px; font-weight: 800; margin: 2px 0 0; }
-.pr-sheet__period { text-align: right; font-size: 11px; line-height: 1.5; white-space: nowrap; }
+/* ── A4 превью (вертикальный лист A4: 210 × 297 мм) ── */
+.pr-a4-stage { background: #e9edf3; padding: 24px 16px; border-radius: 10px; display: flex; justify-content: center; overflow-x: auto; }
+.pr-a4-sheet { width: 210mm; min-height: 297mm; max-width: 100%; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,0.12); padding: 8mm 7mm; box-sizing: border-box; }
+.pr-sheet { font-family: Arial, "Segoe UI", sans-serif; color: #1e293b; font-size: 9.5px; width: 100%; box-sizing: border-box; }
+.pr-sheet__head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; border-bottom: 2px solid #0f172a; padding-bottom: 6px; margin-bottom: 6px; }
+.pr-sheet__company { font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: #475569; text-transform: uppercase; }
+.pr-sheet__title { font-size: 17px; font-weight: 800; color: #0f172a; margin: 2px 0 0; }
+.pr-sheet__period { text-align: right; font-size: 10.5px; line-height: 1.45; white-space: nowrap; color: #334155; }
 .pr-sheet__plabel { color: #64748b; }
-.pr-sheet__note { font-size: 11px; font-style: italic; color: #475569; margin: 4px 0 8px; }
+.pr-sheet__note { font-size: 10px; font-style: italic; color: #475569; margin: 4px 0 6px; }
 
-.pr-sheet-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 6px; }
-.pr-sheet-table th, .pr-sheet-table td { border: 1px solid #cbd5e1; padding: 4px 5px; text-align: right; vertical-align: top; }
-.pr-sheet-table thead th { background: #1e293b; color: #fff; font-weight: 600; text-align: center; font-size: 9.5px; }
-.pr-sheet-th-name { text-align: left !important; }
-.pr-sheet-sku { color: #94a3b8; font-weight: 400; }
+.pr-sheet-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 9px; margin-top: 6px; }
+.pr-sheet-table th, .pr-sheet-table td { border: 1px solid #cbd5e1; padding: 4px 3px; vertical-align: middle; box-sizing: border-box; }
+.pr-sheet-table thead th { background: #1e293b; color: #fff; font-weight: 700; text-align: center; font-size: 8.5px; line-height: 1.15; }
+.pr-sheet-th-name { text-align: left !important; overflow: hidden; }
+.pr-sheet-prod-name { font-weight: 600; line-height: 1.25; word-break: break-word; overflow-wrap: break-word; }
+.pr-sheet-sku { font-size: 8px; color: #64748b; font-family: monospace; margin-top: 1px; }
+.pr-cell-num { text-align: right !important; font-variant-numeric: tabular-nums !important; white-space: nowrap !important; word-break: keep-all !important; }
 .pr-sheet-pos td { background: #fff; }
 .pr-sheet-pos:nth-child(even) td { background: #f8fafc; }
 .pr-pos { color: #15803d; font-weight: 700; }
-.pr-sheet-total td { background: #e2e8f0 !important; font-weight: 800; font-size: 10.5px; }
+.pr-ben { color: #7c3aed; font-weight: 700; }
+.pr-neg { color: #dc2626; font-weight: 700; }
+.pr-sheet-total td { background: #e2e8f0 !important; font-weight: 800; font-size: 9.5px; border-top: 2px solid #0f172a !important; }
 
-.pr-sheet-detail td { background: #fbfcfe; padding: 3px 8px 5px 14px; }
-.pr-sheet-detail__wrap { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
-.pr-sheet-detail__title { font-weight: 700; color: #475569; font-size: 9.5px; }
-.pr-sheet-detail__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; font-size: 9.5px; width: 100%; }
-.pr-sheet-detail__list li { display: flex; gap: 10px; color: #334155; }
-.pr-sd-date { min-width: 66px; color: #64748b; }
-.pr-sd-cust { min-width: 180px; font-weight: 600; }
-.pr-sd-qty { min-width: 60px; text-align: right; }
-.pr-sd-price { min-width: 90px; }
-.pr-sd-sum { font-weight: 600; }
+.pr-sheet-detail td { background: #f8fafc; padding: 3px 6px; border-left: 3px solid #3b82f6; }
+.pr-sheet-detail__wrap { display: flex; flex-direction: column; gap: 2px; }
+.pr-sheet-detail__title { font-weight: 700; color: #475569; font-size: 8.5px; }
+.pr-sheet-detail__list { display: flex; flex-direction: column; gap: 2px; }
+.pr-sheet-detail__item { display: flex; gap: 8px; align-items: baseline; font-size: 8.5px; color: #334155; flex-wrap: wrap; }
+.pr-sd-date { color: #64748b; flex: 0 0 auto; }
+.pr-sd-cust { font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-sd-qty { font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.pr-sd-price { font-variant-numeric: tabular-nums; color: #64748b; flex: 0 0 auto; }
+.pr-sd-sum { font-weight: 600; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 
-.pr-sheet-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
-.pr-sum-card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; background: #f8fafc; }
-.pr-sum-card__label { font-size: 9.5px; color: #64748b; margin-bottom: 3px; }
-.pr-sum-card__value { font-size: 15px; font-weight: 800; }
+.pr-sheet-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+.pr-sum-card { border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 9px; background: #f8fafc; }
+.pr-sum-card__label { font-size: 8.5px; color: #64748b; margin-bottom: 2px; }
+.pr-sum-card__value { font-size: 13px; font-weight: 800; }
 .pr-sum-card--profit { background: #f0fdf4; border-color: #86efac; }
 .pr-sum-card--profit .pr-sum-card__value { color: #15803d; }
 .pr-sum-card--benefit { background: #faf5ff; border-color: #d8b4fe; }
 .pr-sum-card--benefit .pr-sum-card__value { color: #7c3aed; }
 
-.pr-sheet__foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 20px; }
-.pr-sign { display: flex; flex-direction: column; gap: 3px; min-width: 220px; }
-.pr-sign__line { border-bottom: 1px solid #1e293b; height: 22px; }
-.pr-sign__cap { font-size: 9.5px; color: #64748b; }
-.pr-sheet__foot-note { font-size: 9px; color: #94a3b8; }
+.pr-sheet__foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 14px; }
+.pr-sign { display: flex; flex-direction: column; gap: 2px; min-width: 180px; }
+.pr-sign__line { border-bottom: 1px solid #0f172a; height: 18px; }
+.pr-sign__cap { font-size: 8.5px; color: #64748b; }
+.pr-sheet__foot-note { font-size: 8.5px; color: #94a3b8; }
 
-/* ── Печать ── */
+/* ── Печать на вертикальном формате А4 ── */
 @media print {
-  @page { size: A4 landscape; margin: 8mm 8mm; }
-  html, body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { position: static !important; top: auto !important; left: auto !important; right: auto !important; width: auto !important; max-width: none !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
-  body > *:not(:has(.pr-print-area)) { display: none !important; }
-  .no-print { display: none !important; }
-  .admin-sidebar, .admin-mobile-bar, .admin-sidebar-handle, .admin-notify, .admin-plans-shortcut, .admin-requests-shortcut { display: none !important; }
-  .admin-shell, .admin-content, .admin-main, .admin-stack, .pr-root, .pr-print-wrap, .pr-print-wrap .admin-card__pad {
-    display: block !important; margin: 0 !important; padding: 0 !important; max-width: none !important; width: auto !important; min-height: 0 !important; background: #fff !important; box-shadow: none !important; border: none !important;
+  @page {
+    size: A4 portrait;
+    margin: 8mm 6mm;
   }
-  .pr-a4-stage { display: block !important; background: #fff !important; padding: 0 !important; overflow: visible !important; }
-  .pr-a4-sheet { width: 100% !important; min-height: 0 !important; padding: 0 !important; box-shadow: none !important; }
-  .pr-sheet-table thead { display: table-header-group; }
-  .pr-sheet-table tr { break-inside: avoid; }
-  .pr-sheet-summary { break-inside: avoid; }
+  html, body {
+    background: #fff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* 1. Скрываем абсолютно всё лишнее: кнопки, шапку сайта/админки, сайдбар, фильтры, редактор, плашки */
+  .no-print,
+  .site-header-wrap,
+  .site-header,
+  .topbar,
+  .site-footer,
+  footer,
+  nav,
+  header:not(.pr-sheet-header),
+  .admin-sidebar,
+  .admin-sidebar-handle,
+  .admin-mobile-bar,
+  .admin-bottom-nav,
+  .admin-page-head,
+  .admin-notify,
+  .admin-plans-shortcut,
+  .admin-requests-shortcut,
+  .realtime-status-pill,
+  .mobile-admin-shell > header,
+  .mobile-admin-shell > nav,
+  .pr-controls,
+  .pr-actions,
+  .pr-hint,
+  .pr-picker-backdrop,
+  .pr-picker-modal,
+  .pr-table-scroll,
+  .pr-edit-table,
+  .pr-sheet-summary,
+  .admin-card:not(.pr-print-wrap),
+  [data-admin="true"] .admin-card:not(.pr-print-wrap),
+  [data-admin="true"] .admin-page-head,
+  [data-admin="true"] .admin-sidebar,
+  [data-admin="true"] .admin-mobile-bar,
+  body > *:not(.admin-shell):not(main) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    overflow: hidden !important;
+  }
+
+  /* 2. Сбрасываем контейнеры админки до обычных блоков */
+  .admin-shell,
+  .admin-content,
+  .admin-main,
+  .admin-stack,
+  .pr-root,
+  .pr-print-wrap,
+  .pr-print-wrap .admin-card__pad,
+  .pr-a4-stage {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* 3. Печатный лист A4 вертикально */
+  .pr-a4-sheet {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+
+  .pr-sheet {
+    width: 100% !important;
+    font-family: Arial, "Segoe UI", sans-serif !important;
+    color: #0f172a !important;
+    font-size: 9px !important;
+  }
+
+  .pr-sheet__head {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-end !important;
+    border-bottom: 2px solid #0f172a !important;
+    padding-bottom: 5px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .pr-sheet__company {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px !important;
+    color: #475569 !important;
+    text-transform: uppercase !important;
+  }
+
+  .pr-sheet__title {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    margin: 2px 0 0 !important;
+  }
+
+  .pr-sheet__period {
+    text-align: right !important;
+    font-size: 10px !important;
+    line-height: 1.4 !important;
+    white-space: nowrap !important;
+    color: #334155 !important;
+  }
+
+  .pr-sheet__note {
+    font-size: 9px !important;
+    color: #475569 !important;
+    font-style: italic !important;
+    margin: 4px 0 6px !important;
+  }
+
+  /* 4. Таблица: идеальная фиксация колонок */
+  .pr-sheet-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 8.5px !important;
+    margin: 4px 0 0 !important;
+  }
+
+  .pr-sheet-table thead {
+    display: table-header-group !important;
+  }
+
+  .pr-sheet-table tfoot {
+    display: table-footer-group !important;
+  }
+
+  .pr-sheet-table tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .pr-sheet-table th,
+  .pr-sheet-table td {
+    border: 1px solid #94a3b8 !important;
+    padding: 3px 2.5px !important;
+    box-sizing: border-box !important;
+    vertical-align: middle !important;
+  }
+
+  .pr-sheet-table thead th {
+    background: #1e293b !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 8px !important;
+    line-height: 1.15 !important;
+    text-align: center !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .pr-sheet-th-name {
+    text-align: left !important;
+  }
+
+  .pr-cell-num {
+    text-align: right !important;
+    font-variant-numeric: tabular-nums !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+  }
+
+  .pr-sheet-pos:nth-child(even) td {
+    background: #f8fafc !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .pr-sheet-total td {
+    background: #e2e8f0 !important;
+    font-weight: 800 !important;
+    font-size: 9px !important;
+    border-top: 2px solid #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .pr-pos {
+    color: #15803d !important;
+    font-weight: 700 !important;
+  }
+
+  .pr-ben {
+    color: #7c3aed !important;
+    font-weight: 700 !important;
+  }
+
+  .pr-neg {
+    color: #dc2626 !important;
+    font-weight: 700 !important;
+  }
+
+  .pr-sheet__foot {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-end !important;
+    margin-top: 12px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .pr-sign {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    min-width: 180px !important;
+  }
+
+  .pr-sign__line {
+    border-bottom: 1px solid #0f172a !important;
+    height: 16px !important;
+  }
+
+  .pr-sign__cap {
+    font-size: 8px !important;
+    color: #64748b !important;
+  }
+
+  .pr-sheet__foot-note {
+    font-size: 8px !important;
+    color: #94a3b8 !important;
+  }
 }
 `;

@@ -12923,6 +12923,113 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 }
 
 /* ═══════════════════════════════════════════════════════════
+   ПЕЧАТЬ ПЛАНА / ОТЧЁТА О ВЫГОДЕ ПРОДАЖ (/admin/profit-report)
+   A4 вертикально (portrait). Печатается ТОЛЬКО таблица отчёта.
+   Кнопки, шапка сайта/админки, сайдбар, фильтры и редактор
+   полностью скрываются.
+   ═══════════════════════════════════════════════════════════ */
+@media print {
+  body:has(.pr-print-area),
+  body.profit-report-mode {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body:has(.pr-print-area) .site-header-wrap,
+  body:has(.pr-print-area) .site-header,
+  body:has(.pr-print-area) .topbar,
+  body:has(.pr-print-area) .site-footer,
+  body:has(.pr-print-area) .admin-sidebar,
+  body:has(.pr-print-area) .admin-sidebar-handle,
+  body:has(.pr-print-area) .admin-mobile-bar,
+  body:has(.pr-print-area) .admin-bottom-nav,
+  body:has(.pr-print-area) .admin-page-head,
+  body:has(.pr-print-area) .admin-notify,
+  body:has(.pr-print-area) .admin-plans-shortcut,
+  body:has(.pr-print-area) .admin-requests-shortcut,
+  body:has(.pr-print-area) .realtime-status-pill,
+  body:has(.pr-print-area) .no-print,
+  body:has(.pr-print-area) .pr-controls,
+  body:has(.pr-print-area) .pr-actions,
+  body:has(.pr-print-area) .pr-edit-table,
+  body:has(.pr-print-area) .pr-table-scroll,
+  body:has(.pr-print-area) .pr-hint,
+  body:has(.pr-print-area) .pr-sheet-summary,
+  body:has(.pr-print-area) .admin-card:not(.pr-print-wrap),
+  body:has(.pr-print-area) [data-admin="true"] .admin-card:not(.pr-print-wrap),
+  body:has(.pr-print-area) [data-admin="true"] .admin-page-head,
+  body:has(.pr-print-area) [data-admin="true"] .admin-sidebar,
+  body:has(.pr-print-area) [data-admin="true"] .admin-mobile-bar,
+  body.profit-report-mode .site-header-wrap,
+  body.profit-report-mode .site-header,
+  body.profit-report-mode .topbar,
+  body.profit-report-mode .site-footer,
+  body.profit-report-mode .admin-sidebar,
+  body.profit-report-mode .admin-sidebar-handle,
+  body.profit-report-mode .admin-mobile-bar,
+  body.profit-report-mode .admin-bottom-nav,
+  body.profit-report-mode .admin-page-head,
+  body.profit-report-mode .admin-notify,
+  body.profit-report-mode .admin-plans-shortcut,
+  body.profit-report-mode .admin-requests-shortcut,
+  body.profit-report-mode .realtime-status-pill,
+  body.profit-report-mode .no-print,
+  body.profit-report-mode .pr-controls,
+  body.profit-report-mode .pr-actions,
+  body.profit-report-mode .pr-edit-table,
+  body.profit-report-mode .pr-table-scroll,
+  body.profit-report-mode .pr-hint,
+  body.profit-report-mode .pr-sheet-summary,
+  body.profit-report-mode .admin-card:not(.pr-print-wrap),
+  body.profit-report-mode [data-admin="true"] .admin-card:not(.pr-print-wrap),
+  body.profit-report-mode [data-admin="true"] .admin-page-head,
+  body.profit-report-mode [data-admin="true"] .admin-sidebar,
+  body.profit-report-mode [data-admin="true"] .admin-mobile-bar {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    overflow: hidden !important;
+  }
+
+  body:has(.pr-print-area) .admin-shell,
+  body:has(.pr-print-area) .admin-content,
+  body:has(.pr-print-area) .admin-main,
+  body:has(.pr-print-area) .admin-stack,
+  body:has(.pr-print-area) .pr-root,
+  body:has(.pr-print-area) .pr-print-wrap,
+  body:has(.pr-print-area) .pr-print-wrap .admin-card__pad,
+  body:has(.pr-print-area) .pr-a4-stage,
+  body.profit-report-mode .admin-shell,
+  body.profit-report-mode .admin-content,
+  body.profit-report-mode .admin-main,
+  body.profit-report-mode .admin-stack,
+  body.profit-report-mode .pr-root,
+  body.profit-report-mode .pr-print-wrap,
+  body.profit-report-mode .pr-print-wrap .admin-card__pad,
+  body.profit-report-mode .pr-a4-stage {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
    ПОДБОР КОРОБКИ (Д × Ш × В)
    ═══════════════════════════════════════════════════════════ */
 .bf-form {
