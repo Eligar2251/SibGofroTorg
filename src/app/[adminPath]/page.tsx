@@ -879,7 +879,7 @@ export default async function AdminDashboard() {
             subtitle="Отдельный учёт"
             icon={<Recycle size={16} />}
             accent="green"
-            badge={money(wpBalance.total)}
+            badge={money(wpBalance.common)}
             defaultOpen={false}
             sideContent={session.role === "admin" && (
               <Link href={`/${ADMIN_PATH}/wastepaper-account`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
@@ -911,7 +911,7 @@ export default async function AdminDashboard() {
                 <div className="dash-account-card dash-account-card--cash">
                   <div className="dash-account-card__head"><div className="dash-account-card__icon"><Banknote size={16} /></div><div className="dash-account-card__copy"><strong>Наличка</strong><span>Прогноз +{money(wpForecast.inCash)} / −{money(wpForecast.outCash)}</span></div></div>
                   <div className="dash-account-card__balance"><span>Сейчас</span><strong>{money(wpBalance.cash)}</strong></div>
-                  <div className="dash-account-card__turnover"><span>Итого <b>{money(wpBalance.total)}</b> · {Math.round(wpStockTotalKg)} кг</span></div>
+                  <div className="dash-account-card__turnover"><span>Итого <b>{money(wpBalance.common)}</b> · {Math.round(wpStockTotalKg)} кг</span></div>
                 </div>
                 <div className="dash-account-card dash-account-card--bank">
                   <div className="dash-account-card__head"><div className="dash-account-card__icon"><CreditCard size={16} /></div><div className="dash-account-card__copy"><strong>Безнал</strong><span>Прогноз +{money(wpForecast.inBank)} / −{money(wpForecast.outBank)}</span></div></div>
