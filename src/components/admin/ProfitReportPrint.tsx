@@ -2076,9 +2076,11 @@ export function buildReportCss(s: PrintSettings): string {
   }
   body { position: static !important; top: auto !important; left: auto !important; }
 
-  /* 1. Прячем всё, что не относится к отчёту */
+  /* 1. Прячем всё, что не относится к отчёту (header — сайт-шапка;
+        .prd-head — шапки листов развёрнутого отчёта, их НЕ трогаем:
+        в них название коробки, номер позиции и артикул) */
   .no-print,
-  .site-header-wrap, .site-header, .topbar, .site-footer, footer, nav, header,
+  .site-header-wrap, .site-header, .topbar, .site-footer, footer, nav, header:not(.prd-head),
   .admin-sidebar, .admin-sidebar-handle, .admin-mobile-bar, .admin-bottom-nav,
   .admin-page-head, .admin-notify, .admin-realtime-status, .admin-toast,
   .admin-plans-shortcut, .admin-requests-shortcut,

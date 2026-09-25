@@ -9,10 +9,15 @@
 //  • перетаскивание, вращение, ресайз за углы, стрелки;
 //  • мультивыбор (Shift+клик), выравнивание по краям/центру
 //    (к холсту или выделению), группировка/разгруппировка (Ctrl+G);
+//  • отмена/возврат правок (Ctrl+Z / Ctrl+Shift+Z, Ctrl+Y),
+//    дублирование (Ctrl+D), Esc — снять выделение;
 //  • отступы текста (padding) с фоном-подложкой — видно расстояние
-//    от текста до края блока;
+//    от текста до края блока; кнопки «Подогнать блок» (подложка
+//    ровно по тексту) и «В центр холста»;
 //  • направляющие при перетаскивании с привязкой к краям/центру
-//    холста и соседним элементам + подписи расстояний.
+//    холста и соседним элементам + подписи расстояний;
+//  • автосейв дизайна копией в библиотеку при переходе на шаг
+//    генерации (фото присваиваются товарам там же).
 // =========================================================
 
 "use client";
@@ -47,11 +52,13 @@ import {
   Loader2,
   Plus,
   RotateCcw,
+  Redo2,
   Search,
   Sparkles,
   Square,
   Save,
   Trash2,
+  Undo2,
   Type,
   Ungroup,
   Upload,
@@ -595,10 +602,15 @@ function drawText(
           : el.align === "center"
             ? el.x + (el.width - total) / 2
             : el.x + el.width - total;
+      // Символы рисуем по одному с выключкой влево: с общим textAlign
+      // «center/right» каждый символ смещался бы вдоль строки — текст
+      // «уезжал» внутри своего блока (подложки).
+      ctx.textAlign = "left";
       for (const ch of line) {
         ctx.fillText(ch, lineX, y);
         lineX += ctx.measureText(ch).width + el.letterSpacing;
       }
+      ctx.textAlign = el.align;
     } else {
       const ax =
         el.align === "left"
@@ -1080,6 +1092,9 @@ export function PhotoTemplateGenerator({
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState("Мой шаблон");
   const [templatesBusy, setTemplatesBusy] = useState(false);
+  // Автосейв дизайна в новое сохранение при переходе на шаг генерации.
+  const autoSavedForRef = useRef<string | null>(null);
+  const [autoSaveNote, setAutoSaveNote] = useState<string | null>(null);
 
   const [generating, setGenerating] = useState(false);
   // По умолчанию заменяем фото товара: сгенерированная карточка —
@@ -1113,6 +1128,81 @@ export function PhotoTemplateGenerator({
   >(null);
   const [dragLayerIndex, setDragLayerIndex] = useState<number | null>(null);
   const [overLayerIndex, setOverLayerIndex] = useState<number | null>(null);
+
+  // ── История правок: Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y), как в Figma ──
+  const historyRef = useRef<{ past: PhotoTemplate[]; future: PhotoTemplate[] }>({
+    past: [],
+    future: [],
+  });
+  const lastPushRef = useRef<{ key: string; at: number } | null>(null);
+  // Шаблон на момент начала перетаскивания — фиксируем в историю на
+  // pointerup, чтобы одно движение мыши не растащило историю на шаги.
+  const dragStartTemplateRef = useRef<PhotoTemplate | null>(null);
+  // Тик — чтобы кнопки Undo/Redo пересчитывали disabled-состояние.
+  const [historyTick, setHistoryTick] = useState(0);
+
+  /** Снимок текущего шаблона в историю (до правки). coalesceKey склеивает
+   *  поток однотипных правок (например, ввод текста) в один шаг отмены. */
+  function pushHistory(coalesceKey?: string) {
+    const now = Date.now();
+    if (
+      coalesceKey &&
+      lastPushRef.current?.key === coalesceKey &&
+      now - lastPushRef.current.at < 800
+    ) {
+      lastPushRef.current = { key: coalesceKey, at: now };
+      return;
+    }
+    lastPushRef.current = { key: coalesceKey || "", at: now };
+    const snap = JSON.stringify(template);
+    const h = historyRef.current;
+    if (h.past.length && JSON.stringify(h.past[h.past.length - 1]) === snap) return;
+    h.past.push(template);
+    if (h.past.length > 80) h.past.shift();
+    h.future = [];
+    setHistoryTick((v) => v + 1);
+  }
+
+  function undo() {
+    const h = historyRef.current;
+    const cur = JSON.stringify(template);
+    // «Пустые» шаги (снимок совпал с текущим состоянием) пропускаем.
+    while (h.past.length && JSON.stringify(h.past[h.past.length - 1]) === cur) {
+      h.past.pop();
+    }
+    if (!h.past.length) {
+      setHistoryTick((v) => v + 1);
+      return;
+    }
+    const prev = h.past.pop()!;
+    h.future.push(template);
+    lastPushRef.current = null;
+    setTemplate(prev);
+    setSelectedIds((ids) =>
+      ids.filter((id) => prev.elements.some((el) => el.id === id))
+    );
+    setHistoryTick((v) => v + 1);
+  }
+
+  function redo() {
+    const h = historyRef.current;
+    const cur = JSON.stringify(template);
+    while (h.future.length && JSON.stringify(h.future[h.future.length - 1]) === cur) {
+      h.future.pop();
+    }
+    if (!h.future.length) {
+      setHistoryTick((v) => v + 1);
+      return;
+    }
+    const next = h.future.pop()!;
+    h.past.push(template);
+    lastPushRef.current = null;
+    setTemplate(next);
+    setSelectedIds((ids) =>
+      ids.filter((id) => next.elements.some((el) => el.id === id))
+    );
+    setHistoryTick((v) => v + 1);
+  }
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
@@ -1228,6 +1318,8 @@ export function PhotoTemplateGenerator({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const handle = Math.max(9, template.width / 60);
+    // Запоминаем шаблон до манипуляции — в историю Undo попадёт одним шагом.
+    dragStartTemplateRef.current = template;
 
     // Ручки у единственного выбранного элемента
     if (selectedIds.length === 1) {
@@ -1439,6 +1531,19 @@ export function PhotoTemplateGenerator({
   function onPointerUp(e: React.PointerEvent<HTMLCanvasElement>) {
     if (dragRef.current) {
       dragRef.current = null;
+      // Одно перетаскивание — один шаг истории (снимок на момент старта).
+      const start = dragStartTemplateRef.current;
+      dragStartTemplateRef.current = null;
+      if (start && JSON.stringify(start) !== JSON.stringify(template)) {
+        const h = historyRef.current;
+        const snap = JSON.stringify(start);
+        if (!h.past.length || JSON.stringify(h.past[h.past.length - 1]) !== snap) {
+          h.past.push(start);
+          if (h.past.length > 80) h.past.shift();
+          h.future = [];
+          setHistoryTick((v) => v + 1);
+        }
+      }
       setGuides({ v: [], h: [] });
       try {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
@@ -1448,37 +1553,82 @@ export function PhotoTemplateGenerator({
     }
   }
 
-  /* ── Клавиатура: стрелки, Delete, Ctrl+G / Ctrl+Shift+G ── */
-  function onCanvasKeyDown(e: React.KeyboardEvent) {
-    if (!selectedIds.length) return;
-    const mod = e.ctrlKey || e.metaKey;
-    if (mod && (e.key === "g" || e.key === "G" || e.key === "п" || e.key === "П")) {
-      e.preventDefault();
-      if (e.shiftKey) ungroupSelected();
-      else groupSelected();
-      return;
+  /* ── Клавиатура (глобально на шаге дизайна): стрелки, Delete, Esc,
+        Ctrl+Z / Ctrl+Shift+Z, Ctrl+Y, Ctrl+D, Ctrl+G — как в Figma ── */
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (step !== 2) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      if (mod && (k === "z" || k === "я")) {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (mod && (k === "y" || k === "н")) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (mod && (k === "d" || k === "в")) {
+        e.preventDefault();
+        selectedIds.forEach((id) => {
+          if (template.elements.some((el) => el.id === id)) duplicateElement(id);
+        });
+        return;
+      }
+      if (mod && (k === "g" || k === "п")) {
+        e.preventDefault();
+        if (e.shiftKey) ungroupSelected();
+        else groupSelected();
+        return;
+      }
+      if (e.key === "Escape") {
+        setSelectedIds([]);
+        setGuides({ v: [], h: [] });
+        return;
+      }
+      if (!selectedIds.length) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        removeSelected();
+        return;
+      }
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+        e.preventDefault();
+        pushHistory("nudge");
+        const stepPx = e.shiftKey ? 10 : 1;
+        const dx =
+          e.key === "ArrowLeft" ? -stepPx : e.key === "ArrowRight" ? stepPx : 0;
+        const dy =
+          e.key === "ArrowUp" ? -stepPx : e.key === "ArrowDown" ? stepPx : 0;
+        setTemplate((t) => ({
+          ...t,
+          elements: t.elements.map((el) =>
+            selectedIds.includes(el.id) ? translateElement(el, dx, dy) : el
+          ),
+        }));
+      }
     }
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
-      e.preventDefault();
-      const stepPx = e.shiftKey ? 10 : 1;
-      const dx =
-        e.key === "ArrowLeft" ? -stepPx : e.key === "ArrowRight" ? stepPx : 0;
-      const dy =
-        e.key === "ArrowUp" ? -stepPx : e.key === "ArrowDown" ? stepPx : 0;
-      setTemplate((t) => ({
-        ...t,
-        elements: t.elements.map((el) =>
-          selectedIds.includes(el.id) ? translateElement(el, dx, dy) : el
-        ),
-      }));
-    } else if (e.key === "Delete" || e.key === "Backspace") {
-      e.preventDefault();
-      removeSelected();
-    }
-  }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   /* ── Операции с элементами ── */
   function updateElement(id: string, patch: Record<string, unknown>) {
+    // Одинаковые поля правим серией (ввод текста) — склеиваем в один шаг Undo.
+    pushHistory(`${id}:${Object.keys(patch).sort().join(",")}`);
     setTemplate((t) => ({
       ...t,
       elements: t.elements.map((el) =>
@@ -1488,6 +1638,7 @@ export function PhotoTemplateGenerator({
   }
 
   function removeSelected() {
+    pushHistory();
     setTemplate((t) => ({
       ...t,
       elements: t.elements.filter((el) => !selectedIds.includes(el.id)),
@@ -1496,6 +1647,7 @@ export function PhotoTemplateGenerator({
   }
 
   function duplicateElement(id: string) {
+    pushHistory("dup");
     setTemplate((t) => {
       const idx = t.elements.findIndex((el) => el.id === id);
       if (idx < 0) return t;
@@ -1518,6 +1670,7 @@ export function PhotoTemplateGenerator({
   }
 
   function moveElement(id: string, dir: -1 | 1) {
+    pushHistory("reorder");
     setTemplate((t) => {
       const idx = t.elements.findIndex((el) => el.id === id);
       if (idx < 0) return t;
@@ -1531,6 +1684,7 @@ export function PhotoTemplateGenerator({
   }
 
   function addElement(el: PhotoTemplateElement) {
+    pushHistory();
     setTemplate((t) => ({ ...t, elements: [...t.elements, el] }));
     setSelectedIds([el.id]);
   }
@@ -1547,6 +1701,7 @@ export function PhotoTemplateGenerator({
   function alignSelected(mode: AlignMode) {
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx || selectedIds.length === 0) return;
+    pushHistory("align");
     const els = template.elements.filter((el) => selectedIds.includes(el.id));
     const single = els.length === 1;
 
@@ -1590,6 +1745,40 @@ export function PhotoTemplateGenerator({
     }));
   }
 
+  /**
+   * «Подогнать блок»: ширина текста (и подложки) — ровно по самой широкой
+   * строке. После этого текст с фоном центрируются как единое целое —
+   * кнопками ⟵ ↔ ⟶ (текст в блоке) и «В центр холста».
+   */
+  function hugSelectedText() {
+    const ctx = canvasRef.current?.getContext("2d");
+    const el = selectedEl;
+    if (!ctx || !el || el.type !== "text") return;
+    applyFont(ctx, el);
+    const lines = wrapText(
+      ctx,
+      substituteTokens(el.text, tokens),
+      Math.max(10, el.width),
+      el.letterSpacing
+    );
+    let maxW = 20;
+    for (const line of lines) {
+      maxW = Math.max(maxW, measure(ctx, line, el.letterSpacing));
+    }
+    const w = Math.ceil(maxW);
+    // Ширину меняем вокруг центра блока — он не «прыгает» при подгонке.
+    // Шаг истории фиксирует updateElement ниже.
+    const cx = el.x + el.width / 2;
+    updateElement(el.id, { width: w, x: Math.round(cx - w / 2) });
+  }
+
+  /** Текст с подложкой — строго в центр холста (по горизонтали и вертикали). */
+  function centerSelectedOnCanvas() {
+    if (!selectedIds.length) return;
+    alignSelected("centerH");
+    alignSelected("middle");
+  }
+
   /* ── Группы ── */
   function groupLocalToWorld(
     ctx: CanvasRenderingContext2D,
@@ -1607,6 +1796,7 @@ export function PhotoTemplateGenerator({
   function groupSelected() {
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
+    pushHistory("group");
     const idxs = selectedIds
       .map((id) => template.elements.findIndex((el) => el.id === id))
       .filter((i) => i >= 0)
@@ -1667,6 +1857,7 @@ export function PhotoTemplateGenerator({
   function ungroupSelected() {
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
+    pushHistory("ungroup");
     const groups = template.elements.filter(
       (el) => selectedIds.includes(el.id) && el.type === "group"
     ) as PhotoGroupElement[];
@@ -1698,6 +1889,7 @@ export function PhotoTemplateGenerator({
 
   function reorderLayer(targetIndex: number) {
     if (dragLayerIndex == null || dragLayerIndex === targetIndex) return;
+    pushHistory("reorder");
     const next = [...displayedLayers];
     const [moved] = next.splice(dragLayerIndex, 1);
     next.splice(targetIndex, 0, moved);
@@ -1723,6 +1915,7 @@ export function PhotoTemplateGenerator({
   function applyTemplate(id: string) {
     const saved = savedTemplates.find((t) => t.id === id);
     if (!saved) return;
+    pushHistory("apply");
     setTemplate(cloneTemplate(saved.template));
     setSelectedIds([]);
     setCurrentTemplateId(saved.id);
@@ -1820,6 +2013,48 @@ export function PhotoTemplateGenerator({
       alert("Ошибка сети при удалении шаблона");
     }
     setTemplatesBusy(false);
+  }
+
+  /* ── Автосейв при переходе к генерации (шаг 3) ── */
+  // Снимок текущего дизайна сохраняется ОТДЕЛЬНОЙ новой записью библиотеки,
+  // чтобы работа над карточкой не потерялась при генерации и присвоении фото.
+  async function autoSaveSnapshot() {
+    if (template.elements.length === 0) return;
+    const snap = JSON.stringify(template);
+    if (autoSavedForRef.current === snap) return; // тот же дизайн уже сохранён
+    autoSavedForRef.current = snap;
+    const now = new Date();
+    const stamp = `${String(now.getDate()).padStart(2, "0")}.${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(
+      now.getMinutes()
+    ).padStart(2, "0")}`;
+    const name = `${templateName.trim() || "Черновик"} (автосейв ${stamp})`.slice(
+      0,
+      120
+    );
+    try {
+      const res = await fetch("/api/admin/photo-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, template }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.template) {
+        const saved: SavedPhotoTemplate = data.template;
+        setSavedTemplates((prev) => [saved, ...prev]);
+        setAutoSaveNote(saved.name);
+        window.setTimeout(() => setAutoSaveNote(null), 8000);
+      }
+    } catch {
+      /* автосейв не должен мешать переходу к генерации */
+    }
+  }
+
+  /** Переход к генерации: сначала фиксируем дизайн в новое сохранение. */
+  function goStep3() {
+    void autoSaveSnapshot();
+    setStep(3);
   }
 
   async function uploadFile(file: File): Promise<string | null> {
@@ -1928,6 +2163,10 @@ export function PhotoTemplateGenerator({
       ? template.elements.find((el) => el.id === selectedIds[0]) || null
       : null;
 
+  // historyTick «подкидывает» рендер — сама история живёт в ref.
+  const canUndo = historyTick >= 0 && historyRef.current.past.length > 0;
+  const canRedo = historyTick >= 0 && historyRef.current.future.length > 0;
+
   const alignButtons: { mode: AlignMode; icon: typeof AlignStartHorizontal; title: string }[] = [
     { mode: "left", icon: AlignStartHorizontal, title: "По левому краю" },
     { mode: "centerH", icon: AlignCenterHorizontal, title: "По центру (горизонталь)" },
@@ -1960,7 +2199,8 @@ export function PhotoTemplateGenerator({
         <button
           type="button"
           className={`ptg-step${step === 3 ? " ptg-step--active" : ""}`}
-          onClick={() => setStep(3)}
+          onClick={goStep3}
+          title="Перед генерацией дизайн автоматически сохраняется копией в библиотеку"
         >
           <span className="ptg-step__num">3</span>
           <span>Генерация</span>
@@ -2212,11 +2452,47 @@ export function PhotoTemplateGenerator({
                 <ArrowRight size={14} /> Стрелка
               </button>
             </div>
+            <div className="ptg-tools">
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={undo}
+                disabled={!canUndo}
+                title="Отменить (Ctrl+Z)"
+              >
+                <Undo2 size={14} />
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={redo}
+                disabled={!canRedo}
+                title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
+              >
+                <Redo2 size={14} />
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                disabled={selectedIds.length === 0}
+                onClick={() =>
+                  selectedIds.forEach((id) => {
+                    if (template.elements.some((el) => el.id === id)) {
+                      duplicateElement(id);
+                    }
+                  })
+                }
+                title="Дублировать выделенное (Ctrl+D)"
+              >
+                <Copy size={14} /> Копия
+              </button>
+            </div>
             <button
               type="button"
               className="admin-btn admin-btn--ghost"
               onClick={() => {
                 if (confirm("Сбросить шаблон к исходному виду?")) {
+                  pushHistory("reset");
                   setTemplate(createDefaultTemplate());
                   setSelectedIds([]);
                 }
@@ -2278,7 +2554,7 @@ export function PhotoTemplateGenerator({
                 ref={wrapRef}
                 className="ptg-canvas-wrap"
                 tabIndex={0}
-                onKeyDown={onCanvasKeyDown}
+                title="Ctrl+Z — отменить · Ctrl+Shift+Z — вернуть · Ctrl+D — копия · Ctrl+G — группа · стрелки — сдвиг · Esc — снять выделение"
               >
                 <canvas
                   ref={canvasRef}
@@ -2869,6 +3145,35 @@ export function PhotoTemplateGenerator({
                         ))}
                       </div>
 
+                      {/* Центрирование текста вместе с подложкой */}
+                      <div className="ptg-row">
+                        <button
+                          type="button"
+                          className="ptg-chip"
+                          style={{ flex: 1 }}
+                          title="Подогнать ширину блока (подложку) под самую широкую строку текста"
+                          onClick={hugSelectedText}
+                        >
+                          ↔ Подогнать блок
+                        </button>
+                        <button
+                          type="button"
+                          className="ptg-chip"
+                          style={{ flex: 1 }}
+                          title="Поставить текст с подложкой строго в центр холста"
+                          onClick={centerSelectedOnCanvas}
+                        >
+                          ⊙ В центр холста
+                        </button>
+                      </div>
+                      <p
+                        className="ptg-side__hint"
+                        style={{ margin: 0, fontSize: 11 }}
+                      >
+                        Кнопки ⟵ ↔ ⟶ центрируют текст внутри блока; подложка
+                        идёт ровно по отступам от текста.
+                      </p>
+
                       {/* Тень текста (drag-based) */}
                       <div className="ptg-side__title" style={{ marginTop: 8, fontSize: 12, color: "var(--ink-faint)" }}>
                         Тень (drag для смещения)
@@ -3192,7 +3497,8 @@ export function PhotoTemplateGenerator({
             <button
               type="button"
               className="admin-btn admin-btn--primary"
-              onClick={() => setStep(3)}
+              onClick={goStep3}
+              title="Дизайн будет автоматически сохранён копией в библиотеку шаблонов"
             >
               Далее: генерация <ChevronRight size={15} />
             </button>
@@ -3219,6 +3525,13 @@ export function PhotoTemplateGenerator({
               <span>размер карточки</span>
             </div>
           </div>
+
+          {autoSaveNote && (
+            <div className="ptg-autosave-note">
+              <Check size={14} /> Дизайн сохранён копией: «{autoSaveNote}» —
+              найдёте в списке шаблонов на шаге «Дизайн карточки».
+            </div>
+          )}
 
           <div className="ptg-options">
             <label className="ptg-check">
