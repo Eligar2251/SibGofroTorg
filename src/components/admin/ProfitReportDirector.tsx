@@ -2,9 +2,9 @@
 
 // =========================================================
 // FILE: src/components/admin/ProfitReportDirector.tsx
-// Многостраничный отчёт «Для директора»: сводка по всем позициям,
+// Развёрнутый многостраничный отчёт: сводка по всем позициям,
 // прогноз на следующий месяц, отдельный лист на каждую позицию с
-// графиками, статистикой закупок и рекомендациями. Печать чёрно-белая.
+// графиками, статистикой закупок и рекомендациями.
 // =========================================================
 
 import { useMemo, type CSSProperties } from "react";
@@ -12,11 +12,14 @@ import {
   DENSITY_STYLE,
   PAPER,
   SHEET_FONT,
+  Watermark,
   fmtDate,
   fmtMoney,
   fmtNum,
   fmtSum,
+  resolveAccent,
   round2,
+  viewRows,
   type PrintCalcRow,
   type PrintMeta,
   type PrintPosRow,
@@ -934,8 +937,16 @@ export function DirectorReport({
   settings: PrintSettings;
 }) {
   const summary = useMemo(
-    () => computeDirectorSummary(positions, calcs, totals),
-    [positions, calcs, totals]
+    () => {
+      // Строки с учётом скрытия позиций без продаж и выбранной сортировки.
+      const view = viewRows(positions, calcs, settings);
+      return computeDirectorSummary(
+        view.map((v) => v.pos),
+        view.map((v) => v.calc),
+        totals
+      );
+    },
+    [positions, calcs, totals, settings]
   );
 
   const periodText =
@@ -950,7 +961,17 @@ export function DirectorReport({
   ).padStart(2, "0")}.${today.getFullYear()}`;
 
   const pages: { key: string; node: React.ReactNode }[] = [];
-  const paperW = PAPER[settings.orientation].w;
+
+  // Сколько будет страниц всего — нужно для колонтитула «Лист X из Y».
+  const itemCount = settings.directorItems
+    ? settings.directorTop > 0
+      ? Math.min(settings.directorTop, summary.stats.length)
+      : summary.stats.length
+    : 0;
+  const totalPages = (settings.directorSummary ? 1 : 0) + itemCount;
+  const watermark = settings.watermark.trim();
+  const footNote =
+    settings.footerText.trim() || meta.company || "ООО «СибГофроТорг»";
 
   if (settings.directorSummary) {
     const structure = summary.stats
@@ -984,19 +1005,20 @@ export function DirectorReport({
       key: "summary",
       node: (
         <section className="prd-page">
+          {watermark ? <Watermark text={watermark} /> : null}
           <header className="prd-head">
             <div>
               <div className="prd-company">
                 {meta.company || "ООО «СибГофроТорг»"}
               </div>
               <h2 className="prd-title">
-                {meta.title || "План по выгоде продаж"} — отчёт для директора
+                {meta.title || "План по выгоде продаж"}
               </h2>
             </div>
             <div className="prd-head__meta">
-              <div>Период: {periodText}</div>
-              <div>Сформирован: {genDate}</div>
-              <div>Позиций: {positions.length}</div>
+              {settings.showPeriod && <div>Период: {periodText}</div>}
+              {settings.showGenDate && <div>Сформирован: {genDate}</div>}
+              <div>Позиций: {summary.stats.length}</div>
             </div>
           </header>
 
@@ -1243,6 +1265,15 @@ export function DirectorReport({
               <AdviceList advice={summary.advice} />
             </div>
           )}
+
+          {settings.directorOverall && (
+            <div className="prd-foot">
+              <span>{footNote}</span>
+              <span>
+                Лист 1 из {totalPages}
+              </span>
+            </div>
+          )}
         </section>
       ),
     });
@@ -1259,6 +1290,7 @@ export function DirectorReport({
         key: pos.id,
         node: (
           <section className="prd-page">
+            {watermark ? <Watermark text={watermark} /> : null}
             <header className="prd-head prd-head--item">
               <div>
                 <div className="prd-item-index">
@@ -1272,7 +1304,7 @@ export function DirectorReport({
                 </div>
               </div>
               <div className="prd-head__meta">
-                <div>Период: {periodText}</div>
+                {settings.showPeriod && <div>Период: {periodText}</div>}
                 <div>
                   Выгода: <strong>{fmtSum(item.benefit)}</strong>
                 </div>
@@ -1377,10 +1409,11 @@ export function DirectorReport({
             {settings.directorOverall && (
               <div className="prd-foot">
                 <span>
-                  {meta.company || "ООО «СибГофроТорг»"} · {pos.name}
+                  {footNote}
+                  {settings.footerText.trim() ? "" : ` · ${pos.name}`}
                 </span>
                 <span>
-                  Лист {idx + (settings.directorSummary ? 2 : 1)} · {paperW} мм
+                  Лист {idx + (settings.directorSummary ? 2 : 1)} из {totalPages}
                 </span>
               </div>
             )}
@@ -1415,6 +1448,7 @@ export function buildDirectorCss(s: PrintSettings): string {
   const dens = DENSITY_STYLE[s.density];
   const paper = PAPER[s.orientation];
   const fit = dens.base / 9;
+  const accent = resolveAccent(s);
   const c = s.mono
     ? {
         ink: "#111111",
@@ -1438,7 +1472,7 @@ export function buildDirectorCss(s: PrintSettings): string {
         light: "#e2e8f0",
         band: "#f8fafc",
         band2: "#eef2f7",
-        head: "#1e293b",
+        head: accent ? accent.main : "#1e293b",
         headInk: "#ffffff",
         ok: "#15803d",
         watch: "#b45309",
@@ -1446,7 +1480,7 @@ export function buildDirectorCss(s: PrintSettings): string {
       };
 
   return `
-/* ── Отчёт для директора: страницы ── */
+/* ── Развёрнутый отчёт: страницы ── */
 .pr-doc { display: flex; flex-direction: column; align-items: center; width: 100%; }
 .pr-doc-page {
   width: ${paper.w}mm;

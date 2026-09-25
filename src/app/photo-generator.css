@@ -612,6 +612,20 @@
   color: var(--adm-ink-muted, #6b6b60);
 }
 
+/* Уведомление об автосейве дизайна (шаг генерации) */
+.ptg-autosave-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid var(--adm-pine, #1e4a2d);
+  border-radius: var(--adm-r-md, 10px);
+  background: color-mix(in srgb, var(--adm-pine, #1e4a2d) 8%, white);
+  color: var(--adm-pine, #1e4a2d);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .ptg-options {
   padding: 2px 0;
 }

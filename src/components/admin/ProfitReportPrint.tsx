@@ -6,9 +6,11 @@
 //
 // Что здесь:
 //   • PrintSettings — все настройки печати (ориентация листа, компактность,
-//     оформление, состав колонок, графики, выравнивание, масштаб);
+//     оформление, акцентный цвет, состав колонок, графики, выравнивание,
+//     масштаб, сортировка строк, водяной знак, сноска, ABC-анализ);
 //   • PRINT_VARIANTS — готовые варианты («Полный», «Компактный»,
-//     «Горизонтально», «С графиками», «По продажам», «Только итоги»);
+//     «Горизонтально», «С графиками», «По продажам», «Развёрнутый»,
+//     «Только итоги»);
 //   • planSheet() — расчёт ширины колонок по фактическому содержимому,
 //     чтобы ни одна цифра не вылезала за свою ячейку (автоподбор размера
 //     шрифта и паддингов под вертикальный/горизонтальный лист);
@@ -75,6 +77,24 @@ export type PrintReportMode = "table" | "director";
 export type PrintChartMetric = "benefit" | "profit" | "revenue" | "qty";
 export type PrintAlign = "right" | "center";
 export type PrintNameAlign = "left" | "center";
+/** Порядок строк таблицы в печати. */
+export type PrintSort =
+  | "asIs"
+  | "benefitDesc"
+  | "profitDesc"
+  | "revenueDesc"
+  | "qtyDesc"
+  | "nameAsc";
+/** Акцентный цвет оформления листа (для цветной печати). */
+export type PrintAccent =
+  | "auto"
+  | "blue"
+  | "violet"
+  | "green"
+  | "cyan"
+  | "orange"
+  | "rose"
+  | "graphite";
 
 export interface PrintColumns {
   index: boolean;
@@ -121,6 +141,24 @@ export interface PrintSettings {
   chartTop: number;
   columns: PrintColumns;
   mono: boolean;
+  /** Порядок строк в печати. */
+  sort: PrintSort;
+  /** Не печатать позиции без продаж и количества. */
+  hideEmpty: boolean;
+  /** Суммы без копеек (цены за единицу всегда с копейками). */
+  wholeRubles: boolean;
+  /** Акцентный цвет оформления (в ч/б режиме игнорируется). */
+  accent: PrintAccent;
+  /** Водяной знак (гриф) поверх листа; пусто — без водяного знака. */
+  watermark: string;
+  /** Блок «ABC-анализ по выгоде» на листе. */
+  showAbc: boolean;
+  /** Показывать период в шапке. */
+  showPeriod: boolean;
+  /** Показывать дату формирования. */
+  showGenDate: boolean;
+  /** Свой текст сноски внизу листа; пусто — стандартный. */
+  footerText: string;
   directorSummary: boolean;
   directorItems: boolean;
   directorCharts: boolean;
@@ -173,6 +211,15 @@ export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   chartTop: 8,
   columns: ALL_COLUMNS,
   mono: true,
+  sort: "asIs",
+  hideEmpty: false,
+  wholeRubles: false,
+  accent: "auto",
+  watermark: "",
+  showAbc: false,
+  showPeriod: true,
+  showGenDate: true,
+  footerText: "",
   directorSummary: true,
   directorItems: true,
   directorCharts: true,
@@ -334,7 +381,7 @@ export const PRINT_VARIANTS: VariantDef[] = [
   },
   {
     id: "director",
-    label: "Для директора",
+    label: "Развёрнутый",
     hint: "Многостраничный отчёт: сводка, прогноз на месяц, отдельный лист на каждую позицию с графиками и рекомендациями.",
     patch: {
       reportMode: "director",
@@ -371,7 +418,7 @@ export const PRINT_VARIANTS: VariantDef[] = [
   {
     id: "summary",
     label: "Только итоги",
-    hint: "Краткая сводка для руководителя: плашки, диаграммы и график продаж по дням.",
+    hint: "Краткая сводка: плашки, диаграммы и график продаж по дням.",
     patch: {
       reportMode: "table",
       orientation: "landscape",
@@ -419,7 +466,7 @@ export function patchSettings(
 }
 
 export const VARIANT_LABELS: Record<PrintVariantId, string> = {
-  director: "Для директора",
+  director: "Развёрнутый",
   full: "Полный",
   compact: "Компактный",
   wide: "Горизонтально",
@@ -431,7 +478,27 @@ export const VARIANT_LABELS: Record<PrintVariantId, string> = {
 
 export const REPORT_MODE_LABELS: Record<PrintReportMode, string> = {
   table: "Таблица",
-  director: "Полный отчёт для директора",
+  director: "Развёрнутый (по листу на позицию)",
+};
+
+export const SORT_LABELS: Record<PrintSort, string> = {
+  asIs: "Как в редакторе",
+  benefitDesc: "По выгоде",
+  profitDesc: "По прибыли",
+  revenueDesc: "По выручке",
+  qtyDesc: "По количеству",
+  nameAsc: "По названию (А–Я)",
+};
+
+export const ACCENT_LABELS: Record<PrintAccent, string> = {
+  auto: "Авто",
+  blue: "Синий",
+  violet: "Фиолетовый",
+  green: "Зелёный",
+  cyan: "Бирюзовый",
+  orange: "Оранжевый",
+  rose: "Розовый",
+  graphite: "Графит",
 };
 
 export const ORIENTATION_LABELS: Record<PrintOrientation, string> = {
@@ -496,7 +563,7 @@ export function fmtMoney(n: number, currency = true, maxFrac = 2): string {
   });
   return currency ? `${text}\u00A0₽` : text;
 }
-/** Суммы в отчёте директора — целыми рублями, чтобы таблицы не рябили копейками. */
+/** Суммы в развёрнутом отчёте — целыми рублями, чтобы таблицы не рябили копейками. */
 export function fmtSum(n: number, currency = true): string {
   return fmtMoney(n, currency, 0);
 }
@@ -517,6 +584,192 @@ export function fmtDate(iso: string): string {
   const parts = iso.split("-");
   if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
   return iso;
+}
+
+// ── Акцентный цвет оформления ──
+export interface AccentTheme {
+  main: string;
+  pale: string;
+  border: string;
+  ink: string;
+}
+
+/** Палитры акцентов: main — заливки/графики, pale/border — плашки, ink — текст. */
+export const ACCENT_THEMES: Record<Exclude<PrintAccent, "auto">, AccentTheme> = {
+  blue: { main: "#2563eb", pale: "#eff6ff", border: "#bfdbfe", ink: "#1d4ed8" },
+  violet: { main: "#7c3aed", pale: "#faf5ff", border: "#d8b4fe", ink: "#6d28d9" },
+  green: { main: "#16a34a", pale: "#f0fdf4", border: "#86efac", ink: "#15803d" },
+  cyan: { main: "#0891b2", pale: "#ecfeff", border: "#a5f3fc", ink: "#0e7490" },
+  orange: { main: "#ea580c", pale: "#fff7ed", border: "#fed7aa", ink: "#c2410c" },
+  rose: { main: "#db2777", pale: "#fdf2f8", border: "#fbcfe8", ink: "#be185d" },
+  graphite: { main: "#334155", pale: "#f8fafc", border: "#cbd5e1", ink: "#1e293b" },
+};
+
+/** Фиолетовый — цвет «выгоды» по умолчанию (как было). */
+const DEFAULT_ACCENT: AccentTheme = ACCENT_THEMES.violet;
+
+/**
+ * Итоговый акцент листа: выбранная палитра либо фиолетовый по умолчанию.
+ * В чёрно-белой печати цвет не используется — возвращается null.
+ */
+export function resolveAccent(s: PrintSettings): AccentTheme | null {
+  if (s.mono) return null;
+  return s.accent === "auto" ? DEFAULT_ACCENT : ACCENT_THEMES[s.accent];
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  return [
+    parseInt(full.slice(0, 2), 16) || 0,
+    parseInt(full.slice(2, 4), 16) || 0,
+    parseInt(full.slice(4, 6), 16) || 0,
+  ];
+}
+
+/** Hex → rgba() — нужно для водяного знака и лёгких заливок. */
+export function hexToRgba(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Смешивание двух hex-цветов (t=0 → a, t=1 → b). */
+function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  const m = (x: number, y: number) => Math.round(x + (y - x) * t);
+  const hex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${hex(m(ar, br))}${hex(m(ag, bg))}${hex(m(ab, bb))}`;
+}
+
+/** Рампа оттенков акцента для кольцевой диаграммы (8 цветов). */
+export function accentRamp(main: string): string[] {
+  return [
+    main,
+    mixHex(main, "#ffffff", 0.35),
+    mixHex(main, "#000000", 0.25),
+    mixHex(main, "#ffffff", 0.6),
+    mixHex(main, "#000000", 0.45),
+    mixHex(main, "#ffffff", 0.15),
+    mixHex(main, "#94a3b8", 0.5),
+    "#94a3b8",
+  ];
+}
+
+// ── Строки печати: фильтр и сортировка ──
+export interface ViewRow<P extends PrintPosRow = PrintPosRow> {
+  pos: P;
+  calc: PrintCalcRow;
+  index: number;
+}
+
+/**
+ * Строки в том виде, в каком они попадут в печать: с учётом скрытия
+ * позиций без продаж и выбранной сортировки. Индекс исходной строки
+ * сохраняется — для него работают ручные переопределения.
+ */
+export function viewRows<P extends PrintPosRow>(
+  positions: P[],
+  calcs: PrintCalcRow[],
+  settings: PrintSettings
+): ViewRow<P>[] {
+  let items: ViewRow<P>[] = positions.map((pos, index) => ({
+    pos,
+    calc: calcs[index],
+    index,
+  }));
+  if (settings.hideEmpty) {
+    items = items.filter((it) => it.calc.qty !== 0 || it.calc.revenue !== 0);
+  }
+  switch (settings.sort) {
+    case "benefitDesc":
+      items = [...items].sort((a, b) => b.calc.benefit - a.calc.benefit);
+      break;
+    case "profitDesc":
+      items = [...items].sort((a, b) => b.calc.ourProfit - a.calc.ourProfit);
+      break;
+    case "revenueDesc":
+      items = [...items].sort((a, b) => b.calc.revenue - a.calc.revenue);
+      break;
+    case "qtyDesc":
+      items = [...items].sort((a, b) => b.calc.qty - a.calc.qty);
+      break;
+    case "nameAsc":
+      items = [...items].sort((a, b) =>
+        (a.pos.name || "").localeCompare(b.pos.name || "", "ru")
+      );
+      break;
+    default:
+      break;
+  }
+  return items;
+}
+
+// ── ABC-анализ по выгоде производства ──
+export interface AbcRow {
+  cls: "A" | "B" | "C";
+  hint: string;
+  count: number;
+  qty: number;
+  revenue: number;
+  benefit: number;
+  /** Доля класса в суммарной выгоде, %. */
+  shareBenefit: number;
+}
+
+/**
+ * Делит позиции на классы A/B/C по накопленной доле выгоды:
+ * A — позиции, формирующие первые 80% выгоды, B — до 95%,
+ * C — остальные (включая убыточные).
+ */
+export function abcBreakdown(
+  positions: PrintPosRow[],
+  calcs: PrintCalcRow[]
+): AbcRow[] {
+  const items = positions.map((pos, i) => ({ pos, calc: calcs[i] }));
+  const positive = items
+    .filter((it) => it.calc.benefit > 0)
+    .sort((a, b) => b.calc.benefit - a.calc.benefit);
+  const rest = items.filter((it) => it.calc.benefit <= 0);
+  const totalBenefit = positive.reduce((a, it) => a + it.calc.benefit, 0) || 1;
+
+  const buckets: Record<"A" | "B" | "C", { pos: PrintPosRow; calc: PrintCalcRow }[]> = {
+    A: [],
+    B: [],
+    C: [...rest],
+  };
+  let acc = 0;
+  for (const it of positive) {
+    // Границу класса считаем по накопленной доле ДО этой позиции: она
+    // попадает в класс, который «заполняет» — например, единственный
+    // лидер на 87% выгоды остаётся классом A, а не «важным».
+    const before = (acc / totalBenefit) * 100;
+    acc += it.calc.benefit;
+    if (before < 80) buckets.A.push(it);
+    else if (before < 95) buckets.B.push(it);
+    else buckets.C.push(it);
+  }
+
+  const hints: Record<"A" | "B" | "C", string> = {
+    A: "основные — до 80% выгоды",
+    B: "важные — до 95% выгоды",
+    C: "прочие (в т.ч. убыточные)",
+  };
+  const benefitSum =
+    items.reduce((a, it) => a + Math.max(0, it.calc.benefit), 0) || 1;
+  return (["A", "B", "C"] as const).map((cls) => {
+    const rows = buckets[cls];
+    const benefit = rows.reduce((a, it) => a + it.calc.benefit, 0);
+    return {
+      cls,
+      hint: hints[cls],
+      count: rows.length,
+      qty: rows.reduce((a, it) => a + it.calc.qty, 0),
+      revenue: rows.reduce((a, it) => a + it.calc.revenue, 0),
+      benefit,
+      shareBenefit: (Math.max(0, benefit) / benefitSum) * 100,
+    };
+  });
 }
 
 // ── Размеры бумаги ──
@@ -634,9 +887,14 @@ interface ColDef {
 function money(currency: boolean) {
   return (n: number) => fmtMoney(n, currency);
 }
+/** Суммы (не цены за штуку): по настройке — целыми рублями. */
+function sumMoney(s: PrintSettings) {
+  return (n: number) => fmtMoney(n, s.currency, s.wholeRubles ? 0 : 2);
+}
 
 function colDefs(s: PrintSettings): ColDef[] {
   const m = money(s.currency);
+  const ms = sumMoney(s);
   const cols: ColDef[] = [
     {
       key: "index",
@@ -685,8 +943,8 @@ function colDefs(s: PrintSettings): ColDef[] {
       align: "num",
       cls: "",
       minMm: 15,
-      value: (_r, c) => m(c.revenue),
-      total: (c) => m(c.revenue),
+      value: (_r, c) => ms(c.revenue),
+      total: (c) => ms(c.revenue),
     });
   if (s.columns.ourUnit)
     cols.push({
@@ -705,8 +963,8 @@ function colDefs(s: PrintSettings): ColDef[] {
       align: "num",
       cls: "pr-cell-us",
       minMm: 14,
-      value: (_r, c) => m(c.ourCost),
-      total: (c) => m(c.ourCost),
+      value: (_r, c) => ms(c.ourCost),
+      total: (c) => ms(c.ourCost),
     });
   if (s.columns.compUnit)
     cols.push({
@@ -725,8 +983,8 @@ function colDefs(s: PrintSettings): ColDef[] {
       align: "num",
       cls: "pr-cell-comp",
       minMm: 14,
-      value: (_r, c) => m(c.competitorCost),
-      total: (c) => m(c.competitorCost),
+      value: (_r, c) => ms(c.competitorCost),
+      total: (c) => ms(c.competitorCost),
     });
   if (s.columns.ourProfit)
     cols.push({
@@ -736,8 +994,8 @@ function colDefs(s: PrintSettings): ColDef[] {
       cls: "pr-cell-profit",
       minMm: 14,
       bold: true,
-      value: (_r, c) => m(c.ourProfit),
-      total: (c) => m(c.ourProfit),
+      value: (_r, c) => ms(c.ourProfit),
+      total: (c) => ms(c.ourProfit),
     });
   if (s.columns.compProfit)
     cols.push({
@@ -746,8 +1004,8 @@ function colDefs(s: PrintSettings): ColDef[] {
       align: "num",
       cls: "pr-cell-comp",
       minMm: 14,
-      value: (_r, c) => m(c.competitorProfit),
-      total: (c) => m(c.competitorProfit),
+      value: (_r, c) => ms(c.competitorProfit),
+      total: (c) => ms(c.competitorProfit),
     });
   if (s.columns.benefit)
     cols.push({
@@ -757,8 +1015,8 @@ function colDefs(s: PrintSettings): ColDef[] {
       cls: "pr-cell-benefit",
       minMm: 14,
       bold: true,
-      value: (_r, c) => m(c.benefit),
-      total: (c) => m(c.benefit),
+      value: (_r, c) => ms(c.benefit),
+      total: (c) => ms(c.benefit),
     });
   if (s.columns.margin)
     cols.push({
@@ -1021,11 +1279,19 @@ export function PrintSheet({
   const [measured, setMeasured] = useState(false);
   useEffect(() => setMeasured(true), []);
 
+  // Строки с учётом сортировки и скрытия позиций без продаж.
+  const view = useMemo(
+    () => viewRows(positions, calcs, settings),
+    [positions, calcs, settings]
+  );
+  const viewPos = useMemo(() => view.map((v) => v.pos), [view]);
+  const viewCalcs = useMemo(() => view.map((v) => v.calc), [view]);
+
   const plan = useMemo(
-    () => planSheet(positions, calcs, totals, settings, measured),
+    () => planSheet(viewPos, viewCalcs, totals, settings, measured),
     // measured — чтобы после монтирования (когда canvas уже доступен)
     // план ширин пересчитался по реальным замерам текста.
-    [positions, calcs, totals, settings, measured]
+    [viewPos, viewCalcs, totals, settings, measured]
   );
 
   const periodText =
@@ -1049,15 +1315,21 @@ export function PrintSheet({
     .filter(Boolean)
     .join(" ");
 
-  const points = chartPoints(positions, calcs, settings);
-  const timeline = timelinePoints(positions, calcs, settings);
+  const points = chartPoints(viewPos, viewCalcs, settings);
+  const timeline = timelinePoints(viewPos, viewCalcs, settings);
+  const accent = resolveAccent(settings);
+  const chartAccent = accent ? accent.main : null;
+  const abc = settings.showAbc ? abcBreakdown(viewPos, viewCalcs) : null;
   const chartCount = [settings.chartBars, settings.chartDonut, settings.chartTimeline].filter(Boolean).length;
+  const watermark = settings.watermark.trim();
 
   return (
     <div
       className={sheetCls}
       style={{ "--pr-fit": String(plan.scale) } as CSSProperties}
     >
+      {watermark ? <Watermark text={watermark} /> : null}
+
       {settings.showHeader && (
         <div className="pr-sheet__head">
           <div>
@@ -1069,12 +1341,16 @@ export function PrintSheet({
             </h2>
           </div>
           <div className="pr-sheet__period">
-            <div>
-              <span className="pr-sheet__plabel">Период:</span> {periodText}
-            </div>
-            <div>
-              <span className="pr-sheet__plabel">Сформирован:</span> {genDate}
-            </div>
+            {settings.showPeriod && (
+              <div>
+                <span className="pr-sheet__plabel">Период:</span> {periodText}
+              </div>
+            )}
+            {settings.showGenDate && (
+              <div>
+                <span className="pr-sheet__plabel">Сформирован:</span> {genDate}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1126,8 +1402,7 @@ export function PrintSheet({
             </tr>
           </thead>
           <tbody>
-            {positions.map((row, i) => {
-              const c = calcs[i];
+            {view.map(({ pos: row, calc: c }, di) => {
               return (
                 <Fragment key={row.id}>
                   <tr className="pr-sheet-pos">
@@ -1137,7 +1412,7 @@ export function PrintSheet({
                         col={col}
                         row={row}
                         calc={c}
-                        index={i}
+                        index={di}
                         settings={settings}
                       />
                     ))}
@@ -1193,7 +1468,7 @@ export function PrintSheet({
         </table>
       )}
 
-      {chartCount > 0 && positions.length > 0 && (
+      {chartCount > 0 && view.length > 0 && (
         <div
           className={`pr-charts pr-charts--${chartCount}`}
           style={
@@ -1208,6 +1483,7 @@ export function PrintSheet({
               metric={settings.chartMetric}
               currency={settings.currency}
               mono={settings.mono}
+              accent={chartAccent}
             />
           )}
           {settings.chartDonut && (
@@ -1216,6 +1492,7 @@ export function PrintSheet({
               metric={settings.chartMetric}
               currency={settings.currency}
               mono={settings.mono}
+              accent={chartAccent}
             />
           )}
           {settings.chartTimeline && timeline.length > 0 && (
@@ -1224,9 +1501,14 @@ export function PrintSheet({
               metric={settings.chartMetric}
               currency={settings.currency}
               mono={settings.mono}
+              accent={chartAccent}
             />
           )}
         </div>
+      )}
+
+      {abc && (
+        <AbcBlock rows={abc} currency={settings.currency} whole={settings.wholeRubles} />
       )}
 
       {(settings.showSignature || settings.showFooter) && (
@@ -1243,8 +1525,10 @@ export function PrintSheet({
           )}
           {settings.showFooter ? (
             <div className="pr-sheet__foot-note">
-              Расчёт сформирован автоматически ·{" "}
-              {meta.company || "СибГофроТорг"}
+              {settings.footerText.trim() ||
+                `Расчёт сформирован автоматически · ${
+                  meta.company || "СибГофроТорг"
+                }`}
             </div>
           ) : null}
         </div>
@@ -1266,6 +1550,64 @@ function SheetCard({
     <div className={`pr-sum-card${tone ? ` pr-sum-card--${tone}` : ""}`}>
       <div className="pr-sum-card__label">{label}</div>
       <div className="pr-sum-card__value">{value}</div>
+    </div>
+  );
+}
+
+/** Водяной знак (гриф) поверх листа — печатается полупрозрачно под углом. */
+export function Watermark({ text }: { text: string }) {
+  return (
+    <div className="pr-watermark" aria-hidden="true">
+      <span>{text}</span>
+    </div>
+  );
+}
+
+/** Компактный блок ABC-анализа по выгоде производства. */
+function AbcBlock({
+  rows,
+  currency,
+  whole,
+}: {
+  rows: AbcRow[];
+  currency: boolean;
+  whole: boolean;
+}) {
+  const m = (n: number) => fmtMoney(n, currency, whole ? 0 : 2);
+  return (
+    <div className="pr-abc">
+      <div className="pr-abc__title">
+        ABC-анализ по выгоде производства · класс A — до 80% выгоды, B — до 95%,
+        C — остальные
+      </div>
+      <table className="pr-abc__table">
+        <thead>
+          <tr>
+            <th>Класс</th>
+            <th>Характеристика</th>
+            <th>Позиций</th>
+            <th>Кол-во, шт</th>
+            <th>Выручка</th>
+            <th>Выгода</th>
+            <th>Доля выгоды</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.cls}>
+              <td className={`pr-abc__cls pr-abc__cls--${r.cls.toLowerCase()}`}>
+                {r.cls}
+              </td>
+              <td className="pr-abc__hint">{r.hint}</td>
+              <td className="pr-cell-num">{r.count}</td>
+              <td className="pr-cell-num">{fmtNum(r.qty)}</td>
+              <td className="pr-cell-num">{m(r.revenue)}</td>
+              <td className="pr-cell-num">{m(r.benefit)}</td>
+              <td className="pr-cell-num">{r.shareBenefit.toFixed(1)}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1298,7 +1640,7 @@ function SheetCell({
       <td
         className={`pr-cell-num ${col.cls} ${calc.ourProfit >= 0 ? "pr-pos" : "pr-neg"}`}
       >
-        {fmtMoney(calc.ourProfit, settings.currency)}
+        {fmtMoney(calc.ourProfit, settings.currency, settings.wholeRubles ? 0 : 2)}
       </td>
     );
   }
@@ -1307,7 +1649,7 @@ function SheetCell({
       <td
         className={`pr-cell-num ${col.cls} ${calc.benefit >= 0 ? "pr-ben" : "pr-neg"}`}
       >
-        {fmtMoney(calc.benefit, settings.currency)}
+        {fmtMoney(calc.benefit, settings.currency, settings.wholeRubles ? 0 : 2)}
       </td>
     );
   }
@@ -1324,14 +1666,18 @@ function BarsChart({
   metric,
   currency,
   mono,
+  accent,
 }: {
   points: ChartPoint[];
   metric: PrintChartMetric;
   currency: boolean;
   mono: boolean;
+  accent: string | null;
 }) {
   const max = points.reduce((a, p) => Math.max(a, Math.abs(p.value)), 0);
-  const color = mono ? METRIC_COLOR_MONO[metric] : METRIC_COLOR[metric];
+  const color = mono
+    ? METRIC_COLOR_MONO[metric]
+    : (accent ?? METRIC_COLOR[metric]);
   return (
     <div className="pr-chart">
       <div className="pr-chart__title">
@@ -1367,13 +1713,19 @@ function DonutChart({
   metric,
   currency,
   mono,
+  accent,
 }: {
   points: ChartPoint[];
   metric: PrintChartMetric;
   currency: boolean;
   mono: boolean;
+  accent: string | null;
 }) {
-  const palette = mono ? PIE_COLORS_MONO : PIE_COLORS;
+  const palette = mono
+    ? PIE_COLORS_MONO
+    : accent
+      ? accentRamp(accent)
+      : PIE_COLORS;
   const slices = useMemo(() => {
     const positive = points.filter((p) => p.value > 0);
     const total = positive.reduce((a, p) => a + p.value, 0);
@@ -1482,14 +1834,18 @@ function TimelineChart({
   metric,
   currency,
   mono,
+  accent,
 }: {
   points: TimelinePoint[];
   metric: PrintChartMetric;
   currency: boolean;
   mono: boolean;
+  accent: string | null;
 }) {
   const max = points.reduce((a, p) => Math.max(a, p.value), 0);
-  const color = mono ? METRIC_COLOR_MONO[metric] : METRIC_COLOR[metric];
+  const color = mono
+    ? METRIC_COLOR_MONO[metric]
+    : (accent ?? METRIC_COLOR[metric]);
   const showValues = points.length <= 9;
   return (
     <div className="pr-chart">
@@ -1526,7 +1882,22 @@ function TimelineChart({
 export function buildReportCss(s: PrintSettings): string {
   const dens = DENSITY_STYLE[s.density];
   const paper = PAPER[s.orientation];
-  const theme = s.mono ? MONO_THEME : LAYOUT_THEME[s.layout];
+  const accent = resolveAccent(s);
+  // Базовый акцент (выгода): выбранный цвет либо фиолетовый по умолчанию,
+  // в ч/б — серый, чтобы лист реально печатался без цвета.
+  const ben = accent ??
+    (s.mono
+      ? { main: "#111111", pale: "#f4f4f4", border: "#9a9a9a", ink: "#111111" }
+      : DEFAULT_ACCENT);
+  const theme = s.mono
+    ? MONO_THEME
+    : {
+        ...LAYOUT_THEME[s.layout],
+        accent: accent ? accent.main : LAYOUT_THEME[s.layout].accent,
+      };
+  const wmColor = s.mono
+    ? "rgba(0,0,0,0.07)"
+    : hexToRgba(accent ? accent.main : DEFAULT_ACCENT.main, 0.1);
   return `
 /* ── Превью листа A4 (${paper.w} × ${paper.h} мм) ── */
 .pr-print-wrap { overflow: visible !important; }
@@ -1543,10 +1914,29 @@ export function buildReportCss(s: PrintSettings): string {
   line-height: ${dens.line};
   width: 100%;
   box-sizing: border-box;
+  position: relative;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 .pr-sheet * { box-sizing: border-box; }
+.pr-sheet > *:not(.pr-watermark), .pr-doc-page > *:not(.pr-watermark), .prd-page > *:not(.pr-watermark) { position: relative; z-index: 1; }
+
+/* Водяной знак (гриф) */
+.pr-watermark {
+  position: absolute; inset: 0; z-index: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; pointer-events: none; user-select: none;
+}
+.pr-watermark span {
+  transform: rotate(-27deg);
+  font-family: ${SHEET_FONT};
+  font-size: calc(56px * var(--pr-fit, 0.9));
+  font-weight: 800;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: ${wmColor};
+}
 
 /* Шапка листа */
 .pr-sheet__head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; border-bottom: 2px solid #0f172a; padding-bottom: 6px; margin-bottom: 6px; break-inside: avoid; }
@@ -1563,10 +1953,10 @@ export function buildReportCss(s: PrintSettings): string {
 .pr-sum-card { border: 1px solid ${theme.cardBorder}; border-radius: 5px; padding: calc(5px * var(--pr-fit)) calc(7px * var(--pr-fit)); background: ${theme.cardBg}; overflow: hidden; }
 .pr-sum-card__label { font-size: calc(8.5px * var(--pr-fit)); color: #64748b; margin-bottom: 2px; }
 .pr-sum-card__value { font-size: calc(12.5px * var(--pr-fit)); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pr-sum-card--profit { background: #f0fdf4; border-color: #86efac; }
-.pr-sum-card--profit .pr-sum-card__value { color: #15803d; }
-.pr-sum-card--benefit { background: #faf5ff; border-color: #d8b4fe; }
-.pr-sum-card--benefit .pr-sum-card__value { color: #7c3aed; }
+.pr-sum-card--profit { background: ${s.mono ? "#f4f4f4" : "#f0fdf4"}; border-color: ${s.mono ? "#9a9a9a" : "#86efac"}; }
+.pr-sum-card--profit .pr-sum-card__value { color: ${s.mono ? "#111111" : "#15803d"}; }
+.pr-sum-card--benefit { background: ${ben.pale}; border-color: ${ben.border}; }
+.pr-sum-card--benefit .pr-sum-card__value { color: ${ben.ink}; }
 
 /* Таблица */
 .pr-sheet-table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; margin-top: 4px; }
@@ -1607,9 +1997,9 @@ export function buildReportCss(s: PrintSettings): string {
 .pr-col-idx { color: #64748b; }
 .pr-cell-us { background: ${theme.usBg}; }
 .pr-cell-comp { background: ${theme.compBg}; }
-.pr-pos { color: #15803d; font-weight: 700; }
-.pr-ben { color: #7c3aed; font-weight: 700; }
-.pr-neg { color: #dc2626; font-weight: 700; }
+.pr-pos { color: ${s.mono ? "#111111" : "#15803d"}; font-weight: 700; }
+.pr-ben { color: ${ben.ink}; font-weight: 700; }
+.pr-neg { color: ${s.mono ? "#111111" : "#dc2626"}; font-weight: 700; }
 
 /* Детализация продаж */
 .pr-sheet-detail td { background: ${theme.detailBg} !important; padding: calc(3px * var(--pr-fit)) calc(6px * var(--pr-fit)) !important; border-left: 3px solid ${theme.accent} !important; }
@@ -1649,6 +2039,19 @@ export function buildReportCss(s: PrintSettings): string {
 .pr-tl__bar { display: block; width: 100%; border-radius: 2px 2px 0 0; }
 .pr-tl__lab { font-size: calc(7px * var(--pr-fit)); color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-variant-numeric: tabular-nums; }
 
+/* ABC-анализ по выгоде */
+.pr-abc { border: 1px solid ${theme.cardBorder}; border-radius: 5px; padding: calc(6px * var(--pr-fit)) calc(8px * var(--pr-fit)); background: ${theme.cardBg}; margin-top: 8px; break-inside: avoid; page-break-inside: avoid; }
+.pr-abc__title { font-size: calc(9px * var(--pr-fit)); font-weight: 800; color: #334155; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.2px; }
+.pr-abc__table { width: 100%; border-collapse: collapse; font-size: calc(8.6px * var(--pr-fit)); }
+.pr-abc__table th, .pr-abc__table td { border: 1px solid var(--pr-border); padding: calc(2.5px * var(--pr-fit)) calc(5px * var(--pr-fit)); }
+.pr-abc__table thead th { background: ${theme.headBg}; color: ${theme.headColor}; font-weight: 700; text-align: center; font-size: calc(8px * var(--pr-fit)); }
+.pr-abc__table tbody tr:nth-child(even) td { background: ${theme.altBg}; }
+.pr-abc__cls { text-align: center; font-weight: 800; width: 9mm; }
+.pr-abc__cls--a { color: ${ben.ink}; }
+.pr-abc__cls--b { color: #b45309; }
+.pr-abc__cls--c { color: #64748b; }
+.pr-abc__hint { color: #475569; }
+
 /* Подпись и сноска */
 .pr-sheet__foot { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 12px; break-inside: avoid; page-break-inside: avoid; }
 .pr-sign { display: flex; flex-direction: column; gap: 2px; min-width: 180px; }
@@ -1673,9 +2076,11 @@ export function buildReportCss(s: PrintSettings): string {
   }
   body { position: static !important; top: auto !important; left: auto !important; }
 
-  /* 1. Прячем всё, что не относится к отчёту */
+  /* 1. Прячем всё, что не относится к отчёту (header — сайт-шапка;
+        .prd-head — шапки листов развёрнутого отчёта, их НЕ трогаем:
+        в них название коробки, номер позиции и артикул) */
   .no-print,
-  .site-header-wrap, .site-header, .topbar, .site-footer, footer, nav, header,
+  .site-header-wrap, .site-header, .topbar, .site-footer, footer, nav, header:not(.prd-head),
   .admin-sidebar, .admin-sidebar-handle, .admin-mobile-bar, .admin-bottom-nav,
   .admin-page-head, .admin-notify, .admin-realtime-status, .admin-toast,
   .admin-plans-shortcut, .admin-requests-shortcut,

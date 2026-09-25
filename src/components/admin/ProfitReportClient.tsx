@@ -54,12 +54,17 @@ import {
   FileText,
   Palette,
   LayoutList,
+  Download,
+  Droplet,
+  Filter,
 } from "lucide-react";
 import {
   DirectorReport,
   buildDirectorCss,
 } from "@/components/admin/ProfitReportDirector";
 import {
+  ACCENT_LABELS,
+  ACCENT_THEMES,
   COLUMN_LABELS,
   DEFAULT_PRINT_SETTINGS,
   DENSITY_LABELS,
@@ -69,6 +74,7 @@ import {
   PRINT_VARIANTS,
   PrintSheet,
   REPORT_MODE_LABELS,
+  SORT_LABELS,
   VARIANT_LABELS,
   applyVariant,
   buildReportCss,
@@ -77,7 +83,10 @@ import {
   fmtNum,
   measureText,
   patchSettings,
+  planSheet,
   round2,
+  viewRows,
+  type PrintAccent,
   type PrintChartMetric,
   type PrintColumns,
   type PrintDensity,
@@ -85,6 +94,7 @@ import {
   type PrintOrientation,
   type PrintReportMode,
   type PrintSettings,
+  type PrintSort,
 } from "@/components/admin/ProfitReportPrint";
 
 export interface ProfitSale {
@@ -178,6 +188,13 @@ const DEFAULT_META: ReportMeta = {
   completedOnly: false,
   signer: "",
 };
+
+// Готовые грифы для водяного знака + свой текст — в настройках печати.
+const WATERMARK_PRESETS = [
+  "КОНФИДЕНЦИАЛЬНО",
+  "Для внутреннего пользования",
+  "Черновик",
+];
 
 // ── Утилиты чисел/формата ──
 function parseNum(s: string): number {
@@ -599,6 +616,63 @@ export function ProfitReportClient({
     );
   }, []);
 
+  // ── Экспорт таблицы отчёта в CSV ──
+  // Файл собирается из тех же строк/колонок, что печатаются: с учётом
+  // сортировки, скрытия позиций без продаж и выбранных колонок.
+  function exportCsv() {
+    const view = viewRows(positions, calcs, settings);
+    const plan = planSheet(
+      view.map((v) => v.pos),
+      view.map((v) => v.calc),
+      totals,
+      settings
+    );
+    const cell = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
+    // Числа чистим от ₽ и неразрывных пробелов — Excel увидит числа, а не текст.
+    const num = (v: string) => v.replace(/[\s\u00A0]/g, "").replace("₽", "");
+    const lines: string[] = [];
+    lines.push(plan.cols.map((c) => cell(c.lines.join(" "))).join(";"));
+    view.forEach(({ pos, calc }, i) => {
+      lines.push(
+        plan.cols
+          .map((col) => {
+            if (col.key === "name") {
+              return cell(
+                pos.name
+                  ? settings.showSku && pos.sku
+                    ? `${pos.name} (${pos.sku})`
+                    : pos.name
+                  : "—"
+              );
+            }
+            const v = col.value ? col.value(pos, calc, i) : "—";
+            return cell(col.align === "num" ? num(v) : v);
+          })
+          .join(";")
+      );
+    });
+    if (settings.showTotals) {
+      lines.push(
+        plan.cols
+          .map((col) => {
+            if (col.key === "name") return cell("ИТОГО");
+            const v = col.total ? col.total(totals) : "—";
+            return cell(col.align === "num" ? num(v) : v);
+          })
+          .join(";")
+      );
+    }
+    // BOM — чтобы кириллица в Excel открывалась без «кракозябр».
+    const csv = "\uFEFF" + lines.join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vygoda-prodazh-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // ── Продажи внутри позиции ──
   function addSale(posId: string) {
     setPositions((prev) =>
@@ -872,6 +946,29 @@ export function ProfitReportClient({
           </div>
 
           <div className="pr-controls">
+            <label className="pr-field">
+              <span className="pr-field__label">
+                Примечание (под шапкой листа)
+              </span>
+              <input
+                className="admin-input"
+                placeholder="Например: по данным учёта на текущую дату"
+                value={meta.note}
+                onChange={(e) => setMeta({ ...meta, note: e.target.value })}
+              />
+            </label>
+            <label className="pr-field pr-field--sm">
+              <span className="pr-field__label">Подпись (ФИО / должность)</span>
+              <input
+                className="admin-input"
+                placeholder="кто подписывает отчёт"
+                value={meta.signer}
+                onChange={(e) => setMeta({ ...meta, signer: e.target.value })}
+              />
+            </label>
+          </div>
+
+          <div className="pr-controls">
             <label className="pr-check">
               <input
                 type="checkbox"
@@ -932,6 +1029,15 @@ export function ProfitReportClient({
                 : settings.orientation === "landscape"
                   ? "горизонтально"
                   : "вертикально"}
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={exportCsv}
+              disabled={!hasPositions}
+              title="Выгрузить таблицу отчёта в CSV (как в печати: с сортировкой и колонками)"
+            >
+              <Download size={15} /> CSV
             </button>
             <button
               type="button"
@@ -1033,7 +1139,7 @@ export function ProfitReportClient({
                   {(
                     [
                       ["table", "Таблица на лист"],
-                      ["director", "Полный отчёт для директора"],
+                      ["director", "Развёрнутый (по листу на позицию)"],
                     ] as [PrintReportMode, string][]
                   ).map(([mode, label]) => (
                     <button
@@ -1084,7 +1190,7 @@ export function ProfitReportClient({
                     <div className="pr-settings__cols">
                       {(
                         [
-                          ["directorSummary", "Сводный лист для директора"],
+                          ["directorSummary", "Сводный лист"],
                           ["directorItems", "Лист на каждую позицию"],
                           ["directorCharts", "Графики (месяцы, цены)"],
                           ["directorClients", "Кто и сколько берёт"],
@@ -1210,6 +1316,156 @@ export function ProfitReportClient({
                     <Palette size={13} /> Чёрно-белая печать
                   </button>
                 </div>
+                <div className="pr-settings__row">
+                  <span className="pr-settings__hint">Акцентный цвет:</span>
+                  <div className="pr-chips">
+                    {(
+                      [
+                        "auto",
+                        "blue",
+                        "violet",
+                        "green",
+                        "cyan",
+                        "orange",
+                        "rose",
+                        "graphite",
+                      ] as PrintAccent[]
+                    ).map((a) => (
+                      <button
+                        key={a}
+                        type="button"
+                        className={`pr-chip${
+                          settings.accent === a ? " pr-chip--on" : ""
+                        }`}
+                        onClick={() => changeSetting({ accent: a })}
+                        disabled={settings.mono}
+                        title={
+                          settings.mono
+                            ? "В чёрно-белом режиме цвет не используется"
+                            : `Акцент: ${ACCENT_LABELS[a].toLowerCase()} — плашки выгоды, графики, таблицы`
+                        }
+                      >
+                        <span
+                          className="pr-dot"
+                          style={
+                            a === "auto"
+                              ? {
+                                  background:
+                                    "linear-gradient(135deg,#2563eb,#7c3aed 50%,#ea580c)",
+                                }
+                              : { background: ACCENT_THEMES[a].main }
+                          }
+                        />
+                        {ACCENT_LABELS[a]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Порядок строк и фильтры */}
+              <div className="pr-settings__group">
+                <span className="pr-settings__label">
+                  <Filter size={13} /> Порядок и фильтр строк
+                </span>
+                <div className="pr-chips">
+                  {(
+                    [
+                      "asIs",
+                      "benefitDesc",
+                      "profitDesc",
+                      "revenueDesc",
+                      "qtyDesc",
+                      "nameAsc",
+                    ] as PrintSort[]
+                  ).map((so) => (
+                    <button
+                      key={so}
+                      type="button"
+                      className={`pr-chip${
+                        settings.sort === so ? " pr-chip--on" : ""
+                      }`}
+                      onClick={() => changeSetting({ sort: so })}
+                    >
+                      {SORT_LABELS[so]}
+                    </button>
+                  ))}
+                </div>
+                <div className="pr-settings__cols">
+                  <label className="pr-check">
+                    <input
+                      type="checkbox"
+                      checked={settings.hideEmpty}
+                      onChange={(e) =>
+                        changeSetting({ hideEmpty: e.target.checked })
+                      }
+                    />
+                    <span>Скрыть позиции без продаж</span>
+                  </label>
+                  <label className="pr-check">
+                    <input
+                      type="checkbox"
+                      checked={settings.wholeRubles}
+                      onChange={(e) =>
+                        changeSetting({ wholeRubles: e.target.checked })
+                      }
+                    />
+                    <span>Суммы без копеек</span>
+                  </label>
+                </div>
+                <p className="pr-settings__hint">
+                  Порядок и фильтр действуют на печать, графики, развёрнутый
+                  отчёт и CSV. Суммы округляются до рублей, цены за штуку — как
+                  есть.
+                </p>
+              </div>
+
+              {/* Водяной знак (гриф) */}
+              <div className="pr-settings__group">
+                <span className="pr-settings__label">
+                  <Droplet size={13} /> Водяной знак (гриф)
+                </span>
+                <div className="pr-chips">
+                  {WATERMARK_PRESETS.map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      className={`pr-chip${
+                        settings.watermark.trim() === w ? " pr-chip--on" : ""
+                      }`}
+                      onClick={() =>
+                        changeSetting({
+                          watermark:
+                            settings.watermark.trim() === w ? "" : w,
+                        })
+                      }
+                      title="Поверх листа полупрозрачным текстом под углом"
+                    >
+                      {w}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="pr-chip pr-chip--ghost"
+                    onClick={() => changeSetting({ watermark: "" })}
+                    disabled={!settings.watermark}
+                  >
+                    <X size={13} /> Без грифа
+                  </button>
+                </div>
+                <label className="pr-field">
+                  <span className="pr-field__label">
+                    Свой текст (пусто — без водяного знака)
+                  </span>
+                  <input
+                    className="admin-input"
+                    placeholder="например: Предварительный расчёт"
+                    value={settings.watermark}
+                    onChange={(e) =>
+                      changeSetting({ watermark: e.target.value })
+                    }
+                  />
+                </label>
               </div>
 
               {/* Графики */}
@@ -1425,13 +1681,16 @@ export function ProfitReportClient({
                   {(
                     [
                       ["showHeader", "Шапка (организация, период)"],
+                      ["showPeriod", "Период в шапке"],
+                      ["showGenDate", "Дата формирования"],
                       ["showCards", "Плашки с итогами"],
                       ["showPositions", "Таблица позиций"],
                       ["showTotals", "Строка «ИТОГО»"],
                       ["showDetails", "Расшифровка продаж"],
                       ["showSku", "Артикул под названием"],
+                      ["showAbc", "ABC-анализ по выгоде"],
                       ["showSignature", "Подпись"],
-                      ["showFooter", "Сноска о формировании"],
+                      ["showFooter", "Сноска внизу листа"],
                     ] as [keyof PrintSettings, string][]
                   ).map(([key, label]) => (
                     <label className="pr-check" key={String(key)}>
@@ -1448,6 +1707,20 @@ export function ProfitReportClient({
                     </label>
                   ))}
                 </div>
+                <label className="pr-field">
+                  <span className="pr-field__label">
+                    Свой текст сноски (пусто — «Расчёт сформирован
+                    автоматически…»)
+                  </span>
+                  <input
+                    className="admin-input"
+                    placeholder="например: СибГофроТорг · внутренний документ"
+                    value={settings.footerText}
+                    onChange={(e) =>
+                      changeSetting({ footerText: e.target.value })
+                    }
+                  />
+                </label>
               </div>
 
               <div className="pr-settings__group">
@@ -1666,7 +1939,7 @@ export function ProfitReportClient({
             <div className="pr-settings-bar no-print" style={{ marginBottom: 12 }}>
               <span className="pr-settings__hint">
                 {settings.reportMode === "director"
-                  ? `Отчёт для директора · листов ${directorPageCount} · ${
+                  ? `Развёрнутый отчёт · листов ${directorPageCount} · ${
                       ORIENTATION_LABELS[settings.orientation]
                     } · ${DENSITY_LABELS[settings.density]}`
                   : `Лист A4 · ${ORIENTATION_LABELS[settings.orientation]} · ${
@@ -2083,6 +2356,7 @@ const UI_CSS = `
 .pr-chip--on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; font-weight: 600; }
 .pr-chip--on:hover { border-color: #1d4ed8; }
 .pr-chip--ghost { background: transparent; }
+.pr-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 1px solid rgba(0,0,0,0.18); flex: 0 0 auto; }
 .pr-scale { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--adm-muted, #475569); }
 .pr-scale input[type="range"] { width: 160px; }
 .pr-zoom { display: inline-flex; align-items: center; gap: 6px; }
