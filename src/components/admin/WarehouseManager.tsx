@@ -3281,7 +3281,7 @@ export function WarehouseManager({
                                   <div key={r.it.productId} className="deal-stock__row">
                                     <span className="deal-stock__name">{r.it.name}</span>
                                     <span className="deal-stock__nums">
-                                      нужно к отгрузке {r.needQty} (остаток заказа{Number(r.shippedQty) > 0 ? `: заказано ${fmt(r.it.quantity)} − выдано ${fmt(r.shippedQty)}` : ""}) · на складе {fmt(r.stock)}
+                                      нужно к отгрузке {r.needQty}{Number(r.shippedQty) > 0 ? ` (заказано ${fmt(r.it.quantity)} − выдано ${fmt(r.shippedQty)})` : ""} · на складе {fmt(r.stock)}
                                       {r.otherReserve > 0 && <> · <b style={{color:"var(--adm-indigo)"}}>в резерве {fmt(r.otherReserve)}</b></>}
                                       {" "}· свободно {fmt(r.available)} · <b>не хватает {r.missing}</b>
                                     </span>
