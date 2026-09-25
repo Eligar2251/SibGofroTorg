@@ -1635,11 +1635,12 @@ function WpHero({
         </div>
         <div className="wpa-hero__main">
           <div className="wpa-hero__label">
-            <Scale size={13} /> Итого · все счета
+            <Scale size={13} /> Общий баланс · наличка и безнал
           </div>
-          <strong className="wpa-hero__value">{fmtMoney(balance.total)}</strong>
+          <strong className="wpa-hero__value">{fmtMoney(balance.common)}</strong>
           <p className="wpa-hero__note">
-            {WP_COMMON_ACCOUNT_LABEL}: <strong>{fmtMoney(balance.common)}</strong>
+            Сторонние — отдельно, в баланс не входят:{" "}
+            <strong>{fmtMoney(balance.third_party)}</strong>
           </p>
         </div>
         {accountRows}
@@ -1689,12 +1690,12 @@ function WpHero({
       <div className="wpa-hero__body">
         <div className="wpa-hero__main">
           <div className="wpa-hero__label">
-            <Scale size={13} /> Итого · наличка, безнал и сторонние
+            <Scale size={13} /> Общий баланс · наличка и безнал
           </div>
-          <div className="wpa-hero__value">{fmtMoney(balance.total)}</div>
+          <div className="wpa-hero__value">{fmtMoney(balance.common)}</div>
           <p className="wpa-hero__note">
-            {WP_COMMON_ACCOUNT_LABEL} (наличка + безнал):{" "}
-            <strong>{fmtMoney(balance.common)}</strong>
+            Сторонние пополнения — отдельно, в общий баланс не входят:{" "}
+            <strong>{fmtMoney(balance.third_party)}</strong>
           </p>
           {/* Быстрые действия — как кнопки операций в мобильном банке */}
           <div className="wpa-hero__actions">
@@ -5625,7 +5626,9 @@ function BankTab({
       if (e.isPaid) {
         acc[e.account] += e.direction === "incoming" ? e.amount : -e.amount;
         accountAfter = roundMoney(acc[e.account]);
-        totalAfter = roundMoney(acc.cash + acc.bank + acc.third_party);
+        // Общий остаток = наличка + безнал. Сторонние пополнения в общий
+        // баланс не входят (у них отдельный счёт), поэтому не суммируем.
+        totalAfter = roundMoney(acc.cash + acc.bank);
       }
       return { event: e, effDate, accountAfter, totalAfter };
     });

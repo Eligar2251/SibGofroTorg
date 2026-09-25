@@ -12,6 +12,7 @@ import {
   ExternalLink,
   LogOut,
   Megaphone,
+  TrendingUp,
   Star,
   Boxes,
   Truck,
@@ -178,6 +179,13 @@ export function AdminShell({
       href: `/${adminPath}/promotions`,
       label: "Акции и окна",
       icon: <Megaphone size={18} />,
+    },
+    {
+      // Расчёт выгоды продаж за период: прибыль своего производства
+      // против закупки у конкурента + печать сводки на A4.
+      href: `/${adminPath}/profit-report`,
+      label: "Выгода продаж",
+      icon: <TrendingUp size={18} />,
     },
     {
       href: `/${adminPath}/reviews`,
