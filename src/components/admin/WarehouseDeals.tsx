@@ -843,7 +843,15 @@ export function DealForm({
                         : 0);
                     const freeQty = Math.max(0, (it.stockQty || 0) - Math.max(0, otherReserved));
                     const freeBreakdown = it.isCuttable ? cuttableStockBreakdown(freeQty, it.metersPerRoll) : null;
-                    const overFree = baseRequested > freeQty + 0.0009;
+                    // Уже отгруженное по заказу со склада списано: «хватит ли»
+                    // проверяем только по неотгруженному остатку заказа, иначе
+                    // после частичной выдачи позиция «краснеет» как дефицит.
+                    const shippedForItem =
+                      ((initialDeal as any)?.shippedItems || []).find(
+                        (s: any) => s.productId === it.productId
+                      )?.shippedQty || 0;
+                    const needFree = Math.max(0, baseRequested - Number(shippedForItem || 0));
+                    const overFree = needFree > freeQty + 0.0009;
                     const stockHint = it.isCuttable
                       ? `${formatCutStock(it.stockQty, it.metersPerRoll)}${freeBreakdown ? ` · своб. ${formatCutStock(freeQty, it.metersPerRoll)}` : ''}`
                       : `ост. ${it.stockQty}`;

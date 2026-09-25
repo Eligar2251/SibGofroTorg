@@ -2990,6 +2990,10 @@ export function WarehouseManager({
                   }
                   return Math.max(0, r);
                 };
+                // Дефицит считаем по НЕвыданному остатку заказа: уже
+                // отгруженный товар со склада списан и повторно не нужен —
+                // иначе после частичной выдачи заказ «краснеет» как будто
+                // товара не хватает, хотя его уже выдали клиенту.
                 const shortage =
                   d.status === "new"
                     ? d.items
@@ -2997,8 +3001,24 @@ export function WarehouseManager({
                           const stock = stockById.get(it.productId) ?? 0;
                           const otherReserve = reservedByOthers(it.productId);
                           const free = Math.max(0, stock - otherReserve);
-                          const missing = Math.max(0, it.quantity - free);
-                          return { it, available: free, stock, otherReserve, missing };
+                          const shippedQty =
+                            (Array.isArray(d.shippedItems) ? d.shippedItems : []).find(
+                              (s: any) => s.productId === it.productId
+                            )?.shippedQty || 0;
+                          const needQty = Math.max(
+                            0,
+                            Number(it.quantity || 0) - Number(shippedQty || 0)
+                          );
+                          const missing = Math.max(0, needQty - free);
+                          return {
+                            it,
+                            available: free,
+                            stock,
+                            otherReserve,
+                            missing,
+                            needQty,
+                            shippedQty,
+                          };
                         })
                         .filter((r) => r.missing > 0)
                     : [];
@@ -3071,9 +3091,10 @@ export function WarehouseManager({
                             .map((r) => {
                               const parts = [
                                 r.it.name,
-                                `нужно ${r.it.quantity}`,
+                                `нужно к отгрузке ${r.needQty}`,
                                 `свободно ${fmt(r.available)}`,
                               ];
+                              if (Number(r.shippedQty) > 0) parts.push(`уже выдано ${r.shippedQty}`);
                               if (r.otherReserve > 0) parts.push(`в резерве др. ${fmt(r.otherReserve)}`);
                               return parts.join(" · ");
                             })
@@ -3087,9 +3108,13 @@ export function WarehouseManager({
                         const totalOrdered = d.items.reduce((s: number, it: any) => s + it.quantity, 0);
                         const totalShipped = shippedArr.reduce((s: number, it: any) => s + (it.shippedQty || 0), 0);
                         if (totalShipped > 0 && totalShipped < totalOrdered) {
+                          const rest = totalOrdered - totalShipped;
                           return (
-                            <span className="admin-badge admin-badge--indigo" title={`Отгружено ${totalShipped} из ${totalOrdered}`}>
-                              <Truck size={10} /> Частично отгружено: {totalShipped}/{totalOrdered}
+                            <span
+                              className="admin-badge admin-badge--indigo"
+                              title={`Отгружено ${totalShipped} из ${totalOrdered} · остаток заказа ${rest}`}
+                            >
+                              <Truck size={10} /> Частично отгружено · Остаток: {rest}
                             </span>
                           );
                         }
@@ -3150,8 +3175,17 @@ export function WarehouseManager({
                                     {it.name} × {unitLabel}
                                     <span className="wh-item-unit">{priceLabel}</span>
                                     {shipped > 0 && remaining > 0 && (
-                                      <span className="wh-item-row__warn" style={{ marginLeft: 8, whiteSpace: "nowrap" }}>
-                                        отгружено: {shipped} · осталось: {remaining}
+                                      <span
+                                        style={{
+                                          marginLeft: 8,
+                                          whiteSpace: "nowrap",
+                                          color: "var(--adm-steel, #5f7287)",
+                                          fontSize: 11,
+                                          fontWeight: 650,
+                                        }}
+                                        title="Остаток заказа = заказано − уже выдано"
+                                      >
+                                        отгружено: {shipped} · остаток: {remaining}
                                       </span>
                                     )}
                                     {shipped > 0 && remaining <= 0 && (
@@ -3247,7 +3281,7 @@ export function WarehouseManager({
                                   <div key={r.it.productId} className="deal-stock__row">
                                     <span className="deal-stock__name">{r.it.name}</span>
                                     <span className="deal-stock__nums">
-                                      нужно {r.it.quantity} · на складе {fmt(r.stock)}
+                                      нужно к отгрузке {r.needQty} (остаток заказа{Number(r.shippedQty) > 0 ? `: заказано ${fmt(r.it.quantity)} − выдано ${fmt(r.shippedQty)}` : ""}) · на складе {fmt(r.stock)}
                                       {r.otherReserve > 0 && <> · <b style={{color:"var(--adm-indigo)"}}>в резерве {fmt(r.otherReserve)}</b></>}
                                       {" "}· свободно {fmt(r.available)} · <b>не хватает {r.missing}</b>
                                     </span>

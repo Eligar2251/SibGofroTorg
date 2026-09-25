@@ -116,6 +116,8 @@ import {
   type WpBranch,
   type WpCounterparty,
   type WpDocItem,
+  type WpDocKind,
+  type WpDocPaymentSpec,
   type WpIntake,
   type WpManualPayment,
   type WpMoneyEvent,
@@ -191,6 +193,21 @@ const KIND_BADGE: Record<WpMoneyEvent["kind"], { cls: string; label: string }> =
   salary: { cls: "admin-badge admin-badge--indigo", label: "Зарплата" },
   transfer: { cls: "admin-badge admin-badge--gray", label: "Перевод" },
 };
+
+/**
+ * Бейдж вида движения. У платежа-оплаты документа заголовок самодостаточен
+ * («Оплата приёма №112») — бейдж «Платёж» рядом только шумит.
+ */
+function wpEventKindBadge(e: WpMoneyEvent): { cls: string; label: string } | null {
+  if (e.docType && e.docId) return null;
+  return KIND_BADGE[e.kind];
+}
+
+/** Тот же бейдж сразу JSX-элементом (или пусто — заголовок самодостаточен). */
+function wpEventKindBadgeEl(e: WpMoneyEvent) {
+  const b = wpEventKindBadge(e);
+  return b ? <span className={b.cls}>{b.label}</span> : null;
+}
 
 /**
  * Перевод между своими счетами проводится сразу: отметки «оплачено»
@@ -1256,6 +1273,7 @@ export function WastepaperAccountManager(props: Props) {
           item={intakeModal.mode === "create" ? null : intakeModal.item}
           suppliers={suppliers}
           catalog={typeCatalog}
+          payments={manualPayments}
           saving={saving}
           error={formError}
           onClose={() => setIntakeModal(null)}
@@ -1321,6 +1339,7 @@ export function WastepaperAccountManager(props: Props) {
           item={shipmentModal.mode === "create" ? null : shipmentModal.item}
           enterprises={enterprises}
           catalog={typeCatalog}
+          payments={manualPayments}
           saving={saving}
           error={formError}
           onClose={() => setShipmentModal(null)}
@@ -1432,6 +1451,19 @@ export function WastepaperAccountManager(props: Props) {
           mode={paymentModal.mode}
           item={paymentModal.mode === "edit" ? paymentModal.item : null}
           counterparties={counterparties}
+          intakes={intakes}
+          shipments={shipments}
+          onOpenDoc={(docType, docId) => {
+            // Из карточки платежа — сразу в привязанный документ.
+            setPaymentModal(null);
+            if (docType === "intake") {
+              const doc = intakes.find((i) => i.id === docId);
+              if (doc) setIntakeModal({ mode: "edit", item: doc });
+            } else {
+              const doc = shipments.find((s) => s.id === docId);
+              if (doc) setShipmentModal({ mode: "edit", item: doc });
+            }
+          }}
           saving={saving}
           error={formError}
           onClose={() => setPaymentModal(null)}
@@ -1555,23 +1587,73 @@ function WpHero({
   onQuickIntake: () => void;
   onQuickShipment: () => void;
 }) {
+  // Счета модуля — одинаковые строки и на телефоне, и на десктопе:
+  // иконка · название · сумма справа (как счета в приложении банка).
+  const accountRows = (
+    <dl className="wpa-hero__accounts">
+      <div className="wpa-hero__account">
+        <dt>
+          <span className="wpa-hero__account-ic" aria-hidden="true">
+            <Banknote size={17} />
+          </span>
+          <span className="wpa-hero__account-name">Наличка</span>
+        </dt>
+        <dd className="wpa-hero__account-val">{fmtMoney(balance.cash)}</dd>
+      </div>
+      <div className="wpa-hero__account">
+        <dt>
+          <span className="wpa-hero__account-ic" aria-hidden="true">
+            <CreditCard size={17} />
+          </span>
+          <span className="wpa-hero__account-name">Безнал</span>
+        </dt>
+        <dd className="wpa-hero__account-val">{fmtMoney(balance.bank)}</dd>
+      </div>
+      <div className="wpa-hero__account">
+        <dt>
+          <span className="wpa-hero__account-ic" aria-hidden="true">
+            <HandCoins size={17} />
+          </span>
+          <span className="wpa-hero__account-name">Сторонние пополнения</span>
+        </dt>
+        <dd className="wpa-hero__account-val">{fmtMoney(balance.third_party)}</dd>
+      </div>
+    </dl>
+  );
+
   const isMobile = useIsMobile();
   if (isMobile) return (
     <section className="wpa-mobile" aria-label="Баланс макулатуры">
-      <div className="wpa-mobile__balance">
-        <div className="wpa-mobile__caption"><Wallet size={18} /> Общий баланс <span>{fmtDate(today)}</span></div>
-        <strong className="wpa-mobile__total">{fmtMoney(balance.total)}</strong>
-        <dl className="wpa-mobile__accounts">
-          <div><dt><Wallet size={16} /> {WP_COMMON_ACCOUNT_LABEL}</dt><dd>{fmtMoney(balance.common)}</dd></div>
-          <div><dt><Banknote size={16} /> · Наличка</dt><dd>{fmtMoney(balance.cash)}</dd></div>
-          <div><dt><CreditCard size={16} /> · Безнал</dt><dd>{fmtMoney(balance.bank)}</dd></div>
-          <div><dt><HandCoins size={16} /> Сторонние пополнения</dt><dd>{fmtMoney(balance.third_party)}</dd></div>
-        </dl>
-      </div>
-      <div className="wpa-mobile__actions">
-        <button type="button" onClick={onQuickIntake}><ArrowDownLeft size={22} /><span>Принять</span></button>
-        <button type="button" onClick={onQuickShipment}><ArrowUpRight size={22} /><span>Сдать</span></button>
-        <button type="button" onClick={onOpenTransports}><Truck size={22} /><span>Перевозки</span></button>
+      <div className="wpa-hero wpa-hero--phone">
+        <div className="wpa-hero__top">
+          <h2 className="wpa-hero__title">
+            <Wallet size={14} /> Деньги макулатуры
+          </h2>
+          <span className="wpa-hero__date">
+            <CalendarClock size={13} /> {fmtDate(today)}
+          </span>
+        </div>
+        <div className="wpa-hero__main">
+          <div className="wpa-hero__label">
+            <Scale size={13} /> Итого · все счета
+          </div>
+          <strong className="wpa-hero__value">{fmtMoney(balance.total)}</strong>
+          <p className="wpa-hero__note">
+            {WP_COMMON_ACCOUNT_LABEL}: <strong>{fmtMoney(balance.common)}</strong>
+          </p>
+        </div>
+        {accountRows}
+        <div className="wpa-hero__actions">
+          <button type="button" className="wpa-hero__btn wpa-hero__btn--primary" onClick={onQuickIntake}>
+            <ArrowDownLeft size={20} /><span>Принять</span>
+          </button>
+          <button type="button" className="wpa-hero__btn" onClick={onQuickShipment}>
+            <ArrowUpRight size={20} /><span>Сдать</span>
+          </button>
+          <button type="button" className="wpa-hero__btn" onClick={onOpenTransports}>
+            <Truck size={20} /><span>Перевозки</span>
+          </button>
+        </div>
       </div>
       <div className="wpa-mobile__summary">
         <div><Warehouse size={18} /><span>На складе</span><strong>{fmtKg(stockKg)}</strong></div>
@@ -1580,97 +1662,85 @@ function WpHero({
       </div>
       <details className="wpa-mobile__forecast">
         <summary>Прогноз движения денег</summary>
-        <dl><div><dt>Ожидаемый приход</dt><dd>+{fmtMoney(forecast.inTotal)}</dd></div>
-        <div><dt>Ожидаемый расход</dt><dd>−{fmtMoney(forecast.outTotal)}</dd></div></dl>
+        <dl>
+          <div className="wpa-mobile__forecast-row">
+            <dt>Ожидаемый приход</dt>
+            <dd className="wp-amt wp-amt--in">+{fmtMoney(forecast.inTotal)}</dd>
+          </div>
+          <div className="wpa-mobile__forecast-row">
+            <dt>Ожидаемый расход</dt>
+            <dd className="wp-amt wp-amt--out">−{fmtMoney(forecast.outTotal)}</dd>
+          </div>
+        </dl>
       </details>
     </section>
   );
   return (
-    <section className="wpa-balance" aria-label="Баланс макулатуры">
-      <div className="wpa-balance__top">
-        <h2 className="wpa-balance__title">Деньги макулатуры</h2>
-        <span className="wpa-balance__chip">
+    <section className="wpa-hero" aria-label="Баланс макулатуры">
+      <div className="wpa-hero__top">
+        <h2 className="wpa-hero__title">
+          <Wallet size={14} /> Деньги макулатуры
+        </h2>
+        <span className="wpa-hero__date">
           <CalendarClock size={13} /> {fmtDate(today)}
         </span>
       </div>
 
-      <div className="wpa-balance__grid">
-        {/* Наличка и безнал — один денежный счёт макулатуры: показываем
-            общим остатком, а ниже расшифровка, чем он наполнен. */}
-        <div className="wpa-balance__cell">
-          <div className="wpa-balance__label">
-            <Wallet size={13} /> {WP_COMMON_ACCOUNT_LABEL}
+      <div className="wpa-hero__body">
+        <div className="wpa-hero__main">
+          <div className="wpa-hero__label">
+            <Scale size={13} /> Итого · наличка, безнал и сторонние
           </div>
-          <div className="wpa-balance__value">{fmtMoney(balance.common)}</div>
-          <div className="wpa-balance__item">
-            <div className="wpa-balance__label">
-              <Banknote size={13} /> Наличка
-            </div>
-            <div className="wpa-balance__value">{fmtMoney(balance.cash)}</div>
-          </div>
-          <div className="wpa-balance__item">
-            <div className="wpa-balance__label">
-              <CreditCard size={13} /> Безнал
-            </div>
-            <div className="wpa-balance__value">{fmtMoney(balance.bank)}</div>
+          <div className="wpa-hero__value">{fmtMoney(balance.total)}</div>
+          <p className="wpa-hero__note">
+            {WP_COMMON_ACCOUNT_LABEL} (наличка + безнал):{" "}
+            <strong>{fmtMoney(balance.common)}</strong>
+          </p>
+          {/* Быстрые действия — как кнопки операций в мобильном банке */}
+          <div className="wpa-hero__actions">
+            <button type="button" className="wpa-hero__btn wpa-hero__btn--primary" onClick={onQuickIntake}>
+              <ArrowDownLeft size={16} /> Принять макулатуру
+            </button>
+            <button type="button" className="wpa-hero__btn" onClick={onQuickShipment}>
+              <ArrowUpRight size={16} /> Сдать на предприятие
+            </button>
+            <button type="button" className="wpa-hero__btn" onClick={onOpenTransports}>
+              <Truck size={16} /> Перевозки
+            </button>
           </div>
         </div>
-        <div className="wpa-balance__cell">
-          <div className="wpa-balance__label">
-            <HandCoins size={13} /> Сторонние пополнения
-          </div>
-          <div className="wpa-balance__value">{fmtMoney(balance.third_party)}</div>
-        </div>
-        <div className="wpa-balance__cell wpa-balance__cell--total wpa-balance__cell--accent">
-          <div className="wpa-balance__label">
-            <Scale size={13} /> Итого
-          </div>
-          <div className="wpa-balance__value">{fmtMoney(balance.total)}</div>
-        </div>
+        {accountRows}
       </div>
 
-      <div className="wpa-balance__chips">
-        <span className="wpa-balance__chip">
+      <div className="wpa-hero__stats">
+        <span className="wpa-hero__stat">
           <Warehouse size={13} /> На складе: <strong>{fmtKg(stockKg)}</strong>
         </span>
-        <span className="wpa-balance__chip">
+        <span className="wpa-hero__stat">
           <HandCoins size={13} /> К оплате приёмов: <strong>{unpaidIntakes}</strong>
         </span>
-        <span className="wpa-balance__chip wpa-balance__chip--in">
-          <ArrowDownLeft size={13} /> Прогноз прихода:{" "}
+        <span className="wpa-hero__stat wpa-hero__stat--in">
+          <ArrowDownLeft size={13} /> Прогноз прихода:{' '}
           <strong>+{fmtMoney(forecast.inTotal)}</strong>
         </span>
-        <span className="wpa-balance__chip wpa-balance__chip--out">
-          <ArrowUpRight size={13} /> Прогноз расхода:{" "}
+        <span className="wpa-hero__stat wpa-hero__stat--out">
+          <ArrowUpRight size={13} /> Прогноз расхода:{' '}
           <strong>−{fmtMoney(forecast.outTotal)}</strong>
         </span>
         {pendingTransport > 0 ? (
           <button
             type="button"
-            className="wpa-balance__chip wpa-balance__chip--warn"
+            className="wpa-hero__stat wpa-hero__stat--warn"
             onClick={onOpenTransports}
             title="Открыть вкладку перевозок"
           >
             <Truck size={13} /> Ждут перевозку: <strong>{pendingTransport}</strong>
           </button>
         ) : (
-          <span className="wpa-balance__chip">
+          <span className="wpa-hero__stat">
             <Truck size={13} /> Очередь перевозок пуста
           </span>
         )}
-      </div>
-
-      {/* Быстрые действия — как кнопки операций в мобильном банке */}
-      <div className="wpa-balance__actions">
-        <button type="button" className="admin-btn admin-btn--primary" onClick={onQuickIntake}>
-          <Plus size={15} /> Принять макулатуру
-        </button>
-        <button type="button" className="admin-btn admin-btn--outline" onClick={onQuickShipment}>
-          <Plus size={15} /> Сдать на предприятие
-        </button>
-        <button type="button" className="admin-btn admin-btn--ghost" onClick={onOpenTransports}>
-          <Truck size={15} /> Перевозки
-        </button>
       </div>
     </section>
   );
@@ -1856,15 +1926,8 @@ function DaysTab({
       {/* Прогноз: запланированные, но ещё не оплаченные операции.
           Колонка не уже 440px: внутри карточки платежей формата «Банк»
           (иконка · контрагент · сумма + кнопки), в узкой колонке они
-          не помещаются. На телефоне admin-mobile.css делает одну колонку. */}
-      <div
-        className="wpa-forecast-grid"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 440px), 1fr))",
-          gap: 14,
-        }}
-      >
+          не помещаются. На телефоне .wpa-forecast-grid делает одну колонку. */}
+      <div className="wpa-forecast-grid">
         <ForecastCard
           title={`Ожидаем приход (${unpaidIn.length})`}
           tone="in"
@@ -1920,10 +1983,10 @@ function DayRowFragment({
           )}
         </WpCell>
         <WpCell className="wp-cell--num">{fmtMoney(opening)}</WpCell>
-        <WpCell className="wp-cell--num" style={{ color: "var(--adm-pine)", fontWeight: 600 }}>
+        <WpCell className={`wp-cell--num wp-amt${incoming > 0 ? " wp-amt--in" : " wp-amt--muted"}`} style={{ fontWeight: 700 }}>
           {incoming > 0 ? `+${fmtMoney(incoming)}` : "—"}
         </WpCell>
-        <WpCell className="wp-cell--num" style={{ color: "var(--adm-kraft)", fontWeight: 600 }}>
+        <WpCell className={`wp-cell--num wp-amt${outgoing > 0 ? " wp-amt--out" : " wp-amt--muted"}`} style={{ fontWeight: 700 }}>
           {outgoing > 0 ? `−${fmtMoney(outgoing)}` : "—"}
         </WpCell>
         <WpCell className="wp-cell--num" style={{ fontWeight: 700 }}>{fmtMoney(closing)}</WpCell>
@@ -1931,39 +1994,43 @@ function DayRowFragment({
       {expanded && (
         <WpRow>
           <WpCell colSpan={5} style={{ background: "var(--adm-paper)" }}>
-            {row.events.map((e) => (
-              <div
-                key={`${e.kind}-${e.id}`}
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  padding: "6px 0",
-                  fontSize: "0.85rem",
-                }}
-              >
-                <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>
-                <span style={{ color: "var(--adm-muted)" }}>{e.title}</span>
-                <span>{e.counterpartyName || "—"}</span>
-                <span className={ACCOUNT_BADGE[e.account]}>
-                  {WP_ACCOUNT_LABELS[e.account]}
-                </span>
-                <strong
-                  style={{
-                    color: e.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-kraft)",
-                  }}
-                >
-                  {e.direction === "incoming" ? "+" : "−"}
-                  {fmtMoney(e.amount)}
-                </strong>
-                {e.paidAt && (
-                  <span style={{ color: "var(--adm-muted)" }}>
-                    оплачено {fmtPaidAt(e.paidAt)}
+            {/* Операции дня — карточки «платежа» как в выписке банка:
+                иконка направления · документ и контрагент · сумма. */}
+            <div className="wpa-ops">
+              {row.events.map((e) => (
+                <div key={`${e.kind}-${e.id}`} className="wpa-op">
+                  <span
+                    className={`wpa-op__icon ${e.direction === "incoming" ? "wpa-op__icon--in" : "wpa-op__icon--out"}`}
+                    aria-hidden="true"
+                  >
+                    {e.direction === "incoming" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}
                   </span>
-                )}
-              </div>
-            ))}
+                  <div className="wpa-op__main">
+                    <div className="wpa-op__row">
+                      <span className="wpa-op__title">{e.title}</span>
+                      {wpEventKindBadgeEl(e)}
+                      <span className={ACCOUNT_BADGE[e.account]}>
+                        {WP_ACCOUNT_LABELS[e.account]}
+                      </span>
+                    </div>
+                    <div className="wpa-op__row">
+                      <span className="wpa-op__meta">{e.counterpartyName || "—"}</span>
+                      {e.paidAt && (
+                        <span className="wpa-op__meta">
+                          оплачено {fmtPaidAt(e.paidAt)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <strong
+                    className={`wpa-op__amount ${e.direction === "incoming" ? "wp-amt--in" : "wp-amt--out"}`}
+                  >
+                    {e.direction === "incoming" ? "+" : "−"}
+                    {fmtMoney(e.amount)}
+                  </strong>
+                </div>
+              ))}
+            </div>
           </WpCell>
         </WpRow>
       )}
@@ -2023,7 +2090,7 @@ function ForecastCard({
                     {e.counterpartyName ? (
                       <span className="bank-pay__num">{e.title}</span>
                     ) : null}
-                    <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>
+                    {wpEventKindBadgeEl(e)}
                     <span className={ACCOUNT_BADGE[e.account]}>
                       {WP_ACCOUNT_LABELS[e.account]}
                     </span>
@@ -2210,10 +2277,10 @@ function PaymentsTab({
 
       <p className="wp-summary">
         Показано операций: <strong>{filtered.length}</strong>
-        <span className="wp-summary__chip" style={{ color: "var(--adm-pine)" }}>
+        <span className="wp-summary__chip wp-amt wp-amt--in">
           +{fmtMoney(totals.inSum)}
         </span>
-        <span className="wp-summary__chip" style={{ color: "var(--adm-kraft)" }}>
+        <span className="wp-summary__chip wp-amt wp-amt--out">
           −{fmtMoney(totals.outSum)}
         </span>
       </p>
@@ -2243,7 +2310,7 @@ function PaymentsTab({
                 <WpRow key={`${e.kind}-${e.id}`}>
                   <WpCell className="wp-cell--date">{fmtDate(e.date)}</WpCell>
                   <WpCell>
-                    <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>{" "}
+                    {wpEventKindBadgeEl(e)}{" "}
                     {e.title}
                     {e.comment && (
                       <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
@@ -2263,11 +2330,8 @@ function PaymentsTab({
                   </WpCell>
                   <WpCell>{e.counterpartyName || "—"}</WpCell>
                   <WpCell
-                    className="wp-cell--num"
-                    style={{
-                      fontWeight: 700,
-                      color: e.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-kraft)",
-                    }}
+                    className={`wp-cell--num wp-amt ${e.direction === "incoming" ? "wp-amt--in" : "wp-amt--out"}`}
+                    style={{ fontWeight: 700 }}
                   >
                     {e.direction === "incoming" ? "+" : "−"}
                     {fmtMoney(e.amount)}
@@ -2331,7 +2395,7 @@ function PaymentsTab({
           className="admin-show-more"
           style={{ marginTop: 10 }}
           ref={(node) => {
-            win.sentinelRef(node);
+            win.observeTail(node);
           }}
           onClick={win.showAll}
         >
@@ -2705,7 +2769,7 @@ function IntakesTab({
           className="admin-show-more"
           style={{ marginTop: 10 }}
           ref={(node) => {
-            win.sentinelRef(node);
+            win.observeTail(node);
           }}
           onClick={win.showAll}
         >
@@ -3000,7 +3064,7 @@ function ShipmentsTab({
           className="admin-show-more"
           style={{ marginTop: 10 }}
           ref={(node) => {
-            win.sentinelRef(node);
+            win.observeTail(node);
           }}
           onClick={win.showAll}
         >
@@ -3179,13 +3243,263 @@ function CounterpartiesTab({
           className="admin-show-more"
           style={{ marginTop: 10 }}
           ref={(node) => {
-            win.sentinelRef(node);
+            win.observeTail(node);
           }}
           onClick={win.showAll}
         >
           Показано {win.visible.length} из {win.total} · <strong>Показать все</strong>
         </button>
       )}
+    </div>
+  );
+}
+
+/* ── Выпадающий список контрагента ─────────────────────────
+   Выбор из справочника ИЛИ новый (свободное имя). Существующий
+   подставляет своё имя/id — дальше адреса подтягиваются как раньше. */
+
+function CounterpartySelect({
+  label,
+  options,
+  id,
+  name,
+  onChange,
+  placeholder,
+  autoFocus,
+  nameLabel = "Имя контрагента (вручную)",
+}: {
+  label: string;
+  options: WpCounterparty[];
+  id: string | null;
+  name: string;
+  onChange: (next: { counterpartyId: string | null; counterpartyName: string }) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  nameLabel?: string;
+}) {
+  const knownId =
+    id && options.some((c) => c.id === id)
+      ? id
+      : (name.trim()
+          ? options.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase())?.id
+          : null) ?? null;
+  const selectValue = knownId ?? (name.trim() ? "__new" : "");
+  return (
+    <>
+      <div className="admin-field">
+        <label className="admin-label">{label}</label>
+        <select
+          className="admin-select"
+          value={selectValue}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "__new") {
+              onChange({ counterpartyId: null, counterpartyName: "" });
+              return;
+            }
+            const c = options.find((x) => x.id === v);
+            onChange(c ? { counterpartyId: c.id, counterpartyName: c.name } : { counterpartyId: null, counterpartyName: "" });
+          }}
+        >
+          <option value="">— выберите из списка —</option>
+          {options.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+          <option value="__new">➕ Новый контрагент…</option>
+        </select>
+      </div>
+      {!knownId && (
+        <div className="admin-field">
+          <label className="admin-label">{nameLabel}</label>
+          <input
+            className="admin-input"
+            value={name}
+            onChange={(e) => onChange({ counterpartyId: null, counterpartyName: e.target.value })}
+            placeholder={placeholder}
+            autoFocus={autoFocus}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── Блок «Оплата» в документах (приём/продажа) ─────────────
+   Оплата документа — отдельный платёж (вкладка «Платежи»), привязанный
+   к нему: один и тот же объект правится и отсюда, и оттуда. Этот платёж —
+   ЕДИНСТВЕННОЕ движение денег документа (двойного счёта нет). Три режима:
+   «не оплачено», «оплатить сейчас» (новый платёж / обновить привязанный)
+   и «привязать существующий» свободный платёж. */
+
+function PaymentBlock({
+  docType,
+  docId,
+  payments,
+  value,
+  onChange,
+  defaultAmount,
+  defaultAccount,
+  accountLabel,
+  docWord,
+}: {
+  docType: WpDocKind;
+  docId: string | null;
+  payments: WpManualPayment[];
+  value: WpDocPaymentSpec;
+  onChange: (next: WpDocPaymentSpec) => void;
+  defaultAmount: number;
+  defaultAccount: WpAccount;
+  accountLabel: string;
+  /** «приёма» / «продажи» — для подписей. */
+  docWord: string;
+}) {
+  const linked = payments.find((p) => p.docType === docType && p.docId === docId) || null;
+  const free = payments.filter((p) => !p.docId && p.id !== linked?.id);
+  const modeKey: "none" | "pay" | "attach" =
+    value.mode === "none" ? "none" : value.mode === "attach" ? "attach" : "pay";
+
+  function toPayMode(): WpDocPaymentSpec {
+    return {
+      mode: linked ? "keep" : "create",
+      paymentId: linked?.id ?? null,
+      date: linked?.date ?? value.date ?? todayStr(),
+      account: (linked?.account ?? value.account ?? defaultAccount) as WpAccount,
+      amount: linked?.amount ?? (value.amount || defaultAmount),
+      isPaid: linked ? linked.isPaid : value.isPaid ?? true,
+      comment: linked?.comment ?? value.comment ?? "",
+    };
+  }
+
+  return (
+    <div className="deal-delivery-block">
+      <div className="deal-delivery-block__head">
+        <Banknote size={14} />
+        <span>Оплата {docWord}</span>
+        {linked && (
+          <span className="admin-badge admin-badge--blue" style={{ marginLeft: "auto" }}>
+            Платёж №{linked.number}
+          </span>
+        )}
+      </div>
+      <div className="deal-delivery-block__body">
+        <div className="admin-field" style={{ maxWidth: 340 }}>
+          <label className="admin-label">Оплата документа</label>
+          <select
+            className="admin-select"
+            value={modeKey}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "none") onChange({ mode: "none" });
+              else if (v === "attach") onChange({ mode: "attach", paymentId: free[0]?.id ?? null });
+              else onChange(toPayMode());
+            }}
+          >
+            <option value="none">Не оплачено — заплатим позже</option>
+            <option value="pay">
+              {linked ? `Оплата платежом №${linked.number}` : "Оплатить сейчас — новый платёж"}
+            </option>
+            {free.length > 0 && (
+              <option value="attach">Привязать существующий платёж…</option>
+            )}
+          </select>
+        </div>
+
+        {modeKey === "none" && (
+          <p className="deal-delivery-block__empty" style={{ marginTop: 0 }}>
+            Долг останется в разделе «Долги» и в прогнозе. Отметить оплату можно
+            позже — отсюда, из «Платежей» или кнопкой в списке.
+          </p>
+        )}
+
+        {modeKey === "pay" && (
+          <>
+            <div className="wp-grid-3">
+              <div className="admin-field">
+                <label className="admin-label">Дата оплаты</label>
+                <input
+                  className="admin-input"
+                  type="date"
+                  value={value.date || todayStr()}
+                  onChange={(e) => onChange({ ...value, date: e.target.value })}
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Сумма оплаты, ₽</label>
+                <input
+                  className="admin-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={value.amount || ""}
+                  onChange={(e) => onChange({ ...value, amount: parseNum(e.target.value) })}
+                  placeholder={defaultAmount > 0 ? `по документу — ${fmtMoney(defaultAmount)}` : "0"}
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">{accountLabel}</label>
+                <select
+                  className="admin-select"
+                  value={value.account || defaultAccount}
+                  onChange={(e) => onChange({ ...value, account: e.target.value as WpAccount })}
+                >
+                  <option value="cash">Наличка</option>
+                  <option value="bank">Безнал</option>
+                  <option value="third_party">Сторонние пополнения</option>
+                </select>
+              </div>
+            </div>
+            <label className="admin-hint" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={value.isPaid ?? true}
+                onChange={(e) => onChange({ ...value, isPaid: e.target.checked })}
+              />
+              Проведена (деньги реально двигаются). Снять — попадёт в прогноз.
+            </label>
+          </>
+        )}
+
+        {modeKey === "attach" && (
+          <>
+            <div className="admin-field" style={{ maxWidth: 420 }}>
+              <label className="admin-label">Свободный платёж</label>
+              <select
+                className="admin-select"
+                value={value.paymentId || ""}
+                onChange={(e) => onChange({ ...value, paymentId: e.target.value || null })}
+              >
+                {free.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    №{p.number} · {fmtDate(p.date)} · {fmtMoney(p.amount)} ·{" "}
+                    {WP_ACCOUNT_LABELS[p.account]}
+                    {p.counterpartyName ? ` · ${p.counterpartyName}` : ""}
+                  </option>
+                ))}
+              </select>
+              <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
+                Платёж перестанет быть свободным и станет оплатой этого {docWord} —
+                деньги учитываются один раз.
+              </span>
+            </div>
+          </>
+        )}
+
+        {linked && modeKey !== "none" && (
+          <p className="deal-delivery-block__empty" style={{ marginTop: 0 }}>
+            Платёж №{linked.number} — общий объект: правьте его здесь или на
+            вкладке «Платежи», данные сходятся в один и тот же платёж.{" "}
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={() => onChange({ mode: "none" })}
+            >
+              Отвязать платёж
+            </button>
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -3204,6 +3518,11 @@ interface IntakeFormPayload {
   items: WpDocItem[];
   account: WpAccount;
   isPaid: boolean;
+  /**
+   * Блок «Оплата»: привязанный платёж документа — его ЕДИНСТВЕННОЕ денежное
+   * движение (двойного счёта нет). none — не оплачено / отвязать.
+   */
+  payment: WpDocPaymentSpec;
   comment: string | null;
   saveCounterparty: boolean;
   /** Итоги позиций: факт (на склад) и вес к оплате клиенту. */
@@ -3230,6 +3549,7 @@ function IntakeModal({
   item,
   suppliers,
   catalog,
+  payments,
   saving,
   error,
   onClose,
@@ -3241,6 +3561,8 @@ function IntakeModal({
   item: WpIntake | null;
   suppliers: WpCounterparty[];
   catalog: WpTypeCatalog;
+  /** Платежи модуля: блок «Оплата» показывает привязанные и свободные. */
+  payments: WpManualPayment[];
   saving: boolean;
   error: string;
   onClose: () => void;
@@ -3260,6 +3582,13 @@ function IntakeModal({
   // позиции можно полностью править/удалять. Старые позиции (один вес
   // в строке, факт только в шапке) переводятся в новый формат
   // «факт + к оплате + сумма» — см. migrateWpDocItems().
+  // Блок «Оплата»: привязанный платёж правится как «keep», старая оплата
+  // без платежа предлагается оформить платежом («create»), копия — «none».
+  const linkedPayment =
+    (item &&
+      !isCopy &&
+      payments.find((p) => p.docType === "intake" && p.docId === item.id)) ||
+    null;
   const [form, setForm] = useState(() => ({
     date: isCopy ? todayStr() : item?.date || todayStr(),
     counterpartyName: item?.counterpartyName || "",
@@ -3275,7 +3604,33 @@ function IntakeModal({
         )
       : [emptyDocItem(catalog)],
     account: (item?.account || "cash") as WpAccount,
-    isPaid: isCopy ? false : item?.isPaid || false,
+    payment: ((): WpDocPaymentSpec => {
+      if (isCopy || !item) return { mode: "none" };
+      if (linkedPayment) {
+        return {
+          mode: "keep",
+          paymentId: linkedPayment.id,
+          date: linkedPayment.date,
+          account: linkedPayment.account,
+          amount: linkedPayment.amount,
+          isPaid: linkedPayment.isPaid,
+          comment: linkedPayment.comment ?? "",
+        };
+      }
+      // Старый оплаченный приём без платежа: при сохранении оплата
+      // оформится платежом — дальше всё связано.
+      if (item.isPaid) {
+        return {
+          mode: "create",
+          date: item.date,
+          account: item.account,
+          amount: (item.cashAmount || 0) + (item.bankAmount || 0) || item.total,
+          isPaid: true,
+          comment: "",
+        };
+      }
+      return { mode: "none" };
+    })(),
     comment: item?.comment || "",
     saveCounterparty: true,
     needsTransport: isCopy ? false : item?.needsTransport || false,
@@ -3295,10 +3650,13 @@ function IntakeModal({
     null;
   const branches = selected?.branches || [];
 
-  function onNameChange(value: string) {
-    const found = suppliers.find(
-      (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
-    );
+  function onNameChange(value: string, id: string | null = null) {
+    // Выпадающий список присылает готовую пару «имя + id» (или новое имя).
+    const found =
+      (id ? suppliers.find((c) => c.id === id) : null) ||
+      suppliers.find(
+        (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
+      );
     setForm((prev) => {
       // При выборе известного контрагента подставляем адрес/телефон/контакт
       // его первой точки (если у документа они ещё пустые).
@@ -3367,7 +3725,8 @@ function IntakeModal({
           контактное лицо подставятся), а ниже добавьте позиции — по каждому
           виду впишите фактический вес, вес к оплате и сумму. Цена за кг и
           итоги посчитаются сами. Поля необязательные: можно заполнить
-          частями и отредактировать позже. Сумма уйдёт в расход счёта.
+          частями и отредактировать позже. Оплата — платёж в блоке ниже:
+          новая оплата или привязка существующего платежа.
         </p>
 
         {/* Пометка после завершения перевозки: приёмку выполнили, ждём
@@ -3400,8 +3759,10 @@ function IntakeModal({
               phone: form.phone.trim() || null,
               contactPerson: form.contactPerson.trim() || null,
               items: form.items,
-              account: form.account,
-              isPaid: form.isPaid,
+              account: (form.payment.account as WpAccount) || form.account,
+              isPaid:
+                form.payment.mode !== "none" && (form.payment.isPaid ?? true),
+              payment: form.payment,
               comment: form.comment.trim() || null,
               saveCounterparty: form.saveCounterparty,
               acceptedWeightKg: totals.acceptedKg,
@@ -3429,22 +3790,18 @@ function IntakeModal({
                 required
               />
             </div>
-            <div className="admin-field" style={{ flex: "2 1 220px" }}>
-              <label className="admin-label">От кого приняли *</label>
-              <input
-                className="admin-input"
-                list="wp-intake-suppliers"
-                value={form.counterpartyName}
-                onChange={(e) => onNameChange(e.target.value)}
+            <div style={{ flex: "2 1 220px", display: "grid", gap: 10 }}>
+              <CounterpartySelect
+                label="От кого приняли *"
+                options={suppliers}
+                id={form.counterpartyId}
+                name={form.counterpartyName}
+                onChange={({ counterpartyId, counterpartyName }) =>
+                  onNameChange(counterpartyName, counterpartyId)
+                }
                 placeholder="Имя или компания (например «Детский мир»)"
                 autoFocus={mode === "create"}
-                required
               />
-              <datalist id="wp-intake-suppliers">
-                {suppliers.map((c) => (
-                  <option key={c.id} value={c.name} />
-                ))}
-              </datalist>
             </div>
           </div>
 
@@ -3573,30 +3930,23 @@ function IntakeModal({
             </div>
           </div>
 
-          <div className="wp-grid-2 wp-grid--end">
-            <div className="admin-field">
-              <label className="admin-label">Счёт</label>
-              <select
-                className="admin-select"
-                value={form.account}
-                onChange={(e) => set("account", e.target.value as WpAccount)}
-              >
-                <option value="cash">Наличка</option>
-                <option value="bank">Безнал</option>
-              </select>
-            </div>
-            <label
-              className="admin-hint"
-              style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 12 }}
-            >
-              <input
-                type="checkbox"
-                checked={form.isPaid}
-                onChange={(e) => set("isPaid", e.target.checked)}
-              />
-              Уже оплачено
-            </label>
-          </div>
+          <PaymentBlock
+            docType="intake"
+            docId={!isCopy && item ? item.id : null}
+            payments={payments}
+            value={form.payment}
+            onChange={(payment) =>
+              setForm((prev) => ({
+                ...prev,
+                payment,
+                account: (payment.account as WpAccount) || prev.account,
+              }))
+            }
+            defaultAmount={totals.total}
+            defaultAccount={form.account}
+            accountLabel="Счёт оплаты"
+            docWord="приёма"
+          />
 
           <div className="admin-field">
             <label className="admin-label">Комментарий</label>
@@ -3677,6 +4027,11 @@ interface ShipmentFormPayload {
   items: WpDocItem[];
   account: WpAccount;
   isPaid: boolean;
+  /**
+   * Блок «Оплата»: привязанный платёж продажи — её ЕДИНСТВЕННОЕ денежное
+   * движение (двойного счёта нет). none — не оплачено / отвязать.
+   */
+  payment: WpDocPaymentSpec;
   comment: string | null;
   saveCounterparty: boolean;
   /** Итоги позиций: отгружено с площадки и принято предприятием. */
@@ -3696,6 +4051,7 @@ function ShipmentModal({
   item,
   enterprises,
   catalog,
+  payments,
   saving,
   error,
   onClose,
@@ -3707,6 +4063,8 @@ function ShipmentModal({
   item: WpShipment | null;
   enterprises: WpCounterparty[];
   catalog: WpTypeCatalog;
+  /** Платежи модуля: блок «Оплата» показывает привязанные и свободные. */
+  payments: WpManualPayment[];
   saving: boolean;
   error: string;
   onClose: () => void;
@@ -3724,6 +4082,13 @@ function ShipmentModal({
   const isCopy = mode === "copy";
   // Старые позиции (один вес в строке) переводятся в новый формат
   // «отгружено + принято + сумма» — см. migrateWpDocItems().
+  // Блок «Оплата»: привязанный платёж правится как «keep», старая оплата
+  // без платежа предлагается оформить платежом («create»), копия — «none».
+  const linkedPayment =
+    (item &&
+      !isCopy &&
+      payments.find((p) => p.docType === "shipment" && p.docId === item.id)) ||
+    null;
   const [form, setForm] = useState(() => ({
     date: isCopy ? todayStr() : item?.date || todayStr(),
     enterpriseName: item?.enterpriseName || "",
@@ -3738,9 +4103,34 @@ function ShipmentModal({
           item.acceptedWeightKg
         )
       : [emptyDocItem(catalog)],
-    receivedAmount: item?.receivedAmount || 0,
     account: (item?.account || "bank") as WpAccount,
-    isPaid: isCopy ? false : item?.isPaid || false,
+    payment: ((): WpDocPaymentSpec => {
+      if (isCopy || !item) return { mode: "none" };
+      if (linkedPayment) {
+        return {
+          mode: "keep",
+          paymentId: linkedPayment.id,
+          date: linkedPayment.date,
+          account: linkedPayment.account,
+          amount: linkedPayment.amount,
+          isPaid: linkedPayment.isPaid,
+          comment: linkedPayment.comment ?? "",
+        };
+      }
+      // Старая оплаченная сдача без платежа: при сохранении оплата
+      // оформится платежом — дальше всё связано.
+      if (item.isPaid) {
+        return {
+          mode: "create",
+          date: item.date,
+          account: item.account,
+          amount: item.receivedAmount > 0 ? item.receivedAmount : item.total,
+          isPaid: true,
+          comment: "",
+        };
+      }
+      return { mode: "none" };
+    })(),
     comment: item?.comment || "",
     saveCounterparty: true,
     needsTransport: isCopy ? false : item?.needsTransport || false,
@@ -3762,10 +4152,13 @@ function ShipmentModal({
     null;
   const branches = selected?.branches || [];
 
-  function onNameChange(value: string) {
-    const found = enterprises.find(
-      (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
-    );
+  function onNameChange(value: string, id: string | null = null) {
+    // Выпадающий список присылает готовую пару «имя + id» (или новое имя).
+    const found =
+      (id ? enterprises.find((c) => c.id === id) : null) ||
+      enterprises.find(
+        (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
+      );
     setForm((prev) => {
       const first = found?.branches?.[0];
       return {
@@ -3834,8 +4227,8 @@ function ShipmentModal({
           точку (адрес, телефон, контакт подставятся), а ниже добавьте позиции —
           по каждому виду впишите отгруженный вес, принятый вес и сумму по акту.
           Цена за кг и итоги посчитаются сами. Поля необязательные: можно
-          заполнить частями и отредактировать позже. Сумма придёт в выбранный
-          счёт; когда деньги получены — отметьте оплату.
+          заполнить частями и отредактировать позже. Деньги приходят платежом
+          (блок ниже): новая оплата или привязка существующего платежа.
         </p>
 
         <form
@@ -3851,13 +4244,20 @@ function ShipmentModal({
               phone: form.phone.trim() || null,
               contactPerson: form.contactPerson.trim() || null,
               items: form.items,
-              account: form.account,
-              isPaid: form.isPaid,
+              account: (form.payment.account as WpAccount) || form.account,
+              isPaid:
+                form.payment.mode !== "none" && (form.payment.isPaid ?? true),
+              payment: form.payment,
               comment: form.comment.trim() || null,
               saveCounterparty: form.saveCounterparty,
               shippedWeightKg: totals.acceptedKg,
               acceptedWeightKg: totals.payableKg,
-              receivedAmount: parseNum(String(form.receivedAmount)),
+              // Фактическое поступление = сумма оплаты (блок «Оплата» ниже);
+              // без оплаты денег пока не было.
+              receivedAmount:
+                form.payment.mode !== "none"
+                  ? Math.max(0, Number(form.payment.amount) || 0)
+                  : 0,
               needsTransport: form.needsTransport,
               transportPlannedDate: form.needsTransport
                 ? form.transportPlannedDate || null
@@ -3877,22 +4277,18 @@ function ShipmentModal({
                 required
               />
             </div>
-            <div className="admin-field" style={{ flex: "2 1 220px" }}>
-              <label className="admin-label">Предприятие-приёмщик *</label>
-              <input
-                className="admin-input"
-                list="wp-shipment-enterprises"
-                value={form.enterpriseName}
-                onChange={(e) => onNameChange(e.target.value)}
+            <div style={{ flex: "2 1 220px", display: "grid", gap: 10 }}>
+              <CounterpartySelect
+                label="Предприятие-приёмщик *"
+                options={enterprises}
+                id={form.enterpriseId}
+                name={form.enterpriseName}
+                onChange={({ counterpartyId, counterpartyName }) =>
+                  onNameChange(counterpartyName, counterpartyId)
+                }
                 placeholder="Кому сдаём"
                 autoFocus={mode === "create"}
-                required
               />
-              <datalist id="wp-shipment-enterprises">
-                {enterprises.map((c) => (
-                  <option key={c.id} value={c.name} />
-                ))}
-              </datalist>
             </div>
           </div>
 
@@ -4030,39 +4426,25 @@ function ShipmentModal({
                 </span>
               </div>
             </div>
-            <div className="admin-field" style={{ marginBottom: 0 }}>
-              <label className="admin-label">Поступление денег, ₽ (факт)</label>
-              <input className="admin-input" type="number" min="0" step="0.01" value={form.receivedAmount || ""} onChange={(e) => set("receivedAmount", parseNum(e.target.value))} placeholder="Сколько реально пришло" />
-              <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
-                Если реально пришло столько же, сколько по акту, — оставьте пустым.
-              </span>
-            </div>
           </div>
 
-          <div className="wp-grid-2 wp-grid--end">
-            <div className="admin-field">
-              <label className="admin-label">Куда придут деньги</label>
-              <select
-                className="admin-select"
-                value={form.account}
-                onChange={(e) => set("account", e.target.value as WpAccount)}
-              >
-                <option value="bank">Безнал</option>
-                <option value="cash">Наличка</option>
-              </select>
-            </div>
-            <label
-              className="admin-hint"
-              style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 12 }}
-            >
-              <input
-                type="checkbox"
-                checked={form.isPaid}
-                onChange={(e) => set("isPaid", e.target.checked)}
-              />
-              Деньги уже получены
-            </label>
-          </div>
+          <PaymentBlock
+            docType="shipment"
+            docId={!isCopy && item ? item.id : null}
+            payments={payments}
+            value={form.payment}
+            onChange={(payment) =>
+              setForm((prev) => ({
+                ...prev,
+                payment,
+                account: (payment.account as WpAccount) || prev.account,
+              }))
+            }
+            defaultAmount={totals.total}
+            defaultAccount={form.account}
+            accountLabel="Куда придут деньги"
+            docWord="продажи"
+          />
 
           <div className="admin-field">
             <label className="admin-label">Комментарий</label>
@@ -4142,26 +4524,41 @@ interface PaymentFormPayload {
   amount: number;
   isPaid: boolean;
   comment: string | null;
+  /**
+   * Привязка к документу: платёж = оплата приёма/продажи (его ЕДИНСТВЕННОЕ
+   * денежное движение). null — свободный платёж. Присылается ПАРОЙ
+   * docType/docId (null — отвязать).
+   */
+  docType: WpDocKind | null;
+  docId: string | null;
 }
 
 function PaymentModal({
   mode,
   item,
   counterparties,
+  intakes,
+  shipments,
   saving,
   error,
   onClose,
   onSubmit,
   onDelete,
+  onOpenDoc,
 }: {
   mode: "create" | "edit";
   item: WpManualPayment | null;
   counterparties: WpCounterparty[];
+  /** Документы для привязки платежа (оплата приёма/продажи). */
+  intakes: WpIntake[];
+  shipments: WpShipment[];
   saving: boolean;
   error: string;
   onClose: () => void;
   onSubmit: (form: PaymentFormPayload) => void;
   onDelete: () => void;
+  /** Открыть привязанный документ (приём/продажу) из карточки платежа. */
+  onOpenDoc?: (docType: WpDocKind, docId: string) => void;
 }) {
   // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
@@ -4177,6 +4574,8 @@ function PaymentModal({
     counterpartyId: item?.counterpartyId || (null as string | null),
     amount: item ? String(item.amount) : "",
     isPaid: item ? item.isPaid : true,
+    docType: (item?.docType ?? null) as WpDocKind | null,
+    docId: item?.docId ?? (null as string | null),
     comment: item?.comment || "",
   });
   // Закрытие только крестиком и Escape: клик по подложке не закрывает —
@@ -4187,14 +4586,36 @@ function PaymentModal({
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function onNameChange(value: string) {
-    const found = counterparties.find(
-      (c) => c.name.trim().toLowerCase() === value.trim().toLowerCase()
-    );
+  /** Привязка к документу: оплата приёма — расход, продажи — приход. */
+  function onDocSelect(value: string) {
+    if (!value) {
+      setForm((prev) => ({ ...prev, docType: null, docId: null }));
+      return;
+    }
+    const sep = value.indexOf(":");
+    const kind = value.slice(0, sep);
+    const id = value.slice(sep + 1);
+    const docType: WpDocKind | null = kind === "intake" || kind === "shipment" ? kind : null;
+    if (!docType || !id) return;
+    const isIntake = docType === "intake";
+    const intake = isIntake ? intakes.find((i) => i.id === id) : null;
+    const shipment = !isIntake ? shipments.find((s) => s.id === id) : null;
+    const docTotal = intake
+      ? intake.total
+      : shipment
+        ? shipment.receivedAmount > 0
+          ? shipment.receivedAmount
+          : shipment.total
+        : 0;
     setForm((prev) => ({
       ...prev,
-      counterpartyName: value,
-      counterpartyId: found ? found.id : null,
+      docType,
+      docId: id,
+      direction: isIntake ? "outgoing" : "incoming",
+      counterpartyName: intake?.counterpartyName || shipment?.enterpriseName || prev.counterpartyName,
+      counterpartyId: intake?.counterpartyId || shipment?.enterpriseId || prev.counterpartyId,
+      // Сумму подставляем из документа, пока её не вписали руками.
+      amount: prev.amount || (docTotal > 0 ? String(docTotal) : ""),
     }));
   }
 
@@ -4222,9 +4643,10 @@ function PaymentModal({
           </button>
         </div>
         <p className="admin-modal__desc">
-          Внесение денег вручную: например, получили оплату за сдачу не сразу, или
-          выдали наличку на расходы. Приход/расход по наличке и безналу учитывается
-          и отдельно, и вместе.
+          Деньги вручную: например, получили оплату за сдачу не сразу, или выдали
+          наличку на расходы. Можно привязать платёж к приёму/продаже — тогда он
+          станет их оплатой (одно движение денег, правится и отсюда, и из
+          документа).
         </p>
 
         <form
@@ -4241,6 +4663,8 @@ function PaymentModal({
               amount,
               isPaid: form.isPaid,
               comment: form.comment.trim() || null,
+              docType: form.docType,
+              docId: form.docType ? form.docId : null,
             });
           }}
         >
@@ -4280,21 +4704,68 @@ function PaymentModal({
             </div>
           </div>
 
+          <div className="admin-field">
+            <label className="admin-label">Документ — оплата приёма/продажи</label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <select
+                className="admin-select"
+                value={form.docType && form.docId ? `${form.docType}:${form.docId}` : ""}
+                onChange={(e) => onDocSelect(e.target.value)}
+              >
+                <option value="">Без документа (свободный платёж)</option>
+                {intakes.filter((i) => i.status !== "cancelled").length > 0 && (
+                  <optgroup label="Приёмы">
+                    {intakes
+                      .filter((i) => i.status !== "cancelled")
+                      .map((i) => (
+                        <option key={i.id} value={`intake:${i.id}`}>
+                          Приём №{i.number} · {i.counterpartyName} · {fmtMoney(i.total)} ₽
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                {shipments.filter((s) => s.status !== "cancelled").length > 0 && (
+                  <optgroup label="Продажи (сдачи)">
+                    {shipments
+                      .filter((s) => s.status !== "cancelled")
+                      .map((s) => (
+                        <option key={s.id} value={`shipment:${s.id}`}>
+                          Продажа №{s.number} · {s.enterpriseName} · {fmtMoney(s.total)} ₽
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+              </select>
+              {form.docType && form.docId && onOpenDoc && (
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                  style={{ whiteSpace: "nowrap" }}
+                  onClick={() => onOpenDoc(form.docType!, form.docId!)}
+                >
+                  <Pencil size={13} /> Открыть
+                </button>
+              )}
+            </div>
+            <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
+              Привязанный платёж — единственное движение денег документа
+              (двойного счёта нет): правьте его здесь или в карточке документа.
+            </span>
+          </div>
+
           <div className="wp-grid-3">
             <div className="admin-field" style={{ gridColumn: "span 2" }}>
-              <label className="admin-label">Контрагент</label>
-              <input
-                className="admin-input"
-                list="wp-payment-counterparties"
-                value={form.counterpartyName}
-                onChange={(e) => onNameChange(e.target.value)}
+              <CounterpartySelect
+                label="Контрагент"
+                options={counterparties}
+                id={form.counterpartyId}
+                name={form.counterpartyName}
+                onChange={({ counterpartyId, counterpartyName }) =>
+                  setForm((prev) => ({ ...prev, counterpartyId, counterpartyName }))
+                }
                 placeholder="Кто платит / кому платим"
+                nameLabel="Имя контрагента (вручную)"
               />
-              <datalist id="wp-payment-counterparties">
-                {counterparties.map((c) => (
-                  <option key={c.id} value={c.name} />
-                ))}
-              </datalist>
             </div>
             <div className="admin-field">
               <label className="admin-label">Сумма, ₽ *</label>
@@ -4378,6 +4849,18 @@ function PaymentModal({
    МОДАЛКА: КОНТРАГЕНТ
    ═══════════════════════════════════════════════════════ */
 
+/** Пресеты меток точек контрагента — выпадающий список + «своя метка». */
+const BRANCH_LABEL_PRESETS = [
+  "Филиал №1",
+  "Филиал №2",
+  "Филиал №3",
+  "Склад",
+  "Приёмная площадка",
+  "Центральный",
+  "Производство",
+  "Офис",
+];
+
 interface CounterpartyFormPayload {
   name: string;
   roles: string[];
@@ -4441,12 +4924,11 @@ function CounterpartyModal({
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function toggleRole(role: string) {
+  /** Роль — выпадающий список: одна роль или «и то, и другое». */
+  function setRole(value: string) {
     setForm((prev) => ({
       ...prev,
-      roles: prev.roles.includes(role)
-        ? prev.roles.filter((r) => r !== role)
-        : [...prev.roles, role],
+      roles: value === "both" ? ["supplier", "enterprise"] : [value],
     }));
   }
 
@@ -4538,18 +5020,15 @@ function CounterpartyModal({
 
           <div className="admin-field">
             <label className="admin-label">Роль *</label>
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              {Object.entries(WP_COUNTERPARTY_ROLE_LABELS).map(([key, label]) => (
-                <label key={key} className="admin-hint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={form.roles.includes(key)}
-                    onChange={() => toggleRole(key)}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
+            <select
+              className="admin-select"
+              value={form.roles.length > 1 ? "both" : form.roles[0] || "supplier"}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              <option value="supplier">Сдаёт нам (поставщик)</option>
+              <option value="enterprise">Принимает у нас (предприятие)</option>
+              <option value="both">И то, и другое</option>
+            </select>
           </div>
 
           {/* Точки / филиалы */}
@@ -4570,16 +5049,39 @@ function CounterpartyModal({
                   className="admin-card"
                   style={{ padding: "10px 12px", borderStyle: "dashed" }}
                 >
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
                     <span className="admin-badge admin-badge--muted">Точка {idx + 1}</span>
-                    <input
-                      className="admin-input"
-                      style={{ flex: 1 }}
-                      value={b.label}
-                      onChange={(e) => setBranch(b.id, { label: e.target.value })}
-                      placeholder="Метка (необязательно): Филиал №1, Центральный…"
-                      maxLength={120}
-                    />
+                    <div
+                      style={{
+                        flex: "1 1 260px",
+                        display: "grid",
+                        gap: 6,
+                        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                      }}
+                    >
+                      <select
+                        className="admin-select"
+                        value={BRANCH_LABEL_PRESETS.includes(b.label) ? b.label : ""}
+                        onChange={(e) => {
+                          if (e.target.value) setBranch(b.id, { label: e.target.value });
+                        }}
+                        aria-label="Метка точки из списка"
+                      >
+                        <option value="">Метка из списка…</option>
+                        {BRANCH_LABEL_PRESETS.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        className="admin-input"
+                        value={b.label}
+                        onChange={(e) => setBranch(b.id, { label: e.target.value })}
+                        placeholder="Или своя метка…"
+                        maxLength={120}
+                      />
+                    </div>
                     <button
                       type="button"
                       className="admin-btn admin-btn--ghost admin-btn--sm"
@@ -5199,53 +5701,79 @@ function BankTab({
 
   return (
     <div>
-      {/* Остатки счетов и обороты за выбранный период */}
-      <div
-        className="admin-card"
-        style={{ marginBottom: 14 }}
-      >
+      {/* Остатки счетов и обороты за выбранный период — карточки
+          «счетов» как в приложении банка: иконка, крупная сумма,
+          расшифровка и обороты за период. */}
+      <div className="admin-card" style={{ marginBottom: 14 }}>
         <div className="admin-card__head">
-          <span className="admin-card__title">Счета макулатуры</span>
+          <span className="admin-card__title">
+            <Landmark size={14} aria-hidden="true" /> Счета макулатуры
+          </span>
           <span className="admin-hint">
             {from || to
               ? `обороты за ${from ? fmtDate(from) : "начало"} — ${to ? fmtDate(to) : "сегодня"}`
               : "обороты за всё время"}
           </span>
         </div>
-        <div
-          className="admin-card__pad"
-          style={{ display: "flex", gap: 18, flexWrap: "wrap" }}
-        >
-          {/* Общий счёт = наличка + безнал: по факту это один денежный счёт
-              макулатуры, а чем он наполнен — видно расшифровкой ниже. */}
-          <div style={{ minWidth: 230, display: "grid", gap: 4 }}>
-            <span className="admin-badge admin-badge--blue">{WP_COMMON_ACCOUNT_LABEL}</span>
-            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.common)}</strong>
-            <span className="admin-hint">
-              Наличка {fmtMoney(balance.cash)} · Безнал {fmtMoney(balance.bank)}
-            </span>
-            <span className="admin-hint">
-              приход{" "}
-              {fmtMoney(
-                periodByAccount.cash.incoming + periodByAccount.bank.incoming
-              )}{" "}
-              · расход{" "}
-              {fmtMoney(
-                periodByAccount.cash.outgoing + periodByAccount.bank.outgoing
-              )}
-            </span>
-          </div>
-          <div style={{ minWidth: 190, display: "grid", gap: 4 }}>
-            <span className={ACCOUNT_BADGE.third_party}>Сторонние пополнения</span>
-            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.third_party)}</strong>
-            <span className="admin-hint">
-              приход {fmtMoney(periodByAccount.third_party.incoming)} · расход{" "}
-              {fmtMoney(periodByAccount.third_party.outgoing)}
-            </span>
-          </div>
-          <div style={{ minWidth: 190, display: "grid", gap: 4 }}>
-            <span className="admin-badge admin-badge--muted">Всего с учётом сторонних</span>
-            <strong style={{ fontSize: "1.05rem" }}>{fmtMoney(balance.total)}</strong>
+        <div className="admin-card__pad">
+          <div className="wpa-acc-grid">
+            {/* Общий счёт = наличка + безнал: по факту это один денежный счёт
+                макулатуры, а чем он наполнен — видно расшифровкой ниже. */}
+            <div className="wpa-acc-card wpa-acc-card--main">
+              <div className="wpa-acc-card__head">
+                <span className="wpa-acc-card__icon" aria-hidden="true">
+                  <Wallet size={16} />
+                </span>
+                <span className="wpa-acc-card__name">{WP_COMMON_ACCOUNT_LABEL}</span>
+              </div>
+              <div className="wpa-acc-card__value">{fmtMoney(balance.common)}</div>
+              <dl className="wpa-acc-card__parts">
+                <div className="wpa-acc-card__part">
+                  <dt><Banknote size={12} aria-hidden="true" /> Наличка</dt>
+                  <dd>{fmtMoney(balance.cash)}</dd>
+                </div>
+                <div className="wpa-acc-card__part">
+                  <dt><CreditCard size={12} aria-hidden="true" /> Безнал</dt>
+                  <dd>{fmtMoney(balance.bank)}</dd>
+                </div>
+              </dl>
+              <div className="wpa-acc-card__turn">
+                <span className="wpa-acc-card__turn-label">за период:</span>
+                <span className="wp-amt wp-amt--in">
+                  +{fmtMoney(periodByAccount.cash.incoming + periodByAccount.bank.incoming)}
+                </span>
+                <span className="wp-amt wp-amt--out">
+                  −{fmtMoney(periodByAccount.cash.outgoing + periodByAccount.bank.outgoing)}
+                </span>
+              </div>
+            </div>
+            <div className="wpa-acc-card">
+              <div className="wpa-acc-card__head">
+                <span className="wpa-acc-card__icon" aria-hidden="true">
+                  <HandCoins size={16} />
+                </span>
+                <span className="wpa-acc-card__name">Сторонние пополнения</span>
+              </div>
+              <div className="wpa-acc-card__value">{fmtMoney(balance.third_party)}</div>
+              <div className="wpa-acc-card__turn">
+                <span className="wpa-acc-card__turn-label">за период:</span>
+                <span className="wp-amt wp-amt--in">
+                  +{fmtMoney(periodByAccount.third_party.incoming)}
+                </span>
+                <span className="wp-amt wp-amt--out">
+                  −{fmtMoney(periodByAccount.third_party.outgoing)}
+                </span>
+              </div>
+            </div>
+            <div className="wpa-acc-card wpa-acc-card--total">
+              <div className="wpa-acc-card__head">
+                <span className="wpa-acc-card__icon" aria-hidden="true">
+                  <Scale size={16} />
+                </span>
+                <span className="wpa-acc-card__name">Всего с учётом сторонних</span>
+              </div>
+              <div className="wpa-acc-card__value">{fmtMoney(balance.total)}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -5260,22 +5788,21 @@ function BankTab({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="admin-field" style={{ minWidth: 140, marginBottom: 0 }}>
-          <label className="admin-label">Период с</label>
+        <div className="wpa-dates">
           <input
             className="admin-input"
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
+            aria-label="Период с"
           />
-        </div>
-        <div className="admin-field" style={{ minWidth: 140, marginBottom: 0 }}>
-          <label className="admin-label">по</label>
+          <span className="wpa-dates__dash" aria-hidden="true">—</span>
           <input
             className="admin-input"
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
+            aria-label="Период по"
           />
         </div>
         <div className="admin-filters" style={{ marginBottom: 0 }}>
@@ -5312,10 +5839,10 @@ function BankTab({
 
       <p className="wp-summary">
         Показано движений: <strong>{filtered.length}</strong>
-        <span className="wp-summary__chip" style={{ color: "var(--adm-pine)" }}>
+        <span className="wp-summary__chip wp-amt wp-amt--in">
           приход +{fmtMoney(totals.incoming)}
         </span>
-        <span className="wp-summary__chip" style={{ color: "var(--adm-kraft)" }}>
+        <span className="wp-summary__chip wp-amt wp-amt--out">
           расход −{fmtMoney(totals.outgoing)}
         </span>
         <span className="wp-summary__chip">
@@ -5357,7 +5884,7 @@ function BankTab({
                 >
                   <WpCell className="wp-cell--date">{fmtDate(e.date)}</WpCell>
                   <WpCell>
-                    <span className={KIND_BADGE[e.kind].cls}>{KIND_BADGE[e.kind].label}</span>{" "}
+                    {wpEventKindBadgeEl(e)}{" "}
                     {e.title}
                     <div style={{ color: "var(--adm-muted)", fontSize: "0.8rem", marginTop: 3 }}>
                       {e.counterpartyName || "—"}
@@ -5370,20 +5897,14 @@ function BankTab({
                     )}
                   </WpCell>
                   <WpCell
-                    className="wp-cell--num"
-                    style={{
-                      color: "var(--adm-pine)",
-                      fontWeight: e.direction === "incoming" ? 700 : 400,
-                    }}
+                    className={`wp-cell--num wp-amt${e.direction === "incoming" && e.isPaid ? " wp-amt--in" : " wp-amt--muted"}`}
+                    style={{ fontWeight: e.direction === "incoming" ? 700 : 400 }}
                   >
                     {e.direction === "incoming" && e.isPaid ? `+${fmtMoney(e.amount)}` : "—"}
                   </WpCell>
                   <WpCell
-                    className="wp-cell--num"
-                    style={{
-                      color: "var(--adm-kraft)",
-                      fontWeight: e.direction === "outgoing" ? 700 : 400,
-                    }}
+                    className={`wp-cell--num wp-amt${e.direction === "outgoing" && e.isPaid ? " wp-amt--out" : " wp-amt--muted"}`}
+                    style={{ fontWeight: e.direction === "outgoing" ? 700 : 400 }}
                   >
                     {e.direction === "outgoing" && e.isPaid ? `−${fmtMoney(e.amount)}` : "—"}
                   </WpCell>
@@ -5398,7 +5919,7 @@ function BankTab({
                       </div>
                     )}
                   </WpCell>
-                  <WpCell className="wp-cell--num" style={{ fontWeight: 600 }}>
+                  <WpCell className="wp-cell--num wp-amt" style={{ fontWeight: 600 }}>
                     {accountAfter === null ? (
                       <span className="admin-hint">—</span>
                     ) : account === "all" ? (
@@ -5448,7 +5969,7 @@ function BankTab({
           className="admin-show-more"
           style={{ marginTop: 10 }}
           ref={(node) => {
-            win.sentinelRef(node);
+            win.observeTail(node);
           }}
           onClick={win.showAll}
         >
@@ -5622,37 +6143,37 @@ function TransferModal({
             </p>
           )}
 
-          {/* Что станет с остатками после перевода */}
-          <div
-            className="admin-card"
-            style={{ background: "var(--adm-paper)", marginBottom: 0 }}
-          >
-            <div className="admin-card__pad" style={{ display: "grid", gap: 6 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span className={ACCOUNT_BADGE[form.fromAccount]}>
-                  {WP_ACCOUNT_LABELS[form.fromAccount]}
-                </span>
-                <ArrowLeftRight size={13} />
-                <span className={ACCOUNT_BADGE[form.toAccount]}>
-                  {WP_ACCOUNT_LABELS[form.toAccount]}
-                </span>
-                <strong>{amountValid ? fmtMoney(form.amount) : "—"}</strong>
-              </div>
-              <span className="admin-hint">
-                {WP_ACCOUNT_LABELS[form.fromAccount]}: {fmtMoney(sourceBalance)} →{" "}
-                <strong style={{ color: "var(--adm-kraft)" }}>{fmtMoney(sourceAfter)}</strong>
-                {" · "}
-                {WP_ACCOUNT_LABELS[form.toAccount]}: {fmtMoney(balance[form.toAccount])} →{" "}
-                <strong style={{ color: "var(--adm-pine)" }}>{fmtMoney(targetAfter)}</strong>
+          {/* Что станет с остатками после перевода — «маршрут» как в банке */}
+          <div className="wpa-route">
+            <div className="wpa-route__line">
+              <span className={ACCOUNT_BADGE[form.fromAccount]}>
+                {WP_ACCOUNT_LABELS[form.fromAccount]}
               </span>
-              {notEnough && (
-                <span className="admin-hint" style={{ color: "var(--adm-rust)" }}>
-                  На счёте «{WP_ACCOUNT_LABELS[form.fromAccount]}» меньше денег, чем
-                  переводите: остаток уйдёт в минус. Так можно, если часть денег
-                  ещё не внесена в учёт.
-                </span>
-              )}
+              <ArrowLeftRight size={15} className="wpa-route__arrow" aria-hidden="true" />
+              <span className={ACCOUNT_BADGE[form.toAccount]}>
+                {WP_ACCOUNT_LABELS[form.toAccount]}
+              </span>
+              <strong className="wpa-route__amount">
+                {amountValid ? fmtMoney(form.amount) : "—"}
+              </strong>
             </div>
+            <div className="wpa-route__after">
+              <div className="wpa-route__acc">
+                <span>{WP_ACCOUNT_LABELS[form.fromAccount]} после:</span>
+                <strong className="wp-amt wp-amt--out">{fmtMoney(sourceAfter)}</strong>
+              </div>
+              <div className="wpa-route__acc">
+                <span>{WP_ACCOUNT_LABELS[form.toAccount]} после:</span>
+                <strong className="wp-amt wp-amt--in">{fmtMoney(targetAfter)}</strong>
+              </div>
+            </div>
+            {notEnough && (
+              <p className="admin-hint" style={{ margin: 0, color: "var(--adm-rust)" }}>
+                На счёте «{WP_ACCOUNT_LABELS[form.fromAccount]}» меньше денег, чем
+                переводите: остаток уйдёт в минус. Так можно, если часть денег
+                ещё не внесена в учёт.
+              </p>
+            )}
           </div>
 
           <div className="admin-field">

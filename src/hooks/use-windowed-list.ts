@@ -40,7 +40,7 @@ export interface WindowedList<T> {
    * Callback-ref хвостового элемента (кнопка «Показать ещё», последняя
    * строка). Ставится на любой элемент: подъезд к нему догружает кусок.
    */
-  sentinelRef: (node: HTMLElement | null) => void;
+  observeTail: (node: HTMLElement | null) => void;
   /** Показать всё сразу. */
   showAll: () => void;
 }
@@ -78,14 +78,31 @@ export function useWindowedList<T>(
     setShowingAll(false);
   }
 
-  // Хвостовой элемент переустанавливается через callback-ref: наблюдатель
-  // переподключается к новому узлу и сразу видит, видим ли хвост сейчас.
-  const sentinelRef = useCallback(
+  // Хвостовой элемент переустанавливается через callback-ref. React при
+  // каждой смене identity рефа зовёт старый колбэк с null и новый с узлом —
+  // чтобы наблюдатель не пересоздавался на каждом рендере (лишние
+  // перерисовки и «дёрганье» списка при прокрутке), отключение старого
+  // наблюдателя откладываем в микро-задачу и отменяем, если узел тут же
+  // перепривязался.
+  const tailRequestRef = useRef<HTMLElement | null | undefined>(undefined);
+  const observeTail = useCallback(
     (node: HTMLElement | null) => {
+      if (!node) {
+        tailRequestRef.current = null;
+        queueMicrotask(() => {
+          if (tailRequestRef.current === null) {
+            observerRef.current?.disconnect();
+            observerRef.current = null;
+            nodeRef.current = null;
+          }
+        });
+        return;
+      }
+      tailRequestRef.current = node;
+      if (nodeRef.current === node && observerRef.current) return;
       observerRef.current?.disconnect();
       observerRef.current = null;
       nodeRef.current = node;
-      if (!node) return;
       if (typeof IntersectionObserver === "undefined") return;
       const observer = new IntersectionObserver(
         (entries) => {
@@ -118,7 +135,7 @@ export function useWindowedList<T>(
     hidden,
     showingAll: showingAll || total <= min,
     hasMore: hidden > 0,
-    sentinelRef,
+    observeTail,
     showAll: () => setShowingAll(true),
   };
 }

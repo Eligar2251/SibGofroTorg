@@ -175,7 +175,7 @@ export function ProductsMobile({
               type="button"
               className="admin-show-more"
               ref={(node) => {
-                win.sentinelRef(node);
+                win.observeTail(node);
               }}
               onClick={win.showAll}
               style={{ gridColumn: "1 / -1" }}

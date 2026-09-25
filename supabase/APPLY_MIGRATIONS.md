@@ -1,6 +1,6 @@
 # Миграции ветки (что применить на боевой базе)
 
-Все четыре файла **идемпотентны** — можно запускать повторно, ничего не сломается
+Все файлы **идемпотентны** — можно запускать повторно, ничего не сломается
 (`IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`, `ON CONFLICT DO NOTHING`).
 
 Применять в Supabase Dashboard → SQL Editor, **строго по порядку** — и лучше
@@ -13,6 +13,7 @@
 | 2 | `migration_wp_account_transfers.sql` | таблица `wp_account_transfers` + счётчик номеров | Вкладка «Банк» работает, но переводы между счетами не сохраняются (чтение деградирует в пустой список) |
 | 3 | `migration_wp_transport_done.sql` | `wp_intakes.transport_done` + разовая простановка по старым приёмам | Не сохранится карточка/новый приём макулатуры (падает запись `transport_done`) |
 | 4 | `migration_vm_card.sql` | `cash_collections.vm_transfer_amount` + расширение CHECK по `cash_destination` | Не сохранится сводка смены кассы (падает запись `vm_transfer_amount`) |
+| 5 | `migration_wp_payment_links.sql` | `wp_payments.doc_type` + `wp_payments.doc_id` (платёж = оплата приёма/продажи) | Связка «платёж ↔ документ» не сохранится: привязка платежа к приёму/продаже падает записью `doc_type` (сами документы и свободные платежи работают) |
 
 ## Что должно быть применено раньше (из `main`)
 
@@ -140,6 +141,24 @@ ALTER TABLE bank_payments
 'vm_card'` (на `type` ограничения нет), зарплата — `salaries.source = 'bank'` +
 тег `[Карта В.М.]` в комментарии.
 
+## 5. `supabase/migration_wp_payment_links.sql`
+
+```sql
+ALTER TABLE wp_payments
+  ADD COLUMN IF NOT EXISTS doc_type TEXT;   -- 'intake' | 'shipment' | NULL (свободный платёж)
+ALTER TABLE wp_payments
+  ADD COLUMN IF NOT EXISTS doc_id TEXT;     -- id приёма / продажи
+
+CREATE INDEX IF NOT EXISTS idx_wp_payments_doc
+  ON wp_payments(doc_type, doc_id)
+  WHERE doc_type IS NOT NULL;
+```
+
+Привязанный платёж — «Оплата приёма №N» / «Оплата продажи №N» — становится
+ЕДИНСТВЕННЫМ движением денег документа (собственное событие документа при
+привязанных платежах не создаётся). Поля оплаты документа синхронизируются
+с платежами автоматически.
+
 ## Проверка после применения
 
 ```sql
@@ -155,7 +174,10 @@ UNION ALL SELECT 'wp_intakes.transport_done',
                WHERE table_name = 'wp_intakes' AND column_name = 'transport_done')
 UNION ALL SELECT 'cash_collections.vm_transfer_amount',
        EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name = 'cash_collections' AND column_name = 'vm_transfer_amount');
+               WHERE table_name = 'cash_collections' AND column_name = 'vm_transfer_amount')
+UNION ALL SELECT 'wp_payments.doc_type',
+       EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'wp_payments' AND column_name = 'doc_type');
 ```
 
-Ожидаемый результат — **5 строк, во всех `ok = true`**.
+Ожидаемый результат — **6 строк, во всех `ok = true`**.

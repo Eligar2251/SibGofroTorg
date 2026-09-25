@@ -2,6 +2,7 @@
 // Отдельный учёт макулатуры: сдачи на предприятие (список, создание).
 import { NextRequest, NextResponse } from "next/server";
 import {
+  applyWpDocPayment,
   createWpShipment,
   ensureWpBranch,
   ensureWpCounterparty,
@@ -76,6 +77,18 @@ export async function POST(request: NextRequest) {
       },
       auth.displayName
     );
+    // Блок «Оплата» из формы: новая/привязанная оплата продажи.
+    // Поля оплаты сдачи (isPaid, поступление, счёт) синхронизируются с платежами.
+    await applyWpDocPayment("shipment", item.id, body.payment, {
+      createdBy: auth.displayName,
+      direction: "incoming",
+      counterpartyId: enterpriseId,
+      counterpartyName: item.enterpriseName,
+      docNumber: item.number,
+      date: item.date,
+      amount: item.receivedAmount > 0 ? item.receivedAmount : item.total,
+      account: item.account,
+    });
     await logAdminAction(
       auth.displayName,
       auth.role,

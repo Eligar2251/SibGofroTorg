@@ -2,6 +2,7 @@
 // Отдельный учёт макулатуры: приёмы (изменение, оплата, отмена, удаление).
 import { NextRequest, NextResponse } from "next/server";
 import {
+  applyWpDocPayment,
   deleteWpIntake,
   ensureWpBranch,
   requireWastepaperApi,
@@ -95,6 +96,18 @@ export async function PATCH(
         ? { transportDone: Boolean(body.transportDone) }
         : {}),
       ...(body.comment !== undefined ? { comment: body.comment } : {}),
+    });
+    // Блок «Оплата» из формы: новая/привязанная оплата или «не оплачено».
+    // Поля оплаты приёма (isPaid, суммы, счёт) синхронизируются с платежами.
+    await applyWpDocPayment("intake", id, body.payment, {
+      createdBy: auth.displayName,
+      direction: "outgoing",
+      counterpartyId: item.counterpartyId,
+      counterpartyName: item.counterpartyName,
+      docNumber: item.number,
+      date: item.date,
+      amount: item.total,
+      account: item.account,
     });
     await logAdminAction(
       auth.displayName,

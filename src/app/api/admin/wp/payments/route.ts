@@ -40,6 +40,10 @@ export async function POST(request: NextRequest) {
         isPaid: body.isPaid !== undefined ? Boolean(body.isPaid) : true,
         paidAt: body.paidAt ?? null,
         comment: body.comment ?? null,
+        // Привязка к документу (оплата приёма/продажи) — по желанию.
+        docType:
+          body.docType === "intake" || body.docType === "shipment" ? body.docType : null,
+        docId: body.docId || null,
       },
       auth.displayName
     );

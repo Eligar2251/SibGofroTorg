@@ -2,6 +2,7 @@
 // Отдельный учёт макулатуры: приёмы от клиентов (список, создание).
 import { NextRequest, NextResponse } from "next/server";
 import {
+  applyWpDocPayment,
   createWpIntake,
   ensureWpBranch,
   ensureWpCounterparty,
@@ -80,6 +81,18 @@ export async function POST(request: NextRequest) {
       },
       auth.displayName
     );
+    // Блок «Оплата» из формы: новая/привязанная оплата документа.
+    // Поля оплаты приёма (isPaid, суммы, счёт) синхронизируются с платежами.
+    await applyWpDocPayment("intake", item.id, body.payment, {
+      createdBy: auth.displayName,
+      direction: "outgoing",
+      counterpartyId,
+      counterpartyName: item.counterpartyName,
+      docNumber: item.number,
+      date: item.date,
+      amount: item.total,
+      account: item.account,
+    });
     await logAdminAction(
       auth.displayName,
       auth.role,
