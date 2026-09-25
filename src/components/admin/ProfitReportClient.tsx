@@ -50,7 +50,15 @@ import {
   ZoomIn,
   Ruler,
   LayoutGrid,
+  BookOpen,
+  FileText,
+  Palette,
+  LayoutList,
 } from "lucide-react";
+import {
+  DirectorReport,
+  buildDirectorCss,
+} from "@/components/admin/ProfitReportDirector";
 import {
   COLUMN_LABELS,
   DEFAULT_PRINT_SETTINGS,
@@ -60,6 +68,7 @@ import {
   ORIENTATION_LABELS,
   PRINT_VARIANTS,
   PrintSheet,
+  REPORT_MODE_LABELS,
   VARIANT_LABELS,
   applyVariant,
   buildReportCss,
@@ -74,6 +83,7 @@ import {
   type PrintDensity,
   type PrintLayout,
   type PrintOrientation,
+  type PrintReportMode,
   type PrintSettings,
 } from "@/components/admin/ProfitReportPrint";
 
@@ -389,7 +399,6 @@ export function ProfitReportClient({
         return pos;
       });
       setPositions(seed);
-      setMeta((m) => ({ ...m, note: "Пример расчёта на демо-данных." }));
     }
     setLoaded(true);
   }, [storageKey, demo, products]);
@@ -691,6 +700,18 @@ export function ProfitReportClient({
 
   const hasPositions = positions.length > 0;
 
+  const directorItemCount = useMemo(() => {
+    if (settings.reportMode !== "director" || !settings.directorItems) return 0;
+    return settings.directorTop > 0
+      ? Math.min(settings.directorTop, positions.length)
+      : positions.length;
+  }, [settings.reportMode, settings.directorItems, settings.directorTop, positions.length]);
+
+  const directorPageCount =
+    settings.reportMode === "director"
+      ? (settings.directorSummary ? 1 : 0) + directorItemCount
+      : 0;
+
   // Масштаб превью листа: «авто» подгоняет лист (особенно альбомный)
   // под ширину колонки, чтобы не приходилось крутить горизонтальный скролл.
   useEffect(() => {
@@ -715,7 +736,13 @@ export function ProfitReportClient({
 
   // Стили листа зависят от настроек (ориентация, компактность, оформление,
   // выравнивание) — собираем их на каждый вариант.
-  const reportCss = useMemo(() => UI_CSS + buildReportCss(settings), [settings]);
+  const reportCss = useMemo(
+    () =>
+      UI_CSS +
+      buildReportCss(settings) +
+      (settings.reportMode === "director" ? buildDirectorCss(settings) : ""),
+    [settings]
+  );
 
   // ── Ячейка с переопределением (вычисляемое поле) ──
   function OvInput({
@@ -900,9 +927,11 @@ export function ProfitReportClient({
               ].toLowerCase()}`}
             >
               <Printer size={15} /> Печать A4 ·{" "}
-              {settings.orientation === "landscape"
-                ? "горизонтально"
-                : "вертикально"}
+              {settings.reportMode === "director"
+                ? `${directorPageCount} л.`
+                : settings.orientation === "landscape"
+                  ? "горизонтально"
+                  : "вертикально"}
             </button>
             <button
               type="button"
@@ -995,6 +1024,113 @@ export function ProfitReportClient({
                 </p>
               </div>
 
+              {/* Тип отчёта */}
+              <div className="pr-settings__group">
+                <span className="pr-settings__label">
+                  <FileText size={13} /> Тип отчёта
+                </span>
+                <div className="pr-chips">
+                  {(
+                    [
+                      ["table", "Таблица на лист"],
+                      ["director", "Полный отчёт для директора"],
+                    ] as [PrintReportMode, string][]
+                  ).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`pr-chip${
+                        settings.reportMode === mode ? " pr-chip--on" : ""
+                      }`}
+                      onClick={() =>
+                        mode === "director"
+                          ? setSettings(
+                              applyVariant("director", {
+                                ...settings,
+                                reportMode: "director",
+                              })
+                            )
+                          : changeSetting({
+                              reportMode: mode,
+                              variant:
+                                settings.variant === "director"
+                                  ? "full"
+                                  : settings.variant,
+                            })
+                      }
+                    >
+                      {mode === "director" ? (
+                        <BookOpen size={13} />
+                      ) : (
+                        <Table2 size={13} />
+                      )}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="pr-settings__hint">
+                  {settings.reportMode === "director"
+                    ? `Многостраничный отчёт: сводка по всем позициям, прогноз на месяц, отдельный лист на каждую позицию с графиками, клиентами и рекомендациями. Листов: ${directorPageCount}.`
+                    : "Один лист A4 с таблицей расчёта и графиками."}
+                </p>
+              </div>
+
+              {settings.reportMode === "director" && (
+                <>
+                  <div className="pr-settings__group">
+                    <span className="pr-settings__label">
+                      <BookOpen size={13} /> Состав отчёта
+                    </span>
+                    <div className="pr-settings__cols">
+                      {(
+                        [
+                          ["directorSummary", "Сводный лист для директора"],
+                          ["directorItems", "Лист на каждую позицию"],
+                          ["directorCharts", "Графики (месяцы, цены)"],
+                          ["directorClients", "Кто и сколько берёт"],
+                          ["directorForecast", "Прогноз на месяц"],
+                          ["directorAdvice", "Рекомендации"],
+                          ["directorSales", "Все продажи позиции"],
+                          ["directorOverall", "Колонтитул листа"],
+                        ] as [keyof PrintSettings, string][]
+                      ).map(([key, label]) => (
+                        <label className="pr-check" key={String(key)}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(settings[key])}
+                            onChange={(e) =>
+                              changeSetting({
+                                [key]: e.target.checked,
+                              } as Partial<PrintSettings>)
+                            }
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="pr-settings__group">
+                    <span className="pr-settings__label">
+                      <LayoutList size={13} /> Позиций в отчёте
+                    </span>
+                    <div className="pr-chips">
+                      {[0, 10, 20, 50].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          className={`pr-chip${
+                            settings.directorTop === n ? " pr-chip--on" : ""
+                          }`}
+                          onClick={() => changeSetting({ directorTop: n })}
+                        >
+                          {n === 0 ? "Все позиции" : `Первые ${n}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
               {/* Ориентация + компактность + оформление */}
               <div className="pr-settings__group">
                 <span className="pr-settings__label">
@@ -1053,10 +1189,26 @@ export function ProfitReportClient({
                         settings.layout === l ? " pr-chip--on" : ""
                       }`}
                       onClick={() => changeSetting({ layout: l })}
+                      disabled={settings.mono}
+                      title={
+                        settings.mono
+                          ? "В чёрно-белом режиме оформление задаётся автоматически"
+                          : LAYOUT_LABELS[l]
+                      }
                     >
                       {LAYOUT_LABELS[l]}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className={`pr-chip${
+                      settings.mono ? " pr-chip--on" : ""
+                    }`}
+                    onClick={() => changeSetting({ mono: !settings.mono })}
+                    title="Чёрно-белая печать: без цветных заливок, смысл — жирным, штриховкой и знаками"
+                  >
+                    <Palette size={13} /> Чёрно-белая печать
+                  </button>
                 </div>
               </div>
 
@@ -1513,9 +1665,16 @@ export function ProfitReportClient({
           <div className="admin-card__pad">
             <div className="pr-settings-bar no-print" style={{ marginBottom: 12 }}>
               <span className="pr-settings__hint">
-                Лист A4 · {ORIENTATION_LABELS[settings.orientation]} ·{" "}
-                {VARIANT_LABELS[settings.variant]} ·{" "}
-                {DENSITY_LABELS[settings.density]} · {LAYOUT_LABELS[settings.layout]}
+                {settings.reportMode === "director"
+                  ? `Отчёт для директора · листов ${directorPageCount} · ${
+                      ORIENTATION_LABELS[settings.orientation]
+                    } · ${DENSITY_LABELS[settings.density]}`
+                  : `Лист A4 · ${ORIENTATION_LABELS[settings.orientation]} · ${
+                      VARIANT_LABELS[settings.variant]
+                    } · ${DENSITY_LABELS[settings.density]} · ${
+                      LAYOUT_LABELS[settings.layout]
+                    }`}
+                {settings.mono ? " · ч/б" : ""}
               </span>
               <div className="pr-actions__spacer" />
               <div className="pr-chips pr-zoom no-print">
@@ -1537,15 +1696,25 @@ export function ProfitReportClient({
                 className="pr-print-area"
                 style={{ display: "inline-block", zoom: previewZoom }}
               >
-                <div className="pr-a4-sheet">
-                  <PrintSheet
+                {settings.reportMode === "director" ? (
+                  <DirectorReport
                     meta={meta}
                     positions={positions}
                     calcs={calcs}
                     totals={totals}
                     settings={settings}
                   />
-                </div>
+                ) : (
+                  <div className="pr-a4-sheet">
+                    <PrintSheet
+                      meta={meta}
+                      positions={positions}
+                      calcs={calcs}
+                      totals={totals}
+                      settings={settings}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

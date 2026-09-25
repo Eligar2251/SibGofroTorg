@@ -69,7 +69,9 @@ export type PrintVariantId =
   | "chart"
   | "sales"
   | "summary"
+  | "director"
   | "custom";
+export type PrintReportMode = "table" | "director";
 export type PrintChartMetric = "benefit" | "profit" | "revenue" | "qty";
 export type PrintAlign = "right" | "center";
 export type PrintNameAlign = "left" | "center";
@@ -91,6 +93,7 @@ export interface PrintColumns {
 
 export interface PrintSettings {
   variant: PrintVariantId;
+  reportMode: PrintReportMode;
   orientation: PrintOrientation;
   density: PrintDensity;
   layout: PrintLayout;
@@ -117,6 +120,16 @@ export interface PrintSettings {
   chartMetric: PrintChartMetric;
   chartTop: number;
   columns: PrintColumns;
+  mono: boolean;
+  directorSummary: boolean;
+  directorItems: boolean;
+  directorCharts: boolean;
+  directorClients: boolean;
+  directorForecast: boolean;
+  directorAdvice: boolean;
+  directorSales: boolean;
+  directorOverall: boolean;
+  directorTop: number;
 }
 
 const ALL_COLUMNS: PrintColumns = {
@@ -136,6 +149,7 @@ const ALL_COLUMNS: PrintColumns = {
 
 export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   variant: "full",
+  reportMode: "table",
   orientation: "portrait",
   density: "normal",
   layout: "classic",
@@ -158,6 +172,16 @@ export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   chartMetric: "benefit",
   chartTop: 8,
   columns: ALL_COLUMNS,
+  mono: true,
+  directorSummary: true,
+  directorItems: true,
+  directorCharts: true,
+  directorClients: true,
+  directorForecast: true,
+  directorAdvice: true,
+  directorSales: true,
+  directorOverall: true,
+  directorTop: 0,
 };
 
 export interface VariantDef {
@@ -174,6 +198,7 @@ export const PRINT_VARIANTS: VariantDef[] = [
     label: "Полный",
     hint: "Все основные колонки, вертикальный лист, средняя плотность.",
     patch: {
+      reportMode: "table",
       orientation: "portrait",
       density: "normal",
       layout: "classic",
@@ -197,6 +222,7 @@ export const PRINT_VARIANTS: VariantDef[] = [
     label: "Компактный",
     hint: "Мелкий шрифт и минимум колонок — влезает больше позиций на лист.",
     patch: {
+      reportMode: "table",
       orientation: "portrait",
       density: "ultra",
       layout: "striped",
@@ -226,6 +252,7 @@ export const PRINT_VARIANTS: VariantDef[] = [
     label: "Горизонтально",
     hint: "Альбомный лист: все колонки, включая прибыль конкурента и №.",
     patch: {
+      reportMode: "table",
       orientation: "landscape",
       density: "normal",
       layout: "classic",
@@ -249,6 +276,7 @@ export const PRINT_VARIANTS: VariantDef[] = [
     label: "С графиками",
     hint: "Альбомный лист: таблица + полосы по позициям + структура выгоды.",
     patch: {
+      reportMode: "table",
       orientation: "landscape",
       density: "compact",
       layout: "accent",
@@ -279,6 +307,7 @@ export const PRINT_VARIANTS: VariantDef[] = [
     label: "По продажам",
     hint: "Вертикальный лист: под каждым товаром расшифровка — кому, когда, сколько.",
     patch: {
+      reportMode: "table",
       orientation: "portrait",
       density: "compact",
       layout: "classic",
@@ -304,10 +333,47 @@ export const PRINT_VARIANTS: VariantDef[] = [
     },
   },
   {
+    id: "director",
+    label: "Для директора",
+    hint: "Многостраничный отчёт: сводка, прогноз на месяц, отдельный лист на каждую позицию с графиками и рекомендациями.",
+    patch: {
+      reportMode: "director",
+      orientation: "portrait",
+      density: "normal",
+      layout: "minimal",
+      scaleMode: "auto",
+      mono: true,
+      showPositions: true,
+      showHeader: true,
+      showCards: true,
+      showTotals: true,
+      showSignature: true,
+      showFooter: false,
+      showSku: true,
+      showDetails: false,
+      chartBars: true,
+      chartDonut: true,
+      chartTimeline: true,
+      chartMetric: "benefit",
+      chartTop: 12,
+      directorSummary: true,
+      directorItems: true,
+      directorCharts: true,
+      directorClients: true,
+      directorForecast: true,
+      directorAdvice: true,
+      directorSales: true,
+      directorOverall: true,
+      directorTop: 0,
+      columns: { ...ALL_COLUMNS, index: true, compProfit: true },
+    },
+  },
+  {
     id: "summary",
     label: "Только итоги",
     hint: "Краткая сводка для руководителя: плашки, диаграммы и график продаж по дням.",
     patch: {
+      reportMode: "table",
       orientation: "landscape",
       density: "comfort",
       layout: "minimal",
@@ -353,6 +419,7 @@ export function patchSettings(
 }
 
 export const VARIANT_LABELS: Record<PrintVariantId, string> = {
+  director: "Для директора",
   full: "Полный",
   compact: "Компактный",
   wide: "Горизонтально",
@@ -360,6 +427,11 @@ export const VARIANT_LABELS: Record<PrintVariantId, string> = {
   sales: "По продажам",
   summary: "Только итоги",
   custom: "Свои настройки",
+};
+
+export const REPORT_MODE_LABELS: Record<PrintReportMode, string> = {
+  table: "Таблица",
+  director: "Полный отчёт для директора",
 };
 
 export const ORIENTATION_LABELS: Record<PrintOrientation, string> = {
@@ -416,13 +488,17 @@ export function describeSettings(s: PrintSettings): string {
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
-export function fmtMoney(n: number, currency = true): string {
+export function fmtMoney(n: number, currency = true, maxFrac = 2): string {
   const v = round2(n || 0);
   const text = v.toLocaleString("ru-RU", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: maxFrac,
   });
   return currency ? `${text}\u00A0₽` : text;
+}
+/** Суммы в отчёте директора — целыми рублями, чтобы таблицы не рябили копейками. */
+export function fmtSum(n: number, currency = true): string {
+  return fmtMoney(n, currency, 0);
 }
 export function fmtNum(n: number, maxFrac = 3): string {
   return round2(n || 0).toLocaleString("ru-RU", {
@@ -447,7 +523,7 @@ export function fmtDate(iso: string): string {
 const MM_PX = 96 / 25.4;
 /** Запас по ширине листа (мм), чтобы таблица гарантированно влезла в печать. */
 export const SHEET_SLACK_MM = 5;
-const SHEET_FONT = 'Arial, "Segoe UI", Helvetica, sans-serif';
+export const SHEET_FONT = 'Arial, "Segoe UI", Helvetica, sans-serif';
 
 export const PAPER: Record<
   PrintOrientation,
@@ -459,7 +535,7 @@ export const PAPER: Record<
   landscape: { w: 297, h: 210, contentMm: 297 - 12 - SHEET_SLACK_MM },
 };
 
-const DENSITY_STYLE: Record<
+export const DENSITY_STYLE: Record<
   PrintDensity,
   { base: number; header: number; padY: number; padX: number; line: number }
 > = {
@@ -818,6 +894,24 @@ const METRIC_COLOR: Record<PrintChartMetric, string> = {
   qty: "#0891b2",
 };
 
+const METRIC_COLOR_MONO: Record<PrintChartMetric, string> = {
+  benefit: "#111111",
+  profit: "#333333",
+  revenue: "#4d4d4d",
+  qty: "#666666",
+};
+
+const PIE_COLORS_MONO = [
+  "#111111",
+  "#3d3d3d",
+  "#666666",
+  "#8c8c8c",
+  "#adadad",
+  "#c9c9c9",
+  "#dedede",
+  "#ededed",
+];
+
 const PIE_COLORS = [
   "#2563eb",
   "#7c3aed",
@@ -1113,6 +1207,7 @@ export function PrintSheet({
               points={points}
               metric={settings.chartMetric}
               currency={settings.currency}
+              mono={settings.mono}
             />
           )}
           {settings.chartDonut && (
@@ -1120,6 +1215,7 @@ export function PrintSheet({
               points={points}
               metric={settings.chartMetric}
               currency={settings.currency}
+              mono={settings.mono}
             />
           )}
           {settings.chartTimeline && timeline.length > 0 && (
@@ -1127,6 +1223,7 @@ export function PrintSheet({
               points={timeline}
               metric={settings.chartMetric}
               currency={settings.currency}
+              mono={settings.mono}
             />
           )}
         </div>
@@ -1226,13 +1323,15 @@ function BarsChart({
   points,
   metric,
   currency,
+  mono,
 }: {
   points: ChartPoint[];
   metric: PrintChartMetric;
   currency: boolean;
+  mono: boolean;
 }) {
   const max = points.reduce((a, p) => Math.max(a, Math.abs(p.value)), 0);
-  const color = METRIC_COLOR[metric];
+  const color = mono ? METRIC_COLOR_MONO[metric] : METRIC_COLOR[metric];
   return (
     <div className="pr-chart">
       <div className="pr-chart__title">
@@ -1246,10 +1345,10 @@ function BarsChart({
             </div>
             <div className="pr-bar__track">
               <span
-                className="pr-bar__fill"
+                className={`pr-bar__fill${p.value < 0 ? " pr-bar__fill--neg" : ""}`}
                 style={{
                   width: `${max > 0 ? Math.max(2, (Math.abs(p.value) / max) * 100) : 0}%`,
-                  background: p.value < 0 ? "#dc2626" : color,
+                  background: p.value < 0 && !mono ? "#dc2626" : color,
                 }}
               />
             </div>
@@ -1267,11 +1366,14 @@ function DonutChart({
   points,
   metric,
   currency,
+  mono,
 }: {
   points: ChartPoint[];
   metric: PrintChartMetric;
   currency: boolean;
+  mono: boolean;
 }) {
+  const palette = mono ? PIE_COLORS_MONO : PIE_COLORS;
   const slices = useMemo(() => {
     const positive = points.filter((p) => p.value > 0);
     const total = positive.reduce((a, p) => a + p.value, 0);
@@ -1285,7 +1387,7 @@ function DonutChart({
       label: p.label,
       value: p.value,
       pct: (p.value / total) * 100,
-      color: PIE_COLORS[i % PIE_COLORS.length],
+      color: palette[i % palette.length],
     }));
     if (tail.length > 0) {
       const restValue = tail.reduce((a, p) => a + p.value, 0);
@@ -1294,7 +1396,7 @@ function DonutChart({
         label: `Прочие (${tail.length})`,
         value: restValue,
         pct: (restValue / total) * 100,
-        color: "#94a3b8",
+        color: mono ? "#f5f5f5" : "#94a3b8",
       });
     }
     // Смещение каждого сегмента считаем заранее — в рендере не мутируем.
@@ -1305,7 +1407,7 @@ function DonutChart({
       return { ...item, offset };
     });
     return { total, items };
-  }, [points]);
+  }, [points, palette, mono]);
 
   if (slices.total <= 0) {
     return (
@@ -1379,13 +1481,15 @@ function TimelineChart({
   points,
   metric,
   currency,
+  mono,
 }: {
   points: TimelinePoint[];
   metric: PrintChartMetric;
   currency: boolean;
+  mono: boolean;
 }) {
   const max = points.reduce((a, p) => Math.max(a, p.value), 0);
-  const color = METRIC_COLOR[metric];
+  const color = mono ? METRIC_COLOR_MONO[metric] : METRIC_COLOR[metric];
   const showValues = points.length <= 9;
   return (
     <div className="pr-chart">
@@ -1422,7 +1526,7 @@ function TimelineChart({
 export function buildReportCss(s: PrintSettings): string {
   const dens = DENSITY_STYLE[s.density];
   const paper = PAPER[s.orientation];
-  const theme = LAYOUT_THEME[s.layout];
+  const theme = s.mono ? MONO_THEME : LAYOUT_THEME[s.layout];
   return `
 /* ── Превью листа A4 (${paper.w} × ${paper.h} мм) ── */
 .pr-print-wrap { overflow: visible !important; }
@@ -1528,6 +1632,7 @@ export function buildReportCss(s: PrintSettings): string {
 .pr-bar__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; font-weight: 600; }
 .pr-bar__track { height: calc(7px * var(--pr-fit)); background: #eef2f7; border-radius: 4px; overflow: hidden; }
 .pr-bar__fill { display: block; height: 100%; border-radius: 4px; min-width: 2px; }
+.pr-bar__fill--neg { background: repeating-linear-gradient(45deg, #111 0 1.1px, #fff 1.1px 3px) !important; }
 .pr-bar__value { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; }
 .pr-donut-wrap { display: flex; gap: 10px; align-items: center; }
 .pr-donut-box { flex: 0 0 34mm; max-width: 34mm; }
@@ -1622,6 +1727,23 @@ export function buildReportCss(s: PrintSettings): string {
 }
 `;
 }
+
+// Чёрно-белое оформление (для печати без цвета).
+const MONO_THEME: (typeof LAYOUT_THEME)["classic"] = {
+  headBg: "#111111",
+  headColor: "#ffffff",
+  headBorder: "#111111",
+  border: "#8f8f8f",
+  altBg: "#f2f2f2",
+  totalBg: "#e2e2e2",
+  totalTop: "2px solid #000000",
+  cardBg: "#f4f4f4",
+  cardBorder: "#9a9a9a",
+  usBg: "#f7f7f7",
+  compBg: "#f0f0f0",
+  detailBg: "#f7f7f7",
+  accent: "#111111",
+};
 
 const LAYOUT_THEME: Record<
   PrintLayout,
