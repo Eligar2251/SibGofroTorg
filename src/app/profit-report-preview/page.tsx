@@ -61,7 +61,7 @@ export default function ProfitReportPreviewPage() {
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "24px 16px" }}>
-      <div style={{ marginBottom: 16 }}>
+      <div className="no-print" style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>
           Выгода продаж — предпросмотр (демо-данные)
         </h1>
