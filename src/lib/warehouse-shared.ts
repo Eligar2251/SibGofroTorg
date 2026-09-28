@@ -119,6 +119,13 @@ export function applyTierDiscount(price: number, discountPercent: number): numbe
 
 export type ReceiptStatus = "draft" | "posted";
 
+/** Закрытие с недопоставкой архивирует документ, но не означает полную приёмку. */
+export function isReceiptArchived(
+  receipt: Pick<WarehouseReceipt, "status" | "transportFinishedAt">
+): boolean {
+  return receipt.status === "posted" || Boolean(receipt.transportFinishedAt);
+}
+
 /** Ручная продажа товара на реализации (плюс к автоподсчёту по отгрузкам). */
 export interface ConsignmentManualSale {
   id: string;

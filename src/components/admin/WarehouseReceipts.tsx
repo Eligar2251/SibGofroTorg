@@ -35,6 +35,7 @@ import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import {
   buildReceiptDebtRows,
+  isReceiptArchived,
   type BankPayment,
   type ReceiptDebtRow,
   type WarehouseReceipt,
@@ -930,7 +931,8 @@ export function ReceiptCard({
     0
   );
   const hasReceived = receivedQty > 0.0009;
-  const isPartiallyReceived = hasReceived && r.status !== "posted";
+  const isArchived = isReceiptArchived(r);
+  const isPartiallyReceived = hasReceived && !isArchived;
   const hasNoPayment = payments.some(
     (p) =>
       p.direction === "outgoing" &&
@@ -961,7 +963,7 @@ export function ReceiptCard({
         <span className="admin-order__id">ПО-{r.number}</span>
         <span
           className={`admin-badge ${
-            r.status === "posted"
+            isArchived
               ? "admin-badge--green"
               : isPartiallyReceived
                 ? "admin-badge--blue"
@@ -970,7 +972,9 @@ export function ReceiptCard({
         >
           {r.status === "posted"
             ? "Принято полностью"
-            : isPartiallyReceived
+            : r.transportFinishedAt
+              ? "Завершено с недопоставкой"
+              : isPartiallyReceived
               ? "Принято частично"
               : "Не принято"}
         </span>
@@ -1008,7 +1012,7 @@ export function ReceiptCard({
         <span className="receipt-head__total">{fmt(r.total)} ₽</span>
         {/* Кнопка «Заберём сами» — как «В перевозку» в макулатуре:
             поставка встаёт в очередь раздела «Доставки». */}
-        {r.status !== "posted" && <ReceiptTransportToggle receipt={r} />}
+        {!isArchived && <ReceiptTransportToggle receipt={r} />}
         <span className="receipt-head__chevron">
           {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </span>
@@ -1056,7 +1060,7 @@ export function ReceiptCard({
                       <span>заказано <b>{fmt(it.quantity)}</b></span>
                       <span className="receipt-qty-progress__received">принято <b>{fmt(received)}</b></span>
                       {remaining > 0.0009 && (
-                        <span className="receipt-qty-progress__remaining">осталось <b>{fmt(remaining)}</b></span>
+                        <span className="receipt-qty-progress__remaining">{r.transportFinishedAt ? "недопоставка" : "осталось"} <b>{fmt(remaining)}</b></span>
                       )}
                       {over > 0.0009 && (
                         <span
