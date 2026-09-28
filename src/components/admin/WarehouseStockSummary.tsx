@@ -507,7 +507,7 @@ export function ProductStockSummaryPanel({
                             {(receipt.overQty || 0) > 0.0009 && (
                               <span
                                 style={{ color: "var(--adm-pine)", fontWeight: 700 }}
-                                title="Принято сверх заказа без доплаты: сумма поставки не изменилась"
+                                title="За количество сверх заказа рассчитан долг поставщику по закупочной цене"
                               >
                                 {" "}· сверх +{fmt(receipt.overQty || 0)}
                               </span>
@@ -519,7 +519,7 @@ export function ProductStockSummaryPanel({
                         style={{ textAlign: "right" }}
                         title={
                           (receipt.overQty || 0) > 0.0009
-                            ? "Себестоимость пересчитана на фактически принятое количество: излишек пришёл без доплаты"
+                            ? "Себестоимость учитывает закупочную стоимость излишка и соответствующий долг поставщику"
                             : undefined
                         }
                       >
