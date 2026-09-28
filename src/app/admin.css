@@ -1876,6 +1876,8 @@
 }
 .receipt-qty-progress__received { color: var(--adm-pine); }
 .receipt-qty-progress__remaining { color: var(--adm-kraft); }
+/* Принято сверх заказа (перепоставка) — излишек без доплаты. */
+.receipt-qty-progress__over { color: var(--adm-pine); font-weight: 700; }
 
 .receipt-post-list { display: grid; gap: 0; overflow-x: auto; border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
 .receipt-post-row { display: grid; grid-template-columns: minmax(170px, 1fr) repeat(4, minmax(76px, .42fr)); gap: 8px; align-items: center; min-width: 580px; padding: 9px 10px; border-top: 1px solid var(--adm-border-soft); color: var(--adm-ink-soft); font-size: 11px; }
@@ -1884,6 +1886,28 @@
 .receipt-post-row > :not(:first-child) { text-align: right; }
 .receipt-post-row .admin-input { width: 100%; min-width: 72px; padding: 7px 8px; text-align: right; }
 .receipt-post-row > b { color: var(--adm-kraft); }
+/* Ввели больше заказанного: подсвечиваем и число, и поле ввода. */
+.receipt-post-row > b.receipt-post-over { color: var(--adm-pine); white-space: nowrap; }
+.receipt-post-row .receipt-post-input--over {
+  border-color: var(--adm-pine-line);
+  background: var(--adm-pine-pale);
+  color: var(--adm-pine);
+  font-weight: 700;
+}
+.receipt-post-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--adm-pine-line);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-pine-pale);
+  color: var(--adm-pine);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.receipt-post-note svg { flex: 0 0 auto; margin-top: 1px; }
 
 @media (max-width: 700px) {
   .receipt-qty-progress { justify-content: flex-start; flex-basis: 100%; flex-wrap: wrap; }

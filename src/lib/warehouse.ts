@@ -1289,10 +1289,34 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
   return { id: receiptId, number };
 }
 
+/**
+ * Приёмка поставки на склад (проведение приходного ордера).
+ *
+ * ★ Перепоставка: принять можно БОЛЬШЕ заказанного. Поставщик иногда
+ *   привозит излишек (заказали 200 — приехало 300), и он ставится на склад
+ *   без доплаты. Поэтому:
+ *   • количество не урезается по заказанному (received_items хранит факт,
+ *     в т.ч. сверх заказа);
+ *   • сумма поставки (total), НДС и долг перед поставщиком НЕ меняются —
+ *     они считаются от заказанного состава, излишек бесплатный;
+ *   • себестоимость единицы в складской сводке пересчитывается на фактически
+ *     принятое количество (2000 ₽ / 300 шт. вместо 2000 ₽ / 200 шт.).
+ *
+ * `options.allowOverdelivery` — флаг явной ручной приёмки: только с ним
+ *   можно ввести больше заказанного. Рейс («Доставки» → завершить) вызывает
+ *   функцию без флага, поэтому там количество по-прежнему урезается по
+ *   остатку — иначе уже принятый вручную груз встал бы на склад второй раз.
+ *
+ * `options.acceptExtraOnPosted` разрешает дописать излишек в уже полностью
+ * принятую поставку (кнопка «Принять ещё»). Без флага полностью принятая
+ * поставка остаётся закрытой — это защита от повторного проведения рейсом,
+ * который возил этот же груз.
+ */
 export async function postReceipt(
   id: string,
-  receivedItems?: { productId: string; quantity: number }[]
-): Promise<{ fullyReceived: boolean; receivedNow: number }> {
+  receivedItems?: { productId: string; quantity: number }[],
+  options?: { allowOverdelivery?: boolean; acceptExtraOnPosted?: boolean }
+): Promise<{ fullyReceived: boolean; receivedNow: number; overQty: number }> {
   const db = getAdminDb();
   const { data: receipt, error: readError } = await db
     .from("warehouse_receipts")
@@ -1301,7 +1325,11 @@ export async function postReceipt(
     .single();
   if (readError) throw readError;
   if (!receipt) throw new Error("Поступление не найдено");
-  if (receipt.status === "posted") throw new Error("Поставка уже принята полностью");
+  const acceptExtra = options?.acceptExtraOnPosted === true;
+  const allowOver = options?.allowOverdelivery === true || acceptExtra;
+  if (receipt.status === "posted" && !acceptExtra) {
+    throw new Error("Поставка уже принята полностью");
+  }
 
   const orderedItems = (Array.isArray(receipt.items) ? receipt.items : []) as StockDocItem[];
   const orderedByProduct = new Map<string, number>();
@@ -1320,6 +1348,11 @@ export async function postReceipt(
   const requested = new Map<string, number>();
   if (receivedItems === undefined) {
     // Старые вызовы (например импорт Excel) принимают весь остаток.
+    // Для уже принятой поставки остатка нет — дописать излишек можно только
+    // явным списком количеств (кнопка «Принять ещё»).
+    if (acceptExtra && receipt.status === "posted") {
+      throw new Error("Поставка уже принята полностью");
+    }
     for (const [productId, ordered] of orderedByProduct) {
       requested.set(productId, Math.max(0, ordered - (alreadyReceived.get(productId) || 0)));
     }
@@ -1336,10 +1369,15 @@ export async function postReceipt(
   for (const [productId, ordered] of orderedByProduct) {
     const previous = alreadyReceived.get(productId) || 0;
     const remaining = Math.max(0, ordered - previous);
-    const receiveNow = Math.min(remaining, requested.get(productId) || 0);
+    const wanted = Math.max(0, requested.get(productId) || 0);
+    // ★ Ручная приёмка может превысить заказ (перепоставка) — излишек встаёт
+    //   на склад без доплаты. Автоматические вызовы (завершение рейса,
+    //   импорт) по-прежнему урезаются по остатку к приёмке.
+    const receiveNow =
+      Math.round((allowOver ? wanted : Math.min(remaining, wanted)) * 1000) / 1000;
     if (receiveNow <= 0.0009) continue;
     const source = itemByProduct.get(productId)!;
-    deltaItems.push({ ...source, quantity: Math.round(receiveNow * 1000) / 1000 });
+    deltaItems.push({ ...source, quantity: receiveNow });
     alreadyReceived.set(productId, Math.round((previous + receiveNow) * 1000) / 1000);
   }
   if (deltaItems.length === 0) {
@@ -1348,6 +1386,8 @@ export async function postReceipt(
 
   await applyStockDelta(deltaItems, 1);
 
+  // Перепоставка (принято больше заказанного) тоже считается полным приёмом:
+  // заказ закрыт, а излишек уже на складе.
   const fullyReceived = [...orderedByProduct].every(
     ([productId, ordered]) => (alreadyReceived.get(productId) || 0) >= ordered - 0.0009
   );
@@ -1355,12 +1395,18 @@ export async function postReceipt(
     .map((productId) => ({
       productId,
       name: itemByProduct.get(productId)?.name || "",
-      receivedQty: Math.min(
-        orderedByProduct.get(productId) || 0,
-        alreadyReceived.get(productId) || 0
-      ),
+      // Фактическое количество, включая излишек сверх заказа. Стоимость
+      // поставки при этом не меняется (излишек принят без доплаты).
+      receivedQty: Math.max(0, alreadyReceived.get(productId) || 0),
     }))
     .filter((item) => item.receivedQty > 0.0009);
+  const overQty = round2(
+    [...orderedByProduct].reduce(
+      (sum, [productId, ordered]) =>
+        sum + Math.max(0, (alreadyReceived.get(productId) || 0) - ordered),
+      0
+    )
+  );
 
   const { error } = await db
     .from("warehouse_receipts")
@@ -1379,6 +1425,7 @@ export async function postReceipt(
     receivedNow: round2(
       deltaItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
     ),
+    overQty,
   };
 }
 
@@ -4491,14 +4538,15 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     );
     const orderedQty = productItemQuantity(matchingItems, productId);
     const storedReceived = productReceivedQuantity(row.received_items, productId);
-    const receivedQty = Math.min(
-      orderedQty,
+    // Фактически принятое может превышать заказанное (перепоставка) —
+    // не урезаем, иначе расхождение уедет в «свой остаток» товара.
+    const receivedQty =
       storedReceived > 0 || (Array.isArray(row.received_items) && row.received_items.length > 0)
         ? storedReceived
         : row.status === "posted"
           ? orderedQty
-          : 0
-    );
+          : 0;
+    const overQty = Math.max(0, receivedQty - orderedQty);
     const plannedLineTotal = round2(
       matchingItems.reduce((sum: number, item: any) => {
         const itemQty = Math.max(0, Number(item?.quantity) || 0);
@@ -4515,6 +4563,12 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
             : itemQty * Math.max(0, Number(item?.price) || 0));
       }, 0)
     );
+    // ★ Перепоставка не увеличивает стоимость: заплачено за заказанное
+    //   количество, излишек поставщик отгрузил без доплаты. Сумма партии
+    //   остаётся плановой, а цена за единицу пересчитывается на фактически
+    //   принятое количество (заказали 200 за 2000 ₽, приехало 300 → 6,67 ₽/шт).
+    const costBaseQty = Math.max(orderedQty, receivedQty);
+    const factUnitPrice = costBaseQty > 0 ? plannedLineTotal / costBaseQty : 0;
     return {
       id: String(row.id),
       number: Number(row.number) || 0,
@@ -4523,10 +4577,10 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
       status: row.status === "posted" ? "posted" : "draft",
       quantity: receivedQty,
       orderedQty,
+      overQty,
       remainingQty: Math.max(0, orderedQty - receivedQty),
-      unitPrice: orderedQty > 0 ? round2(plannedLineTotal / orderedQty) : 0,
-      lineTotal:
-        orderedQty > 0 ? round2((plannedLineTotal / orderedQty) * receivedQty) : 0,
+      unitPrice: round2(factUnitPrice),
+      lineTotal: receivedQty > 0 ? round2(factUnitPrice * receivedQty) : 0,
     };
   });
 
