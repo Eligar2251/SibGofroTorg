@@ -504,10 +504,25 @@ export function ProductStockSummaryPanel({
                         {receipt.orderedQty != null && (
                           <small className="admin-muted" style={{ display: "block" }}>
                             из {fmt(receipt.orderedQty)}
+                            {(receipt.overQty || 0) > 0.0009 && (
+                              <span
+                                style={{ color: "var(--adm-pine)", fontWeight: 700 }}
+                                title="Принято сверх заказа без доплаты: сумма поставки не изменилась"
+                              >
+                                {" "}· сверх +{fmt(receipt.overQty || 0)}
+                              </span>
+                            )}
                           </small>
                         )}
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td
+                        style={{ textAlign: "right" }}
+                        title={
+                          (receipt.overQty || 0) > 0.0009
+                            ? "Себестоимость пересчитана на фактически принятое количество: излишек пришёл без доплаты"
+                            : undefined
+                        }
+                      >
                         {fmt(receipt.unitPrice)} ₽
                       </td>
                       <td style={{ textAlign: "right" }}>

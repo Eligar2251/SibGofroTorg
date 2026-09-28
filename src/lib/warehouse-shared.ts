@@ -451,10 +451,12 @@ export interface ProductStockReceiptHistory {
   date: string;
   supplier: string;
   status: ReceiptStatus;
-  /** Фактически уже принято на склад. */
+  /** Фактически уже принято на склад (может быть больше заказанного — перепоставка). */
   quantity: number;
   /** Заказано у поставщика. */
   orderedQty?: number;
+  /** Принято сверх заказа без доплаты (перепоставка). */
+  overQty?: number;
   /** Осталось принять. */
   remainingQty?: number;
   unitPrice: number;

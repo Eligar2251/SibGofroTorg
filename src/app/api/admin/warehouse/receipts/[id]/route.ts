@@ -73,7 +73,14 @@ export async function PATCH(
               productId: String(item?.productId || ""),
               quantity: Number(item?.quantity) || 0,
             }))
-          : undefined
+          : undefined,
+        // Ручная приёмка из карточки поставки: разрешено ввести больше
+        // заказанного (перепоставка без доплаты), а флагом acceptExtra —
+        // дописать излишек в уже полностью принятую поставку («Принять ещё»).
+        {
+          allowOverdelivery: body.allowOverdelivery === true,
+          acceptExtraOnPosted: body.acceptExtra === true,
+        }
       );
     } else if (body.action === "cancel") {
       await cancelReceipt(id);

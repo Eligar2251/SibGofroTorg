@@ -896,16 +896,27 @@ export function ReceiptCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const receivedByProduct = receivedQtyMap(r);
-  const orderedQty = r.items.reduce(
-    (sum, item) => sum + Math.max(0, Number(item.quantity) || 0),
+  // Заказ и приём считаем по товарам (а не по строкам): одна позиция может
+  // лежать в документе несколькими строками.
+  const orderedByProduct = new Map<string, number>();
+  for (const item of r.items) {
+    const productId = String(item.productId || "");
+    if (!productId) continue;
+    orderedByProduct.set(
+      productId,
+      (orderedByProduct.get(productId) || 0) + Math.max(0, Number(item.quantity) || 0)
+    );
+  }
+  const orderedQty = [...orderedByProduct.values()].reduce((sum, qty) => sum + qty, 0);
+  // Фактически принятое не урезаем по заказанному: при перепоставке
+  // (приехало больше, чем заказано) карточка должна показывать излишек.
+  const receivedQty = [...orderedByProduct.keys()].reduce(
+    (sum, productId) => sum + Math.max(0, receivedByProduct.get(productId) || 0),
     0
   );
-  const receivedQty = r.items.reduce(
-    (sum, item) =>
-      sum + Math.min(
-        Math.max(0, Number(item.quantity) || 0),
-        receivedByProduct.get(item.productId) || 0
-      ),
+  const overQty = [...orderedByProduct].reduce(
+    (sum, [productId, ordered]) =>
+      sum + Math.max(0, (receivedByProduct.get(productId) || 0) - ordered),
     0
   );
   const hasReceived = receivedQty > 0.0009;
@@ -956,6 +967,14 @@ export function ReceiptCard({
         {hasReceived && (
           <span className="admin-badge admin-badge--indigo">
             {fmt(receivedQty)} из {fmt(orderedQty)} шт.
+          </span>
+        )}
+        {overQty > 0.0009 && (
+          <span
+            className="admin-badge admin-badge--green"
+            title="Принято больше заказанного: излишек поставлен на склад без доплаты, сумма поставки не изменилась"
+          >
+            Сверх заказа +{fmt(overQty)}
           </span>
         )}
         {hasNoPayment ? (
@@ -1009,11 +1028,11 @@ export function ReceiptCard({
             <div className="admin-order__items">
               <div className="admin-order__items-title">Товары (с НДС)</div>
               {r.items.map((it, idx) => {
-                const received = Math.min(
-                  Math.max(0, Number(it.quantity) || 0),
-                  receivedByProduct.get(it.productId) || 0
-                );
+                // Фактическое приёмное количество (может превышать заказ —
+                // перепоставка принимается без доплаты).
+                const received = Math.max(0, receivedByProduct.get(it.productId) || 0);
                 const remaining = Math.max(0, (Number(it.quantity) || 0) - received);
+                const over = Math.max(0, received - (Number(it.quantity) || 0));
                 return (
                   <div key={idx} className="admin-order__item">
                     <Link
@@ -1029,6 +1048,14 @@ export function ReceiptCard({
                       <span className="receipt-qty-progress__received">принято <b>{fmt(received)}</b></span>
                       {remaining > 0.0009 && (
                         <span className="receipt-qty-progress__remaining">осталось <b>{fmt(remaining)}</b></span>
+                      )}
+                      {over > 0.0009 && (
+                        <span
+                          className="receipt-qty-progress__over"
+                          title="Принято сверх заказа без доплаты: сумма поставки не изменилась"
+                        >
+                          сверх <b>+{fmt(over)}</b>
+                        </span>
                       )}
                     </span>
                     <span className="admin-order__item-sum">{fmt(it.lineTotal)} ₽</span>
@@ -1121,9 +1148,9 @@ export function ReceiptCard({
                 }}
               />
             )}
-            {r.status === "draft" && (
-              <ReceiptPostButton receipt={r} paidEnough={isFullyPaid} />
-            )}
+            {/* Кнопка приёмки доступна и у полностью принятой поставки:
+                это «Принять ещё» — излишек сверх заказа без доплаты. */}
+            <ReceiptPostButton receipt={r} paidEnough={isFullyPaid} />
             {hasReceived && <ReceiptCancelButton receiptId={r.id} partial={r.status !== "posted"} />}
             {!hasReceived && <ReceiptDeleteButton receiptId={r.id} />}
           </div>
@@ -1210,20 +1237,40 @@ export function ReceiptPostButton({
   // иначе выделение текста с отпусканием мыши за окном закрывало окно.
   useEscapeClose(() => setOpen(false), open && !saving);
   const received = receivedQtyMap(receipt);
-  const remainingRows = receipt.items
-    .map((item) => ({
-      ...item,
-      received: Math.min(
-        Math.max(0, Number(item.quantity) || 0),
-        received.get(item.productId) || 0
-      ),
-      remaining: Math.max(
-        0,
-        (Number(item.quantity) || 0) - (received.get(item.productId) || 0)
-      ),
-    }))
-    .filter((item) => item.remaining > 0.0009);
+  // ★ Позиции поставки к приёмке. Строки не урезаются по остатку и не
+  //   прячутся после полного приёма: принять можно БОЛЬШЕ заказанного
+  //   (перепоставка) — излишек встаёт на склад без доплаты.
+  const postRows = (() => {
+    const map = new Map<
+      string,
+      { productId: string; name: string; ordered: number; received: number; remaining: number }
+    >();
+    for (const item of receipt.items) {
+      const productId = String(item.productId || "");
+      if (!productId) continue;
+      const row =
+        map.get(productId) ||
+        { productId, name: item.name, ordered: 0, received: 0, remaining: 0 };
+      row.ordered += Math.max(0, Number(item.quantity) || 0);
+      map.set(productId, row);
+    }
+    for (const row of map.values()) {
+      row.received = Math.max(0, received.get(row.productId) || 0);
+      row.remaining = Math.max(0, row.ordered - row.received);
+    }
+    return [...map.values()];
+  })();
   const hasReceived = [...received.values()].some((quantity) => quantity > 0.0009);
+  // Поставка уже закрыта — кнопка работает как «Принять ещё» (излишек).
+  const isPosted = receipt.status === "posted";
+  const qtyOf = (productId: string) =>
+    Math.max(0, Math.round((Number(quantities[productId]) || 0) * 1000) / 1000);
+  const overTotal = roundKopeck(
+    postRows.reduce(
+      (sum, row) => sum + Math.max(0, qtyOf(row.productId) - row.remaining),
+      0
+    )
+  );
 
   function showPostModal() {
     if (
@@ -1236,7 +1283,7 @@ export function ReceiptPostButton({
     }
     setQuantities(
       Object.fromEntries(
-        remainingRows.map((item) => [item.productId, item.remaining])
+        postRows.map((row) => [row.productId, isPosted ? 0 : row.remaining])
       )
     );
     setError("");
@@ -1244,17 +1291,23 @@ export function ReceiptPostButton({
   }
 
   async function post() {
-    const items = remainingRows
-      .map((item) => ({
-        productId: item.productId,
-        quantity: Math.min(
-          item.remaining,
-          Math.max(0, Number(quantities[item.productId]) || 0)
-        ),
-      }))
+    const items = postRows
+      .map((row) => ({ productId: row.productId, quantity: qtyOf(row.productId) }))
       .filter((item) => item.quantity > 0.0009);
     if (items.length === 0) {
-      setError("Укажите количество, которое фактически приехало");
+      setError(
+        isPosted
+          ? "Укажите, сколько приехало сверх заказа"
+          : "Укажите количество, которое фактически приехало"
+      );
+      return;
+    }
+    if (
+      overTotal > 0.0009 &&
+      !confirm(
+        `Принять на ${fmt(overTotal)} шт. больше заказанного?\n\nИзлишек встанет на склад без доплаты: сумма поставки и долг перед поставщиком не изменятся, себестоимость единицы пересчитается на фактическое количество.`
+      )
+    ) {
       return;
     }
 
@@ -1264,7 +1317,15 @@ export function ReceiptPostButton({
       const response = await fetch(`/api/admin/warehouse/receipts/${receipt.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "post", items }),
+        // allowOverdelivery — ручная приёмка, можно больше заказанного
+        // (перепоставка без доплаты); acceptExtra — дописать излишек в уже
+        // полностью принятую поставку («Принять ещё»).
+        body: JSON.stringify({
+          action: "post",
+          items,
+          allowOverdelivery: true,
+          acceptExtra: isPosted,
+        }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Не удалось принять поставку");
@@ -1282,14 +1343,18 @@ export function ReceiptPostButton({
       <button
         type="button"
         className={`admin-status__btn ${
-          paidEnough ? "admin-status__btn--primary" : "admin-status__btn--outline"
+          !isPosted && paidEnough
+            ? "admin-status__btn--primary"
+            : "admin-status__btn--outline"
         }`}
         onClick={showPostModal}
-        disabled={saving || remainingRows.length === 0}
+        disabled={saving || postRows.length === 0}
         title={
-          paidEnough
-            ? "Указать фактически приехавшее количество"
-            : "Товар будет зачислен, но останется долг перед поставщиком"
+          isPosted
+            ? "Принять излишек, который приехал сверх заказа (без доплаты)"
+            : paidEnough
+              ? "Указать фактически приехавшее количество (можно больше заказанного)"
+              : "Товар будет зачислен, но останется долг перед поставщиком"
         }
       >
         {saving ? (
@@ -1297,7 +1362,13 @@ export function ReceiptPostButton({
         ) : (
           <CheckCircle size={14} />
         )}
-        {hasReceived ? "Принять остаток" : paidEnough ? "Принять на склад" : "Принять без оплаты"}
+        {isPosted
+          ? "Принять ещё"
+          : hasReceived
+            ? "Принять остаток"
+            : paidEnough
+              ? "Принять на склад"
+              : "Принять без оплаты"}
       </button>
 
       {open && (
@@ -1310,9 +1381,13 @@ export function ReceiptPostButton({
             >
               <div className="admin-modal__head">
                 <div>
-                  <h3 className="admin-modal__title">Приёмка ПО-{receipt.number}</h3>
+                  <h3 className="admin-modal__title">
+                    {isPosted ? `Излишек по ПО-${receipt.number}` : `Приёмка ПО-${receipt.number}`}
+                  </h3>
                   <p className="admin-modal__desc" style={{ margin: "4px 0 0" }}>
-                    Укажите, сколько фактически приехало сейчас. Неполученный остаток останется в активных поставках.
+                    {isPosted
+                      ? "Поставка уже принята. Укажите, сколько приехало сверх заказа — излишек встанет на склад без доплаты."
+                      : "Укажите, сколько фактически приехало сейчас. Можно ввести больше заказанного: излишек (перепоставка) принимается без доплаты. Неполученный остаток останется в активных поставках."}
                   </p>
                 </div>
                 <button type="button" className="admin-modal__close" onClick={() => setOpen(false)} disabled={saving} aria-label="Закрыть">
@@ -1328,38 +1403,51 @@ export function ReceiptPostButton({
                   <span>Приехало сейчас</span>
                   <span>Останется</span>
                 </div>
-                {remainingRows.map((item) => {
-                  const now = Math.min(
-                    item.remaining,
-                    Math.max(0, Number(quantities[item.productId]) || 0)
-                  );
+                {postRows.map((row) => {
+                  const now = qtyOf(row.productId);
+                  const over = Math.max(0, now - row.remaining);
+                  const isOver = over > 0.0009;
                   return (
-                    <div key={item.productId} className="receipt-post-row">
-                      <strong>{item.name}</strong>
-                      <span>{fmt(item.quantity)}</span>
-                      <span>{fmt(item.received)}</span>
+                    <div key={row.productId} className="receipt-post-row">
+                      <strong>{row.name}</strong>
+                      <span>{fmt(row.ordered)}</span>
+                      <span>{fmt(row.received)}</span>
                       <input
                         type="number"
-                        className="admin-input"
+                        className={`admin-input${isOver ? " receipt-post-input--over" : ""}`}
                         min={0}
-                        max={item.remaining}
                         step={0.001}
-                        value={quantities[item.productId] ?? item.remaining}
+                        title={
+                          isPosted
+                            ? "Сколько приехало сверх заказа (без доплаты)"
+                            : `Фактически приехало. Остаток к приёмке ${fmt(row.remaining)}; можно больше — излишек примется без доплаты`
+                        }
+                        value={quantities[row.productId] ?? (isPosted ? 0 : row.remaining)}
                         onChange={(event) =>
                           setQuantities((previous) => ({
                             ...previous,
-                            [item.productId]: Math.min(
-                              item.remaining,
-                              Math.max(0, Number(event.target.value) || 0)
-                            ),
+                            [row.productId]: Math.max(0, Number(event.target.value) || 0),
                           }))
                         }
                       />
-                      <b>{fmt(Math.max(0, item.remaining - now))}</b>
+                      <b className={isOver ? "receipt-post-over" : undefined}>
+                        {isOver ? `+${fmt(Math.round(over * 1000) / 1000)} сверх` : fmt(Math.max(0, row.remaining - now))}
+                      </b>
                     </div>
                   );
                 })}
               </div>
+
+              {overTotal > 0.0009 && (
+                <div className="receipt-post-note">
+                  <AlertTriangle size={12} />
+                  <span>
+                    Перепоставка <b>+{fmt(overTotal)}</b> сверх заказа — принимается без доплаты:
+                    сумма ПО-{receipt.number} и долг перед поставщиком не изменятся,
+                    себестоимость единицы пересчитается на фактическое количество.
+                  </span>
+                </div>
+              )}
 
               {error && <div className="wh-form-error" style={{ marginTop: 12 }}>{error}</div>}
 
@@ -1369,7 +1457,7 @@ export function ReceiptPostButton({
                 </button>
                 <button type="button" className="admin-btn admin-btn--primary" onClick={post} disabled={saving}>
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
-                  Принять указанное
+                  {isPosted ? "Поставить излишек на склад" : "Принять указанное"}
                 </button>
               </div>
             </div>
