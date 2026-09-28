@@ -4,6 +4,8 @@ import {
   deleteReceipt,
   postReceipt,
   cancelReceipt,
+  finishReceiptTransport,
+  markReceiptOverdeliveryPaid,
   setReceiptTransport,
   updateReceipt,
 } from "@/lib/warehouse";
@@ -75,7 +77,7 @@ export async function PATCH(
             }))
           : undefined,
         // Ручная приёмка из карточки поставки: разрешено ввести больше
-        // заказанного (перепоставка без доплаты), а флагом acceptExtra —
+        // заказанного (перепоставка с отдельным долгом), а флагом acceptExtra —
         // дописать излишек в уже полностью принятую поставку («Принять ещё»).
         {
           allowOverdelivery: body.allowOverdelivery === true,
@@ -91,6 +93,10 @@ export async function PATCH(
         needsTransport: body.needsTransport === true,
         transportPlannedDate: body.transportPlannedDate ?? null,
       });
+    } else if (body.action === "finish-transport") {
+      result = await finishReceiptTransport(id);
+    } else if (body.action === "mark-overdelivery-paid") {
+      result = await markReceiptOverdeliveryPaid(id, String(body.productId || ""));
     } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }

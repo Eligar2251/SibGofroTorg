@@ -541,6 +541,9 @@ CREATE TABLE IF NOT EXISTS warehouse_receipts (
   -- в очередь перевозок учёта и едет в путевом листе как «забор груза».
   needs_transport BOOLEAN NOT NULL DEFAULT FALSE,
   transport_planned_date DATE,
+  -- Подтверждённое завершение недопоставленной перевозки и отметки об оплате излишков.
+  transport_finished_at TIMESTAMPTZ,
+  paid_overdelivery_items JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

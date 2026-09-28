@@ -1876,7 +1876,7 @@
 }
 .receipt-qty-progress__received { color: var(--adm-pine); }
 .receipt-qty-progress__remaining { color: var(--adm-kraft); }
-/* Принято сверх заказа (перепоставка) — излишек без доплаты. */
+/* Принято сверх заказа (перепоставка) — появляется долг поставщику. */
 .receipt-qty-progress__over { color: var(--adm-pine); font-weight: 700; }
 
 .receipt-post-list { display: grid; gap: 0; overflow-x: auto; border: 1px solid var(--adm-border); border-radius: var(--adm-r-sm); }
@@ -14860,4 +14860,107 @@ a.client-card__contact:hover {
     overflow: hidden !important;
     opacity: 0 !important;
   }
+}
+
+/* ── Долги по расхождениям поставок ── */
+.receipt-finish-transport {
+  display: grid;
+  gap: 5px;
+}
+.receipt-finish-transport > span {
+  color: var(--adm-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.receipt-finish-transport .receipt-finish-transport__error {
+  color: var(--adm-rust);
+  font-weight: 650;
+}
+.receipt-transport-finished {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--adm-pine-line, var(--adm-border));
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-pine-pale, var(--adm-paper-warm));
+  color: var(--adm-pine);
+  font-size: 11px;
+  font-weight: 700;
+}
+.receipt-debts {
+  display: grid;
+  gap: 12px;
+}
+.receipt-debt-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.receipt-debt-summary__item {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  background: var(--adm-paper);
+}
+.receipt-debt-summary__item > span,
+.receipt-debt-summary__item > small {
+  color: var(--adm-muted);
+  font-size: 11px;
+}
+.receipt-debt-summary__item > strong {
+  color: var(--adm-navy);
+  font-size: 20px;
+  line-height: 1.2;
+}
+.receipt-debt-summary__item--incoming > strong { color: var(--adm-pine); }
+.receipt-debt-summary__item--outgoing > strong { color: var(--adm-rust); }
+.receipt-debt-list__rows { display: grid; }
+.receipt-debt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--adm-border-soft);
+}
+.receipt-debt-row__main {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+.receipt-debt-row__top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.receipt-debt-row__receipt {
+  color: var(--adm-sand);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 750;
+  text-decoration: none;
+}
+.receipt-debt-row__receipt:hover { color: var(--adm-navy); text-decoration: underline; }
+.receipt-debt-row__supplier { color: var(--adm-ink); font-size: 13px; }
+.receipt-debt-row__product { color: var(--adm-ink-soft); font-size: 12px; }
+.receipt-debt-row__calculation { color: var(--adm-muted); font-size: 11px; }
+.receipt-debt-row__amount {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: end;
+  gap: 5px;
+}
+.receipt-debt-row__amount > strong { color: var(--adm-navy); font-size: 16px; white-space: nowrap; }
+.receipt-debt-row__amount > small { color: var(--adm-muted); font-size: 10px; }
+.receipt-debt-row__amount .admin-btn { margin-top: 3px; }
+
+@media (max-width: 640px) {
+  .receipt-debt-summary { grid-template-columns: 1fr; }
+  .receipt-debt-row { align-items: flex-start; padding: 12px; gap: 10px; }
+  .receipt-debt-row__amount { min-width: 115px; }
+  .receipt-debt-row__amount > strong { font-size: 14px; }
 }

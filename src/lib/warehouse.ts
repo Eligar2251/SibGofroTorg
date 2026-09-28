@@ -235,6 +235,16 @@ function mapReceiptRow(row: any): WarehouseReceipt {
     transportPlannedDate: row.transport_planned_date
       ? String(row.transport_planned_date).slice(0, 10)
       : null,
+    transportFinishedAt: toIso(row.transport_finished_at),
+    paidOverdeliveryItems: Array.isArray(row.paid_overdelivery_items)
+      ? row.paid_overdelivery_items
+          .filter((item: any) => item && typeof item === "object" && item.productId)
+          .map((item: any) => ({
+            productId: String(item.productId),
+            paidQty: Math.max(0, Number(item.paidQty) || 0),
+            paidAt: item.paidAt ? String(item.paidAt) : null,
+          }))
+      : [],
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -794,6 +804,38 @@ function receiptReceivedMap(receipt: {
   return map;
 }
 
+/** Заказанные позиции, агрегированные по товару с ценой за единицу. */
+function receiptOrderedRows(items: unknown): Map<string, {
+  name: string;
+  quantity: number;
+  total: number;
+  unitPrice: number;
+}> {
+  const map = new Map<string, { name: string; quantity: number; total: number; unitPrice: number }>();
+  for (const raw of Array.isArray(items) ? items : []) {
+    const item = raw as Record<string, unknown>;
+    const productId = String(item?.productId || "");
+    if (!productId) continue;
+    const quantity = Math.max(0, Number(item.quantity) || 0);
+    const price = Math.max(0, Number(item.price) || 0);
+    const rawTotal = Number(item.lineTotal);
+    const lineTotal = Number.isFinite(rawTotal) && rawTotal > 0
+      ? rawTotal
+      : quantity * price;
+    const row = map.get(productId) || {
+      name: String(item.name || "Товар"),
+      quantity: 0,
+      total: 0,
+      unitPrice: price,
+    };
+    row.quantity += quantity;
+    row.total += lineTotal;
+    row.unitPrice = row.quantity > 0 ? row.total / row.quantity : row.unitPrice;
+    map.set(productId, row);
+  }
+  return map;
+}
+
 function normalizeShippedEntries(
   shippedItems: { productId: string; name?: string; shippedQty: number }[] | null | undefined
 ): { productId: string; shippedQty: number }[] {
@@ -1292,15 +1334,15 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
 /**
  * Приёмка поставки на склад (проведение приходного ордера).
  *
- * ★ Перепоставка: принять можно БОЛЬШЕ заказанного. Поставщик иногда
- *   привозит излишек (заказали 200 — приехало 300), и он ставится на склад
- *   без доплаты. Поэтому:
+ * ★ Перепоставка: принять можно БОЛЬШЕ заказанного. Факт сохраняется целиком,
+ *   а за количество сверх заказа возникает отдельный долг поставщику по
+ *   закупочной цене за единицу. Он отображается во вкладке «Поставки → Долги»
+ *   и скрывается после отметки «Оплачено».
  *   • количество не урезается по заказанному (received_items хранит факт,
  *     в т.ч. сверх заказа);
- *   • сумма поставки (total), НДС и долг перед поставщиком НЕ меняются —
- *     они считаются от заказанного состава, излишек бесплатный;
- *   • себестоимость единицы в складской сводке пересчитывается на фактически
- *     принятое количество (2000 ₽ / 300 шт. вместо 2000 ₽ / 200 шт.).
+ *   • сумма исходного приходного ордера и платежи по нему не меняются;
+ *   • себестоимость единицы с учётом долга за излишек остаётся закупочной
+ *     (2000 ₽ / 200 шт. + 100 шт. по 10 ₽ = 10 ₽ за каждую из 300 шт.).
  *
  * `options.allowOverdelivery` — флаг явной ручной приёмки: только с ним
  *   можно ввести больше заказанного. Рейс («Доставки» → завершить) вызывает
@@ -1370,9 +1412,9 @@ export async function postReceipt(
     const previous = alreadyReceived.get(productId) || 0;
     const remaining = Math.max(0, ordered - previous);
     const wanted = Math.max(0, requested.get(productId) || 0);
-    // ★ Ручная приёмка может превысить заказ (перепоставка) — излишек встаёт
-    //   на склад без доплаты. Автоматические вызовы (завершение рейса,
-    //   импорт) по-прежнему урезаются по остатку к приёмке.
+    // ★ Ручная приёмка может превысить заказ (перепоставка) — весь товар
+    //   встаёт на склад, а долг за лишнее количество рассчитывается в реестре.
+    //   Автоматические вызовы (завершение рейса, импорт) урезаются по остатку.
     const receiveNow =
       Math.round((allowOver ? wanted : Math.min(remaining, wanted)) * 1000) / 1000;
     if (receiveNow <= 0.0009) continue;
@@ -1395,8 +1437,7 @@ export async function postReceipt(
     .map((productId) => ({
       productId,
       name: itemByProduct.get(productId)?.name || "",
-      // Фактическое количество, включая излишек сверх заказа. Стоимость
-      // поставки при этом не меняется (излишек принят без доплаты).
+      // Фактическое количество, включая излишек сверх заказа.
       receivedQty: Math.max(0, alreadyReceived.get(productId) || 0),
     }))
     .filter((item) => item.receivedQty > 0.0009);
@@ -1449,14 +1490,24 @@ export async function cancelReceipt(id: string): Promise<void> {
     quantity,
   }));
   await applyStockDelta(reverseItems, -1);
-  const { error } = await db
+  const updatedAt = new Date().toISOString();
+  const basePayload = {
+    status: "draft",
+    received_items: [],
+    updated_at: updatedAt,
+  };
+  let { error } = await db
     .from("warehouse_receipts")
-    .update({
-      status: "draft",
-      received_items: [],
-      updated_at: new Date().toISOString(),
-    })
+    .update({ ...basePayload, transport_finished_at: null })
     .eq("id", id);
+  // До применения миграции по долгам старые сценарии отмены продолжают работать.
+  if (error && /transport_finished_at|column|schema cache/i.test(error.message)) {
+    const fallback = await db
+      .from("warehouse_receipts")
+      .update(basePayload)
+      .eq("id", id);
+    error = fallback.error;
+  }
   if (error) throw error;
   revalidateTag("warehouse-receipts", { expire: 0 });
   revalidateTag("products", { expire: 0 });
@@ -1499,6 +1550,143 @@ export async function setReceiptTransport(
   if (updateError) throw updateError;
   if (!data.needsTransport) await removeReceiptFromActiveTransports(id);
   revalidateTag("warehouse-receipts", { expire: 0 });
+}
+
+/**
+ * Закрыть перевозку по недопоставке: зафиксировать, что остаток по ордеру
+ * поставщик не привезёт в рамках этой перевозки, и снять поставку с очереди.
+ * Недостающие позиции после этого отображаются как долг поставщика.
+ */
+export async function finishReceiptTransport(
+  id: string
+): Promise<{ shortageQty: number; shortageAmount: number }> {
+  const db = getAdminDb();
+  const { data: receipt, error: readError } = await db
+    .from("warehouse_receipts")
+    .select("id, number, status, items, received_items, transport_finished_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) {
+    if (/transport_finished_at|column|schema cache/i.test(readError.message)) {
+      throw new Error("Примените supabase/migration_receipt_debts.sql для учёта долгов по поставкам");
+    }
+    throw readError;
+  }
+  if (!receipt) throw new Error("Поставка не найдена");
+  if (receipt.transport_finished_at) {
+    return { shortageQty: 0, shortageAmount: 0 };
+  }
+
+  const ordered = receiptOrderedRows(receipt.items);
+  const received = receiptReceivedMap(receipt);
+  const receivedTotal = [...received.values()].reduce((sum, quantity) => sum + quantity, 0);
+  if (receivedTotal <= 0.0009) {
+    throw new Error("Сначала примите фактически приехавший товар");
+  }
+
+  let shortageQty = 0;
+  let shortageAmount = 0;
+  for (const [productId, row] of ordered) {
+    const missing = Math.max(0, row.quantity - (received.get(productId) || 0));
+    if (missing <= 0.0009) continue;
+    shortageQty += missing;
+    const unitPrice = row.quantity > 0 ? row.total / row.quantity : row.unitPrice;
+    shortageAmount += missing * Math.max(0, unitPrice);
+  }
+  shortageQty = Math.round(shortageQty * 1000) / 1000;
+  shortageAmount = round2(shortageAmount);
+  if (shortageQty <= 0.0009) {
+    throw new Error("Недопоставки нет — поставка принята полностью");
+  }
+
+  const now = new Date().toISOString();
+  const { error: updateError } = await db
+    .from("warehouse_receipts")
+    .update({
+      transport_finished_at: now,
+      needs_transport: false,
+      transport_planned_date: null,
+      updated_at: now,
+    })
+    .eq("id", id);
+  if (updateError) {
+    if (updateError.code === "42703" || /transport_finished_at/i.test(updateError.message)) {
+      throw new Error("Примените supabase/migration_receipt_debts.sql для учёта долгов по поставкам");
+    }
+    throw updateError;
+  }
+
+  await removeReceiptFromActiveTransports(id);
+  revalidateTag("warehouse-receipts", { expire: 0 });
+  revalidateTag("warehouse-deals", { expire: 0 });
+  return { shortageQty, shortageAmount };
+}
+
+/**
+ * Отметить принятую перепоставку как оплаченную. В долгах скрывается только
+ * уже оплаченный объём; если позже примут ещё коробки, новый излишек останется
+ * открытым долгом.
+ */
+export async function markReceiptOverdeliveryPaid(
+  id: string,
+  productId: string
+): Promise<{ paidQty: number; amount: number }> {
+  const db = getAdminDb();
+  const { data: receipt, error: readError } = await db
+    .from("warehouse_receipts")
+    .select("id, status, items, received_items, paid_overdelivery_items")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) {
+    if (/paid_overdelivery_items|column|schema cache/i.test(readError.message)) {
+      throw new Error("Примените supabase/migration_receipt_debts.sql для учёта долгов по поставкам");
+    }
+    throw readError;
+  }
+  if (!receipt) throw new Error("Поставка не найдена");
+
+  const ordered = receiptOrderedRows(receipt.items);
+  const row = ordered.get(String(productId));
+  if (!row) throw new Error("Товар не найден в поставке");
+  const received = receiptReceivedMap(receipt).get(String(productId)) || 0;
+  const excessQty = Math.round(Math.max(0, received - row.quantity) * 1000) / 1000;
+  if (excessQty <= 0.0009) throw new Error("По этой позиции нет долга за излишек");
+
+  const paidItems = Array.isArray(receipt.paid_overdelivery_items)
+    ? receipt.paid_overdelivery_items.filter((item: any) => item && typeof item === "object")
+    : [];
+  const existingPaidQty = paidItems
+    .filter((item: any) => String(item.productId || "") === String(productId))
+    .reduce((sum: number, item: any) => sum + Math.max(0, Number(item.paidQty) || 0), 0);
+  if (existingPaidQty >= excessQty - 0.0009) {
+    throw new Error("Долг за этот излишек уже отмечен оплаченным");
+  }
+
+  const now = new Date().toISOString();
+  const nextPaidItems = paidItems.filter(
+    (item: any) => String(item.productId || "") !== String(productId)
+  );
+  nextPaidItems.push({ productId: String(productId), paidQty: excessQty, paidAt: now });
+  const { error: updateError } = await db
+    .from("warehouse_receipts")
+    .update({
+      paid_overdelivery_items: nextPaidItems,
+      updated_at: now,
+    })
+    .eq("id", id);
+  if (updateError) {
+    if (updateError.code === "42703" || /paid_overdelivery_items/i.test(updateError.message)) {
+      throw new Error("Примените supabase/migration_receipt_debts.sql для учёта долгов по поставкам");
+    }
+    throw updateError;
+  }
+
+  revalidateTag("warehouse-receipts", { expire: 0 });
+  const unitPrice = row.quantity > 0 ? row.total / row.quantity : row.unitPrice;
+  return {
+    paidQty: excessQty - existingPaidQty,
+    amount: round2((excessQty - existingPaidQty) * Math.max(0, unitPrice)),
+  };
 }
 
 /** Убрать поставку из всех активных перевозок (сняли «Заберём сами»/удалили). */
@@ -4563,12 +4751,16 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
             : itemQty * Math.max(0, Number(item?.price) || 0));
       }, 0)
     );
-    // ★ Перепоставка не увеличивает стоимость: заплачено за заказанное
-    //   количество, излишек поставщик отгрузил без доплаты. Сумма партии
-    //   остаётся плановой, а цена за единицу пересчитывается на фактически
-    //   принятое количество (заказали 200 за 2000 ₽, приехало 300 → 6,67 ₽/шт).
-    const costBaseQty = Math.max(orderedQty, receivedQty);
-    const factUnitPrice = costBaseQty > 0 ? plannedLineTotal / costBaseQty : 0;
+    // При перепоставке излишек не бесплатный: за него возникает отдельный
+    // долг по той же закупочной цене. Учитываем его в себестоимости, чтобы
+    // 1000 шт. по 10 ₽ + ещё 100 шт. не превращались в товар по 9,09 ₽/шт.
+    const orderedUnitPrice = orderedQty > 0 ? plannedLineTotal / orderedQty : 0;
+    const overdeliveryCost = Math.max(0, receivedQty - orderedQty) * orderedUnitPrice;
+    const actualReceiptCost = plannedLineTotal + overdeliveryCost;
+    const factUnitPrice =
+      receivedQty > 0
+        ? actualReceiptCost / receivedQty
+        : orderedUnitPrice;
     return {
       id: String(row.id),
       number: Number(row.number) || 0,

@@ -72,7 +72,7 @@ import {
   getWarehouseBusinessDate,
   type ConsignmentManualSale,
 } from "@/lib/warehouse-shared";
-import { ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
+import { ReceiptDebts, ReceiptForm, ReceiptCard } from "@/components/admin/WarehouseReceipts";
 import { DealForm, DealActions } from "@/components/admin/WarehouseDeals";
 import {
   PaymentForm,
@@ -272,7 +272,7 @@ const paymentTypeLabels: Record<string, string> = {
 
 type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "plan" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
 type StockSub = "stock" | "receipts" | "archive";
-type SuppliesSub = "receipts" | "suppliers" | "consignment";
+type SuppliesSub = "receipts" | "debts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
 type DealsSub = "new" | "released";
 type BankSub = "summary" | "pending" | "history" | "cash" | "ym" | "vm";
@@ -438,6 +438,7 @@ export function WarehouseManager({
       window.setTimeout(() => document.getElementById(`deal-${focusDealId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     } else if (focusReceiptId) {
       setActiveTab("receipts");
+      setSuppliesSub("receipts");
       const receipt = receipts.find((item) => item.id === focusReceiptId);
       setReceiptSub(receipt?.status === "posted" ? "archive" : "active");
       window.setTimeout(() => document.getElementById(`receipt-${focusReceiptId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
@@ -2614,6 +2615,9 @@ export function WarehouseManager({
             <button onClick={() => setSuppliesSub("receipts")} className={`admin-filter${suppliesSub === "receipts" ? " admin-filter--active" : ""}`}>
               <Truck size={12} /> Поступления
             </button>
+            <button onClick={() => setSuppliesSub("debts")} className={`admin-filter${suppliesSub === "debts" ? " admin-filter--active" : ""}`}>
+              <Wallet size={12} /> Долги
+            </button>
             <button onClick={() => setSuppliesSub("suppliers")} className={`admin-filter${suppliesSub === "suppliers" ? " admin-filter--active" : ""}`}>
               <UsersRound size={12} /> Поставщики
             </button>
@@ -2625,6 +2629,8 @@ export function WarehouseManager({
           {suppliesSub === "consignment" && (
             <div className="admin-card" style={{ marginTop: 12 }}><div className="admin-card__head"><h3 className="admin-card__title">Товар на реализации</h3></div><div className="admin-card__pad"><ConsignmentTracker receipts={receipts} deals={deals} payments={payments} manualSales={consignmentManual} /></div></div>
           )}
+
+          {suppliesSub === "debts" && <ReceiptDebts receipts={receipts} />}
 
           {suppliesSub === "receipts" && (
             <>

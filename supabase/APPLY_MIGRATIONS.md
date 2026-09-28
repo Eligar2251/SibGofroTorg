@@ -14,6 +14,7 @@
 | 3 | `migration_wp_transport_done.sql` | `wp_intakes.transport_done` + разовая простановка по старым приёмам | Не сохранится карточка/новый приём макулатуры (падает запись `transport_done`) |
 | 4 | `migration_vm_card.sql` | `cash_collections.vm_transfer_amount` + расширение CHECK по `cash_destination` | Не сохранится сводка смены кассы (падает запись `vm_transfer_amount`) |
 | 5 | `migration_wp_payment_links.sql` | `wp_payments.doc_type` + `wp_payments.doc_id` (платёж = оплата приёма/продажи) | Связка «платёж ↔ документ» не сохранится: привязка платежа к приёму/продаже падает записью `doc_type` (сами документы и свободные платежи работают) |
+| 6 | `migration_receipt_debts.sql` | Метка завершения перевозки и учёт уже оплаченных излишков в `warehouse_receipts` | Нельзя завершить перевозку по недопоставке или отметить долг за перепоставку оплаченным |
 
 ## Что должно быть применено раньше (из `main`)
 
@@ -159,6 +160,19 @@ CREATE INDEX IF NOT EXISTS idx_wp_payments_doc
 привязанных платежах не создаётся). Поля оплаты документа синхронизируются
 с платежами автоматически.
 
+## 6. `supabase/migration_receipt_debts.sql`
+
+Добавляет отметку завершения перевозки по недопоставке и количества
+перепоставки, за которые уже рассчитались. Вкладка «Поставки → Долги» строится
+по этим полям и фактическим количествам приёмки.
+
+```sql
+ALTER TABLE warehouse_receipts
+  ADD COLUMN IF NOT EXISTS transport_finished_at TIMESTAMPTZ;
+ALTER TABLE warehouse_receipts
+  ADD COLUMN IF NOT EXISTS paid_overdelivery_items JSONB NOT NULL DEFAULT '[]'::jsonb;
+```
+
 ## Проверка после применения
 
 ```sql
@@ -177,7 +191,13 @@ UNION ALL SELECT 'cash_collections.vm_transfer_amount',
                WHERE table_name = 'cash_collections' AND column_name = 'vm_transfer_amount')
 UNION ALL SELECT 'wp_payments.doc_type',
        EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name = 'wp_payments' AND column_name = 'doc_type');
+               WHERE table_name = 'wp_payments' AND column_name = 'doc_type')
+UNION ALL SELECT 'warehouse_receipts.transport_finished_at',
+       EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'warehouse_receipts' AND column_name = 'transport_finished_at')
+UNION ALL SELECT 'warehouse_receipts.paid_overdelivery_items',
+       EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'warehouse_receipts' AND column_name = 'paid_overdelivery_items');
 ```
 
-Ожидаемый результат — **6 строк, во всех `ok = true`**.
+Ожидаемый результат — **8 строк, во всех `ok = true`**.

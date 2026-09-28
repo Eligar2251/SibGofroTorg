@@ -157,8 +157,149 @@ export interface WarehouseReceipt extends CounterpartyDetails {
   needsTransport?: boolean;
   /** Желаемая дата забора (подсказка диспетчеру, необязательно). */
   transportPlannedDate?: string | null;
+  /** Когда недопоставка была подтверждена как окончательная (перевозка закрыта). */
+  transportFinishedAt?: string | null;
+  /** Уже оплаченные излишки по товарам: [{productId, paidQty, paidAt}]. */
+  paidOverdeliveryItems?: {
+    productId: string;
+    paidQty: number;
+    paidAt?: string | null;
+  }[];
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+export type ReceiptDebtDirection = "supplier_owes" | "we_owe";
+
+/** Открытая задолженность по количеству в приходном ордере. */
+export interface ReceiptDebtRow {
+  key: string;
+  receiptId: string;
+  receiptNumber: number;
+  receiptDate: string;
+  supplierName: string;
+  productId: string;
+  productName: string;
+  direction: ReceiptDebtDirection;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
+
+/**
+ * Строит долги по расхождениям поставок.
+ * Недостача попадает в реестр только после явного завершения перевозки;
+ * за принятый сверх заказа товар долг виден сразу, пока не отмечен оплаченным.
+ */
+export function buildReceiptDebtRows(receipts: WarehouseReceipt[]): ReceiptDebtRow[] {
+  const debts: ReceiptDebtRow[] = [];
+  const roundQty = (value: number) => Math.round(value * 1000) / 1000;
+  const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+  for (const receipt of receipts || []) {
+    const ordered = new Map<string, { name: string; quantity: number; total: number; fallbackPrice: number }>();
+    for (const item of receipt.items || []) {
+      const productId = String(item.productId || "");
+      if (!productId) continue;
+      const quantity = Math.max(0, Number(item.quantity) || 0);
+      const lineTotal = Math.max(
+        0,
+        Number(item.lineTotal) || quantity * Math.max(0, Number(item.price) || 0)
+      );
+      const row = ordered.get(productId) || {
+        name: String(item.name || "Товар"),
+        quantity: 0,
+        total: 0,
+        fallbackPrice: Math.max(0, Number(item.price) || 0),
+      };
+      row.quantity += quantity;
+      row.total += lineTotal;
+      if (!row.name && item.name) row.name = String(item.name);
+      ordered.set(productId, row);
+    }
+
+    const received = new Map<string, number>();
+    const receivedRows = Array.isArray(receipt.receivedItems) ? receipt.receivedItems : [];
+    const receivedSource =
+      receivedRows.length > 0
+        ? receivedRows
+        : receipt.status === "posted"
+          ? (receipt.items || []).map((item) => ({
+              productId: item.productId,
+              receivedQty: item.quantity,
+            }))
+          : [];
+    for (const item of receivedSource) {
+      const productId = String(item.productId || "");
+      const quantity = Math.max(0, Number(item.receivedQty) || 0);
+      if (!productId || quantity <= 0) continue;
+      received.set(productId, (received.get(productId) || 0) + quantity);
+    }
+
+    const paidOverdelivery = new Map<string, number>();
+    for (const item of receipt.paidOverdeliveryItems || []) {
+      const productId = String(item.productId || "");
+      if (!productId) continue;
+      paidOverdelivery.set(
+        productId,
+        (paidOverdelivery.get(productId) || 0) + Math.max(0, Number(item.paidQty) || 0)
+      );
+    }
+
+    for (const [productId, orderedRow] of ordered) {
+      const orderedQty = Math.max(0, orderedRow.quantity);
+      if (orderedQty <= 0) continue;
+      const receivedQty = Math.max(0, received.get(productId) || 0);
+      const rawUnitPrice =
+        orderedRow.total > 0
+          ? orderedRow.total / orderedQty
+          : orderedRow.fallbackPrice;
+      const unitPrice = roundMoney(rawUnitPrice);
+      const common = {
+        receiptId: receipt.id,
+        receiptNumber: Number(receipt.number) || 0,
+        receiptDate: String(receipt.date || ""),
+        supplierName: String(receipt.supplier || "Поставщик не указан"),
+        productId,
+        productName: orderedRow.name || "Товар",
+        unitPrice,
+      };
+
+      const shortage = receipt.transportFinishedAt
+        ? roundQty(Math.max(0, orderedQty - receivedQty))
+        : 0;
+      if (shortage > 0.0009) {
+        debts.push({
+          ...common,
+          key: `${receipt.id}:supplier_owes:${productId}`,
+          direction: "supplier_owes",
+          quantity: shortage,
+          amount: roundMoney(shortage * rawUnitPrice),
+        });
+      }
+
+      const overdelivery = Math.max(0, receivedQty - orderedQty);
+      const unpaidOverdelivery = roundQty(
+        Math.max(0, overdelivery - (paidOverdelivery.get(productId) || 0))
+      );
+      if (unpaidOverdelivery > 0.0009) {
+        debts.push({
+          ...common,
+          key: `${receipt.id}:we_owe:${productId}`,
+          direction: "we_owe",
+          quantity: unpaidOverdelivery,
+          amount: roundMoney(unpaidOverdelivery * rawUnitPrice),
+        });
+      }
+    }
+  }
+
+  return debts.sort(
+    (a, b) =>
+      b.receiptDate.localeCompare(a.receiptDate) ||
+      b.receiptNumber - a.receiptNumber ||
+      a.productName.localeCompare(b.productName, "ru-RU")
+  );
 }
 
 /* ── Поставки в перевозках («Заберём сами») ───────────────
@@ -455,7 +596,7 @@ export interface ProductStockReceiptHistory {
   quantity: number;
   /** Заказано у поставщика. */
   orderedQty?: number;
-  /** Принято сверх заказа без доплаты (перепоставка). */
+  /** Принято сверх заказа; за количество возникает отдельный долг поставщику. */
   overQty?: number;
   /** Осталось принять. */
   remainingQty?: number;

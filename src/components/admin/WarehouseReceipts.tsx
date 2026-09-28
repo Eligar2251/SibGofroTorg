@@ -33,7 +33,12 @@ import {
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { includedVat, VAT_RATE, VAT_RATES } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
-import type { BankPayment, WarehouseReceipt } from "@/lib/warehouse-shared";
+import {
+  buildReceiptDebtRows,
+  type BankPayment,
+  type ReceiptDebtRow,
+  type WarehouseReceipt,
+} from "@/lib/warehouse-shared";
 import { useEscapeClose } from "@/hooks/use-escape-close";
 
 interface ReceiptItemDraft {
@@ -665,7 +670,7 @@ export function ReceiptForm({
                     но поступление будет считаться оплаченным.
                   </div>
                 )}
-                
+
                 {!noPayment && paymentCount > 1 && (
                   <>
                     <div className="wh-form-grid" style={{ marginTop: 8 }}>
@@ -919,6 +924,11 @@ export function ReceiptCard({
       sum + Math.max(0, (receivedByProduct.get(productId) || 0) - ordered),
     0
   );
+  const shortageQty = [...orderedByProduct].reduce(
+    (sum, [productId, ordered]) =>
+      sum + Math.max(0, ordered - (receivedByProduct.get(productId) || 0)),
+    0
+  );
   const hasReceived = receivedQty > 0.0009;
   const isPartiallyReceived = hasReceived && r.status !== "posted";
   const hasNoPayment = payments.some(
@@ -972,7 +982,7 @@ export function ReceiptCard({
         {overQty > 0.0009 && (
           <span
             className="admin-badge admin-badge--green"
-            title="Принято больше заказанного: излишек поставлен на склад без доплаты, сумма поставки не изменилась"
+            title="Принято больше заказанного: стоимость излишка рассчитана по закупочной цене и отражена во вкладке «Долги»"
           >
             Сверх заказа +{fmt(overQty)}
           </span>
@@ -1028,8 +1038,7 @@ export function ReceiptCard({
             <div className="admin-order__items">
               <div className="admin-order__items-title">Товары (с НДС)</div>
               {r.items.map((it, idx) => {
-                // Фактическое приёмное количество (может превышать заказ —
-                // перепоставка принимается без доплаты).
+                // Фактическое принятое количество, включая оплачиваемый излишек.
                 const received = Math.max(0, receivedByProduct.get(it.productId) || 0);
                 const remaining = Math.max(0, (Number(it.quantity) || 0) - received);
                 const over = Math.max(0, received - (Number(it.quantity) || 0));
@@ -1052,7 +1061,7 @@ export function ReceiptCard({
                       {over > 0.0009 && (
                         <span
                           className="receipt-qty-progress__over"
-                          title="Принято сверх заказа без доплаты: сумма поставки не изменилась"
+                          title="За излишек рассчитан долг поставщику по закупочной цене"
                         >
                           сверх <b>+{fmt(over)}</b>
                         </span>
@@ -1148,14 +1157,192 @@ export function ReceiptCard({
                 }}
               />
             )}
-            {/* Кнопка приёмки доступна и у полностью принятой поставки:
-                это «Принять ещё» — излишек сверх заказа без доплаты. */}
+            {/* «Принять ещё» позволяет внести фактический излишек; он попадёт в долги. */}
             <ReceiptPostButton receipt={r} paidEnough={isFullyPaid} />
+            {hasReceived && shortageQty > 0.0009 && !r.transportFinishedAt && (
+              <ReceiptFinishTransportButton receipt={r} shortageQty={shortageQty} />
+            )}
+            {r.transportFinishedAt && (
+              <div className="receipt-transport-finished">
+                <CheckCircle size={13} /> Перевозка завершена
+              </div>
+            )}
             {hasReceived && <ReceiptCancelButton receiptId={r.id} partial={r.status !== "posted"} />}
             {!hasReceived && <ReceiptDeleteButton receiptId={r.id} />}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Отдельная вкладка «Долги» внутри раздела «Поставки». */
+export function ReceiptDebts({ receipts }: { receipts: WarehouseReceipt[] }) {
+  const router = useRouter();
+  const debts = useMemo(() => buildReceiptDebtRows(receipts), [receipts]);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const supplierOwes = debts.filter((debt) => debt.direction === "supplier_owes");
+  const weOwe = debts.filter((debt) => debt.direction === "we_owe");
+  const supplierOwesTotal = roundKopeck(supplierOwes.reduce((sum, debt) => sum + debt.amount, 0));
+  const weOweTotal = roundKopeck(weOwe.reduce((sum, debt) => sum + debt.amount, 0));
+
+  async function markPaid(debt: ReceiptDebtRow) {
+    if (
+      !confirm(
+        `Подтвердите оплату долга ${fmt(debt.amount)} ₽ за ${fmt(debt.quantity)} шт. по ПО-${debt.receiptNumber}. После подтверждения эта сумма исчезнет из открытых долгов.`
+      )
+    ) return;
+
+    setSavingKey(debt.key);
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/warehouse/receipts/${debt.receiptId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark-overdelivery-paid", productId: debt.productId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Не удалось отметить долг оплаченным");
+      router.refresh();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Ошибка сети");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  return (
+    <div className="receipt-debts">
+      <div className="receipt-debt-summary">
+        <div className="receipt-debt-summary__item receipt-debt-summary__item--incoming">
+          <span>Поставщики должны вам</span>
+          <strong>{fmt(supplierOwesTotal)} ₽</strong>
+          <small>{supplierOwes.length} позиций с недопоставкой</small>
+        </div>
+        <div className="receipt-debt-summary__item receipt-debt-summary__item--outgoing">
+          <span>Вы должны поставщикам</span>
+          <strong>{fmt(weOweTotal)} ₽</strong>
+          <small>{weOwe.length} неоплаченных излишков</small>
+        </div>
+      </div>
+
+      {error && <div className="wh-form-error">{error}</div>}
+      <div className="admin-card receipt-debt-list">
+        <div className="admin-card__head">
+          <div>
+            <h3 className="admin-card__title">Открытые долги по поставкам</h3>
+            <p className="admin-sub" style={{ margin: "4px 0 0" }}>
+              Недостача фиксируется после завершения перевозки. Излишек считается долгом сразу по закупочной цене.
+            </p>
+          </div>
+        </div>
+        {debts.length === 0 ? (
+          <div className="admin-empty">
+            <div className="admin-empty__icon"><CheckCircle size={34} /></div>
+            <p>Открытых долгов по поставкам нет</p>
+          </div>
+        ) : (
+          <div className="receipt-debt-list__rows">
+            {debts.map((debt) => {
+              const supplierOwesUs = debt.direction === "supplier_owes";
+              return (
+                <article className="receipt-debt-row" key={debt.key}>
+                  <div className="receipt-debt-row__main">
+                    <div className="receipt-debt-row__top">
+                      <Link
+                        href={`/${ADMIN_PATH}/warehouse?tab=receipts&receipt=${debt.receiptId}`}
+                        prefetch={false}
+                        className="receipt-debt-row__receipt"
+                      >
+                        ПО-{debt.receiptNumber} · {fmtDate(debt.receiptDate)}
+                      </Link>
+                      <span className={`admin-badge ${supplierOwesUs ? "admin-badge--blue" : "admin-badge--amber"}`}>
+                        {supplierOwesUs ? "Поставщик должен вам" : "Вы должны поставщику"}
+                      </span>
+                    </div>
+                    <strong className="receipt-debt-row__supplier">{debt.supplierName}</strong>
+                    <span className="receipt-debt-row__product">{debt.productName}</span>
+                    <span className="receipt-debt-row__calculation">
+                      {fmt(debt.quantity)} шт. × {fmt(debt.unitPrice)} ₽/шт.
+                    </span>
+                  </div>
+                  <div className="receipt-debt-row__amount">
+                    <strong>{fmt(debt.amount)} ₽</strong>
+                    <small>{supplierOwesUs ? "сумма недопоставки" : "к оплате за излишек"}</small>
+                    {!supplierOwesUs && (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--primary admin-btn--sm"
+                        onClick={() => markPaid(debt)}
+                        disabled={savingKey === debt.key}
+                      >
+                        {savingKey === debt.key ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                        Оплачено
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Закрыть перевозку по недопоставке и создать задолженность поставщика. */
+function ReceiptFinishTransportButton({
+  receipt,
+  shortageQty,
+}: {
+  receipt: WarehouseReceipt;
+  shortageQty: number;
+}) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function finish() {
+    if (
+      !confirm(
+        `Завершить перевозку ПО-${receipt.number}? Недопоставка ${fmt(shortageQty)} шт. будет записана как долг поставщика во вкладке «Поставки → Долги».`
+      )
+    ) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/warehouse/receipts/${receipt.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "finish-transport" }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Не удалось завершить перевозку");
+      router.refresh();
+    } catch (finishError) {
+      setError(finishError instanceof Error ? finishError.message : "Ошибка сети");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="receipt-finish-transport">
+      <button
+        type="button"
+        className="admin-status__btn admin-status__btn--outline"
+        onClick={finish}
+        disabled={saving}
+        title="Завершить перевозку и зафиксировать недопоставку как долг поставщика"
+      >
+        {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+        Завершить перевозку
+      </button>
+      <span>Недостача {fmt(shortageQty)} шт. попадёт в долги поставщика.</span>
+      {error && <span className="receipt-finish-transport__error">{error}</span>}
     </div>
   );
 }
@@ -1237,26 +1424,29 @@ export function ReceiptPostButton({
   // иначе выделение текста с отпусканием мыши за окном закрывало окно.
   useEscapeClose(() => setOpen(false), open && !saving);
   const received = receivedQtyMap(receipt);
-  // ★ Позиции поставки к приёмке. Строки не урезаются по остатку и не
-  //   прячутся после полного приёма: принять можно БОЛЬШЕ заказанного
-  //   (перепоставка) — излишек встаёт на склад без доплаты.
+  // Позиции поставки к приёмке. Строки не урезаются по остатку и остаются
+  // доступны после полного приёма, чтобы внести реальный излишек.
   const postRows = (() => {
     const map = new Map<
       string,
-      { productId: string; name: string; ordered: number; received: number; remaining: number }
+      { productId: string; name: string; ordered: number; received: number; remaining: number; lineTotal: number; unitPrice: number }
     >();
     for (const item of receipt.items) {
       const productId = String(item.productId || "");
       if (!productId) continue;
+      const quantity = Math.max(0, Number(item.quantity) || 0);
+      const lineTotal = Math.max(0, Number(item.lineTotal) || quantity * (Number(item.price) || 0));
       const row =
         map.get(productId) ||
-        { productId, name: item.name, ordered: 0, received: 0, remaining: 0 };
-      row.ordered += Math.max(0, Number(item.quantity) || 0);
+        { productId, name: item.name, ordered: 0, received: 0, remaining: 0, lineTotal: 0, unitPrice: 0 };
+      row.ordered += quantity;
+      row.lineTotal += lineTotal;
       map.set(productId, row);
     }
     for (const row of map.values()) {
       row.received = Math.max(0, received.get(row.productId) || 0);
       row.remaining = Math.max(0, row.ordered - row.received);
+      row.unitPrice = row.ordered > 0 ? row.lineTotal / row.ordered : 0;
     }
     return [...map.values()];
   })();
@@ -1268,6 +1458,13 @@ export function ReceiptPostButton({
   const overTotal = roundKopeck(
     postRows.reduce(
       (sum, row) => sum + Math.max(0, qtyOf(row.productId) - row.remaining),
+      0
+    )
+  );
+  const overDebtTotal = roundKopeck(
+    postRows.reduce(
+      (sum, row) =>
+        sum + Math.max(0, qtyOf(row.productId) - row.remaining) * row.unitPrice,
       0
     )
   );
@@ -1305,7 +1502,7 @@ export function ReceiptPostButton({
     if (
       overTotal > 0.0009 &&
       !confirm(
-        `Принять на ${fmt(overTotal)} шт. больше заказанного?\n\nИзлишек встанет на склад без доплаты: сумма поставки и долг перед поставщиком не изменятся, себестоимость единицы пересчитается на фактическое количество.`
+        `Принять на ${fmt(overTotal)} шт. больше заказанного?\n\nЗа излишек появится долг поставщику ${fmt(overDebtTotal)} ₽ по закупочной цене. Его можно отметить оплаченным во вкладке «Поставки → Долги».`
       )
     ) {
       return;
@@ -1317,9 +1514,8 @@ export function ReceiptPostButton({
       const response = await fetch(`/api/admin/warehouse/receipts/${receipt.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // allowOverdelivery — ручная приёмка, можно больше заказанного
-        // (перепоставка без доплаты); acceptExtra — дописать излишек в уже
-        // полностью принятую поставку («Принять ещё»).
+        // allowOverdelivery — ручная приёмка, можно принять больше заказа;
+        // за излишек будет рассчитан отдельный долг поставщику.
         body: JSON.stringify({
           action: "post",
           items,
@@ -1351,7 +1547,7 @@ export function ReceiptPostButton({
         disabled={saving || postRows.length === 0}
         title={
           isPosted
-            ? "Принять излишек, который приехал сверх заказа (без доплаты)"
+            ? "Принять излишек; стоимость попадёт в долги поставщику"
             : paidEnough
               ? "Указать фактически приехавшее количество (можно больше заказанного)"
               : "Товар будет зачислен, но останется долг перед поставщиком"
@@ -1386,8 +1582,8 @@ export function ReceiptPostButton({
                   </h3>
                   <p className="admin-modal__desc" style={{ margin: "4px 0 0" }}>
                     {isPosted
-                      ? "Поставка уже принята. Укажите, сколько приехало сверх заказа — излишек встанет на склад без доплаты."
-                      : "Укажите, сколько фактически приехало сейчас. Можно ввести больше заказанного: излишек (перепоставка) принимается без доплаты. Неполученный остаток останется в активных поставках."}
+                      ? "Поставка уже принята. Укажите, сколько приехало сверх заказа — за излишек появится долг поставщику по закупочной цене."
+                      : "Укажите, сколько фактически приехало сейчас. Можно принять больше заказа: сумма излишка станет долгом поставщику. Неполученный остаток останется в активных поставках, пока перевозка не завершена."}
                   </p>
                 </div>
                 <button type="button" className="admin-modal__close" onClick={() => setOpen(false)} disabled={saving} aria-label="Закрыть">
@@ -1419,8 +1615,8 @@ export function ReceiptPostButton({
                         step={0.001}
                         title={
                           isPosted
-                            ? "Сколько приехало сверх заказа (без доплаты)"
-                            : `Фактически приехало. Остаток к приёмке ${fmt(row.remaining)}; можно больше — излишек примется без доплаты`
+                            ? "Количество сверх заказа — появится долг поставщику"
+                            : `Фактически приехало. Остаток к приёмке ${fmt(row.remaining)}; сверх него возникнет долг по закупочной цене`
                         }
                         value={quantities[row.productId] ?? (isPosted ? 0 : row.remaining)}
                         onChange={(event) =>
@@ -1442,9 +1638,8 @@ export function ReceiptPostButton({
                 <div className="receipt-post-note">
                   <AlertTriangle size={12} />
                   <span>
-                    Перепоставка <b>+{fmt(overTotal)}</b> сверх заказа — принимается без доплаты:
-                    сумма ПО-{receipt.number} и долг перед поставщиком не изменятся,
-                    себестоимость единицы пересчитается на фактическое количество.
+                    Перепоставка <b>+{fmt(overTotal)}</b> сверх заказа. Долг поставщику —
+                    <b> {fmt(overDebtTotal)} ₽</b> по закупочной цене; после оплаты его можно убрать из вкладки «Долги».
                   </span>
                 </div>
               )}
