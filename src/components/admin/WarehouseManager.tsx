@@ -48,6 +48,7 @@ import {
   normalizeName,
   getDealPaidMap,
   getReceiptPaidMap,
+  isReceiptArchived,
   getCashCarryoverSummary,
   getCashCollectionIncomeBreakdown,
   getCashCollectionExpenseBreakdown,
@@ -1990,7 +1991,7 @@ export function WarehouseManager({
     }
   }
 
-  // Активные поступления (не проведены) и архив (проведённые/на складе).
+  // Архив: полностью принятые и явно завершённые с недопоставкой.
   // Отмена проведения возвращает поступление из архива в активные.
   // Поиск — по поставщику, номеру и товару (название/артикул).
   const searchedReceipts = useMemo(() => {
@@ -2009,11 +2010,11 @@ export function WarehouseManager({
   }, [receipts, rq]);
 
   const activeReceipts = useMemo(
-    () => searchedReceipts.filter((r) => r.status !== "posted"),
+    () => searchedReceipts.filter((r) => !isReceiptArchived(r)),
     [searchedReceipts]
   );
   const archivedReceipts = useMemo(
-    () => searchedReceipts.filter((r) => r.status === "posted"),
+    () => searchedReceipts.filter(isReceiptArchived),
     [searchedReceipts]
   );
 
