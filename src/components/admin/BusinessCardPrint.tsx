@@ -491,7 +491,7 @@ export function BusinessCardPrint({ data }: { data: BusinessCardData }) {
                         </span>
                         <div className="bc-service__title">Гофротара</div>
                         <div className="bc-service__desc">
-                          Коробки от 1 шт. · Т-22, Т-23, Т-24 · 3 и 5 слой
+                          Коробки от 1 шт. · Т-22, Т-23, Т-25 · 3 и 5 слой
                         </div>
                       </div>
                       <div className="bc-service">

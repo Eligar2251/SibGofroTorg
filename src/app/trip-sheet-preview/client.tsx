@@ -12,7 +12,7 @@ import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { TransportManager, type TransportDeal, type TransportRow } from "@/components/admin/TransportManager";
 
 const PRODUCTS: PickerProduct[] = [
-  { id: "p1", name: "Короб Т-24 (40×30×20)", sku: "KT24", price: 38, priceWholesale: 31, stockQty: 1200 },
+  { id: "p1", name: "Короб Т-25 (40×30×20)", sku: "KT25", price: 38, priceWholesale: 31, stockQty: 1200 },
   { id: "p2", name: "Короб Т-22 (40×30×25)", sku: "KT22", price: 42, priceWholesale: 34, stockQty: 860 },
   { id: "p3", name: "Go Box 60×40×40", sku: "GB60", price: 96, priceWholesale: 79, stockQty: 240 },
   { id: "p4", name: "Плёнка стрейч 500 мм, 2 кг", sku: "STR500", price: 210, priceWholesale: 180, stockQty: 96 },
@@ -51,7 +51,7 @@ const STOPS: TripStop[] = [
     plannedTime: "10:20",
     tripType: "delivery",
     lines: [
-      { productId: "p1", name: "Короб Т-24 (40×30×20)", qty: 120, orderedQty: 150, maxQty: 150 },
+      { productId: "p1", name: "Короб Т-25 (40×30×20)", qty: 120, orderedQty: 150, maxQty: 150 },
       { productId: "p5", name: "Скотч 48 мм × 66 м", qty: 20, orderedQty: 20, maxQty: 20 },
     ],
     totalSum: 5360,
@@ -157,7 +157,7 @@ const STOPS: TripStop[] = [
     deliveryNote: "Документы забрать в офисе, 2 этаж",
     plannedTime: "16:40",
     tripType: "pickup",
-    lines: [{ productId: "p1", name: "Короб Т-24 (40×30×20)", qty: 500 }],
+    lines: [{ productId: "p1", name: "Короб Т-25 (40×30×20)", qty: 500 }],
     totalSum: null,
   },
 ];
@@ -170,7 +170,7 @@ const PENDING_DEALS: TransportDeal[] = [
     customerPhone: "+7 913 444-55-66",
     deliveryAddress: "ул. Восход, 2а, павильон 14",
     items: [
-      { productId: "p1", name: "Короб Т-24 (40×30×20)", quantity: 50 },
+      { productId: "p1", name: "Короб Т-25 (40×30×20)", quantity: 50 },
       { productId: "p2", name: "Короб Т-22 (40×30×25)", quantity: 30 },
     ],
     shippedItems: [{ productId: "p1", shippedQty: 10 }],
@@ -215,7 +215,7 @@ const TRANSPORTS: TransportRow[] = [
         totalSum: 3100,
         tripType: "delivery",
         items: [
-          { productId: "p1", name: "Короб Т-24 (40×30×20)", orderedQty: 40, transportQty: 40 },
+          { productId: "p1", name: "Короб Т-25 (40×30×20)", orderedQty: 40, transportQty: 40 },
           { productId: "p2", name: "Короб Т-22 (40×30×25)", orderedQty: 30, transportQty: 30 },
         ],
       },

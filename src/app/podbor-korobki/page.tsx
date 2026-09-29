@@ -116,7 +116,7 @@ export default async function BoxFinderPage({
             Не нашли подходящий размер?{" "}
             <Link href="/korobki-na-zakaz">Изготовим коробки на заказ</Link> или
             посмотрите <Link href="/catalog">весь каталог</Link> — марки Т-22,
-            Т-23, Т-24, от 1 штуки.
+            Т-23, Т-25, от 1 штуки.
           </p>
         </div>
       </section>
