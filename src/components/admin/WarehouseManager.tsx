@@ -65,6 +65,7 @@ import {
   isSalaryExcludedFromBalance,
   isDebtSalaryComment,
   isRentSalaryComment,
+  isWastepaperSalary,
   isWastepaperSalaryComment,
   isYmCardSalaryComment,
   isVmCardSalaryComment,
@@ -1286,7 +1287,11 @@ export function WarehouseManager({
     // карту» не трогают р/с, кассу и карту ЮМ учёта, поэтому в банке
     // учёта их нет (в разделе «Зарплаты» они остаются).
     const salaryEntries: BankEntry[] = salaries
-      .filter((salary) => !isRentSalaryComment(salary.comment, salary.source))
+      .filter(
+        (salary) =>
+          !isWastepaperSalary(salary) &&
+          !isRentSalaryComment(salary.comment, salary.source)
+      )
       .map((salary, idx) => ({
         entryKind: "salary",
         id: `salary-${salary.id}`,
@@ -1563,7 +1568,9 @@ export function WarehouseManager({
     const unpaidPayments = payments.filter(
       (p) => !p.isPaid && !p.excludeFromBalance
     ).length;
-    const unpaidSalaries = salaries.filter((s) => !s.isPaid);
+    const unpaidSalaries = salaries.filter(
+      (s) => !s.isPaid && !isWastepaperSalary(s)
+    );
     const unpaidSalarySum = unpaidSalaries.reduce(
       (sum, s) => sum + (Number(s.amount) || 0),
       0
