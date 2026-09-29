@@ -58,6 +58,7 @@ import {
   dealNeedsDelivery,
   dealRemainingItems,
   isSalaryExcludedFromBalance,
+  isWastepaperSalary,
   isDebtSalaryComment,
   isRentSalaryComment,
   stripSalaryMetaTags,
@@ -366,7 +367,8 @@ export default async function AdminDashboard() {
       (salary) =>
         salary.isPaid &&
         !isSalaryExcludedFromBalance(salary.comment) &&
-        !isRentSalaryComment(salary.comment, salary.source)
+        !isRentSalaryComment(salary.comment, salary.source) &&
+        !isWastepaperSalary(salary)
     )
     .map((salary) => ({
       id: `salary-${salary.id}`,

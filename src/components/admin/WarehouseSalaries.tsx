@@ -20,10 +20,9 @@
 //    salary_calendar_*) и подсвечиваются жёлтым столбцом.
 //  · Оплата «с аренды на карту» = запись с source=bank и тегом
 //    [Аренда] в комментарии (подсвечивается синим).
-//  · Оплата «с макулатуры» = наличный расчёт из кассы отдельного модуля
-//    «Учёт макулатура»: запись с source=cash и тегом [Макулатура]
-//    (подсвечивается бирюзовым). Кассу учёта не уменьшает — расход
-//    уходит в минус по счёту «Наличка» в финансах макулатуры.
+//  · Зарплаты макулатуры хранятся с тегом [Макулатура] и показываются
+//    только при scope = WASTEPAPER_SALARY_SCOPE; они не видны в учёте
+//    СибГофроТорг и не уменьшают его кассу/банк.
 //  · Тот же компонент работает внутри модуля «Учёт макулатура»
 //    (prop scope = WASTEPAPER_SALARY_SCOPE): там доступны только счета
 //    макулатуры — наличка / безнал / сторонние средства (с пометкой
@@ -1675,10 +1674,22 @@ export function WarehouseSalaries({
     cssPrefix: "whsal",
   });
 
+  // Одна таблица БД обслуживает два независимых раздела. Не доверяем
+  // входному props/API для разграничения: перед построением таблиц,
+  // итогов и списка месяцев всегда оставляем записи только своей области.
+  const salariesInScope = useMemo(
+    () => salaries.filter((salary) =>
+      scope.kind === "wastepaper"
+        ? isWastepaperSalary(salary)
+        : !isWastepaperSalary(salary)
+    ),
+    [salaries, scope.kind]
+  );
+
   const monthOptions = useMemo(() => {
     const currentMonth = todayIso().slice(0, 7);
     const keys = new Set<string>(
-      salaries.map((salary) => monthKey(salaryOperationDate(salary)))
+      salariesInScope.map((salary) => monthKey(salaryOperationDate(salary)))
     );
     keys.add(currentMonth);
 
@@ -1695,7 +1706,7 @@ export function WarehouseSalaries({
     }
 
     return [...keys].sort((a, b) => b.localeCompare(a));
-  }, [salaries, settingsRaw, scope.settingsPrefix]);
+  }, [salariesInScope, settingsRaw, scope.settingsPrefix]);
 
   // Синхронизируем локальное состояние после router.refresh()
   useEffect(() => setEmployees(initialEmployees), [initialEmployees]);
@@ -1745,10 +1756,10 @@ export function WarehouseSalaries({
 
   const monthSalaries = useMemo(
     () =>
-      salaries.filter(
+      salariesInScope.filter(
         (salary) => monthKey(salaryOperationDate(salary)) === activeMonth
       ),
-    [salaries, activeMonth]
+    [salariesInScope, activeMonth]
   );
   const activeEmployeeName = employees.find((e) => e.id === activeEmployee)?.name || activeEmployee;
   const scopedSalaries = monthSalaries.filter((s) =>
@@ -2163,7 +2174,7 @@ export function WarehouseSalaries({
   // для уже выплаченной — `paidAt` (дата фактической выплаты).
   // Месяц сохраняется: перетаскивание идёт в пределах текущей таблицы.
   async function moveSalaryToDay(salaryId: string, toDay: number) {
-    const salary = salaries.find((s) => s.id === salaryId);
+    const salary = salariesInScope.find((s) => s.id === salaryId);
     if (!salary) return;
     const newDate = `${activeMonth}-${String(toDay).padStart(2, "0")}`;
     const isPaid = salary.isPaid;
@@ -2249,7 +2260,7 @@ export function WarehouseSalaries({
   /** Остаток к выплате сотруднику за произвольный месяц
    *  (используется для переноса долга с прошлого месяца). */
   function restForMonth(employee: Employee, mkey: string): number {
-    const rows = salaries.filter(
+    const rows = salariesInScope.filter(
       (s) =>
         monthKey(salaryOperationDate(s)) === mkey &&
         (s.employeeId === employee.id ||

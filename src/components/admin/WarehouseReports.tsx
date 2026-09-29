@@ -31,8 +31,6 @@ import {
   isWastepaperSalary,
   isDebtSalaryComment,
   stripSalaryMetaTags,
-  wastepaperSalaryAccount,
-  wastepaperSalaryAccountLabel,
   type BankPayment,
   type CashCollection,
   type CashCollectionItem,
@@ -391,60 +389,51 @@ export function WarehouseReports({
         href: `/${adminPath}/warehouse?tab=bank&payment=${payment.id}`,
       };
     });
-    // Зарплаты «с аренды» — вне баланса СГТ: не расход р/с и не расход
-    // учёта (у аренды свой модуль). В движение денег они не входят —
-    // остаются только в отчёте «Зарплаты» и на вкладке зарплат.
+    // Зарплаты из макулатуры ведутся только в её модуле, а выплаты
+    // «с аренды» относятся к отдельному банковскому учёту аренды.
+    // В отчёты движения денег СибГофроТорг они не попадают.
     const salaryRowsLocal = salaries
-      .filter((salary) => isWastepaperSalary(salary) || !isRentSalaryComment(salary.comment, salary.source))
+      .filter(
+        (salary) =>
+          !isWastepaperSalary(salary) &&
+          !isRentSalaryComment(salary.comment, salary.source)
+      )
       .map((salary) => {
-      const isWastepaper = isWastepaperSalary(salary);
-      const wpAccount = isWastepaper ? wastepaperSalaryAccount(salary) : null;
-      const isRent = !isWastepaper && isRentSalaryComment(salary.comment, salary.source);
-      const isYm = salary.source === "ym_card" || (salary.comment && salary.comment.includes("[Карта ЮМ]"));
-      const isVm = salary.source === "vm_card" || (salary.comment && salary.comment.includes("[Карта В.М.]"));
-      const accountLabel = isWastepaper
-        ? `Макулатура (${wastepaperSalaryAccountLabel(wpAccount)})`
-        : isRent
-          ? "Аренда (отд. счёт)"
-          : isYm
-            ? "Карта ЮМ"
-            : isVm
-              ? "Карта В.М."
-              : salary.source === "cash"
-                ? "Касса"
-                : "Аренда (отд. счёт)";
-      // Наличка макулатуры — тоже наличный расчёт, но из кассы другого модуля;
-      // безнал и сторонние средства макулатуры — безналичные.
-      const accountKey =
-        salary.source === "cash" || (isWastepaper && wpAccount === "cash") ? ("cash" as const) : ("bank" as const);
-      return {
-        id: `salary-${salary.id}`,
-        sourceId: salary.id,
-        kind: "salary" as const,
-        date: salary.paidAt || salary.date,
-        counterparty: salary.employeeName,
-        purpose: isRent
-          ? "Аренда (отдельный счёт)"
-          : isDebtSalaryComment(salary.comment)
-          ? "Выплата в счёт долга"
-          : "Зарплата",
-        direction: "outgoing" as const,
-        accountKey,
-        account: accountLabel,
-        amount: salary.amount,
-        paid: salary.isPaid,
-        status: salary.isPaid ? "Выплачена" : "Запланирована",
-        details: [
-          isDebtSalaryComment(salary.comment)
-            ? "не входит в факт месяца"
-            : `за ${salaryPeriod(salary)}`,
-          stripSalaryMetaTags(salary.comment),
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        href: `/${adminPath}/warehouse?tab=salaries`,
-      };
-    });
+        const isYm = salary.source === "ym_card" || (salary.comment && salary.comment.includes("[Карта ЮМ]"));
+        const isVm = salary.source === "vm_card" || (salary.comment && salary.comment.includes("[Карта В.М.]"));
+        const accountLabel = isYm
+          ? "Карта ЮМ"
+          : isVm
+            ? "Карта В.М."
+            : salary.source === "cash"
+              ? "Касса"
+              : "Расчётный счёт";
+        return {
+          id: `salary-${salary.id}`,
+          sourceId: salary.id,
+          kind: "salary" as const,
+          date: salary.paidAt || salary.date,
+          counterparty: salary.employeeName,
+          purpose: isDebtSalaryComment(salary.comment)
+            ? "Выплата в счёт долга"
+            : "Зарплата",
+          direction: "outgoing" as const,
+          accountKey: salary.source === "cash" ? ("cash" as const) : ("bank" as const),
+          account: accountLabel,
+          amount: salary.amount,
+          paid: salary.isPaid,
+          status: salary.isPaid ? "Выплачена" : "Запланирована",
+          details: [
+            isDebtSalaryComment(salary.comment)
+              ? "не входит в факт месяца"
+              : `за ${salaryPeriod(salary)}`,
+            stripSalaryMetaTags(salary.comment),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          href: `/${adminPath}/warehouse?tab=salaries`,
+        };
+      });
     return sortByDate(
       [...bankRows, ...salaryRowsLocal].filter(
         (row) =>
@@ -542,6 +531,7 @@ export function WarehouseReports({
       sortByDate(
         salaries.filter(
           (salary) =>
+            !isWastepaperSalary(salary) &&
             inPeriod(salary.paidAt || salary.date, filters) &&
             includesQuery(
               [

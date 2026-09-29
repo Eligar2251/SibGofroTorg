@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSalary, saveEmployee } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
-import { isWastepaperSalarySource } from "@/lib/warehouse-shared";
+import { isWastepaperSalary, isWastepaperSalarySource } from "@/lib/warehouse-shared";
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdminApi();
@@ -28,13 +28,23 @@ export async function POST(request: NextRequest) {
     }
 
     const src = String(body.source || "");
+    // Записи с макулатуры создаются только через API её модуля; не даём
+    // обычному учёту создавать записи в чужом разделе или помечать их тегом.
+    if (
+      isWastepaperSalarySource(src) ||
+      isWastepaperSalary({ comment: body.comment })
+    ) {
+      return NextResponse.json(
+        { error: "Зарплаты макулатуры нужно проводить в модуле «Учёт макулатуры»" },
+        { status: 400 }
+      );
+    }
     const safeSource =
       src === "cash" ||
       src === "ym_card" ||
       src === "vm_card" ||
       src === "rent" ||
-      src === "bank" ||
-      isWastepaperSalarySource(src)
+      src === "bank"
         ? src
         : "bank";
     const result = await createSalary({
