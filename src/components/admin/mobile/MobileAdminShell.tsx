@@ -40,6 +40,7 @@ import { MobileTabBar, type MobileNavItem } from "./MobileTabBar";
 import styles from "./MobileAdminShell.module.css";
 
 const ROLE_LABELS: Record<AdminRole, string> = {
+  owner: "Владелец",
   admin: "Администратор",
   manager: "Менеджер",
   lawyer: "Юрист",

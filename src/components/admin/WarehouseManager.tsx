@@ -44,6 +44,7 @@ import {
 import {
   type BankPayment,
   type BankAccountTransfer,
+  type MoneyAdjustment,
   BANK_ACCOUNT_LABELS,
   type CounterpartyBalance,
   getBankSummary,
@@ -327,6 +328,8 @@ interface WarehouseManagerProps {
   deals: CustomerDeal[];
   payments: BankPayment[];
   accountTransfers: BankAccountTransfer[];
+  /** Прямые правки счетов владельцем (для остальных ролей — обезличенные). */
+  moneyAdjustments?: MoneyAdjustment[];
   employees: Employee[];
   salaries: Salary[];
   counterpartyRows: Counterparty[];
@@ -368,6 +371,7 @@ export function WarehouseManager({
   deals,
   payments,
   accountTransfers,
+  moneyAdjustments = [],
   employees,
   salaries,
   counterpartyRows,
@@ -865,8 +869,17 @@ export function WarehouseManager({
     // Заказы нужны, чтобы ожидаемый приход по заказу автоматически
     // уменьшался на уже пришедшие частичные оплаты другими платежами.
     // paymentsForTotals — без платежей, отмеченных «не считать».
-    () => getBankSummary(paymentsForTotals, salaries, cashCollections, undefined, deals, accountTransfers),
-    [paymentsForTotals, salaries, cashCollections, deals, accountTransfers]
+    () =>
+      getBankSummary(
+        paymentsForTotals,
+        salaries,
+        cashCollections,
+        undefined,
+        deals,
+        accountTransfers,
+        moneyAdjustments
+      ),
+    [paymentsForTotals, salaries, cashCollections, deals, accountTransfers, moneyAdjustments]
   );
   const cashCarryover = useMemo(
     () =>
@@ -875,9 +888,10 @@ export function WarehouseManager({
         salaries,
         cashCollections,
         localDateIso(),
-        accountTransfers
+        accountTransfers,
+        moneyAdjustments
       ),
-    [payments, salaries, cashCollections, accountTransfers]
+    [payments, salaries, cashCollections, accountTransfers, moneyAdjustments]
   );
   // --- Helper to get purchase price for any product ---
   const getProductPurchasePrice = (productId: string) => {
@@ -1092,11 +1106,18 @@ export function WarehouseManager({
       if (!date) continue;
       opening.set(
         collection.id,
-        getCashCarryoverSummary(payments, salaries, cashCollections, date, accountTransfers).openingBalance
+        getCashCarryoverSummary(
+          payments,
+          salaries,
+          cashCollections,
+          date,
+          accountTransfers,
+          moneyAdjustments
+        ).openingBalance
       );
     }
     return opening;
-  }, [payments, salaries, cashCollections, accountTransfers]);
+  }, [payments, salaries, cashCollections, accountTransfers, moneyAdjustments]);
   // Старая версия «закрыть без перевода» не создавала документ сдачи,
   // а просто ставила платежам «вне баланса». Восстанавливаем виртуальные
   // документы по общему updatedAt, чтобы они были видны в проведённых и
@@ -3492,6 +3513,7 @@ export function WarehouseManager({
           transports={transports}
           cashCollections={cashCollections}
           accountTransfers={accountTransfers}
+          moneyAdjustments={moneyAdjustments}
           stock={stock}
         />
       )}

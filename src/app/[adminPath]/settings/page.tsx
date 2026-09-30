@@ -7,12 +7,15 @@ import { SettingsForm } from "@/components/admin/SettingsForm";
 import { ExcelDataManager } from "@/components/admin/ExcelDataManager";
 import { AdminUsersManager } from "@/components/admin/AdminUsersManager";
 import { ThemeCustomizer } from "@/components/admin/AdminTheme";
+import { OwnerMoneyPanel } from "@/components/admin/OwnerMoneyPanel";
 import { redirect } from "next/navigation";
 import { hasPermission, verifySession } from "@/lib/auth";
+import { isOwner } from "@/lib/admin-rbac";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
+const ADMIN_PATH =
+  process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 export default async function AdminSettingsPage() {
   const session = await verifySession();
@@ -27,9 +30,21 @@ export default async function AdminSettingsPage() {
     settingsMap[key] = value != null ? String(value) : "";
   }
 
+  // Владелец получает дополнительный блок: прямую правку денежных
+  // счетов без документов. Обычный администратор его не видит.
+  const ownerMode = isOwner(session.role);
+
   return (
     <div>
       <h1 className="admin-h1">Настройки</h1>
+
+      {ownerMode && (
+        <div className="admin-card" style={{ marginBottom: "1.5rem" }}>
+          <div className="admin-card__pad">
+            <OwnerMoneyPanel />
+          </div>
+        </div>
+      )}
 
       <div className="admin-card" style={{ marginBottom: "1.5rem" }}>
         <div className="admin-card__head">

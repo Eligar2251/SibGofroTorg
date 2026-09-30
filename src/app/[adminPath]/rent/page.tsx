@@ -11,6 +11,7 @@
 
 import { notFound, redirect } from "next/navigation";
 import { verifySession } from "@/lib/auth";
+import { isFullAccessRole } from "@/lib/admin-rbac";
 import {
   getRentOrgs,
   getRentTenants,
@@ -45,7 +46,7 @@ export default async function RentPage({
   if (session.role === "wastepaper") redirect(`/${ADMIN_PATH}/wastepaper-account`);
 
   const mode: RentMode =
-    session.role === "admin"
+    isFullAccessRole(session.role)
       ? "full"
       : session.role === "manager"
         ? "readonly"

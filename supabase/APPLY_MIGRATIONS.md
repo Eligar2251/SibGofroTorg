@@ -15,6 +15,7 @@
 | 4 | `migration_vm_card.sql` | `cash_collections.vm_transfer_amount` + расширение CHECK по `cash_destination` | Не сохранится сводка смены кассы (падает запись `vm_transfer_amount`) |
 | 5 | `migration_wp_payment_links.sql` | `wp_payments.doc_type` + `wp_payments.doc_id` (платёж = оплата приёма/продажи) | Связка «платёж ↔ документ» не сохранится: привязка платежа к приёму/продаже падает записью `doc_type` (сами документы и свободные платежи работают) |
 | 6 | `migration_receipt_debts.sql` | Метка завершения перевозки и учёт уже оплаченных излишков в `warehouse_receipts` | Нельзя завершить перевозку по недопоставке или отметить долг за перепоставку оплаченным |
+| 7 | `migration_owner_role_and_money.sql` | Роль `owner` в CHECK `admins.role` + таблица `money_adjustments` | Нельзя создать владельца (падает сохранение пользователя с этой ролью), панель правки денег в настройках отвечает «Не удалось изменить счёт» |
 
 ## Что должно быть применено раньше (из `main`)
 
@@ -173,6 +174,49 @@ ALTER TABLE warehouse_receipts
   ADD COLUMN IF NOT EXISTS paid_overdelivery_items JSONB NOT NULL DEFAULT '[]'::jsonb;
 ```
 
+## 7. `supabase/migration_owner_role_and_money.sql`
+
+Роль «Владелец» и прямые правки денежных счетов без документов.
+
+```sql
+ALTER TABLE admins DROP CONSTRAINT IF EXISTS admins_role_check;
+ALTER TABLE admins
+  ADD CONSTRAINT admins_role_check
+  CHECK (role IN ('owner', 'admin', 'manager', 'lawyer', 'wastepaper'));
+
+CREATE TABLE IF NOT EXISTS money_adjustments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account TEXT NOT NULL CHECK (account IN ('cash', 'bank', 'ym_card', 'vm_card')),
+  delta NUMERIC(14,2) NOT NULL CHECK (delta <> 0),
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  note TEXT,
+  balance_after NUMERIC(14,2),
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE money_adjustments ENABLE ROW LEVEL SECURITY;
+```
+
+`money_adjustments` — журнал движений владельца: плюс добавляет деньги на
+счёт, минус списывает («убрать 14 ₽ — они просто исчезнут»). Записи
+подмешиваются в расчёт балансов (`getBankSummary` / `getCashCarryoverSummary`),
+поэтому касса, р/с и обе карты показывают суммы с учётом правок. Публичных
+RLS-политик у таблицы нет: читает и пишет только сервер приложения
+(service_role), а в разделе «База Данных» таблицу видит лишь владелец.
+
+Как создать владельца (любой из способов):
+
+```sql
+-- 1) Выдать роль существующему пользователю
+UPDATE admins SET role = 'owner' WHERE username = 'ivan';
+```
+
+```bash
+# 2) Через скрипт (пароль хэшируется scrypt)
+npx tsx scripts/create-admin.ts owner mypassword owner "Владелец"
+```
+
 ## Проверка после применения
 
 ```sql
@@ -197,7 +241,13 @@ UNION ALL SELECT 'warehouse_receipts.transport_finished_at',
                WHERE table_name = 'warehouse_receipts' AND column_name = 'transport_finished_at')
 UNION ALL SELECT 'warehouse_receipts.paid_overdelivery_items',
        EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name = 'warehouse_receipts' AND column_name = 'paid_overdelivery_items');
+               WHERE table_name = 'warehouse_receipts' AND column_name = 'paid_overdelivery_items')
+UNION ALL SELECT 'admins.role допускает owner',
+       EXISTS (SELECT 1 FROM pg_constraint
+               WHERE conname = 'admins_role_check'
+                 AND pg_get_constraintdef(oid) LIKE '%owner%')
+UNION ALL SELECT 'money_adjustments',
+       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'money_adjustments');
 ```
 
-Ожидаемый результат — **8 строк, во всех `ok = true`**.
+Ожидаемый результат — **10 строк, во всех `ok = true`**.

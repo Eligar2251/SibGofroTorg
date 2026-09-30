@@ -34,6 +34,9 @@ import { WarehouseManager } from "@/components/admin/WarehouseManager";
 import { WarehouseRealtime } from "@/components/admin/WarehouseRealtime";
 import { getAdminDb } from "@/lib/supabase";
 import { getSettings } from "@/lib/supabase-queries";
+import { verifySession } from "@/lib/auth";
+import { getMoneyAdjustments } from "@/lib/money-accounts";
+import { redactMoneyAdjustments } from "@/lib/money-accounts-shared";
 import { getSupplyPlans } from "@/lib/supply-plans";
 import { getPurchasePlans } from "@/lib/purchase-plans";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
@@ -118,6 +121,13 @@ export default async function AdminWarehousePage({
   if (adminPath !== ADMIN_PATH) notFound();
 
   const sp = await searchParams;
+  const session = await verifySession();
+  // Прямые правки счетов владельцем. Остальным ролям уходит урезанная
+  // версия (без комментария и автора) — иначе балансы разошлись бы.
+  const moneyAdjustments = redactMoneyAdjustments(
+    await getMoneyAdjustments().catch(() => []),
+    session?.role ?? null
+  );
   // Старые ссылки `tab=suppliers` теперь ведут в отдельное планирование,
   // а `tab=forecast` — в объединённую вкладку «План» (прогноз и план
   // слились: план на период с прибылью по контрагентам).
@@ -378,6 +388,7 @@ export default async function AdminWarehousePage({
       deals={deals}
       payments={payments}
       accountTransfers={accountTransfers}
+      moneyAdjustments={moneyAdjustments}
       employees={employees}
       salaries={salaries}
       counterpartyRows={counterpartyRows}

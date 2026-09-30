@@ -29,6 +29,7 @@ type AdminUser = {
 };
 
 const roleLabels: Record<AdminRole, string> = {
+  owner: "Владелец",
   admin: "Администратор",
   manager: "Менеджер",
   lawyer: "Юрист",
@@ -36,7 +37,9 @@ const roleLabels: Record<AdminRole, string> = {
 };
 
 const roleDescriptions: Record<AdminRole, string> = {
-  admin: "Полный доступ, включая настройки и журнал действий",
+  owner:
+    "Полный доступ + правка денежных счетов без документов (журнал правок виден только владельцу)",
+  admin: "Полный доступ, включая настройки, базу данных и журнал действий",
   manager: "Все рабочие разделы, кроме настроек и журнала действий",
   lawyer: "Только финансы, движение средств и перевозки на дашборде",
   wastepaper: "Только отдельный учёт макулатуры (без доступа к сайту и основному учёту)",
@@ -345,9 +348,11 @@ export function AdminUsersManager() {
               <div className="admin-user-row__role">
                 <span
                   className={`admin-badge ${
-                    user.role === "admin"
-                      ? "admin-badge--indigo"
-                      : user.role === "manager"
+                    user.role === "owner"
+                      ? "admin-badge--green"
+                      : user.role === "admin"
+                        ? "admin-badge--indigo"
+                        : user.role === "manager"
                         ? "admin-badge--blue"
                         : user.role === "wastepaper"
                           ? "admin-badge--teal"

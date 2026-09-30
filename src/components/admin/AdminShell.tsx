@@ -29,6 +29,7 @@ import {
   Ruler,
   Menu,
   X,
+  Database,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
@@ -261,6 +262,13 @@ export function AdminShell({
       icon: <Ruler size={18} />,
     },
     {
+      // Все таблицы базы данных: просмотр и правка значений без SQL.
+      // Пункт видят только admin и owner (см. canAccessAdminPage).
+      href: `/${adminPath}/database`,
+      label: "База Данных",
+      icon: <Database size={18} />,
+    },
+    {
       href: `/${adminPath}/settings`,
       label: "Настройки",
       icon: <Settings size={18} />,
@@ -296,15 +304,17 @@ export function AdminShell({
   }
 
   const roleLabel =
-    role === "admin"
-      ? "Администратор"
-      : role === "manager"
-        ? "Менеджер"
-        : role === "lawyer"
-          ? "Юрист"
-          : role === "wastepaper"
-            ? "Макулатурщик"
-            : "";
+    role === "owner"
+      ? "Владелец"
+      : role === "admin"
+        ? "Администратор"
+        : role === "manager"
+          ? "Менеджер"
+          : role === "lawyer"
+            ? "Юрист"
+            : role === "wastepaper"
+              ? "Макулатурщик"
+              : "";
 
   return (
     <div

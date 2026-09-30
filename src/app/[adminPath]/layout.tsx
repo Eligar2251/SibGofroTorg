@@ -28,6 +28,9 @@ import "../admin-wastepaper.css";
 // десктоп не задевают. Идёт последним: при равной специфичности
 // мобильные правила побеждают старые телефонные переопределения.
 import "../admin-warehouse-mobile.css";
+// Владелец: панель денежных счетов и раздел «База Данных». Правила
+// завязаны на .owner-money / .db-browser и другие разделы не задевают.
+import "../admin-owner.css";
 import { AdminThemeProvider } from "@/components/admin/AdminTheme";
 
 // Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому

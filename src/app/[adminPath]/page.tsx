@@ -37,7 +37,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminDb } from "@/lib/supabase";
 import { verifySession } from "@/lib/auth";
+import { isFullAccessRole } from "@/lib/admin-rbac";
 import { getDeals, getPayments, getAccountTransfers, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
+import { getMoneyAdjustments } from "@/lib/money-accounts";
 import { getRentSummary } from "@/lib/rent";
 import { getSupplyPlans } from "@/lib/supply-plans";
 import { supplyPlansItemsCount } from "@/lib/supply-plans-shared";
@@ -216,6 +218,10 @@ export default async function AdminDashboard() {
     safeLoad(isLawyer ? Promise.resolve([]) : getSupplyPlans(), []),
   ]);
 
+  // Прямые правки счетов владельцем: влияют на остатки, но обычному
+  // администратору доступен только итоговый баланс (без подробностей).
+  const moneyAdjustments = await getMoneyAdjustments().catch(() => []);
+
   const wpFinance = await getWpFinanceData().catch((error) => {
     console.error("dashboard: финансы макулатуры:", error);
     return null;
@@ -245,7 +251,8 @@ export default async function AdminDashboard() {
     cashCollections,
     undefined,
     deals.length ? deals : undefined,
-    accountTransfers
+    accountTransfers,
+    moneyAdjustments
   );
   const dashboardDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Novosibirsk",
@@ -258,7 +265,8 @@ export default async function AdminDashboard() {
     salaries,
     cashCollections,
     dashboardDate,
-    accountTransfers
+    accountTransfers,
+    moneyAdjustments
   );
   const recentOrders = recentOrderPool.slice(0, 8);
   const activeSupplyPlans = supplyPlans.filter((plan) => plan.status === "active");
@@ -887,7 +895,7 @@ export default async function AdminDashboard() {
             accent="green"
             badge={money(wpBalance.common)}
             defaultOpen={false}
-            sideContent={session.role === "admin" && (
+            sideContent={isFullAccessRole(session.role) && (
               <Link href={`/${ADMIN_PATH}/wastepaper-account`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
                 <Recycle size={12} /> Учёт
               </Link>

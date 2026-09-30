@@ -8,6 +8,7 @@ import { ArrowLeft, DoorOpen } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getSettings } from "@/lib/supabase-queries";
 import { verifySession } from "@/lib/auth";
+import { isFullAccessRole } from "@/lib/admin-rbac";
 import { doorSignFromSettings } from "@/lib/door-sign";
 import { DoorSignPrint } from "@/components/admin/DoorSignPrint";
 
@@ -31,7 +32,7 @@ export default async function AdminDoorSignPage({
 
   const settings = await getSettings();
   const config = doorSignFromSettings(settings);
-  const canSave = session.role === "admin";
+  const canSave = isFullAccessRole(session.role);
 
   return (
     <div className="door-sign-page">
