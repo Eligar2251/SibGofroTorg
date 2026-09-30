@@ -7,7 +7,7 @@
 // Балансы учёта СибГофроТорг такие выплаты не трогают.
 import { NextRequest, NextResponse } from "next/server";
 import { createSalary, saveEmployee } from "@/lib/warehouse";
-import { getWpSalaries, requireWastepaperApi } from "@/lib/wastepaper-account";
+import { bumpWpCaches, getWpSalaries, requireWastepaperApi } from "@/lib/wastepaper-account";
 import { isWastepaperSalarySource, type SalarySource } from "@/lib/warehouse-shared";
 import { logAdminAction } from "@/lib/activity-log";
 
@@ -64,12 +64,13 @@ export async function POST(request: NextRequest) {
       isPaid: body.isPaid === true,
       comment: body.comment ?? null,
     });
+    bumpWpCaches();
     await logAdminAction(auth.displayName, auth.role, "create", "salary", result.id, `ЗП макулатуры: ${employeeName}`, {
       amount,
       source,
       isPaid: body.isPaid === true,
     });
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, employeeId });
   } catch (error: any) {
     console.error("WP create salary error:", error);
     return NextResponse.json({ error: error?.message || "Ошибка сервера" }, { status: 400 });

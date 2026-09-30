@@ -65,7 +65,16 @@ import {
 } from "@/components/admin/TransportManager";
 import { WpProductsTab } from "@/components/admin/WpProductsTab";
 import { WASTEPAPER_SALARY_SCOPE } from "@/lib/salary-scope";
-import type { Employee, Salary } from "@/lib/warehouse-shared";
+import {
+  composeSalaryComment,
+  getSalaryPeriodMonth,
+  getSalaryThirdPartyOrigin,
+  stripSalaryMetaTags,
+  wastepaperSalaryAccount,
+  type Employee,
+  type Salary,
+  type SalarySource,
+} from "@/lib/warehouse-shared";
 import dynamic from "next/dynamic";
 
 // Таблица зарплат общая с учётом СибГофроТорг (scope = макулатура);
@@ -716,6 +725,7 @@ export function WastepaperAccountManager(props: Props) {
   const [shipments, setShipments] = useState(props.shipments);
   const [manualPayments, setManualPayments] = useState(props.manualPayments);
   const [salaries, setSalaries] = useState<Salary[]>(props.salaries ?? []);
+  const [employees, setEmployees] = useState<Employee[]>(props.employees ?? []);
   const canEditSalaries = props.canEditSalaries !== false;
   const [products, setProducts] = useState(props.products);
   const [stockAdjustments, setStockAdjustments] = useState<WpStockAdjustment[]>(
@@ -752,7 +762,10 @@ export function WastepaperAccountManager(props: Props) {
     | null
   >(null);
   const [paymentModal, setPaymentModal] = useState<
-    { mode: "create" } | { mode: "edit"; item: WpManualPayment } | null
+    | { mode: "create"; initialPurpose?: PaymentPurpose }
+    | { mode: "edit"; item: WpManualPayment }
+    | { mode: "edit-salary"; salary: Salary }
+    | null
   >(null);
   const [counterpartyModal, setCounterpartyModal] = useState<
     { mode: "create" } | { mode: "edit"; item: WpCounterparty } | null
@@ -768,6 +781,7 @@ export function WastepaperAccountManager(props: Props) {
   useEffect(() => setShipments(props.shipments), [props.shipments]);
   useEffect(() => setManualPayments(props.manualPayments), [props.manualPayments]);
   useEffect(() => setSalaries(props.salaries ?? []), [props.salaries]);
+  useEffect(() => setEmployees(props.employees ?? []), [props.employees]);
   useEffect(() => setProducts(props.products), [props.products]);
   useEffect(
     () => setStockAdjustments(props.stockAdjustments ?? []),
@@ -986,10 +1000,15 @@ export function WastepaperAccountManager(props: Props) {
       return;
     }
     if (e.kind === "salary") {
-      // Запись зарплаты редактируется на вкладке «Зарплаты» модуля.
       setActionError("");
       if (!canEditSalaries) {
         setNotice(SALARY_EVENT_HINT);
+        return;
+      }
+      const sal = salaries.find((s) => s.id === e.id);
+      if (sal) {
+        setFormError("");
+        setPaymentModal({ mode: "edit-salary", salary: sal });
         return;
       }
       setNotice("");
@@ -1050,6 +1069,10 @@ export function WastepaperAccountManager(props: Props) {
         onQuickShipment={() => {
           setFormError("");
           setShipmentModal({ mode: "create" });
+        }}
+        onQuickPayment={() => {
+          setFormError("");
+          setPaymentModal({ mode: "create" });
         }}
       />
 
@@ -1255,7 +1278,7 @@ export function WastepaperAccountManager(props: Props) {
             платежи проходят с пометкой, откуда пришли деньги. Учёт СибГофроТорг эти выплаты не трогают.
           </p>
           <WarehouseSalaries
-            employees={props.employees ?? []}
+            employees={employees}
             salaries={salaries}
             scope={WASTEPAPER_SALARY_SCOPE}
           />
@@ -1450,11 +1473,18 @@ export function WastepaperAccountManager(props: Props) {
         <PaymentModal
           mode={paymentModal.mode}
           item={paymentModal.mode === "edit" ? paymentModal.item : null}
+          salary={paymentModal.mode === "edit-salary" ? paymentModal.salary : null}
+          initialPurpose={paymentModal.mode === "create" ? paymentModal.initialPurpose : undefined}
           counterparties={counterparties}
+          suppliers={suppliers}
+          enterprises={enterprises}
           intakes={intakes}
           shipments={shipments}
+          employees={employees}
+          salaries={salaries}
+          catalog={typeCatalog}
+          canEditSalaries={canEditSalaries}
           onOpenDoc={(docType, docId) => {
-            // Из карточки платежа — сразу в привязанный документ.
             setPaymentModal(null);
             if (docType === "intake") {
               const doc = intakes.find((i) => i.id === docId);
@@ -1464,10 +1494,96 @@ export function WastepaperAccountManager(props: Props) {
               if (doc) setShipmentModal({ mode: "edit", item: doc });
             }
           }}
+          onOpenSalariesTab={() => {
+            setPaymentModal(null);
+            setTab("salaries");
+          }}
           saving={saving}
           error={formError}
           onClose={() => setPaymentModal(null)}
-          onSubmit={async (form) => {
+          onSubmit={async (action) => {
+            if (action.kind === "salary") {
+              const source: SalarySource =
+                action.account === "bank"
+                  ? "wastepaper_bank"
+                  : action.account === "third_party"
+                    ? "wastepaper_third"
+                    : "wastepaper";
+              const comment = composeSalaryComment({
+                comment: action.comment,
+                wastepaper: true,
+                wastepaperAccount: action.account,
+                thirdPartyOrigin:
+                  action.account === "third_party" ? action.thirdPartyOrigin : null,
+                periodMonth: action.periodMonth,
+              });
+              const isEditSal = Boolean(action.salaryId);
+              const ok = await callApi(
+                () =>
+                  fetch(
+                    isEditSal
+                      ? `/api/admin/wp/salaries/${action.salaryId}`
+                      : "/api/admin/wp/salaries",
+                    {
+                      method: isEditSal ? "PATCH" : "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        employeeId: action.employeeId,
+                        employeeName: action.employeeName,
+                        amount: action.amount,
+                        date: action.date,
+                        source,
+                        isPaid: action.isPaid,
+                        paidAt: action.isPaid ? action.date : null,
+                        periodMonth: action.periodMonth,
+                        comment,
+                      }),
+                    }
+                  ),
+                isEditSal
+                  ? "Не удалось сохранить выплату зарплаты"
+                  : "Не удалось провести выплату зарплаты"
+              );
+              if (ok) {
+                setPaymentModal(null);
+                setNotice(
+                  isEditSal ? "Выплата зарплаты сохранена" : "Выплата зарплаты добавлена"
+                );
+              }
+              return;
+            }
+            if (action.kind === "new-intake") {
+              const ok = await callApi(
+                () =>
+                  fetch("/api/admin/wp/intakes", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(action.intake),
+                  }),
+                "Не удалось создать приёмку и оплату"
+              );
+              if (ok) {
+                setPaymentModal(null);
+                setNotice("Приёмка создана и оплата привязана");
+              }
+              return;
+            }
+            if (action.kind === "new-shipment") {
+              const ok = await callApi(
+                () =>
+                  fetch("/api/admin/wp/shipments", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(action.shipment),
+                  }),
+                "Не удалось создать продажу и оплату"
+              );
+              if (ok) {
+                setPaymentModal(null);
+                setNotice("Продажа создана и оплата привязана");
+              }
+              return;
+            }
             const isEdit = paymentModal.mode === "edit";
             const ok = await callApi(
               () =>
@@ -1478,7 +1594,7 @@ export function WastepaperAccountManager(props: Props) {
                   {
                     method: isEdit ? "PATCH" : "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(form),
+                    body: JSON.stringify(action.payload),
                   }
                 ),
               isEdit ? "Не удалось сохранить платёж" : "Не удалось создать платёж"
@@ -1489,6 +1605,26 @@ export function WastepaperAccountManager(props: Props) {
             }
           }}
           onDelete={async () => {
+            if (paymentModal.mode === "edit-salary") {
+              if (
+                !confirm(
+                  `Удалить выплату зарплаты сотрудника «${paymentModal.salary.employeeName}» безвозвратно?`
+                )
+              )
+                return;
+              const ok = await callApi(
+                () =>
+                  fetch(`/api/admin/wp/salaries/${paymentModal.salary.id}`, {
+                    method: "DELETE",
+                  }),
+                "Не удалось удалить выплату зарплаты"
+              );
+              if (ok) {
+                setPaymentModal(null);
+                setNotice("Выплата зарплаты удалена");
+              }
+              return;
+            }
             if (paymentModal.mode !== "edit") return;
             if (!confirm(`Удалить платёж №${paymentModal.item.number} безвозвратно?`)) return;
             const ok = await callApi(
@@ -1576,6 +1712,7 @@ function WpHero({
   onOpenTransports,
   onQuickIntake,
   onQuickShipment,
+  onQuickPayment,
 }: {
   balance: WpBalance;
   forecast: ReturnType<typeof getWpForecast>;
@@ -1586,6 +1723,7 @@ function WpHero({
   onOpenTransports: () => void;
   onQuickIntake: () => void;
   onQuickShipment: () => void;
+  onQuickPayment: () => void;
 }) {
   // Счета модуля — одинаковые строки и на телефоне, и на десктопе:
   // иконка · название · сумма справа (как счета в приложении банка).
@@ -1651,6 +1789,9 @@ function WpHero({
           <button type="button" className="wpa-hero__btn" onClick={onQuickShipment}>
             <ArrowUpRight size={20} /><span>Сдать</span>
           </button>
+          <button type="button" className="wpa-hero__btn" onClick={onQuickPayment}>
+            <CreditCard size={20} /><span>Платёж</span>
+          </button>
           <button type="button" className="wpa-hero__btn" onClick={onOpenTransports}>
             <Truck size={20} /><span>Перевозки</span>
           </button>
@@ -1704,6 +1845,9 @@ function WpHero({
             </button>
             <button type="button" className="wpa-hero__btn" onClick={onQuickShipment}>
               <ArrowUpRight size={16} /> Сдать на предприятие
+            </button>
+            <button type="button" className="wpa-hero__btn" onClick={onQuickPayment}>
+              <Plus size={16} /> Платёж
             </button>
             <button type="button" className="wpa-hero__btn" onClick={onOpenTransports}>
               <Truck size={16} /> Перевозки
@@ -4513,8 +4657,10 @@ function ShipmentModal({
 }
 
 /* ═══════════════════════════════════════════════════════
-   МОДАЛКА: РУЧНОЙ ПЛАТЁЖ
+   МОДАЛКА: УНИВЕРСАЛЬНЫЙ ПЛАТЁЖ (Зарплата / Приёмка / Продажа / Прочее)
    ═══════════════════════════════════════════════════════ */
+
+type PaymentPurpose = "salary" | "intake" | "shipment" | "free";
 
 interface PaymentFormPayload {
   date: string;
@@ -4534,104 +4680,698 @@ interface PaymentFormPayload {
   docId: string | null;
 }
 
+type PaymentModalSubmitAction =
+  | {
+      kind: "salary";
+      salaryId: string | null;
+      employeeId: string | null;
+      employeeName: string;
+      amount: number;
+      date: string;
+      periodMonth: string;
+      account: WpAccount;
+      thirdPartyOrigin: string;
+      isPaid: boolean;
+      comment: string | null;
+    }
+  | {
+      kind: "new-intake";
+      intake: IntakeFormPayload;
+    }
+  | {
+      kind: "new-shipment";
+      shipment: ShipmentFormPayload;
+    }
+  | {
+      kind: "payment";
+      payload: PaymentFormPayload;
+    };
+
+function daysInPeriodMonth(ym: string): number {
+  const m = /^(\d{4})-(\d{2})$/.exec(ym);
+  if (!m) return 31;
+  return new Date(Number(m[1]), Number(m[2]), 0).getDate();
+}
+
 function PaymentModal({
   mode,
   item,
+  salary,
+  initialPurpose,
   counterparties,
+  suppliers,
+  enterprises,
   intakes,
   shipments,
+  employees,
+  salaries,
+  catalog,
+  canEditSalaries,
   saving,
   error,
   onClose,
   onSubmit,
   onDelete,
   onOpenDoc,
+  onOpenSalariesTab,
 }: {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "edit-salary";
   item: WpManualPayment | null;
+  salary: Salary | null;
+  initialPurpose?: PaymentPurpose;
   counterparties: WpCounterparty[];
-  /** Документы для привязки платежа (оплата приёма/продажи). */
+  suppliers: WpCounterparty[];
+  enterprises: WpCounterparty[];
   intakes: WpIntake[];
   shipments: WpShipment[];
+  employees: Employee[];
+  salaries: Salary[];
+  catalog: WpTypeCatalog;
+  canEditSalaries: boolean;
   saving: boolean;
   error: string;
   onClose: () => void;
-  onSubmit: (form: PaymentFormPayload) => void;
+  onSubmit: (action: PaymentModalSubmitAction) => void;
   onDelete: () => void;
-  /** Открыть привязанный документ (приём/продажу) из карточки платежа. */
   onOpenDoc?: (docType: WpDocKind, docId: string) => void;
+  onOpenSalariesTab?: () => void;
 }) {
-  // Модалка рендерится inline — блокируем скролл фона (iOS-safe).
   useBodyLock(true);
-  // Закрытие только крестиком и Escape: клик по подложке модалку не
-  // закрывает — иначе выделение текста мышью с отпусканием за окном
-  // сбрасывало всю заполненную форму.
   useEscapeClose(onClose, !saving);
+
+  const initialPurposeVal: PaymentPurpose =
+    mode === "edit-salary"
+      ? "salary"
+      : mode === "edit"
+        ? item?.docType === "intake"
+          ? "intake"
+          : item?.docType === "shipment"
+            ? "shipment"
+            : "free"
+        : initialPurpose ?? "intake";
+
+  const [purpose, setPurpose] = useState<PaymentPurpose>(initialPurposeVal);
+  const [intakeSubMode, setIntakeSubMode] = useState<"existing" | "new">("existing");
+  const [shipmentSubMode, setShipmentSubMode] = useState<"existing" | "new">("existing");
+
+  // Фильтры выбора существующего документа (Приёмка / Продажа)
+  const [docSearch, setDocSearch] = useState("");
+  const [onlyUnpaidDocs, setOnlyUnpaidDocs] = useState<boolean>(mode === "create");
+
+  // Поля общего платежа (дата, направление, счёт, сумма, статус, комментарий, привязка)
+  const salaryInitialAccount: WpAccount = salary
+    ? wastepaperSalaryAccount(salary) ?? "cash"
+    : "cash";
+  const salaryInitialDate = salary
+    ? (salary.paidAt || salary.date || todayStr()).slice(0, 10)
+    : todayStr();
+
   const [form, setForm] = useState({
-    date: item?.date || todayStr(),
-    direction: (item?.direction || "incoming") as "incoming" | "outgoing",
-    account: (item?.account || "cash") as WpAccount,
+    date:
+      mode === "edit-salary"
+        ? salaryInitialDate
+        : item?.date || todayStr(),
+    direction: (item?.direction || "outgoing") as "incoming" | "outgoing",
+    account: (
+      mode === "edit-salary"
+        ? salaryInitialAccount
+        : item?.account || "cash"
+    ) as WpAccount,
     counterpartyName: item?.counterpartyName || "",
     counterpartyId: item?.counterpartyId || (null as string | null),
-    amount: item ? String(item.amount) : "",
-    isPaid: item ? item.isPaid : true,
+    amount:
+      mode === "edit-salary" && salary
+        ? String(salary.amount)
+        : item
+          ? String(item.amount)
+          : "",
+    isPaid:
+      mode === "edit-salary" && salary
+        ? salary.isPaid
+        : item
+          ? item.isPaid
+          : true,
     docType: (item?.docType ?? null) as WpDocKind | null,
     docId: item?.docId ?? (null as string | null),
-    comment: item?.comment || "",
+    comment:
+      mode === "edit-salary" && salary
+        ? stripSalaryMetaTags(salary.comment)
+        : item?.comment || "",
   });
-  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
-  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
-  useEscapeClose(onClose, !saving);
+
+  // ── 1. Состояние блока «Зарплата» ──
+  const [salaryForm, setSalaryForm] = useState(() => {
+    const firstEmp = employees[0] ?? null;
+    const empId = salary
+      ? salary.employeeId
+      : firstEmp?.id ?? null;
+    const empName = salary
+      ? salary.employeeName
+      : firstEmp?.name ?? "";
+    const pMonth = salary
+      ? getSalaryPeriodMonth(salary.comment, salary.date)
+      : salaryInitialDate.slice(0, 7);
+    const origin = salary ? getSalaryThirdPartyOrigin(salary.comment) : "";
+    return {
+      selectedSalaryId: salary ? salary.id : (null as string | null),
+      employeeId: empId as string | null,
+      employeeName: empName,
+      periodMonth: pMonth,
+      thirdPartyOrigin: origin,
+    };
+  });
+
+  // ── 2. Состояние создания новой приёмки прямо из платежа ──
+  const [newIntakeForm, setNewIntakeForm] = useState({
+    counterpartyId: null as string | null,
+    counterpartyName: "",
+    saveCounterparty: true,
+    address: "",
+    phone: "",
+    contactPerson: "",
+    needsTransport: false,
+    pickupDate: todayStr(),
+  });
+  const [newIntakeItems, setNewIntakeItems] = useState<WpDocItem[]>(() => [
+    emptyDocItem(catalog),
+  ]);
+
+  // ── 3. Состояние создания новой продажи прямо из платежа ──
+  const [newShipmentForm, setNewShipmentForm] = useState({
+    enterpriseId: null as string | null,
+    enterpriseName: "",
+    saveEnterprise: true,
+    address: "",
+    phone: "",
+    contactPerson: "",
+    needsTransport: false,
+    latestPickupDate: todayStr(),
+    skipStock: false,
+  });
+  const [newShipmentItems, setNewShipmentItems] = useState<WpDocItem[]>(() => [
+    emptyDocItem(catalog),
+  ]);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  /** Привязка к документу: оплата приёма — расход, продажи — приход. */
-  function onDocSelect(value: string) {
-    if (!value) {
-      setForm((prev) => ({ ...prev, docType: null, docId: null }));
-      return;
+  // Переключение основного назначения платежа
+  function selectPurpose(next: PaymentPurpose) {
+    if (mode === "edit-salary") return;
+    setPurpose(next);
+    setDocSearch("");
+    if (next === "intake") {
+      setForm((prev) => ({
+        ...prev,
+        direction: "outgoing",
+        docType: intakeSubMode === "existing" ? "intake" : null,
+        docId: intakeSubMode === "existing" && prev.docType === "intake" ? prev.docId : null,
+      }));
+    } else if (next === "shipment") {
+      setForm((prev) => ({
+        ...prev,
+        direction: "incoming",
+        account: prev.account === "cash" && !item ? "bank" : prev.account,
+        docType: shipmentSubMode === "existing" ? "shipment" : null,
+        docId: shipmentSubMode === "existing" && prev.docType === "shipment" ? prev.docId : null,
+      }));
+    } else if (next === "salary") {
+      setForm((prev) => ({
+        ...prev,
+        direction: "outgoing",
+        docType: null,
+        docId: null,
+      }));
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        docType: null,
+        docId: null,
+      }));
     }
-    const sep = value.indexOf(":");
-    const kind = value.slice(0, sep);
-    const id = value.slice(sep + 1);
-    const docType: WpDocKind | null = kind === "intake" || kind === "shipment" ? kind : null;
-    if (!docType || !id) return;
-    const isIntake = docType === "intake";
-    const intake = isIntake ? intakes.find((i) => i.id === id) : null;
-    const shipment = !isIntake ? shipments.find((s) => s.id === id) : null;
-    const docTotal = intake
-      ? intake.total
-      : shipment
-        ? shipment.receivedAmount > 0
-          ? shipment.receivedAmount
-          : shipment.total
-        : 0;
+  }
+
+  // Выбор существующей приёмки из списка
+  function pickExistingIntake(intake: WpIntake) {
     setForm((prev) => ({
       ...prev,
-      docType,
-      docId: id,
-      direction: isIntake ? "outgoing" : "incoming",
-      counterpartyName: intake?.counterpartyName || shipment?.enterpriseName || prev.counterpartyName,
-      counterpartyId: intake?.counterpartyId || shipment?.enterpriseId || prev.counterpartyId,
-      // Сумму подставляем из документа, пока её не вписали руками.
-      amount: prev.amount || (docTotal > 0 ? String(docTotal) : ""),
+      docType: "intake",
+      docId: intake.id,
+      direction: "outgoing",
+      account: intake.account || prev.account,
+      counterpartyId: intake.counterpartyId,
+      counterpartyName: intake.counterpartyName,
+      amount: intake.total > 0 ? String(intake.total) : prev.amount,
     }));
   }
 
+  // Выбор существующей / запланированной продажи из списка
+  function pickExistingShipment(shipment: WpShipment) {
+    const suggested =
+      shipment.receivedAmount > 0 ? shipment.receivedAmount : shipment.total;
+    setForm((prev) => ({
+      ...prev,
+      docType: "shipment",
+      docId: shipment.id,
+      direction: "incoming",
+      account: shipment.account || prev.account,
+      counterpartyId: shipment.enterpriseId,
+      counterpartyName: shipment.enterpriseName,
+      amount: suggested > 0 ? String(suggested) : prev.amount,
+    }));
+  }
+
+  // Автосинхронизация суммы из позиций новой приёмки / новой продажи
+  function handleNewIntakeItemsChange(nextItems: WpDocItem[]) {
+    setNewIntakeItems(nextItems);
+    const calcTotal = wpDocDetailedTotals(nextItems).total;
+    if (calcTotal > 0) {
+      setForm((prev) => ({ ...prev, amount: String(calcTotal) }));
+    }
+  }
+
+  function handleNewShipmentItemsChange(nextItems: WpDocItem[]) {
+    setNewShipmentItems(nextItems);
+    const calcTotal = wpDocDetailedTotals(nextItems).total;
+    if (calcTotal > 0) {
+      setForm((prev) => ({ ...prev, amount: String(calcTotal) }));
+    }
+  }
+
+  // Контрагенты и филиалы для создания новой приёмки / продажи
+  const selectedNewSupplier = useMemo(
+    () =>
+      (newIntakeForm.counterpartyId &&
+        suppliers.find((s) => s.id === newIntakeForm.counterpartyId)) ||
+      suppliers.find(
+        (s) =>
+          s.name.trim().toLowerCase() ===
+          newIntakeForm.counterpartyName.trim().toLowerCase()
+      ) ||
+      null,
+    [suppliers, newIntakeForm.counterpartyId, newIntakeForm.counterpartyName]
+  );
+  const newSupplierBranches = selectedNewSupplier?.branches ?? [];
+
+  const selectedNewEnterprise = useMemo(
+    () =>
+      (newShipmentForm.enterpriseId &&
+        enterprises.find((s) => s.id === newShipmentForm.enterpriseId)) ||
+      enterprises.find(
+        (s) =>
+          s.name.trim().toLowerCase() ===
+          newShipmentForm.enterpriseName.trim().toLowerCase()
+      ) ||
+      null,
+    [enterprises, newShipmentForm.enterpriseId, newShipmentForm.enterpriseName]
+  );
+  const newEnterpriseBranches = selectedNewEnterprise?.branches ?? [];
+
+  // Списки активных приёмок и продаж для привязки
+  const activeIntakes = useMemo(
+    () => intakes.filter((i) => i.status !== "cancelled"),
+    [intakes]
+  );
+  const unpaidIntakesList = useMemo(
+    () => activeIntakes.filter((i) => !i.isPaid),
+    [activeIntakes]
+  );
+  const filteredIntakes = useMemo(() => {
+    const base = onlyUnpaidDocs ? unpaidIntakesList : activeIntakes;
+    const q = docSearch.trim().toLowerCase();
+    const list = !q
+      ? base
+      : base.filter(
+          (i) =>
+            String(i.number).includes(q) ||
+            `пм-${i.number}`.includes(q) ||
+            i.counterpartyName.toLowerCase().includes(q) ||
+            (i.address || "").toLowerCase().includes(q) ||
+            wpItemsSummary(i.items, catalog.labels).toLowerCase().includes(q)
+        );
+    // Если выбранный документ не попал в фильтр «неоплаченные», добавим его сверху
+    if (form.docType === "intake" && form.docId && !list.some((x) => x.id === form.docId)) {
+      const chosen = activeIntakes.find((x) => x.id === form.docId);
+      if (chosen) return [chosen, ...list];
+    }
+    return list;
+  }, [onlyUnpaidDocs, unpaidIntakesList, activeIntakes, docSearch, catalog.labels, form.docType, form.docId]);
+
+  const activeShipments = useMemo(
+    () => shipments.filter((s) => s.status !== "cancelled"),
+    [shipments]
+  );
+  const unpaidShipmentsList = useMemo(
+    () => activeShipments.filter((s) => !s.isPaid),
+    [activeShipments]
+  );
+  const filteredShipments = useMemo(() => {
+    const base = onlyUnpaidDocs ? unpaidShipmentsList : activeShipments;
+    const q = docSearch.trim().toLowerCase();
+    const list = !q
+      ? base
+      : base.filter(
+          (s) =>
+            String(s.number).includes(q) ||
+            `см-${s.number}`.includes(q) ||
+            s.enterpriseName.toLowerCase().includes(q) ||
+            (s.address || "").toLowerCase().includes(q) ||
+            wpItemsSummary(s.items, catalog.labels).toLowerCase().includes(q)
+        );
+    if (form.docType === "shipment" && form.docId && !list.some((x) => x.id === form.docId)) {
+      const chosen = activeShipments.find((x) => x.id === form.docId);
+      if (chosen) return [chosen, ...list];
+    }
+    return list;
+  }, [onlyUnpaidDocs, unpaidShipmentsList, activeShipments, docSearch, catalog.labels, form.docType, form.docId]);
+
+  // Выплаты выбранного сотрудника в выбранном месяце и его неоплаченные начисления
+  const employeeSalariesInMonth = useMemo(() => {
+    const empId = salaryForm.employeeId;
+    const empName = salaryForm.employeeName.trim().toLowerCase();
+    if (!empId && !empName) return [];
+    return salaries.filter((s) => {
+      const sameEmp = empId
+        ? s.employeeId === empId
+        : s.employeeName.trim().toLowerCase() === empName;
+      return sameEmp && getSalaryPeriodMonth(s.comment, s.date) === salaryForm.periodMonth;
+    });
+  }, [salaries, salaryForm.employeeId, salaryForm.employeeName, salaryForm.periodMonth]);
+
+  const unpaidEmployeeSalaries = useMemo(() => {
+    const empId = salaryForm.employeeId;
+    const empName = salaryForm.employeeName.trim().toLowerCase();
+    if (!empId && !empName) return [];
+    return salaries.filter((s) => {
+      const sameEmp = empId
+        ? s.employeeId === empId
+        : s.employeeName.trim().toLowerCase() === empName;
+      return sameEmp && !s.isPaid;
+    });
+  }, [salaries, salaryForm.employeeId, salaryForm.employeeName]);
+
+  const daysCount = daysInPeriodMonth(salaryForm.periodMonth);
+  const selectedDayNum =
+    form.date.slice(0, 7) === salaryForm.periodMonth
+      ? Number(form.date.slice(8, 10))
+      : null;
+
+  const selectedExistingIntake =
+    purpose === "intake" && intakeSubMode === "existing" && form.docId
+      ? intakes.find((i) => i.id === form.docId) ?? null
+      : null;
+  const selectedExistingShipment =
+    purpose === "shipment" && shipmentSubMode === "existing" && form.docId
+      ? shipments.find((s) => s.id === form.docId) ?? null
+      : null;
+
+  const newIntakeTotals = wpDocDetailedTotals(newIntakeItems);
+  const newShipmentTotals = wpDocDetailedTotals(newShipmentItems);
+
+  const suggestedDocAmount =
+    purpose === "intake"
+      ? intakeSubMode === "existing"
+        ? selectedExistingIntake?.total ?? 0
+        : newIntakeTotals.total
+      : purpose === "shipment"
+        ? shipmentSubMode === "existing"
+          ? (selectedExistingShipment?.receivedAmount || selectedExistingShipment?.total) ?? 0
+          : newShipmentTotals.total
+        : 0;
+
   const amount = parseNum(form.amount);
-  const valid = form.date !== "" && amount > 0;
+
+  const valid = useMemo(() => {
+    if (!form.date || !(amount > 0)) return false;
+    if (purpose === "salary") {
+      return salaryForm.employeeName.trim() !== "";
+    }
+    if (purpose === "intake") {
+      if (intakeSubMode === "existing") {
+        return Boolean(form.docId);
+      }
+      return (
+        newIntakeForm.counterpartyName.trim() !== "" &&
+        (!newIntakeForm.needsTransport || newIntakeForm.address.trim() !== "")
+      );
+    }
+    if (purpose === "shipment") {
+      if (shipmentSubMode === "existing") {
+        return Boolean(form.docId);
+      }
+      return (
+        newShipmentForm.enterpriseName.trim() !== "" &&
+        (!newShipmentForm.needsTransport || newShipmentForm.address.trim() !== "")
+      );
+    }
+    return true;
+  }, [
+    form.date,
+    amount,
+    purpose,
+    salaryForm.employeeName,
+    intakeSubMode,
+    form.docId,
+    newIntakeForm.counterpartyName,
+    newIntakeForm.needsTransport,
+    newIntakeForm.address,
+    shipmentSubMode,
+    newShipmentForm.enterpriseName,
+    newShipmentForm.needsTransport,
+    newShipmentForm.address,
+  ]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+
+    if (purpose === "salary") {
+      onSubmit({
+        kind: "salary",
+        salaryId:
+          mode === "edit-salary" && salary
+            ? salary.id
+            : salaryForm.selectedSalaryId,
+        employeeId: salaryForm.employeeId,
+        employeeName: salaryForm.employeeName.trim(),
+        amount,
+        date: form.date,
+        periodMonth: salaryForm.periodMonth || form.date.slice(0, 7),
+        account: form.account,
+        thirdPartyOrigin: salaryForm.thirdPartyOrigin.trim(),
+        isPaid: form.isPaid,
+        comment: form.comment.trim() || null,
+      });
+      return;
+    }
+
+    if (purpose === "intake" && intakeSubMode === "new") {
+      // Если в позициях не вписали сумму, распределяем сумму платежа в позиции документа
+      let preparedItems = newIntakeItems;
+      if (!(newIntakeTotals.total > 0) && amount > 0 && preparedItems.length > 0) {
+        const first = preparedItems[0];
+        const w = first.payableWeightKg > 0 ? first.payableWeightKg : first.weightKg;
+        preparedItems = [
+          {
+            ...first,
+            total: amount,
+            pricePerKg: w > 0 ? amount / w : first.pricePerKg,
+          },
+          ...preparedItems.slice(1),
+        ];
+      }
+      const calcTotals = wpDocDetailedTotals(preparedItems);
+      const paymentSpec: WpDocPaymentSpec =
+        mode === "edit" && item
+          ? {
+              mode: "keep",
+              paymentId: item.id,
+              date: form.date,
+              account: form.account,
+              amount,
+              isPaid: form.isPaid,
+              comment: form.comment.trim() || null,
+            }
+          : {
+              mode: "create",
+              date: form.date,
+              account: form.account,
+              amount,
+              isPaid: form.isPaid,
+              comment: form.comment.trim() || null,
+            };
+      onSubmit({
+        kind: "new-intake",
+        intake: {
+          date: form.date,
+          counterpartyId: newIntakeForm.counterpartyId,
+          counterpartyName: newIntakeForm.counterpartyName.trim(),
+          saveCounterparty:
+            !newIntakeForm.counterpartyId && newIntakeForm.saveCounterparty,
+          address: newIntakeForm.address.trim() || null,
+          phone: newIntakeForm.phone.trim() || null,
+          contactPerson: newIntakeForm.contactPerson.trim() || null,
+          items: preparedItems,
+          account: form.account,
+          isPaid: form.isPaid,
+          acceptedWeightKg: calcTotals.acceptedKg,
+          payableWeightKg: calcTotals.payableKg,
+          needsTransport: newIntakeForm.needsTransport,
+          transportPlannedDate: newIntakeForm.needsTransport
+            ? newIntakeForm.pickupDate || form.date
+            : null,
+          awaitingWeight: !(calcTotals.acceptedKg > 0),
+          transportDone: false,
+          payment: paymentSpec,
+          comment: form.comment.trim() || null,
+        },
+      });
+      return;
+    }
+
+    if (purpose === "shipment" && shipmentSubMode === "new") {
+      let preparedItems = newShipmentItems;
+      if (!(newShipmentTotals.total > 0) && amount > 0 && preparedItems.length > 0) {
+        const first = preparedItems[0];
+        const w = first.payableWeightKg > 0 ? first.payableWeightKg : first.weightKg;
+        preparedItems = [
+          {
+            ...first,
+            total: amount,
+            pricePerKg: w > 0 ? amount / w : first.pricePerKg,
+          },
+          ...preparedItems.slice(1),
+        ];
+      }
+      const calcTotals = wpDocDetailedTotals(preparedItems);
+      const paymentSpec: WpDocPaymentSpec =
+        mode === "edit" && item
+          ? {
+              mode: "keep",
+              paymentId: item.id,
+              date: form.date,
+              account: form.account,
+              amount,
+              isPaid: form.isPaid,
+              comment: form.comment.trim() || null,
+            }
+          : {
+              mode: "create",
+              date: form.date,
+              account: form.account,
+              amount,
+              isPaid: form.isPaid,
+              comment: form.comment.trim() || null,
+            };
+      onSubmit({
+        kind: "new-shipment",
+        shipment: {
+          date: form.date,
+          enterpriseId: newShipmentForm.enterpriseId,
+          enterpriseName: newShipmentForm.enterpriseName.trim(),
+          saveCounterparty:
+            !newShipmentForm.enterpriseId && newShipmentForm.saveEnterprise,
+          address: newShipmentForm.address.trim() || null,
+          phone: newShipmentForm.phone.trim() || null,
+          contactPerson: newShipmentForm.contactPerson.trim() || null,
+          items: preparedItems,
+          account: form.account,
+          isPaid: form.isPaid,
+          shippedWeightKg: calcTotals.acceptedKg,
+          acceptedWeightKg: calcTotals.payableKg,
+          receivedAmount: amount,
+          needsTransport: newShipmentForm.needsTransport,
+          transportPlannedDate: newShipmentForm.needsTransport
+            ? newShipmentForm.latestPickupDate || form.date
+            : null,
+          skipStock: newShipmentForm.skipStock,
+          payment: paymentSpec,
+          comment: form.comment.trim() || null,
+        },
+      });
+      return;
+    }
+
+    // Привязка к существующей приёмке / продаже или свободный платёж
+    const docType: WpDocKind | null =
+      purpose === "intake"
+        ? "intake"
+        : purpose === "shipment"
+          ? "shipment"
+          : null;
+    const docId = docType ? form.docId : null;
+    const cpId =
+      purpose === "intake" && selectedExistingIntake
+        ? selectedExistingIntake.counterpartyId
+        : purpose === "shipment" && selectedExistingShipment
+          ? selectedExistingShipment.enterpriseId
+          : form.counterpartyId;
+    const cpName =
+      purpose === "intake" && selectedExistingIntake
+        ? selectedExistingIntake.counterpartyName
+        : purpose === "shipment" && selectedExistingShipment
+          ? selectedExistingShipment.enterpriseName
+          : form.counterpartyName.trim();
+
+    onSubmit({
+      kind: "payment",
+      payload: {
+        date: form.date,
+        direction:
+          purpose === "intake"
+            ? "outgoing"
+            : purpose === "shipment"
+              ? "incoming"
+              : form.direction,
+        account: form.account,
+        counterpartyId: cpId,
+        counterpartyName: cpName,
+        amount,
+        isPaid: form.isPaid,
+        comment: form.comment.trim() || null,
+        docType,
+        docId,
+      },
+    });
+  }
+
+  const submitLabel =
+    mode === "edit-salary"
+      ? "Сохранить выплату ЗП"
+      : purpose === "salary"
+        ? salaryForm.selectedSalaryId
+          ? "Провести выбранную выплату ЗП"
+          : "Провести зарплату"
+        : purpose === "intake"
+          ? intakeSubMode === "new"
+            ? "Создать приёмку и провести оплату"
+            : mode === "edit"
+              ? "Сохранить оплату приёмки"
+              : "Привязать оплату к приёмке"
+          : purpose === "shipment"
+            ? shipmentSubMode === "new"
+              ? "Создать продажу и провести оплату"
+              : mode === "edit"
+                ? "Сохранить оплату продажи"
+                : "Привязать оплату к продаже"
+            : mode === "edit"
+              ? "Сохранить платёж"
+              : "Добавить платёж";
 
   return (
     <div className="admin-modal-overlay">
       <div
-        className="admin-modal wp-modal wp-modal--slim"
+        className="admin-modal wp-modal wp-pay-modal"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-modal__head">
           <h3 className="admin-modal__title">
-            {mode === "edit" ? `Платёж №${item?.number}` : "Новый платёж"}
+            {mode === "edit"
+              ? `Платёж №${item?.number}`
+              : mode === "edit-salary"
+                ? `Выплата зарплаты · ${salary?.employeeName}`
+                : "Новый платёж"}
           </h3>
           <button
             type="button"
@@ -4644,162 +5384,1103 @@ function PaymentModal({
           </button>
         </div>
         <p className="admin-modal__desc">
-          Деньги вручную: например, получили оплату за сдачу не сразу, или выдали
-          наличку на расходы. Можно привязать платёж к приёму/продаже — тогда он
-          станет их оплатой (одно движение денег, правится и отсюда, и из
-          документа).
+          Выберите, за что платёж — система сама создаст или привяжет приёмку,
+          продажу или зарплату и разнесёт деньги по счетам без переключения вкладок.
         </p>
 
-        <form
-          className="wp-modal-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!valid) return;
-            onSubmit({
-              date: form.date,
-              direction: form.direction,
-              account: form.account,
-              counterpartyId: form.counterpartyId,
-              counterpartyName: form.counterpartyName.trim(),
-              amount,
-              isPaid: form.isPaid,
-              comment: form.comment.trim() || null,
-              docType: form.docType,
-              docId: form.docType ? form.docId : null,
-            });
-          }}
-        >
-          <div className="wp-grid-3">
-            <div className="admin-field">
-              <label className="admin-label">Дата *</label>
-              <input
-                className="admin-input"
-                type="date"
-                value={form.date}
-                onChange={(e) => set("date", e.target.value)}
-                required
-              />
-            </div>
-            <div className="admin-field">
-              <label className="admin-label">Направление</label>
-              <select
-                className="admin-select"
-                value={form.direction}
-                onChange={(e) => set("direction", e.target.value as "incoming" | "outgoing")}
-              >
-                <option value="incoming">Приход</option>
-                <option value="outgoing">Расход</option>
-              </select>
-            </div>
-            <div className="admin-field">
-              <label className="admin-label">Счёт</label>
-              <select
-                className="admin-select"
-                value={form.account}
-                onChange={(e) => set("account", e.target.value as WpAccount)}
-              >
-                <option value="cash">Наличка</option>
-                <option value="bank">Безнал</option>
-                <option value="third_party">Сторонние пополнения</option>
-              </select>
-            </div>
-          </div>
+        <form className="wp-modal-form" onSubmit={handleSubmit}>
+          {/* ── ШАГ 1: ВЫБОР НАЗНАЧЕНИЯ ПЛАТЕЖА ── */}
+          {mode !== "edit-salary" && (
+            <div className="admin-field" style={{ gap: 8 }}>
+              <label className="admin-label">1. Назначение платежа (за что деньги)</label>
+              <div className="wp-pay-purposes" role="radiogroup" aria-label="Назначение платежа">
+                {canEditSalaries && mode === "create" && (
+                  <button
+                    type="button"
+                    className={`wp-pay-purpose${purpose === "salary" ? " wp-pay-purpose--active wp-pay-purpose--out" : ""}`}
+                    onClick={() => selectPurpose("salary")}
+                  >
+                    <span className="wp-pay-purpose__ic">
+                      <Users size={17} />
+                    </span>
+                    <span className="wp-pay-purpose__body">
+                      <span className="wp-pay-purpose__title">1. Зарплата</span>
+                      <span className="wp-pay-purpose__sub">Сотрудник и число · Расход</span>
+                    </span>
+                  </button>
+                )}
 
-          <div className="admin-field">
-            <label className="admin-label">Документ — оплата приёма/продажи</label>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <select
-                className="admin-select"
-                value={form.docType && form.docId ? `${form.docType}:${form.docId}` : ""}
-                onChange={(e) => onDocSelect(e.target.value)}
-              >
-                <option value="">Без документа (свободный платёж)</option>
-                {intakes.filter((i) => i.status !== "cancelled").length > 0 && (
-                  <optgroup label="Приёмы">
-                    {intakes
-                      .filter((i) => i.status !== "cancelled")
-                      .map((i) => (
-                        <option key={i.id} value={`intake:${i.id}`}>
-                          Приём №{i.number} · {i.counterpartyName} · {fmtMoney(i.total)} ₽
-                        </option>
-                      ))}
-                  </optgroup>
-                )}
-                {shipments.filter((s) => s.status !== "cancelled").length > 0 && (
-                  <optgroup label="Продажи (сдачи)">
-                    {shipments
-                      .filter((s) => s.status !== "cancelled")
-                      .map((s) => (
-                        <option key={s.id} value={`shipment:${s.id}`}>
-                          Продажа №{s.number} · {s.enterpriseName} · {fmtMoney(s.total)} ₽
-                        </option>
-                      ))}
-                  </optgroup>
-                )}
-              </select>
-              {form.docType && form.docId && onOpenDoc && (
                 <button
                   type="button"
-                  className="admin-btn admin-btn--ghost admin-btn--sm"
-                  style={{ whiteSpace: "nowrap" }}
-                  onClick={() => onOpenDoc(form.docType!, form.docId!)}
+                  className={`wp-pay-purpose${purpose === "intake" ? " wp-pay-purpose--active wp-pay-purpose--out" : ""}`}
+                  onClick={() => selectPurpose("intake")}
                 >
-                  <Pencil size={13} /> Открыть
+                  <span className="wp-pay-purpose__ic">
+                    <ArrowDownLeft size={17} />
+                  </span>
+                  <span className="wp-pay-purpose__body">
+                    <span className="wp-pay-purpose__title">2. Приёмка</span>
+                    <span className="wp-pay-purpose__sub">Существующая или новая · Расход</span>
+                  </span>
                 </button>
+
+                <button
+                  type="button"
+                  className={`wp-pay-purpose${purpose === "shipment" ? " wp-pay-purpose--active wp-pay-purpose--in" : ""}`}
+                  onClick={() => selectPurpose("shipment")}
+                >
+                  <span className="wp-pay-purpose__ic">
+                    <ArrowUpRight size={17} />
+                  </span>
+                  <span className="wp-pay-purpose__body">
+                    <span className="wp-pay-purpose__title">3. Продажа макулатуры</span>
+                    <span className="wp-pay-purpose__sub">Запланированная или новая · Приход</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`wp-pay-purpose${purpose === "free" ? " wp-pay-purpose--active" : ""}`}
+                  onClick={() => selectPurpose("free")}
+                >
+                  <span className="wp-pay-purpose__ic">
+                    <CreditCard size={17} />
+                  </span>
+                  <span className="wp-pay-purpose__body">
+                    <span className="wp-pay-purpose__title">Прочий платёж</span>
+                    <span className="wp-pay-purpose__sub">Свободный приход / расход</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════
+              ВАРИАНТ 1: ЗАРПЛАТА (сотрудник + число месяца)
+             ══════════════════════════════════════════════════ */}
+          {purpose === "salary" && (
+            <div className="wp-pay-section">
+              <div className="wp-pay-section__head">
+                <span className="wp-pay-section__title">
+                  <Users size={15} /> Выплата зарплаты сотруднику
+                </span>
+                {onOpenSalariesTab && (
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                    onClick={onOpenSalariesTab}
+                  >
+                    Открыть таблицу зарплат
+                  </button>
+                )}
+              </div>
+
+              {/* Быстрые плашки сотрудников в 1 клик */}
+              {employees.length > 0 && (
+                <div className="admin-field" style={{ gap: 6 }}>
+                  <label className="admin-label">Сотрудник (выберите в 1 клик)</label>
+                  <div className="wp-pay-chips">
+                    {employees.map((emp) => {
+                      const isSelected =
+                        salaryForm.employeeId === emp.id ||
+                        (!salaryForm.employeeId &&
+                          salaryForm.employeeName.trim().toLowerCase() ===
+                            emp.name.trim().toLowerCase());
+                      return (
+                        <button
+                          key={emp.id}
+                          type="button"
+                          className={`wp-pay-chip${isSelected ? " wp-pay-chip--active" : ""}`}
+                          onClick={() =>
+                            setSalaryForm((prev) => ({
+                              ...prev,
+                              selectedSalaryId: null,
+                              employeeId: emp.id,
+                              employeeName: emp.name,
+                            }))
+                          }
+                        >
+                          <UserRound size={13} />
+                          <span>{emp.name}</span>
+                          {emp.position && (
+                            <small className="wp-pay-chip__meta">{emp.position}</small>
+                          )}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className={`wp-pay-chip wp-pay-chip--add${
+                        !salaryForm.employeeId &&
+                        !employees.some(
+                          (e) =>
+                            e.name.trim().toLowerCase() ===
+                            salaryForm.employeeName.trim().toLowerCase()
+                        )
+                          ? " wp-pay-chip--active"
+                          : ""
+                      }`}
+                      onClick={() =>
+                        setSalaryForm((prev) => ({
+                          ...prev,
+                          selectedSalaryId: null,
+                          employeeId: null,
+                          employeeName: "",
+                        }))
+                      }
+                    >
+                      <Plus size={13} /> Новый сотрудник
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Поле ввода для нового сотрудника или когда список пуст */}
+              {(!salaryForm.employeeId || employees.length === 0) && (
+                <div className="admin-field">
+                  <label className="admin-label">Имя сотрудника *</label>
+                  <input
+                    className="admin-input"
+                    value={salaryForm.employeeName}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const match = employees.find(
+                        (emp) => emp.name.trim().toLowerCase() === val.trim().toLowerCase()
+                      );
+                      setSalaryForm((prev) => ({
+                        ...prev,
+                        selectedSalaryId: null,
+                        employeeId: match ? match.id : null,
+                        employeeName: val,
+                      }));
+                    }}
+                    placeholder="Введите ФИО или имя сотрудника…"
+                    required
+                  />
+                </div>
+              )}
+
+              {/* Число выплаты и расчётный месяц */}
+              <div className="wp-grid-2">
+                <div className="admin-field">
+                  <label className="admin-label">Дата выплаты (число) *</label>
+                  <input
+                    className="admin-input"
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => {
+                      const d = e.target.value;
+                      set("date", d);
+                      if (d.length >= 7) {
+                        setSalaryForm((prev) => ({
+                          ...prev,
+                          periodMonth: d.slice(0, 7),
+                        }));
+                      }
+                    }}
+                    required
+                  />
+                </div>
+                <div className="admin-field">
+                  <label className="admin-label">За какой месяц</label>
+                  <input
+                    className="admin-input"
+                    type="month"
+                    value={salaryForm.periodMonth}
+                    onChange={(e) => {
+                      const ym = e.target.value;
+                      setSalaryForm((prev) => ({ ...prev, periodMonth: ym }));
+                      if (ym && /^\d{4}-\d{2}$/.test(ym)) {
+                        const maxD = daysInPeriodMonth(ym);
+                        const curD = Math.min(
+                          Math.max(1, Number(form.date.slice(8, 10)) || 1),
+                          maxD
+                        );
+                        set("date", `${ym}-${String(curD).padStart(2, "0")}`);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Быстрая сетка чисел месяца 1..31 */}
+              <div className="admin-field" style={{ gap: 6 }}>
+                <label className="admin-label">
+                  Быстрый выбор числа ({salaryForm.periodMonth})
+                </label>
+                <div className="wp-pay-days">
+                  {Array.from({ length: daysCount }, (_, idx) => idx + 1).map((day) => {
+                    const dd = String(day).padStart(2, "0");
+                    const iso = `${salaryForm.periodMonth}-${dd}`;
+                    const dayEntries = employeeSalariesInMonth.filter(
+                      (s) => s.date.slice(0, 10) === iso
+                    );
+                    const hasPaid = dayEntries.some((s) => s.isPaid);
+                    const hasPlanned = dayEntries.some((s) => !s.isPaid);
+                    const isSelected = selectedDayNum === day;
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        className={`wp-pay-day${isSelected ? " wp-pay-day--active" : ""}${
+                          hasPaid
+                            ? " wp-pay-day--paid"
+                            : hasPlanned
+                              ? " wp-pay-day--planned"
+                              : ""
+                        }`}
+                        title={
+                          dayEntries.length > 0
+                            ? `${iso}: ${dayEntries.map((s) => fmtMoney(s.amount)).join(", ")}`
+                            : `Выбрать ${day}-е число`
+                        }
+                        onClick={() => {
+                          set("date", iso);
+                          // Если на это число есть запланированная (неоплаченная) выплата — подставим её
+                          const planned = dayEntries.find((s) => !s.isPaid);
+                          if (planned && mode === "create") {
+                            setSalaryForm((prev) => ({
+                              ...prev,
+                              selectedSalaryId: planned.id,
+                            }));
+                            setForm((prev) => ({
+                              ...prev,
+                              date: iso,
+                              amount: String(planned.amount),
+                              account: wastepaperSalaryAccount(planned) ?? "cash",
+                              comment: stripSalaryMetaTags(planned.comment),
+                            }));
+                          } else if (mode === "create") {
+                            setSalaryForm((prev) => ({
+                              ...prev,
+                              selectedSalaryId: null,
+                            }));
+                          }
+                        }}
+                      >
+                        <span>{day}</span>
+                        {(hasPaid || hasPlanned) && <i className="wp-pay-day__dot" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Запланированные неоплаченные выплаты этого сотрудника */}
+              {mode === "create" && unpaidEmployeeSalaries.length > 0 && (
+                <div className="admin-field" style={{ gap: 6 }}>
+                  <label className="admin-label">
+                    Запланированные выплаты сотруднику (можно выбрать и провести)
+                  </label>
+                  <div className="wp-pay-planned-list">
+                    <button
+                      type="button"
+                      className={`wp-pay-planned-item${
+                        !salaryForm.selectedSalaryId ? " wp-pay-planned-item--active" : ""
+                      }`}
+                      onClick={() =>
+                        setSalaryForm((prev) => ({ ...prev, selectedSalaryId: null }))
+                      }
+                    >
+                      <Plus size={13} />
+                      <span>Новая выплата на {fmtDate(form.date)}</span>
+                    </button>
+                    {unpaidEmployeeSalaries.map((sal) => {
+                      const active = salaryForm.selectedSalaryId === sal.id;
+                      return (
+                        <button
+                          key={sal.id}
+                          type="button"
+                          className={`wp-pay-planned-item${
+                            active ? " wp-pay-planned-item--active" : ""
+                          }`}
+                          onClick={() => {
+                            const d = sal.date.slice(0, 10);
+                            setSalaryForm((prev) => ({
+                              ...prev,
+                              selectedSalaryId: sal.id,
+                              periodMonth: getSalaryPeriodMonth(sal.comment, sal.date),
+                              thirdPartyOrigin: getSalaryThirdPartyOrigin(sal.comment),
+                            }));
+                            setForm((prev) => ({
+                              ...prev,
+                              date: d,
+                              amount: String(sal.amount),
+                              account: wastepaperSalaryAccount(sal) ?? "cash",
+                              isPaid: true,
+                              comment: stripSalaryMetaTags(sal.comment),
+                            }));
+                          }}
+                        >
+                          <CalendarClock size={13} />
+                          <span>
+                            {fmtDate(sal.date)} · <strong>{fmtMoney(sal.amount)}</strong>
+                          </span>
+                          <span className="wp-badge wp-badge--warn">План</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
-            <span className="admin-hint" style={{ fontSize: "0.75rem" }}>
-              Привязанный платёж — единственное движение денег документа
-              (двойного счёта нет): правьте его здесь или в карточке документа.
-            </span>
-          </div>
+          )}
 
-          <div className="wp-grid-3">
-            <div className="admin-field" style={{ gridColumn: "span 2" }}>
-              <CounterpartySelect
-                label="Контрагент"
-                options={counterparties}
-                id={form.counterpartyId}
-                name={form.counterpartyName}
-                onChange={({ counterpartyId, counterpartyName }) =>
-                  setForm((prev) => ({ ...prev, counterpartyId, counterpartyName }))
-                }
-                placeholder="Кто платит / кому платим"
-                nameLabel="Имя контрагента (вручную)"
-              />
+          {/* ══════════════════════════════════════════════════
+              ВАРИАНТ 2: ПРИЁМКА МАКУЛАТУРЫ (существующая или новая)
+             ══════════════════════════════════════════════════ */}
+          {purpose === "intake" && (
+            <div className="wp-pay-section">
+              <div className="wp-pay-submode" role="tablist">
+                <button
+                  type="button"
+                  className={`wp-pay-submode__btn${
+                    intakeSubMode === "existing" ? " wp-pay-submode__btn--active" : ""
+                  }`}
+                  onClick={() => {
+                    setIntakeSubMode("existing");
+                    setForm((prev) => ({ ...prev, docType: "intake" }));
+                  }}
+                >
+                  Выбрать существующую приёмку ({activeIntakes.length})
+                </button>
+                <button
+                  type="button"
+                  className={`wp-pay-submode__btn${
+                    intakeSubMode === "new" ? " wp-pay-submode__btn--active" : ""
+                  }`}
+                  onClick={() => {
+                    setIntakeSubMode("new");
+                    setForm((prev) => ({ ...prev, docType: null, docId: null }));
+                  }}
+                >
+                  <Plus size={14} /> Создать новую приёмку
+                </button>
+              </div>
+
+              {intakeSubMode === "existing" ? (
+                <div className="wp-pay-doc-picker">
+                  <div className="wp-pay-doc-picker__bar">
+                    <div className="wp-pay-doc-picker__filters">
+                      <button
+                        type="button"
+                        className={`wp-seg__btn${onlyUnpaidDocs ? " wp-seg__btn--active" : ""}`}
+                        onClick={() => setOnlyUnpaidDocs(true)}
+                      >
+                        Ждут оплаты ({unpaidIntakesList.length})
+                      </button>
+                      <button
+                        type="button"
+                        className={`wp-seg__btn${!onlyUnpaidDocs ? " wp-seg__btn--active" : ""}`}
+                        onClick={() => setOnlyUnpaidDocs(false)}
+                      >
+                        Все приёмки ({activeIntakes.length})
+                      </button>
+                    </div>
+                    <div className="wp-pay-doc-picker__search">
+                      <Search size={14} />
+                      <input
+                        className="admin-input"
+                        value={docSearch}
+                        onChange={(e) => setDocSearch(e.target.value)}
+                        placeholder="Поиск по №, поставщику, адресу…"
+                      />
+                    </div>
+                  </div>
+
+                  {filteredIntakes.length === 0 ? (
+                    <div className="wp-pay-doc-empty">
+                      <p>
+                        {onlyUnpaidDocs
+                          ? "Нет неоплаченных приёмок."
+                          : "Приёмки не найдены."}
+                      </p>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                        {onlyUnpaidDocs && activeIntakes.length > 0 && (
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--ghost admin-btn--sm"
+                            onClick={() => setOnlyUnpaidDocs(false)}
+                          >
+                            Показать все приёмки ({activeIntakes.length})
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--primary admin-btn--sm"
+                          onClick={() => setIntakeSubMode("new")}
+                        >
+                          <Plus size={13} /> Создать новую приёмку
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="wp-pay-doc-list">
+                      {filteredIntakes.map((i) => {
+                        const selected = form.docType === "intake" && form.docId === i.id;
+                        return (
+                          <div
+                            key={i.id}
+                            role="button"
+                            tabIndex={0}
+                            className={`wp-pay-doc-card${
+                              selected ? " wp-pay-doc-card--selected" : ""
+                            }`}
+                            onClick={() => pickExistingIntake(i)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                pickExistingIntake(i);
+                              }
+                            }}
+                          >
+                            <div className="wp-pay-doc-card__check">
+                              {selected && <Check size={13} />}
+                            </div>
+                            <div className="wp-pay-doc-card__main">
+                              <div className="wp-pay-doc-card__top">
+                                <span className="wp-num">ПМ-{i.number}</span>
+                                <span className="wp-pay-doc-card__date">
+                                  {fmtDate(i.date)}
+                                </span>
+                                <strong className="wp-pay-doc-card__cp">
+                                  {i.counterpartyName}
+                                </strong>
+                              </div>
+                              <div className="wp-pay-doc-card__sub">
+                                <span>{wpItemsSummary(i.items, catalog.labels)}</span>
+                                <span>·</span>
+                                <span>
+                                  к оплате {fmtKg(i.payableWeightKg || i.weightKg)}
+                                </span>
+                                {i.address && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{i.address}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="wp-pay-doc-card__right">
+                              <strong className="wp-pay-doc-card__sum">
+                                {i.total > 0 ? fmtMoney(i.total) : "Без суммы"}
+                              </strong>
+                              <span
+                                className={`wp-badge ${
+                                  i.isPaid ? "wp-badge--ok" : "wp-badge--warn"
+                                }`}
+                              >
+                                {i.isPaid ? "Оплачен" : "Ждёт оплаты"}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {selectedExistingIntake && onOpenDoc && (
+                    <div className="wp-pay-doc-selected-bar">
+                      <span>
+                        Выбрана приёмка <strong>ПМ-{selectedExistingIntake.number}</strong> ·{" "}
+                        {selectedExistingIntake.counterpartyName}
+                      </span>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        onClick={() => onOpenDoc("intake", selectedExistingIntake.id)}
+                      >
+                        <Pencil size={13} /> Открыть карточку ПМ-{selectedExistingIntake.number}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="wp-pay-new-doc">
+                  <div className="wp-grid-2">
+                    <CounterpartySelect
+                      label="Поставщик (от кого приёмка) *"
+                      options={suppliers}
+                      id={newIntakeForm.counterpartyId}
+                      name={newIntakeForm.counterpartyName}
+                      onChange={({ counterpartyId, counterpartyName }) => {
+                        const sup = counterpartyId
+                          ? suppliers.find((s) => s.id === counterpartyId)
+                          : null;
+                        const defBranch = sup ? sup.branches[0] || null : null;
+                        setNewIntakeForm((prev) => ({
+                          ...prev,
+                          counterpartyId,
+                          counterpartyName,
+                          ...(defBranch
+                            ? {
+                                address: defBranch.address,
+                                phone: defBranch.phone || sup?.phone || prev.phone,
+                                contactPerson:
+                                  defBranch.contactPerson ||
+                                  sup?.contactPerson ||
+                                  prev.contactPerson,
+                              }
+                            : {}),
+                        }));
+                      }}
+                      placeholder="ООО Ромашка / ИП Иванов"
+                      nameLabel="Название нового поставщика *"
+                    />
+                  </div>
+
+                  {!selectedNewSupplier && newIntakeForm.counterpartyName.trim() && (
+                    <label
+                      className="admin-hint"
+                      style={{ display: "flex", gap: 8, alignItems: "center", marginTop: -4 }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newIntakeForm.saveCounterparty}
+                        onChange={(e) =>
+                          setNewIntakeForm((prev) => ({
+                            ...prev,
+                            saveCounterparty: e.target.checked,
+                          }))
+                        }
+                      />
+                      Сохранить «{newIntakeForm.counterpartyName.trim()}» в справочник поставщиков
+                    </label>
+                  )}
+
+                  <AddressField
+                    addressLabel={`Адрес / точка поставщика${
+                      newIntakeForm.needsTransport ? " *" : ""
+                    }`}
+                    branches={newSupplierBranches}
+                    address={newIntakeForm.address}
+                    phone={newIntakeForm.phone}
+                    contactPerson={newIntakeForm.contactPerson}
+                    onChange={(patch) =>
+                      setNewIntakeForm((prev) => ({ ...prev, ...patch }))
+                    }
+                  />
+
+                  <ItemsEditor
+                    items={newIntakeItems}
+                    onChange={handleNewIntakeItemsChange}
+                    catalog={catalog}
+                    mode="intake"
+                  />
+
+                  <div className="wp-pay-transport-inline">
+                    <label className="wp-pay-check-label">
+                      <input
+                        type="checkbox"
+                        checked={newIntakeForm.needsTransport}
+                        onChange={(e) =>
+                          setNewIntakeForm((prev) => ({
+                            ...prev,
+                            needsTransport: e.target.checked,
+                          }))
+                        }
+                      />
+                      <Truck size={14} />
+                      <span>Забрать нашим транспортом (добавить в путевой лист)</span>
+                    </label>
+                    {newIntakeForm.needsTransport && (
+                      <input
+                        className="admin-input"
+                        type="date"
+                        value={newIntakeForm.pickupDate}
+                        onChange={(e) =>
+                          setNewIntakeForm((prev) => ({
+                            ...prev,
+                            pickupDate: e.target.value,
+                          }))
+                        }
+                        style={{ maxWidth: 170 }}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="admin-field">
-              <label className="admin-label">Сумма, ₽ *</label>
-              <input
-                className="admin-input"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.amount}
-                onChange={(e) => set("amount", e.target.value)}
-                placeholder="0"
-                required
-              />
+          )}
+
+          {/* ══════════════════════════════════════════════════
+              ВАРИАНТ 3: ПРОДАЖА МАКУЛАТУРЫ (существующая или новая)
+             ══════════════════════════════════════════════════ */}
+          {purpose === "shipment" && (
+            <div className="wp-pay-section">
+              <div className="wp-pay-submode" role="tablist">
+                <button
+                  type="button"
+                  className={`wp-pay-submode__btn${
+                    shipmentSubMode === "existing" ? " wp-pay-submode__btn--active" : ""
+                  }`}
+                  onClick={() => {
+                    setShipmentSubMode("existing");
+                    setForm((prev) => ({ ...prev, docType: "shipment" }));
+                  }}
+                >
+                  Запланированная / существующая продажа ({activeShipments.length})
+                </button>
+                <button
+                  type="button"
+                  className={`wp-pay-submode__btn${
+                    shipmentSubMode === "new" ? " wp-pay-submode__btn--active" : ""
+                  }`}
+                  onClick={() => {
+                    setShipmentSubMode("new");
+                    setForm((prev) => ({ ...prev, docType: null, docId: null }));
+                  }}
+                >
+                  <Plus size={14} /> Создать новую продажу
+                </button>
+              </div>
+
+              {shipmentSubMode === "existing" ? (
+                <div className="wp-pay-doc-picker">
+                  <div className="wp-pay-doc-picker__bar">
+                    <div className="wp-pay-doc-picker__filters">
+                      <button
+                        type="button"
+                        className={`wp-seg__btn${onlyUnpaidDocs ? " wp-seg__btn--active" : ""}`}
+                        onClick={() => setOnlyUnpaidDocs(true)}
+                      >
+                        Запланированные / ждут оплаты ({unpaidShipmentsList.length})
+                      </button>
+                      <button
+                        type="button"
+                        className={`wp-seg__btn${!onlyUnpaidDocs ? " wp-seg__btn--active" : ""}`}
+                        onClick={() => setOnlyUnpaidDocs(false)}
+                      >
+                        Все продажи ({activeShipments.length})
+                      </button>
+                    </div>
+                    <div className="wp-pay-doc-picker__search">
+                      <Search size={14} />
+                      <input
+                        className="admin-input"
+                        value={docSearch}
+                        onChange={(e) => setDocSearch(e.target.value)}
+                        placeholder="Поиск по №, предприятию, адресу…"
+                      />
+                    </div>
+                  </div>
+
+                  {filteredShipments.length === 0 ? (
+                    <div className="wp-pay-doc-empty">
+                      <p>
+                        {onlyUnpaidDocs
+                          ? "Нет запланированных / неоплаченных продаж."
+                          : "Продажи не найдены."}
+                      </p>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                        {onlyUnpaidDocs && activeShipments.length > 0 && (
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--ghost admin-btn--sm"
+                            onClick={() => setOnlyUnpaidDocs(false)}
+                          >
+                            Показать все продажи ({activeShipments.length})
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--primary admin-btn--sm"
+                          onClick={() => setShipmentSubMode("new")}
+                        >
+                          <Plus size={13} /> Создать новую продажу
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="wp-pay-doc-list">
+                      {filteredShipments.map((s) => {
+                        const selected = form.docType === "shipment" && form.docId === s.id;
+                        const shownSum = s.receivedAmount > 0 ? s.receivedAmount : s.total;
+                        return (
+                          <div
+                            key={s.id}
+                            role="button"
+                            tabIndex={0}
+                            className={`wp-pay-doc-card${
+                              selected ? " wp-pay-doc-card--selected" : ""
+                            }`}
+                            onClick={() => pickExistingShipment(s)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                pickExistingShipment(s);
+                              }
+                            }}
+                          >
+                            <div className="wp-pay-doc-card__check">
+                              {selected && <Check size={13} />}
+                            </div>
+                            <div className="wp-pay-doc-card__main">
+                              <div className="wp-pay-doc-card__top">
+                                <span className="wp-num">СМ-{s.number}</span>
+                                <span className="wp-pay-doc-card__date">
+                                  {fmtDate(s.date)}
+                                </span>
+                                <strong className="wp-pay-doc-card__cp">
+                                  {s.enterpriseName}
+                                </strong>
+                              </div>
+                              <div className="wp-pay-doc-card__sub">
+                                <span>{wpItemsSummary(s.items, catalog.labels)}</span>
+                                <span>·</span>
+                                <span>
+                                  принято {fmtKg(s.acceptedWeightKg || s.weightKg)}
+                                </span>
+                                {s.address && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{s.address}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="wp-pay-doc-card__right">
+                              <strong className="wp-pay-doc-card__sum">
+                                {shownSum > 0 ? fmtMoney(shownSum) : "Без суммы"}
+                              </strong>
+                              <span
+                                className={`wp-badge ${
+                                  s.isPaid ? "wp-badge--ok" : "wp-badge--warn"
+                                }`}
+                              >
+                                {s.isPaid ? "Оплачена" : "Ждёт оплаты"}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {selectedExistingShipment && onOpenDoc && (
+                    <div className="wp-pay-doc-selected-bar">
+                      <span>
+                        Выбрана продажа <strong>СМ-{selectedExistingShipment.number}</strong> ·{" "}
+                        {selectedExistingShipment.enterpriseName}
+                      </span>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost admin-btn--sm"
+                        onClick={() => onOpenDoc("shipment", selectedExistingShipment.id)}
+                      >
+                        <Pencil size={13} /> Открыть карточку СМ-{selectedExistingShipment.number}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="wp-pay-new-doc">
+                  <div className="wp-grid-2">
+                    <CounterpartySelect
+                      label="Предприятие (кому продаём) *"
+                      options={enterprises}
+                      id={newShipmentForm.enterpriseId}
+                      name={newShipmentForm.enterpriseName}
+                      onChange={({ counterpartyId, counterpartyName }) => {
+                        const ent = counterpartyId
+                          ? enterprises.find((s) => s.id === counterpartyId)
+                          : null;
+                        const defBranch = ent ? ent.branches[0] || null : null;
+                        setNewShipmentForm((prev) => ({
+                          ...prev,
+                          enterpriseId: counterpartyId,
+                          enterpriseName: counterpartyName,
+                          ...(defBranch
+                            ? {
+                                address: defBranch.address,
+                                phone: defBranch.phone || ent?.phone || prev.phone,
+                                contactPerson:
+                                  defBranch.contactPerson ||
+                                  ent?.contactPerson ||
+                                  prev.contactPerson,
+                              }
+                            : {}),
+                        }));
+                      }}
+                      placeholder="КБК / переработчик…"
+                      nameLabel="Название нового предприятия *"
+                    />
+                  </div>
+
+                  {!selectedNewEnterprise && newShipmentForm.enterpriseName.trim() && (
+                    <label
+                      className="admin-hint"
+                      style={{ display: "flex", gap: 8, alignItems: "center", marginTop: -4 }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newShipmentForm.saveEnterprise}
+                        onChange={(e) =>
+                          setNewShipmentForm((prev) => ({
+                            ...prev,
+                            saveEnterprise: e.target.checked,
+                          }))
+                        }
+                      />
+                      Сохранить «{newShipmentForm.enterpriseName.trim()}» в справочник предприятий
+                    </label>
+                  )}
+
+                  <AddressField
+                    addressLabel={`Адрес предприятия${
+                      newShipmentForm.needsTransport ? " *" : ""
+                    }`}
+                    branches={newEnterpriseBranches}
+                    address={newShipmentForm.address}
+                    phone={newShipmentForm.phone}
+                    contactPerson={newShipmentForm.contactPerson}
+                    onChange={(patch) =>
+                      setNewShipmentForm((prev) => ({ ...prev, ...patch }))
+                    }
+                  />
+
+                  <ItemsEditor
+                    items={newShipmentItems}
+                    onChange={handleNewShipmentItemsChange}
+                    catalog={catalog}
+                    mode="shipment"
+                  />
+
+                  <div className="wp-pay-transport-inline">
+                    <label className="wp-pay-check-label">
+                      <input
+                        type="checkbox"
+                        checked={newShipmentForm.needsTransport}
+                        onChange={(e) =>
+                          setNewShipmentForm((prev) => ({
+                            ...prev,
+                            needsTransport: e.target.checked,
+                          }))
+                        }
+                      />
+                      <Truck size={14} />
+                      <span>Отвезти нашим транспортом</span>
+                    </label>
+                    {newShipmentForm.needsTransport && (
+                      <input
+                        className="admin-input"
+                        type="date"
+                        value={newShipmentForm.latestPickupDate}
+                        onChange={(e) =>
+                          setNewShipmentForm((prev) => ({
+                            ...prev,
+                            latestPickupDate: e.target.value,
+                          }))
+                        }
+                        style={{ maxWidth: 170 }}
+                      />
+                    )}
+                    <label className="wp-pay-check-label">
+                      <input
+                        type="checkbox"
+                        checked={newShipmentForm.skipStock}
+                        onChange={(e) =>
+                          setNewShipmentForm((prev) => ({
+                            ...prev,
+                            skipStock: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Не списывать со склада (транзит)</span>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
-          <label className="admin-hint" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={form.isPaid}
-              onChange={(e) => set("isPaid", e.target.checked)}
-            />
-            Проведён (деньги реально двигаются). Снять галочку — будет в прогнозе.
-          </label>
+          {/* ══════════════════════════════════════════════════
+              ВАРИАНТ 4: ПРОЧИЙ СВОБОДНЫЙ ПЛАТЁЖ
+             ══════════════════════════════════════════════════ */}
+          {purpose === "free" && (
+            <div className="wp-pay-section">
+              <div className="wp-grid-3">
+                <div className="admin-field">
+                  <label className="admin-label">Направление</label>
+                  <div className="wp-seg" style={{ width: "100%" }}>
+                    <button
+                      type="button"
+                      className={`wp-seg__btn${
+                        form.direction === "incoming" ? " wp-seg__btn--active" : ""
+                      }`}
+                      style={{ flex: 1 }}
+                      onClick={() => set("direction", "incoming")}
+                    >
+                      <ArrowDownLeft size={13} /> Приход
+                    </button>
+                    <button
+                      type="button"
+                      className={`wp-seg__btn${
+                        form.direction === "outgoing" ? " wp-seg__btn--active" : ""
+                      }`}
+                      style={{ flex: 1 }}
+                      onClick={() => set("direction", "outgoing")}
+                    >
+                      <ArrowUpRight size={13} /> Расход
+                    </button>
+                  </div>
+                </div>
+                <div className="admin-field" style={{ gridColumn: "span 2" }}>
+                  <CounterpartySelect
+                    label="Контрагент"
+                    options={counterparties}
+                    id={form.counterpartyId}
+                    name={form.counterpartyName}
+                    onChange={({ counterpartyId, counterpartyName }) =>
+                      setForm((prev) => ({ ...prev, counterpartyId, counterpartyName }))
+                    }
+                    placeholder="Кто платит / кому платим"
+                    nameLabel="Имя контрагента (вручную)"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
-          <div className="admin-field">
-            <label className="admin-label">Комментарий</label>
-            <input
-              className="admin-input"
-              value={form.comment}
-              onChange={(e) => set("comment", e.target.value)}
-              placeholder="За что платёж…"
-            />
+          {/* ══════════════════════════════════════════════════
+              ШАГ 2: ПАРАМЕТРЫ ОПЛАТЫ (СЧЁТ, ДАТА, СУММА, СТАТУС)
+             ══════════════════════════════════════════════════ */}
+          <div className="wp-pay-money-box">
+            <div className="wp-pay-money-box__head">
+              <span className="wp-pay-money-box__title">
+                <Wallet size={14} /> Параметры платежа
+              </span>
+              <span
+                className={`wp-badge ${
+                  purpose === "shipment" ||
+                  (purpose === "free" && form.direction === "incoming")
+                    ? "wp-badge--ok"
+                    : "wp-badge--warn"
+                }`}
+              >
+                {purpose === "shipment" ||
+                (purpose === "free" && form.direction === "incoming")
+                  ? "Приход (+)"
+                  : "Расход (−)"}
+              </span>
+            </div>
+
+            <div className="wp-grid-3">
+              {purpose !== "salary" && (
+                <div className="admin-field">
+                  <label className="admin-label">Дата платежа *</label>
+                  <input
+                    className="admin-input"
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => set("date", e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+
+              <div
+                className="admin-field"
+                style={purpose === "salary" ? { gridColumn: "span 2" } : undefined}
+              >
+                <label className="admin-label">Счёт *</label>
+                <div className="wp-pay-accounts">
+                  {(["cash", "bank", "third_party"] as WpAccount[]).map((acc) => (
+                    <button
+                      key={acc}
+                      type="button"
+                      className={`wp-pay-account-btn${
+                        form.account === acc ? " wp-pay-account-btn--active" : ""
+                      }`}
+                      onClick={() => set("account", acc)}
+                    >
+                      {acc === "cash" ? (
+                        <Banknote size={14} />
+                      ) : acc === "bank" ? (
+                        <CreditCard size={14} />
+                      ) : (
+                        <HandCoins size={14} />
+                      )}
+                      <span>
+                        {acc === "third_party" ? "Сторонние" : WP_ACCOUNT_LABELS[acc]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="admin-field">
+                <label className="admin-label" style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+                  <span>Сумма, ₽ *</span>
+                  {suggestedDocAmount > 0 && amount !== suggestedDocAmount && (
+                    <button
+                      type="button"
+                      className="wp-link-btn"
+                      onClick={() => set("amount", String(suggestedDocAmount))}
+                    >
+                      По документу: {fmtMoney(suggestedDocAmount)}
+                    </button>
+                  )}
+                </label>
+                <input
+                  className="admin-input wp-pay-amount-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(e) => set("amount", e.target.value)}
+                  placeholder="0"
+                  required
+                />
+              </div>
+            </div>
+
+            {purpose === "salary" && form.account === "third_party" && (
+              <div className="admin-field">
+                <label className="admin-label">Откуда пришли сторонние деньги</label>
+                <input
+                  className="admin-input"
+                  value={salaryForm.thirdPartyOrigin}
+                  onChange={(e) =>
+                    setSalaryForm((prev) => ({
+                      ...prev,
+                      thirdPartyOrigin: e.target.value,
+                    }))
+                  }
+                  placeholder="Например: личные средства, займ…"
+                />
+              </div>
+            )}
+
+            <div className="wp-grid-2" style={{ alignItems: "end" }}>
+              <div className="admin-field">
+                <label className="admin-label">Комментарий</label>
+                <input
+                  className="admin-input"
+                  value={form.comment}
+                  onChange={(e) => set("comment", e.target.value)}
+                  placeholder="Примечание к платежу…"
+                />
+              </div>
+
+              <label className="wp-pay-status-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.isPaid}
+                  onChange={(e) => set("isPaid", e.target.checked)}
+                />
+                <div>
+                  <strong>
+                    {form.isPaid ? "Проведён (оплачено)" : "В плане / прогнозе"}
+                  </strong>
+                  <span>
+                    {form.isPaid
+                      ? "Деньги сразу спишутся / зачислятся по счёту"
+                      : "Сохранится как ожидаемый платёж без движения баланса"}
+                  </span>
+                </div>
+              </label>
+            </div>
           </div>
 
           {error && (
@@ -4810,7 +6491,7 @@ function PaymentModal({
 
           <div className="wp-modal__actions" style={{ justifyContent: "space-between" }}>
             <div>
-              {mode === "edit" && (
+              {(mode === "edit" || mode === "edit-salary") && (
                 <button
                   type="button"
                   className="admin-btn admin-btn--danger-ghost admin-btn--sm"
@@ -4835,8 +6516,7 @@ function PaymentModal({
                 className="admin-btn admin-btn--primary"
                 disabled={saving || !valid}
               >
-                {saving && <Loader2 size={14} className="animate-spin" />}{" "}
-                {mode === "edit" ? "Сохранить" : "Добавить платёж"}
+                {saving && <Loader2 size={14} className="animate-spin" />} {submitLabel}
               </button>
             </div>
           </div>

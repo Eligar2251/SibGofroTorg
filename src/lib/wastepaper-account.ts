@@ -211,7 +211,7 @@ async function nextNumber(key: string): Promise<number> {
   return Number(data);
 }
 
-function bumpWpCaches() {
+export function bumpWpCaches() {
   revalidateTag(WP_TAG, { expire: 0 });
 }
 
@@ -1368,8 +1368,14 @@ async function syncWpDocFromPayments(
     (p) => p.account === "cash" || p.account === "bank"
   );
   const account = accPayments[0]?.account ?? null;
+  const allPaymentsSum = roundMoney(payments.reduce((s, p) => s + p.amount, 0));
   const now = new Date().toISOString();
   if (docType === "intake") {
+    const { data: currentDoc } = await db
+      .from("wp_intakes")
+      .select("total, items")
+      .eq("id", docId)
+      .maybeSingle();
     const patch: Record<string, unknown> = {
       is_paid: isPaid,
       paid_at: paidAt,
@@ -1382,9 +1388,28 @@ async function syncWpDocFromPayments(
       updated_at: now,
     };
     if (account) patch.account = account;
+    if (currentDoc && !(Number(currentDoc.total) > 0) && allPaymentsSum > 0) {
+      patch.total = allPaymentsSum;
+      const curItems = normalizeWpDocItems(currentDoc.items);
+      if (curItems.length === 1 && !(curItems[0].total > 0)) {
+        const w = curItems[0].payableWeightKg > 0 ? curItems[0].payableWeightKg : curItems[0].weightKg;
+        patch.items = [
+          {
+            ...curItems[0],
+            total: allPaymentsSum,
+            ...(w > 0 ? { pricePerKg: allPaymentsSum / w } : {}),
+          },
+        ];
+      }
+    }
     const { error: upErr } = await db.from("wp_intakes").update(patch).eq("id", docId);
     if (upErr) throw upErr;
   } else {
+    const { data: currentDoc } = await db
+      .from("wp_shipments")
+      .select("total, items")
+      .eq("id", docId)
+      .maybeSingle();
     const bankPaid = paid.find((p) => p.account === "bank");
     const patch: Record<string, unknown> = {
       is_paid: isPaid,
@@ -1394,6 +1419,20 @@ async function syncWpDocFromPayments(
       updated_at: now,
     };
     if (account) patch.account = account;
+    if (currentDoc && !(Number(currentDoc.total) > 0) && allPaymentsSum > 0) {
+      patch.total = allPaymentsSum;
+      const curItems = normalizeWpDocItems(currentDoc.items);
+      if (curItems.length === 1 && !(curItems[0].total > 0)) {
+        const w = curItems[0].payableWeightKg > 0 ? curItems[0].payableWeightKg : curItems[0].weightKg;
+        patch.items = [
+          {
+            ...curItems[0],
+            total: allPaymentsSum,
+            ...(w > 0 ? { pricePerKg: allPaymentsSum / w } : {}),
+          },
+        ];
+      }
+    }
     const { error: upErr } = await db.from("wp_shipments").update(patch).eq("id", docId);
     if (upErr) throw upErr;
   }
