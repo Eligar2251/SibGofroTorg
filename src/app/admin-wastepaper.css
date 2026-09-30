@@ -2938,3 +2938,495 @@
   }
 }
 
+
+/* ═══════════════════════════════════════════════════════
+   16. Новый платёж — финальный тематический слой
+   ═══════════════════════════════════════════════════════
+   Форма платежа появилась позже основного дизайна модуля и раньше
+   использовала временные токены --admin-* и белые цвета. Из-за этого
+   она выбивалась из темы, особенно в «Ночи» и «Космосе». Здесь форма
+   получает те же поверхности/акценты, что и вся админка. Заодно все
+   сетки формы явно ограничены шириной родителя — длинные подписи и
+   кнопки не могут распереть модалку.
+   ═══════════════════════════════════════════════════════ */
+
+[data-admin="true"] .wp-pay-modal {
+  --wp-pay-surface: var(--adm-card);
+  --wp-pay-surface-soft: color-mix(in srgb, var(--adm-paper) 58%, var(--adm-card));
+  --wp-pay-control: color-mix(in srgb, var(--adm-paper) 76%, var(--adm-card));
+  --wp-pay-line: var(--adm-border);
+  --wp-pay-line-strong: var(--adm-border-mid);
+  --wp-pay-accent: var(--adm-kraft);
+  --wp-pay-accent-soft: color-mix(in srgb, var(--adm-kraft) 14%, var(--adm-card));
+  --wp-pay-on-accent: var(--adm-on-accent);
+  --wp-pay-positive: var(--adm-pine);
+  --wp-pay-positive-soft: var(--adm-pine-pale);
+  --wp-pay-negative: var(--adm-rust);
+  --wp-pay-negative-soft: var(--adm-rust-pale);
+  --wp-pay-muted: var(--adm-muted);
+  color: var(--adm-ink);
+  background: var(--wp-pay-surface);
+}
+
+[data-admin="true"] .wp-pay-modal,
+[data-admin="true"] .wp-pay-modal > form,
+[data-admin="true"] .wp-pay-modal .wp-pay-section,
+[data-admin="true"] .wp-pay-modal .wp-pay-money-box,
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-picker,
+[data-admin="true"] .wp-pay-modal .wp-pay-new-doc {
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose,
+[data-admin="true"] .wp-pay-modal .wp-pay-chip,
+[data-admin="true"] .wp-pay-modal .wp-pay-day,
+[data-admin="true"] .wp-pay-modal .wp-pay-planned-item,
+[data-admin="true"] .wp-pay-modal .wp-pay-submode__btn,
+[data-admin="true"] .wp-pay-modal .wp-seg__btn,
+[data-admin="true"] .wp-pay-modal .wp-pay-account-btn {
+  font-family: inherit;
+}
+
+/* Назначение платежа */
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose {
+  width: 100%;
+  min-width: 0;
+  border-color: var(--wp-pay-line);
+  background: var(--wp-pay-surface);
+  color: var(--adm-ink);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose:hover {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-surface-soft);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose__ic {
+  background: var(--wp-pay-control);
+  color: var(--adm-muted);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose__sub,
+[data-admin="true"] .wp-pay-modal .wp-pay-chip__meta {
+  color: var(--wp-pay-muted);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose--active {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-accent-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wp-pay-accent) 18%, transparent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose--active .wp-pay-purpose__ic {
+  background: var(--wp-pay-accent);
+  color: var(--wp-pay-on-accent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose--active.wp-pay-purpose--in {
+  border-color: var(--wp-pay-positive);
+  background: color-mix(in srgb, var(--wp-pay-positive) 12%, var(--wp-pay-surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wp-pay-positive) 18%, transparent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose--active.wp-pay-purpose--in .wp-pay-purpose__ic {
+  background: var(--wp-pay-positive);
+  color: var(--adm-on-pine);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose--active.wp-pay-purpose--out {
+  border-color: var(--wp-pay-negative);
+  background: color-mix(in srgb, var(--wp-pay-negative) 12%, var(--wp-pay-surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wp-pay-negative) 18%, transparent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-purpose--active.wp-pay-purpose--out .wp-pay-purpose__ic {
+  background: var(--wp-pay-negative);
+  color: var(--adm-on-rust);
+}
+
+/* Секции «приёмка / продажа / зарплата» */
+[data-admin="true"] .wp-pay-modal .wp-pay-section {
+  padding: 14px;
+  border-color: var(--wp-pay-line);
+  background: var(--wp-pay-surface-soft);
+  color: var(--adm-ink);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-section__title,
+[data-admin="true"] .wp-pay-modal .wp-pay-money-box__title {
+  color: var(--adm-ink);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-chip,
+[data-admin="true"] .wp-pay-modal .wp-pay-day,
+[data-admin="true"] .wp-pay-modal .wp-pay-planned-item,
+[data-admin="true"] .wp-pay-modal .wp-pay-submode__btn,
+[data-admin="true"] .wp-pay-modal .wp-seg__btn,
+[data-admin="true"] .wp-pay-modal .wp-pay-account-btn {
+  border-color: var(--wp-pay-line);
+  background: var(--wp-pay-surface);
+  color: var(--adm-ink);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-chip:hover,
+[data-admin="true"] .wp-pay-modal .wp-pay-day:hover,
+[data-admin="true"] .wp-pay-modal .wp-pay-planned-item:hover,
+[data-admin="true"] .wp-pay-modal .wp-seg__btn:hover,
+[data-admin="true"] .wp-pay-modal .wp-pay-account-btn:hover {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-surface-soft);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-chip--active,
+[data-admin="true"] .wp-pay-modal .wp-pay-day--active {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-accent);
+  color: var(--wp-pay-on-accent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-chip--active .wp-pay-chip__meta {
+  color: color-mix(in srgb, var(--wp-pay-on-accent) 78%, transparent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-day--active .wp-pay-day__dot {
+  background: var(--wp-pay-on-accent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-planned-item--active,
+[data-admin="true"] .wp-pay-modal .wp-pay-submode__btn--active,
+[data-admin="true"] .wp-pay-modal .wp-seg__btn--active,
+[data-admin="true"] .wp-pay-modal .wp-pay-account-btn--active {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-accent-soft);
+  color: var(--adm-ink);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wp-pay-accent) 24%, transparent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-submode {
+  background: color-mix(in srgb, var(--adm-border) 55%, var(--adm-paper));
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-submode__btn {
+  border-color: transparent;
+  background: transparent;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-submode__btn--active {
+  background: var(--wp-pay-surface);
+  color: var(--adm-ink);
+  box-shadow: var(--adm-sh-xs);
+}
+
+/* Сегментированные фильтры и отсутствовавшие ранее базовые стили */
+[data-admin="true"] .wp-pay-modal .wp-seg {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--wp-pay-line);
+  border-radius: var(--wpx-r-md);
+  background: color-mix(in srgb, var(--adm-paper) 70%, var(--adm-card));
+}
+
+[data-admin="true"] .wp-pay-modal .wp-seg__btn {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--wpx-r-md) - 3px);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-seg__btn--active {
+  background: var(--wp-pay-surface);
+  color: var(--adm-ink);
+  border-color: var(--wp-pay-line);
+  box-shadow: var(--wpx-shadow-1);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-link-btn {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--wp-pay-positive);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: right;
+  cursor: pointer;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-link-btn:hover {
+  color: var(--wp-pay-accent);
+  text-decoration: underline;
+}
+
+/* Карточки выбора документа */
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-picker__bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(190px, 1fr);
+  align-items: stretch;
+  gap: 8px;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-picker__filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--wp-pay-line);
+  border-radius: var(--wpx-r-md);
+  background: color-mix(in srgb, var(--adm-paper) 70%, var(--adm-card));
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-picker__filters .wp-seg__btn {
+  height: auto;
+  min-height: 38px;
+  padding-inline: 8px;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-picker__search {
+  width: 100%;
+  min-width: 0;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-picker__search .admin-input {
+  width: 100%;
+  min-width: 0;
+  border-color: var(--wp-pay-line);
+  background: var(--wp-pay-surface);
+  color: var(--adm-ink);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  border-color: var(--wp-pay-line);
+  background: var(--wp-pay-surface);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card:hover {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-surface-soft);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card--selected {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-accent-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wp-pay-accent) 16%, transparent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card__cp,
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card__sum {
+  color: var(--adm-ink);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card__date,
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card__sub {
+  color: var(--adm-muted);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card__check {
+  border-color: var(--wp-pay-line-strong);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-card--selected .wp-pay-doc-card__check {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-accent);
+  color: var(--wp-pay-on-accent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-empty {
+  border-color: var(--wp-pay-line);
+  background: var(--wp-pay-surface);
+  color: var(--adm-muted);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-doc-selected-bar {
+  border: 1px solid color-mix(in srgb, var(--wp-pay-accent) 26%, var(--wp-pay-line));
+  background: var(--wp-pay-accent-soft);
+  color: var(--adm-ink);
+}
+
+/* Параметры денег */
+[data-admin="true"] .wp-pay-modal .wp-pay-money-box {
+  border-color: var(--wp-pay-line-strong);
+  background: var(--wp-pay-surface);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-account-btn {
+  height: auto;
+  min-height: 38px;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-account-btn--active {
+  border-color: var(--wp-pay-accent);
+  background: var(--wp-pay-accent-soft);
+  color: var(--wp-pay-accent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-status-toggle {
+  min-width: 0;
+  border-color: var(--wp-pay-line);
+  background: var(--wp-pay-surface-soft);
+  color: var(--adm-ink);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-status-toggle strong {
+  color: var(--adm-ink);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-status-toggle span {
+  color: var(--adm-muted);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-check-label {
+  min-width: 0;
+  color: var(--adm-ink-soft);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-transport-inline {
+  min-width: 0;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-transport-inline .admin-input {
+  flex: 0 1 170px;
+  width: 170px;
+  max-width: 100%;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-day__dot {
+  background: var(--wp-pay-accent);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-pay-day--paid .wp-pay-day__dot {
+  background: var(--wp-pay-positive);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-badge {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border: 1px solid var(--wp-pay-line);
+  border-radius: 999px;
+  background: var(--wp-pay-control);
+  color: var(--adm-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-badge--ok {
+  border-color: var(--adm-pine-line);
+  background: var(--wp-pay-positive-soft);
+  color: var(--wp-pay-positive);
+}
+
+[data-admin="true"] .wp-pay-modal .wp-badge--warn {
+  border-color: var(--adm-kraft-line);
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+}
+
+/* Кнопки нижнего блока: один ровный ряд на десктопе, без переполнения. */
+[data-admin="true"] .wp-pay-modal .wp-modal__actions {
+  min-width: 0;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-modal__actions > div {
+  min-width: 0;
+}
+
+[data-admin="true"] .wp-pay-modal .wp-modal__actions > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* На небольших экранах форма становится последовательной: сначала
+   назначение, потом документ, потом деньги. Ни один grid-column/span из
+   десктопной версии не может оставить «полупустую» колонку. */
+@media (max-width: 768px) {
+  [data-admin="true"] .wp-pay-modal .wp-pay-purposes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .wp-pay-modal :is(.wp-grid-2, .wp-grid-3) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [data-admin="true"] .wp-pay-modal :is(.wp-grid-2, .wp-grid-3) > * {
+    grid-column: 1 / -1 !important;
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-doc-picker__bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-doc-picker__filters {
+    width: 100%;
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-doc-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-doc-card__right {
+    grid-column: 2;
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-doc-card__sub {
+    overflow-wrap: anywhere;
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-accounts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-status-toggle {
+    align-items: flex-start;
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-modal__actions > div:last-child {
+    justify-content: stretch;
+  }
+}
+
+@media (max-width: 420px) {
+  [data-admin="true"] .wp-pay-modal .wp-pay-accounts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-doc-picker__filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-admin="true"] .wp-pay-modal .wp-pay-doc-card__right {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

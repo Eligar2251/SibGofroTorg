@@ -11,6 +11,7 @@ import {
   Wallet,
   ArrowDownLeft,
   ArrowUpRight,
+  ArrowLeftRight,
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
   AlertTriangle,
@@ -42,6 +43,8 @@ import {
 } from "lucide-react";
 import {
   type BankPayment,
+  type BankAccountTransfer,
+  BANK_ACCOUNT_LABELS,
   type CounterpartyBalance,
   getBankSummary,
   getPendingPaymentCounterpartyBalances,
@@ -84,6 +87,7 @@ import {
 } from "@/components/admin/WarehousePayments";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
+import { WarehouseAccountTransfer } from "@/components/admin/WarehouseAccountTransfer";
 import { StockPriceEditor } from "@/components/admin/StockPriceEditor";
 import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
@@ -281,6 +285,19 @@ type BankSub = "summary" | "pending" | "history" | "cash" | "ym" | "vm";
 type BankEntry =
   | (BankPayment & { entryKind: "payment" })
   | {
+      entryKind: "transfer";
+      id: string;
+      number: number;
+      date: string;
+      direction: "outgoing";
+      counterparty: string;
+      amount: number;
+      isPaid: true;
+      comment?: string | null;
+      createdAt?: string | null;
+      transfer: BankAccountTransfer;
+    }
+  | {
       entryKind: "salary";
       id: string;
       number: number;
@@ -309,6 +326,7 @@ interface WarehouseManagerProps {
   receipts: WarehouseReceipt[];
   deals: CustomerDeal[];
   payments: BankPayment[];
+  accountTransfers: BankAccountTransfer[];
   employees: Employee[];
   salaries: Salary[];
   counterpartyRows: Counterparty[];
@@ -349,6 +367,7 @@ export function WarehouseManager({
   receipts,
   deals,
   payments,
+  accountTransfers,
   employees,
   salaries,
   counterpartyRows,
@@ -846,8 +865,8 @@ export function WarehouseManager({
     // Заказы нужны, чтобы ожидаемый приход по заказу автоматически
     // уменьшался на уже пришедшие частичные оплаты другими платежами.
     // paymentsForTotals — без платежей, отмеченных «не считать».
-    () => getBankSummary(paymentsForTotals, salaries, cashCollections, undefined, deals),
-    [paymentsForTotals, salaries, cashCollections, deals]
+    () => getBankSummary(paymentsForTotals, salaries, cashCollections, undefined, deals, accountTransfers),
+    [paymentsForTotals, salaries, cashCollections, deals, accountTransfers]
   );
   const cashCarryover = useMemo(
     () =>
@@ -855,9 +874,10 @@ export function WarehouseManager({
         payments,
         salaries,
         cashCollections,
-        localDateIso()
+        localDateIso(),
+        accountTransfers
       ),
-    [payments, salaries, cashCollections]
+    [payments, salaries, cashCollections, accountTransfers]
   );
   // --- Helper to get purchase price for any product ---
   const getProductPurchasePrice = (productId: string) => {
@@ -1072,11 +1092,11 @@ export function WarehouseManager({
       if (!date) continue;
       opening.set(
         collection.id,
-        getCashCarryoverSummary(payments, salaries, cashCollections, date).openingBalance
+        getCashCarryoverSummary(payments, salaries, cashCollections, date, accountTransfers).openingBalance
       );
     }
     return opening;
-  }, [payments, salaries, cashCollections]);
+  }, [payments, salaries, cashCollections, accountTransfers]);
   // Старая версия «закрыть без перевода» не создавала документ сдачи,
   // а просто ставила платежам «вне баланса». Восстанавливаем виртуальные
   // документы по общему updatedAt, чтобы они были видны в проведённых и
@@ -1307,20 +1327,40 @@ export function WarehouseManager({
         createdAt: salary.createdAt || salary.paidAt || salary.date,
         salary,
       }));
+    const transferEntries: BankEntry[] = accountTransfers.map((transfer) => ({
+      entryKind: "transfer" as const,
+      id: `transfer-${transfer.id}`,
+      number: transfer.number,
+      date: transfer.date,
+      direction: "outgoing" as const,
+      counterparty: `${BANK_ACCOUNT_LABELS[transfer.fromAccount]} → ${BANK_ACCOUNT_LABELS[transfer.toAccount]}`,
+      amount: transfer.amount,
+      isPaid: true as const,
+      comment: transfer.comment,
+      createdAt: transfer.createdAt,
+      transfer,
+    }));
     let list: BankEntry[] = [
       ...payments.map((payment) => ({ ...payment, entryKind: "payment" as const })),
       ...salaryEntries,
+      ...transferEntries,
     ].filter((p) => {
+      if (p.entryKind === "transfer") {
+        if (bankSub === "pending") return false;
+        if (bankSub === "ym" && p.transfer.fromAccount !== "ym_card" && p.transfer.toAccount !== "ym_card") return false;
+        if (bankSub === "vm" && p.transfer.fromAccount !== "vm_card" && p.transfer.toAccount !== "vm_card") return false;
+        if (bankSub !== "ym" && bankSub !== "vm" && bankSub !== "history" && bankSub !== "summary") return false;
+      }
       if (bankSub === "cash") return false;
       const isYmPayment = p.entryKind === "payment" && (p as any).type === "ym_card";
       const isYmSalary = p.entryKind === "salary" && (p.source === "ym_card" || isYmCardSalaryComment((p as any).salary?.comment));
       const isVmPayment = p.entryKind === "payment" && (p as any).type === "vm_card";
       const isVmSalary = p.entryKind === "salary" && (p.source === "vm_card" || isVmCardSalaryComment((p as any).salary?.comment));
       if (bankSub === "ym") {
-        if (!isYmPayment && !isYmSalary) return false;
+        if (p.entryKind !== "transfer" && !isYmPayment && !isYmSalary) return false;
       } else if (bankSub === "vm") {
         // Карта В.М. — вторая карта: своя вкладка со своими операциями
-        if (!isVmPayment && !isVmSalary) return false;
+        if (p.entryKind !== "transfer" && !isVmPayment && !isVmSalary) return false;
       } else {
         // В обычных вкладках скрываем операции обеих карт — у них свои вкладки
         if (isYmPayment || isYmSalary || isVmPayment || isVmSalary) return false;
@@ -1342,7 +1382,7 @@ export function WarehouseManager({
           // в сводке не показываем список — bankList не используется, но для безопасности
         }
       }
-      if (bdir !== "all" && p.direction !== bdir) return false;
+      if (p.entryKind !== "transfer" && bdir !== "all" && p.direction !== bdir) return false;
       const operationDate = String(p.date || "").slice(0, 10);
       if (bankDateFrom && operationDate < bankDateFrom) return false;
       if (bankDateTo && operationDate > bankDateTo) return false;
@@ -1356,6 +1396,8 @@ export function WarehouseManager({
               ...p.dealNumbers.map((n) => `зк-${n}`),
               ...p.receiptNumbers.map((n) => `по-${n}`),
             ].join(" ").toLowerCase()
+          : p.entryKind === "transfer"
+          ? ["перевод", "между счетами", p.counterparty, p.comment || "", `пер-${p.number}`].join(" ").toLowerCase()
           : ["зп", "зарплата", p.counterparty, p.comment || "", salarySourceShortLabel(p.salary)].join(" ").toLowerCase();
         if (!hay.includes(query)) return false;
       }
@@ -1365,6 +1407,8 @@ export function WarehouseManager({
     const createdKey = (entry: BankEntry) =>
       entry.entryKind === "payment"
         ? entry.createdAt || entry.updatedAt || entry.paidAt || entry.date
+        : entry.entryKind === "transfer"
+        ? entry.createdAt || entry.date
         : entry.createdAt || entry.salary.paidAt || entry.salary.date;
 
     list.sort((a, b) => {
@@ -1386,6 +1430,7 @@ export function WarehouseManager({
   }, [
     payments,
     salaries,
+    accountTransfers,
     bankSub,
     bq,
     bdir,
@@ -1398,6 +1443,7 @@ export function WarehouseManager({
     let inSum = 0;
     let outSum = 0;
     for (const p of bankList) {
+      if (p.entryKind === "transfer") continue;
       if (p.entryKind === "payment" && p.excludeFromBalance) continue;
       if (p.direction === "incoming") inSum += p.amount;
       else outSum += p.amount;
@@ -2141,6 +2187,7 @@ export function WarehouseManager({
                   counterparties={counterpartyOptions}
                   purchasePlans={activePurchasePlans}
                 />
+                <WarehouseAccountTransfer />
               </>
             }
             onCalculator={() => setShowCalculator(true)}
@@ -2225,12 +2272,15 @@ export function WarehouseManager({
                 </Link>
               )}
               {activeTab === "bank" && (
-                <PaymentForm
-                  deals={dealLinkOptions}
-                  receipts={receiptLinkOptions}
-                  counterparties={counterpartyOptions}
-                  purchasePlans={activePurchasePlans}
-                />
+                <>
+                  <PaymentForm
+                    deals={dealLinkOptions}
+                    receipts={receiptLinkOptions}
+                    counterparties={counterpartyOptions}
+                    purchasePlans={activePurchasePlans}
+                  />
+                  <WarehouseAccountTransfer />
+                </>
               )}
             </div>
           </div>
@@ -3441,6 +3491,7 @@ export function WarehouseManager({
           receipts={receipts}
           transports={transports}
           cashCollections={cashCollections}
+          accountTransfers={accountTransfers}
           stock={stock}
         />
       )}
@@ -4036,13 +4087,17 @@ export function WarehouseManager({
                       {cashCarryover.origins.map((origin) => (
                         <tr key={origin.paymentId}>
                           <td>
-                            <Link
-                              href={`/${adminPath}/warehouse?tab=bank&payment=${origin.paymentId}`}
-                              prefetch={false}
-                              className="stock-origin-link"
-                            >
-                              ПЛ-{origin.number} →
-                            </Link>
+                            {origin.paymentId.startsWith("transfer:") ? (
+                              <span className="stock-origin-link">ПЕР-{origin.number} →</span>
+                            ) : (
+                              <Link
+                                href={`/${adminPath}/warehouse?tab=bank&payment=${origin.paymentId}`}
+                                prefetch={false}
+                                className="stock-origin-link"
+                              >
+                                ПЛ-{origin.number} →
+                              </Link>
+                            )}
                             {origin.date < cashCarryover.date && (
                               <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>
                                 с прошлых дней
@@ -4321,6 +4376,32 @@ export function WarehouseManager({
                 {g.items.map((p) => {
                   const isPendingPayment = p.entryKind === "payment" && !p.isPaid;
                   const isSelected = isPendingPayment && selectedPaymentIds.has(p.id);
+                  if (p.entryKind === "transfer") {
+                    return (
+                      <div key={p.id} id={p.id} className="bank-pay bank-pay--outgoing">
+                        <div className="bank-pay__icon bank-pay__icon--out"><ArrowLeftRight size={17} /></div>
+                        <div className="bank-pay__main">
+                          <div className="bank-pay__row1">
+                            <span className="bank-pay__counterparty">
+                              <span className="admin-badge admin-badge--indigo" style={{ marginRight: 8, textTransform: "none", fontWeight: 700 }}>Внутренний перевод</span>
+                              {p.counterparty}
+                            </span>
+                            <span className="bank-pay__num">ПЕР-{p.number}</span>
+                            <span className="admin-badge admin-badge--green">проведено</span>
+                          </div>
+                          <div className="bank-pay__row2">
+                            <span className="bank-pay__date">{fmtDate(p.date)}</span>
+                            <span className="bank-pay__comment">Деньги перемещены между своими счетами · общий итог не меняется</span>
+                            {p.comment && <span className="bank-pay__comment">{p.comment}</span>}
+                          </div>
+                        </div>
+                        <div className="bank-pay__side">
+                          <span className="bank-pay__amount" style={{ color: "var(--adm-indigo, #6676a8)" }}>{fmt(p.amount)} ₽</span>
+                          <span className="admin-badge admin-badge--muted">не доход/расход</span>
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                   <div
                     key={p.id}

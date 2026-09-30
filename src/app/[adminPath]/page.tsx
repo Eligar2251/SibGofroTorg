@@ -37,7 +37,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminDb } from "@/lib/supabase";
 import { verifySession } from "@/lib/auth";
-import { getDeals, getPayments, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
+import { getDeals, getPayments, getAccountTransfers, getReceipts, getSalaries, getCashCollections, getTransports } from "@/lib/warehouse";
 import { getRentSummary } from "@/lib/rent";
 import { getSupplyPlans } from "@/lib/supply-plans";
 import { supplyPlansItemsCount } from "@/lib/supply-plans-shared";
@@ -184,6 +184,7 @@ export default async function AdminDashboard() {
     rejectedAgg,
     rejectedWastepaperAgg,
     payments,
+    accountTransfers,
     salaries,
     deals,
     receipts,
@@ -206,6 +207,7 @@ export default async function AdminDashboard() {
     safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("orders", "rejected"), 0),
     safeLoad(isLawyer ? Promise.resolve(0) : countByStatus("wastepaper_requests", "rejected"), 0),
     safeLoad(getPayments(), []),
+    safeLoad(getAccountTransfers(), []),
     safeLoad(getSalaries(), []),
     safeLoad(getDeals(), []),
     safeLoad(isLawyer ? Promise.resolve([]) : getReceipts(), []),
@@ -242,7 +244,8 @@ export default async function AdminDashboard() {
     salaries,
     cashCollections,
     undefined,
-    deals.length ? deals : undefined
+    deals.length ? deals : undefined,
+    accountTransfers
   );
   const dashboardDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Novosibirsk",
@@ -254,7 +257,8 @@ export default async function AdminDashboard() {
     payments,
     salaries,
     cashCollections,
-    dashboardDate
+    dashboardDate,
+    accountTransfers
   );
   const recentOrders = recentOrderPool.slice(0, 8);
   const activeSupplyPlans = supplyPlans.filter((plan) => plan.status === "active");

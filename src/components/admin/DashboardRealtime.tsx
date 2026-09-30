@@ -12,11 +12,12 @@ import { useAdminRealtime } from "@/lib/use-admin-realtime";
 export function DashboardRealtime({ limited = false }: { limited?: boolean }) {
   useAdminRealtime({
     tables: limited
-      ? ["bank_payments", "salaries", "cash_collections", "customer_deals"]
+      ? ["bank_payments", "bank_account_transfers", "salaries", "cash_collections", "customer_deals"]
       : [
           "orders",
           "wastepaper_requests",
           "bank_payments",
+          "bank_account_transfers",
           "salaries",
           "cash_collections",
           "customer_deals",

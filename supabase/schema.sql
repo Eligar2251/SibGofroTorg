@@ -457,7 +457,7 @@ CREATE TABLE IF NOT EXISTS doc_counters (
   value INT NOT NULL DEFAULT 0
 );
 INSERT INTO doc_counters (key, value) VALUES
-  ('receipt', 0), ('deal', 0), ('payment', 0), ('salary', 0)
+  ('receipt', 0), ('deal', 0), ('payment', 0), ('salary', 0), ('bank_account_transfer', 0)
 ON CONFLICT DO NOTHING;
 
 -- =========================================================
@@ -691,6 +691,28 @@ CREATE INDEX IF NOT EXISTS idx_payments_date ON bank_payments(date);
 CREATE INDEX IF NOT EXISTS idx_payments_exclude_from_balance ON bank_payments(exclude_from_balance);
 DROP TRIGGER IF EXISTS trg_payments_updated ON bank_payments;
 CREATE TRIGGER trg_payments_updated BEFORE UPDATE ON bank_payments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =========================================================
+-- 20a. ВНУТРЕННИЕ ПЕРЕВОДЫ МЕЖДУ ДЕНЕЖНЫМИ СЧЕТАМИ
+-- =========================================================
+CREATE TABLE IF NOT EXISTS bank_account_transfers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  number INT NOT NULL DEFAULT 0,
+  date DATE NOT NULL,
+  from_account TEXT NOT NULL CHECK (from_account IN ('cash', 'bank', 'ym_card', 'vm_card')),
+  to_account TEXT NOT NULL CHECK (to_account IN ('cash', 'bank', 'ym_card', 'vm_card')),
+  amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+  comment TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT bank_account_transfers_different_accounts CHECK (from_account <> to_account)
+);
+CREATE INDEX IF NOT EXISTS idx_bank_account_transfers_date ON bank_account_transfers(date DESC);
+CREATE INDEX IF NOT EXISTS idx_bank_account_transfers_accounts ON bank_account_transfers(from_account, to_account);
+DROP TRIGGER IF EXISTS trg_bank_account_transfers_updated ON bank_account_transfers;
+CREATE TRIGGER trg_bank_account_transfers_updated BEFORE UPDATE ON bank_account_transfers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE bank_account_transfers ENABLE ROW LEVEL SECURITY;
 
 -- =========================================================
 -- 21. СОТРУДНИКИ
