@@ -2,27 +2,16 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, Ruler, Package, RotateCcw, ArrowUpDown } from "lucide-react";
+import { Package, RotateCcw, Check, ExternalLink } from "lucide-react";
 import {
   findNearestBoxes,
-  matchLabel,
   formatMm,
   type BoxProduct,
   type BoxTarget,
 } from "@/lib/box-search";
+import { isProductAvailable } from "@/lib/stock-availability";
 
-const TOLERANCES = [
-  { value: 20, label: "± 20 мм (2 см)" },
-  { value: 30, label: "± 30 мм (3 см)" },
-  { value: 40, label: "± 40 мм (4 см)" },
-];
-
-const toneStyles: Record<string, { bg: string; color: string }> = {
-  great: { bg: "rgba(22,163,74,0.1)", color: "#15803d" },
-  good: { bg: "rgba(59,130,246,0.1)", color: "#1d4ed8" },
-  partial: { bg: "rgba(217,119,6,0.1)", color: "#b45309" },
-  none: { bg: "rgba(239,68,68,0.08)", color: "#dc2626" },
-};
+const TOLERANCES = [10, 20, 30, 40, 50];
 
 function parseDim(raw: string): number | null {
   const n = Number(raw.replace(",", "."));
@@ -35,6 +24,7 @@ export function BoxFinderClient({ products }: { products: BoxProduct[] }) {
   const [width, setWidth] = useState("");
   const [height, setHeight] = useState("");
   const [tolerance, setTolerance] = useState(30);
+  const [onlyInStock, setOnlyInStock] = useState(false);
 
   const target: BoxTarget | null = useMemo(() => {
     const l = parseDim(length);
@@ -44,190 +34,296 @@ export function BoxFinderClient({ products }: { products: BoxProduct[] }) {
     return { length: l, width: w, height: h };
   }, [length, width, height]);
 
+  const filteredProducts = useMemo(() => {
+    if (!onlyInStock) return products;
+    return products.filter(
+      (p) => !p.madeToOrder && isProductAvailable({ inStock: p.inStock, stockQty: p.stockQty })
+    );
+  }, [products, onlyInStock]);
+
   const results = useMemo(() => {
     if (!target) return [];
-    return findNearestBoxes(products, target, tolerance);
-  }, [products, target, tolerance]);
+    return findNearestBoxes(filteredProducts, target, tolerance);
+  }, [filteredProducts, target, tolerance]);
+
+  const hasInput =
+    length !== "" ||
+    width !== "" ||
+    height !== "" ||
+    tolerance !== 30 ||
+    onlyInStock;
 
   function reset() {
     setLength("");
     setWidth("");
     setHeight("");
     setTolerance(30);
+    setOnlyInStock(false);
   }
-
-  const withDims = products.filter((p) => p.lengthMm != null || p.widthMm != null || p.heightMm != null).length;
 
   return (
     <div className="bf">
       <div className="admin-page-head">
         <div>
           <h1 className="admin-h1">Подбор коробки</h1>
-          <p className="admin-sub">
-            Введите габариты (Д × Ш × В, в миллиметрах) — покажем ближайшие
-            коробки из каталога. Сверху — точные совпадения, ниже — менее
-            похожие.
-          </p>
         </div>
       </div>
 
-      {/* Панель ввода */}
-      <div className="admin-card" style={{ marginBottom: 14 }}>
-        <div className="admin-card__pad">
-          <div className="bf-form">
+      <div className="admin-card bf-panel">
+        <div className="admin-card__pad bf-toolbar">
+          <div className="bf-dims-inputs">
             <div className="bf-field">
-              <label className="bf-label">Длина, мм</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={1}
-                className="admin-input"
-                value={length}
-                onChange={(e) => setLength(e.target.value)}
-                placeholder="600"
-              />
-            </div>
-            <span className="bf-sep">×</span>
-            <div className="bf-field">
-              <label className="bf-label">Ширина, мм</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={1}
-                className="admin-input"
-                value={width}
-                onChange={(e) => setWidth(e.target.value)}
-                placeholder="400"
-              />
-            </div>
-            <span className="bf-sep">×</span>
-            <div className="bf-field">
-              <label className="bf-label">Высота, мм</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={1}
-                className="admin-input"
-                value={height}
-                onChange={(e) => setHeight(e.target.value)}
-                placeholder="400"
-              />
+              <label className="bf-label">Длина</label>
+              <div className="bf-input-wrap">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={1}
+                  className="admin-input bf-input"
+                  value={length}
+                  onChange={(e) => setLength(e.target.value)}
+                  placeholder="600"
+                />
+                <span className="bf-input-unit">мм</span>
+              </div>
             </div>
 
+            <span className="bf-sep">×</span>
+
             <div className="bf-field">
-              <label className="bf-label">Допуск</label>
-              <select
-                className="admin-select"
-                value={tolerance}
-                onChange={(e) => setTolerance(Number(e.target.value))}
-              >
-                {TOLERANCES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
+              <label className="bf-label">Ширина</label>
+              <div className="bf-input-wrap">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={1}
+                  className="admin-input bf-input"
+                  value={width}
+                  onChange={(e) => setWidth(e.target.value)}
+                  placeholder="400"
+                />
+                <span className="bf-input-unit">мм</span>
+              </div>
             </div>
 
-            <button type="button" className="admin-btn admin-btn--ghost" onClick={reset}>
-              <RotateCcw size={15} /> Сброс
+            <span className="bf-sep">×</span>
+
+            <div className="bf-field">
+              <label className="bf-label">Высота</label>
+              <div className="bf-input-wrap">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={1}
+                  className="admin-input bf-input"
+                  value={height}
+                  onChange={(e) => setHeight(e.target.value)}
+                  placeholder="400"
+                />
+                <span className="bf-input-unit">мм</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bf-field">
+            <label className="bf-label">Допуск</label>
+            <div className="bf-tol-group" role="group" aria-label="Допуск в миллиметрах">
+              {TOLERANCES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`bf-tol-btn${tolerance === t ? " bf-tol-btn--active" : ""}`}
+                  onClick={() => setTolerance(t)}
+                >
+                  {t} мм
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bf-actions">
+            <button
+              type="button"
+              className={`bf-stock-toggle${onlyInStock ? " bf-stock-toggle--active" : ""}`}
+              aria-pressed={onlyInStock}
+              onClick={() => setOnlyInStock((v) => !v)}
+            >
+              <span className="bf-stock-toggle__box" aria-hidden>
+                {onlyInStock && <Check size={12} strokeWidth={3} />}
+              </span>
+              Только в наличии
             </button>
-          </div>
 
-          <div className="bf-hint">
-            <Ruler size={14} /> В каталоге {withDims} товаров с размерами.
-            Сравнение идёт отдельно по длине, ширине и высоте.
+            {hasInput && (
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost bf-reset-btn"
+                onClick={reset}
+              >
+                <RotateCcw size={14} /> Сброс
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Результаты */}
-      {!target ? (
+      {target && results.length === 0 ? (
         <div className="admin-empty">
-          <div className="admin-empty__icon"><Package size={40} /></div>
-          <p>Введите длину, ширину и высоту, чтобы найти подходящую коробку</p>
-        </div>
-      ) : results.length === 0 ? (
-        <div className="admin-empty">
-          <div className="admin-empty__icon"><Package size={40} /></div>
-          <p>Нет товаров с заполненными размерами</p>
-        </div>
-      ) : (
-        <>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: "var(--adm-muted)", fontSize: 13 }}>
-            <ArrowUpDown size={14} />
-            Найдено {results.length}: сверху — ближайшие, ниже — менее похожие.
+          <div className="admin-empty__icon">
+            <Package size={36} />
           </div>
+          <p>{onlyInStock ? "Нет подходящих товаров в наличии" : "Ничего не найдено"}</p>
+        </div>
+      ) : target && results.length > 0 ? (
+        <div className="bf-list">
+          {results.map((r, idx) => {
+            const p = r.product;
+            const available =
+              !p.madeToOrder &&
+              isProductAvailable({ inStock: p.inStock, stockQty: p.stockQty });
+            const isExactAll = r.matchedCount === 3 && r.totalDiff === 0;
 
-          <div className="bf-list">
-            {results.map((r) => {
-              const { text, tone } = matchLabel(r.matchedCount);
-              const t = toneStyles[tone];
-              return (
-                <div key={r.product.id} className="bf-item">
-                  <div className="bf-item__media">
-                    {r.product.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.product.imageUrl} alt="" width={48} height={48} loading="lazy" decoding="async" />
-                    ) : (
-                      <Package size={22} />
+            return (
+              <div
+                key={p.id}
+                className={`bf-item${
+                  isExactAll
+                    ? " bf-item--exact"
+                    : r.matchedCount === 3
+                      ? " bf-item--match"
+                      : ""
+                }`}
+              >
+                <div className="bf-item__rank">{idx + 1}</div>
+
+                <div className="bf-item__media">
+                  {p.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.imageUrl}
+                      alt=""
+                      width={52}
+                      height={52}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <Package size={22} />
+                  )}
+                </div>
+
+                <div className="bf-item__main">
+                  <div className="bf-item__top">
+                    <Link
+                      href={`/catalog/product/${p.slug}`}
+                      target="_blank"
+                      className="bf-item__name"
+                    >
+                      {p.name}
+                    </Link>
+                    {p.sku && <span className="bf-item__sku">Арт. {p.sku}</span>}
+                    {p.material && (
+                      <span className="bf-item__tag">{p.material}</span>
                     )}
                   </div>
 
-                  <div className="bf-item__main">
-                    <div className="bf-item__top">
-                      <Link
-                        href={`/catalog/product/${r.product.slug}`}
-                        target="_blank"
-                        className="bf-item__name"
-                      >
-                        {r.product.name}
-                      </Link>
-                      <span className="bf-item__badge" style={{ background: t.bg, color: t.color }}>
-                        {text}
-                      </span>
-                    </div>
+                  <div className="bf-item__dims">
+                    {r.diffs.map((d) => {
+                      const signed =
+                        d.value == null || d.diff == null
+                          ? null
+                          : Math.round(d.value - d.target);
+                      const stateClass =
+                        signed === null
+                          ? "bf-dim--none"
+                          : signed === 0
+                            ? "bf-dim--exact"
+                            : d.withinTolerance
+                              ? "bf-dim--ok"
+                              : "bf-dim--bad";
 
-                    {r.product.sku && (
-                      <div className="bf-item__sku">Арт: {r.product.sku}</div>
-                    )}
+                      const diffText =
+                        signed === null
+                          ? "—"
+                          : signed === 0
+                            ? "0 мм"
+                            : `${signed > 0 ? "+" : "-"}${formatMm(Math.abs(signed))} мм`;
 
-                    <div className="bf-item__dims">
-                      {r.diffs.map((d) => (
-                        <span
-                          key={d.dim}
-                          className={`bf-dim${d.withinTolerance ? " bf-dim--ok" : " bf-dim--bad"}`}
-                          title={`Цель ${d.target} мм`}
-                        >
-                          <b>{d.dim}</b>{" "}
-                          {formatMm(d.value)}
-                          <span className="bf-dim__diff">
-                            {d.diff == null
-                              ? "нет"
-                              : d.diff === 0
-                                ? "точно"
-                                : `±${formatMm(d.diff)} мм`}
+                      return (
+                        <div key={d.dim} className={`bf-dim ${stateClass}`}>
+                          <span className="bf-dim__key">{d.dim}</span>
+                          <span className="bf-dim__val">
+                            {d.value == null
+                              ? "—"
+                              : `${formatMm(Math.round(d.value))} мм`}
                           </span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="bf-item__side">
-                    <span className="bf-item__total">
-                      Σ отклонение{" "}
-                      <b>{formatMm(r.totalDiff)} мм</b>
-                    </span>
-                    <span className="bf-item__count">
-                      {r.matchedCount}/3 совпали
-                    </span>
+                          <span
+                            className={`bf-dim__diff${
+                              signed != null && signed > 0
+                                ? " bf-dim__diff--plus"
+                                : signed != null && signed < 0
+                                  ? " bf-dim__diff--minus"
+                                  : ""
+                            }`}
+                          >
+                            {diffText}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </>
-      )}
+
+                <div className="bf-item__side">
+                  <div className="bf-item__meta-top">
+                    {p.madeToOrder ? (
+                      <span className="bf-stock bf-stock--order">Под заказ</span>
+                    ) : available ? (
+                      <span className="bf-stock bf-stock--ok">
+                        В наличии
+                        {p.stockQty != null ? ` · ${formatMm(p.stockQty)} шт` : ""}
+                      </span>
+                    ) : (
+                      <span className="bf-stock bf-stock--out">Нет в наличии</span>
+                    )}
+
+                    {p.price != null && (
+                      <span className="bf-price">
+                        {formatMm(p.price)} <small>₽/шт</small>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="bf-item__meta-bottom">
+                    {p.priceWholesale != null && (
+                      <span className="bf-wholesale">
+                        опт {formatMm(p.priceWholesale)} ₽
+                        {p.minWholesaleQty ? ` от ${formatMm(p.minWholesaleQty)} шт` : ""}
+                      </span>
+                    )}
+                    <span
+                      className={`bf-match-pill bf-match-pill--${r.matchedCount}`}
+                    >
+                      {r.matchedCount}/3
+                    </span>
+                    <span className="bf-item__total">
+                      Δ <b>{formatMm(Math.round(r.totalDiff))} мм</b>
+                    </span>
+                    <Link
+                      href={`/catalog/product/${p.slug}`}
+                      target="_blank"
+                      className="bf-open-link"
+                      aria-label={`Открыть ${p.name}`}
+                    >
+                      <ExternalLink size={14} />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

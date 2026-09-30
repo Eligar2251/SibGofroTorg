@@ -19,6 +19,14 @@ export interface BoxProduct {
   heightMm: number | null;
   /** Оригинальная единица измерения из БД (для подписи) */
   unit: string;
+  price?: number | null;
+  priceWholesale?: number | null;
+  minWholesaleQty?: number | null;
+  inStock?: boolean;
+  stockQty?: number | null;
+  madeToOrder?: boolean | null;
+  material?: string | null;
+  packQty?: number | null;
 }
 
 export interface BoxDiff {
