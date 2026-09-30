@@ -31,6 +31,7 @@ export const REALTIME_TABLES = [
   "customer_deals",
   "warehouse_receipts",
   "bank_payments",
+  "bank_account_transfers",
   "salaries",
   "cash_collections",
   "products",
@@ -65,6 +66,7 @@ const ROLE_TABLES: Record<string, readonly string[] | "all"> = {
   manager: "all",
   lawyer: [
     "bank_payments",
+    "bank_account_transfers",
     "cash_collections",
     "salaries",
     "customer_deals",

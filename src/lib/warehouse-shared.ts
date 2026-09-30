@@ -493,6 +493,29 @@ export type BankPaymentType =
   | "website"       // Сайт/хостинг
   | "monthly";      // Ежемесячные платежи (коммунальные, подписки)
 
+export type BankAccountId = "cash" | "bank" | "ym_card" | "vm_card";
+
+/** Внутренний перевод денег между счетами компании. Не является доходом или расходом. */
+export interface BankAccountTransfer {
+  id: string;
+  number: number;
+  date: string;
+  fromAccount: BankAccountId;
+  toAccount: BankAccountId;
+  amount: number;
+  comment?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export const BANK_ACCOUNT_LABELS: Record<BankAccountId, string> = {
+  cash: "Наличные",
+  bank: "Расчётный счёт",
+  ym_card: "Карта ЮМ",
+  vm_card: "Карта В.М.",
+};
+
 export interface BankPayment {
   id: string;
   number: number;
@@ -1499,7 +1522,8 @@ export function getCashCarryoverSummary(
   payments: BankPayment[],
   salaries: Salary[] = [],
   collections: CashCollection[] = [],
-  date = getWarehouseBusinessDate()
+  date = getWarehouseBusinessDate(),
+  accountTransfers: BankAccountTransfer[] = []
 ): CashCarryoverSummary {
   type CashLot = CashCarryoverOrigin;
   type CashEvent =
@@ -1543,6 +1567,32 @@ export function getCashCarryoverSummary(
         },
       });
     } else {
+      events.push({ date: operationDate, priority: 1, type: "out", amount });
+    }
+  }
+
+  // Внутренние переводы в/из наличной кассы — такие же движения кассы,
+  // но без встречного дохода/расхода компании.
+  for (const transfer of accountTransfers) {
+    const amount = Math.max(0, Number(transfer.amount) || 0);
+    const operationDate = String(transfer.date || "").slice(0, 10);
+    if (amount <= 0 || !operationDate) continue;
+    if (transfer.toAccount === "cash") {
+      events.push({
+        date: operationDate,
+        priority: 0,
+        type: "in",
+        amount,
+        lot: {
+          paymentId: `transfer:${transfer.id}`,
+          number: transfer.number,
+          date: operationDate,
+          counterparty: `Перевод с ${BANK_ACCOUNT_LABELS[transfer.fromAccount]}`,
+          originalAmount: amount,
+          remainingAmount: amount,
+        },
+      });
+    } else if (transfer.fromAccount === "cash") {
       events.push({ date: operationDate, priority: 1, type: "out", amount });
     }
   }
@@ -1736,7 +1786,8 @@ export function getBankSummary(
   salaries: Salary[] = [],
   collections: CashCollection[] = [],
   asOfDate = getWarehouseBusinessDate(),
-  deals?: CustomerDeal[]
+  deals?: CustomerDeal[],
+  accountTransfers: BankAccountTransfer[] = []
 ) {
   let bankBalance = 0;
   let cashBalance = 0;
@@ -1852,8 +1903,25 @@ export function getBankSummary(
     payments,
     salaries,
     collections,
-    asOfDate
+    asOfDate,
+    accountTransfers
   ).currentBalance;
+
+  // Переводы между безналичными счетами и картами меняют только
+  // распределение денег. Движения кассы уже учтены выше через её регистр.
+  for (const transfer of accountTransfers) {
+    const amount = Math.max(0, Number(transfer.amount) || 0);
+    const operationDate = String(transfer.date || "").slice(0, 10);
+    if (amount <= 0 || !operationDate || operationDate > asOfDate) continue;
+    const apply = (account: BankAccountId, delta: number) => {
+      if (account === "bank") bankBalance += delta;
+      else if (account === "ym_card") ymCardBalance += delta;
+      else if (account === "vm_card") vmCardBalance += delta;
+      // cashBalance уже рассчитан детальным кассовым регистром.
+    };
+    if (transfer.fromAccount !== "cash") apply(transfer.fromAccount, -amount);
+    if (transfer.toAccount !== "cash") apply(transfer.toAccount, amount);
+  }
 
   let collectedCash = 0;
   let collectedCashOnly = 0;

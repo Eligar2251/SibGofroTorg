@@ -22,6 +22,8 @@ import type {
   CustomerDeal,
   BankPaymentType,
   BankPayment,
+  BankAccountId,
+  BankAccountTransfer,
   WarehouseStockRow,
   ProductStockReceiptHistory,
   ProductStockDealHistory,
@@ -371,6 +373,24 @@ function parseDealDelivery(data: any): {
       : null,
     delivery_contact: hasDelivery ? cleanText(data.deliveryContact ?? data.contactName, 160) : null,
     delivery_phone: hasDelivery ? cleanText(data.deliveryPhone ?? data.customerPhone, 60) : null,
+  };
+}
+
+function mapAccountTransferRow(row: any): BankAccountTransfer {
+  const accounts: BankAccountId[] = ["cash", "bank", "ym_card", "vm_card"];
+  const fromAccount = accounts.includes(row.from_account) ? row.from_account : "bank";
+  const toAccount = accounts.includes(row.to_account) ? row.to_account : "cash";
+  return {
+    id: row.id,
+    number: Number(row.number || 0),
+    date: String(row.date || "").slice(0, 10),
+    fromAccount,
+    toAccount,
+    amount: Number(row.amount || 0),
+    comment: row.comment ?? null,
+    createdBy: row.created_by ?? null,
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
   };
 }
 
@@ -2988,6 +3008,47 @@ export async function getDealDeliveries(opts: {
 
 // ─── Payments CRUD ─────────────────────────────────────────
 
+const BANK_ACCOUNT_IDS: BankAccountId[] = ["cash", "bank", "ym_card", "vm_card"];
+
+export async function createAccountTransfer(data: {
+  date: string;
+  fromAccount: BankAccountId;
+  toAccount: BankAccountId;
+  amount: number;
+  comment?: string | null;
+  createdBy?: string | null;
+}): Promise<{ id: string; number: number }> {
+  const fromAccount = String(data.fromAccount) as BankAccountId;
+  const toAccount = String(data.toAccount) as BankAccountId;
+  const amount = Math.round((Number(data.amount) || 0) * 100) / 100;
+  const date = String(data.date || "").slice(0, 10);
+  if (!BANK_ACCOUNT_IDS.includes(fromAccount) || !BANK_ACCOUNT_IDS.includes(toAccount)) {
+    throw new Error("Неизвестный счёт перевода");
+  }
+  if (fromAccount === toAccount) throw new Error("Счёт-источник и счёт-получатель должны отличаться");
+  if (!date) throw new Error("Укажите дату перевода");
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Сумма перевода должна быть больше нуля");
+
+  const db = getAdminDb();
+  const number = await nextNumber("bank_account_transfer");
+  const { data: result, error } = await db
+    .from("bank_account_transfers")
+    .insert({
+      number,
+      date,
+      from_account: fromAccount,
+      to_account: toAccount,
+      amount,
+      comment: cleanText(data.comment, 500),
+      created_by: cleanText(data.createdBy, 160),
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  revalidateTag("warehouse-account-transfers", { expire: 0 });
+  return { id: result.id, number };
+}
+
 export async function createPayment(data: any): Promise<{ id: string; number: number }> {
   const db = getAdminDb();
   const number = await nextNumber("payment");
@@ -3140,6 +3201,16 @@ async function fetchPayments(): Promise<BankPayment[]> {
   if (error) throw error;
   return (data || []).map(mapPaymentRow);
 }
+async function fetchAccountTransfers(): Promise<BankAccountTransfer[]> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("bank_account_transfers")
+    .select("*")
+    .order("date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapAccountTransferRow);
+}
 async function fetchEmployees(): Promise<Employee[]> {
   const db = getAdminDb();
   const { data, error } = await db.from("employees").select("*").order("created_at", { ascending: false });
@@ -3156,6 +3227,7 @@ async function fetchSalaries(): Promise<Salary[]> {
 export const getCachedReceipts = () => unstable_cache(fetchReceipts, ["warehouse-receipts"], { revalidate: 60, tags: ["warehouse-receipts"] })();
 export const getCachedDeals = () => unstable_cache(fetchDeals, ["warehouse-deals"], { revalidate: 60, tags: ["warehouse-deals"] })();
 export const getCachedPayments = () => unstable_cache(fetchPayments, ["warehouse-payments"], { revalidate: 60, tags: ["warehouse-payments"] })();
+export const getCachedAccountTransfers = () => unstable_cache(fetchAccountTransfers, ["warehouse-account-transfers"], { revalidate: 60, tags: ["warehouse-account-transfers"] })();
 export const getCachedEmployees = () => unstable_cache(fetchEmployees, ["warehouse-employees"], { revalidate: 60, tags: ["warehouse-employees"] })();
 export const getCachedSalaries = () => unstable_cache(fetchSalaries, ["warehouse-salaries"], { revalidate: 60, tags: ["warehouse-salaries"] })();
 
@@ -3163,6 +3235,7 @@ export const getCachedSalaries = () => unstable_cache(fetchSalaries, ["warehouse
 export const getReceipts = getCachedReceipts;
 export const getDeals = getCachedDeals;
 export const getPayments = getCachedPayments;
+export const getAccountTransfers = getCachedAccountTransfers;
 export const getEmployees = getCachedEmployees;
 export const getSalaries = getCachedSalaries;
 
@@ -3429,16 +3502,18 @@ export async function getPendingCashPayments(): Promise<{
     }
   >;
 }> {
-  const [payments, salaries, collections] = await Promise.all([
+  const [payments, salaries, collections, accountTransfers] = await Promise.all([
     fetchPayments(),
     fetchSalaries(),
     fetchCashCollections(),
+    fetchAccountTransfers(),
   ]);
   const carryover = getCashCarryoverSummary(
     payments,
     salaries,
     collections,
-    getWarehouseBusinessDate()
+    getWarehouseBusinessDate(),
+    accountTransfers
   );
   const linkedRemaining = carryover.origins.reduce(
     (sum, origin) => sum + origin.remainingAmount,
@@ -3488,7 +3563,7 @@ export async function getPendingCashPayments(): Promise<{
   > = {};
   for (const date of summaryDates) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    const summary = getCashCarryoverSummary(payments, salaries, collections, date);
+    const summary = getCashCarryoverSummary(payments, salaries, collections, date, accountTransfers);
     const pendingOfDay = pendingCash.filter(
       (payment) => String(payment.date || "").slice(0, 10) === date
     );
@@ -3508,7 +3583,7 @@ export async function getPendingCashPayments(): Promise<{
     const todayCardOutgoing = expensesOfDay
       .filter((expense) => expense.sourceKind === "card")
       .reduce((sum, expense) => sum + expense.amount, 0);
-    const balances = getBankSummary(payments, salaries, collections, date);
+    const balances = getBankSummary(payments, salaries, collections, date, undefined, accountTransfers);
     dailySummaries[date] = {
       openingBalance: summary.openingBalance,
       todayIncoming: round2(todayIncoming),
@@ -3748,10 +3823,11 @@ export async function collectCash(
   date: string;
 }> {
   const db = getAdminDb();
-  const [payments, salaries, collections] = await Promise.all([
+  const [payments, salaries, collections, accountTransfers] = await Promise.all([
     fetchPayments(),
     fetchSalaries(),
     fetchCashCollections(),
+    fetchAccountTransfers(),
   ]);
 
   const requestedDate = String(collectionDate || "").slice(0, 10);
@@ -3844,7 +3920,8 @@ export async function collectCash(
     payments,
     salaries,
     collections,
-    date
+    date,
+    accountTransfers
   );
   const closingBalance = round2(cashSummary.currentBalance);
   const collectionIncome = summarizeCollectionItems(allRows);

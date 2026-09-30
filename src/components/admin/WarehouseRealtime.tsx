@@ -13,6 +13,7 @@ export function WarehouseRealtime() {
       "customer_deals",
       "warehouse_receipts",
       "bank_payments",
+      "bank_account_transfers",
       "products",
       // Зарплаты и инкассации меняются из этого же модуля, но раньше в
       // подписке их не было — календарь зарплат не обновлялся у коллег.

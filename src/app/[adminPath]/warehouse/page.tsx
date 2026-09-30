@@ -10,6 +10,7 @@ import {
   getReceiptById,
   getDeals,
   getPayments,
+  getAccountTransfers,
   getEmployees,
   getSalaries,
   getCounterparties,
@@ -147,6 +148,7 @@ export default async function AdminWarehousePage({
     ["bank", "deals", "supplies", "receipts", "reports"].includes(initialTab) ||
     !!sp.payment ||
     !!sp.receipt;
+  const needAccountTransfers = initialTab === "bank" || initialTab === "reports";
   const needEmployees = initialTab === "salaries" || initialTab === "deliveries";
   const needSalaries = initialTab === "salaries" || initialTab === "bank" || initialTab === "reports";
   // Простые планы поставок больше не тянут тяжёлые прайсы/контрагентов.
@@ -161,6 +163,7 @@ export default async function AdminWarehousePage({
     loadedReceipts,
     deals,
     payments,
+    accountTransfers,
     employees,
     salaries,
     counterpartyRows,
@@ -179,6 +182,7 @@ export default async function AdminWarehousePage({
     needReceipts ? getReceipts() : Promise.resolve([]),
     needDeals ? getDeals() : Promise.resolve([]),
     needPayments ? getPayments() : Promise.resolve([]),
+    needAccountTransfers ? getAccountTransfers() : Promise.resolve([]),
     needEmployees ? getEmployees() : Promise.resolve([]),
     needSalaries ? getSalaries() : Promise.resolve([]),
     needCounterparties ? getCounterparties({ includeSupplierPrices: initialTab === "receipts" || initialTab === "deals" || initialTab === "bank" }) : Promise.resolve([]),
@@ -373,6 +377,7 @@ export default async function AdminWarehousePage({
       receipts={receipts}
       deals={deals}
       payments={payments}
+      accountTransfers={accountTransfers}
       employees={employees}
       salaries={salaries}
       counterpartyRows={counterpartyRows}
