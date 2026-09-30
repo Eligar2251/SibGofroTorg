@@ -4,7 +4,7 @@
 // учёта через этот маршрут не видны и не меняются.
 import { NextRequest, NextResponse } from "next/server";
 import { deleteSalary, getSalaryById, updateSalary } from "@/lib/warehouse";
-import { requireWastepaperApi } from "@/lib/wastepaper-account";
+import { bumpWpCaches, requireWastepaperApi } from "@/lib/wastepaper-account";
 import { isWastepaperSalary, isWastepaperSalarySource, type SalarySource } from "@/lib/warehouse-shared";
 import { logAdminAction } from "@/lib/activity-log";
 
@@ -43,6 +43,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       paidAt: body.paidAt,
       comment: body.comment,
     });
+    bumpWpCaches();
     await logAdminAction(auth.displayName, auth.role, "update", "salary", id, `ЗП макулатуры: ${current.employeeName}`, {
       amount: body.amount !== undefined ? Number(body.amount) : undefined,
       source,
@@ -65,6 +66,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       return NextResponse.json({ error: "Зарплата модуля макулатуры не найдена" }, { status: 404 });
     }
     await deleteSalary(id);
+    bumpWpCaches();
     await logAdminAction(auth.displayName, auth.role, "delete", "salary", id, `ЗП макулатуры: ${current.employeeName}`, {
       amount: current.amount,
       source: current.source,

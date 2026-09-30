@@ -19,6 +19,7 @@ import {
   LogIn,
   Recycle,
   Mail,
+  Ruler,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { SearchBar } from "./SearchBar";
@@ -269,6 +270,16 @@ export function Header({
 
             {isCatalogOpen && (
               <div className="catalog-dropdown">
+                <Link
+                  href="/podbor-korobki"
+                  className="catalog-dropdown-link"
+                  onClick={() => setIsCatalogOpen(false)}
+                >
+                  <span className="catalog-dropdown-icon">
+                    <Ruler size={18} />
+                  </span>
+                  Подбор коробки по размерам
+                </Link>
                 {categories.length > 0 ? (
                   categories.map((cat) => (
                     <Link
@@ -283,11 +294,7 @@ export function Header({
                       {cat.name}
                     </Link>
                   ))
-                ) : (
-                  <div style={{ padding: "10px 16px", color: "var(--ink-muted)", fontSize: 13 }}>
-                    Загрузка...
-                  </div>
-                )}
+                ) : null}
                 <Link
                   href="/catalog"
                   className="catalog-dropdown-footer"
@@ -361,6 +368,14 @@ export function Header({
           >
             Категории
           </div>
+          <Link
+            href="/podbor-korobki"
+            className="mobile-cat-link"
+            onClick={() => closeMobileMenu()}
+          >
+            <Ruler size={20} />
+            Подбор коробки по размерам
+          </Link>
           {categories.map((cat) => (
             <Link
               key={cat.id}

@@ -1,18 +1,6 @@
 // =========================================================
 // FILE: src/components/catalog/BoxSizeFinder.tsx
-// Подбор коробки по размерам (Д × Ш × В) для ВИТРИНЫ сайта.
-// Логика ранжирования та же, что в админке («Подбор коробки»):
-// lib/box-search.ts сравнивает каждую из трёх сторон отдельно
-// и сортирует от ближайших к менее похожим.
-//
-// Отличие от админки — подача для покупателя: вместо «±2 мм»
-// пишем направление отклонения прямо: «−2 мм» — коробка МЕНЬШЕ
-// введённого размера, «+2 мм» — БОЛЬШЕ, «точно» — совпало.
-// Рядом сразу видны цена, наличие, кнопка «В корзину» и
-// ссылка на карточку товара.
-//
-// Используется и на главной (плитка «Подбор коробки» в витрине),
-// и на отдельной странице /podbor-korobki (для ссылок из акций).
+// Подбор коробки по размерам (Д × Ш × В) для витрины сайта.
 // =========================================================
 
 "use client";
@@ -21,13 +9,13 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  Ruler,
   Package,
   RotateCcw,
   ShoppingCart,
   ChevronRight,
   Plus,
   Minus,
+  Check,
 } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
@@ -41,13 +29,9 @@ import { findNearestBoxes, type BoxProduct, type BoxTarget } from "@/lib/box-sea
 import { ymGoal } from "@/lib/ym";
 import "./box-size-finder.css";
 
-/** Допуск стороны (мм) — такой же, как по умолчанию в админке.
- *  Влияет только на подсветку «близко/далеко», весь список виден всегда. */
 const TOLERANCE_MM = 30;
-
 const DEFAULT_VISIBLE = 10;
 
-/** Товар, сериализованный на сервере; размеры уже переведены в мм. */
 export interface BoxFinderProduct {
   id: string;
   name: string;
@@ -79,10 +63,7 @@ export function BoxSizeFinder({
   initial,
 }: {
   products: BoxFinderProduct[];
-  /** Сколько позиций показывать до кнопки «Показать ещё». */
   visibleCount?: number;
-  /** Предустановленные размеры (строки, как вводит пользователь) —
-   *  удобно для ссылок из акций: /podbor-korobki?l=600&w=400&h=400 */
   initial?: { length?: string; width?: string; height?: string };
 }) {
   const { cart, addToCart, updateQty, removeFromCart } = useCart();
@@ -90,6 +71,7 @@ export function BoxSizeFinder({
   const [length, setLength] = useState(initial?.length ?? "");
   const [width, setWidth] = useState(initial?.width ?? "");
   const [height, setHeight] = useState(initial?.height ?? "");
+  const [onlyInStock, setOnlyInStock] = useState(false);
   const [shown, setShown] = useState(visibleCount);
 
   const target: BoxTarget | null = useMemo(() => {
@@ -100,12 +82,11 @@ export function BoxSizeFinder({
     return { length: l, width: w, height: h };
   }, [length, width, height]);
 
-  // В подбор попадают только позиции с заполненными размерами:
-  // безгабаритная сопутствка (скотч, плёнка) здесь не нужна.
   const searchable: BoxProduct[] = useMemo(
     () =>
       products
         .filter((p) => p.lengthMm != null && p.widthMm != null)
+        .filter((p) => (!onlyInStock ? true : !p.madeToOrder && isProductAvailable(p)))
         .map((p) => ({
           id: p.id,
           name: p.name,
@@ -117,7 +98,7 @@ export function BoxSizeFinder({
           heightMm: p.heightMm,
           unit: "мм",
         })),
-    [products]
+    [products, onlyInStock]
   );
 
   const byId = useMemo(
@@ -131,12 +112,13 @@ export function BoxSizeFinder({
   }, [searchable, target]);
 
   const visible = results.slice(0, shown);
-  const hasInput = length !== "" || width !== "" || height !== "";
+  const hasInput = length !== "" || width !== "" || height !== "" || onlyInStock;
 
   function reset() {
     setLength("");
     setWidth("");
     setHeight("");
+    setOnlyInStock(false);
     setShown(visibleCount);
   }
 
@@ -238,7 +220,6 @@ export function BoxSizeFinder({
 
   return (
     <div className="bsf">
-      {/* ── Ввод размеров ─────────────────────────────── */}
       <div className="bsf-form">
         <div className="bsf-inputs" role="group" aria-label="Размеры коробки в миллиметрах">
           <label className="bsf-field">
@@ -290,37 +271,41 @@ export function BoxSizeFinder({
           </label>
           <span className="bsf-unit">мм</span>
         </div>
+
+        <button
+          type="button"
+          className={`bsf-stock-filter${onlyInStock ? " bsf-stock-filter--active" : ""}`}
+          aria-pressed={onlyInStock}
+          onClick={() => {
+            setOnlyInStock((v) => !v);
+            setShown(visibleCount);
+          }}
+        >
+          <span className="bsf-stock-filter__check" aria-hidden>
+            {onlyInStock && <Check size={12} strokeWidth={3} />}
+          </span>
+          Только товары в наличии
+        </button>
+
         {hasInput && (
           <button type="button" className="bsf-reset" onClick={reset}>
             <RotateCcw size={13} /> Сбросить
           </button>
         )}
       </div>
-      <p className="bsf-hint">
-        <Ruler size={13} />
-        Сверху — самые близкие размеры. <b>−2&nbsp;мм</b> — коробка меньше,{" "}
-        <b>+2&nbsp;мм</b> — больше нужного.
-      </p>
 
-      {/* ── Результаты ────────────────────────────────── */}
-      {!target ? (
+      {target && results.length === 0 ? (
         <div className="bsf-empty">
           <Package size={34} />
-          <p>Введите длину, ширину и высоту — подберём подходящие коробки</p>
+          <p>{onlyInStock ? "Нет товаров в наличии" : "Ничего не найдено"}</p>
         </div>
-      ) : results.length === 0 ? (
-        <div className="bsf-empty">
-          <Package size={34} />
-          <p>В каталоге пока нет коробок с указанными размерами</p>
-        </div>
-      ) : (
+      ) : target && results.length > 0 ? (
         <>
           <ul className="bsf-list">
             {visible.map((r) => {
               const p = byId.get(r.product.id);
               if (!p) return null;
               const available = isProductAvailable(p);
-              const exact = r.matchedCount === 3;
               return (
                 <li key={p.id} className="bsf-item">
                   <Link
@@ -350,13 +335,10 @@ export function BoxSizeFinder({
                       >
                         {p.name}
                       </Link>
-                      {exact && <span className="bsf-badge">Точное совпадение</span>}
                     </div>
 
                     <div className="bsf-item__dims">
                       {r.diffs.map((d) => {
-                        // Знаковое отклонение: минус — коробка меньше,
-                        // плюс — больше введённого размера. Без «±».
                         const signed =
                           d.value == null || d.diff == null
                             ? null
@@ -373,7 +355,6 @@ export function BoxSizeFinder({
                           <span
                             key={d.dim}
                             className={`bsf-dim bsf-dim--${tone}`}
-                            title={`Нужно: ${d.dim} ${fmt(d.target)} мм`}
                           >
                             <b>{d.dim}</b>
                             {d.value == null ? (
@@ -385,8 +366,8 @@ export function BoxSizeFinder({
                                   {signed === null
                                     ? "—"
                                     : signed === 0
-                                      ? "точно"
-                                      : `${signed > 0 ? "+" : "−"}${fmt(Math.abs(signed))} мм`}
+                                      ? "0 мм"
+                                      : `${signed > 0 ? "+" : "-"}${fmt(Math.abs(signed))} мм`}
                                 </span>
                               </>
                             )}
@@ -431,7 +412,6 @@ export function BoxSizeFinder({
                         href={`/catalog/product/${p.slug}`}
                         className="bsf-open"
                         aria-label={`Перейти в карточку: ${p.name}`}
-                        title="Карточка товара"
                       >
                         <ChevronRight size={16} />
                       </Link>
@@ -455,7 +435,7 @@ export function BoxSizeFinder({
             </div>
           )}
         </>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -100,6 +100,54 @@
   color: var(--green-dark);
 }
 
+.bsf-stock-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: var(--white);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.bsf-stock-filter:hover {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.bsf-stock-filter--active {
+  background: var(--green-bg);
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.bsf-stock-filter__check {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 1.5px solid var(--border-2);
+  background: var(--white);
+  color: #fff;
+  flex-shrink: 0;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+
+.bsf-stock-filter--active .bsf-stock-filter__check {
+  background: var(--green);
+  border-color: var(--green);
+}
+
 .bsf-hint {
   display: flex;
   align-items: center;

@@ -87,14 +87,13 @@ export function HomeShowcase({
 
   const showFinder = (finderProducts?.length ?? 0) > 0;
 
-  // Плитка подбора всегда последней — после разделов каталога.
   const finderTile: ShowcaseTile | null = useMemo(
     () =>
       showFinder
         ? {
             id: FINDER_TILE_ID,
             title: "Подбор коробки по размерам",
-            subtitle: "Укажите Д×Ш×В — покажем ближайшие коробки, цену и наличие",
+            subtitle: null,
             imageUrl: null,
             icon: null,
             accent: null,
@@ -108,7 +107,7 @@ export function HomeShowcase({
   );
 
   const allTiles = useMemo(
-    () => (finderTile ? [...tiles, finderTile] : tiles),
+    () => (finderTile ? [finderTile, ...tiles] : tiles),
     [tiles, finderTile]
   );
 

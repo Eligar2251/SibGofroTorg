@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { X, Ruler } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
@@ -248,6 +248,18 @@ export function CatalogShopClient({
               />
 
               <div className="filter-block__body filter-block__body--cats">
+                <Link
+                  href="/podbor-korobki"
+                  className="fcat-item fcat-item--finder"
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    textDecoration: "none",
+                  }}
+                >
+                  <span className="fcat-item__icon"><Ruler size={16} /></span>
+                  <span className="fcat-item__name">Подбор коробки по размерам</span>
+                </Link>
                 <button
                   type="button"
                   onClick={() => handleCategory(null)}
@@ -356,23 +368,6 @@ export function CatalogShopClient({
                 <X size={13} style={{ marginRight: 4 }} />Сбросить фильтры
               </button>
             )}
-
-            {/* Постоянная кнопка подбора коробки — вне категорий */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-              <Link
-                href="/podbor-korobki"
-                className="btn btn-primary btn-sm"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  textDecoration: "none",
-                }}
-              >
-                <GlyphIcon value="box" size={15} />
-                Подобрать коробку по размеру
-              </Link>
-            </div>
           </aside>
 
           <div>

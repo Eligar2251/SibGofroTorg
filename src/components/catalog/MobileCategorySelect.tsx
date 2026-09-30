@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 
 interface CategoryOption {
@@ -16,6 +17,8 @@ interface MobileCategorySelectProps {
   allLabel?: string;
 }
 
+const BOX_FINDER_VALUE = "__box-finder__";
+
 /** Мобильный выпадающий список категорий — заменяет чипы на узких экранах */
 export function MobileCategorySelect({
   categories,
@@ -23,15 +26,25 @@ export function MobileCategorySelect({
   onSelect,
   allLabel = "Все категории",
 }: MobileCategorySelectProps) {
+  const router = useRouter();
+
   return (
     <div className="mcs-wrap">
       <div className="mcs-select-box">
         <select
           className="mcs-select"
           value={activeSlug || ""}
-          onChange={(e) => onSelect(e.target.value || null)}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === BOX_FINDER_VALUE) {
+              router.push("/podbor-korobki");
+              return;
+            }
+            onSelect(val || null);
+          }}
           aria-label="Выбор категории"
         >
+          <option value={BOX_FINDER_VALUE}>Подбор коробки по размерам</option>
           <option value="">{allLabel}</option>
           {categories.map((c) => (
             <option key={c.id} value={c.slug}>
