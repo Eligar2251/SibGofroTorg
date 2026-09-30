@@ -3,7 +3,7 @@
 // Клиентская часть страницы массовой печати этикеток
 // (штрихкоды EAN-13 и/или QR).
 //
-// Два режима печати:
+// Режимы печати:
 // • sheet (лист A4): квадратные этикетки 4×4 / 5×5 / 6×6 см,
 //   сетка repeat(N, M), печатаются на обычном принтере/листе —
 //   НЕСКОЛЬКО этикеток на одном листе.
@@ -13,6 +13,10 @@
 //   @page { size: 60mm 40mm; margin: 0 } + разрыв страницы после
 //   каждой этикетки. Так драйвер принтера получает ровно одну
 //   этикетку на одну физическую отрывную этикетку.
+// • brand (фирменная этикетка СибГофроТорг, 60×40 мм — ГОРИЗОНТАЛЬНАЯ,
+//   та же физическая этикетка 6×4 см): брендированный бланк с логотипом,
+//   адресом и QR-кодом сайта. 1 этикетка = 1 страница 60×40 мм, как
+//   у «tape»; раскладка — две колонки (текст слева, QR справа).
 //
 // Что печатаем — переключатель «Код»:
 // • barcode (по умолчанию): обычный штрихкод EAN-13 — постоянный
@@ -159,9 +163,14 @@ const BATCH_PRESETS = [1, 1000, 2000, 3, 4, 5];
 //   sheet → лист A4 с полями 8 мм (несколько этикеток на листе)
 //   tape  → страница = ровно одна этикетка 60×40 мм, поля 0,
 //           а разрывы страниц гарантируют 1 QR на 1 этикетку.
+//   brand → фирменная этикетка: тоже ровно 60×40 мм (альбомная,
+//           как и «tape»), 1 этикетка = 1 страница.
 function pageCss(mode: PrintMode): string {
   if (mode === "tape") return "@media print { @page { size: 60mm 40mm; margin: 0; } }";
-  if (mode === "brand") return "@media print { @page { size: 40mm 60mm; margin: 0; } }";
+  // Фирменная этикетка — тоже альбомная (горизонтальная) 60×40 мм:
+  // вертикальная 40×60 выходила боком относительно ленты, поэтому
+  // страница и сама этикетка совпадают по ориентации с «tape».
+  if (mode === "brand") return "@media print { @page { size: 60mm 40mm; margin: 0; } }";
   return "@media print { @page { size: A4; margin: 8mm; } }";
   // «single» печатается на обычном листе A4 (как sheet) — одна
   // полоска на страницу, разрывы страниц по CSS (.qrprint__single).
@@ -389,7 +398,7 @@ export function PrintLabelsClient({
               className={`qrprint__seg-btn${
                 mode === "brand" ? " qrprint__seg-btn--active" : ""
               }`}
-              title="Фирменная термоэтикетка 40×60 мм: СибГофроТорг, адрес и QR-код сайта"
+              title="Фирменная термоэтикетка 40×60 мм альбомная (6×4 см): СибГофроТорг, адрес и QR-код сайта — печатается горизонтально"
             >
               <QrCode size={12} /> Фирменная 40×60
             </button>
@@ -602,11 +611,12 @@ export function PrintLabelsClient({
         </div>
         {mode === "brand" && (
           <div className="qrprint__hint">
-            <strong>Фирменная термоэтикетка 40×60 мм, вертикальная.</strong>{" "}
+            <strong>Фирменная термоэтикетка 40×60 мм — горизонтальная (альбомная, 60×40).</strong>{" "}
             На каждой странице печатаются название компании, адрес и QR-код,
             ведущий на <b>sibgofrotorg.ru</b>. В драйвере выберите размер
-            бумаги <b>40×60 мм</b>, поля «Нет», масштаб 100% и отключите
-            колонтитулы.
+            бумаги <b>60×40 мм</b> (она же «6×4 см»), ориентацию —
+            <b> «Альбомная»</b>, поля «Нет», масштаб 100% и отключите
+            колонтитулы — тогда этикетка ляжет по ширине ленты, а не боком.
           </div>
         )}
         {mode === "tape" && (
@@ -856,25 +866,39 @@ export function PrintLabelsClient({
         </div>
       )}
 
-      {/* Фирменная вертикальная этикетка для термопринтера, 40×60 мм. */}
+      {/*
+       * ── Фирменная этикетка 40×60 мм для термопринтера ──
+       * Печатается АЛЬБОМНОЙ (горизонтально): физическая отрывная
+       * этикетка 60×40 мм (6×4 см) — так же, как режим «Этикетка
+       * 40×60». @page инъектируется выше (pageCss), одна этикетка =
+       * одна страница. Раскладка в две колонки: слева логотип-метка,
+       * название, слоган и адрес; справа QR сайта, домен и подпись
+       * «Наведите камеру». См. .qrprint__brand-* в admin.css.
+       */}
       {mode === "brand" && (
         <div className="qrprint__brand">
           {Array.from({ length: brandCopies }, (_, index) => (
             <article className="qrprint__brand-label" key={index}>
-              <div className="qrprint__brand-mark" aria-hidden="true">СГТ</div>
-              <div className="qrprint__brand-name">СибГофроТорг</div>
-              <div className="qrprint__brand-subtitle">ГОФРОТАРА · УПАКОВКА</div>
-              <div className="qrprint__brand-rule" />
-              <div className="qrprint__brand-address">{companyAddress}</div>
-              <img
-                className="qrprint__brand-qr"
-                src={brandQrDataUrl}
-                alt="QR-код сайта sibgofrotorg.ru"
-                width={320}
-                height={320}
-              />
-              <div className="qrprint__brand-domain">sibgofrotorg.ru</div>
-              <div className="qrprint__brand-caption">НАВЕДИТЕ КАМЕРУ</div>
+              <div className="qrprint__brand-info">
+                <div className="qrprint__brand-head">
+                  <div className="qrprint__brand-mark" aria-hidden="true">СГТ</div>
+                  <div className="qrprint__brand-name">СибГофроТорг</div>
+                </div>
+                <div className="qrprint__brand-subtitle">ГОФРОТАРА · УПАКОВКА</div>
+                <div className="qrprint__brand-rule" />
+                <div className="qrprint__brand-address">{companyAddress}</div>
+              </div>
+              <div className="qrprint__brand-code">
+                <img
+                  className="qrprint__brand-qr"
+                  src={brandQrDataUrl}
+                  alt="QR-код сайта sibgofrotorg.ru"
+                  width={320}
+                  height={320}
+                />
+                <div className="qrprint__brand-domain">sibgofrotorg.ru</div>
+                <div className="qrprint__brand-caption">НАВЕДИТЕ КАМЕРУ</div>
+              </div>
             </article>
           ))}
         </div>
