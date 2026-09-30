@@ -10965,6 +10965,28 @@ body.is-col-resizing * {
   margin-top: 8px;
 }
 
+/* ── Переключатель варианта: стандартный вид / свой размер ── */
+.boxlabel-variant {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  background: var(--adm-card);
+}
+
+.boxlabel-variant__note {
+  color: var(--adm-ink-soft);
+  font-size: 12px;
+}
+
+.boxlabel-variant__link {
+  margin-left: auto;
+}
+
 /* ── Панель конструктора ── */
 .boxlabel-panel {
   margin-top: 14px;
@@ -11255,8 +11277,14 @@ body.is-col-resizing * {
   -webkit-print-color-adjust: exact;
 }
 
-.boxlabel--border {
+/* Рамки: «Рамка реза» — контур по периметру, «Линия снизу» — как в
+   стандартном виде (линия отреза между полосами). */
+.boxlabel--frame {
   border: 0.3mm solid #000;
+}
+
+.boxlabel--line {
+  border-bottom: 0.3mm solid #000;
 }
 
 /* Левый блок: номер ящика */
