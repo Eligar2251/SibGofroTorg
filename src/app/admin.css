@@ -10879,12 +10879,23 @@ body.is-col-resizing * {
 }
 
 /* ══════════════════════════════════════
-   ЭТИКЕТКИ ЯЩИКОВ — отдельная печать A4
+   ЭТИКЕТКИ ЯЩИКОВ — конструктор печати A4
    (страница /[admin]/box-labels)
-   Полосы 60мм высотой, горизонтальные, несколько на листе A4
+
+   Всё построено на CSS-переменных, которые выставляет React
+   (BoxLabelsClient.tsx) на контейнере .boxlabel-sheet:
+     --bl-w / --bl-h   — размер этикетки, мм
+     --bl-gap-x / -y   — отступы между этикетками, мм
+     --bl-cols         — сколько этикеток в ряд на листе A4
+     --bl-pad          — поля листа, мм
+     --bl-justify      — выравнивание сетки (center | start)
+
+   Экранный предпросмотр и печать используют одну и ту же разметку:
+   на экране лист масштабируется transform: scale(), в @media print
+   масштаб снимается и лист печатается в реальных миллиметрах.
    ══════════════════════════════════════ */
 
-/* Редактор на экране: карточки товаров с полями этикетки */
+/* ── Редактор на экране: карточки товаров с полями этикетки ── */
 .boxlabel-edit {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -10923,30 +10934,57 @@ body.is-col-resizing * {
 }
 
 .boxlabel-item__form {
-  display: grid;
-  gap: 8px;
   padding: 10px 12px 12px;
   border-top: 1px solid var(--adm-border-soft);
   background: var(--adm-paper);
 }
 
-/* ── Быстрая настройка шрифта перед печатью ── */
-.boxlabel-settings-overlay {
-  z-index: 180;
+.boxlabel-item__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
 }
 
-.boxlabel-settings {
-  width: min(1120px, 100%);
-  max-width: 1120px;
-  padding: 20px;
+.boxlabel-item__fonts {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
 }
 
-.boxlabel-settings__head {
+.boxlabel-item__fonts summary {
+  cursor: pointer;
+  color: var(--adm-ink);
+  font-weight: 600;
+}
+
+.boxlabel-item__fonts-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ── Панель конструктора ── */
+.boxlabel-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  background: var(--adm-card);
+}
+
+.boxlabel-panel__head {
+  display: flex;
   align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
-.boxlabel-settings__eyebrow {
-  margin-bottom: 4px;
+.boxlabel-panel__eyebrow {
+  margin-bottom: 3px;
   color: var(--adm-ink-muted);
   font-size: 11px;
   font-weight: 700;
@@ -10954,322 +10992,408 @@ body.is-col-resizing * {
   text-transform: uppercase;
 }
 
-.boxlabel-settings__desc {
-  margin-bottom: 14px;
-}
-
-.boxlabel-settings__bulk {
-  padding: 12px;
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r);
-  background: var(--adm-paper);
-}
-
-.boxlabel-settings__bulk-title {
+.boxlabel-panel__title {
   display: flex;
   align-items: center;
   gap: 7px;
-  margin-bottom: 9px;
+  margin: 0;
   color: var(--adm-ink);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
 }
 
-.boxlabel-settings__list {
-  display: grid;
-  gap: 12px;
-  margin-top: 14px;
+.boxlabel-panel__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
 }
 
-.boxlabel-settings__item {
+.boxlabel-panel__summary b {
+  color: var(--adm-ink);
+}
+
+.boxlabel-panel__grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.boxlabel-panel__block {
   padding: 12px;
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-r);
-  background: var(--adm-card);
+  border: 1px solid var(--adm-border-soft);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-paper);
 }
 
-.boxlabel-settings__item-head {
+.boxlabel-panel__block-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 9px;
+  gap: 7px;
+  margin-bottom: 10px;
   color: var(--adm-ink);
   font-size: 12px;
-}
-
-.boxlabel-settings__item-head strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.boxlabel-settings__item-head span {
-  flex: 0 0 auto;
-  color: var(--adm-ink-muted);
   font-weight: 700;
 }
 
-.boxlabel-settings__preview {
-  display: grid;
-  grid-template-columns: minmax(0, 35fr) 1px minmax(0, 30fr) 1px minmax(0, 35fr);
-  width: 100%;
-  height: 42mm;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid #d3d0c8;
-  background: #fff;
-  color: #000;
-}
-
-.boxlabel-settings__preview-cell {
+.boxlabel-panel__row {
   display: flex;
-  min-width: 0;
-  height: 100%;
-  padding: 3mm;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  overflow: hidden;
-}
-
-.boxlabel-settings__preview-number {
-  font-family: var(--adm-font-head);
-  font-weight: 800;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.boxlabel-settings__preview-sizes {
-  font-weight: 800;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-
-.boxlabel-settings__preview-code {
-  flex-direction: column;
-  gap: 1.5mm;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-}
-
-.boxlabel-settings__preview-code img {
-  display: block;
-  width: auto;
-  max-width: 100%;
-  height: 17mm;
-  object-fit: contain;
-}
-
-.boxlabel-settings__preview-code span {
-  width: 100%;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.boxlabel-settings__preview-separator {
-  width: 1px;
-  height: 100%;
-  background: #000;
-}
-
-.boxlabel-settings__controls {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(110px, 1fr));
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
   margin-top: 10px;
 }
 
-.boxlabel-settings__controls--bulk {
-  grid-template-columns: repeat(3, minmax(110px, 1fr)) auto;
-  align-items: end;
-  margin-top: 0;
-}
-
-.boxlabel-settings__field {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+.boxlabel-panel__hint {
+  margin-top: 10px;
   color: var(--adm-ink-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
-.boxlabel-settings__field input {
-  width: 68px;
-  height: 34px;
-  padding: 5px 7px;
+.boxlabel-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Готовые размеры этикеток */
+.boxlabel-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.boxlabel-preset {
+  padding: 6px 10px;
   border: 1px solid var(--adm-border-mid);
-  border-radius: var(--adm-r-sm);
-  outline: none;
+  border-radius: 999px;
   background: var(--adm-card);
   color: var(--adm-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.boxlabel-preset:hover {
+  border-color: var(--adm-kraft);
+}
+
+.boxlabel-preset--on {
+  border-color: var(--adm-kraft);
+  background: var(--adm-kraft-soft, var(--adm-paper));
+}
+
+/* Поля с единицами измерения */
+.boxlabel-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--adm-ink-soft);
+}
+
+.boxlabel-field > span {
+  font-weight: 600;
+}
+
+.boxlabel-field input,
+.boxlabel-field select {
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  background: #fff;
+  color: var(--adm-ink);
   font: inherit;
+  font-size: 13px;
+}
+
+.boxlabel-field input {
+  width: 84px;
+}
+
+.boxlabel-field small {
+  color: var(--adm-ink-muted);
+  font-size: 11px;
+}
+
+.boxlabel-field--mini input {
+  width: 64px;
+  min-height: 30px;
+}
+
+/* Тумблеры «что печатать» */
+.boxlabel-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.boxlabel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--adm-ink);
+  cursor: pointer;
+}
+
+.boxlabel-toggle--inline {
+  min-height: 34px;
+}
+
+.boxlabel-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+
+.boxlabel-numstart {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--adm-ink-soft);
+}
+
+.boxlabel-numstart .admin-input {
+  width: 92px;
+}
+
+.boxlabel-empty {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px dashed var(--adm-border-mid);
+  border-radius: var(--adm-r);
+  background: var(--adm-paper);
+  color: var(--adm-ink-soft);
   font-size: 13px;
   text-align: center;
 }
 
-.boxlabel-settings__field input:focus {
-  border-color: var(--adm-kraft);
-  box-shadow: 0 0 0 2px var(--adm-kraft-line);
-}
-
-.boxlabel-settings__field small {
-  color: var(--adm-ink-muted);
-  font-size: 10px;
-}
-
-.boxlabel-settings__apply {
-  min-height: 34px;
-  white-space: nowrap;
-}
-
-.boxlabel-settings__actions {
-  position: sticky;
-  bottom: -20px;
-  z-index: 2;
-  margin: 16px -20px -20px;
-  padding: 14px 20px 20px;
-  border-top: 1px solid var(--adm-border);
-  background: var(--adm-card);
-}
-
-@media (max-width: 720px) {
-  .boxlabel-settings {
-    padding: 14px;
-  }
-
-  .boxlabel-settings__preview {
-    height: 32mm;
-  }
-
-  .boxlabel-settings__preview-cell {
-    padding: 1.5mm;
-  }
-
-  .boxlabel-settings__preview-code img {
-    height: 12mm;
-  }
-
-  .boxlabel-settings__controls,
-  .boxlabel-settings__controls--bulk {
-    grid-template-columns: 1fr;
-  }
-
-  .boxlabel-settings__field {
-    grid-template-columns: minmax(80px, 1fr) 74px auto;
-  }
-
-  .boxlabel-settings__field input {
-    width: 74px;
-  }
-
-  .boxlabel-settings__actions {
-    bottom: -14px;
-    margin: 14px -14px -14px;
-    padding: 12px 14px 14px;
-  }
-}
-
-/* ── Превью на экране (видно когда есть выбранные) ── */
-.boxlabel-sheet {
-  display: none;
-}
-.boxlabel-sheet--preview {
-  display: flex !important;
+/* ── Предпросмотр листов (они же — печатные страницы) ──
+   .boxlabel-preview прокручивает стопку листов,
+   .boxlabel-page__viewport держит место под масштаб,
+   .boxlabel-sheet — настоящая страница A4 210×297 мм с сеткой
+   этикеток; в печати масштаб снимается (см. @media print). */
+.boxlabel-preview {
+  display: flex;
   flex-direction: column;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  gap: 6mm;
-  padding: 10mm;
+  align-items: center;
+  gap: 14px;
+  max-height: 84vh;
+  margin-top: 16px;
+  padding: 12px;
   background: #f5f3ee;
   border: 1px dashed #ccc9c0;
   border-radius: 8px;
-  margin-top: 16px;
+  overflow: auto;
 }
-.boxlabel-sheet--preview .boxlabel {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
+
+.boxlabel-preview--hidden {
+  display: none;
+}
+
+.boxlabel-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   flex: 0 0 auto;
+}
+
+.boxlabel-page__caption {
+  color: #6b6b6b;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.boxlabel-page__viewport {
+  position: relative;
+  overflow: hidden;
+}
+
+.boxlabel-sheet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  padding: var(--bl-pad, 0mm);
   background: #fff;
-  border: 1px solid #ddd;
-  border-bottom: 2px solid #000;
-  border-radius: 0;
-  height: 60mm;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.12);
+  display: grid;
+  grid-template-columns: repeat(var(--bl-cols, 1), var(--bl-w, 210mm));
+  justify-content: var(--bl-justify, center);
+  align-content: start;
+  gap: var(--bl-gap-y, 4mm) var(--bl-gap-x, 0mm);
+  overflow: hidden;
+}
+
+/* ── Одна этикетка ── */
+.boxlabel {
+  box-sizing: border-box;
+  width: var(--bl-w, 210mm);
+  height: var(--bl-h, 60mm);
   display: flex;
   align-items: stretch;
   overflow: hidden;
   color: #000;
+  background: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
 }
-.boxlabel-sheet--preview .boxlabel__band {
-  width: 100%;
+
+.boxlabel--border {
+  border: 0.3mm solid #000;
+}
+
+/* Левый блок: номер ящика */
+.boxlabel__num {
+  flex: 0 0 34%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2mm;
+  font-family: var(--adm-font-head, Arial, Helvetica, sans-serif);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-align: center;
+}
+
+/* Центральный блок: название / размеры / свой текст */
+.boxlabel__mid {
+  flex: 1 1 auto;
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 35fr) 1px minmax(0, 30fr) 1px minmax(0, 35fr);
-  align-items: stretch;
-}
-.boxlabel-sheet--preview .boxlabel__cell {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
-  padding: 4mm 5mm;
-  min-width: 0;
-  box-sizing: border-box;
-  text-align: center;
-}
-.boxlabel-sheet--preview .boxlabel__vsep {
-  width: 1px;
-  background: #000;
-  flex-shrink: 0;
-}
-.boxlabel-sheet--preview .boxlabel__num {
-  font-family: var(--adm-font-head);
-  font-size: 48pt;
-  font-weight: 800;
-  line-height: 1;
-  white-space: nowrap;
-  flex: 0 0 35%;
-  text-align: center;
-}
-.boxlabel-sheet--preview .boxlabel__info {
-  flex: 1 1 30%;
-  gap: 2mm;
-  text-align: center;
-}
-.boxlabel-sheet--preview .boxlabel__sizes {
-  width: 100%;
-  font-size: 14pt;
-  font-weight: 800;
-  line-height: 1.15;
-  text-align: center;
-}
-.boxlabel-sheet--preview .boxlabel__code {
-  flex: 0 0 35%;
-  gap: 2mm;
-}
-.boxlabel-sheet--preview .boxlabel__bc {
-  height: 22mm;
-  width: auto;
-  max-width: 100%;
-  object-fit: contain;
-}
-.boxlabel-sheet--preview .boxlabel__ean {
-  width: 100%;
-  font-size: 8pt;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  gap: 1mm;
+  padding: 1mm 2mm;
   text-align: center;
 }
 
+/* Правый блок: штрихкод и/или цифры */
+.boxlabel__code {
+  flex: 0 0 34%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1mm;
+  padding: 1mm 2mm;
+}
+
+.boxlabel__vsep {
+  flex: 0 0 1px;
+  background: #000;
+}
+
+.boxlabel__title {
+  width: 100%;
+  font-weight: 700;
+  line-height: 1.1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.boxlabel__sizes {
+  width: 100%;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.boxlabel__extra {
+  width: 100%;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Штрихкод. SVG приходит только с viewBox (без width/height), поэтому
+   размер задаём сами: высота — из настройки «Высота штриха»
+   (--bl-bc-h, мм, ставит React на этикетку), ширина — по колонке.
+   object-fit: contain не даёт штрихам растянуться, даже если колонка
+   по пропорциям не совпала с пропорциями кода. */
+.boxlabel__bc {
+  display: block;
+  width: 100%;
+  height: var(--bl-bc-h, 24mm);
+  object-fit: contain;
+  object-position: center;
+  background: #fff;
+}
+
+.boxlabel__ean {
+  width: 100%;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-align: center;
+}
+
+/* ── Вертикальная раскладка: узкие этикетки (60×40, 50×30, …) ──
+   Всё в колонку по центру: № → название → размеры → свой текст →
+   штрихкод. Класс вешает React, когда ширина < 120 мм или выбран
+   режим «Вертикально». */
+.boxlabel--stack {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8mm;
+  padding: 1mm;
+  text-align: center;
+}
+
+.boxlabel--stack .boxlabel__num {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 0;
+}
+
+.boxlabel--stack .boxlabel__mid {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 0;
+  gap: 0.6mm;
+}
+
+.boxlabel--stack .boxlabel__code {
+  flex: 0 1 auto;
+  width: 100%;
+  padding: 0;
+}
+
+.boxlabel--stack .boxlabel__bc {
+  width: 96%;
+}
+
+/* ── Печать: изолируем лист и печатаем в реальных миллиметрах ── */
 @media print {
   /* Обнуляем контейнеры админки, чтобы A4 не «съезжал» */
   body.boxlabel-mode,
@@ -11297,145 +11421,83 @@ body.is-col-resizing * {
     visibility: visible !important;
     opacity: 1 !important;
   }
-  /* Оставляем лист в обычном потоке и центрируем через auto margins.
-     В отличие от привязки к left: 0 это сохраняет центр листа, когда
-     браузер уменьшает масштаб печати и расширяет область раскладки. */
-  body.boxlabel-mode .boxlabel-sheet {
-    position: static !important;
-    inset: auto !important;
-    width: 210mm !important;
-    min-width: 210mm !important;
-    max-width: 210mm !important;
-    box-sizing: border-box !important;
-    margin-right: auto !important;
-    margin-left: auto !important;
-    align-self: center !important;
-  }
 
   body.boxlabel-mode .no-print {
     display: none !important;
   }
 
-  body.boxlabel-mode .boxlabel-sheet {
-    display: flex !important;
-    flex-direction: column;
-    gap: 4mm;
+  /* Снимаем экранный масштаб предпросмотра: листы печатаются 1:1 */
+  body.boxlabel-mode .boxlabel-preview {
+    display: block !important;
+    max-height: none !important;
+    margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
     border: none !important;
-    margin: 0 auto !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
   }
 
-  /* Каждая этикетка — горизонтальная полоса 60мм, несколько на листе */
-  body.boxlabel-mode .boxlabel {
-    width: 210mm !important;
-    min-width: 210mm !important;
-    max-width: 210mm !important;
+  body.boxlabel-mode .boxlabel-page {
+    display: block !important;
+    gap: 0 !important;
+  }
+
+  body.boxlabel-mode .boxlabel-page__viewport {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Каждая страница — ровно лист A4 210×297 мм, следующая начинается
+     с новой страницы (у последней разрыв снимаем, чтобы принтер не
+     прогнал пустой лист). */
+  body.boxlabel-mode .boxlabel-sheet {
+    position: static !important;
     box-sizing: border-box !important;
-    flex: 0 0 60mm;
+    width: 210mm !important;
+    min-width: 0 !important;
+    max-width: 210mm !important;
+    height: 297mm !important;
+    margin: 0 !important;
+    padding: var(--bl-pad, 0mm) !important;
+    transform: none !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    display: grid !important;
+    grid-template-columns: repeat(var(--bl-cols, 1), var(--bl-w, 210mm)) !important;
+    justify-content: var(--bl-justify, center) !important;
+    align-content: start !important;
+    gap: var(--bl-gap-y, 4mm) var(--bl-gap-x, 0mm) !important;
+    overflow: hidden !important;
+    break-after: page;
+    page-break-after: always;
     break-inside: avoid;
     page-break-inside: avoid;
-    height: 60mm;
-    min-height: 60mm;
-    max-height: 60mm;
-    display: flex;
-    align-items: stretch;
+  }
+
+  body.boxlabel-mode .boxlabel-page:last-child .boxlabel-sheet {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* Этикетка не рвётся между страницами: не влезла — уедет на следующую */
+  body.boxlabel-mode .boxlabel {
+    width: var(--bl-w, 210mm) !important;
+    height: var(--bl-h, 60mm) !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
     color: #000;
     background: #fff !important;
-    border: none;
-    border-bottom: 1px solid #000;
-    border-radius: 0;
-    overflow: hidden;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  /* Горизонтальная полоса: № | размеры | штрихкод — растянута на всю ширину */
-  body.boxlabel-mode .boxlabel__band {
-    width: 210mm !important;
-    min-width: 210mm !important;
-    max-width: 210mm !important;
-    height: 100%;
-    display: grid !important;
-    grid-template-columns: minmax(0, 35fr) 1px minmax(0, 30fr) 1px minmax(0, 35fr) !important;
-    align-items: stretch;
-    border: none;
-    border-radius: 0;
-    overflow: hidden;
-  }
-
-  body.boxlabel-mode .boxlabel__cell {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    padding: 4mm 5mm;
-    min-width: 0;
-    box-sizing: border-box;
-    text-align: center;
-  }
-
-  body.boxlabel-mode .boxlabel__vsep {
-    width: 1px;
-    background: #000;
-    flex-shrink: 0;
-  }
-
-  body.boxlabel-mode .boxlabel__num {
-    font-family: var(--adm-font-head);
-    font-size: 54pt;
-    font-weight: 800;
-    line-height: 1;
-    letter-spacing: 0.01em;
-    white-space: nowrap;
-    flex: 0 0 35%;
-    text-align: center;
-  }
-
-  body.boxlabel-mode .boxlabel__info {
-    flex: 1 1 30%;
-    gap: 2mm;
-    text-align: center;
-  }
-
-  body.boxlabel-mode .boxlabel__sizes {
-    width: 100%;
-    font-size: 16pt;
-    font-weight: 800;
-    line-height: 1.15;
-    text-align: center;
-  }
-
-  body.boxlabel-mode .boxlabel__code {
-    flex: 0 0 35%;
-    gap: 2mm;
-  }
-
-  body.boxlabel-mode .boxlabel__bc {
-    height: 25mm;
-    width: auto;
-    max-width: 100%;
-    object-fit: contain;
-  }
-
-  body.boxlabel-mode .boxlabel__ean {
-    width: 100%;
-    font-size: 9pt;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-align: center;
-  }
-
-  body.boxlabel-mode .boxlabel,
-  body.boxlabel-mode .boxlabel__bc {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
 }
 
 /* ── «Должны нам / Мы должны»: клик по строке вычитает контрагента ──
+   Строка кликабельна; вычтенный контрагент оформляется красным —
+   сразу видно, что он не участвует в расчёте. Повторный клик возвращает. *//* ── «Должны нам / Мы должны»: клик по строке вычитает контрагента ──
    Строка кликабельна; вычтенный контрагент оформляется красным —
    сразу видно, что он не участвует в расчёте. Повторный клик возвращает. */
 .bank-due__row--click {
