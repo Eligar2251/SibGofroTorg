@@ -3,7 +3,7 @@
 // =========================================================
 
 import type { ReactNode } from "react";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { verifySession } from "@/lib/auth";
@@ -40,6 +40,17 @@ const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRE
 // Статические metadata «Админ-панель» при этом протекали на саму 404-страницу
 // (в выдаче мог появиться заголовок «Админ-панель» у страницы «не найдено»).
 // Условная генерация отдаёт для чужих путей нейтральный заголовок + noindex.
+// Админка использует отдельный viewport: в установленном приложении
+// браузерные панели не должны оставлять странице «вкладочный» режим.
+// display-mode=standalone/fullscreen включается манифестом при запуске с
+// домашнего экрана, а viewport-fit=cover отдаёт мобильный экран под safe-area.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0b0e14",
+};
+
 export async function generateMetadata({
   params,
 }: {
@@ -60,6 +71,12 @@ export async function generateMetadata({
       capable: true,
       title: "СибГофроТорг Админ",
       statusBarStyle: "black-translucent",
+    },
+    // Android и старые WebKit читают этот тег как дополнительный
+    // сигнал для запуска с домашнего экрана без вкладочного chrome.
+    other: {
+      "mobile-web-app-capable": "yes",
+      "application-name": "СибГофроТорг Админ",
     },
     robots: { index: false, follow: false },
   };
