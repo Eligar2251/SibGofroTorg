@@ -6,7 +6,7 @@ import { randomBytes, scryptSync } from "node:crypto";
 import { chmodSync, writeFileSync } from "node:fs";
 import process from "node:process";
 
-const ROLES = new Set(["admin", "manager", "lawyer"]);
+const ROLES = new Set(["owner", "admin", "manager", "lawyer", "wastepaper"]);
 
 function printHelp() {
   console.log(`
@@ -17,7 +17,7 @@ function printHelp() {
 
 Параметры:
   --username, -u   Логин: латиница, цифры, точка, _ или -
-  --role, -r       admin | manager | lawyer
+  --role, -r       owner | admin | manager | lawyer | wastepaper
   --name, -n       Отображаемое имя (по умолчанию равно логину)
   --output, -o     Записать SQL в файл вместо вывода в терминал
   --help, -h       Показать справку

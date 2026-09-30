@@ -47,7 +47,19 @@ export type EntityType =
   | "rent-org"
   | "rent-tenant"
   | "rent-invoice"
-  | "rent-payment";
+  | "rent-payment"
+  // Прямая правка денежного счёта владельцем (без документа). Такие
+  // записи журнала видит только роль owner.
+  | "money-adjustment"
+  // Правка данных через раздел «База Данных».
+  | "database";
+
+/**
+ * Типы записей журнала, которые скрыты от всех ролей, кроме владельца.
+ * Обычный администратор видит остальные действия, но не движения денег,
+ * сделанные владельцем напрямую.
+ */
+export const OWNER_ONLY_LOG_ENTITIES: readonly string[] = ["money-adjustment"];
 
 interface LogEntry {
   adminId?: string;

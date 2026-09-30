@@ -16,6 +16,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
+import { BANK_ACCOUNT_LABELS } from "@/lib/warehouse-shared";
 
 interface LogEntry {
   id: string;
@@ -46,6 +47,7 @@ const actionLabels: Record<string, { label: string; color: string; icon: any }> 
 };
 
 const adminRoleLabels: Record<string, string> = {
+  owner: "Владелец",
   admin: "Администратор",
   manager: "Менеджер",
   lawyer: "Юрист",
@@ -69,6 +71,8 @@ const entityLabels: Record<string, string> = {
   "cash-collection": "Сводка кассы",
   "purchase-plan": "План закупки",
   "client-request": "Заявка клиента",
+  "money-adjustment": "Движение денег (владелец)",
+  database: "База данных",
 };
 
 function fmtDateTime(raw: string | null): string {
@@ -125,6 +129,14 @@ const detailKeyText: Record<string, string> = {
   productId: "Товар",
   name: "Название",
   sku: "Артикул",
+  account: "Счёт",
+  delta: "Изменение",
+  balanceAfter: "Остаток после правки",
+  note: "Комментарий",
+  column: "Колонка",
+  key: "ID записи",
+  value: "Новое значение",
+  cancelled: "Правка отменена",
 };
 
 function fmtMoney(value: unknown): string {
@@ -147,6 +159,11 @@ function isMoneyKey(key: string): boolean {
 
 function fmtDetailValue(key: string, value: any): string {
   if (value == null || value === "") return "не указано";
+  if (key === "delta" && typeof value === "number") {
+    const sign = value > 0 ? "+" : "−";
+    return `${sign}${Math.abs(value).toLocaleString("ru-RU")} ₽`;
+  }
+  if (key === "account") return BANK_ACCOUNT_LABELS[String(value) as keyof typeof BANK_ACCOUNT_LABELS] || String(value);
   if (key === "table") return tableText[String(value)] || String(value);
   if (key.toLowerCase().includes("status")) return fmtStatus(value);
   if (typeof value === "boolean") return fmtBool(value);
@@ -387,8 +404,16 @@ export function ActivityLogs({ adminPath = "admin" }: { adminPath?: string }) {
                   const Icon = meta.icon;
                   const details = formatDetails(log.details);
                   const entityHref = getEntityHref(log, adminPath);
+                  const isOwnerMoney = log.entityType === "money-adjustment";
                   return (
-                    <tr key={log.id}>
+                    <tr
+                      key={log.id}
+                      style={
+                        isOwnerMoney
+                          ? { background: "rgba(30,74,45,0.06)" }
+                          : undefined
+                      }
+                    >
                       <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{fmtDateTime(log.createdAt)}</td>
                       <td>
                         <div style={{ fontWeight: 700 }}>{log.adminName || "Система"}</div>

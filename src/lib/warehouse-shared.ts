@@ -509,6 +509,40 @@ export interface BankAccountTransfer {
   updatedAt?: string | null;
 }
 
+/**
+ * Прямая правка денежного счёта владельцем: документ не создаётся,
+ * деньги просто добавляются (+delta) или исчезают (−delta).
+ * Записи хранятся в таблице `money_adjustments` и подмешиваются в расчёт
+ * балансов (getBankSummary / getCashCarryoverSummary).
+ */
+export interface MoneyAdjustment {
+  id: string;
+  account: BankAccountId;
+  /** Положительная — деньги пришли, отрицательная — списаны. */
+  delta: number;
+  /** Дата (YYYY-MM-DD), с которой правка действует. */
+  date: string;
+  /** Комментарий владельца. Для остальных ролей скрыт. */
+  note?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  /** Остаток счёта после правки (снимок для журнала владельца). */
+  balanceAfter?: number | null;
+  /**
+   * Подпись для кассового регистра. Владелец видит «Правка владельца»,
+   * остальные роли — нейтральное «Прочее», чтобы не раскрывать источник.
+   */
+  label?: string | null;
+}
+
+/** Все денежные счета компании в фиксированном порядке. */
+export const MONEY_ACCOUNT_IDS: readonly BankAccountId[] = [
+  "cash",
+  "bank",
+  "ym_card",
+  "vm_card",
+];
+
 export const BANK_ACCOUNT_LABELS: Record<BankAccountId, string> = {
   cash: "Наличные",
   bank: "Расчётный счёт",
@@ -1523,7 +1557,8 @@ export function getCashCarryoverSummary(
   salaries: Salary[] = [],
   collections: CashCollection[] = [],
   date = getWarehouseBusinessDate(),
-  accountTransfers: BankAccountTransfer[] = []
+  accountTransfers: BankAccountTransfer[] = [],
+  moneyAdjustments: MoneyAdjustment[] = []
 ): CashCarryoverSummary {
   type CashLot = CashCarryoverOrigin;
   type CashEvent =
@@ -1593,6 +1628,35 @@ export function getCashCarryoverSummary(
         },
       });
     } else if (transfer.fromAccount === "cash") {
+      events.push({ date: operationDate, priority: 1, type: "out", amount });
+    }
+  }
+
+  // Прямые правки наличной кассы владельцем (без документов): плюс
+  // становится обычным поступлением, минус — расходом, который по FIFO
+  // «съедает» остаток. Так снятые 14 ₽ действительно исчезают из кассы.
+  for (const adjustment of moneyAdjustments) {
+    if (adjustment.account !== "cash") continue;
+    const delta = Number(adjustment.delta) || 0;
+    const amount = Math.abs(delta);
+    const operationDate = String(adjustment.date || adjustment.createdAt || "").slice(0, 10);
+    if (amount <= 0 || !operationDate) continue;
+    if (delta > 0) {
+      events.push({
+        date: operationDate,
+        priority: 0,
+        type: "in",
+        amount,
+        lot: {
+          paymentId: `money-adjustment:${adjustment.id}`,
+          number: 0,
+          date: operationDate,
+          counterparty: adjustment.label || "Правка владельца",
+          originalAmount: amount,
+          remainingAmount: amount,
+        },
+      });
+    } else {
       events.push({ date: operationDate, priority: 1, type: "out", amount });
     }
   }
@@ -1787,7 +1851,8 @@ export function getBankSummary(
   collections: CashCollection[] = [],
   asOfDate = getWarehouseBusinessDate(),
   deals?: CustomerDeal[],
-  accountTransfers: BankAccountTransfer[] = []
+  accountTransfers: BankAccountTransfer[] = [],
+  moneyAdjustments: MoneyAdjustment[] = []
 ) {
   let bankBalance = 0;
   let cashBalance = 0;
@@ -1899,12 +1964,24 @@ export function getBankSummary(
     }
     // cash — учитывается через getCashCarryoverSummary, здесь не трогаем
   }
+  // Прямые правки владельца: без документов, поэтому просто сдвигаем
+  // остаток нужного счёта. Наличка уже учтена кассовым регистром ниже.
+  for (const adjustment of moneyAdjustments) {
+    const delta = Number(adjustment.delta) || 0;
+    const operationDate = String(adjustment.date || adjustment.createdAt || "").slice(0, 10);
+    if (!operationDate || operationDate > asOfDate) continue;
+    if (adjustment.account === "bank") bankBalance += delta;
+    else if (adjustment.account === "ym_card") ymCardBalance += delta;
+    else if (adjustment.account === "vm_card") vmCardBalance += delta;
+  }
+
   cashBalance = getCashCarryoverSummary(
     payments,
     salaries,
     collections,
     asOfDate,
-    accountTransfers
+    accountTransfers,
+    moneyAdjustments
   ).currentBalance;
 
   // Переводы между безналичными счетами и картами меняют только

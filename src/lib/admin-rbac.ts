@@ -8,9 +8,25 @@
 // «админка → логин → админка» для ролей, отличных от admin.
 // =========================================================
 
-export const ADMIN_ROLES = ["admin", "manager", "lawyer", "wastepaper"] as const;
+export const ADMIN_ROLES = [
+  "owner",
+  "admin",
+  "manager",
+  "lawyer",
+  "wastepaper",
+] as const;
 
 export type AdminRole = (typeof ADMIN_ROLES)[number];
+
+/** Владелец — надмножество администратора с правом правки денег. */
+export function isOwner(role: AdminRole | null | undefined): boolean {
+  return role === "owner";
+}
+
+/** Полный доступ к админке (настройки, журнал, все модули). */
+export function isFullAccessRole(role: AdminRole | null | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
 
 /**
  * Стартовая страница роли после входа / при запрете страницы.
@@ -34,7 +50,21 @@ export type AdminPermission =
   | "use_operational_settings"
   | "view_logs"
   | "delete"
-  | "manage_users";
+  | "manage_users"
+  | "view_database"
+  | "manage_database"
+  | "view_money"
+  | "manage_money";
+
+/**
+ * Права «только владелец». Обычный admin их не получает: он видит
+ * денежные счета и их балансы, но не журнал правок владельца и не может
+ * двигать деньги напрямую, без документов.
+ */
+export const OWNER_ONLY_PERMISSIONS: readonly AdminPermission[] = [
+  "view_money",
+  "manage_money",
+];
 
 export function parseAdminRole(value: unknown): AdminRole | null {
   return typeof value === "string" &&
@@ -55,6 +85,14 @@ export function hasAdminPermission(
   role: AdminRole,
   permission: AdminPermission | string
 ): boolean {
+  // Владелец — единственная роль, которой доступны владельческие права
+  // (правка денежных счетов и журнал этих правок).
+  if (role === "owner") return true;
+
+  if ((OWNER_ONLY_PERMISSIONS as readonly string[]).includes(permission)) {
+    return false;
+  }
+
   if (role === "admin") return true;
 
   if (role === "manager") {
@@ -63,6 +101,10 @@ export function hasAdminPermission(
       "manage_settings",
       "manage_users",
       "view_logs",
+      // Просмотр базы данных — это доступ ко всем таблицам сразу,
+      // поэтому только admin и owner (после проверки права).
+      "view_database",
+      "manage_database",
     ].includes(permission);
   }
 
@@ -72,6 +114,14 @@ export function hasAdminPermission(
     "view_deliveries",
     "view_payment_details",
   ].includes(permission);
+}
+
+/**
+ * Раздел «База Данных»: все таблицы с данными и правкой ячеек.
+ * Доступен владельцу и администратору, остальным ролям — нет.
+ */
+export function canAccessDatabase(role: AdminRole | null | undefined): boolean {
+  return isFullAccessRole(role);
 }
 
 /**
@@ -105,7 +155,7 @@ export function canAccessAdminPage(
   const root = `/${adminPath}`;
   const relativePath = pathname.slice(root.length) || "/";
 
-  if (role === "admin") return true;
+  if (role === "owner" || role === "admin") return true;
 
   // Макулатурщик работает только в отдельном модуле учёта макулатуры —
   // сайт, заявки, основной учёт и дашборд ему недоступны.
@@ -120,6 +170,9 @@ export function canAccessAdminPage(
     return !(
       relativePath === "/settings" ||
       relativePath.startsWith("/settings/") ||
+      // База данных — только владелец и администратор.
+      relativePath === "/database" ||
+      relativePath.startsWith("/database/") ||
       // Отдельный учёт макулатуры доступен только admin и макулатурщику.
       relativePath === "/wastepaper-account" ||
       relativePath.startsWith("/wastepaper-account/")
@@ -132,11 +185,11 @@ export function canAccessAdminPage(
 }
 
 /**
- * В модуле аренды редактировать может только администратор.
+ * В модуле аренды редактировать может только администратор (и владелец).
  * Остальные роли (manager, lawyer) — только просмотр.
  */
 export function canEditRent(role: AdminRole): boolean {
-  return role === "admin";
+  return isFullAccessRole(role);
 }
 
 /**
@@ -148,6 +201,22 @@ export function canAccessAdminApi(
   pathname: string,
   method: string
 ): boolean {
+  // Владелец имеет доступ ко всем API админки.
+  if (role === "owner") return true;
+
+  // Денежные счета и правки остатков — строго владелец. Обычный admin
+  // видит итоговые балансы (как и раньше), но не журнал правок владельца.
+  if (pathname === "/api/admin/money" || pathname.startsWith("/api/admin/money/")) {
+    return false;
+  }
+  // Просмотр базы данных доступен только admin и owner (не manager/прочим).
+  if (
+    pathname === "/api/admin/database" ||
+    pathname.startsWith("/api/admin/database/")
+  ) {
+    return role === "admin";
+  }
+
   if (role === "admin") return true;
 
   // Поток изменений (SSE) доступен всем ролям: он отдаёт только сигналы

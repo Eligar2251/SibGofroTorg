@@ -62,6 +62,8 @@ export type RealtimeTable = (typeof REALTIME_TABLES)[number];
  * макулатурщик — только свой модуль.
  */
 const ROLE_TABLES: Record<string, readonly string[] | "all"> = {
+  // Владелец получает тот же поток изменений, что администратор.
+  owner: "all",
   admin: "all",
   manager: "all",
   lawyer: [

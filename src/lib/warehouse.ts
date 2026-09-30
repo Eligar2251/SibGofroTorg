@@ -8,6 +8,8 @@ import { createHash } from "crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getAdminDb } from "./supabase";
 import { getProductEffectivePrice } from "./types";
+// Прямые правки счетов владельцем: подмешиваются в остатки кассы.
+import { getMoneyAdjustments } from "./money-accounts";
 // Ревизия пишет остатки напрямую — нужно сбросить memory-кеш товаров,
 // иначе витрина ещё до двух минут отдаёт старые значения.
 import { invalidateProductsCache } from "./supabase-queries";
@@ -3508,12 +3510,15 @@ export async function getPendingCashPayments(): Promise<{
     fetchCashCollections(),
     fetchAccountTransfers(),
   ]);
+  // Прямые правки счетов владельцем двигают остатки наравне с документами.
+  const moneyAdjustments = await getMoneyAdjustments().catch(() => []);
   const carryover = getCashCarryoverSummary(
     payments,
     salaries,
     collections,
     getWarehouseBusinessDate(),
-    accountTransfers
+    accountTransfers,
+    moneyAdjustments
   );
   const linkedRemaining = carryover.origins.reduce(
     (sum, origin) => sum + origin.remainingAmount,
@@ -3583,7 +3588,15 @@ export async function getPendingCashPayments(): Promise<{
     const todayCardOutgoing = expensesOfDay
       .filter((expense) => expense.sourceKind === "card")
       .reduce((sum, expense) => sum + expense.amount, 0);
-    const balances = getBankSummary(payments, salaries, collections, date, undefined, accountTransfers);
+    const balances = getBankSummary(
+      payments,
+      salaries,
+      collections,
+      date,
+      undefined,
+      accountTransfers,
+      moneyAdjustments
+    );
     dailySummaries[date] = {
       openingBalance: summary.openingBalance,
       todayIncoming: round2(todayIncoming),

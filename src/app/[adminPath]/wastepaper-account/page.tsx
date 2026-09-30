@@ -11,6 +11,7 @@
 
 import { notFound, redirect } from "next/navigation";
 import { verifySession } from "@/lib/auth";
+import { isFullAccessRole } from "@/lib/admin-rbac";
 import { getWpDashboardData, type WpDashboardData } from "@/lib/wastepaper-account";
 import {
   buildWpTypeLabels,
@@ -41,7 +42,7 @@ export default async function WastepaperAccountPage({
   if (!session) redirect(`/${ADMIN_PATH}/login`);
   // Двойная защита поверх proxy: модуль доступен только admin и
   // макулатурщику, остальные роли уходят на свою стартовую страницу.
-  if (session.role !== "admin" && session.role !== "wastepaper") {
+  if (!isFullAccessRole(session.role) && session.role !== "wastepaper") {
     redirect(`/${ADMIN_PATH}`);
   }
 

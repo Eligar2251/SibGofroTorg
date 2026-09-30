@@ -33,6 +33,7 @@ import {
   stripSalaryMetaTags,
   type BankPayment,
   type BankAccountTransfer,
+  type MoneyAdjustment,
   type CashCollection,
   type CashCollectionItem,
   type CustomerDeal,
@@ -80,6 +81,8 @@ interface WarehouseReportsProps {
   transports: TransportRow[];
   cashCollections: CashCollection[];
   accountTransfers: BankAccountTransfer[];
+  /** Прямые правки счетов владельцем — участвуют в остатках кассы. */
+  moneyAdjustments?: MoneyAdjustment[];
   stock: WarehouseStockRow[];
 }
 
@@ -278,6 +281,7 @@ export function WarehouseReports({
   transports,
   cashCollections,
   accountTransfers,
+  moneyAdjustments = [],
   stock,
 }: WarehouseReportsProps) {
   const today = localIso();
@@ -583,11 +587,18 @@ export function WarehouseReports({
       if (!date) continue;
       opening.set(
         collection.id,
-        getCashCarryoverSummary(payments, salaries, cashCollections, date, accountTransfers).openingBalance
+        getCashCarryoverSummary(
+          payments,
+          salaries,
+          cashCollections,
+          date,
+          accountTransfers,
+          moneyAdjustments
+        ).openingBalance
       );
     }
     return opening;
-  }, [accountTransfers, cashCollections, payments, salaries]);
+  }, [accountTransfers, cashCollections, payments, salaries, moneyAdjustments]);
 
   const stockRows = useMemo(
     () =>

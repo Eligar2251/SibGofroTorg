@@ -10,6 +10,7 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/supabase";
 import { requireAdminApi, type AdminSession } from "@/lib/auth";
+import { isFullAccessRole } from "@/lib/admin-rbac";
 import { getWastepaperRates } from "@/lib/supabase-queries";
 import { getSalaries } from "@/lib/warehouse";
 import { isWastepaperSalary, type Salary } from "@/lib/warehouse-shared";
@@ -175,7 +176,7 @@ export async function deleteWpProduct(id: string): Promise<{ mode: "deleted" | "
 export async function requireWastepaperApi(): Promise<AdminSession | NextResponse> {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
-  if (auth.role !== "admin" && auth.role !== "wastepaper") {
+  if (!isFullAccessRole(auth.role) && auth.role !== "wastepaper") {
     return NextResponse.json(
       { error: "Недостаточно прав (модуль «Учёт макулатуры»)" },
       { status: 403 }

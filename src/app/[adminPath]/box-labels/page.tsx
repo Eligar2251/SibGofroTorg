@@ -1,8 +1,10 @@
 // =========================================================
 // FILE: src/app/[adminPath]/box-labels/page.tsx
-// Отдельная печать этикеток ЯЩИКОВ на листе A4 (вертикально):
-// строгий макет на всю физическую ширину A4:
-// [№ и указанное число] | [размеры] | [штрихкод].
+// Отдельная печать этикеток ЯЩИКОВ на листе A4.
+// Размер этикетки, раскладка, содержимое (№, название, размеры,
+// свой текст, штрихкод) и шрифты настраиваются прямо на странице
+// в конструкторе (см. BoxLabelsClient.tsx) — маленькие коробки
+// печатаются по несколько штук в ряд, а не во всю ширину листа.
 // =========================================================
 
 import { notFound } from "next/navigation";
@@ -50,7 +52,7 @@ export default async function BoxLabelsPage({
         <Link href={`/${ADMIN_PATH}/products`} className="qrprint-page__back" prefetch={false}>
           <ArrowLeft size={16} /> В товары
         </Link>
-        <h1 className="qrprint-page__title">Этикетки ящиков · A4 вертикально</h1>
+        <h1 className="qrprint-page__title">Этикетки ящиков · конструктор A4</h1>
         <Link href={`/${ADMIN_PATH}/qr-print`} className="qrprint-page__back" prefetch={false}>
           Обычные этикетки (штрихкод/QR)
         </Link>

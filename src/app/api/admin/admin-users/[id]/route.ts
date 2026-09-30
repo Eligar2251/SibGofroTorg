@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermission, requireAdminApi } from "@/lib/auth";
-import { parseAdminRole } from "@/lib/admin-rbac";
+import { parseAdminRole, isFullAccessRole } from "@/lib/admin-rbac";
 import { logAdminAction } from "@/lib/activity-log";
 import { getAdminDb } from "@/lib/supabase";
 import { hashPassword } from "@/lib/user-auth";
@@ -30,6 +30,10 @@ function mapAdminUser(row: any, currentUsername: string) {
   };
 }
 
+/**
+ * Полный доступ есть у двух ролей: admin и owner. Понизить или отключить
+ * последний такой аккаунт нельзя — иначе админку будет некому вести.
+ */
 async function isLastActiveAdmin(db: ReturnType<typeof getAdminDb>, id: string) {
   const { data, error } = await db.from("admins").select("id,role,is_active");
   if (error) throw error;
@@ -37,7 +41,7 @@ async function isLastActiveAdmin(db: ReturnType<typeof getAdminDb>, id: string) 
     (data || []).filter(
       (row) =>
         String(row.id) !== id &&
-        parseAdminRole(row.role) === "admin" &&
+        isFullAccessRole(parseAdminRole(row.role)) &&
         row.is_active !== false
     ).length === 0
   );
@@ -91,9 +95,9 @@ export async function PATCH(
     }
 
     if (
-      currentRole === "admin" &&
+      isFullAccessRole(currentRole) &&
       current.is_active !== false &&
-      (nextRole !== "admin" || !nextIsActive) &&
+      (!isFullAccessRole(nextRole) || !nextIsActive) &&
       (await isLastActiveAdmin(db, id))
     ) {
       throw new Error("Нельзя отключить или понизить последнего администратора");
@@ -174,7 +178,7 @@ export async function DELETE(
       throw new Error("Нельзя удалить текущий аккаунт");
     }
     if (
-      (parseAdminRole(current.role) || "admin") === "admin" &&
+      isFullAccessRole(parseAdminRole(current.role)) &&
       current.is_active !== false &&
       (await isLastActiveAdmin(db, id))
     ) {
