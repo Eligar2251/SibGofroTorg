@@ -8581,6 +8581,7 @@ body.cookie-banner-visible .cart-popup {
   .sale-section { padding: 28px 0 34px; }
   .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .sale-card__name { font-size: 11.5px; min-height: 32px; }
+  .sale-card__size { font-size: 11px; }
   .sale-card__price { font-size: 14px; }
 }
 
