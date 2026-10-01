@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth";
 import {
+  DUTY_SCHEDULE_HISTORY_HINT,
   dutyScheduleStoreErrorMessage,
   getDutyScheduleSnapshot,
   saveDutyScheduleSnapshot,
@@ -91,7 +92,16 @@ export async function PUT(request: NextRequest) {
       { state: body.state, payOffset },
       auth.username
     );
-    return NextResponse.json({ success: true, updatedAt: result.updatedAt });
+    return NextResponse.json({
+      success: true,
+      updatedAt: result.updatedAt,
+      hash: result.hash,
+      unchanged: result.unchanged,
+      // Если журнал версий ещё не создан в базе — интерфейс подскажет,
+      // какую миграцию выполнить. Сам табель при этом сохраняется.
+      historyEnabled: result.historyEnabled,
+      hint: result.historyEnabled ? null : DUTY_SCHEDULE_HISTORY_HINT,
+    });
   } catch (error) {
     console.error("Save duty schedule error:", error);
     return NextResponse.json(

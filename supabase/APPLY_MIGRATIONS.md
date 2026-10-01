@@ -16,6 +16,7 @@
 | 5 | `migration_wp_payment_links.sql` | `wp_payments.doc_type` + `wp_payments.doc_id` (платёж = оплата приёма/продажи) | Связка «платёж ↔ документ» не сохранится: привязка платежа к приёму/продаже падает записью `doc_type` (сами документы и свободные платежи работают) |
 | 6 | `migration_receipt_debts.sql` | Метка завершения перевозки и учёт уже оплаченных излишков в `warehouse_receipts` | Нельзя завершить перевозку по недопоставке или отметить долг за перепоставку оплаченным |
 | 7 | `migration_owner_role_and_money.sql` | Роль `owner` в CHECK `admins.role` + таблица `money_adjustments` | Нельзя создать владельца (падает сохранение пользователя с этой ролью), панель правки денег в настройках отвечает «Не удалось изменить счёт» |
+| 8 | `migration_duty_schedule_storage.sql` | Таблица `duty_schedule_revisions` + колонка `content_hash` в `duty_schedules` (история табеля охраны) | Табель сохраняется как раньше, но истории версий нет: в окне «История» — подсказка «Хранилище табелей ещё не создано…» |
 
 ## Что должно быть применено раньше (из `main`)
 
@@ -217,6 +218,15 @@ UPDATE admins SET role = 'owner' WHERE username = 'ivan';
 npx tsx scripts/create-admin.ts owner mypassword owner "Владелец"
 ```
 
+## 8. `supabase/migration_duty_schedule_storage.sql`
+
+История табеля охраны: журнал версий (`duty_schedule_revisions`) и отпечаток
+содержимого (`duty_schedules.content_hash`). Файл идемпотентен: колонка и
+таблица создаются с `IF NOT EXISTS`, старые строки не переписываются.
+Без миграции табель продолжает сохраняться, а вместо истории интерфейс
+показывает подсказку с этим же файлом; строки, сохранённые до миграции,
+попадают в историю обычным сохранением (первая версия = текущий снимок).
+
 ## Проверка после применения
 
 ```sql
@@ -247,7 +257,12 @@ UNION ALL SELECT 'admins.role допускает owner',
                WHERE conname = 'admins_role_check'
                  AND pg_get_constraintdef(oid) LIKE '%owner%')
 UNION ALL SELECT 'money_adjustments',
-       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'money_adjustments');
+       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'money_adjustments')
+UNION ALL SELECT 'duty_schedule_revisions',
+       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'duty_schedule_revisions')
+UNION ALL SELECT 'duty_schedules.content_hash',
+       EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'duty_schedules' AND column_name = 'content_hash');
 ```
 
-Ожидаемый результат — **10 строк, во всех `ok = true`**.
+Ожидаемый результат — **12 строк, во всех `ok = true`**.

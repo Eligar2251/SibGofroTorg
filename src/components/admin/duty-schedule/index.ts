@@ -11,3 +11,4 @@ export { EmployeeManagerModal } from "./EmployeeManagerModal";
 export { DutySchedulePrint } from "./DutySchedulePrint";
 export { DutyScheduleAdmin } from "./DutyScheduleAdmin";
 export { default } from "./DutyScheduleAdmin";
+export { HistoryModal } from "./HistoryModal";

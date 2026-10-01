@@ -36,11 +36,14 @@ import {
   ArrowUpDown,
   CalendarDays,
   Undo2,
+  History,
+  Save,
 } from "lucide-react";
 import { useDutySchedule } from "./useDutySchedule";
 import { ScheduleTable } from "./ScheduleTable";
 import { EmployeeManagerModal } from "./EmployeeManagerModal";
 import { DutySchedulePrint } from "./DutySchedulePrint";
+import { HistoryModal } from "./HistoryModal";
 import {
   DutyScheduleSnapshot,
   Employee,
@@ -233,6 +236,17 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     saveError,
     lastSavedAt,
     retryDatabase,
+    flushSave,
+    history,
+    historyLoading,
+    historyError,
+    historyHint,
+    loadHistory,
+    fetchRevision,
+    restoreRevision,
+    localBackupCandidate,
+    acceptLocalBackup,
+    dismissLocalBackup,
     year,
     month,
     goToPrevMonth,
@@ -281,6 +295,10 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
 
   const [showEmployees, setShowEmployees] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyHintHidden, setHistoryHintHidden] = useState(false);
+  // Ручное сохранение: кнопка «Сохранить» в шапке.
+  const [savingNow, setSavingNow] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [rotatingStart, setRotatingStart] = useState<string>("");
   const [transferring, setTransferring] = useState(false);
@@ -495,6 +513,33 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
     }
   };
 
+  /** Сохранить в базу прямо сейчас, не дожидаясь автосохранения. */
+  const handleSaveNow = async () => {
+    setSavingNow(true);
+    try {
+      const saved = await flushSave();
+      setMessage(
+        saved
+          ? "Табель сохранён в базе — версия добавлена в историю"
+          : "Сохранить не удалось — смотрите подсказку о состоянии базы выше"
+      );
+    } finally {
+      setSavingNow(false);
+    }
+  };
+
+  /** История открывается по кнопке: сначала догадываемся сохранить
+   *  последние правки, чтобы список версий был актуальным. */
+  const handleOpenHistory = async () => {
+    setShowHistory(true);
+    await flushSave().catch(() => undefined);
+    await loadHistory();
+  };
+
+  const handleRestoreRevision = async (id: number) => {
+    await restoreRevision(id);
+  };
+
   if (!storageReady) {
     return (
       <div className="ds-root ds-storage-loading" aria-live="polite">
@@ -544,6 +589,33 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
               Повторить
             </button>
           )}
+        </div>
+        <div className="ds-header-actions">
+          <button
+            type="button"
+            className="ds-btn"
+            onClick={() => void handleSaveNow()}
+            disabled={savingNow || saveStatus === "saving"}
+            title="Сохранить прямо сейчас, не дожидаясь автосохранения"
+          >
+            {savingNow ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Save size={14} />
+            )}{" "}
+            Сохранить
+          </button>
+          <button
+            type="button"
+            className="ds-btn"
+            onClick={() => void handleOpenHistory()}
+            title="Сохранённые версии: посмотреть прежние смены, зарплату и выплаты, вернуть любую версию"
+          >
+            <History size={14} /> История
+            {history && history.revisions.length > 0 && (
+              <span className="ds-history-count">{history.revisions.length}</span>
+            )}
+          </button>
         </div>
         <div className="ds-month-nav">
           <button
@@ -605,6 +677,45 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           </button>
         </div>
       </div>
+
+      {localBackupCandidate && (
+        <div className="ds-recover" role="alert">
+          <AlertTriangle size={16} />
+          <div className="ds-recover-text">
+            <strong>В браузере остались правки, которые не дошли до базы.</strong>
+            <span>
+              Копия от{" "}
+              {localBackupCandidate.at
+                ? fmtDateWithWeekday(localBackupCandidate.at.slice(0, 10))
+                : "неизвестного времени"}
+              . Вернуть их в табель и сохранить в базу? Если отказаться,
+              останется версия из базы.
+            </span>
+          </div>
+          <div className="ds-recover-actions">
+            <button
+              type="button"
+              className="ds-btn ds-btn--primary"
+              onClick={() => void acceptLocalBackup()}
+            >
+              Вернуть правки
+            </button>
+            <button type="button" className="ds-btn" onClick={dismissLocalBackup}>
+              Оставить версию из базы
+            </button>
+          </div>
+        </div>
+      )}
+
+      {historyHint && !historyHintHidden && (
+        <div className="ds-history-hint">
+          <AlertTriangle size={14} />
+          <span>{historyHint}</span>
+          <button type="button" onClick={() => setHistoryHintHidden(true)}>
+            Скрыть
+          </button>
+        </div>
+      )}
 
       {message && (
         <div className="ds-message" onClick={() => setMessage(null)}>
@@ -1241,6 +1352,21 @@ export const DutyScheduleAdmin: React.FC<Props> = ({
           </button>
         </div>
       </div>
+
+      {showHistory && (
+        <HistoryModal
+          onClose={() => setShowHistory(false)}
+          revisions={history?.revisions ?? []}
+          currentHash={history?.currentHash ?? null}
+          historyEnabled={history ? history.historyEnabled : true}
+          historyHint={history?.hint ?? historyHint}
+          historyError={historyError}
+          historyLoading={historyLoading}
+          onReload={() => void loadHistory()}
+          onLoadRevision={fetchRevision}
+          onRestore={handleRestoreRevision}
+        />
+      )}
 
       {showEmployees && (
         <EmployeeManagerModal

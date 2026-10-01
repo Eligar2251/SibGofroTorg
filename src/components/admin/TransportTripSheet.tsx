@@ -275,6 +275,9 @@ export function TransportTripSheet({
             const note = stop.deliveryNote?.trim() || null;
             const isLast = index === stops.length - 1;
             const wp = isWpStop(stop);
+            // Свою строку без груза тоже печатаем: в ней будет пустая
+            // линия «место под товары» — впишут от руки.
+            const showCargo = stop.lines.length > 0 || stop.kind === "custom";
             return (
               <Fragment key={stop.key}>
               <article className={`tls-strip tls-strip--${type.id}`}>
@@ -285,6 +288,8 @@ export function TransportTripSheet({
                   <span className="tls-strip__num-qty">
                     {wp && qty === 0 ? (
                       <span className="tls-strip__num-qty-hint">вес уточним</span>
+                    ) : qty === 0 ? (
+                      <span className="tls-strip__num-qty-hint">груз впишем</span>
                     ) : (
                       <>
                         {qty}
@@ -300,7 +305,13 @@ export function TransportTripSheet({
                     <span className={`tls-mark tls-mark--${type.id}`}>
                       {op.icon} {op.mark}
                     </span>
-                    <span className="tls-strip__client">{stop.customerName || "без названия"}</span>
+                    {/* Своя строка без названия — печатаем только номер:
+                        «без названия» водителю ничего не говорит. */}
+                    {stop.customerName?.trim() ? (
+                      <span className="tls-strip__client">{stop.customerName.trim()}</span>
+                    ) : stop.kind === "custom" ? null : (
+                      <span className="tls-strip__client">без названия</span>
+                    )}
                     {stop.kind === "deal" && stop.dealNumber ? (
                       <span className="tls-strip__deal">ЗК-{stop.dealNumber}</span>
                     ) : null}
@@ -309,6 +320,10 @@ export function TransportTripSheet({
                         говорят об одном документе. */}
                     {stop.kind !== "deal" && stop.kind !== "custom" ? (
                       <span className="tls-strip__deal">{stopTitle(stop)}</span>
+                    ) : null}
+                    {/* Своя строка: номер вписан руками (накладная, заявка) */}
+                    {stop.kind === "custom" && stop.docLabel?.trim() ? (
+                      <span className="tls-strip__deal">{stop.docLabel.trim()}</span>
                     ) : null}
                     {opts.showTime && stop.plannedTime ? (
                       <span className="tls-strip__time">⏱ {stop.plannedTime}</span>
@@ -344,10 +359,15 @@ export function TransportTripSheet({
                     </div>
                   )}
 
-                  {/* Груз */}
-                  {opts.goods !== "none" && stop.lines.length > 0 && (
+                  {/* Груз (у своей строки без груза — пустая линия) */}
+                  {opts.goods !== "none" && showCargo && (
                     <div className="tls-strip__cargo">
-                      {opts.goods === "short" ? (
+                      {stop.lines.length === 0 ? (
+                        <span className="tls-strip__cargo-line tls-strip__cargo-line--blank">
+                          {type.cargoLabel}:{" "}
+                          <span className="tls-strip__underline tls-strip__underline--wide" />
+                        </span>
+                      ) : opts.goods === "short" ? (
                         <span className="tls-strip__cargo-line">
                           {stop.lines
                             .map((l) =>
@@ -593,6 +613,10 @@ const PRINT_CSS = `
 .tls-strip__cargo-unit { font-size: 7.5px; color: #8c857a; font-weight: 600; }
 .tls-strip__cargo-ordered { font-size: 8px; color: #b83a1e; white-space: nowrap; }
 .tls-strip__cargo-line { font-size: 10px; font-weight: 600; overflow-wrap: anywhere; }
+/* Пустая своя строка: места под груз не хватает — печатаем линию,
+   чтобы водитель вписал наименование и количество от руки. */
+.tls-strip__cargo-line--blank { display: flex; align-items: baseline; gap: 1.4mm; font-size: 9px; font-weight: 700; color: #6d675e; }
+.tls-strip__cargo-line--blank .tls-strip__underline--wide { flex: 1 1 auto; min-width: 40mm; }
 .tls-strip__sum { display: block; margin-top: 0.5mm; font-size: 8.5px; color: #6d675e; }
 
 .tls-strip__instr { display: flex; gap: 2mm; align-items: baseline; padding: 1mm 1.6mm; background: #fdf8ec; border-left: 0.9mm solid #e0b84f; border-radius: 0.6mm; }

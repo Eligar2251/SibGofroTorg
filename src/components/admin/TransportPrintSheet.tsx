@@ -28,6 +28,8 @@ export interface TransportPrintData {
     wpDocNumber?: number | null;
     /** Привязка к поставке — приходному ордеру (полоска ПО-). */
     receiptNumber?: number | null;
+    /** Свободный номер своей строки (накладная, заявка) — печатается в шапке. */
+    docLabel?: string | null;
     customerName: string;
     contactName?: string | null;
     address: string | null;
@@ -87,7 +89,19 @@ export function TransportPrintSheet({
       ...deal,
       items: deal.items.filter((item) => Number(item.transportQty) > 0),
     }))
-    .filter((deal) => deal.items.length > 0);
+    .filter(
+      (deal) =>
+        deal.items.length > 0 ||
+        // Своя строка без груза (Пустая строка перевозки): полоска нужна,
+        // а место под товар печатается пустыми линиями.
+        (!deal.wpDocKind &&
+          !deal.dealNumber &&
+          Boolean(
+            (deal.address || "").trim() ||
+              (deal.docLabel || "").trim() ||
+              deal.customerName.trim()
+          ))
+    );
   const lastIdx = printableItems.length - 1;
 
   return (
@@ -145,7 +159,9 @@ export function TransportPrintSheet({
               ? `ПО-${deal.receiptNumber}`
               : deal.dealNumber
                 ? `ЗК-${deal.dealNumber}`
-                : "Самостоятельная перевозка";
+                : deal.docLabel && deal.docLabel.trim()
+                  ? deal.docLabel.trim()
+                  : "Самостоятельная перевозка";
           // Пометка операции с предметом: «Забор макулатуры»,
           // «Забор товара», «Доставка заказа» — та же, что в путевом листе.
           const opKind: TripStop["kind"] = deal.wpDocKind
@@ -171,8 +187,16 @@ export function TransportPrintSheet({
                     <span className="strip-trip-type">{op.label}</span>
                   </div>
                   <div className="strip-top__right">
-                    <span className="strip-boxes">{totalQty}</span>
-                    <span className="strip-boxes-label">{isWp ? "вес, кг" : "кол-во товара"}</span>
+                    <span className="strip-boxes">
+                      {deal.items.length === 0 ? "—" : totalQty}
+                    </span>
+                    <span className="strip-boxes-label">
+                      {deal.items.length === 0
+                        ? "груз впишем"
+                        : isWp
+                          ? "вес, кг"
+                          : "кол-во товара"}
+                    </span>
                   </div>
                 </div>
 
@@ -220,19 +244,30 @@ export function TransportPrintSheet({
                     </tr>
                   </thead>
                   <tbody>
-                    {deal.items.map((item, i) => (
-                      <tr key={i}>
-                        <td className="strip-items__name">{item.name}</td>
-                        <td className="strip-items__qty">
-                          <span className="strip-items__num">
-                            {item.transportQty}
-                          </span>
-                          <span className="strip-items__unit">
-                            ({item.unit || (isWp ? "кг" : "ед.")})
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {deal.items.length === 0 ? (
+                      /* Своя строка без груза: печатаем пустые линии —
+                         водитель и приёмка впишут товар от руки. */
+                      [0, 1, 2].map((i) => (
+                        <tr key={`blank-${i}`} className="strip-items__blank">
+                          <td className="strip-items__name" />
+                          <td className="strip-items__qty" />
+                        </tr>
+                      ))
+                    ) : (
+                      deal.items.map((item, i) => (
+                        <tr key={i}>
+                          <td className="strip-items__name">{item.name}</td>
+                          <td className="strip-items__qty">
+                            <span className="strip-items__num">
+                              {item.transportQty}
+                            </span>
+                            <span className="strip-items__unit">
+                              ({item.unit || (isWp ? "кг" : "ед.")})
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
 
@@ -342,6 +377,8 @@ const PRINT_CSS = `
 .strip-items__qty { text-align: right; white-space: nowrap; width: 24mm; }
 .strip-items__num { font-size: 14px; font-weight: 700; color: #2b2b28; }
 .strip-items__unit { font-size: 9px; color: #9a948a; margin-left: 1mm; }
+/* Пустые линии для записи товара от руки (своя строка без груза) */
+.strip-items__blank td { height: 6.2mm; border-bottom: 1px solid #ddd8cd; }
 
 /* Наша компания */
 .strip-company {

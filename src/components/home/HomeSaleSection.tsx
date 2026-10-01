@@ -7,6 +7,11 @@ import { useCart } from "@/context/CartContext";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { getProductEffectivePrice } from "@/lib/types";
+import {
+  formatProductSize,
+  formatVariantSizes,
+  type ProductVariantSizeSource,
+} from "@/lib/product-size";
 
 interface SaleProduct {
   id: string;
@@ -19,6 +24,12 @@ interface SaleProduct {
   stockQty?: number | null;
   discountType?: "percent" | "fixed" | null;
   discountValue?: number | null;
+  dimensionLength?: number | null;
+  dimensionWidth?: number | null;
+  dimensionHeight?: number | null;
+  dimensionUnit?: string | null;
+  /** Размеры вариантов — когда у самого товара габариты не заполнены. */
+  variantSizes?: ProductVariantSizeSource[] | null;
 }
 
 function effectivePrice(p: SaleProduct): number | null {
@@ -124,6 +135,11 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
               price < p.price;
             const inCart = cart.find((i) => i.productId === p.id);
             const out = p.stockQty != null && p.stockQty <= 0;
+            // Размер: в распродаже товары часто без фото и с коротким
+            // названием («Гофрокороб Т-23»), поэтому габариты печатаем
+            // отдельной строкой — иначе выбрать нечего.
+            const size =
+              formatProductSize(p, "any") || formatVariantSizes(p.variantSizes, 2);
             const atMax =
               inCart != null && p.stockQty != null && inCart.quantity >= p.stockQty;
 
@@ -147,6 +163,12 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
                   <Link href={`/catalog/product/${p.slug}`} className="sale-card__name">
                     {p.name}
                   </Link>
+
+                  {size && (
+                    <div className="sale-card__size" title="Размеры (Д×Ш×В)">
+                      {size}
+                    </div>
+                  )}
 
                   <div className="sale-card__price-row">
                     {price != null ? (

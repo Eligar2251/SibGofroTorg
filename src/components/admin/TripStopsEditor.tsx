@@ -149,7 +149,7 @@ export function TripStopsEditor({
   onOpenDeal,
   title = "Порядок точек маршрута",
   hint,
-  emptyText = "Точек пока нет. Отметьте заказы или добавьте свою точку.",
+  emptyText = "Точек пока нет. Отметьте заказы или добавьте пустую строку — впишете адрес и груз руками.",
   actions,
   showTotals = true,
   defaultOpen = "first",
@@ -164,15 +164,17 @@ export function TripStopsEditor({
   const knownKeysRef = useRef<Set<string>>(new Set(stops.map((s) => s.key)));
   const pointerRef = useRef({ x: 0, y: 0 });
 
+  // Новая строка (в том числе пустая, добавленная кнопкой) сразу
+  // раскрывается — можно писать адрес, номер и груз, не разыскивая её.
   useEffect(() => {
     stopsRef.current = stops;
-    if (defaultOpen !== "all") return;
     const known = knownKeysRef.current;
     const fresh = stops.filter((s) => !known.has(s.key)).map((s) => s.key);
     if (fresh.length === 0) return;
     fresh.forEach((key) => known.add(key));
+    if (defaultOpen !== "all" && !editable) return;
     setExpanded((prev) => new Set([...prev, ...fresh]));
-  }, [stops, defaultOpen]);
+  }, [stops, defaultOpen, editable]);
 
   const canDrag = sortable && stops.length > 1;
 
@@ -416,8 +418,18 @@ export function TripStopsEditor({
                       </span>
                       <span className="trip-stop__title">{stopTitle(stop)}</span>
                       <strong className="trip-stop__customer">
-                        {stop.customerName.trim() || "без названия"}
+                        {/* Пустая строка в свёрнутом виде показывает адрес:
+                            по нему и понятно, куда ехать. */}
+                        {stop.customerName.trim() ||
+                          (stop.kind === "custom"
+                            ? stop.address?.trim() || "Пустая строка"
+                            : "без названия")}
                       </strong>
+                      {stop.kind === "custom" && stop.docLabel?.trim() ? (
+                        <span className="trip-stop__docnum" title="Номер / документ">
+                          {stop.docLabel.trim()}
+                        </span>
+                      ) : null}
                       {editable ? (
                         <input
                           type="time"
@@ -434,9 +446,17 @@ export function TripStopsEditor({
                       <span className="trip-stop__spacer" />
                       <span
                         className="trip-stop__qty"
-                        title={isWpStop(stop) ? "Килограммов макулатуры на точке" : "Единиц груза на точке"}
+                        title={
+                          stop.lines.length === 0
+                            ? "Груз ещё не указан — впишете сами (в путевом листе под него оставлено место)"
+                            : isWpStop(stop)
+                              ? "Килограммов макулатуры на точке"
+                              : "Единиц груза на точке"
+                        }
                       >
-                        {qty} {isWpStop(stop) ? "кг" : "ед."}
+                        {stop.lines.length === 0
+                          ? "груз —"
+                          : `${qty} ${isWpStop(stop) ? "кг" : "ед."}`}
                       </span>
                       {canDrag && (
                         <span className="trip-stop__moves">
@@ -540,12 +560,21 @@ export function TripStopsEditor({
                       <div className="trip-stop__fields">
                         {stop.kind === "custom" ? (
                           <>
-                            <Field label="Контрагент">
+                            <Field label="Кому / от кого">
                               <input
                                 className="admin-input"
                                 value={stop.customerName}
                                 placeholder="ООО «Приёмка», склад на Лесной…"
                                 onChange={(e) => patchStop(stop.key, { customerName: e.target.value })}
+                              />
+                            </Field>
+                            <Field label="Номер / документ">
+                              <input
+                                className="admin-input"
+                                value={stop.docLabel || ""}
+                                placeholder="№ 123, накладная, заявка клиента…"
+                                title="Свободная строка: напечатается рядом с названием в путевом листе"
+                                onChange={(e) => patchStop(stop.key, { docLabel: e.target.value })}
                               />
                             </Field>
                             <Field label="Куда / откуда (адрес)">
@@ -718,7 +747,10 @@ export function TripStopsEditor({
 
                       <div className="trip-stop__lines">
                         {stop.lines.length === 0 && (
-                          <span className="trip-stop__nolines">Груз не указан</span>
+                          <span className="trip-stop__nolines">
+                            Груз не указан — добавьте строку или оставьте пусто:
+                            в путевом листе под него будет место для записи от руки
+                          </span>
                         )}
                         {stop.lines.map((line, lineIndex) => {
                           // Точка из документа: больше, чем в документе, увезти

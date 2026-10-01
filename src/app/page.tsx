@@ -307,6 +307,23 @@ export default async function HomePage() {
     stockQty: p.stockQty ?? null,
     discountType: p.discountType ?? null,
     discountValue: p.discountValue ?? null,
+    // Габариты: в компактной карточке распродажи размер — главная
+    // подсказка о товаре (названия марок Т-22/Т-23 мало что говорят).
+    dimensionLength: p.dimensionLength ?? null,
+    dimensionWidth: p.dimensionWidth ?? null,
+    dimensionHeight: p.dimensionHeight ?? null,
+    dimensionUnit: p.dimensionUnit ?? null,
+    // У «родителя» с вариантами габариты обычно пустые — размеры
+    // лежат в вариантах, поэтому передаём их подписи (только нужное
+    // для строки размера: без цен, остатков и фото).
+    variantSizes: (p.variants || []).map((v) => ({
+      name: v.name ?? null,
+      optionType: v.optionType ?? null,
+      dimensionLength: v.dimensionLength ?? null,
+      dimensionWidth: v.dimensionWidth ?? null,
+      dimensionHeight: v.dimensionHeight ?? null,
+      dimensionUnit: v.dimensionUnit ?? null,
+    })),
   });
   const serializedSaleProducts = saleProducts.map(serializeSaleProduct);
 

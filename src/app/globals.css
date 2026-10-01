@@ -8506,6 +8506,20 @@ body.cookie-banner-visible .cart-popup {
   transition: color 0.16s ease;
 }
 .sale-card__name:hover { color: var(--green); }
+/* Размер товара — как в карточке каталога: «600×400×400 мм» */
+.sale-card__size {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
 .sale-card__price-row {
   display: flex;
   align-items: baseline;
@@ -8567,6 +8581,7 @@ body.cookie-banner-visible .cart-popup {
   .sale-section { padding: 28px 0 34px; }
   .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .sale-card__name { font-size: 11.5px; min-height: 32px; }
+  .sale-card__size { font-size: 11px; }
   .sale-card__price { font-size: 14px; }
 }
 

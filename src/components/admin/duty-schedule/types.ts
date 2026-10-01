@@ -121,6 +121,74 @@ export interface DutyScheduleSnapshot {
   /** Сколько месяцев назад брать табель только для блока выплат: 0 / 1 / 2. */
   payOffset: number;
   updatedAt?: string | null;
+  /** Отпечаток содержимого (см. lib/duty-schedule-hash). Может быть пустым
+   *  у баз, где миграция истории ещё не применена. */
+  hash?: string | null;
+}
+
+/** Итоги одного зарплатного месяца внутри сохранённой версии. */
+export interface DutyScheduleRevisionPeriod {
+  /** 'YYYY-MM' — зарплатный месяц. */
+  month: string;
+  /** Сколько человек в начислении. */
+  people: number;
+  /** Итого начислено, ₽ (ручные суммы и расчёт по табелю). */
+  accrualTotal: number;
+  /** Сколько строк выплат с суммой больше нуля. */
+  payoutRows: number;
+  /** Итого выплат, ₽. */
+  payoutTotal: number;
+}
+
+/** Краткая сводка сохранённой версии — показывается в списке истории. */
+export interface DutyScheduleRevisionSummary {
+  /** Сотрудников всего / активных. */
+  employees: number;
+  activeEmployees: number;
+  /** Сколько месяцев охватывает снимок. */
+  months: number;
+  firstMonth: string | null;
+  lastMonth: string | null;
+  /** Смен с назначенным охранником за все месяцы. */
+  scheduleDays: number;
+  /** Последние зарплатные месяцы (не больше трёх). */
+  periods: DutyScheduleRevisionPeriod[];
+}
+
+/** Строка списка истории версий табеля. */
+export interface DutyScheduleRevisionMeta {
+  id: number;
+  /** Когда версия впервые сохранена (ISO). */
+  createdAt: string;
+  /** Когда версия последний раз обновлялась (ISO). */
+  updatedAt: string;
+  /** Кто сохранил (логин администратора). */
+  createdBy: string | null;
+  /** Пометка: ручное восстановление, перенос и т.п. */
+  note: string | null;
+  /** Отпечаток содержимого версии. */
+  hash: string;
+  summary: DutyScheduleRevisionSummary | null;
+}
+
+/** Полный снимок одной сохранённой версии (для просмотра и отката). */
+export interface DutyScheduleRevisionSnapshot extends DutyScheduleSnapshot {
+  id: number;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+  note: string | null;
+}
+
+/** Ответ API истории: список версий + признак, доступна ли история. */
+export interface DutyScheduleHistoryResponse {
+  revisions: DutyScheduleRevisionMeta[];
+  /** Отпечаток текущего (рабочего) снимка — им помечается актуальная версия. */
+  currentHash: string | null;
+  /** false — таблица истории ещё не создана (нужна миграция). */
+  historyEnabled: boolean;
+  /** Подсказка, если история недоступна. */
+  hint?: string | null;
 }
 
 export type DutyScheduleSaveStatus =

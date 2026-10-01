@@ -48,6 +48,7 @@ import {
 } from "@/lib/product-fields";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { formatProductSize } from "@/lib/product-size";
 import {
   SITE_URL,
   SITE_NAME,
@@ -199,12 +200,7 @@ export default async function ProductPage({
       ? Math.max(0, discountPercent)
       : discountPercent;
 
-  const dims =
-    product.dimensionLength && product.dimensionWidth
-      ? `${product.dimensionLength}×${product.dimensionWidth}${
-          product.dimensionHeight ? `×${product.dimensionHeight}` : ""
-        } ${product.dimensionUnit || "мм"}`
-      : null;
+  const dims = formatProductSize(product);
 
   const specs = [
     dims && { label: "Размеры (ДхШхВ)", value: dims },

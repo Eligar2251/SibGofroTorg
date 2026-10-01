@@ -74,6 +74,24 @@ const STOPS: TripStop[] = [
     ],
     totalSum: 4290,
   },
+  // «Пустая строка» перевозки: вписали руками адрес и номер заявки,
+  // груз диспетчер уточнит позже — в бланке под него оставлено место.
+  {
+    key: "custom-blank",
+    kind: "custom",
+    dealId: null,
+    dealNumber: null,
+    docLabel: "№ 1234 (заявка клиента)",
+    customerName: "",
+    contactName: "",
+    phone: "+7 913 555-00-11",
+    address: "ул. Лесная, 10, ворота 3",
+    deliveryNote: "Груз уточнит диспетчер, забор под ответственное хранение",
+    plannedTime: "12:15",
+    tripType: "pickup",
+    lines: [],
+    totalSum: null,
+  },
   {
     key: "custom-2",
     kind: "custom",
@@ -249,16 +267,54 @@ const TRANSPORTS: TransportRow[] = [
   },
 ];
 
+/** Полоски под УПД из точек маршрута (как в TransportManager.handlePrint). */
+function buildStrips(stops: TripStop[]): TransportPrintData {
+  return {
+    transportNumber: 128,
+    date: "2026-09-17",
+    driverName: "Ковалёв С.И.",
+    driverPhone: "+7 913 999-11-00",
+    // Как в TransportManager.handlePrint: груз — только с qty > 0,
+    // но свои строки без груза остаются полоской с пустыми линиями.
+    items: stops
+      .filter(
+        (s) =>
+          s.lines.some((l) => l.qty > 0) ||
+          (s.kind === "custom" &&
+            Boolean((s.address || "").trim() || (s.docLabel || "").trim() || s.customerName.trim()))
+      )
+      .map((s) => ({
+        dealNumber: s.dealNumber ?? 0,
+        customerName: s.customerName,
+        contactName: s.contactName,
+        address: s.address,
+        phone: s.phone,
+        deliveryNote: s.deliveryNote,
+        tripType: s.tripType,
+        docLabel: s.kind === "custom" ? s.docLabel ?? null : null,
+        items: s.lines.filter((l) => l.qty > 0).map((l) => ({ name: l.name, transportQty: l.qty })),
+      })),
+    companyPhone: "+7 (383) 202-35-35",
+    companyAddress: "Новосибирск, ул. Станционная, 60",
+  };
+}
+
 export function TripSheetPreviewClient({
   autoOpenSheet = false,
+  autoOpenStrips = false,
   showManager = false,
 }: {
   autoOpenSheet?: boolean;
+  autoOpenStrips?: boolean;
   showManager?: boolean;
 }) {
   const [stops, setStops] = useState<TripStop[]>(STOPS);
   const [manualSheet, setManualSheet] = useState(false);
-  const [strips, setStrips] = useState<TransportPrintData | null>(null);
+  // Открытые по ссылке полоски (/trip-sheet-preview?strips=1) — снимок
+  // на момент загрузки, как и настоящая печать.
+  const [strips, setStrips] = useState<TransportPrintData | null>(
+    autoOpenStrips ? buildStrips(STOPS) : null
+  );
 
   const tripData: TripSheetData = {
     transportNumber: 128,
@@ -306,28 +362,7 @@ export function TripSheetPreviewClient({
         <button
           type="button"
           className="admin-btn admin-btn--outline"
-          onClick={() =>
-            setStrips({
-              transportNumber: 128,
-              date: "2026-09-17",
-              driverName: "Ковалёв С.И.",
-              driverPhone: "+7 913 999-11-00",
-              items: stops
-                .filter((s) => s.lines.some((l) => l.qty > 0))
-                .map((s) => ({
-                  dealNumber: s.dealNumber ?? 0,
-                  customerName: s.customerName,
-                  contactName: s.contactName,
-                  address: s.address,
-                  phone: s.phone,
-                  deliveryNote: s.deliveryNote,
-                  tripType: s.tripType,
-                  items: s.lines.filter((l) => l.qty > 0).map((l) => ({ name: l.name, transportQty: l.qty })),
-                })),
-              companyPhone: "+7 (383) 202-35-35",
-              companyAddress: "Новосибирск, ул. Станционная, 60",
-            })
-          }
+          onClick={() => setStrips(buildStrips(stops))}
         >
           Открыть полоски под УПД
         </button>
