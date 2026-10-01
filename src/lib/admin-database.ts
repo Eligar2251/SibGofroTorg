@@ -119,6 +119,10 @@ const TABLE_META: Record<string, TableMeta> = {
   employees: { label: "Сотрудники", group: "Деньги" },
   doc_counters: { label: "Счётчики документов", group: "Служебные" },
   duty_schedule_state: { label: "Табели охраны", group: "Служебные" },
+  duty_schedule_revisions: {
+    label: "Табели охраны: история версий",
+    group: "Служебные",
+  },
   rent_orgs: { label: "Аренда: организации", group: "Аренда" },
   rent_tenants: { label: "Аренда: арендаторы", group: "Аренда" },
   rent_invoices: { label: "Аренда: счета", group: "Аренда" },

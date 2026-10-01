@@ -25,12 +25,14 @@ import {
 interface Props {
   employees: Employee[];
   schedule: DayAssignment[];
-  onCellSave: (date: string, patch: Partial<DayAssignment>) => void;
-  onCellClear: (date: string) => void;
-  onUpdateEmployee: (id: string, patch: Partial<Employee>) => void;
+  /** Без обработчиков таблица работает в режиме просмотра: так она
+   *  показывает сохранённые версии в истории табеля. */
+  onCellSave?: (date: string, patch: Partial<DayAssignment>) => void;
+  onCellClear?: (date: string) => void;
+  onUpdateEmployee?: (id: string, patch: Partial<Employee>) => void;
   /** Ручные суммы за период: employeeId -> сумма (перекрывает расчёт). */
   amountOverrides: Record<string, number>;
-  onAmountOverride: (employeeId: string, value: number | null) => void;
+  onAmountOverride?: (employeeId: string, value: number | null) => void;
 }
 
 type Editing =
@@ -287,6 +289,12 @@ export const ScheduleTable: React.FC<Props> = ({
   onAmountOverride,
 }) => {
   const [editing, setEditing] = useState<Editing | null>(null);
+  // Просмотр сохранённой версии: правки выключены.
+  const readOnly = !onCellSave || !onCellClear || !onUpdateEmployee || !onAmountOverride;
+  const beginEdit = (next: Editing) => {
+    if (readOnly) return;
+    setEditing(next);
+  };
 
   const conflicts = findConsecutiveConflicts(schedule);
   const activeEmployees = employees.filter((e) => e.active);
@@ -312,7 +320,7 @@ export const ScheduleTable: React.FC<Props> = ({
   const close = () => setEditing(null);
 
   return (
-    <div className="ds-table-wrapper">
+    <div className={`ds-table-wrapper${readOnly ? " ds-table-wrapper--readonly" : ""}`}>
       <table className="ds-table">
         <thead>
           <tr>
@@ -327,7 +335,14 @@ export const ScheduleTable: React.FC<Props> = ({
               </th>
             ))}
             <th className="ds-sticky-col-right">Часов</th>
-            <th className="ds-sticky-col-right" title="Сумма за месяц. Двойной клик — задать вручную.">
+            <th
+              className="ds-sticky-col-right"
+              title={
+                readOnly
+                  ? "Сумма за месяц по сохранённой версии"
+                  : "Сумма за месяц. Двойной клик — задать вручную."
+              }
+            >
               Сумма, ₽
             </th>
           </tr>
@@ -348,7 +363,7 @@ export const ScheduleTable: React.FC<Props> = ({
                       initial={emp.name}
                       placeholder="Имя и фамилия"
                       onSubmit={(v) =>
-                        onUpdateEmployee(emp.id, { name: v.trim() || emp.name })
+                        onUpdateEmployee?.(emp.id, { name: v.trim() || emp.name })
                       }
                       onClose={close}
                     />
@@ -356,9 +371,9 @@ export const ScheduleTable: React.FC<Props> = ({
                     <div
                       className="ds-employee-name"
                       onDoubleClick={() =>
-                        setEditing({ kind: "name", empId: emp.id })
+                        beginEdit({ kind: "name", empId: emp.id })
                       }
-                      title="Двойной клик — изменить имя"
+                      title={readOnly ? emp.name : "Двойной клик — изменить имя"}
                     >
                       {emp.name}
                     </div>
@@ -367,16 +382,18 @@ export const ScheduleTable: React.FC<Props> = ({
                     <div
                       className="ds-employee-phone"
                       onDoubleClick={() =>
-                        setEditing({ kind: "phone", empId: emp.id })
+                        beginEdit({ kind: "phone", empId: emp.id })
                       }
-                      title="Двойной клик — изменить телефон"
+                      title={readOnly ? emp.phone : "Двойной клик — изменить телефон"}
                     >
                       {editingPhone ? (
                         <InlineField
                           initial={emp.phone}
                           placeholder="Телефон"
                           onSubmit={(v) =>
-                            onUpdateEmployee(emp.id, { phone: v.trim() || undefined })
+                            onUpdateEmployee?.(emp.id, {
+                              phone: v.trim() || undefined,
+                            })
                           }
                           onClose={close}
                         />
@@ -404,12 +421,14 @@ export const ScheduleTable: React.FC<Props> = ({
                       key={day.date}
                       className={cls}
                       onClick={() => {
-                        if (!isEditing) setEditing({ kind: "cell", date: day.date });
+                        if (!isEditing) beginEdit({ kind: "cell", date: day.date });
                       }}
                       onDoubleClick={(e) => e.stopPropagation()}
                       title={
-                        isEditing
-                          ? ""
+                        isEditing || readOnly
+                          ? mine
+                            ? `${day.date}: ${day.hours} ч.`
+                            : ""
                           : mine
                             ? `${day.date}: ${day.hours} ч. — клик, чтобы изменить`
                             : "Клик — назначить смену"
@@ -421,8 +440,8 @@ export const ScheduleTable: React.FC<Props> = ({
                           rowEmp={emp}
                           employees={employees}
                           up={empIdx > 0}
-                          onSave={(patch) => onCellSave(day.date, patch)}
-                          onClear={() => onCellClear(day.date)}
+                          onSave={(patch) => onCellSave?.(day.date, patch)}
+                          onClear={() => onCellClear?.(day.date)}
                           onClose={close}
                         />
                       ) : mine ? (
@@ -441,9 +460,15 @@ export const ScheduleTable: React.FC<Props> = ({
                     totals.overridden ? " ds-amount-cell--override" : ""
                   }`}
                   onDoubleClick={() =>
-                    setEditing({ kind: "amount", empId: emp.id })
+                    beginEdit({ kind: "amount", empId: emp.id })
                   }
-                  title="Двойной клик — задать сумму вручную"
+                  title={
+                    readOnly
+                      ? totals.overridden
+                        ? "Сумма задана вручную за этот месяц"
+                        : "Расчёт: часы × ставка"
+                      : "Двойной клик — задать сумму вручную"
+                  }
                 >
                   {editingAmount ? (
                     <InlineField
@@ -452,22 +477,22 @@ export const ScheduleTable: React.FC<Props> = ({
                       placeholder="Сумма, ₽"
                       onSubmit={(v) => {
                         const n = Math.round(Number(v));
-                        if (Number.isNaN(n) || n <= 0) onAmountOverride(emp.id, null);
-                        else onAmountOverride(emp.id, n);
+                        if (Number.isNaN(n) || n <= 0) onAmountOverride?.(emp.id, null);
+                        else onAmountOverride?.(emp.id, n);
                       }}
                       onClose={close}
                     />
                   ) : (
                     <span className="ds-amount-value">
                       {totals.amount.toLocaleString("ru-RU")}
-                      {totals.overridden && (
+                      {totals.overridden && !readOnly && (
                         <button
                           type="button"
                           className="ds-amount-reset"
                           title="Восстановить расчёт «часы × ставка»"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onAmountOverride(emp.id, null);
+                            onAmountOverride?.(emp.id, null);
                           }}
                           onDoubleClick={(e) => e.stopPropagation()}
                         >

@@ -33,16 +33,19 @@ import {
   useRef,
 } from "react";
 import {
-  Employee,
-  DayAssignment,
-  CellStatus,
+  DutyScheduleHistoryResponse,
+  DutyScheduleRevisionSnapshot,
   DutyScheduleSaveStatus,
   DutyScheduleSnapshot,
   DutyScheduleStoredState,
+  DayAssignment,
+  CellStatus,
+  Employee,
   SalaryAccrual,
   SalaryPayout,
   SalaryPayoutsByPeriod,
 } from "./types";
+import { dutyScheduleHash } from "@/lib/duty-schedule-hash";
 import {
   generateSchedule,
   fillMissingDays,
@@ -54,6 +57,13 @@ const STORAGE_KEY = "duty_schedule_v2";
 const LEGACY_STORAGE_KEY = "duty_schedule_v1";
 const LEGACY_OFFSET_KEY = "duty_schedule_offset_v1";
 const OFFSET_KEY = "duty_schedule_offset_v2";
+// Когда локальная копия разошлась с базой (например, сохранение не прошло
+// из-за сети) — здесь лежит её время. Оно позволяет после перезагрузки
+// страницы показать пользователю его несохранённые правки и вернуть их.
+const LOCAL_AT_KEY = "duty_schedule_local_at_v2";
+/** Насколько локальная копия должна «обогнать» базу, чтобы считаться
+ *  несохранённой (учитываем задержку автосохранения и часовые пояса). */
+const LOCAL_BACKUP_LAG_MS = 2000;
 
 type StoredState = DutyScheduleStoredState;
 
@@ -137,6 +147,48 @@ function readStored(key: string): Partial<StoredState> | null {
     return JSON.parse(raw) as Partial<StoredState>;
   } catch {
     return null;
+  }
+}
+
+/** Локальная резервная копия снимка: состояние, сдвиг и время правки. */
+interface LocalBackup {
+  state: StoredState;
+  payOffset: number;
+  at: string | null;
+}
+
+function readStoredString(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function readLocalBackup(): LocalBackup | null {
+  const stored = readStored(STORAGE_KEY);
+  if (!stored) return null;
+  return {
+    state: normalizeStoredState(stored),
+    payOffset: normalizedOffset(readStoredString(OFFSET_KEY)),
+    at: readStoredString(LOCAL_AT_KEY),
+  };
+}
+
+/** Пишем локальную копию вместе с отметкой времени: at — момент
+ *  правки, либо время версии из базы, если локальная копия с ней совпадает. */
+function writeLocalBackup(
+  state: StoredState,
+  payOffset: number,
+  at: string | null
+): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(OFFSET_KEY, String(payOffset));
+    if (at) localStorage.setItem(LOCAL_AT_KEY, at);
+    else localStorage.removeItem(LOCAL_AT_KEY);
+  } catch {
+    /* localStorage недоступен — основной источник всё равно БД */
   }
 }
 
@@ -338,6 +390,17 @@ export function useDutySchedule(
     initialSnapshot?.updatedAt ?? null
   );
 
+  // История версий: список читается из базы по кнопке «История».
+  const [history, setHistory] = useState<DutyScheduleHistoryResponse | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  // В браузере осталась более свежая копия, чем версия в базе
+  // (сохранение не прошло) — предлагаем вернуть её, а не терять правки.
+  const [localBackupCandidate, setLocalBackupCandidate] =
+    useState<LocalBackup | null>(null);
+  // Подсказка, если история версий ещё не подключена в базе.
+  const [historyHint, setHistoryHint] = useState<string | null>(null);
+
   const latestPayloadRef = useRef({ state: initialState, payOffset: initialOffset });
   const databaseEnabledRef = useRef(!initialDatabaseError);
   // true, если мы уже успешно прочитали БД (включая подтверждённо пустую)
@@ -352,19 +415,23 @@ export function useDutySchedule(
   const versionRef = useRef(0);
   // Загруженный из БД снимок не нужно тут же отправлять обратно.
   const skipNextPersistenceRef = useRef(Boolean(initialSnapshot));
+  // Время последней версии в базе — с ним сверяется локальная копия.
+  const dbUpdatedAtRef = useRef<string | null>(initialSnapshot?.updatedAt ?? null);
 
   const setDatabaseAvailability = useCallback((enabled: boolean) => {
     databaseEnabledRef.current = enabled;
     setDatabaseEnabled(enabled);
   }, []);
 
-  const drainSaveQueue = useCallback(async () => {
-    if (!databaseEnabledRef.current || !dirtyRef.current) return;
+  const drainSaveQueue = useCallback(async (): Promise<boolean> => {
+    if (!databaseEnabledRef.current) return false;
+    if (!dirtyRef.current) return true;
     if (savingRef.current) {
       queuedRef.current = true;
-      return;
+      return true;
     }
 
+    let saved = true;
     savingRef.current = true;
     try {
       do {
@@ -382,15 +449,27 @@ export function useDutySchedule(
         const data = (await response.json().catch(() => ({}))) as {
           updatedAt?: string | null;
           error?: string;
+          historyEnabled?: boolean;
+          hint?: string | null;
         };
         if (!response.ok) {
           throw new Error(data.error || "Не удалось сохранить табель в базе");
         }
 
+        const savedAt = data.updatedAt ?? new Date().toISOString();
+        setHistoryHint(
+          data.historyEnabled === false
+            ? data.hint || "История версий ещё не подключена в базе"
+            : null
+        );
+
         if (savingVersion === versionRef.current) {
           dirtyRef.current = false;
+          dbUpdatedAtRef.current = savedAt;
+          // Локальная копия теперь совпадает с версией в базе.
+          writeLocalBackup(payload.state, payload.payOffset, savedAt);
           setSaveStatus("saved");
-          setLastSavedAt(data.updatedAt ?? new Date().toISOString());
+          setLastSavedAt(savedAt);
         } else {
           // Пока шёл запрос, пользователь успел внести ещё одну правку.
           // Сохраняем новый снимок следом, строго после предыдущего запроса,
@@ -409,19 +488,48 @@ export function useDutySchedule(
           : "Не удалось сохранить табель в базе";
       setSaveStatus("error");
       setSaveError(text);
+      saved = false;
       // После ошибки не спамим запросами на каждую клавишу. Кнопка
       // «Повторить» сначала безопасно перечитает БД.
       setDatabaseAvailability(false);
     } finally {
       savingRef.current = false;
     }
+    return saved;
   }, [setDatabaseAvailability]);
 
   // Одноразовая инициализация: если сервер не смог прочитать БД,
   // повторяем GET из браузера. Только подтверждённо пустую БД заполняем
   // локальным снимком — так временная ошибка не затрёт существующий табель.
   useEffect(() => {
-    if (initialSnapshot) return;
+    if (initialSnapshot) {
+      // Сервер отдал версию из базы. Если в браузере осталась более
+      // свежая копия (прошлое сохранение не прошло, например пропала
+      // сеть), не выбрасываем её молча, а предлагаем вернуть.
+      const backup = readLocalBackup();
+      const dbAt = initialSnapshot.updatedAt
+        ? Date.parse(initialSnapshot.updatedAt)
+        : Number.NaN;
+      const backupAt = backup?.at ? Date.parse(backup.at) : Number.NaN;
+      const newer =
+        Number.isFinite(backupAt) &&
+        (!Number.isFinite(dbAt) || backupAt - dbAt > LOCAL_BACKUP_LAG_MS);
+      const differs = backup
+        ? dutyScheduleHash(backup.state) !==
+          (initialSnapshot.hash || dutyScheduleHash(initialSnapshot.state))
+        : false;
+      if (backup && newer && differs) {
+        setLocalBackupCandidate(backup);
+      } else if (backup) {
+        // Копия совпадает с базой — просто фиксируем её время.
+        writeLocalBackup(
+          backup.state,
+          backup.payOffset,
+          initialSnapshot.updatedAt ?? null
+        );
+      }
+      return;
+    }
     let cancelled = false;
 
     const applyLocalState = (canSave: boolean, error?: string | null) => {
@@ -463,6 +571,7 @@ export function useDutySchedule(
         };
         dirtyRef.current = false;
         canOverwriteDatabaseRef.current = true;
+        dbUpdatedAtRef.current = snapshot.updatedAt ?? null;
         setState(loadedState);
         setPayOffsetState(loadedOffset);
         setDatabaseAvailability(true);
@@ -490,17 +599,17 @@ export function useDutySchedule(
     if (!storageReady) return;
 
     latestPayloadRef.current = { state, payOffset };
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      localStorage.setItem(OFFSET_KEY, String(payOffset));
-    } catch {
-      /* localStorage недоступен — основной источник всё равно БД */
-    }
 
     if (skipNextPersistenceRef.current) {
       skipNextPersistenceRef.current = false;
+      // Состояние только что пришло из базы — копия ей равна.
+      writeLocalBackup(state, payOffset, dbUpdatedAtRef.current);
       return;
     }
+
+    // Правки живут в браузере до подтверждения от базы: отметка времени
+    // позволяет вернуть их после перезагрузки, если сохранение не прошло.
+    writeLocalBackup(state, payOffset, new Date().toISOString());
 
     versionRef.current += 1;
     dirtyRef.current = true;
@@ -549,6 +658,7 @@ export function useDutySchedule(
           state: loadedState,
           payOffset: loadedOffset,
         };
+        dbUpdatedAtRef.current = snapshot.updatedAt ?? null;
         setState(loadedState);
         setPayOffsetState(loadedOffset);
         setDatabaseAvailability(true);
@@ -575,17 +685,34 @@ export function useDutySchedule(
     }
   }, [drainSaveQueue, setDatabaseAvailability]);
 
+  /** Сохранить немедленно, не дожидаясь автосохранения (кнопка
+   *  «Сохранить», открытие истории, откат версии). */
+  const flushSave = useCallback(async (): Promise<boolean> => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    versionRef.current += 1;
+    dirtyRef.current = true;
+    if (!databaseEnabledRef.current) {
+      // База была помечена недоступной — пробуем ещё раз, как «Повторить».
+      await retryDatabase();
+      return databaseEnabledRef.current;
+    }
+    setSaveStatus("saving");
+    setSaveError(null);
+    return drainSaveQueue();
+  }, [drainSaveQueue, retryDatabase]);
+
   // При закрытии вкладки пытаемся отправить последнюю правку без ожидания
   // debounce. keepalive позволяет браузеру закончить короткий PUT.
   useEffect(() => {
     const flushOnLeave = () => {
-      if (
-        !dirtyRef.current ||
-        !databaseEnabledRef.current ||
-        savingRef.current
-      ) {
+      if (!dirtyRef.current || !databaseEnabledRef.current) {
         return;
       }
+      // Отправляем актуальный снимок даже если предыдущий PUT ещё в
+      // пути: лучше два запроса, чем потерянная последняя правка.
       const payload = latestPayloadRef.current;
       void fetch("/api/admin/duty-schedule", {
         method: "PUT",
@@ -598,14 +725,149 @@ export function useDutySchedule(
       if (document.visibilityState === "hidden") flushOnLeave();
     };
     window.addEventListener("beforeunload", flushOnLeave);
+    window.addEventListener("pagehide", flushOnLeave);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("beforeunload", flushOnLeave);
+      window.removeEventListener("pagehide", flushOnLeave);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       flushOnLeave();
     };
   }, []);
+
+  /** Ставит на место снимок, полученный из базы: история, откат, «Повторить». */
+  const applySnapshot = useCallback(
+    (snapshot: DutyScheduleSnapshot) => {
+      const loadedState = normalizeStoredState(snapshot.state);
+      const loadedOffset = normalizedOffset(snapshot.payOffset);
+      skipNextPersistenceRef.current = true;
+      dirtyRef.current = false;
+      canOverwriteDatabaseRef.current = true;
+      latestPayloadRef.current = { state: loadedState, payOffset: loadedOffset };
+      dbUpdatedAtRef.current = snapshot.updatedAt ?? new Date().toISOString();
+      setState(loadedState);
+      setPayOffsetState(loadedOffset);
+      setDatabaseAvailability(true);
+      setLastSavedAt(snapshot.updatedAt ?? null);
+      setSaveError(null);
+      setSaveStatus("saved");
+      setStorageReady(true);
+    },
+    [setDatabaseAvailability]
+  );
+
+  // ── История версий табеля ──
+
+  /** Список сохранённых версий (сотрудники, смены, зарплата и выплаты). */
+  const loadHistory = useCallback(
+    async (limit = 80): Promise<DutyScheduleHistoryResponse | null> => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const response = await fetch(
+          `/api/admin/duty-schedule/history?limit=${limit}`,
+          {
+            cache: "no-store",
+            headers: { Accept: "application/json" },
+          }
+        );
+        const data = (await response.json().catch(() => ({}))) as
+          | (DutyScheduleHistoryResponse & { error?: string })
+          | { error?: string };
+        if (!response.ok) {
+          throw new Error(
+            ("error" in data && data.error) ||
+              "Не удалось прочитать историю версий"
+          );
+        }
+        const response2 = data as DutyScheduleHistoryResponse;
+        const payload: DutyScheduleHistoryResponse = {
+          revisions: response2.revisions || [],
+          currentHash: response2.currentHash ?? null,
+          historyEnabled: response2.historyEnabled !== false,
+          hint: response2.hint ?? null,
+        };
+        setHistory(payload);
+        if (payload.hint) setHistoryHint(payload.hint);
+        return payload;
+      } catch (error) {
+        setHistoryError(
+          error instanceof Error
+            ? error.message
+            : "Не удалось прочитать историю версий"
+        );
+        return null;
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    []
+  );
+
+  /** Полный снимок одной версии — для просмотра «как было». */
+  const fetchRevision = useCallback(async (id: number) => {
+    const response = await fetch(`/api/admin/duty-schedule/history/${id}`, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      revision?: DutyScheduleRevisionSnapshot;
+      error?: string;
+    };
+    if (!response.ok || !data.revision) {
+      throw new Error(data.error || "Не удалось прочитать версию табеля");
+    }
+    return data.revision;
+  }, []);
+
+  /** Вернуть сохранённую версию в работу. Текущее состояние перед этим
+   *  сохраняется в базу, поэтому откат тоже всегда можно откатить. */
+  const restoreRevision = useCallback(
+    async (id: number): Promise<DutyScheduleSnapshot> => {
+      await flushSave();
+      const response = await fetch(`/api/admin/duty-schedule/history/${id}`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        snapshot?: DutyScheduleSnapshot;
+        error?: string;
+      };
+      if (!response.ok || !data.snapshot) {
+        throw new Error(data.error || "Не удалось восстановить версию");
+      }
+      applySnapshot(data.snapshot);
+      setMessage("Версия восстановлена — прежние данные вернулись в табель");
+      void loadHistory();
+      return data.snapshot;
+    },
+    [applySnapshot, flushSave, loadHistory]
+  );
+
+  /** Вернуть в табель правки, которые остались в браузере и не дошли
+   *  до базы (например, из-за пропавшей сети). */
+  const acceptLocalBackup = useCallback(async () => {
+    const candidate = localBackupCandidate;
+    if (!candidate) return;
+    setLocalBackupCandidate(null);
+    canOverwriteDatabaseRef.current = true;
+    latestPayloadRef.current = {
+      state: candidate.state,
+      payOffset: candidate.payOffset,
+    };
+    setState(candidate.state);
+    setPayOffsetState(candidate.payOffset);
+    setDatabaseAvailability(true);
+    setMessage("Несохранённые правки из браузера возвращены — сохраняем в базу");
+    await flushSave();
+  }, [localBackupCandidate, flushSave, setDatabaseAvailability]);
+
+  /** Оставить версию из базы: локальная копия перезаписывается ею. */
+  const dismissLocalBackup = useCallback(() => {
+    setLocalBackupCandidate(null);
+    writeLocalBackup(state, payOffset, dbUpdatedAtRef.current);
+  }, [state, payOffset]);
 
   const setPayOffset = useCallback((n: number) => {
     setPayOffsetState(normalizedOffset(n));
@@ -1196,6 +1458,20 @@ export function useDutySchedule(
     saveError,
     lastSavedAt,
     retryDatabase,
+    /** Сохранить прямо сейчас, не дожидаясь автосохранения. */
+    flushSave,
+    // История версий: список, чтение одной версии, откат
+    history,
+    historyLoading,
+    historyError,
+    historyHint,
+    loadHistory,
+    fetchRevision,
+    restoreRevision,
+    // Локальные правки, не дошедшие до базы
+    localBackupCandidate,
+    acceptLocalBackup,
+    dismissLocalBackup,
     // Месяц табеля = месяц навигации (сетка, генерация, печать)
     year,
     month,
